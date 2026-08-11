@@ -39,6 +39,17 @@ enum VaultOpenPanel {
         Task { await controller.open(URL(fileURLWithPath: path, isDirectory: true)) }
     }
 
+    /// Picks one or more files to import onto a board.
+    static func chooseFiles(title: String, message: String) -> [URL]? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        panel.title = title
+        panel.message = message
+        return panel.runModal() == .OK ? panel.urls : nil
+    }
+
     private static func pickDirectory(title: String, message: String) -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true

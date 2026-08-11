@@ -10,6 +10,11 @@ struct WorkspaceView: View {
     @State private var newItemDraft: NewItemDraft?
     @State private var isShowingTray = true
     @State private var isShowingQuickLook = false
+    @State private var importProposals: [WorkspaceController.ImportProposal] = []
+    /// Pen settings for the Disegno tool (SPEC §6.4, tool 10).
+    @State private var penColor: ColorToken = .textPrimary
+    @State private var penWidth: CGFloat = 2
+    @State private var isErasing = false
 
     /// What the user is about to create, once they have typed its name or URL.
     private struct NewItemDraft: Identifiable {
@@ -51,6 +56,19 @@ struct WorkspaceView: View {
         }
         .sheet(item: $newItemDraft) { draft in
             newItemSheet(draft)
+        }
+        .sheet(isPresented: Binding(
+            get: { !importProposals.isEmpty },
+            set: { if !$0 { importProposals = [] } }
+        )) {
+            ImportSheet(
+                proposals: $importProposals,
+                onCancel: { importProposals = [] },
+                onConfirm: { confirmed in
+                    for proposal in confirmed { _ = workspace.commitImport(proposal) }
+                    importProposals = []
+                }
+            )
         }
     }
 
@@ -160,9 +178,23 @@ struct WorkspaceView: View {
                 .scaleEffect(workspace.zoom, anchor: .topLeading)
                 .offset(workspace.pan)
 
-                zoomControls.padding(theme.spacing(.m))
+                if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
+                    drawingLayer(in: geometry.size)
+                }
+
+                VStack(alignment: .trailing, spacing: theme.spacing(.xs)) {
+                    if workspace.tool == .drawing { penControls }
+                    zoomControls
+                }
+                .padding(theme.spacing(.m))
             }
             .clipped()
+            .dropDestination(for: URL.self) { urls, location in
+                importProposals = workspace.importFiles(
+                    urls, at: canvasPoint(from: location, in: geometry.size)
+                )
+                return !importProposals.isEmpty
+            }
             .onAppear {
                 viewportSize = geometry.size
                 workspace.zoomToFit(in: geometry.size)
@@ -231,6 +263,101 @@ struct WorkspaceView: View {
         .background(theme.color(.surfaceRaised))
         .clipShape(Capsule())
         .themedShadow(.card)
+    }
+
+    // MARK: Drawing
+
+    /// Captures pen strokes over the board and previews them live.
+    private func drawingLayer(in size: CGSize) -> some View {
+        Canvas { context, _ in
+            for stroke in workspace.activeDrawing.strokes {
+                guard stroke.points.count > 1 else { continue }
+                var path = Path()
+                path.move(to: viewPoint(stroke.points[0]))
+                for point in stroke.points.dropFirst() { path.addLine(to: viewPoint(point)) }
+
+                context.stroke(
+                    path,
+                    with: .color(Color(hex: stroke.color).opacity(stroke.opacity)),
+                    style: StrokeStyle(
+                        lineWidth: stroke.width * workspace.zoom, lineCap: .round, lineJoin: .round
+                    )
+                )
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let point = canvasPoint(from: value.location, in: size)
+                    if isErasing {
+                        workspace.eraseStrokes(near: point, radius: max(8, penWidth * 3))
+                        return
+                    }
+                    if value.translation == .zero {
+                        workspace.beginStroke(
+                            at: point,
+                            color: theme.hexValue(penColor),
+                            width: penWidth,
+                            // A highlighter is a wide, translucent stroke; the pen is
+                            // neither (SPEC §6.4, tool 10).
+                            opacity: penWidth >= 10 ? 0.4 : 1
+                        )
+                    } else {
+                        workspace.extendStroke(to: point)
+                    }
+                }
+                .onEnded { _ in }
+        )
+    }
+
+    private var penControls: some View {
+        HStack(spacing: theme.spacing(.xs)) {
+            ForEach([ColorToken.textPrimary, .accentPrimary, .taskOverdue, .stickyYellow], id: \.self) { token in
+                Circle()
+                    .fill(theme.color(token))
+                    .frame(width: 16, height: 16)
+                    .overlay(
+                        Circle().strokeBorder(
+                            token == penColor ? theme.color(.canvasSelection) : theme.color(.borderSubtle),
+                            lineWidth: token == penColor ? 2 : 1
+                        )
+                    )
+                    .onTapGesture { penColor = token; isErasing = false }
+            }
+            Divider().frame(height: 14)
+            ForEach([CGFloat(2), 6, 14], id: \.self) { width in
+                Circle()
+                    .fill(theme.color(width == penWidth && !isErasing ? .accentPrimary : .textTertiary))
+                    .frame(width: width + 4, height: width + 4)
+                    .onTapGesture { penWidth = width; isErasing = false }
+            }
+            Divider().frame(height: 14)
+            Image(systemName: "eraser")
+                .foregroundStyle(theme.color(isErasing ? .accentPrimary : .textSecondary))
+                .onTapGesture { isErasing.toggle() }
+            Divider().frame(height: 14)
+            Button("Fatto") {
+                _ = workspace.commitDrawing()
+                workspace.tool = .select
+            }
+            .buttonStyle(.plain)
+            .themedText(.caption, color: .accentPrimary)
+            .disabled(workspace.activeDrawing.strokes.isEmpty)
+        }
+        .padding(.horizontal, theme.spacing(.s))
+        .padding(.vertical, theme.spacing(.xs))
+        .background(theme.color(.surfaceRaised))
+        .clipShape(Capsule())
+        .themedShadow(.card)
+    }
+
+    /// Board point to view point, the forward direction of `canvasPoint`.
+    private func viewPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: point.x * workspace.zoom + workspace.pan.width,
+            y: point.y * workspace.zoom + workspace.pan.height
+        )
     }
 
     // MARK: Edges
@@ -378,7 +505,10 @@ struct WorkspaceView: View {
         }
         switch node.kind {
         case .file(let path, _):
-            if path.hasSuffix(".md") {
+            if path.lowercased().hasSuffix(".svg"), workspace.editDrawing(nodeID: node.id) {
+                // One of our own drawings: reopen the ink rather than the image.
+                workspace.tool = .drawing
+            } else if path.hasSuffix(".md") {
                 vault.openNote(at: path)
             } else if let root = vault.root {
                 NSWorkspace.shared.open(root.appending(path: path))
@@ -417,8 +547,18 @@ struct WorkspaceView: View {
             newItemDraft = NewItemDraft(kind: .note, point: point)
         case .todo:
             _ = workspace.addStickyNote("- [ ] ", at: point)
-        case .image, .drawing, .arrow, .forms:
-            // M3 delivers image, drawing and arrow; forms is excluded from v1.
+        case .image:
+            if let urls = VaultOpenPanel.chooseFiles(
+                title: "Importa immagini",
+                message: "Le immagini vengono copiate nella cartella della board."
+            ) {
+                importProposals = workspace.importFiles(urls, at: point)
+            }
+        case .drawing:
+            // The drawing layer takes over the board while this tool is active.
+            break
+        case .arrow, .forms:
+            // The arrow is drawn by dragging between two cards; forms is v2.
             break
         }
         if !workspace.isToolLocked { workspace.tool = .select }
@@ -793,5 +933,48 @@ private struct ThumbnailImage: View {
             let rendered = await task.value
             if !Task.isCancelled { image = rendered }
         }
+    }
+}
+
+
+/// Confirms the names of files being imported, so the assisted rename of SPEC §4.2
+/// is a proposal rather than something done behind the user's back.
+private struct ImportSheet: View {
+    @Environment(\.theme) private var theme
+    @Binding var proposals: [WorkspaceController.ImportProposal]
+    let onCancel: () -> Void
+    let onConfirm: ([WorkspaceController.ImportProposal]) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text(proposals.count == 1 ? "Importa file" : "Importa \(proposals.count) file")
+                .themedText(.title)
+            Text("Il nome proposto segue le convenzioni harness. Puoi modificarlo.")
+                .themedText(.caption, color: .textSecondary)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: theme.spacing(.s)) {
+                    ForEach($proposals) { $proposal in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(proposal.originalName)
+                                .themedText(.caption, color: .textTertiary)
+                            TextField("Nome file", text: $proposal.proposedName)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 240)
+
+            HStack {
+                Spacer()
+                Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Importa") { onConfirm(proposals) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 560)
+        .background(theme.color(.surfaceCard))
     }
 }

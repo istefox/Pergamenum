@@ -330,6 +330,199 @@ final class WorkspaceController {
         return contents.subfolders.contains(path) ? path : nil
     }
 
+    // MARK: Importing
+
+    /// Copies files into the board's folder and places a card for each.
+    ///
+    /// `.eml` files go through the assisted rename of SPEC §4.2: the proposal comes
+    /// from the message's own headers, and the caller confirms it. Everything else
+    /// keeps its name, deduplicated so an import never overwrites an earlier one.
+    @discardableResult
+    func importFiles(_ urls: [URL], at point: CGPoint) -> [ImportProposal] {
+        guard let store else { return [] }
+        let directory = folder.isEmpty
+            ? store.root
+            : store.root.appending(path: folder, directoryHint: .isDirectory)
+
+        var proposals: [ImportProposal] = []
+        for (index, url) in urls.enumerated() {
+            let original = url.lastPathComponent
+            var proposed = original
+
+            if url.pathExtension.lowercased() == "eml",
+               let data = try? Data(contentsOf: url) {
+                let text = String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .isoLatin1)
+                    ?? ""
+                proposed = ImportNaming.proposedEmailFileName(
+                    headers: EmailHeaderParser.parse(text),
+                    currentFileName: original,
+                    today: .today
+                )
+            }
+            proposals.append(ImportProposal(
+                source: url,
+                originalName: original,
+                proposedName: ImportNaming.uniqueFileName(proposed, in: directory),
+                // Cascaded so several files dropped at once do not land on top of
+                // each other.
+                point: CGPoint(x: point.x + CGFloat(index) * 24, y: point.y + CGFloat(index) * 24)
+            ))
+        }
+        return proposals
+    }
+
+    struct ImportProposal: Identifiable, Sendable {
+        let id = UUID()
+        var source: URL
+        var originalName: String
+        /// Editable by the user before the copy happens.
+        var proposedName: String
+        var point: CGPoint
+    }
+
+    /// Performs a confirmed import: copies the file in and places its card.
+    @discardableResult
+    func commitImport(_ proposal: ImportProposal) -> String? {
+        guard let store else { return nil }
+        let directory = folder.isEmpty
+            ? store.root
+            : store.root.appending(path: folder, directoryHint: .isDirectory)
+        let destination = directory.appending(path: proposal.proposedName, directoryHint: .notDirectory)
+
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            // Copy rather than move: the source may be outside the vault, and moving a
+            // file out of someone's Downloads folder is not what "import" promises.
+            try FileManager.default.copyItem(at: proposal.source, to: destination)
+        } catch {
+            recordProblem("import di \(proposal.originalName): \(error.localizedDescription)")
+            return nil
+        }
+
+        let relativePath = folder.isEmpty
+            ? proposal.proposedName
+            : "\(folder)/\(proposal.proposedName)"
+        let id = placeFile(relativePath, at: proposal.point)
+        refreshContents()
+        return id
+    }
+
+    // MARK: Drawing
+
+    /// Strokes being drawn right now, before they are written to their SVG.
+    private(set) var activeDrawing = Drawing.empty
+    /// The node whose SVG is being edited, when a drawing was reopened (SPEC §6.2).
+    private(set) var editingDrawingNodeID: String?
+
+    func beginStroke(at point: CGPoint, color: String, width: CGFloat, opacity: Double) {
+        activeDrawing.strokes.append(
+            Drawing.Stroke(points: [point], color: color, width: width, opacity: opacity)
+        )
+    }
+
+    func extendStroke(to point: CGPoint) {
+        guard !activeDrawing.strokes.isEmpty else { return }
+        activeDrawing.strokes[activeDrawing.strokes.count - 1].points.append(point)
+    }
+
+    /// Removes strokes passing near a point, which is what the eraser does.
+    func eraseStrokes(near point: CGPoint, radius: CGFloat) {
+        activeDrawing.strokes.removeAll { stroke in
+            stroke.points.contains { candidate in
+                hypot(candidate.x - point.x, candidate.y - point.y) <= radius
+            }
+        }
+    }
+
+    /// Writes the active strokes to an SVG and places or updates its card.
+    ///
+    /// The node keeps its identity when a drawing is reopened, so editing ink does not
+    /// leave the old card behind next to the new one.
+    @discardableResult
+    func commitDrawing(date: CalendarDate = .today) -> String? {
+        guard let store, !activeDrawing.strokes.isEmpty else { return nil }
+        let bounds = activeDrawing.bounds
+
+        let relativePath: String
+        if let editingID = editingDrawingNodeID,
+           let node = document.node(id: editingID),
+           case .file(let existing, _) = node.kind {
+            relativePath = existing
+        } else {
+            relativePath = folder.isEmpty
+                ? nextDrawingName(date: date, in: store.root)
+                : "\(folder)/\(nextDrawingName(date: date, in: store.root.appending(path: folder)))"
+        }
+
+        let url = store.root.appending(path: relativePath, directoryHint: .notDirectory)
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try Data(DrawingSVG.encode(activeDrawing).utf8).write(to: url, options: .atomic)
+        } catch {
+            recordProblem("salvataggio del disegno: \(error.localizedDescription)")
+            return nil
+        }
+
+        let id: String
+        if let editingID = editingDrawingNodeID {
+            mutate { document in
+                guard let index = document.nodes.firstIndex(where: { $0.id == editingID }) else { return }
+                document.nodes[index].width = max(40, bounds.width)
+                document.nodes[index].height = max(30, bounds.height)
+            }
+            id = editingID
+        } else {
+            id = addNode(CanvasNode(
+                id: CanvasID.generate(),
+                kind: .file(path: relativePath, subpath: nil),
+                x: bounds.minX, y: bounds.minY,
+                width: max(40, bounds.width), height: max(30, bounds.height)
+            ))
+        }
+
+        activeDrawing = .empty
+        editingDrawingNodeID = nil
+        refreshContents()
+        return id
+    }
+
+    func discardDrawing() {
+        activeDrawing = .empty
+        editingDrawingNodeID = nil
+    }
+
+    /// Reopens a drawing card for editing, when its SVG is one this app wrote.
+    /// Returns false for an imported illustration, which is an image and not ink.
+    @discardableResult
+    func editDrawing(nodeID: String) -> Bool {
+        guard let store,
+              let node = document.node(id: nodeID),
+              case .file(let path, _) = node.kind,
+              path.lowercased().hasSuffix(".svg"),
+              let text = try? String(contentsOf: store.root.appending(path: path), encoding: .utf8),
+              let drawing = DrawingSVG.decode(text)
+        else { return false }
+
+        activeDrawing = drawing
+        editingDrawingNodeID = nodeID
+        return true
+    }
+
+    /// First free `disegno-YYYYMMDD-NNN.svg` in a folder.
+    private func nextDrawingName(date: CalendarDate, in directory: URL) -> String {
+        for sequence in 1...999 {
+            let name = DrawingSVG.fileName(for: date, sequence: sequence)
+            let candidate = directory.appending(path: name, directoryHint: .notDirectory)
+            if !FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) {
+                return name
+            }
+        }
+        return DrawingSVG.fileName(for: date, sequence: 999)
+    }
+
     // MARK: Saving
 
     private func scheduleSave() {

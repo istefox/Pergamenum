@@ -129,6 +129,31 @@ struct Theme: Identifiable, Equatable, Sendable {
     }
 }
 
+extension Theme {
+    /// The hex spelling of a colour token.
+    ///
+    /// Drawings are stored as SVG, which needs a literal colour: a token reference
+    /// would not survive outside the app, and the file has to render in Obsidian.
+    func hexValue(_ token: ColorToken) -> String {
+        let rgba = colors[token] ?? Theme.emergency.colors[token]!
+        return String(
+            format: "#%02X%02X%02X",
+            Int((rgba.red * 255).rounded()),
+            Int((rgba.green * 255).rounded()),
+            Int((rgba.blue * 255).rounded())
+        )
+    }
+}
+
+extension Color {
+    /// Builds a colour from a hex string, falling back to grey so a malformed value
+    /// in a hand-edited SVG cannot make a stroke invisible.
+    init(hex: String) {
+        let rgba = RGBA(hex: hex) ?? RGBA(hex: "#808080")!
+        self.init(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
+    }
+}
+
 // MARK: - Emergency theme
 
 extension Theme {
