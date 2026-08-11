@@ -1,0 +1,17 @@
+{
+  "_comment": "Declared replica of the closed tables of harness-system (SPEC 4.6). The repo is the source of truth: when a convention changes, re-run 'Importa convenzioni...' rather than editing this file. Replicated from tag.md 1.4 (sections 4.4, 4.6, 4.7, 4.8) and naming.md 1.2 (section 6.1) on 2026-08-11.",
+  "type": [
+    "offer", "report", "datasheet", "minutes", "presentation", "manual",
+    "certificate", "pricelist", "standard", "paper", "catalog", "invoice",
+    "receipt", "contract", "statement", "email", "photo", "audio", "note", "code"
+  ],
+  "status": ["inbox", "active", "waiting", "final", "archived"],
+  "area": [
+    "engineering", "sales", "admin", "marketing", "operations", "training", "personal"
+  ],
+  "source": ["email", "scan", "web", "meeting", "internal"],
+  "deliverableKind": [
+    "Offerta", "Relazione", "Scheda", "Verbale", "Presentazione", "Manuale",
+    "Certificato", "Listino"
+  ]
+}

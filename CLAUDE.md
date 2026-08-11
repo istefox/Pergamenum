@@ -114,6 +114,11 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'pl
   without a stated reason.
 - Never edit the `.xcodeproj` or `.xcworkspace` - they are generated. Change
   `Project.swift` and run `tuist generate`.
+- The pre-commit `weakening-scan.sh` reports every Swift Testing test as
+  `zero-assertion-test`. Its body scanner skips lines starting with `#`, treating them
+  as comments, and a Swift Testing assertion is `#expect(...)`. The findings are
+  advisory and this one is systematically wrong for this stack; a genuinely
+  assertion-free test still has to be caught by reading the diff.
 - The pre-commit secret scanner's `assigned-secret` heuristic fires on this codebase's
   design-token code: it matches the keyword `token` followed by `:` or `=` and 16 or
   more identifier characters, which describes ordinary lines like `tokens =

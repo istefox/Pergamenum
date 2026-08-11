@@ -1,0 +1,182 @@
+import Foundation
+
+/// A flat namespaced tag, the only tag shape the app accepts.
+///
+/// tag.md T-01 gives the mother regex
+/// `^(client|competitor|project|type|topic|status|area|source)-[a-z0-9]+(-[a-z0-9]+)*$`.
+/// Nested `/` tags are not supported: SPEC §4.4 removed them.
+struct Tag: Hashable, Sendable, Comparable, CustomStringConvertible {
+    let namespace: TagNamespace
+    /// The part after the namespace prefix, e.g. `vibration-isolation`.
+    let value: String
+
+    var description: String { "\(namespace.rawValue)-\(value)" }
+
+    /// Parses a bare tag string. Accepts an optional leading `#` so the same parser
+    /// serves the frontmatter list and the inline body form (tag.md 5.3).
+    init?(_ raw: String) {
+        var text = raw.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text.removeFirst() }
+
+        guard let separator = text.firstIndex(of: "-"),
+              let namespace = TagNamespace(rawValue: String(text[text.startIndex..<separator]))
+        else { return nil }
+
+        let value = String(text[text.index(after: separator)...])
+        guard Tag.isWellFormedValue(value) else { return nil }
+
+        self.namespace = namespace
+        self.value = value
+    }
+
+    init(namespace: TagNamespace, value: String) {
+        self.namespace = namespace
+        self.value = value
+    }
+
+    /// `[a-z0-9]+(-[a-z0-9]+)*`: lowercase alphanumeric segments joined by single
+    /// hyphens, with no leading, trailing or doubled hyphen.
+    private static func isWellFormedValue(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        let segments = value.split(separator: "-", omittingEmptySubsequences: false)
+        guard segments.count >= 1 else { return false }
+        return segments.allSatisfy { segment in
+            !segment.isEmpty && segment.allSatisfy { $0.isLowercaseASCIILetter || $0.isASCIIDigit }
+        }
+    }
+
+    /// Frontmatter order (F-04): by namespace in T-01 order, then alphabetically
+    /// inside the namespace.
+    static func < (lhs: Tag, rhs: Tag) -> Bool {
+        lhs.namespace == rhs.namespace ? lhs.value < rhs.value : lhs.namespace < rhs.namespace
+    }
+}
+
+private extension Character {
+    var isLowercaseASCIILetter: Bool { self >= "a" && self <= "z" }
+    var isASCIIDigit: Bool { self >= "0" && self <= "9" }
+}
+
+// MARK: - Validation
+
+/// One violation of the tag rules, carrying enough detail for the conformance view
+/// to describe it and propose a fix.
+enum TagViolation: Equatable, Sendable {
+    /// Does not match the mother regex, or uses a `/` nested form.
+    case malformed(String)
+    /// A closed family received a value that is not in the vocabulary (SPEC §4.4).
+    case notInVocabulary(Tag)
+    /// A closed family was checked against an empty table, so nothing could be
+    /// verified. Reported rather than passed: an unrun check is not a clean result.
+    case vocabularyUnavailable(TagNamespace)
+    /// More than seven tags on one note (T-10).
+    case tooMany(count: Int)
+    /// More than one `status-*` (T-05).
+    case multipleStatus([Tag])
+    /// A tag that encodes a date (T-07).
+    case dateTag(Tag)
+    /// A note carrying a `status-*` other than `status-inbox` (tag.md 5.1).
+    case statusNotAllowedOnNote(Tag)
+    /// An ordinary note without `type-note` or without any `topic-*` (tag.md 5.1).
+    case missingRequiredTag(String)
+}
+
+enum TagRules {
+    static let maximumTagsPerNote = 7
+
+    /// Validates the tag set of one note.
+    ///
+    /// `category` decides which of the 5.1 exceptions apply: a daily note carries
+    /// only `type-note`, and an inbox capture may carry `status-inbox`, so neither
+    /// is missing anything.
+    static func validate(
+        _ tags: [Tag],
+        category: NoteCategory,
+        vocabulary: Vocabulary
+    ) -> [TagViolation] {
+        var violations: [TagViolation] = []
+
+        if tags.count > maximumTagsPerNote {
+            violations.append(.tooMany(count: tags.count))
+        }
+
+        let statusTags = tags.filter { $0.namespace == .status }
+        if statusTags.count > 1 {
+            violations.append(.multipleStatus(statusTags.sorted()))
+        }
+
+        for tag in tags {
+            if isDateLike(tag.value) {
+                violations.append(.dateTag(tag))
+            }
+            if tag.namespace.isClosed {
+                if let allowed = vocabulary.values(for: tag.namespace) {
+                    if allowed.isEmpty {
+                        violations.append(.vocabularyUnavailable(tag.namespace))
+                    } else if !allowed.contains(tag.value) {
+                        violations.append(.notInVocabulary(tag))
+                    }
+                }
+            }
+            if tag.namespace == .status, category.allowsStatus == false, tag.value != "inbox" {
+                violations.append(.statusNotAllowedOnNote(tag))
+            }
+        }
+
+        violations.append(contentsOf: missingRequired(tags, category: category))
+        return violations
+    }
+
+    private static func missingRequired(_ tags: [Tag], category: NoteCategory) -> [TagViolation] {
+        guard category.requiresTopic else { return [] }
+        var missing: [TagViolation] = []
+        if !tags.contains(where: { $0.namespace == .type && $0.value == "note" }) {
+            missing.append(.missingRequiredTag("type-note"))
+        }
+        if !tags.contains(where: { $0.namespace == .topic }) {
+            missing.append(.missingRequiredTag("topic-*"))
+        }
+        return missing
+    }
+
+    /// T-07 forbids date tags. Catches the shapes a date actually takes in practice:
+    /// `2026`, `2026-08`, `2026-08-11` and `20260811`, in any namespace.
+    private static func isDateLike(_ value: String) -> Bool {
+        let digitsOnly = value.allSatisfy { $0.isNumber }
+        if digitsOnly, value.count == 4 || value.count == 6 || value.count == 8 {
+            return isPlausibleYearPrefix(value)
+        }
+        let parts = value.split(separator: "-")
+        guard parts.count == 2 || parts.count == 3,
+              parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
+              let first = parts.first, first.count == 4
+        else { return false }
+        return isPlausibleYearPrefix(String(first))
+    }
+
+    /// Restricts the digit heuristic to values that could be a year, so an ordinary
+    /// numeric tag such as `topic-4140` is not mistaken for a date.
+    private static func isPlausibleYearPrefix(_ value: String) -> Bool {
+        guard let year = Int(value.prefix(4)) else { return false }
+        return (1900...2199).contains(year)
+    }
+
+    /// Sorts tags into the order the frontmatter requires (F-04).
+    static func ordered(_ tags: [Tag]) -> [Tag] {
+        tags.sorted()
+    }
+}
+
+/// The note kinds whose tag rules differ (tag.md 5.1).
+enum NoteCategory: Equatable, Sendable {
+    /// An ordinary note: needs `type-note` plus at least one `topic-*`, and may not
+    /// carry a `status-*` other than `status-inbox`.
+    case note
+    /// A daily note: `type-note` alone is correct and complete.
+    case daily
+    /// An inbox capture with no subject yet: `type-note` + `status-inbox`.
+    case capture
+
+    var requiresTopic: Bool { self == .note }
+    var allowsStatus: Bool { false }
+}
