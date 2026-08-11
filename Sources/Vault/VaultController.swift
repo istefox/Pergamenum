@@ -226,6 +226,11 @@ final class VaultController {
         }
     }
 
+    /// Closes the note in the editor, for when the file it shows is no longer there.
+    func closeOpenNote() {
+        openNote = nil
+    }
+
     /// Resolves an external change the user chose to accept, replacing the buffer.
     func acceptExternalChange() {
         guard var note = openNote, let incoming = note.externalChangePending else { return }

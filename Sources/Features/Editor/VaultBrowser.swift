@@ -7,6 +7,12 @@ struct VaultBrowser: View {
     @Environment(VaultController.self) private var vault
     @State private var isShowingInspector = true
     @State private var filter = ""
+    /// The note the rename sheet is editing. The title being typed lives inside the
+    /// sheet: held here alongside it, the two were set in the same action and the
+    /// sheet validated the old value while showing the new one.
+    @State private var renaming: NoteRecord?
+    /// The note the delete confirmation is about (SPEC §10: never without asking).
+    @State private var deleting: NoteRecord?
 
     var body: some View {
         HSplitView {
@@ -83,6 +89,7 @@ struct VaultBrowser: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .tag(note.relativePath)
+                    .contextMenu { rowMenu(note) }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -91,6 +98,51 @@ struct VaultBrowser: View {
             statusBar
         }
         .background(theme.color(.backgroundSecondary))
+        .sheet(item: $renaming) { note in
+            RenameNoteSheet(note: note) { newTitle in
+                vault.renameNote(at: note.relativePath, to: newTitle)
+                renaming = nil
+            } onCancel: {
+                renaming = nil
+            }
+        }
+        .confirmationDialog(
+            "Eliminare «\(deleting?.title ?? "")»?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Sposta nel Cestino", role: .destructive) {
+                if let note = deleting { vault.trashNote(at: note.relativePath) }
+                deleting = nil
+            }
+            Button("Annulla", role: .cancel) { deleting = nil }
+        } message: {
+            Text("Va nel Cestino del Finder, non è una cancellazione definitiva. I link che puntavano qui resteranno non risolti.")
+        }
+    }
+
+    /// The note context menu of SPEC §10: rename with link updating (W-08), move,
+    /// delete.
+    @ViewBuilder
+    private func rowMenu(_ note: NoteRecord) -> some View {
+        Button("Apri") { vault.openNote(at: note.relativePath) }
+        Button("Rinomina…") { renaming = note }
+        Menu("Sposta in") {
+            Button("(radice)") { vault.moveNote(at: note.relativePath, toFolder: "") }
+            ForEach(vault.folders, id: \.self) { folder in
+                Button(folder) { vault.moveNote(at: note.relativePath, toFolder: folder) }
+                    .disabled(folder == note.folder)
+            }
+        }
+        Divider()
+        Button("Rivela nel Finder") {
+            guard let root = vault.root else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([
+                root.appending(path: note.relativePath, directoryHint: .notDirectory),
+            ])
+        }
+        Divider()
+        Button("Elimina…", role: .destructive) { deleting = note }
     }
 
     private var filteredNotes: [NoteRecord] {
@@ -474,5 +526,55 @@ extension ConformanceText {
             )
             return lines(named).joined(separator: "; ")
         }
+    }
+}
+
+/// Renaming a note, with the title being typed held here and nowhere else.
+private struct RenameNoteSheet: View {
+    @Environment(\.theme) private var theme
+    let note: NoteRecord
+    let onConfirm: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var title: String
+
+    init(note: NoteRecord, onConfirm: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.note = note
+        self.onConfirm = onConfirm
+        self.onCancel = onCancel
+        _title = State(initialValue: note.title)
+    }
+
+    private var violations: [NoteName.Violation] { NoteName.validate(title) }
+    private var canRename: Bool { violations.isEmpty && title != note.title }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Rinomina nota").themedText(.title)
+            Text("I wikilink che puntano a «\(note.title)» vengono riscritti (W-08).")
+                .themedText(.caption, color: .textSecondary)
+
+            TextField("Titolo", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { if canRename { onConfirm(title) } }
+
+            ForEach(ConformanceText.lines(NoteViolations(
+                name: violations, frontmatter: [], tags: [],
+                relatedMissingInSection: [], relatedMissingInFrontmatter: []
+            )), id: \.self) { line in
+                Text(line).themedText(.caption, color: .taskOverdue)
+            }
+
+            HStack {
+                Spacer()
+                Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Rinomina") { onConfirm(title) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canRename)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 460)
+        .background(theme.color(.surfaceCard))
     }
 }
