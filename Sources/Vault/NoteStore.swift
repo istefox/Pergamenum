@@ -12,6 +12,8 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
     var frontmatter: Frontmatter
     /// Wikilink targets found in the body, in source order, duplicates removed.
     var linkTargets: [String]
+    /// Tasks found in the body, with their line numbers (SPEC §7.1).
+    var tasks: [TaskItem]
     var modifiedAt: Date
     var byteSize: Int
     /// SHA-256 of the file's contents as last read or written by the app.
@@ -71,6 +73,7 @@ struct NoteStore: Sendable {
                 title: NoteName.title(fromFileName: fileURL.lastPathComponent),
                 frontmatter: NoteDocument.parse(text).frontmatter,
                 linkTargets: Self.linkTargets(in: text),
+                tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
                 modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
                 byteSize: data.count,
                 contentHash: Self.hash(data)

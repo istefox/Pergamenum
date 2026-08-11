@@ -24,6 +24,8 @@ final class VaultController {
     /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
     /// watches it so the panel can be opened from the menu as well as the spacebar.
     var isShowingQuickLook = false
+    /// Set by the Cattura rapida command (SPEC §7.4, Cmd+Shift+N).
+    var isCapturingTask = false
     /// Set by the quick switcher command.
     ///
     /// Both live here rather than as view state because their shortcuts are menu
@@ -223,6 +225,100 @@ final class VaultController {
     /// Keeps the in-app version and clears the prompt. The next save overwrites disk.
     func keepLocalVersion() {
         openNote?.externalChangePending = nil
+    }
+
+    // MARK: Tasks
+
+    /// Completes, reopens, cancels or reschedules a task by rewriting its source line.
+    ///
+    /// Writes the markdown file, never an index row: the file is the truth, and a task
+    /// completed from any view has to change the note it lives in (SPEC §7.3).
+    @discardableResult
+    func apply(_ change: TaskChange, to task: TaskItem) -> Bool {
+        guard let store else { return false }
+        do {
+            let (_, text) = try store.read(task.sourcePath)
+            let newLine: String = switch change {
+            case .state(let state):
+                TaskParser.line(for: task, settingState: state, today: .today)
+            case .schedule(let date):
+                TaskParser.line(for: task, scheduledOn: date)
+            case .link(let target):
+                TaskParser.line(for: task, addingLinkTo: target)
+            }
+
+            guard let updated = TaskParser.rewrite(
+                text, at: task.lineIndex, expecting: task.rawLine, with: newLine
+            ) else {
+                // The line moved or changed under us. Rescanning and asking again is
+                // the only safe answer; rewriting by line number alone would edit
+                // whatever now sits there.
+                problems.append("il task non è più dove risultava: \(task.sourcePath)")
+                Task { await rescan() }
+                return false
+            }
+
+            let hash = try store.write(updated, to: task.sourcePath)
+            selfWrittenHashes[task.sourcePath] = hash
+            index.update(try store.read(task.sourcePath).record, at: task.sourcePath)
+
+            // Keep an open editor in step rather than leaving it showing the old line.
+            if var note = openNote, note.relativePath == task.sourcePath, !note.hasUnsavedChanges {
+                note.text = updated
+                note.savedText = updated
+                openNote = note
+            }
+            return true
+        } catch {
+            problems.append("\(task.sourcePath): \(error)")
+            return false
+        }
+    }
+
+    enum TaskChange: Sendable {
+        case state(TaskItem.State)
+        case schedule(CalendarDate?)
+        case link(String)
+    }
+
+    /// Toggles between open and done, which is what a checkbox click means.
+    @discardableResult
+    func toggle(_ task: TaskItem) -> Bool {
+        apply(.state(task.state == .done ? .open : .done), to: task)
+    }
+
+    /// Quick capture (SPEC §7.4): appends a task to the inbox note, creating it if
+    /// needed. Inbox tasks carry no date and no project, which is what puts them in
+    /// the Inbox view.
+    @discardableResult
+    func captureTask(_ text: String) -> Bool {
+        guard let store else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+
+        let relativePath = "00 Inbox/Capture.md"
+        do {
+            let existing = try? store.read(relativePath)
+            let body = existing?.text ?? {
+                var frontmatter = Frontmatter.empty
+                frontmatter.date = .today
+                frontmatter.tags = TagRules.ordered([
+                    Tag(namespace: .type, value: "note"),
+                    Tag(namespace: .status, value: "inbox"),
+                ])
+                return FrontmatterSerializer.render(frontmatter) + "\n"
+            }()
+
+            let separator = body.hasSuffix("\n") ? "" : "\n"
+            let updated = body + separator + "- [ ] " + trimmed + "\n"
+            let hash = try store.write(updated, to: relativePath)
+            selfWrittenHashes[relativePath] = hash
+            index.update(try store.read(relativePath).record, at: relativePath)
+            return true
+        } catch {
+            problems.append("cattura rapida: \(error)")
+            return false
+        }
     }
 
     // MARK: Watching

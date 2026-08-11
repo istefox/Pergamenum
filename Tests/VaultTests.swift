@@ -136,7 +136,8 @@ private func populatedIndex() throws -> NoteIndex {
 }
 
 private func makeRecord(
-    path: String, title: String, links: [String] = [], aliases: [String] = [], related: [String] = []
+    path: String, title: String, links: [String] = [], aliases: [String] = [],
+    related: [String] = [], tasks: [TaskItem] = []
 ) -> NoteRecord {
     var frontmatter = Frontmatter.empty
     frontmatter.date = CalendarDate(iso: "2026-08-11")
@@ -145,7 +146,7 @@ private func makeRecord(
     frontmatter.related = related
     return NoteRecord(
         relativePath: path, title: title, frontmatter: frontmatter, linkTargets: links,
-        modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
+        tasks: tasks, modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
     )
 }
 

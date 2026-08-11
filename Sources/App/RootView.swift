@@ -32,8 +32,8 @@ struct RootView: View {
         /// as its milestone lands.
         var isMockup: Bool {
             switch self {
-            case .vault, .tokens, .workspace: false
-            case .editor, .today, .tasks: true
+            case .vault, .tokens, .workspace, .tasks: false
+            case .editor, .today: true
             }
         }
 
@@ -103,7 +103,16 @@ struct RootView: View {
         case .editor: EditorMockup()
         case .workspace: workspacePane
         case .today: TodayMockup()
-        case .tasks: TasksMockup()
+        case .tasks: tasksPane
+        }
+    }
+
+    @ViewBuilder
+    private var tasksPane: some View {
+        if vault.root == nil {
+            needsVault("Le attività sono i task scritti nelle note del vault.")
+        } else {
+            TasksView()
         }
     }
 

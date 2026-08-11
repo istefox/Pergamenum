@@ -114,6 +114,82 @@ final class NoteIndex {
         .sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
     }
 
+    // MARK: Tasks
+
+    /// Every task in the vault, in note order.
+    var allTasks: [TaskItem] {
+        notes.values
+            .sorted { $0.relativePath < $1.relativePath }
+            .flatMap(\.tasks)
+    }
+
+    /// Tasks whose text links to a title, for the "Task collegati" panel of a note or
+    /// a canvas (SPEC §7.2). The link is an ordinary wikilink, so this is the reverse
+    /// of the same relation the backlink panel shows.
+    func tasks(linkingTo title: String) -> [TaskItem] {
+        let needle = title.lowercased()
+        return allTasks.filter { task in
+            task.links.contains { $0.lowercased() == needle }
+        }
+    }
+
+    /// The five views of SPEC §7.4.
+    enum TaskView: String, CaseIterable, Identifiable, Sendable {
+        case inbox, today, upcoming, byProject, all
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .inbox: "Inbox"
+            case .today: "Oggi"
+            case .upcoming: "Prossimi"
+            case .byProject: "Per progetto"
+            case .all: "Tutti"
+            }
+        }
+    }
+
+    /// Tasks for one view on a given day.
+    ///
+    /// `today` includes overdue tasks, because a task that slipped is exactly what the
+    /// day view has to surface; SPEC §7.3 rules out moving it silently.
+    func tasks(for view: TaskView, on day: CalendarDate) -> [TaskItem] {
+        let open = allTasks.filter(\.state.isOpen)
+        switch view {
+        case .inbox:
+            return open.filter { $0.scheduled == nil && $0.due == nil && $0.project == nil }
+        case .today:
+            return open.filter { $0.isScheduled(on: day) || $0.isOverdue(on: day) }
+        case .upcoming:
+            return open
+                .filter { task in
+                    guard let scheduled = task.scheduled else { return false }
+                    return scheduled > day && daysBetween(day, scheduled) <= 7
+                }
+                .sorted { ($0.scheduled ?? day) < ($1.scheduled ?? day) }
+        case .byProject:
+            return open.filter { $0.project != nil }
+        case .all:
+            return open
+        }
+    }
+
+    /// Open task counts per view, for the sidebar badges.
+    func taskCounts(on day: CalendarDate) -> [TaskView: Int] {
+        Dictionary(uniqueKeysWithValues: TaskView.allCases.map { ($0, tasks(for: $0, on: day).count) })
+    }
+
+    /// Whole days from one date to another, both at midnight.
+    private func daysBetween(_ from: CalendarDate, _ to: CalendarDate) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        let start = DateComponents(calendar: calendar, year: from.year, month: from.month, day: from.day).date
+        let end = DateComponents(calendar: calendar, year: to.year, month: to.month, day: to.day).date
+        guard let start, let end else { return .max }
+        return calendar.dateComponents([.day], from: start, to: end).day ?? .max
+    }
+
     /// Tag usage counts, for autocomplete to offer values already in the vault first
     /// (SPEC §4.4, open families).
     func tagUsage() -> [(tag: Tag, count: Int)] {

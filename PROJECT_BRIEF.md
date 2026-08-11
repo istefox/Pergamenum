@@ -91,7 +91,11 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
-- 2026-08-11: **M3 code complete, mouse interaction unverified.** PDF thumbnails
+- 2026-08-11: **M4 complete.** Task syntax of §7.1 with line-surgical rewriting, the
+  five Attività views, task-to-note links navigable in both directions, quick
+  rescheduling and quick capture. Verified on the test vault: the views group and
+  count correctly and a task rewrites its own note without touching anything else.
+- 2026-08-11: **M3 complete, mouse interaction unverified.** PDF thumbnails
   through PDFKit with a bucketed disk cache, `.eml` header cards with RFC 2047
   decoding, URI cards per scheme, and Quick Look on the spacebar and from the Vista
   menu. Card rendering verified on a real PDF and a real message; selecting, dragging
