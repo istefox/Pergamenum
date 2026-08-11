@@ -91,6 +91,9 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **Mouse interaction verified.** Selecting, dragging, resizing and the
+  spacebar Quick Look all exercised with real CGEvent mouse input on the test vault.
+  Dragging was badly broken and is now correct to the unit.
 - 2026-08-11: **M6 complete.** All `pergamenum://` routes verified end to end against
   the registered scheme, the vault-wide conformance linter, complete menus, convention
   import and local notifications for `@remind`.

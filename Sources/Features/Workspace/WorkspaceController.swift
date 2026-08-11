@@ -173,6 +173,75 @@ final class WorkspaceController {
         scheduleSave()
     }
 
+    /// Nodes being dragged right now, and how far, in board units.
+    ///
+    /// The model is NOT moved during the gesture. Moving it moves the view the
+    /// gesture is attached to, SwiftUI re-anchors the gesture to the new position,
+    /// and the translation feeds back into itself: one 100-point drag reported 48,
+    /// 112, 262, 662, 1780, then 4965 points. The drag is therefore a transient
+    /// offset the view draws with, committed once on release - which also turns
+    /// twelve autosaves into one.
+    private(set) var draggingIDs: Set<String> = []
+    private(set) var dragTranslation: CGSize = .zero
+
+    var isDragging: Bool { !draggingIDs.isEmpty }
+
+    func beginDrag(nodeIDs: Set<String>) {
+        guard draggingIDs.isEmpty else { return }
+        draggingIDs = nodeIDs
+        dragTranslation = .zero
+    }
+
+    /// Records the gesture's total translation, already converted to board units.
+    func updateDrag(translation: CGSize) {
+        guard !draggingIDs.isEmpty else { return }
+        dragTranslation = translation
+    }
+
+    /// Applies the drag to the model and clears the transient state.
+    func endDrag() {
+        defer {
+            draggingIDs = []
+            dragTranslation = .zero
+        }
+        guard !draggingIDs.isEmpty,
+              dragTranslation != .zero
+        else { return }
+        move(nodeIDs: draggingIDs, by: dragTranslation)
+    }
+
+    /// The offset a node should be drawn with while a drag is in flight.
+    ///
+    /// In board units, which is what the model uses.
+    func dragOffset(for nodeID: String) -> CGSize {
+        draggingIDs.contains(nodeID) ? dragTranslation : .zero
+    }
+
+    /// The same offset in screen points, for the view: the node layer is already
+    /// scaled, so applying board units there would move the card by zoom times too
+    /// little.
+    func dragOffsetInPoints(for nodeID: String) -> CGSize {
+        let offset = dragOffset(for: nodeID)
+        return CGSize(width: offset.width * zoom, height: offset.height * zoom)
+    }
+
+    /// Pan at the moment the background drag began, held here for the same reason as
+    /// the drag translation.
+    private var panOrigin: CGSize?
+
+    func beginPan() {
+        if panOrigin == nil { panOrigin = pan }
+    }
+
+    func updatePan(translation: CGSize) {
+        guard let origin = panOrigin else { return }
+        pan = CGSize(width: origin.width + translation.width, height: origin.height + translation.height)
+    }
+
+    func endPan() {
+        panOrigin = nil
+    }
+
     func move(nodeIDs: Set<String>, by delta: CGSize) {
         guard !delta.width.isZero || !delta.height.isZero else { return }
         mutate { document in

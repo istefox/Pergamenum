@@ -434,3 +434,84 @@ private struct TemporaryRoot: ~Copyable {
     #expect(text.contains("01 Progetti/vibrofer-emea/nota.md"))
     #expect(!text.contains("\\/"))
 }
+
+// MARK: - Dragging
+
+@MainActor
+@Test func aDragMovesByTheTotalTranslationNotByEachStep() throws {
+    // Found by dragging a card with a real mouse: the drag state lived in view
+    // `@State`, which a gesture callback cannot reliably read back, so every event
+    // restarted from the already-moved position and a 100-point drag threw the card
+    // thousands of units away.
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addStickyNote("a", at: CGPoint(x: 100, y: 100))
+    controller.selection = [id]
+    controller.beginDrag(nodeIDs: [id])
+
+    // A gesture reports the translation from its own start, so these are cumulative
+    // reports of one 60x30 drag, not three separate moves.
+    controller.updateDrag(translation: CGSize(width: 20, height: 10))
+    controller.updateDrag(translation: CGSize(width: 40, height: 20))
+    controller.updateDrag(translation: CGSize(width: 60, height: 30))
+    controller.endDrag()
+
+    let node = try #require(controller.document.node(id: id))
+    #expect(node.x == 160)
+    #expect(node.y == 130)
+    controller.detach()
+}
+
+@MainActor
+@Test func aDragMovesEverySelectedCardTogether() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let first = controller.addStickyNote("a", at: .zero)
+    let second = controller.addStickyNote("b", at: CGPoint(x: 300, y: 0))
+    let untouched = controller.addStickyNote("c", at: CGPoint(x: 600, y: 0))
+
+    controller.selection = [first, second]
+    controller.beginDrag(nodeIDs: controller.selection)
+    controller.updateDrag(translation: CGSize(width: 50, height: 50))
+    controller.endDrag()
+
+    #expect(controller.document.node(id: first)?.x == 50)
+    #expect(controller.document.node(id: second)?.x == 350)
+    #expect(controller.document.node(id: untouched)?.x == 600)
+    controller.detach()
+}
+
+@MainActor
+@Test func updatingADragOutsideOneDoesNothing() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.addStickyNote("a", at: CGPoint(x: 10, y: 10))
+
+    // A stray callback after the gesture ended must not move anything.
+    controller.updateDrag(translation: CGSize(width: 999, height: 999))
+    #expect(controller.document.node(id: id)?.x == 10)
+    controller.detach()
+}
+
+@MainActor
+@Test func beginningADragTwiceKeepsTheOriginalOrigins() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.addStickyNote("a", at: .zero)
+
+    controller.beginDrag(nodeIDs: [id])
+    controller.updateDrag(translation: CGSize(width: 100, height: 0))
+    // A second begin mid-gesture must not re-anchor to the moved position.
+    controller.beginDrag(nodeIDs: [id])
+    controller.updateDrag(translation: CGSize(width: 100, height: 0))
+    controller.endDrag()
+
+    #expect(controller.document.node(id: id)?.x == 100)
+    controller.detach()
+}

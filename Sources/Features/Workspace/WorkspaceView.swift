@@ -6,7 +6,6 @@ struct WorkspaceView: View {
     @Environment(VaultController.self) private var vault
     @State private var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
-    @State private var dragStart: [String: CGPoint] = [:]
     @State private var newItemDraft: NewItemDraft?
     @State private var isShowingTray = true
     @State private var isShowingQuickLook = false
@@ -161,6 +160,10 @@ struct WorkspaceView: View {
                     .onTapGesture { location in
                         handleTap(at: canvasPoint(from: location, in: geometry.size))
                     }
+                    // Pan is attached to the background alone. On the whole board it
+                    // also fired while a card was being dragged, and the two gestures
+                    // moved the same content against each other.
+                    .gesture(panGesture)
 
                 grid
 
@@ -204,7 +207,6 @@ struct WorkspaceView: View {
                 // A board opens over its content, not over the origin.
                 workspace.zoomToFit(in: viewportSize)
             }
-            .gesture(panGesture)
         }
     }
 
@@ -230,19 +232,19 @@ struct WorkspaceView: View {
     }
 
     private var panGesture: some Gesture {
-        DragGesture()
+        // `.global`, not a named space: a named space that fails to resolve falls back
+                // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
+                // mouse move was reported as 170 units and then divided by the zoom again.
+                DragGesture(minimumDistance: 3, coordinateSpace: .global)
             .onChanged { value in
-                guard workspace.tool == .select else { return }
-                workspace.pan = CGSize(
-                    width: workspace.pan.width + value.translation.width - lastPan.width,
-                    height: workspace.pan.height + value.translation.height - lastPan.height
-                )
-                lastPan = value.translation
+                guard workspace.tool == .select, !workspace.isDragging else { return }
+                workspace.beginPan()
+                // Absolute, from the pan the gesture started at: a gesture reports its
+                // total translation, so adding it each frame compounds it.
+                workspace.updatePan(translation: value.translation)
             }
-            .onEnded { _ in lastPan = .zero }
+            .onEnded { _ in workspace.endPan() }
     }
-
-    @State private var lastPan: CGSize = .zero
 
     private var zoomControls: some View {
         HStack(spacing: theme.spacing(.xs)) {
@@ -463,22 +465,32 @@ struct WorkspaceView: View {
             .onTapGesture(count: 2) { open(node) }
             .onTapGesture { workspace.selection = [node.id] }
             .gesture(
-                DragGesture()
+                // `.global`, not a named space: a named space that fails to resolve falls back
+                // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
+                // mouse move was reported as 170 units and then divided by the zoom again.
+                DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { value in
-                        let start = dragStart[node.id] ?? CGPoint(x: node.x, y: node.y)
-                        dragStart[node.id] = start
-                        let target = CGPoint(
-                            x: start.x + value.translation.width / workspace.zoom,
-                            y: start.y + value.translation.height / workspace.zoom
-                        )
-                        workspace.move(
-                            nodeIDs: [node.id],
-                            by: CGSize(width: target.x - node.x, height: target.y - node.y)
-                        )
+                        // Selecting on drag start keeps a drag of an unselected card
+                        // from moving whatever was selected before.
+                        if !workspace.isDragging {
+                            if !workspace.selection.contains(node.id) {
+                                workspace.selection = [node.id]
+                            }
+                            workspace.beginDrag(nodeIDs: workspace.selection)
+                        }
+                        // Screen translation to board units: at 58% zoom a 100-point
+                        // drag is 172 board units, not 100.
+                        workspace.updateDrag(translation: CGSize(
+                            width: value.translation.width / workspace.zoom,
+                            height: value.translation.height / workspace.zoom
+                        ))
                     }
-                    .onEnded { _ in dragStart[node.id] = nil }
+                    .onEnded { _ in workspace.endDrag() }
             )
             .position(x: node.x + node.width / 2, y: node.y + node.height / 2)
+            // Visual feedback for the drag. Safe now that the gesture measures in
+            // `.global`: moving the view no longer moves the space it is measured in.
+            .offset(workspace.dragOffsetInPoints(for: node.id))
     }
 
     private func resizeHandle(_ node: CanvasNode) -> some View {
@@ -487,7 +499,7 @@ struct WorkspaceView: View {
             .frame(width: 10, height: 10)
             .offset(x: 4, y: 4)
             .gesture(
-                DragGesture()
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         workspace.resize(nodeID: node.id, to: CGSize(
                             width: node.width + value.translation.width / workspace.zoom,
