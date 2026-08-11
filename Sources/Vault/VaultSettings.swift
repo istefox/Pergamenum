@@ -13,12 +13,51 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var harnessRepositoryPath: String?
     /// Copy a dropped file into the vault, or reference it where it lies.
     var copyDroppedFiles: Bool
+    /// Whether the Workspace draws its grid (SPEC §12, "Canvas").
+    var boardShowsGrid: Bool
+    /// Whether cards land on that grid when nothing else aligns them.
+    var boardSnapsToGrid: Bool
 
     static let `default` = VaultSettings(
         dailyFolder: "Calendar",
         harnessRepositoryPath: nil,
-        copyDroppedFiles: true
+        copyDroppedFiles: true,
+        boardShowsGrid: true,
+        boardSnapsToGrid: false
     )
+
+    /// Decoded key by key, each falling back to its default.
+    ///
+    /// The synthesised initialiser would reject a `settings.json` written before a
+    /// key existed, and the whole file would be discarded for one missing line: a
+    /// vault would silently lose its daily folder the first time this struct grows.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = VaultSettings.default
+        dailyFolder = try container.decodeIfPresent(String.self, forKey: .dailyFolder)
+            ?? fallback.dailyFolder
+        harnessRepositoryPath = try container.decodeIfPresent(String.self, forKey: .harnessRepositoryPath)
+        copyDroppedFiles = try container.decodeIfPresent(Bool.self, forKey: .copyDroppedFiles)
+            ?? fallback.copyDroppedFiles
+        boardShowsGrid = try container.decodeIfPresent(Bool.self, forKey: .boardShowsGrid)
+            ?? fallback.boardShowsGrid
+        boardSnapsToGrid = try container.decodeIfPresent(Bool.self, forKey: .boardSnapsToGrid)
+            ?? fallback.boardSnapsToGrid
+    }
+
+    init(
+        dailyFolder: String,
+        harnessRepositoryPath: String?,
+        copyDroppedFiles: Bool,
+        boardShowsGrid: Bool,
+        boardSnapsToGrid: Bool
+    ) {
+        self.dailyFolder = dailyFolder
+        self.harnessRepositoryPath = harnessRepositoryPath
+        self.copyDroppedFiles = copyDroppedFiles
+        self.boardShowsGrid = boardShowsGrid
+        self.boardSnapsToGrid = boardSnapsToGrid
+    }
 }
 
 /// The app's private directory inside the vault, and the file names in it.

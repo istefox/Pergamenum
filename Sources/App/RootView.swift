@@ -184,7 +184,6 @@ struct RootView: View {
                     .keyboardShortcut("o", modifiers: [.command, .shift])
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .task { VaultOpenPanel.reopenLastVault(into: vault) }
         } else {
             VaultBrowser()
         }

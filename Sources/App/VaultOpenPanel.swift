@@ -7,15 +7,14 @@ import Foundation
 /// panel without duplicating its configuration.
 @MainActor
 enum VaultOpenPanel {
-    private static let lastVaultKey = "vault.lastOpened"
-
     static func chooseVault(into controller: VaultController) {
         guard let url = pickDirectory(
             title: "Scegli il vault",
             message: "Seleziona la cartella del vault (per esempio Labs)."
         ) else { return }
-
-        UserDefaults.standard.set(url.path(percentEncoded: false), forKey: lastVaultKey)
+        // The recents list is written by `VaultController.open` itself, so a vault
+        // opened from the menu, from a link or from this panel is recorded once, in
+        // one place.
         Task { await controller.open(url) }
     }
 
@@ -25,18 +24,6 @@ enum VaultOpenPanel {
             message: "Seleziona la cartella della repo harness-system."
         ) else { return }
         controller.importConventions(from: url)
-    }
-
-    /// Reopens the vault used last, if it is still there.
-    ///
-    /// The path is stored rather than a security-scoped bookmark because the app is
-    /// not sandboxed in v1 (SPEC §3). A bookmark becomes necessary the day it is.
-    static func reopenLastVault(into controller: VaultController) {
-        guard let path = UserDefaults.standard.string(forKey: lastVaultKey) else { return }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue
-        else { return }
-        Task { await controller.open(URL(fileURLWithPath: path, isDirectory: true)) }
     }
 
     /// Picks one or more files to import onto a board.

@@ -6,6 +6,13 @@ struct WorkspaceView: View {
     @Environment(VaultController.self) private var vault
     @State private var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
+    /// Shift and Option as they are held right now. `DragGesture` carries no modifier
+    /// information, so the board has to track them itself to tell a marquee from a
+    /// pan and a free resize from a proportional one.
+    @State private var modifiers: EventModifiers = []
+    /// The zoom a pinch started from, so the magnification is applied to it once
+    /// rather than compounding on every frame of the gesture.
+    @State private var pinchOrigin: CGFloat?
     @State private var newItemDraft: NewItemDraft?
     @State private var isShowingTray = true
     @State private var isShowingQuickLook = false
@@ -106,6 +113,20 @@ struct WorkspaceView: View {
 
             Spacer()
 
+            Button { workspace.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.color(workspace.canUndo ? .textSecondary : .textTertiary))
+                .disabled(!workspace.canUndo)
+                .help("Annulla (Cmd+Z)")
+                .keyboardShortcut("z", modifiers: .command)
+
+            Button { workspace.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.color(workspace.canRedo ? .textSecondary : .textTertiary))
+                .disabled(!workspace.canRedo)
+                .help("Ripeti (Maiusc+Cmd+Z)")
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+
             Label(
                 workspace.hasUnsavedChanges ? "Salvataggio…" : "Salvato",
                 systemImage: workspace.hasUnsavedChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
@@ -154,6 +175,22 @@ struct WorkspaceView: View {
                 .buttonStyle(.plain)
                 .disabled(!tool.isAvailable)
                 .opacity(tool.isAvailable ? 1 : 0.4)
+                .overlay(alignment: .topTrailing) {
+                    // A locked tool has to look locked, or the board keeps creating
+                    // cards and the user cannot see why.
+                    if tool == workspace.tool, workspace.isToolLocked {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 7))
+                            .foregroundStyle(theme.color(.onAccent))
+                            .padding(2)
+                    }
+                }
+                // Double click keeps the tool active instead of returning to
+                // Seleziona after one use (SPEC §6.4).
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    workspace.tool = tool
+                    workspace.isToolLocked.toggle()
+                })
                 .help(tool.shortcut.map { "\(tool.title) (\($0.uppercased()))" } ?? tool.title)
                 .keyboardShortcut(tool.shortcut.map { KeyEquivalent(Character($0)) } ?? "\0", modifiers: [])
             }
@@ -173,18 +210,18 @@ struct WorkspaceView: View {
                     .onTapGesture { location in
                         handleTap(at: canvasPoint(from: location, in: geometry.size))
                     }
-                    // Pan is attached to the background alone. On the whole board it
-                    // also fired while a card was being dragged, and the two gestures
-                    // moved the same content against each other.
-                    .gesture(panGesture)
+                    // Attached to the background alone. On the whole board it also
+                    // fired while a card was being dragged, and the two gestures moved
+                    // the same content against each other.
+                    .gesture(backgroundGesture(in: geometry.size))
 
-                grid
+                if workspace.showsGrid { grid }
 
                 ZStack(alignment: .topLeading) {
                     ForEach(workspace.document.edges) { edge in
                         edgeShape(edge)
                     }
-                    ForEach(workspace.document.nodes) { node in
+                    ForEach(visibleNodes) { node in
                         nodeView(node)
                     }
                 }
@@ -193,6 +230,9 @@ struct WorkspaceView: View {
                 // the pan depend on the viewport size and the two would fight.
                 .scaleEffect(workspace.zoom, anchor: .topLeading)
                 .offset(workspace.pan)
+
+                guides
+                marqueeOverlay
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)
@@ -205,6 +245,18 @@ struct WorkspaceView: View {
                 .padding(theme.spacing(.m))
             }
             .clipped()
+            // SPEC §6.1: pinch zooms. Relative to the zoom the gesture started at, so
+            // the magnification is not applied again on every frame.
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let origin = pinchOrigin ?? workspace.zoom
+                        pinchOrigin = origin
+                        workspace.setZoom(origin * value.magnification)
+                    }
+                    .onEnded { _ in pinchOrigin = nil }
+            )
+            .onModifierKeysChanged(mask: [.shift, .option]) { _, held in modifiers = held }
             .dropDestination(for: URL.self) { urls, location in
                 importProposals = workspace.importFiles(
                     urls, at: canvasPoint(from: location, in: geometry.size)
@@ -214,13 +266,21 @@ struct WorkspaceView: View {
             .onAppear {
                 viewportSize = geometry.size
                 workspace.zoomToFit(in: geometry.size)
+                applyBoardSettings()
             }
+            .onChange(of: vault.settings) { _, _ in applyBoardSettings() }
             .onChange(of: geometry.size) { _, size in viewportSize = size }
             .onChange(of: workspace.folder) { _, _ in
                 // A board opens over its content, not over the origin.
                 workspace.zoomToFit(in: viewportSize)
             }
         }
+    }
+
+    /// Carries the vault's canvas preferences into the board (SPEC §12).
+    private func applyBoardSettings() {
+        workspace.showsGrid = vault.settings.boardShowsGrid
+        workspace.snapsToGrid = vault.settings.boardSnapsToGrid
     }
 
     private var grid: some View {
@@ -240,6 +300,79 @@ struct WorkspaceView: View {
                 path.addLine(to: CGPoint(x: size.width, y: y))
             }
             context.stroke(path, with: .color(theme.color(.canvasGrid)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Drag on empty board: a marquee with the select tool, a pan with Option held.
+    ///
+    /// Both live on the same gesture because SwiftUI delivers one drag per view, and
+    /// two `DragGesture`s on the background would race for it.
+    private func backgroundGesture(in size: CGSize) -> some Gesture {
+        // `.local` here, unlike the card gestures, and the difference is load-bearing.
+        // The background is a sibling of the scaled layer, not inside it, so its local
+        // space is the board's own unscaled space: translations are unaffected, and
+        // `startLocation` is what `canvasPoint` inverts pan and zoom against. Measured
+        // in `.global` the marquee was displaced by the whole sidebar and toolbar - it
+        // caught cards to the right of the rectangle and missed the ones inside it.
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .onChanged { value in
+                guard !workspace.isDragging else { return }
+                if modifiers.contains(.option) || workspace.tool != .select {
+                    workspace.beginPan()
+                    // Absolute, from the pan the gesture started at: a gesture reports
+                    // its total translation, so adding it each frame compounds it.
+                    workspace.updatePan(translation: value.translation)
+                    return
+                }
+                if workspace.marqueeRect == nil {
+                    workspace.beginMarquee(at: canvasPoint(from: value.startLocation, in: size))
+                }
+                workspace.updateMarquee(to: canvasPoint(from: value.location, in: size))
+            }
+            .onEnded { _ in
+                workspace.endPan()
+                workspace.endMarquee(adding: modifiers.contains(.shift))
+            }
+    }
+
+    /// The selection rectangle, drawn in view coordinates over the board.
+    @ViewBuilder
+    private var marqueeOverlay: some View {
+        if let rect = workspace.marqueeRect {
+            let origin = viewPoint(rect.origin)
+            Rectangle()
+                .fill(theme.color(.canvasSelection).opacity(0.12))
+                .overlay(Rectangle().strokeBorder(theme.color(.canvasSelection), lineWidth: 1))
+                .frame(width: rect.width * workspace.zoom, height: rect.height * workspace.zoom)
+                .position(
+                    x: origin.x + rect.width * workspace.zoom / 2,
+                    y: origin.y + rect.height * workspace.zoom / 2
+                )
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// Alignment guides, shown only while a drag is snapping to something (SPEC §6.3).
+    private var guides: some View {
+        Canvas { context, size in
+            for guide in workspace.activeGuides {
+                var path = Path()
+                switch guide.axis {
+                case .vertical:
+                    let x = guide.position * workspace.zoom + workspace.pan.width
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: size.height))
+                case .horizontal:
+                    let y = guide.position * workspace.zoom + workspace.pan.height
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: size.width, y: y))
+                }
+                context.stroke(
+                    path, with: .color(theme.color(.accentPrimary)),
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                )
+            }
         }
         .allowsHitTesting(false)
     }
@@ -462,8 +595,12 @@ struct WorkspaceView: View {
         // expands its result to fill the parent, so anything added after it responds
         // across the whole board instead of over the card. With them after, no card
         // could be selected at all.
-        NodeCard(node: node, subfolder: workspace.subfolder(for: node), workspace: workspace)
-            .frame(width: node.width, height: node.height)
+        // The frame a resize in flight is showing, which is the node's own frame the
+        // rest of the time.
+        let frame = workspace.displayFrame(for: node)
+
+        cardBody(node)
+            .frame(width: frame.width, height: frame.height)
             .overlay(
                 RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                     .strokeBorder(
@@ -471,12 +608,16 @@ struct WorkspaceView: View {
                         lineWidth: 2
                     )
             )
-            .overlay(alignment: .bottomTrailing) {
-                if isSelected { resizeHandle(node) }
+            .overlay {
+                if isSelected {
+                    ForEach(BoardGeometry.Handle.allCases, id: \.self) { handle in
+                        resizeHandle(node, handle: handle, in: frame)
+                    }
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { open(node) }
-            .onTapGesture { workspace.selection = [node.id] }
+            .onTapGesture { workspace.select(nodeID: node.id, adding: modifiers.contains(.shift)) }
             .contextMenu {
                 Button("Apri") { open(node) }
                 Button("Copia link Pergamenum") { copyLink(to: node) }
@@ -493,9 +634,9 @@ struct WorkspaceView: View {
                         // from moving whatever was selected before.
                         if !workspace.isDragging {
                             if !workspace.selection.contains(node.id) {
-                                workspace.selection = [node.id]
+                                workspace.select(nodeID: node.id, adding: modifiers.contains(.shift))
                             }
-                            workspace.beginDrag(nodeIDs: workspace.selection)
+                            workspace.beginDrag(nodeIDs: workspace.selection, anchor: node.id)
                         }
                         // Screen translation to board units: at 58% zoom a 100-point
                         // drag is 172 board units, not 100.
@@ -506,26 +647,68 @@ struct WorkspaceView: View {
                     }
                     .onEnded { _ in workspace.endDrag() }
             )
-            .position(x: node.x + node.width / 2, y: node.y + node.height / 2)
+            .position(x: frame.midX, y: frame.midY)
             // Visual feedback for the drag. Safe now that the gesture measures in
             // `.global`: moving the view no longer moves the space it is measured in.
             .offset(workspace.dragOffsetInPoints(for: node.id))
     }
 
-    private func resizeHandle(_ node: CanvasNode) -> some View {
-        RoundedRectangle(cornerRadius: 2)
+    /// One of the eight grips of SPEC §6.3, placed on the card's edge.
+    private func resizeHandle(
+        _ node: CanvasNode,
+        handle: BoardGeometry.Handle,
+        in frame: CGRect
+    ) -> some View {
+        let unit = handle.unitPoint
+        return RoundedRectangle(cornerRadius: 2)
             .fill(theme.color(.canvasSelection))
-            .frame(width: 10, height: 10)
-            .offset(x: 4, y: 4)
+            .frame(width: 9, height: 9)
+            .position(x: unit.x * frame.width, y: unit.y * frame.height)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
-                        workspace.resize(nodeID: node.id, to: CGSize(
-                            width: node.width + value.translation.width / workspace.zoom,
-                            height: node.height + value.translation.height / workspace.zoom
-                        ))
+                        if workspace.resizingNodeID != node.id {
+                            workspace.beginResize(nodeID: node.id, handle: handle)
+                        }
+                        workspace.updateResize(
+                            translation: CGSize(
+                                width: value.translation.width / workspace.zoom,
+                                height: value.translation.height / workspace.zoom
+                            ),
+                            // Shift locks the proportions (SPEC §6.3).
+                            lockAspect: modifiers.contains(.shift)
+                        )
                     }
+                    .onEnded { _ in workspace.endResize() }
             )
+    }
+
+    /// The cards worth drawing at the current pan and zoom (SPEC §6.3, culling).
+    private var visibleNodes: [CanvasNode] {
+        BoardGeometry.visibleNodes(
+            workspace.document.nodes,
+            in: BoardGeometry.visibleRect(
+                viewport: viewportSize, pan: workspace.pan, zoom: workspace.zoom
+            )
+        )
+    }
+
+    /// A card's content, or a plain placeholder when it is too small to read.
+    ///
+    /// Below a quarter zoom the content is illegible anyway, and rendering a hundred
+    /// PDF thumbnails costs the frame rate the board needs while panning.
+    @ViewBuilder
+    private func cardBody(_ node: CanvasNode) -> some View {
+        if BoardGeometry.drawsPlaceholder(at: workspace.zoom) {
+            RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                .fill(theme.color(node.color == nil ? .surfaceCard : .surfaceRaised))
+                .overlay(
+                    RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                        .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
+                )
+        } else {
+            NodeCard(node: node, subfolder: workspace.subfolder(for: node), workspace: workspace)
+        }
     }
 
     /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card
@@ -602,7 +785,12 @@ struct WorkspaceView: View {
             // The arrow is drawn by dragging between two cards; forms is v2.
             break
         }
-        if !workspace.isToolLocked { workspace.tool = .select }
+        // Back to Seleziona after one use (SPEC §6.4), except for the two tools that
+        // are used by dragging rather than by tapping: resetting those would end the
+        // gesture the user is in the middle of.
+        if workspace.tool != .drawing, workspace.tool != .arrow {
+            workspace.finishToolUse()
+        }
     }
 
     private func newItemSheet(_ draft: NewItemDraft) -> some View {
@@ -633,7 +821,7 @@ struct WorkspaceView: View {
                 let path = try vault.createNote(
                     title: value, in: workspace.folder, date: .today
                 )
-                _ = workspace.placeFile(path, at: point)
+                _ = workspace.placeFile(path, at: point, creatingOnDisk: path)
             } catch {
                 workspace.recordProblem(ConformanceText.creationFailure(error))
             }

@@ -68,6 +68,9 @@ final class VaultController {
 
         root = url
         store = NoteStore(root: url)
+        // Recorded on open rather than on close, so a crash still leaves the vault
+        // reachable from the recents menu next launch.
+        RecentVaults().remember(url)
         loadSettings(from: url)
         loadVocabulary(from: url)
         await rescan()
@@ -700,6 +703,29 @@ final class VaultController {
             // can repair it by hand.
             settings = .default
             problems.append("\(VaultLayout.settingsFile): \(error.localizedDescription); using defaults")
+        }
+    }
+
+    /// Applies a settings change and writes `settings.json` back.
+    ///
+    /// Written immediately rather than on close: a setting that survives only a clean
+    /// quit is a setting the user cannot rely on.
+    func updateSettings(_ change: (inout VaultSettings) -> Void) {
+        var updated = settings
+        change(&updated)
+        guard updated != settings else { return }
+        settings = updated
+
+        guard let root else { return }
+        let directory = privateDirectory(in: root)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(updated)
+                .write(to: directory.appending(path: VaultLayout.settingsFile), options: .atomic)
+        } catch {
+            problems.append("\(VaultLayout.settingsFile): \(error.localizedDescription)")
         }
     }
 

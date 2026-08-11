@@ -88,6 +88,12 @@ final class WorkspaceController {
     /// indicator of §6.1.
     private(set) var hasUnsavedChanges = false
 
+    /// Annulla/ripeti for this board (SPEC §6.1).
+    private var history = BoardHistory()
+
+    var canUndo: Bool { history.canUndo }
+    var canRedo: Bool { history.canRedo }
+
     private var store: CanvasStore?
     /// Renders and caches card previews. Lives here rather than in the view so a
     /// board reopened after navigation reuses the same in-memory renders.
@@ -150,6 +156,9 @@ final class WorkspaceController {
         }
         refreshContents()
         hasUnsavedChanges = false
+        // Each board has its own history: undoing on one board must never reach back
+        // into a change made on another.
+        history.reset()
     }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
@@ -167,10 +176,44 @@ final class WorkspaceController {
 
     /// Applies a change and schedules the write. Every mutation goes through here so
     /// no path can edit the board and forget to save it.
-    private func mutate(_ change: (inout CanvasDocument) -> Void) {
+    private func mutate(
+        creatingOnDisk created: String? = nil,
+        _ change: (inout CanvasDocument) -> Void
+    ) {
+        history.record(before: document, creatingOnDisk: created)
         change(&document)
         hasUnsavedChanges = true
         scheduleSave()
+    }
+
+    /// Steps back one change, or says why it will not.
+    @discardableResult
+    func undo() -> Bool {
+        apply(history.undo(current: document))
+    }
+
+    @discardableResult
+    func redo() -> Bool {
+        apply(history.redo(current: document))
+    }
+
+    private func apply(_ outcome: BoardHistory.Outcome) -> Bool {
+        switch outcome {
+        case .restored(let restored):
+            document = restored
+            // A card that no longer exists must not stay selected: the toolbar would
+            // offer actions on nothing.
+            selection = selection.filter { id in document.nodes.contains { $0.id == id } }
+            hasUnsavedChanges = true
+            scheduleSave()
+            refreshContents()
+            return true
+        case .blocked(let name):
+            recordProblem("«\(name)» è stata creata nel vault: annullare toglierebbe la card e lascerebbe il file. Eliminalo dal Finder se non lo vuoi.")
+            return false
+        case .nothingToDo:
+            return false
+        }
     }
 
     /// Nodes being dragged right now, and how far, in board units.
@@ -186,16 +229,52 @@ final class WorkspaceController {
 
     var isDragging: Bool { !draggingIDs.isEmpty }
 
-    func beginDrag(nodeIDs: Set<String>) {
+    /// The card the pointer is on, whose edges the alignment guides work from.
+    private var dragAnchorID: String?
+    /// Guides to draw while a drag is in flight (SPEC §6.3).
+    private(set) var activeGuides: [BoardGeometry.Guide] = []
+
+    /// Whether the board draws a grid, and whether cards land on it. Both come from
+    /// the vault settings (SPEC §12, "Canvas (griglia, snap)").
+    var showsGrid = true
+    var snapsToGrid = false
+    /// The grid the board draws, and the one cards snap to when snapping is on. One
+    /// constant for both: a card that landed on a spacing the user cannot see would
+    /// look misaligned.
+    static let gridStep: CGFloat = 24
+
+    func beginDrag(nodeIDs: Set<String>, anchor: String? = nil) {
         guard draggingIDs.isEmpty else { return }
-        draggingIDs = nodeIDs
+        // Moving a group moves what it holds (SPEC §6.5).
+        draggingIDs = BoardGeometry.expandingGroups(nodeIDs, among: document.nodes)
+        dragAnchorID = anchor ?? nodeIDs.first
         dragTranslation = .zero
+        activeGuides = []
     }
 
-    /// Records the gesture's total translation, already converted to board units.
+    /// Records the gesture's total translation, already converted to board units, and
+    /// pulls the card onto whatever it lines up with.
     func updateDrag(translation: CGSize) {
         guard !draggingIDs.isEmpty else { return }
-        dragTranslation = translation
+        guard let anchorID = dragAnchorID, let anchor = document.node(id: anchorID) else {
+            dragTranslation = translation
+            return
+        }
+
+        let proposed = anchor.frame.offsetBy(dx: translation.width, dy: translation.height)
+        let others = document.nodes
+            .filter { !draggingIDs.contains($0.id) }
+            .map(\.frame)
+        // The threshold is in board units, so the pull is the same handful of pixels
+        // whatever the zoom: a fixed board threshold would be imperceptible zoomed out
+        // and would fight the pointer zoomed in.
+        let (snapped, guides) = BoardGeometry.snapped(
+            proposed, to: others,
+            threshold: 6 / max(zoom, 0.01),
+            gridStep: snapsToGrid ? Self.gridStep : nil
+        )
+        dragTranslation = CGSize(width: snapped.minX - anchor.x, height: snapped.minY - anchor.y)
+        activeGuides = guides
     }
 
     /// Applies the drag to the model and clears the transient state.
@@ -203,6 +282,8 @@ final class WorkspaceController {
         defer {
             draggingIDs = []
             dragTranslation = .zero
+            dragAnchorID = nil
+            activeGuides = []
         }
         guard !draggingIDs.isEmpty,
               dragTranslation != .zero
@@ -229,6 +310,43 @@ final class WorkspaceController {
     /// the drag translation.
     private var panOrigin: CGSize?
 
+    /// The marquee being dragged, in board units (SPEC §6.3).
+    private var marqueeStart: CGPoint?
+    private(set) var marqueeRect: CGRect?
+
+    func beginMarquee(at point: CGPoint) {
+        marqueeStart = point
+        marqueeRect = CGRect(origin: point, size: .zero)
+    }
+
+    func updateMarquee(to point: CGPoint) {
+        guard let start = marqueeStart else { return }
+        marqueeRect = BoardGeometry.rect(from: start, to: point)
+    }
+
+    /// Commits the marquee. `adding` is the Shift modifier: without it the marquee
+    /// replaces the selection, with it the caught cards join what was already chosen.
+    func endMarquee(adding: Bool = false) {
+        defer {
+            marqueeStart = nil
+            marqueeRect = nil
+        }
+        guard let rect = marqueeRect else { return }
+        let caught = BoardGeometry.nodeIDs(in: rect, among: document.nodes)
+        selection = adding ? selection.union(caught) : caught
+    }
+
+    /// Chooses a card, or adds it to the selection when Shift is held.
+    func select(nodeID: String, adding: Bool) {
+        selection = adding ? BoardGeometry.toggling(nodeID, in: selection) : [nodeID]
+    }
+
+    /// Returns to Seleziona after a tool has been used once, unless the user locked
+    /// the tool by double clicking it (SPEC §6.4, "one-shot").
+    func finishToolUse() {
+        if !isToolLocked { tool = .select }
+    }
+
     func beginPan() {
         if panOrigin == nil { panOrigin = pan }
     }
@@ -250,6 +368,53 @@ final class WorkspaceController {
                 document.nodes[index].y += delta.height
             }
         }
+    }
+
+    /// The card being resized, its grip, and the frame the drag has reached.
+    ///
+    /// Transient for the same reason the drag is: committing on every frame would
+    /// write the file dozens of times and fill the undo stack with a step per frame,
+    /// so Cmd+Z would undo one pixel of a resize.
+    private(set) var resizingNodeID: String?
+    private var resizeHandle: BoardGeometry.Handle = .bottomRight
+    private var resizeOriginalFrame: CGRect = .zero
+    private(set) var resizedFrame: CGRect?
+
+    func beginResize(nodeID: String, handle: BoardGeometry.Handle) {
+        guard let node = document.node(id: nodeID) else { return }
+        resizingNodeID = nodeID
+        resizeHandle = handle
+        resizeOriginalFrame = node.frame
+        resizedFrame = node.frame
+    }
+
+    /// `lockAspect` is the Shift modifier of SPEC §6.3.
+    func updateResize(translation: CGSize, lockAspect: Bool) {
+        guard resizingNodeID != nil else { return }
+        resizedFrame = BoardGeometry.resized(
+            resizeOriginalFrame, handle: resizeHandle, by: translation, lockAspect: lockAspect
+        )
+    }
+
+    func endResize() {
+        defer {
+            resizingNodeID = nil
+            resizedFrame = nil
+        }
+        guard let nodeID = resizingNodeID, let frame = resizedFrame, frame != resizeOriginalFrame
+        else { return }
+        mutate { document in
+            guard let index = document.nodes.firstIndex(where: { $0.id == nodeID }) else { return }
+            document.nodes[index].x = frame.minX
+            document.nodes[index].y = frame.minY
+            document.nodes[index].width = frame.width
+            document.nodes[index].height = frame.height
+        }
+    }
+
+    /// The frame a card should be drawn with, accounting for a resize in flight.
+    func displayFrame(for node: CanvasNode) -> CGRect {
+        node.id == resizingNodeID ? (resizedFrame ?? node.frame) : node.frame
     }
 
     func resize(nodeID: String, to size: CGSize) {
@@ -293,8 +458,8 @@ final class WorkspaceController {
     }
 
     @discardableResult
-    func addNode(_ node: CanvasNode) -> String {
-        mutate { $0.nodes.append(node) }
+    func addNode(_ node: CanvasNode, creatingOnDisk created: String? = nil) -> String {
+        mutate(creatingOnDisk: created) { $0.nodes.append(node) }
         refreshContents()
         return node.id
     }
@@ -310,13 +475,17 @@ final class WorkspaceController {
     /// Places an existing vault file on the board, which is how an item leaves the
     /// "Nuovi elementi" tray.
     @discardableResult
-    func placeFile(_ relativePath: String, at point: CGPoint) -> String {
+    func placeFile(
+        _ relativePath: String,
+        at point: CGPoint,
+        creatingOnDisk created: String? = nil
+    ) -> String {
         addNode(CanvasNode(
             id: CanvasID.generate(),
             kind: .file(path: relativePath, subpath: nil),
             x: point.x, y: point.y,
             width: 260, height: 180
-        ))
+        ), creatingOnDisk: created)
     }
 
     func addStickyNote(_ text: String, at point: CGPoint, color: CanvasColor? = .preset(3)) -> String {
@@ -353,7 +522,7 @@ final class WorkspaceController {
     func createFolder(named name: String, at point: CGPoint) throws -> String {
         guard let store else { throw CanvasStore.StoreError.alreadyExists("nessun vault aperto") }
         let relativePath = try store.createFolder(named: name, in: folder)
-        let id = placeFile(relativePath, at: point)
+        let id = placeFile(relativePath, at: point, creatingOnDisk: relativePath)
         refreshContents()
         return id
     }
@@ -472,7 +641,7 @@ final class WorkspaceController {
         let relativePath = folder.isEmpty
             ? proposal.proposedName
             : "\(folder)/\(proposal.proposedName)"
-        let id = placeFile(relativePath, at: proposal.point)
+        let id = placeFile(relativePath, at: proposal.point, creatingOnDisk: relativePath)
         refreshContents()
         return id
     }
@@ -549,7 +718,7 @@ final class WorkspaceController {
                 kind: .file(path: relativePath, subpath: nil),
                 x: bounds.minX, y: bounds.minY,
                 width: max(40, bounds.width), height: max(30, bounds.height)
-            ))
+            ), creatingOnDisk: relativePath)
         }
 
         activeDrawing = .empty
@@ -628,6 +797,12 @@ final class WorkspaceController {
 
     func zoom(by factor: CGFloat) {
         zoom = min(max(zoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+    }
+
+    /// Sets the zoom directly, clamped to the range of SPEC §6.1. Used by the pinch
+    /// gesture, which computes an absolute value rather than a step.
+    func setZoom(_ value: CGFloat) {
+        zoom = min(max(value, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
     func resetZoom() {

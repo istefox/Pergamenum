@@ -38,6 +38,13 @@ struct PergamenumApp: App {
                 .environment(calendar)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
+                .task {
+                    // Reopens the vault the app was last in (SPEC §10, "Vault
+                    // recenti"). Guarded on `root` so a link that already opened one
+                    // is not overridden by the previous session's vault.
+                    guard vault.root == nil, let recent = RecentVaults().mostRecent else { return }
+                    await vault.open(recent)
+                }
                 // Kept alongside the delegate: SwiftUI consumes the Apple Event
                 // itself, so `application(_:open:)` is never called in a SwiftUI app
                 // that has a WindowGroup. The delegate stays as the path for a link
@@ -169,6 +176,23 @@ struct VaultCommands: Commands {
             Divider()
             Button("Apri vault…") { VaultOpenPanel.chooseVault(into: vault) }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+            Menu("Vault recenti") {
+                // Read at build time of the menu, so a vault deleted since the last
+                // launch is simply not offered.
+                let recents = RecentVaults().urls
+                if recents.isEmpty {
+                    Text("Nessuno")
+                } else {
+                    ForEach(recents, id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            Task { await vault.open(url) }
+                        }
+                        .disabled(url.standardizedFileURL == vault.root?.standardizedFileURL)
+                    }
+                    Divider()
+                    Button("Svuota elenco") { RecentVaults().forgetAll() }
+                }
+            }
             Button("Importa convenzioni…") { VaultOpenPanel.chooseHarnessRepository(into: vault) }
                 .disabled(vault.root == nil)
             Divider()
