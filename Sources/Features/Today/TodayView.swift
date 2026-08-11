@@ -6,10 +6,13 @@ struct TodayView: View {
     @Environment(VaultController.self) private var vault
     @Environment(EventKitStore.self) private var calendar
 
-    @State private var day = CalendarDate.today
-    @State private var blocks: [TimeBlock] = []
-    @State private var events: [CalendarEvent] = []
-    @State private var reminders: [CalendarReminder] = []
+    /// Built on first appearance because it needs the environment's vault and store.
+    @State private var controller: DayController?
+
+    private var day: CalendarDate { controller?.day ?? .today }
+    private var blocks: [TimeBlock] { controller?.blocks ?? [] }
+    private var events: [CalendarEvent] { controller?.events ?? [] }
+    private var reminders: [CalendarReminder] { controller?.reminders ?? [] }
 
     /// The hours the timeline shows (SPEC §8.3).
     private let firstHour = 6
@@ -23,7 +26,11 @@ struct TodayView: View {
             timeline
         }
         .background(theme.color(.backgroundPrimary))
-        .task(id: day) { await load() }
+        .task(id: day) {
+            let controller = controller ?? DayController(store: calendar, vault: vault)
+            self.controller = controller
+            await controller.load()
+        }
     }
 
     // MARK: Note column
@@ -47,7 +54,7 @@ struct TodayView: View {
             Text(longDate).themedText(.body, color: .textSecondary)
             Spacer()
             Button { move(by: -1) } label: { Image(systemName: "chevron.left") }
-            Button { day = .today } label: { Text("Oggi").themedText(.caption) }
+            Button { controller?.show(.today) } label: { Text("Oggi").themedText(.caption) }
             Button { move(by: 1) } label: { Image(systemName: "chevron.right") }
         }
         .buttonStyle(.plain)
@@ -87,7 +94,7 @@ struct TodayView: View {
                         }
                         .buttonStyle(.plain)
                         Spacer()
-                        Button("Blocca") { addBlock(from: task) }
+                        Button("Blocca") { controller?.addBlock(from: task) }
                             .buttonStyle(.plain)
                             .themedText(.caption, color: .accentPrimary)
                             .help("Crea un time block da questo task")
@@ -101,7 +108,7 @@ struct TodayView: View {
                         HStack(spacing: theme.spacing(.xs)) {
                             Image(systemName: reminder.isCompleted ? "checkmark.square" : "square")
                                 .foregroundStyle(theme.color(.taskOpen))
-                                .onTapGesture { complete(reminder) }
+                                .onTapGesture { controller?.toggle(reminder) }
                             Text(reminder.title).themedText(.body)
                             Text(reminder.listTitle).themedText(.caption, color: .textTertiary)
                         }
@@ -129,7 +136,7 @@ struct TodayView: View {
             )
             .frame(minHeight: 320)
         } else {
-            Button("Apri la nota di \(day.compactForm)") { openDailyNote() }
+            Button("Apri la nota di \(day.compactForm)") { controller?.openDailyNote() }
                 .buttonStyle(.plain)
                 .themedText(.body, color: .accentPrimary)
         }
@@ -165,10 +172,10 @@ struct TodayView: View {
                           token: .stickyBlue, isEvent: false)
                         .contextMenu {
                             Button(block.isPublished ? "Già pubblicato" : "Pubblica sul Calendario") {
-                                publish(block)
+                                controller?.publish(block, toCalendarTitled: calendar.writeCalendarTitle)
                             }
                             .disabled(block.isPublished || !calendar.eventAccess.isGranted)
-                            Button("Rimuovi") { remove(block) }
+                            Button("Rimuovi") { controller?.remove(block) }
                         }
                 }
             }
@@ -185,7 +192,7 @@ struct TodayView: View {
             Spacer()
             if !calendar.eventAccess.isGranted {
                 Button("Consenti Calendario") {
-                    Task { await calendar.requestAccess(); await load() }
+                    Task { await calendar.requestAccess(); await controller?.load() }
                 }
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)
@@ -236,85 +243,6 @@ struct TodayView: View {
     // MARK: Actions
 
     private func move(by days: Int) {
-        day = day.adding(days: days)
-    }
-
-    private func openDailyNote() {
-        try? vault.openDailyNote(for: day)
-        reloadBlocks()
-    }
-
-    private func load() async {
-        events = calendar.events(on: day)
-        await calendar.refreshReminders(on: day)
-        reminders = calendar.reminders(dueOn: day)
-        reloadBlocks()
-    }
-
-    private func reloadBlocks() {
-        guard let note = vault.openNote, note.relativePath.contains(day.compactForm) else {
-            blocks = []
-            return
-        }
-        blocks = TimeBlockSection.parse(from: note.text, day: day)
-    }
-
-    /// Turns a scheduled task into a block, placed at the first free half hour.
-    private func addBlock(from task: TaskItem) {
-        let existing = blocks
-        var start = 9 * 60
-        while existing.contains(where: { $0.startMinutes <= start && start < $0.endMinutes }) {
-            start += TimeBlock.defaultDuration
-        }
-        let block = TimeBlock(
-            day: day,
-            startMinutes: TimeBlock.snap(start),
-            durationMinutes: TimeBlock.defaultDuration,
-            title: task.text,
-            sourceTaskID: task.id,
-            isPublished: false
-        )
-        writeBlocks(blocks + [block])
-    }
-
-    private func remove(_ block: TimeBlock) {
-        writeBlocks(blocks.filter { $0.id != block.id })
-    }
-
-    /// Writes a block to the Apple calendar and marks it published (SPEC §8.3).
-    private func publish(_ block: TimeBlock) {
-        guard let start = EventKitStore.date(day, hour: block.startMinutes / 60, minute: block.startMinutes % 60),
-              let end = EventKitStore.date(day, hour: block.endMinutes / 60, minute: block.endMinutes % 60)
-        else { return }
-        do {
-            try calendar.createEvent(
-                title: block.title, start: start, end: end,
-                calendarTitle: calendar.writeCalendarTitle
-            )
-            var updated = block
-            updated.isPublished = true
-            writeBlocks(blocks.filter { $0.id != block.id } + [updated])
-            events = calendar.events(on: day)
-        } catch {
-            vault.recordProblem("pubblicazione del blocco: \(error)")
-        }
-    }
-
-    /// Blocks live in the note, so writing them is a note edit like any other.
-    private func writeBlocks(_ newBlocks: [TimeBlock]) {
-        guard let note = vault.openNote else { return }
-        let updated = TimeBlockSection.write(newBlocks, into: note.text)
-        vault.updateOpenNoteText(updated)
-        vault.saveOpenNote()
-        blocks = newBlocks.sorted { $0.startMinutes < $1.startMinutes }
-    }
-
-    private func complete(_ reminder: CalendarReminder) {
-        do {
-            try calendar.setCompleted(!reminder.isCompleted, reminderID: reminder.id)
-            Task { await load() }
-        } catch {
-            vault.recordProblem("promemoria: \(error)")
-        }
+        controller?.move(by: days)
     }
 }

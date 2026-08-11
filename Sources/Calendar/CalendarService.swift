@@ -41,6 +41,10 @@ protocol CalendarStore: AnyObject {
     func requestAccess() async
     func events(on day: CalendarDate) -> [CalendarEvent]
     func reminders(dueOn day: CalendarDate) -> [CalendarReminder]
+    /// Performs the fetch `reminders(dueOn:)` reads from. Part of the protocol because
+    /// a caller cannot know a day's reminders without it, and one that forgot to call
+    /// it would show an empty list rather than an error.
+    func refreshReminders(on day: CalendarDate) async
 
     @discardableResult
     func createEvent(title: String, start: Date, end: Date, calendarTitle: String?) throws -> CalendarEvent

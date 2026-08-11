@@ -140,7 +140,15 @@ struct VaultCommands: Commands {
             Button("Nuova nota") { vault.isCreatingNote = true }
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(vault.root == nil)
-            Button("Oggi") { try? vault.openDailyNote(for: .today) }
+            // Reported rather than swallowed: Cmd+T doing nothing at all, with no
+            // reason given, is the worst outcome when the daily note cannot be created.
+            Button("Oggi") {
+                do {
+                    _ = try vault.openDailyNote(for: .today)
+                } catch {
+                    vault.recordProblem("nota del giorno: \(error)")
+                }
+            }
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(vault.root == nil)
             Button("Nuovo task rapido") { vault.isCapturingTask = true }
