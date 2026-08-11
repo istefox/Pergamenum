@@ -137,6 +137,14 @@ which is what "both first class from day one" (SPEC §11.2) asks for.
 - M1 can start on `Core` (pure convention logic, fully unit-testable) in parallel with
   `Vault`, because D1 puts no framework dependency between them.
 - The GRDB dependency enters `Tuist/Package.swift` at M1, not M0.
+  **Update 2026-08-11 (M1):** deferred again. The index is held in memory and rebuilt
+  by a cold scan on open. Everything D2 requires of it holds - disposable, derived
+  from the files, never written as the primary effect of a user action - so the choice
+  between memory and SQLite is a question about cold-scan cost on the real Labs vault,
+  which has not been measured yet. Adding the dependency before the measurement would
+  be paying for a problem that may not exist; `NoteIndex` keeps a query-shaped surface
+  so the storage can change underneath it. Revisit once the scan is timed on the real
+  vault, which the app now reports after every scan.
 - Reversibility is preserved on the two decisions most likely to be wrong: D1 can be
   split into modules along existing folder seams, and D2's schema can change freely
   because the database is disposable by construction.
