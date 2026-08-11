@@ -564,3 +564,37 @@ private let namingDocumentFixture = """
     let note = "riga con ` aperto\n[[Vero]]"
     #expect(WikilinkParser.links(in: note).map(\.target) == ["Vero"])
 }
+
+// MARK: - Editor edits
+
+@Test func wrapsASelectionInAMarkdownLinkWhenAURLIsPasted() {
+    #expect(EditorEdits.markdownLink(pasting: "https://vibrofer.it", over: "il sito")
+        == "[il sito](https://vibrofer.it)")
+    // Other schemes count too: the vault links out to Obsidian, DEVONthink and Mail.
+    #expect(EditorEdits.markdownLink(pasting: "message://%3Cabc%3E", over: "la mail")
+        == "[la mail](message://%3Cabc%3E)")
+}
+
+@Test func leavesAnOrdinaryPasteAlone() {
+    // Nothing selected, or the pasted text is not a URL: a normal paste.
+    #expect(EditorEdits.markdownLink(pasting: "https://vibrofer.it", over: "") == nil)
+    #expect(EditorEdits.markdownLink(pasting: "testo normale", over: "selezione") == nil)
+    // A bare host is more likely text than a link, and guessing rewrites what was typed.
+    #expect(EditorEdits.markdownLink(pasting: "vibrofer.it", over: "selezione") == nil)
+}
+
+@Test func buildsAnEmbedFromAFileName() {
+    // The name, not the path: a wikilink resolves by name, and a path breaks as soon
+    // as the file is moved inside the app.
+    #expect(EditorEdits.embed(forFileNamed: "schema.pdf") == "![[schema.pdf]]")
+}
+
+@Test(arguments: ["https://x.test", "obsidian://open?vault=Labs", "message://%3Ca%3E", "pergamenum://today"])
+func recognisesURLs(_ text: String) {
+    #expect(EditorEdits.isURL(text))
+}
+
+@Test(arguments: ["", "testo", "vibrofer.it", "https://"])
+func rejectsWhatIsNotAURL(_ text: String) {
+    #expect(!EditorEdits.isURL(text))
+}

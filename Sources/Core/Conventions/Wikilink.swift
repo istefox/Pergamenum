@@ -251,3 +251,39 @@ private extension String {
         return self
     }
 }
+
+
+/// Editor text transformations of SPEC §5.
+enum EditorEdits {
+    /// Wraps a selection in a markdown link when a URL is pasted over it.
+    ///
+    /// Returns nil when the pasted text is not a URL or nothing is selected, so an
+    /// ordinary paste stays an ordinary paste.
+    static func markdownLink(pasting pasted: String, over selection: String) -> String? {
+        let trimmedURL = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSelection = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSelection.isEmpty, isURL(trimmedURL) else { return nil }
+        return "[\(selection)](\(trimmedURL))"
+    }
+
+    /// An embed for a file dropped into the editor: `![[nome.est]]` (SPEC §5).
+    ///
+    /// The name alone, not the path: a wikilink resolves by name inside the vault, and
+    /// writing the path would break the moment the file is moved in the app.
+    static func embed(forFileNamed fileName: String) -> String {
+        "![[\(fileName)]]"
+    }
+
+    /// Whether a string is a URL this app should linkify.
+    ///
+    /// Requires a scheme: a bare "vibrofer.it" pasted over a word is more likely to be
+    /// text than a link, and guessing wrong rewrites what the user typed.
+    static func isURL(_ text: String) -> Bool {
+        guard let components = URLComponents(string: text),
+              let scheme = components.scheme?.lowercased(),
+              !scheme.isEmpty
+        else { return false }
+        // A scheme with nothing after it is not a link.
+        return !(components.host ?? "").isEmpty || !(components.path).isEmpty
+    }
+}

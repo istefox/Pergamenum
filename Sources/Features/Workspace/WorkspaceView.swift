@@ -49,6 +49,19 @@ struct WorkspaceView: View {
             if let root = vault.root { workspace.attach(to: CanvasStore(root: root)) }
         }
         .onDisappear { workspace.flushPendingSave() }
+        .onChange(of: vault.pendingWorkspacePlacement) { _, pending in
+            // A note sent here from the editor lands on the board of its own folder,
+            // which is where it already lives on disk.
+            guard let pending = pending ?? nil else { return }
+            let folder = (pending as NSString).deletingLastPathComponent
+            if workspace.folder != folder { workspace.open(folder: folder) }
+            if !workspace.document.nodes.contains(where: {
+                if case .file(let path, _) = $0.kind { return path == pending } else { return false }
+            }) {
+                _ = workspace.placeFile(pending, at: CGPoint(x: 60, y: 60))
+            }
+            _ = vault.consumePendingWorkspacePlacement()
+        }
         .onChange(of: vault.root) { _, newRoot in
             workspace.detach()
             if let newRoot { workspace.attach(to: CanvasStore(root: newRoot)) }
@@ -464,6 +477,12 @@ struct WorkspaceView: View {
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { open(node) }
             .onTapGesture { workspace.selection = [node.id] }
+            .contextMenu {
+                Button("Apri") { open(node) }
+                Button("Copia link Pergamenum") { copyLink(to: node) }
+                Divider()
+                Button("Elimina") { workspace.delete(nodeIDs: [node.id]) }
+            }
             .gesture(
                 // `.global`, not a named space: a named space that fails to resolve falls back
                 // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
@@ -507,6 +526,16 @@ struct WorkspaceView: View {
                         ))
                     }
             )
+    }
+
+    /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card
+    /// can be linked to from Obsidian, DEVONthink or Mail (SPEC §9).
+    private func copyLink(to node: CanvasNode) {
+        guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }
+        let boardPath = store.boardPath(forFolder: workspace.folder)
+        guard let url = PergamenumLink.canvas(path: boardPath, nodeID: node.id) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 
     /// Double click: enter a folder's board, or open the file the card points at.

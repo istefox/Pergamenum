@@ -51,6 +51,7 @@ struct PergamenumApp: App {
         .commands {
             VaultCommands(vault: vault)
             LinkCommands(vault: vault)
+            TaskCommands(vault: vault)
             ThemeCommands(engine: themeEngine)
         }
 
@@ -76,6 +77,41 @@ struct LinkCommands: Commands {
             Button("Nota correlata…") { vault.isAddingRelatedLink = true }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
                 .disabled(vault.openNote == nil)
+            Button("Apri nel Workspace") { vault.openCurrentNoteInWorkspace() }
+                .disabled(vault.openNote == nil)
+        }
+    }
+}
+
+/// The Task menu of SPEC §10, with the quick rescheduling of §7.3.
+struct TaskCommands: Commands {
+    let vault: VaultController
+
+    var body: some Commands {
+        CommandMenu("Task") {
+            Button("Completa o riapri") {
+                if let task = vault.selectedTask { vault.toggle(task) }
+            }
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(vault.selectedTask == nil)
+
+            Divider()
+            Button("Pianifica oggi") { vault.rescheduleSelectedTask(daysFromToday: 0) }
+                .keyboardShortcut("0", modifiers: .command)
+            Button("Domani") { vault.rescheduleSelectedTask(daysFromToday: 1) }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("+2 giorni") { vault.rescheduleSelectedTask(daysFromToday: 2) }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("Settimana prossima") { vault.rescheduleSelectedTask(daysFromToday: 7) }
+                .keyboardShortcut("3", modifiers: .command)
+            Button("Togli la data") { vault.rescheduleSelectedTask(daysFromToday: nil) }
+                .disabled(vault.selectedTask == nil)
+
+            Divider()
+            Button("Vai alla nota di origine") {
+                if let task = vault.selectedTask { vault.openNote(at: task.sourcePath) }
+            }
+            .disabled(vault.selectedTask == nil)
         }
     }
 }

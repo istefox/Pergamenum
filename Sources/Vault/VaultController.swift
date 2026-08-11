@@ -297,6 +297,27 @@ final class VaultController {
         case link(String)
     }
 
+    /// The task the task views and the Task menu act on.
+    ///
+    /// Held here so the menu commands of SPEC §7.3 (Cmd+0/1/2/3) work wherever the
+    /// user is: a shortcut that only fires when a particular view holds focus is not
+    /// a shortcut for rescheduling, it is a shortcut for rescheduling sometimes.
+    var selectedTask: TaskItem?
+
+    /// Reschedules the selected task by whole days from today, or clears its date.
+    @discardableResult
+    func rescheduleSelectedTask(daysFromToday: Int?) -> Bool {
+        guard let task = selectedTask else { return false }
+        let date = daysFromToday.map { CalendarDate.today.adding(days: $0) }
+        let changed = apply(.schedule(date), to: task)
+        if changed {
+            // Re-resolve the task so a second shortcut acts on the rewritten line
+            // rather than the stale one it replaced.
+            selectedTask = index.allTasks.first { $0.sourcePath == task.sourcePath && $0.text == task.text }
+        }
+        return changed
+    }
+
     /// Toggles between open and done, which is what a checkbox click means.
     @discardableResult
     func toggle(_ task: TaskItem) -> Bool {
@@ -335,6 +356,47 @@ final class VaultController {
             problems.append("cattura rapida: \(error)")
             return false
         }
+    }
+
+    /// Copies a dropped file into the folder of the note being edited and returns its
+    /// name for the embed (SPEC §5).
+    ///
+    /// Copied, not referenced in place: an embed that pointed outside the vault would
+    /// break the day the file moves or the volume is not mounted, and the vault would
+    /// stop being self-contained.
+    func importFileIntoVault(_ source: URL, near notePath: String) -> String? {
+        guard let store else { return nil }
+        let folder = (notePath as NSString).deletingLastPathComponent
+        let directory = folder.isEmpty
+            ? store.root
+            : store.root.appending(path: folder, directoryHint: .isDirectory)
+
+        let name = ImportNaming.uniqueFileName(source.lastPathComponent, in: directory)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(
+                at: source, to: directory.appending(path: name, directoryHint: .notDirectory)
+            )
+            return name
+        } catch {
+            problems.append("copia di \(source.lastPathComponent): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Puts the open note on its folder's board and switches to the Workspace
+    /// (SPEC §5, "Apri nel canvas").
+    func openCurrentNoteInWorkspace() {
+        guard let note = openNote else { return }
+        pendingWorkspacePlacement = note.relativePath
+    }
+
+    /// A note the Workspace should place on the current board when it next appears.
+    private(set) var pendingWorkspacePlacement: String?
+
+    func consumePendingWorkspacePlacement() -> String? {
+        defer { pendingWorkspacePlacement = nil }
+        return pendingWorkspacePlacement
     }
 
     // MARK: Structural links

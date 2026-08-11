@@ -14,6 +14,9 @@ struct NoteTextView: NSViewRepresentable {
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
     let onFollowLink: (String) -> Void
+    /// Where a dropped file should be copied to, returning its file name for the
+    /// embed (SPEC §5). Nil disables dropping.
+    var onDropFile: ((URL) -> String?)?
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -32,6 +35,18 @@ struct NoteTextView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.linkTextAttributes = [:]
+        textView.onPasteURL = { [weak textView] pasted in
+            guard let textView, let selectionRange = textView.selectedRanges.first as? NSRange,
+                  selectionRange.length > 0
+            else { return false }
+            let selected = (textView.string as NSString).substring(with: selectionRange)
+            guard let replacement = EditorEdits.markdownLink(pasting: pasted, over: selected) else {
+                return false
+            }
+            textView.insertText(replacement, replacementRange: selectionRange)
+            return true
+        }
+        textView.onDropFile = { url in context.coordinator.parent.onDropFile?(url) }
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -178,6 +193,35 @@ struct NoteTextView: NSViewRepresentable {
 final class CompletingTextView: NSTextView {
     var noteTitles: [String] = []
     var tagSuggestions: [String] = []
+    /// Called with pasted text; returns true when it handled the paste itself.
+    var onPasteURL: ((String) -> Bool)?
+    /// Called with a dropped file, returning the name to embed (SPEC §5).
+    var onDropFile: ((URL) -> String?)?
+
+    /// Pasting a URL over a selection writes a markdown link (SPEC §5).
+    override func paste(_ sender: Any?) {
+        if let pasted = NSPasteboard.general.string(forType: .string),
+           onPasteURL?(pasted) == true {
+            return
+        }
+        super.paste(sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: nil
+        ) as? [URL] ?? []
+        guard !urls.isEmpty, let onDropFile else { return super.performDragOperation(sender) }
+
+        // Each dropped file is copied into the vault and embedded by name; the app
+        // never links to a path outside the vault, which would break the day the file
+        // moves or the disk is not mounted.
+        let embeds = urls.compactMap(onDropFile).map(EditorEdits.embed(forFileNamed:))
+        guard !embeds.isEmpty else { return super.performDragOperation(sender) }
+
+        insertText(embeds.joined(separator: "\n"), replacementRange: selectedRange())
+        return true
+    }
 
     private enum Context {
         case wikilink(prefix: String)

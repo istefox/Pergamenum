@@ -175,7 +175,11 @@ struct TasksView: View {
                 .strokeBorder(isSelected ? theme.color(.canvasSelection) : .clear, lineWidth: 2)
         )
         .contentShape(Rectangle())
-        .onTapGesture { selectedTaskID = task.id }
+        .onTapGesture {
+            selectedTaskID = task.id
+            // Shared with the Task menu so Cmd+0/1/2/3 act on what is selected here.
+            vault.selectedTask = task
+        }
         .contextMenu { contextMenu(task) }
     }
 

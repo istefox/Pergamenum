@@ -157,7 +157,8 @@ struct VaultBrowser: View {
                     theme: theme,
                     noteTitles: vault.index.allNotes.map(\.title),
                     tagSuggestions: tagSuggestions,
-                    onFollowLink: follow(title:)
+                    onFollowLink: follow(title:),
+                    onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) }
                 )
             }
             .background(theme.color(.backgroundPrimary))
