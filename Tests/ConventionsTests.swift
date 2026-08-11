@@ -482,3 +482,85 @@ private let namingDocumentFixture = """
     #expect(vocabulary.source.count == 5)
     #expect(vocabulary.deliverableKind.contains("Offerta"))
 }
+
+// MARK: - Code is not a wikilink
+
+@Test func ignoresBashTestSyntaxInAFencedBlock() {
+    // Observed on the real Labs vault: `[[ ... ]]` is bash's test syntax, and every
+    // shell snippet was filling the unresolved-links panel.
+    let note = """
+    Prima del blocco.
+
+    ```bash
+    if [[ "${esiti[*]}" == "0 0 0" ]]; then
+      echo ok
+    fi
+    ```
+
+    Dopo il blocco, un vero [[Collegamento]].
+    """
+    #expect(WikilinkParser.links(in: note).map(\.target) == ["Collegamento"])
+}
+
+@Test func ignoresTomlArrayOfTablesInAFencedBlock() {
+    let note = """
+    ```toml
+    [[tool.mypy.overrides]]
+    module = "x"
+    ```
+    """
+    #expect(WikilinkParser.links(in: note).isEmpty)
+}
+
+@Test func ignoresInlineCodeSpans() {
+    #expect(WikilinkParser.links(in: "usa `[[ -f file ]]` nel test").isEmpty)
+    #expect(WikilinkParser.links(in: "`codice` e poi [[Vero link]]").map(\.target) == ["Vero link"])
+}
+
+@Test func treatsAnUnterminatedFenceAsRunningToTheEnd() {
+    // The reader sees everything after the fence as code, so the parser must agree.
+    let note = "testo\n\n```\n[[non un link]]\n"
+    #expect(WikilinkParser.links(in: note).isEmpty)
+}
+
+@Test func stillFindsLinksAroundCode() {
+    let note = """
+    [[Uno]] prima.
+
+    ```
+    [[dentro]]
+    ```
+
+    [[Due]] dopo.
+    """
+    #expect(WikilinkParser.links(in: note).map(\.target) == ["Uno", "Due"])
+}
+
+@Test func doesNotCloseAFenceOnALineCarryingAnInfoString() {
+    // Only the opening fence may carry text after the backticks; treating a
+    // "``` qualcosa" line as a close would end the block early and expose its tail.
+    let note = "```\n[[dentro]]\n``` non chiude\n[[ancora dentro]]\n```\n[[fuori]]"
+    #expect(WikilinkParser.links(in: note).map(\.target) == ["fuori"])
+}
+
+@Test func inlineSpanMaskingSurvivesAFenceEarlierInTheNote() {
+    // Regression from the real Labs vault: pairing backticks across the whole text
+    // desynchronised on the three of each fence, so an inline span further down was
+    // no longer recognised and `[[tool.mypy.overrides]]` was indexed as a link.
+    let note = """
+    ```python
+    print("x")
+    ```
+
+    Attivalo per modulo con `[[tool.mypy.overrides]]` ed elenca i moduli.
+
+    Un vero [[Collegamento]] resta tale.
+    """
+    #expect(WikilinkParser.links(in: note).map(\.target) == ["Collegamento"])
+}
+
+@Test func doesNotPairBackticksAcrossLines() {
+    // An unclosed span must not swallow the next line's real link.
+    let note = "riga con ` aperto\n[[Vero]]"
+    #expect(WikilinkParser.links(in: note).map(\.target) == ["Vero"])
+}

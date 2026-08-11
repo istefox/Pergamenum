@@ -36,13 +36,25 @@ enum WikilinkParser {
     /// Scans rather than uses a regular expression so that nesting and unbalanced
     /// brackets are handled explicitly: `[[a [[b]]` should yield `b`, not a match that
     /// swallows the rest of the note.
+    ///
+    /// Code is skipped. `[[ ]]` is bash's test syntax and TOML's array-of-tables
+    /// syntax, so a vault holding shell snippets or a pyproject fragment would
+    /// otherwise fill its backlink index and its unresolved-links panel with things
+    /// like `${esiti[*]}" != *0*` and `tool.mypy.overrides` - observed on a real vault,
+    /// not hypothetical.
     static func links(in text: String) -> [Wikilink] {
         var results: [Wikilink] = []
         var index = text.startIndex
+        let code = codeRanges(in: text)
 
         while index < text.endIndex {
             guard let open = text.range(of: "[[", range: index..<text.endIndex) else { break }
             guard let close = text.range(of: "]]", range: open.upperBound..<text.endIndex) else { break }
+
+            if code.contains(where: { $0.contains(open.lowerBound) }) {
+                index = open.upperBound
+                continue
+            }
 
             let inner = String(text[open.upperBound..<close.lowerBound])
             // A nested opener means the outer one was never a link; restart just after
@@ -62,6 +74,65 @@ enum WikilinkParser {
             index = close.upperBound
         }
         return results
+    }
+
+    /// Ranges covered by fenced code blocks and inline code spans.
+    ///
+    /// An unterminated fence runs to the end of the note, which is what a reader sees
+    /// too: everything after it is rendered as code, so treating it as prose would
+    /// disagree with the note's own appearance.
+    static func codeRanges(in text: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+
+        var fenceStart: String.Index?
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let line = text[lineStart..<lineEnd].trimmingCharacters(in: .whitespaces)
+
+            if line.hasPrefix("```") || line.hasPrefix("~~~") {
+                if fenceStart != nil {
+                    // Only the opening fence may carry an info string (```bash);
+                    // a closing fence is the delimiter alone, so a line like
+                    // "``` e poi altro" does not end the block.
+                    let isBareDelimiter = line.allSatisfy { $0 == "`" || $0 == "~" }
+                    if isBareDelimiter {
+                        ranges.append(fenceStart!..<lineEnd)
+                        fenceStart = nil
+                    }
+                } else {
+                    fenceStart = lineStart
+                }
+            }
+            guard lineEnd < text.endIndex else { break }
+            lineStart = text.index(after: lineEnd)
+        }
+        if let start = fenceStart { ranges.append(start..<text.endIndex) }
+
+        // Inline spans, paired within a single line and only outside the fences found
+        // above. Pairing across the whole text would desynchronise on the three
+        // backticks of every fence and then mis-pair everything after it, which is
+        // how `[[tool.mypy.overrides]]` inside an inline span survived the first
+        // version of this.
+        var line = text.startIndex
+        while line < text.endIndex {
+            let lineEnd = text[line...].firstIndex(of: "\n") ?? text.endIndex
+            defer { line = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
+
+            if ranges.contains(where: { $0.contains(line) }) { continue }
+
+            var cursor = line
+            while let open = text[cursor..<lineEnd].firstIndex(of: "`") {
+                let afterOpen = text.index(after: open)
+                guard afterOpen < lineEnd,
+                      let close = text[afterOpen..<lineEnd].firstIndex(of: "`")
+                else { break }
+                let span = open..<text.index(after: close)
+                ranges.append(span)
+                cursor = span.upperBound
+            }
+        }
+        return ranges
     }
 
     private static func parse(
