@@ -24,6 +24,7 @@ struct RootView: View {
         case workspace
         case today
         case tasks
+        case conformance
 
         var id: String { rawValue }
 
@@ -32,7 +33,7 @@ struct RootView: View {
         /// as its milestone lands.
         var isMockup: Bool {
             switch self {
-            case .vault, .tokens, .workspace, .tasks, .today: false
+            case .vault, .tokens, .workspace, .tasks, .today, .conformance: false
             case .editor: true
             }
         }
@@ -45,6 +46,7 @@ struct RootView: View {
             case .workspace: "Workspace"
             case .today: "Oggi"
             case .tasks: "Attività"
+            case .conformance: "Conformità"
             }
         }
 
@@ -56,6 +58,7 @@ struct RootView: View {
             case .workspace: "square.on.square"
             case .today: "calendar"
             case .tasks: "checklist"
+            case .conformance: "checkmark.seal"
             }
         }
     }
@@ -104,6 +107,16 @@ struct RootView: View {
         case .workspace: workspacePane
         case .today: todayPane
         case .tasks: tasksPane
+        case .conformance: conformancePane
+        }
+    }
+
+    @ViewBuilder
+    private var conformancePane: some View {
+        if vault.root == nil {
+            needsVault("Il linter verifica le note del vault contro le convenzioni harness.")
+        } else {
+            ConformanceView()
         }
     }
 

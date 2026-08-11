@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftUI
 
 /// Owns the open vault: settings, index, watcher, and the read/write path the editor
@@ -67,6 +68,11 @@ final class VaultController {
         loadVocabulary(from: url)
         await rescan()
         startWatching(url)
+
+        if let route = pendingRoute {
+            pendingRoute = nil
+            handle(route)
+        }
     }
 
     func close() {
@@ -327,6 +333,142 @@ final class VaultController {
         }
     }
 
+    // MARK: URL scheme
+
+    /// Handles a `pergamenum://` link (SPEC §9).
+    ///
+    /// Returns false when the route names something that is not there, so the caller
+    /// can say so rather than silently doing nothing: a link from DEVONthink that
+    /// quietly fails is worse than one that reports the note has moved.
+    /// Traces URL handling.
+    ///
+    /// A link that silently does nothing is indistinguishable from a broken scheme
+    /// registration, and that ambiguity cost real time to diagnose; every route now
+    /// says what it did.
+    private static let routeLog = Logger(subsystem: AppInfo.bundleIdentifier, category: "url-scheme")
+
+    @discardableResult
+    func handle(_ route: PergamenumRoute) -> Bool {
+        Self.routeLog.notice("route ricevuta: \(String(describing: route), privacy: .public)")
+        let outcome = perform(route)
+        Self.routeLog.notice("route esito: \(outcome, privacy: .public)")
+        return outcome
+    }
+
+    private func perform(_ route: PergamenumRoute) -> Bool {
+        // A link can arrive before the vault has finished opening - the app may have
+        // been launched *by* the link. Holding the route and replaying it is the
+        // difference between a link that works from cold and one that only works when
+        // the app happened to be running.
+        guard let store else {
+            pendingRoute = route
+            return false
+        }
+
+        switch route {
+        case .note(let path):
+            guard FileManager.default.fileExists(
+                atPath: store.url(for: path).path(percentEncoded: false)
+            ) else {
+                problems.append("il link punta a una nota che non esiste: \(path)")
+                return false
+            }
+            openNote(at: path)
+            return true
+
+        case .noteID(let id):
+            // IDs live in the index, not in the frontmatter (SPEC §9), so an unknown
+            // one means the note was renamed outside the app.
+            guard let path = noteIDs[id] else {
+                problems.append("nessuna nota con id \(id)")
+                return false
+            }
+            openNote(at: path)
+            return true
+
+        case .canvas(let path, let nodeID):
+            pendingCanvasRoute = (path, nodeID)
+            return true
+
+        case .day(let date):
+            return openDaily(date)
+
+        case .today:
+            return openDaily(.today)
+
+        case .search(let query):
+            pendingSearch = query
+            isShowingQuickSwitcher = true
+            return true
+
+        case .capture(let text, let notePath):
+            return append(text: text, to: notePath)
+
+        case .addTask(let text):
+            return captureTask(text)
+        }
+    }
+
+    /// Opens the daily note for a route, reporting why when it cannot.
+    ///
+    /// `try?` here swallowed the reason and left a link that did nothing with no way
+    /// to find out why.
+    private func openDaily(_ date: CalendarDate) -> Bool {
+        do {
+            _ = try openDailyNote(for: date)
+            return true
+        } catch {
+            Self.routeLog.error("daily note fallita: \(String(describing: error), privacy: .public)")
+            problems.append("nota giornaliera: \(error)")
+            return false
+        }
+    }
+
+    /// A route that arrived before the vault was open, replayed once it is.
+    private var pendingRoute: PergamenumRoute?
+
+    /// A canvas the Workspace should open when it next appears.
+    private(set) var pendingCanvasRoute: (path: String, nodeID: String?)?
+    /// A query the quick switcher should start from.
+    private(set) var pendingSearch: String?
+    /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
+    private var noteIDs: [String: String] = [:]
+
+    func consumePendingCanvasRoute() -> (path: String, nodeID: String?)? {
+        defer { pendingCanvasRoute = nil }
+        return pendingCanvasRoute
+    }
+
+    func consumePendingSearch() -> String? {
+        defer { pendingSearch = nil }
+        return pendingSearch
+    }
+
+    /// Appends text to a note without opening it, for the capture route.
+    private func append(text: String, to notePath: String?) -> Bool {
+        guard let store else { return false }
+        let path = notePath ?? {
+            settings.dailyFolder.isEmpty
+                ? NoteName.dailyFileName(for: .today)
+                : "\(settings.dailyFolder)/\(NoteName.dailyFileName(for: .today))"
+        }()
+
+        do {
+            if !FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false)) {
+                _ = try openDailyNote(for: .today)
+            }
+            let existing = try store.read(path).text
+            let separator = existing.hasSuffix("\n") ? "" : "\n"
+            let hash = try store.write(existing + separator + text + "\n", to: path)
+            selfWrittenHashes[path] = hash
+            index.update(try store.read(path).record, at: path)
+            return true
+        } catch {
+            problems.append("capture: \(error)")
+            return false
+        }
+    }
+
     // MARK: Watching
 
     private func startWatching(_ url: URL) {
@@ -454,20 +596,45 @@ final class VaultController {
         }
     }
 
+    /// Validates any note in the vault by path, for the vault-wide conformance view.
+    ///
+    /// Reads the file rather than trusting the index: the linter's whole job is to
+    /// report what is on disk, and a stale index row would report a note as clean
+    /// after someone edited it in Obsidian.
+    func violations(forRecordAt relativePath: String) -> NoteViolations? {
+        guard let store, let (_, text) = try? store.read(relativePath) else { return nil }
+        return violations(
+            path: relativePath,
+            title: NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent),
+            text: text
+        )
+    }
+
     /// Validates the open note against every convention rule, for the conformance view.
     func violations(for note: OpenNote) -> NoteViolations {
-        let document = NoteDocument.parse(note.text)
+        violations(path: note.relativePath, title: note.title, text: note.text)
+    }
+
+    private func violations(path: String, title: String, text: String) -> NoteViolations {
+        let document = NoteDocument.parse(text)
         let category = NoteName.category(
-            forFileName: (note.relativePath as NSString).lastPathComponent,
+            forFileName: (path as NSString).lastPathComponent,
             dailyFolder: settings.dailyFolder,
-            path: note.relativePath
+            path: path
         )
         let discrepancies = RelatedSection.discrepancies(
             frontmatterRelated: document.frontmatter.related,
             sectionLinks: RelatedSection.parse(from: document.body)
         )
+        // A daily note is judged by its own naming rule: `20260811` would fail the
+        // ordinary title check for looking like a version-less date, and passing it
+        // through `validate` would report every daily note as non-conformant.
+        let nameViolations = category == .daily
+            ? NoteName.validateDaily(title)
+            : NoteName.validate(title)
+
         return NoteViolations(
-            name: NoteName.validate(note.title),
+            name: nameViolations,
             frontmatter: FrontmatterRules.validate(document),
             tags: TagRules.validate(document.frontmatter.tags, category: category, vocabulary: vocabulary),
             relatedMissingInSection: discrepancies.missingInSection,

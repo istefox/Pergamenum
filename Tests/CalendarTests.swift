@@ -178,3 +178,56 @@ func rejectsInvalidTimes(_ text: String) {
     #expect(!CalendarAccess.notDetermined.isGranted)
     #expect(CalendarAccess.granted.isGranted)
 }
+
+// MARK: - Reminder scheduling
+
+private func task(_ line: String) -> TaskItem {
+    TaskParser.parse(line: line, sourcePath: "01 Progetti/Nota.md", lineIndex: 0)!
+}
+
+private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")!, hour: 0, minute: 0)!
+
+@Test func schedulesOnlyOpenTasksWithAFutureReminder() {
+    let tasks = [
+        task("- [ ] Con promemoria @remind(2026-08-15 09:00)"),
+        task("- [x] Fatto @remind(2026-08-15 09:00)"),
+        task("- [-] Annullato @remind(2026-08-15 09:00)"),
+        task("- [ ] Senza promemoria"),
+        task("- [ ] Promemoria passato @remind(2026-08-01 09:00)"),
+    ]
+    let requests = ReminderScheduler.requests(for: tasks, after: beforeReminders)
+
+    // A completed or cancelled task must not still ring, and a past reminder is not
+    // scheduled at all.
+    #expect(requests.count == 1)
+    #expect(requests[0].content.title == "Con promemoria")
+}
+
+@Test func aRescheduledTaskStillRings() {
+    // `- [>]` means moved, not done.
+    let requests = ReminderScheduler.requests(
+        for: [task("- [>] Rimandato @remind(2026-08-15 09:00)")], after: beforeReminders
+    )
+    #expect(requests.count == 1)
+}
+
+@Test func theNotificationNamesItsSourceNoteAndCarriesItsRoute() throws {
+    let requests = ReminderScheduler.requests(
+        for: [task("- [ ] Richiamare @remind(2026-08-15 09:00)")], after: beforeReminders
+    )
+    let request = try #require(requests.first)
+    #expect(request.content.body == "Nota")
+
+    let route = try #require(request.content.userInfo["route"] as? String)
+    // Tapping it must open the note it came from, not just the app.
+    #expect(URL(string: route).flatMap(PergamenumRoute.init) == .note(path: "01 Progetti/Nota.md"))
+}
+
+@Test func identifiersAreStablePerTask() {
+    let item = task("- [ ] Con promemoria @remind(2026-08-15 09:00)")
+    let first = ReminderScheduler.requests(for: [item], after: beforeReminders)
+    let second = ReminderScheduler.requests(for: [item], after: beforeReminders)
+    // Stable ids are what let a rescan replace rather than duplicate.
+    #expect(first.first?.identifier == second.first?.identifier)
+    #expect(first.first?.identifier == item.id)
+}

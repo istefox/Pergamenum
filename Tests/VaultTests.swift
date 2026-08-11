@@ -456,3 +456,37 @@ private func makeRecord(
     #expect(controller.index.count == 1)
     controller.close()
 }
+
+@Test func writesIntoAVaultReachedThroughASymlink() throws {
+    // Found by using the app, not by a test: `/tmp` is a symlink to `/private/tmp`,
+    // and `appending(path:)` resolved it on one side only, so the vault-boundary
+    // guard rejected every write with "outside the vault". Any symlinked vault path
+    // does the same, and the earlier tests missed it because `temporaryDirectory`
+    // hands back an already-resolved `/var/folders/…`.
+    let real = try TemporaryVault()
+    let link = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-link-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real.root)
+    defer { try? FileManager.default.removeItem(at: link) }
+
+    let store = NoteStore(root: link)
+    try store.write(sampleNote, to: "Calendar/20260811.md")
+
+    let (record, text) = try store.read("Calendar/20260811.md")
+    #expect(text == sampleNote)
+    #expect(record.title == "20260811")
+}
+
+@Test func stillRefusesToEscapeAVaultReachedThroughASymlink() throws {
+    // The fix must not weaken the guard it fixes.
+    let real = try TemporaryVault()
+    let link = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-link-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real.root)
+    defer { try? FileManager.default.removeItem(at: link) }
+
+    let store = NoteStore(root: link)
+    #expect(throws: NoteStore.StoreError.self) {
+        try store.write("x", to: "../fuori.md")
+    }
+}

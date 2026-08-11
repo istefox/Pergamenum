@@ -7,7 +7,12 @@ import Foundation
 /// created on first entry. That mapping is what keeps "file over app" true for the
 /// Workspace - the folder is the truth, the canvas only says where things sit.
 struct CanvasStore: Sendable {
+    /// Resolved at construction for the same reason as `NoteStore.root`.
     let root: URL
+
+    init(root: URL) {
+        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+    }
 
     static let fileExtension = "canvas"
 

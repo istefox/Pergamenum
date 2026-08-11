@@ -91,6 +91,12 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **M6 complete.** All `pergamenum://` routes verified end to end against
+  the registered scheme, the vault-wide conformance linter, complete menus, convention
+  import and local notifications for `@remind`.
+- 2026-08-11: **M5 code complete, EventKit unverified.** Day view, timeline, time
+  blocks stored in the daily note, EventKit read/write and two-way Reminders behind a
+  protocol. Reading and writing real events needs the permission dialog answered.
 - 2026-08-11: **M4 complete.** Task syntax of §7.1 with line-surgical rewriting, the
   five Attività views, task-to-note links navigable in both directions, quick
   rescheduling and quick capture. Verified on the test vault: the views group and

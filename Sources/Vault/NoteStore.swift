@@ -38,7 +38,19 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
 /// half-written note, and "file over app" is worthless if the file can be corrupted
 /// by the app that promises to protect it.
 struct NoteStore: Sendable {
+    /// The vault root, with symlinks resolved once at construction.
+    ///
+    /// Resolving here rather than at each comparison is what makes the boundary check
+    /// sound: `resolvingSymlinksInPath` does nothing for a path that does not exist
+    /// yet, so a not-yet-created note under a symlinked vault kept the unresolved
+    /// spelling while the root had the resolved one, and every write was refused as
+    /// "outside the vault". Building every path from the resolved root removes the
+    /// mismatch instead of trying to undo it later.
     let root: URL
+
+    init(root: URL) {
+        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+    }
 
     enum StoreError: Error, CustomStringConvertible {
         case notUTF8(String)
@@ -103,8 +115,12 @@ struct NoteStore: Sendable {
     /// are user-supplied text; without the check, `pergamenum://note?file=../../…`
     /// would write outside the vault.
     private func assertInsideVault(_ fileURL: URL, _ relativePath: String) throws {
-        let resolvedRoot = root.standardizedFileURL.path(percentEncoded: false)
+        // Both sides start from the already-resolved root, so this compares like with
+        // like; `standardized` still collapses any `..` the relative path smuggled in,
+        // which is what the guard is actually for.
+        let resolvedRoot = root.path(percentEncoded: false)
         let resolved = fileURL.standardizedFileURL.path(percentEncoded: false)
+
         let rootWithSeparator = resolvedRoot.hasSuffix("/") ? resolvedRoot : resolvedRoot + "/"
         guard resolved.hasPrefix(rootWithSeparator) else {
             throw StoreError.outsideVault(relativePath)

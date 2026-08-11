@@ -1,7 +1,31 @@
+import AppKit
 import SwiftUI
+
+/// Handles `pergamenum://` links at the application level.
+///
+/// SwiftUI's `onOpenURL` is attached to a window, and on macOS a link with no window
+/// willing to claim it opens a NEW one - six links produced six windows, each with a
+/// vault still opening, so every route failed silently. `application(_:open:)` is
+/// called once, on the app, before any of that.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the App at launch; the delegate is created before it exists.
+    weak var vault: VaultController?
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard let route = PergamenumRoute(url) else { continue }
+            // No explicit `NSApp.activate` here: opening the URL already brings the
+            // app forward when it should, and calling it from a non-user-triggered
+            // path is exactly the case the AppKit guidance warns about.
+            vault?.handle(route)
+        }
+    }
+}
 
 @main
 struct PergamenumApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var themeEngine = ThemeEngine()
     @State private var vault = VaultController()
     @State private var calendar = EventKitStore()
@@ -13,6 +37,15 @@ struct PergamenumApp: App {
                 .environment(vault)
                 .environment(calendar)
                 .themed(by: themeEngine)
+                .onAppear { appDelegate.vault = vault }
+                // Kept alongside the delegate: SwiftUI consumes the Apple Event
+                // itself, so `application(_:open:)` is never called in a SwiftUI app
+                // that has a WindowGroup. The delegate stays as the path for a link
+                // that arrives before any window exists.
+                .onOpenURL { url in
+                    guard let route = PergamenumRoute(url) else { return }
+                    vault.handle(route)
+                }
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -25,6 +58,21 @@ struct PergamenumApp: App {
 /// The File-menu entries that need the vault (SPEC §10).
 struct VaultCommands: Commands {
     let vault: VaultController
+
+    /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting
+    /// into Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
+    private func copyLinkToOpenNote() {
+        guard let note = vault.openNote, let url = PergamenumLink.note(path: note.relativePath) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+    }
+
+    private func revealOpenNote() {
+        guard let note = vault.openNote, let root = vault.root else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([
+            root.appending(path: note.relativePath, directoryHint: .notDirectory),
+        ])
+    }
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -54,6 +102,13 @@ struct VaultCommands: Commands {
             Divider()
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
+            Divider()
+            Button("Copia link Pergamenum") { copyLinkToOpenNote() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(vault.openNote == nil)
+            Button("Rivela nel Finder") { revealOpenNote() }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(vault.openNote == nil)
         }
     }
 }
