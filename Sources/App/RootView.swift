@@ -71,6 +71,12 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.color(.backgroundSecondary))
         }
+        .sheet(isPresented: Binding(
+            get: { vault.isShowingGlobalSearch },
+            set: { vault.isShowingGlobalSearch = $0 }
+        )) {
+            GlobalSearchView()
+        }
         // Wide enough for the vault pane's own three columns beside this sidebar:
         // below this the outer sidebar gets squeezed into an unreadable strip.
         .frame(minWidth: 1180, minHeight: 700)

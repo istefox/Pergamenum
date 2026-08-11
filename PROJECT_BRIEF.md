@@ -91,6 +91,9 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **§12 and §4.5 closed.** Global search with the `tag:`, `path:`,
+  `task:` and quoted-phrase operators, a Settings window, and the "Nota correlata"
+  flow that asks for a reason in both directions and writes both notes atomically.
 - 2026-08-11: **Mouse interaction verified.** Selecting, dragging, resizing and the
   spacebar Quick Look all exercised with real CGEvent mouse input on the test vault.
   Dragging was badly broken and is now correct to the unit.

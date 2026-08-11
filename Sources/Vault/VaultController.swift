@@ -27,6 +27,10 @@ final class VaultController {
     var isShowingQuickLook = false
     /// Set by the Cattura rapida command (SPEC §7.4, Cmd+Shift+N).
     var isCapturingTask = false
+    /// Set by the "Nota correlata…" command.
+    var isAddingRelatedLink = false
+    /// Set by the global search command (Cmd+Shift+F).
+    var isShowingGlobalSearch = false
     /// Set by the quick switcher command.
     ///
     /// Both live here rather than as view state because their shortcuts are menu
@@ -331,6 +335,105 @@ final class VaultController {
             problems.append("cattura rapida: \(error)")
             return false
         }
+    }
+
+    // MARK: Structural links
+
+    /// Creates a structural link in both directions (wikilink.md W-05).
+    ///
+    /// Atomic by construction: both files are rendered in memory first and neither is
+    /// written unless both can be. A half-created link is worse than none, because the
+    /// linter would then report a discrepancy the app itself caused.
+    @discardableResult
+    func addStructuralLink(
+        from sourcePath: String,
+        to targetTitle: String,
+        reason: String,
+        reverseReason: String
+    ) -> Bool {
+        guard let store else { return false }
+        guard let targetPath = index.resolve(title: targetTitle).first else {
+            problems.append("nessuna nota si chiama «\(targetTitle)»")
+            return false
+        }
+        guard targetPath != sourcePath else {
+            problems.append("\(RelatedLink.Error.linkingToItself)")
+            return false
+        }
+
+        do {
+            let source = try store.read(sourcePath)
+            let target = try store.read(targetPath)
+
+            // Both renders happen before either write.
+            let updatedSource = try RelatedLink.add(
+                target: target.record.title, reason: reason,
+                to: source.text, selfTitle: source.record.title
+            )
+            let updatedTarget = try RelatedLink.add(
+                target: source.record.title, reason: reverseReason,
+                to: target.text, selfTitle: target.record.title
+            )
+
+            selfWrittenHashes[sourcePath] = try store.write(updatedSource, to: sourcePath)
+            selfWrittenHashes[targetPath] = try store.write(updatedTarget, to: targetPath)
+
+            index.update(try store.read(sourcePath).record, at: sourcePath)
+            index.update(try store.read(targetPath).record, at: targetPath)
+
+            if openNote?.relativePath == sourcePath { openNote(at: sourcePath) }
+            return true
+        } catch {
+            problems.append("legame strutturale: \(error)")
+            return false
+        }
+    }
+
+    // MARK: Search
+
+    struct SearchResult: Identifiable, Sendable {
+        var id: String { path }
+        var path: String
+        var title: String
+        /// The first matching line, for context in the result list.
+        var excerpt: String
+    }
+
+    /// Full-text search across the vault (SPEC §12).
+    ///
+    /// Reads each note from disk rather than searching a cached copy of its text: the
+    /// index holds structure, not content, and returning a hit for text that is no
+    /// longer there is worse than taking a moment longer.
+    func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
+        guard let store, !query.isEmpty else { return [] }
+
+        var results: [SearchResult] = []
+        for record in index.allNotes {
+            guard let (_, text) = try? store.read(record.relativePath) else { continue }
+            guard query.matches(record: record, text: text) else { continue }
+
+            results.append(SearchResult(
+                path: record.relativePath,
+                title: record.title,
+                excerpt: Self.excerpt(for: query, in: text)
+            ))
+            if results.count >= limit { break }
+        }
+        return results
+    }
+
+    /// The first line containing a searched word or phrase.
+    private static func excerpt(for query: SearchQuery, in text: String) -> String {
+        let needles = query.phrases + query.words
+        guard !needles.isEmpty else { return "" }
+
+        for line in text.components(separatedBy: "\n") {
+            let folded = SearchQuery.fold(line)
+            if needles.contains(where: { folded.contains(SearchQuery.fold($0)) }) {
+                return line.trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return ""
     }
 
     // MARK: URL scheme

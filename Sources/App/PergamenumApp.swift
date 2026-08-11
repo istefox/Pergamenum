@@ -50,7 +50,32 @@ struct PergamenumApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             VaultCommands(vault: vault)
+            LinkCommands(vault: vault)
             ThemeCommands(engine: themeEngine)
+        }
+
+        // After the WindowGroup on purpose: the first scene in the body is the app's
+        // primary one, and declaring Settings first made the app open its preferences
+        // window instead of the vault.
+        Settings {
+            SettingsView()
+                .environment(themeEngine)
+                .environment(vault)
+                .environment(calendar)
+                .themed(by: themeEngine)
+        }
+    }
+}
+
+/// The Inserisci-menu entry for a structural link (SPEC §10, §4.5).
+struct LinkCommands: Commands {
+    let vault: VaultController
+
+    var body: some Commands {
+        CommandMenu("Inserisci") {
+            Button("Nota correlata…") { vault.isAddingRelatedLink = true }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(vault.openNote == nil)
         }
     }
 }
@@ -87,6 +112,9 @@ struct VaultCommands: Commands {
                 .disabled(vault.root == nil)
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }
                 .keyboardShortcut(.space, modifiers: [])
+                .disabled(vault.root == nil)
+            Button("Ricerca globale…") { vault.isShowingGlobalSearch = true }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
                 .disabled(vault.root == nil)
             Button("Vai alla nota…") { vault.isShowingQuickSwitcher = true }
                 .keyboardShortcut("o", modifiers: .command)

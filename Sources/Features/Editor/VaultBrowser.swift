@@ -45,6 +45,12 @@ struct VaultBrowser: View {
         )) {
             NewNoteSheet()
         }
+        .sheet(isPresented: Binding(
+            get: { vault.isAddingRelatedLink },
+            set: { vault.isAddingRelatedLink = $0 }
+        )) {
+            RelatedLinkSheet()
+        }
     }
 
     // MARK: Note list
