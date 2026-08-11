@@ -32,8 +32,8 @@ struct RootView: View {
         /// as its milestone lands.
         var isMockup: Bool {
             switch self {
-            case .vault, .tokens, .workspace, .tasks: false
-            case .editor, .today: true
+            case .vault, .tokens, .workspace, .tasks, .today: false
+            case .editor: true
             }
         }
 
@@ -102,8 +102,17 @@ struct RootView: View {
         case .tokens: DesignGalleryView()
         case .editor: EditorMockup()
         case .workspace: workspacePane
-        case .today: TodayMockup()
+        case .today: todayPane
         case .tasks: tasksPane
+        }
+    }
+
+    @ViewBuilder
+    private var todayPane: some View {
+        if vault.root == nil {
+            needsVault("La vista Oggi mostra la nota giornaliera del vault e la timeline.")
+        } else {
+            TodayView()
         }
     }
 

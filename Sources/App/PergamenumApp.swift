@@ -4,12 +4,14 @@ import SwiftUI
 struct PergamenumApp: App {
     @State private var themeEngine = ThemeEngine()
     @State private var vault = VaultController()
+    @State private var calendar = EventKitStore()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(themeEngine)
                 .environment(vault)
+                .environment(calendar)
                 .themed(by: themeEngine)
         }
         .windowResizability(.contentMinSize)

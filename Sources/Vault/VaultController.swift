@@ -227,6 +227,12 @@ final class VaultController {
         openNote?.externalChangePending = nil
     }
 
+    /// Records a problem for the UI to show without interrupting what the user is
+    /// doing. Used where the failure is recoverable by retrying.
+    func recordProblem(_ message: String) {
+        problems.append(message)
+    }
+
     // MARK: Tasks
 
     /// Completes, reopens, cancels or reschedules a task by rewriting its source line.
