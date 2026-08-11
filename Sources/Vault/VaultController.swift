@@ -19,6 +19,14 @@ final class VaultController {
 
     /// The note currently open in the editor.
     private(set) var openNote: OpenNote?
+    /// Set by the New Note command; the browser shows the naming sheet when true.
+    var isCreatingNote = false
+    /// Set by the quick switcher command.
+    ///
+    /// Both live here rather than as view state because their shortcuts are menu
+    /// commands: `onKeyPress` only fires when the view holds focus, so Cmd+O did
+    /// nothing while the cursor was in the editor, which is exactly when it is wanted.
+    var isShowingQuickSwitcher = false
 
     /// Hashes the app itself wrote, keyed by path. A watcher event whose file hashes
     /// to the recorded value is the app's own write coming back and is ignored.
@@ -102,6 +110,84 @@ final class VaultController {
 
     func updateOpenNoteText(_ text: String) {
         openNote?.text = text
+    }
+
+    enum CreationError: Error, CustomStringConvertible {
+        case invalidTitle([NoteName.Violation])
+        case alreadyExists(String)
+
+        var description: String {
+            switch self {
+            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
+            case .alreadyExists(let path): "esiste già: \(path)"
+            }
+        }
+    }
+
+    /// Creates a note with a conformant frontmatter block already in place.
+    ///
+    /// The generated block is the closed four-key schema in fixed order, with the tag
+    /// set the note's category requires (SPEC §4.3, tag.md 5.1): a daily note gets
+    /// `type-note` alone, an inbox capture adds `status-inbox`, and an ordinary note
+    /// gets `type-note` plus whatever topic the caller supplies.
+    ///
+    /// Refuses rather than sanitising silently: a title the rules reject is a decision
+    /// for the user, and quietly renaming their note is how a vault fills with titles
+    /// nobody chose.
+    @discardableResult
+    func createNote(
+        title: String,
+        in folder: String = "",
+        date: CalendarDate,
+        category: NoteCategory = .note,
+        topics: [Tag] = []
+    ) throws -> String {
+        guard let store else { throw CreationError.alreadyExists("nessun vault aperto") }
+
+        let violations = category == .daily
+            ? NoteName.validateDaily(title)
+            : NoteName.validate(title)
+        guard violations.isEmpty else { throw CreationError.invalidTitle(violations) }
+
+        let fileName = NoteName.fileName(for: title)
+        let relativePath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+        guard !FileManager.default.fileExists(
+            atPath: store.url(for: relativePath).path(percentEncoded: false)
+        ) else { throw CreationError.alreadyExists(relativePath) }
+
+        var frontmatter = Frontmatter.empty
+        frontmatter.date = date
+        frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")] + topics + (
+            category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
+        ))
+
+        let text = FrontmatterSerializer.render(frontmatter) + "\n"
+        let hash = try store.write(text, to: relativePath)
+        selfWrittenHashes[relativePath] = hash
+
+        index.update(try store.read(relativePath).record, at: relativePath)
+        openNote(at: relativePath)
+        return relativePath
+    }
+
+    /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
+    @discardableResult
+    func openDailyNote(for date: CalendarDate) throws -> String {
+        guard let store else { throw CreationError.alreadyExists("nessun vault aperto") }
+        let relativePath = settings.dailyFolder.isEmpty
+            ? NoteName.dailyFileName(for: date)
+            : "\(settings.dailyFolder)/\(NoteName.dailyFileName(for: date))"
+
+        if FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false)) {
+            openNote(at: relativePath)
+            return relativePath
+        }
+        return try createNote(
+            title: date.compactForm,
+            in: settings.dailyFolder,
+            date: date,
+            category: .daily
+        )
     }
 
     /// Writes the open note. Files first, index second: a crash between the two must

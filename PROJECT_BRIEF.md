@@ -91,7 +91,13 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
-- 2026-08-11: **M0 code complete, awaiting mockup approval.** 28 colour tokens, 5
+- 2026-08-11: **M1 code complete, awaiting acceptance on the real Labs vault.** Vault
+  opening, note list with filter, quick switcher, markdown editor with applied styling
+  and wikilink completion, conformant frontmatter generation, conformance panel,
+  backlinks, unresolved links, and an in-memory index. Verified on a synthetic vault:
+  browsing left every file byte-identical. 103 tests.
+- 2026-08-11: **M0 accepted** by Stefano; ochre accent confirmed.
+- 2026-08-11: M0 code complete. 28 colour tokens, 5
   type styles, spacing, radius and shadow tokens in two complete DTCG files; a
   ThemeEngine that resolves them totally and layers vault themes on top; the gallery
   and the four screen mockups. 17 tests green. M1 does not start until the mockups

@@ -359,3 +359,99 @@ private func makeRecord(
     #expect(controller.problems.contains { $0.contains("could not be read") })
     controller.close()
 }
+
+// MARK: - Note creation
+
+@MainActor
+@Test func createsANoteWithAConformantFrontmatter() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController()
+    await controller.open(vault.root)
+
+    let path = try controller.createNote(
+        title: "Nota nuova",
+        in: "01 Progetti",
+        date: CalendarDate(iso: "2026-08-11")!,
+        topics: [Tag("topic-acoustics")!]
+    )
+    #expect(path == "01 Progetti/Nota nuova.md")
+
+    // Written out escape by escape: a multiline literal hides whether the blank line
+    // separating the block from the body is actually there.
+    let text = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)
+    #expect(text == "---\ndate: 2026-08-11\ntags:\n  - type-note\n  - topic-acoustics\n---\n\n")
+
+    // The note it just wrote must satisfy the rules it will later be judged by.
+    let note = try #require(controller.openNote)
+    #expect(controller.violations(for: note).isEmpty, "\(controller.violations(for: note))")
+    controller.close()
+}
+
+@MainActor
+@Test func createsAnInboxCaptureWithStatusInbox() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController()
+    await controller.open(vault.root)
+
+    let path = try controller.createNote(
+        title: "Capture", date: CalendarDate(iso: "2026-08-11")!, category: .capture
+    )
+    let text = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)
+    // tag.md 5.1: a capture carries type-note and status-inbox, and needs no topic.
+    #expect(text.contains("  - type-note"))
+    #expect(text.contains("  - status-inbox"))
+    controller.close()
+}
+
+@MainActor
+@Test func refusesToCreateANoteWithANonConformantTitle() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController()
+    await controller.open(vault.root)
+
+    // Sanitising silently is how a vault fills with titles nobody chose.
+    #expect(throws: VaultController.CreationError.self) {
+        try controller.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
+    }
+    #expect(throws: VaultController.CreationError.self) {
+        try controller.createNote(title: "Relazione v2", date: CalendarDate(iso: "2026-08-11")!)
+    }
+    controller.close()
+}
+
+@MainActor
+@Test func refusesToOverwriteAnExistingNote() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(sampleNote, to: "Esistente.md")
+    let controller = VaultController()
+    await controller.open(vault.root)
+
+    #expect(throws: VaultController.CreationError.self) {
+        try controller.createNote(title: "Esistente", date: CalendarDate(iso: "2026-08-11")!)
+    }
+    // The original is untouched.
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Esistente.md"), encoding: .utf8)
+    #expect(onDisk == sampleNote)
+    controller.close()
+}
+
+@MainActor
+@Test func opensOrCreatesTheDailyNoteInTheConfiguredFolder() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController()
+    await controller.open(vault.root)
+
+    let date = CalendarDate(iso: "2026-08-11")!
+    let path = try controller.openDailyNote(for: date)
+    // naming.md 4.6: the compact form, never the hyphenated one.
+    #expect(path == "Calendar/20260811.md")
+
+    let text = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)
+    #expect(text.contains("  - type-note"))
+    #expect(!text.contains("topic-"))
+
+    // Calling again opens the same note rather than failing or making a second one.
+    #expect(try controller.openDailyNote(for: date) == path)
+    #expect(controller.index.count == 1)
+    controller.close()
+}

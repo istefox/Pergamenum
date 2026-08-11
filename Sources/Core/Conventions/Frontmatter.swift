@@ -89,6 +89,20 @@ struct CalendarDate: Equatable, Hashable, Sendable, Comparable, CustomStringConv
         self.init(year: year, month: month, day: day)
     }
 
+    /// The calendar date an instant falls on, in a given time zone.
+    ///
+    /// The calendar is a parameter rather than `Calendar.current` at the call site so
+    /// that "today" is computed once, explicitly, instead of each caller silently
+    /// picking up whatever locale the app happens to run under.
+    init(_ date: Date, in calendar: Calendar = .current) {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        year = components.year ?? 1
+        month = components.month ?? 1
+        day = components.day ?? 1
+    }
+
+    static var today: CalendarDate { CalendarDate(Date()) }
+
     static func < (lhs: CalendarDate, rhs: CalendarDate) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }

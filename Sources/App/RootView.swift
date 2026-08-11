@@ -11,12 +11,14 @@ struct RootView: View {
     /// Optional, which is the shape a macOS sidebar `List` expects: with a
     /// non-optional binding SwiftUI writes the focused row back over the initial
     /// value, so the window opened on an arbitrary pane.
-    @State private var selectedPane: Pane? = .tokens
-    private var pane: Pane { selectedPane ?? .tokens }
+    @Environment(VaultController.self) private var vault
+    @State private var selectedPane: Pane? = .vault
+    private var pane: Pane { selectedPane ?? .vault }
 
     /// Named `Pane` rather than `Section` so it does not shadow `SwiftUI.Section`
     /// inside this file's view builders.
     enum Pane: String, CaseIterable, Identifiable, Hashable {
+        case vault
         case tokens
         case editor
         case workspace
@@ -25,8 +27,19 @@ struct RootView: View {
 
         var id: String { rawValue }
 
+        /// Panes still showing a mockup rather than the real feature. They stay in the
+        /// sidebar as the reference the milestone is built against, and each one leaves
+        /// as its milestone lands.
+        var isMockup: Bool {
+            switch self {
+            case .vault, .tokens: false
+            case .editor, .workspace, .today, .tasks: true
+            }
+        }
+
         var title: String {
             switch self {
+            case .vault: "Vault"
             case .tokens: "Design system"
             case .editor: "Editor"
             case .workspace: "Workspace"
@@ -37,6 +50,7 @@ struct RootView: View {
 
         var symbol: String {
             switch self {
+            case .vault: "books.vertical"
             case .tokens: "paintpalette"
             case .editor: "doc.text"
             case .workspace: "square.on.square"
@@ -54,7 +68,9 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.color(.backgroundSecondary))
         }
-        .frame(minWidth: 1000, minHeight: 680)
+        // Wide enough for the vault pane's own three columns beside this sidebar:
+        // below this the outer sidebar gets squeezed into an unreadable strip.
+        .frame(minWidth: 1180, minHeight: 700)
     }
 
     /// Explicit `ForEach` plus `.tag`, rather than the data-driven `List` initialiser:
@@ -63,8 +79,14 @@ struct RootView: View {
     private var sidebar: some View {
         List(selection: $selectedPane) {
             ForEach(Pane.allCases) { item in
-                Label(item.title, systemImage: item.symbol)
-                    .tag(item)
+                HStack {
+                    Label(item.title, systemImage: item.symbol)
+                    if item.isMockup {
+                        Spacer()
+                        Text("mockup").themedText(.caption, color: .textTertiary)
+                    }
+                }
+                .tag(item)
             }
         }
         .scrollContentBackground(.hidden)
@@ -76,11 +98,34 @@ struct RootView: View {
     @ViewBuilder
     private var detail: some View {
         switch pane {
+        case .vault: vaultPane
         case .tokens: DesignGalleryView()
         case .editor: EditorMockup()
         case .workspace: WorkspaceMockup()
         case .today: TodayMockup()
         case .tasks: TasksMockup()
+        }
+    }
+
+    @ViewBuilder
+    private var vaultPane: some View {
+        if vault.root == nil {
+            VStack(spacing: theme.spacing(.m)) {
+                Image(systemName: "books.vertical")
+                    .font(.system(size: 40))
+                    .foregroundStyle(theme.color(.textTertiary))
+                Text("Nessun vault aperto").themedText(.title)
+                Text("Scegli la cartella del vault. Pergamenum non la modifica finché non salvi una nota.")
+                    .themedText(.body, color: .textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                Button("Apri vault…") { VaultOpenPanel.chooseVault(into: vault) }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .task { VaultOpenPanel.reopenLastVault(into: vault) }
+        } else {
+            VaultBrowser()
         }
     }
 
