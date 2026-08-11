@@ -31,7 +31,12 @@ struct PergamenumApp: App {
     @State private var calendar = EventKitStore()
 
     var body: some Scene {
-        WindowGroup {
+        // `Window`, not `WindowGroup`: on macOS a `pergamenum://` link with no window
+        // willing to claim it makes the group open a NEW one, so every link from
+        // Obsidian or DEVONthink left another empty window behind. A single-window
+        // scene cannot do that, and this app has never had a reason for a second
+        // window (SPEC §9, §10).
+        Window("Pergamenum", id: "main") {
             RootView()
                 .environment(themeEngine)
                 .environment(vault)

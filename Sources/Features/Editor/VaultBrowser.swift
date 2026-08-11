@@ -240,6 +240,7 @@ struct VaultBrowser: View {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     conformance(note)
                     backlinks(note)
+                    LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
                     unresolved
                 }
                 .padding(theme.spacing(.m))

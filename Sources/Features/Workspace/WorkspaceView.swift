@@ -39,7 +39,7 @@ struct WorkspaceView: View {
                 toolbar
                 Divider()
                 board
-                if isShowingTray, !workspace.contents.unplaced.isEmpty {
+                if isShowingTray {
                     Divider()
                     tray
                 }
@@ -833,6 +833,32 @@ struct WorkspaceView: View {
     // MARK: New items tray
 
     private var tray: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            if !workspace.contents.unplaced.isEmpty {
+                newItems
+            }
+            // SPEC §7.2: the board shows the tasks that link to it, exactly as a note
+            // does. The link target is the `.canvas` file name, which is how a
+            // wikilink names a board.
+            LinkedTasksPanel(
+                title: boardFileName,
+                emptyText: "nessun task linka questa board"
+            )
+            Spacer()
+        }
+        .padding(theme.spacing(.s))
+        .frame(width: 200)
+        .background(theme.color(.backgroundSecondary))
+    }
+
+    /// The board's own file name, as a wikilink would write it.
+    private var boardFileName: String {
+        guard let root = vault.root else { return "" }
+        return (CanvasStore(root: root).boardPath(forFolder: workspace.folder) as NSString)
+            .lastPathComponent
+    }
+
+    private var newItems: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text("NUOVI ELEMENTI").themedText(.caption, color: .textTertiary)
             Text("Trascina o clicca per posare sulla board.")
@@ -858,11 +884,7 @@ struct WorkspaceView: View {
                     }
                 }
             }
-            Spacer()
         }
-        .padding(theme.spacing(.s))
-        .frame(width: 200)
-        .background(theme.color(.backgroundSecondary))
     }
 }
 
