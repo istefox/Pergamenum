@@ -114,6 +114,12 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'pl
   without a stated reason.
 - Never edit the `.xcodeproj` or `.xcworkspace` - they are generated. Change
   `Project.swift` and run `tuist generate`.
+- The pre-commit secret scanner's `assigned-secret` heuristic fires on this codebase's
+  design-token code: it matches the keyword `token` followed by `:` or `=` and 16 or
+  more identifier characters, which describes ordinary lines like `tokens =
+  collector.tokens`. These are expected false positives, not credentials. Read each
+  one before dismissing it - the rule still catches a real key assigned to a variable
+  named `token`.
 - Build and tests must pass before committing. A change that does not build is not done.
 - Keep commits small and atomic, one logical change each.
 - Never disable or delete a test to make a suite pass.

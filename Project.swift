@@ -44,6 +44,10 @@ let project = Project(
             deploymentTargets: .macOS(deploymentTarget),
             infoPlist: .default,
             sources: ["Tests/**"],
+            // The theme files are bundled into the test target as well: a @testable
+            // import resolves Bundle(for:) to the test bundle, so without this the
+            // completeness test would silently have nothing to check.
+            resources: ["Resources/Themes/**"],
             dependencies: [.target(name: projectName)]
         ),
     ]

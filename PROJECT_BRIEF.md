@@ -88,8 +88,14 @@ Binding order, each yielding a usable app (SPEC §13):
 - 2026-08-11: repository bootstrapped, scaffolding level "standard", first commit
   pushed. Tuist project builds and tests green against the macOS 26 target, with the
   URL scheme and EventKit usage descriptions already declared in the manifest.
-  Specification v2.2 committed. Next step: M0, starting with the ADR and the design
-  token system.
+  Specification v2.2 committed.
+- 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
+  disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **M0 code complete, awaiting mockup approval.** 28 colour tokens, 5
+  type styles, spacing, radius and shadow tokens in two complete DTCG files; a
+  ThemeEngine that resolves them totally and layers vault themes on top; the gallery
+  and the four screen mockups. 17 tests green. M1 does not start until the mockups
+  are approved (SPEC §13).
 
 ## Open questions
 
