@@ -32,8 +32,8 @@ struct RootView: View {
         /// as its milestone lands.
         var isMockup: Bool {
             switch self {
-            case .vault, .tokens: false
-            case .editor, .workspace, .today, .tasks: true
+            case .vault, .tokens, .workspace: false
+            case .editor, .today, .tasks: true
             }
         }
 
@@ -101,10 +101,34 @@ struct RootView: View {
         case .vault: vaultPane
         case .tokens: DesignGalleryView()
         case .editor: EditorMockup()
-        case .workspace: WorkspaceMockup()
+        case .workspace: workspacePane
         case .today: TodayMockup()
         case .tasks: TasksMockup()
         }
+    }
+
+    @ViewBuilder
+    private var workspacePane: some View {
+        if vault.root == nil {
+            needsVault("Il Workspace è una vista spaziale delle cartelle del vault.")
+        } else {
+            WorkspaceView()
+        }
+    }
+
+    private func needsVault(_ explanation: String) -> some View {
+        VStack(spacing: theme.spacing(.m)) {
+            Image(systemName: "books.vertical")
+                .font(.system(size: 40))
+                .foregroundStyle(theme.color(.textTertiary))
+            Text("Nessun vault aperto").themedText(.title)
+            Text(explanation)
+                .themedText(.body, color: .textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button("Apri vault…") { VaultOpenPanel.chooseVault(into: vault) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
