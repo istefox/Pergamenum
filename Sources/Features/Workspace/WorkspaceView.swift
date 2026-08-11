@@ -9,6 +9,7 @@ struct WorkspaceView: View {
     @State private var dragStart: [String: CGPoint] = [:]
     @State private var newItemDraft: NewItemDraft?
     @State private var isShowingTray = true
+    @State private var isShowingQuickLook = false
 
     /// What the user is about to create, once they have typed its name or URL.
     private struct NewItemDraft: Identifiable {
@@ -34,6 +35,12 @@ struct WorkspaceView: View {
             }
         }
         .background(theme.color(.backgroundPrimary))
+        .quickLook(urls: workspace.selectedFileURLs, isPresented: $isShowingQuickLook)
+        .onChange(of: vault.isShowingQuickLook) { _, requested in
+            guard requested else { return }
+            isShowingQuickLook = true
+            vault.isShowingQuickLook = false
+        }
         .onAppear {
             if let root = vault.root { workspace.attach(to: CanvasStore(root: root)) }
         }
@@ -74,6 +81,16 @@ struct WorkspaceView: View {
                 systemImage: workspace.hasUnsavedChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
             )
             .themedText(.caption, color: .textSecondary)
+
+            Button {
+                isShowingQuickLook = true
+            } label: {
+                Label("Anteprima", systemImage: "eye")
+            }
+            .buttonStyle(.plain)
+            .themedText(.caption, color: .textSecondary)
+            .disabled(workspace.selectedFileURLs.isEmpty)
+            .help("Anteprima rapida del file selezionato (barra spaziatrice)")
 
             Button {
                 isShowingTray.toggle()
@@ -299,7 +316,11 @@ struct WorkspaceView: View {
     private func nodeView(_ node: CanvasNode) -> some View {
         let isSelected = workspace.selection.contains(node.id)
 
-        NodeCard(node: node, subfolder: workspace.subfolder(for: node))
+        // Gestures are attached BEFORE `.position`, which is load-bearing: `.position`
+        // expands its result to fill the parent, so anything added after it responds
+        // across the whole board instead of over the card. With them after, no card
+        // could be selected at all.
+        NodeCard(node: node, subfolder: workspace.subfolder(for: node), workspace: workspace)
             .frame(width: node.width, height: node.height)
             .overlay(
                 RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
@@ -308,7 +329,10 @@ struct WorkspaceView: View {
                         lineWidth: 2
                     )
             )
-            .position(x: node.x + node.width / 2, y: node.y + node.height / 2)
+            .overlay(alignment: .bottomTrailing) {
+                if isSelected { resizeHandle(node) }
+            }
+            .contentShape(Rectangle())
             .onTapGesture(count: 2) { open(node) }
             .onTapGesture { workspace.selection = [node.id] }
             .gesture(
@@ -327,9 +351,7 @@ struct WorkspaceView: View {
                     }
                     .onEnded { _ in dragStart[node.id] = nil }
             )
-            .overlay(alignment: .bottomTrailing) {
-                if isSelected { resizeHandle(node) }
-            }
+            .position(x: node.x + node.width / 2, y: node.y + node.height / 2)
     }
 
     private func resizeHandle(_ node: CanvasNode) -> some View {
@@ -480,6 +502,7 @@ private struct NodeCard: View {
     @Environment(\.theme) private var theme
     let node: CanvasNode
     let subfolder: String?
+    let workspace: WorkspaceController
 
     var body: some View {
         switch node.kind {
@@ -534,30 +557,94 @@ private struct NodeCard: View {
         }
     }
 
+    @ViewBuilder
     private func fileCard(_ path: String) -> some View {
-        let name = (path as NSString).lastPathComponent
-        let isFolder = subfolder != nil
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: isFolder ? "folder.fill" : symbol(for: path))
-                    .foregroundStyle(theme.color(.accentPrimary))
-                Text(isFolder ? name : (name as NSString).deletingPathExtension)
-                    .themedText(.body)
-                    .lineLimit(2)
-            }
-            Text(isFolder ? "cartella" : (path as NSString).pathExtension.uppercased())
-                .themedText(.caption, color: .textTertiary)
-            Spacer(minLength: 0)
+        if subfolder != nil {
+            folderCard(path)
+        } else if (path as NSString).pathExtension.lowercased() == "eml" {
+            emailCard(path)
+        } else {
+            previewCard(path)
         }
-        .padding(theme.spacing(.s))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(theme.color(.surfaceCard))
-        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
-                .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
-        )
-        .themedShadow(.card)
+    }
+
+    private func folderCard(_ path: String) -> some View {
+        cardChrome {
+            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+                HStack(spacing: theme.spacing(.xs)) {
+                    Image(systemName: "folder.fill").foregroundStyle(theme.color(.accentPrimary))
+                    Text((path as NSString).lastPathComponent).themedText(.body).lineLimit(2)
+                }
+                Text("cartella").themedText(.caption, color: .textTertiary)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// A PDF, an image or any other file, shown with its Quick Look preview.
+    ///
+    /// SPEC §6.5 makes the PDF card a primary requirement: the first page rendered by
+    /// PDFKit, cached, and regenerated at the new resolution when the card is resized.
+    private func previewCard(_ path: String) -> some View {
+        cardChrome {
+            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+                ThumbnailImage(
+                    workspace: workspace,
+                    relativePath: path,
+                    width: node.width,
+                    fallbackSymbol: symbol(for: path)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+
+                HStack {
+                    Text((path as NSString).lastPathComponent)
+                        .themedText(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Text((path as NSString).pathExtension.uppercased())
+                        .themedText(.caption, color: .textTertiary)
+                }
+            }
+        }
+    }
+
+    /// From / Subject / Date read from the header block, with no body rendering
+    /// (SPEC §6.5 and §14).
+    private func emailCard(_ path: String) -> some View {
+        let headers = workspace.emailHeaders[path]
+        return cardChrome {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: theme.spacing(.xs)) {
+                    Image(systemName: "envelope").foregroundStyle(theme.color(.accentPrimary))
+                    Text(headers?.from?.displayText ?? (path as NSString).lastPathComponent)
+                        .themedText(.body)
+                        .lineLimit(1)
+                }
+                Text(headers?.subject ?? "—")
+                    .themedText(.caption, color: .textSecondary)
+                    .lineLimit(2)
+                if let date = headers?.date {
+                    Text(date.formatted(date: .abbreviated, time: .shortened))
+                        .themedText(.caption, color: .textTertiary)
+                }
+                Spacer(minLength: 0)
+            }
+            .task(id: path) { workspace.loadEmailHeaders(for: path) }
+        }
+    }
+
+    private func cardChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(theme.spacing(.s))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(theme.color(.surfaceCard))
+            .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                    .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
+            )
+            .themedShadow(.card)
     }
 
     private func symbol(for path: String) -> String {
@@ -668,5 +755,43 @@ private struct NewCanvasItemSheet: View {
         .padding(theme.spacing(.l))
         .frame(width: 460)
         .background(theme.color(.surfaceCard))
+    }
+}
+
+/// Renders a file's thumbnail, falling back to its type icon while the render runs
+/// or when the file has no preview at all.
+private struct ThumbnailImage: View {
+    @Environment(\.theme) private var theme
+    let workspace: WorkspaceController
+    let relativePath: String
+    let width: CGFloat
+    let fallbackSymbol: String
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(theme.color(.backgroundTertiary))
+                    .overlay(
+                        Image(systemName: fallbackSymbol)
+                            .foregroundStyle(theme.color(.textTertiary))
+                    )
+            }
+        }
+        // Keyed on the size bucket rather than the raw width, so dragging a resize
+        // handle does not start a render per frame (SPEC §6.5 asks for a regenerated
+        // thumbnail at the end of a resize, not during it).
+        .task(id: "\(relativePath)@\(ThumbnailStore.bucket(for: width))") {
+            guard let store = workspace.thumbnails else { return }
+            let task = await store.thumbnail(for: relativePath, width: width)
+            let rendered = await task.value
+            if !Task.isCancelled { image = rendered }
+        }
     }
 }

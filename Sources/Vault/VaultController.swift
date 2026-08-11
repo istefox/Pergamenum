@@ -21,6 +21,9 @@ final class VaultController {
     private(set) var openNote: OpenNote?
     /// Set by the New Note command; the browser shows the naming sheet when true.
     var isCreatingNote = false
+    /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
+    /// watches it so the panel can be opened from the menu as well as the spacebar.
+    var isShowingQuickLook = false
     /// Set by the quick switcher command.
     ///
     /// Both live here rather than as view state because their shortcuts are menu

@@ -32,6 +32,9 @@ struct VaultCommands: Commands {
             Button("Oggi") { try? vault.openDailyNote(for: .today) }
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(vault.root == nil)
+            Button("Anteprima rapida") { vault.isShowingQuickLook = true }
+                .keyboardShortcut(.space, modifiers: [])
+                .disabled(vault.root == nil)
             Button("Vai alla nota…") { vault.isShowingQuickSwitcher = true }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(vault.root == nil)

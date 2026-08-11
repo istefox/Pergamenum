@@ -89,6 +89,11 @@ final class WorkspaceController {
     private(set) var hasUnsavedChanges = false
 
     private var store: CanvasStore?
+    /// Renders and caches card previews. Lives here rather than in the view so a
+    /// board reopened after navigation reuses the same in-memory renders.
+    private(set) var thumbnails: ThumbnailStore?
+    /// Header lines for `.eml` cards, keyed by vault path. Parsed once per file.
+    private(set) var emailHeaders: [String: EmailHeaders] = [:]
     private var saveTask: Task<Void, Never>?
     /// Autosave delay of SPEC §6.1.
     private let autosaveDelay = Duration.seconds(1)
@@ -101,6 +106,7 @@ final class WorkspaceController {
 
     func attach(to store: CanvasStore) {
         self.store = store
+        thumbnails = ThumbnailStore(root: store.root)
         open(folder: "")
     }
 
@@ -108,6 +114,8 @@ final class WorkspaceController {
         saveTask?.cancel()
         saveTask = nil
         store = nil
+        thumbnails = nil
+        emailHeaders = [:]
         document = .empty
         contents = .init(subfolders: [], unplaced: [])
         folder = ""
@@ -279,6 +287,41 @@ final class WorkspaceController {
         let id = placeFile(relativePath, at: point)
         refreshContents()
         return id
+    }
+
+    /// Absolute URL of the file a node points at, when it points at one.
+    func fileURL(for node: CanvasNode) -> URL? {
+        guard let store, case .file(let path, _) = node.kind else { return nil }
+        return store.root.appending(path: path, directoryHint: .notDirectory)
+    }
+
+    /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).
+    var selectedFileURLs: [URL] {
+        document.nodes
+            .filter { selection.contains($0.id) }
+            .compactMap { node in
+                // A folder card previews as a folder, which Quick Look renders as an
+                // icon; the file cards are what the panel is useful for.
+                subfolder(for: node) == nil ? fileURL(for: node) : nil
+            }
+            .filter { FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }
+    }
+
+    /// Reads and memoises the headers of an `.eml` card.
+    ///
+    /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
+    /// cheap even for a message with a large attachment.
+    func loadEmailHeaders(for relativePath: String) {
+        guard let store, emailHeaders[relativePath] == nil else { return }
+        let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+
+        // Latin-1 as the fallback: an .eml whose headers are not UTF-8 still has
+        // readable ASCII field names, and refusing the file would leave the card blank.
+        let text = String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
+        emailHeaders[relativePath] = EmailHeaderParser.parse(text)
     }
 
     /// The folder a card points at, when it points at one.

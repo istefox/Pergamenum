@@ -91,6 +91,15 @@ Binding order, each yielding a usable app (SPEC §13):
   Specification v2.2 committed.
 - 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
   disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **M3 code complete, mouse interaction unverified.** PDF thumbnails
+  through PDFKit with a bucketed disk cache, `.eml` header cards with RFC 2047
+  decoding, URI cards per scheme, and Quick Look on the spacebar and from the Vista
+  menu. Card rendering verified on a real PDF and a real message; selecting, dragging
+  and the preview panel need a human at the trackpad - synthetic clicks do not reach
+  the window in this environment.
+- 2026-08-11: **M2 complete.** JSON Canvas 1.0 codec that round-trips an Obsidian
+  canvas property for property, board hierarchy mapped onto real folders, the ten
+  available tools of §6.4, pan, zoom, resize and connectors.
 - 2026-08-11: **M1 code complete, awaiting acceptance on the real Labs vault.** Vault
   opening, note list with filter, quick switcher, markdown editor with applied styling
   and wikilink completion, conformant frontmatter generation, conformance panel,
