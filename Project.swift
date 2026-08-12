@@ -17,6 +17,10 @@ let baseSettings: SettingsDictionary = [
     // cost an afternoon to recognise, twice mistaken for a broken read.
     "CODE_SIGN_IDENTITY": "Apple Development",
     "SWIFT_VERSION": "6.0",
+    // Named explicitly rather than left to the default: without it the asset catalog
+    // compiles the set and nothing points the bundle at it, so the app ships with the
+    // generic document icon and the set looks like it did not work.
+    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
 ]
 
 let project = Project(
@@ -59,6 +63,21 @@ let project = Project(
             // without this the completeness tests would silently have nothing to check.
             resources: ["Resources/Themes/**", "Resources/vocabolari.json"],
             dependencies: [.target(name: projectName)]
+        ),
+        // The board's pointer behaviour cannot be reached from the unit suite: what
+        // broke in SPEC §6.3 and §6.5 was hit testing and gesture priority, and both
+        // exist only once SwiftUI has laid the views out and a real drag arrives.
+        // This target drives the running app and reads the result back off disk.
+        .target(
+            name: "\(projectName)UITests",
+            destinations: .macOS,
+            product: .uiTests,
+            bundleId: "\(bundleId).uitests",
+            deploymentTargets: .macOS(deploymentTarget),
+            infoPlist: .default,
+            sources: ["UITests/**"],
+            dependencies: [.target(name: projectName)],
+            settings: .settings(base: baseSettings)
         ),
     ]
 )

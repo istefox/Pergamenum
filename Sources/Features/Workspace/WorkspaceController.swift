@@ -284,6 +284,13 @@ final class WorkspaceController {
     var resizeOriginalFrame: CGRect = .zero
     var resizedFrame: CGRect?
 
+    /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it
+    /// started from and how far the pointer has travelled from there, in board units.
+    ///
+    /// Transient like the drag and the resize, and for the same reason: an edge is
+    /// written once, on release, not on every frame of the gesture.
+    var arrowSourceID: String?
+    var arrowTranslation: CGSize = .zero
 
     func resize(nodeID: String, to size: CGSize) {
         // A node with zero or negative extent cannot be grabbed again, so the minimum

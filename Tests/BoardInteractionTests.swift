@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 @testable import Pergamenum
 
@@ -281,4 +282,77 @@ private func document(_ ids: [String]) -> CanvasDocument {
     // Undoing on one board must never reach back into another one's changes.
     #expect(!history.canUndo)
     #expect(!history.canRedo)
+}
+
+// MARK: - Grip sizing (SPEC §6.3)
+
+@Test func gripsKeepTheirSizeOnScreenWhateverTheZoom() {
+    // The grips are drawn inside the board's scaleEffect, so their size in board
+    // units has to grow as the board shrinks. Fixed board units are what made a
+    // corner unhittable when zoomed out: 9 units at 25% is 2 points on screen.
+    let atFull = BoardGeometry.boardUnits(BoardGeometry.handleTargetScreenSize, at: 1)
+    let atQuarter = BoardGeometry.boardUnits(BoardGeometry.handleTargetScreenSize, at: 0.25)
+    #expect(atFull == BoardGeometry.handleTargetScreenSize)
+    #expect(atQuarter == atFull * 4)
+}
+
+@Test func theGripTargetIsLargerThanTheGripItDraws() {
+    // The difference is invisible and is the entire reason a corner can be grabbed.
+    #expect(BoardGeometry.handleTargetScreenSize > BoardGeometry.handleScreenSize)
+}
+
+@Test func aZoomOfZeroDoesNotProduceAnInfiniteGrip() {
+    #expect(BoardGeometry.boardUnits(10, at: 0).isFinite)
+}
+
+// MARK: - The card under a point (SPEC §6.4, tool 11)
+
+@Test func anArrowLandsOnTheCardRatherThanTheGroupAroundIt() {
+    let nodes = [
+        node("group", 0, 0, 400, 400, kind: .group(label: "contenitore")),
+        node("card", 100, 100, 100, 100),
+    ]
+    #expect(BoardGeometry.nodeID(at: CGPoint(x: 150, y: 150), among: nodes) == "card")
+    // Inside the group but on none of the cards it holds: then the group itself.
+    #expect(BoardGeometry.nodeID(at: CGPoint(x: 20, y: 20), among: nodes) == "group")
+}
+
+@Test func anArrowIgnoresTheCardItStartedFrom() {
+    let nodes = [node("a", 0, 0), node("b", 20, 20)]
+    #expect(BoardGeometry.nodeID(at: CGPoint(x: 50, y: 50), among: nodes, excluding: "b") == "a")
+    #expect(BoardGeometry.nodeID(at: CGPoint(x: 500, y: 500), among: nodes) == nil)
+}
+
+@Test func theTopmostCardTakesTheArrow() {
+    let nodes = [node("under", 0, 0), node("over", 0, 0)]
+    #expect(BoardGeometry.nodeID(at: CGPoint(x: 50, y: 50), among: nodes) == "over")
+}
+
+// MARK: - A group answers on its frame only (SPEC §6.5)
+
+@Test func aGroupIsHollowToThePointer() {
+    let path = GroupFrameShape(band: 16).path(in: card(0, 0, 400, 300))
+    #expect(path.contains(CGPoint(x: 200, y: 4)))
+    #expect(path.contains(CGPoint(x: 200, y: 296)))
+    #expect(path.contains(CGPoint(x: 396, y: 40)))
+    // The middle belongs to whatever is inside the group, not to the group.
+    #expect(!path.contains(CGPoint(x: 200, y: 100)))
+    #expect(!path.contains(CGPoint(x: 60, y: 60)))
+}
+
+@Test func aGroupAnswersOnItsFrameAtEveryHeightIncludingTheMiddleOne() {
+    // Exactly half the height is where a rounded rectangle's path starts, and an
+    // even-odd hit test whose ray runs through that vertex reverses itself: the band
+    // read as through and the middle read as solid. Four bands have no such vertex.
+    let path = GroupFrameShape(band: 16).path(in: card(0, 0, 400, 300))
+    #expect(path.contains(CGPoint(x: 4, y: 150)))
+    #expect(path.contains(CGPoint(x: 396, y: 150)))
+    #expect(!path.contains(CGPoint(x: 200, y: 150)))
+}
+
+@Test func aGroupTooSmallForAHoleStaysGrabbable() {
+    let path = GroupFrameShape(band: 40).path(in: card(0, 0, 60, 50))
+    // Two 40-wide bands do not fit inside 60: insetting anyway would leave a
+    // negative middle and the group would answer nowhere at all.
+    #expect(path.contains(CGPoint(x: 30, y: 25)))
 }

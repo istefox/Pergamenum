@@ -515,3 +515,79 @@ private struct TemporaryRoot: ~Copyable {
     #expect(controller.document.node(id: id)?.x == 100)
     controller.detach()
 }
+
+// MARK: - The Freccia tool (SPEC §6.4, tool 11)
+
+@MainActor
+@Test func theArrowToolConnectsTheCardItIsReleasedOn() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let a = controller.addStickyNote("a", at: .zero)
+    let b = controller.addStickyNote("b", at: CGPoint(x: 400, y: 0))
+    let source = try #require(controller.document.node(id: a))
+    let target = try #require(controller.document.node(id: b))
+
+    controller.tool = .arrow
+    controller.beginArrow(from: a)
+    controller.updateArrow(translation: CGSize(
+        width: target.frame.midX - source.frame.midX,
+        height: target.frame.midY - source.frame.midY
+    ))
+    #expect(controller.endArrow() != nil)
+    #expect(controller.document.edges.count == 1)
+    #expect(controller.document.edges.first?.fromNode == a)
+    #expect(controller.document.edges.first?.toNode == b)
+    // One-shot, like every other tool: back to Seleziona once the arrow is drawn.
+    #expect(controller.tool == .select)
+    controller.detach()
+}
+
+@MainActor
+@Test func anArrowReleasedOverEmptyBoardDrawsNothing() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let a = controller.addStickyNote("a", at: .zero)
+    controller.tool = .arrow
+    controller.beginArrow(from: a)
+    controller.updateArrow(translation: CGSize(width: 4000, height: 4000))
+
+    // JSON Canvas has no dangling edge, so an arrow to nowhere is not written.
+    #expect(controller.endArrow() == nil)
+    #expect(controller.document.edges.isEmpty)
+    #expect(controller.arrowSourceID == nil)
+    controller.detach()
+}
+
+@MainActor
+@Test func anArrowInFlightTracksThePointerWithoutTouchingTheDocument() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let a = controller.addStickyNote("a", at: CGPoint(x: 100, y: 100))
+    let source = try #require(controller.document.node(id: a))
+    controller.beginArrow(from: a)
+    controller.updateArrow(translation: CGSize(width: 60, height: 30))
+
+    #expect(controller.arrowEndPoint == CGPoint(x: source.frame.midX + 60, y: source.frame.midY + 30))
+    // Nothing is committed until the gesture ends, the same rule the drag follows.
+    #expect(controller.document.edges.isEmpty)
+    controller.endArrow()
+    controller.detach()
+}
+
+@MainActor
+@Test func anArrowFromACardThatIsGoneNeverStarts() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    controller.beginArrow(from: "inesistente")
+    #expect(controller.arrowSourceID == nil)
+    #expect(controller.arrowEndPoint == nil)
+    controller.detach()
+}

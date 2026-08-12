@@ -60,17 +60,13 @@ extension WorkspaceController {
 
     /// The offset a node should be drawn with while a drag is in flight.
     ///
-    /// In board units, which is what the model uses.
+    /// In board units, which is what the model uses and also what the view wants:
+    /// the card layer is drawn inside the board's `scaleEffect`, so board units are
+    /// converted to screen points for free. A screen-point variant of this existed
+    /// and was applied there too, which scaled the offset twice and left the card
+    /// trailing the pointer at any zoom below 100%.
     func dragOffset(for nodeID: String) -> CGSize {
         draggingIDs.contains(nodeID) ? dragTranslation : .zero
-    }
-
-    /// The same offset in screen points, for the view: the node layer is already
-    /// scaled, so applying board units there would move the card by zoom times too
-    /// little.
-    func dragOffsetInPoints(for nodeID: String) -> CGSize {
-        let offset = dragOffset(for: nodeID)
-        return CGSize(width: offset.width * zoom, height: offset.height * zoom)
     }
 
     /// Pan at the moment the background drag began, held here for the same reason as
@@ -156,5 +152,52 @@ extension WorkspaceController {
     /// The frame a card should be drawn with, accounting for a resize in flight.
     func displayFrame(for node: CanvasNode) -> CGRect {
         node.id == resizingNodeID ? (resizedFrame ?? node.frame) : node.frame
+    }
+
+    // MARK: Arrow
+
+    /// Starts an arrow at a card (SPEC §6.4, tool 11).
+    ///
+    /// Only the source is recorded. The far end is the source's centre plus the
+    /// gesture's translation, which is what lets the whole thing be measured in the
+    /// global space the card drags already use: an absolute pointer position would
+    /// need the board's origin on screen, and the board is inside a `scaleEffect` and
+    /// an `offset` that both move under it.
+    func beginArrow(from nodeID: String) {
+        guard document.node(id: nodeID) != nil else { return }
+        arrowSourceID = nodeID
+        arrowTranslation = .zero
+    }
+
+    func updateArrow(translation: CGSize) {
+        guard arrowSourceID != nil else { return }
+        arrowTranslation = translation
+    }
+
+    /// Where the arrow currently points, in board units, or `nil` when none is being
+    /// drawn. The board draws the rubber band from the source's centre to here.
+    var arrowEndPoint: CGPoint? {
+        guard let sourceID = arrowSourceID, let source = document.node(id: sourceID) else { return nil }
+        return CGPoint(
+            x: source.frame.midX + arrowTranslation.width,
+            y: source.frame.midY + arrowTranslation.height
+        )
+    }
+
+    /// Commits the arrow if it ended on another card, and returns to Seleziona.
+    ///
+    /// Released over nothing, it draws no edge and reports it: an arrow to empty
+    /// board has no second node to attach to, and JSON Canvas has no dangling edge.
+    @discardableResult
+    func endArrow() -> String? {
+        defer {
+            arrowSourceID = nil
+            arrowTranslation = .zero
+            finishToolUse()
+        }
+        guard let sourceID = arrowSourceID, let point = arrowEndPoint,
+              let targetID = BoardGeometry.nodeID(at: point, among: document.nodes, excluding: sourceID)
+        else { return nil }
+        return connect(from: sourceID, to: targetID)
     }
 }

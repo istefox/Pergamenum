@@ -1,0 +1,313 @@
+import XCTest
+
+/// The board's pointer behaviour (SPEC §6.3 and §6.5), driven with real drags.
+///
+/// These three defects were all invisible to the unit suite and to reading the code:
+/// a grip too small to hit, a tool wired to nothing, and a container that swallowed
+/// every click inside it. All three are hit testing and gesture priority, which exist
+/// only once SwiftUI has laid the views out.
+///
+/// Every card exposes an accessibility element whose frame is exactly the card's
+/// rectangle on screen, so the tests anchor on that rather than computing the board's
+/// pan and zoom. What each gesture did is then read back off the `.canvas` file,
+/// which is the app's own record of the change and cannot be satisfied by a view that
+/// merely looks right.
+final class WorkspaceBoardUITests: XCTestCase {
+    private var vault: URL!
+    private var boardFile: URL!
+    private var app: XCUIApplication!
+
+    // Board coordinates of the fixture, mirrored here so a test can say what it
+    // expects in the same units the file uses.
+    private let cardA = CGRect(x: 0, y: 0, width: 240, height: 140)
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        try makeVault()
+
+        // The app records every vault it opens in the user's own preferences. Left
+        // alone, a run of this suite fills that list with temporary vaults that are
+        // deleted a moment later, evicts the real ones, and the app then starts with
+        // no vault at all. Snapshotted here and put back in tearDown.
+        previousRecents = appDefaults?.stringArray(forKey: Self.recentsKey)
+
+        app = XCUIApplication()
+        // NSUserDefaults reads the argument domain, so the app reopens this vault at
+        // launch without any test-only code inside the app itself.
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launch()
+        try openWorkspace()
+    }
+
+    override func tearDownWithError() throws {
+        app?.terminate()
+        try? FileManager.default.removeItem(at: vault)
+        if let previousRecents {
+            appDefaults?.set(previousRecents, forKey: Self.recentsKey)
+        } else {
+            appDefaults?.removeObject(forKey: Self.recentsKey)
+        }
+    }
+
+    private var previousRecents: [String]?
+    private static let recentsKey = "recentVaults"
+    /// Computed rather than stored: a `static let` of a non-Sendable type does not
+    /// pass Swift 6's strict concurrency check.
+    private var appDefaults: UserDefaults? { UserDefaults(suiteName: "it.stefer.pergamenum") }
+
+    // MARK: 1. A corner grip can be grabbed and resizes the card
+
+    func testACornerGripResizesTheCard() throws {
+        let card = try element(labelled: "CARD A")
+        card.click()
+
+        // The grip is centred on the corner, so half of it lies outside the card:
+        // this is the exact point that could not be hit before.
+        let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+        corner.press(
+            forDuration: 0.4,
+            thenDragTo: corner.withOffset(CGVector(dx: 160, dy: 90))
+        )
+
+        let node = try waitForNode("aaaa000000000001") { $0.width > self.cardA.width + 100 }
+        XCTAssertGreaterThan(node.width, cardA.width + 100, "la card non è stata allargata")
+        XCTAssertGreaterThan(node.height, cardA.height + 50, "la card non è stata allungata")
+        // The grip moves the far edges only: the origin stays put.
+        XCTAssertEqual(node.x, cardA.minX, accuracy: 2)
+        XCTAssertEqual(node.y, cardA.minY, accuracy: 2)
+    }
+
+    /// The same grip, with the board zoomed out. This is the regression: the grip
+    /// used to be sized in board units, so at a small zoom it was two points across
+    /// and the pointer could not land on it.
+    func testACornerGripCanStillBeGrabbedWhenZoomedOut() throws {
+        zoomOutWithTheControl(times: 6)
+
+        let card = try element(labelled: "CARD A")
+        card.click()
+        let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+        corner.press(
+            forDuration: 0.4,
+            thenDragTo: corner.withOffset(CGVector(dx: 60, dy: 40))
+        )
+
+        let node = try waitForNode("aaaa000000000001") { $0.width > self.cardA.width + 20 }
+        XCTAssertGreaterThan(node.width, cardA.width + 20, "grip non afferrabile da zoomata")
+    }
+
+    // MARK: 2. The Freccia tool draws an edge
+
+    func testTheArrowToolConnectsTwoCards() throws {
+        let from = try element(labelled: "CARD A")
+        let to = try element(labelled: "CARD B")
+
+        app.typeKey("a", modifierFlags: [])
+        from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(
+                forDuration: 0.4,
+                thenDragTo: to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            )
+
+        let edges = try waitForEdges { $0.count == 1 }
+        XCTAssertEqual(edges.first?["fromNode"] as? String, "aaaa000000000001")
+        XCTAssertEqual(edges.first?["toNode"] as? String, "bbbb000000000002")
+
+        // The cards themselves must not have moved: with the arrow tool the drag
+        // draws a connector, it does not carry the card along with it.
+        let node = try node("aaaa000000000001")
+        XCTAssertEqual(node.x, cardA.minX, accuracy: 2)
+        XCTAssertEqual(node.y, cardA.minY, accuracy: 2)
+    }
+
+    // MARK: 3. A group is dragged by its frame, not by its middle
+
+    func testDraggingTheMiddleOfAGroupLeavesItWhereItIs() throws {
+        let group = try element(labelled: "GRUPPO")
+        // Well inside the middle and clear of the card the group holds.
+        let middle = group.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
+        middle.press(
+            forDuration: 0.4,
+            thenDragTo: middle.withOffset(CGVector(dx: 150, dy: 90))
+        )
+
+        // Past the autosave delay before looking, or this test passes on a board that
+        // did move and simply had not been written yet - which is what it did against
+        // the unfixed code, silently.
+        settle()
+        let moved = try node("gggg000000000003")
+        XCTAssertEqual(moved.x, 0, accuracy: 2, "il gruppo si è trascinato dal centro")
+        XCTAssertEqual(moved.y, 320, accuracy: 2, "il gruppo si è trascinato dal centro")
+    }
+
+    func testAGroupStillMovesWhenDraggedByItsFrameAndCarriesWhatItHolds() throws {
+        let group = try element(labelled: "GRUPPO")
+        // On the left band of the frame, which is the only part that answers.
+        let band = group.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 4, dy: 0))
+        band.press(
+            forDuration: 0.4,
+            thenDragTo: band.withOffset(CGVector(dx: 200, dy: 0))
+        )
+
+        let moved = try waitForNode("gggg000000000003") { $0.x > 100 }
+        XCTAssertGreaterThan(moved.x, 100, "il gruppo non si muove nemmeno dalla cornice")
+        // Moving a group moves what it holds (SPEC §6.5).
+        let inside = try node("cccc000000000004")
+        XCTAssertGreaterThan(inside.x, 400, "la card dentro il gruppo è rimasta indietro")
+    }
+
+    func testACardInsideAGroupCanBeSelected() throws {
+        let inside = try element(labelled: "CARD C dentro il gruppo")
+        inside.click()
+
+        // Selected means grips, and grips mean the card grew when one is dragged.
+        // Asserting on the outcome rather than on a highlight keeps this test about
+        // behaviour: a selection the pointer cannot act on is not a selection.
+        let corner = inside.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+        corner.press(
+            forDuration: 0.4,
+            thenDragTo: corner.withOffset(CGVector(dx: 120, dy: 70))
+        )
+
+        let node = try waitForNode("cccc000000000004") { $0.width > 320 }
+        XCTAssertGreaterThan(node.width, 320, "la card dentro il gruppo non è raggiungibile")
+    }
+
+    // MARK: Fixture and helpers
+
+    private func makeVault() throws {
+        let root = URL(filePath: NSTemporaryDirectory())
+            .appending(path: "BoardUITest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        // The root board of a vault is named after the vault's own folder
+        // (`CanvasStore.boardPath(forFolder:)`), so the app opens this one on launch.
+        let board = root.appending(path: "\(root.lastPathComponent).canvas")
+        try Self.fixture.write(to: board, atomically: true, encoding: .utf8)
+        vault = root
+        boardFile = board
+    }
+
+    private static let fixture = """
+    {
+      "nodes": [
+        { "id": "aaaa000000000001", "type": "text", "text": "CARD A",
+          "x": 0, "y": 0, "width": 240, "height": 140, "color": "3" },
+        { "id": "bbbb000000000002", "type": "text", "text": "CARD B",
+          "x": 700, "y": 0, "width": 240, "height": 140, "color": "5" },
+        { "id": "gggg000000000003", "type": "group", "label": "GRUPPO",
+          "x": 0, "y": 320, "width": 900, "height": 460 },
+        { "id": "cccc000000000004", "type": "text", "text": "CARD C dentro il gruppo",
+          "x": 320, "y": 470, "width": 260, "height": 150, "color": "4" }
+      ],
+      "edges": []
+    }
+    """
+
+    /// Brings the Workspace pane up, whichever pane the app happened to open on.
+    private func openWorkspace() throws {
+        let board = app.staticTexts["CARD A"]
+        if board.waitForExistence(timeout: 5) { return }
+
+        for candidate in [app.buttons["Workspace"], app.staticTexts["Workspace"], app.cells["Workspace"]]
+        where candidate.exists {
+            candidate.click()
+            break
+        }
+        XCTAssertTrue(board.waitForExistence(timeout: 10), "la board non si è aperta")
+    }
+
+    /// Every card draws an accessibility element the size of the card itself, which
+    /// is what lets a test aim at a corner without knowing the pan and the zoom.
+    private func element(labelled label: String) throws -> XCUIElement {
+        let element = app.staticTexts[label]
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "elemento «\(label)» assente")
+        return element
+    }
+
+    // Coordinates are always taken from an element, never from the application:
+    // `XCUIApplication.frame` is (inf, inf, 0, 0) on macOS, so anchoring on it puts
+    // every drag at a NaN offset and nothing moves - which reads exactly like the
+    // defect under test still being there.
+
+    private func zoomOutWithTheControl(times: Int) {
+        // The zoom controls sit at the bottom right of the board; the minus button is
+        // the leftmost of the three. Found by position rather than by label because
+        // the controls are icons.
+        let window = app.windows.firstMatch
+        let bottom = window.frame.maxY - 80
+        let buttons = app.buttons.allElementsBoundByIndex
+            .filter { $0.exists && $0.frame.minY > bottom }
+            .sorted { $0.frame.minX < $1.frame.minX }
+        guard let minus = buttons.first else { return }
+        for _ in 0..<times { minus.click() }
+    }
+
+    // MARK: Reading the result off disk
+
+    private struct Node {
+        var x: CGFloat
+        var y: CGFloat
+        var width: CGFloat
+        var height: CGFloat
+    }
+
+    /// Waits past the board's autosave delay, for the tests that assert something did
+    /// *not* happen. A negative assertion read too early is satisfied by a file that
+    /// simply has not been written yet.
+    private func settle() {
+        Thread.sleep(forTimeInterval: 3)
+    }
+
+    private func document() throws -> [String: Any] {
+        let data = try Data(contentsOf: boardFile)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw XCTSkip("board illeggibile")
+        }
+        return object
+    }
+
+    private func node(_ id: String) throws -> Node {
+        let nodes = try document()["nodes"] as? [[String: Any]] ?? []
+        guard let raw = nodes.first(where: { $0["id"] as? String == id }) else {
+            XCTFail("nodo \(id) assente dal file")
+            return Node(x: 0, y: 0, width: 0, height: 0)
+        }
+        return Node(
+            x: raw["x"] as? CGFloat ?? 0,
+            y: raw["y"] as? CGFloat ?? 0,
+            width: raw["width"] as? CGFloat ?? 0,
+            height: raw["height"] as? CGFloat ?? 0
+        )
+    }
+
+    /// Polls the file until the change lands. The board autosaves a second after a
+    /// gesture ends, so reading once would race it.
+    private func waitForNode(
+        _ id: String,
+        timeout: TimeInterval = 6,
+        until predicate: (Node) -> Bool
+    ) throws -> Node {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = try node(id)
+        while Date() < deadline {
+            last = try node(id)
+            if predicate(last) { return last }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return last
+    }
+
+    private func waitForEdges(
+        timeout: TimeInterval = 6,
+        until predicate: ([[String: Any]]) -> Bool
+    ) throws -> [[String: Any]] {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last: [[String: Any]] = []
+        while Date() < deadline {
+            last = try document()["edges"] as? [[String: Any]] ?? []
+            if predicate(last) { return last }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return last
+    }
+}

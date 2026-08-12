@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The board's own content: the connectors and the cards.
+/// The board's own content: the cards, over the connector layer.
 ///
 /// A view of its own rather than a section of `WorkspaceView`, which now holds the
 /// board's gestures and the tools that create things. What is drawn and what listens
@@ -16,90 +16,11 @@ struct BoardContentLayer: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(workspace.document.edges) { edge in
-                edgeShape(edge)
-            }
+            BoardEdgeLayer(workspace: workspace)
             ForEach(visibleNodes) { node in
                 nodeView(node)
             }
         }
-    }
-
-    // MARK: Edges
-
-    /// Draws a connector between two nodes.
-    ///
-    /// The endpoints are computed from the nodes' current frames rather than stored,
-    /// which is what makes the connector stay attached when a card moves (SPEC §6.4,
-    /// tool 11) without writing the file on every drag frame.
-    @ViewBuilder
-    private func edgeShape(_ edge: CanvasEdge) -> some View {
-        if let from = workspace.document.node(id: edge.fromNode),
-           let to = workspace.document.node(id: edge.toNode) {
-            let start = anchor(of: from, facing: to, side: edge.fromSide)
-            let end = anchor(of: to, facing: from, side: edge.toSide)
-
-            ZStack {
-                Path { path in
-                    path.move(to: start)
-                    path.addLine(to: end)
-                }
-                .stroke(theme.color(.borderStrong), lineWidth: 1.5)
-
-                // The spec's default for `toEnd` is `arrow`, so an absent value means
-                // an arrow, not the absence of one.
-                if (edge.toEnd ?? .arrow) == .arrow {
-                    arrowHead(at: end, from: start)
-                }
-                if let label = edge.label {
-                    Text(label)
-                        .themedText(.caption, color: .textSecondary)
-                        .padding(.horizontal, 4)
-                        .background(theme.color(.canvasBackground))
-                        .position(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
-                }
-            }
-        }
-    }
-
-    /// The point on a node's edge that faces another node. An explicit side from the
-    /// file wins; otherwise the side is chosen from the relative position, which is
-    /// what keeps a connector sensible after either card is dragged.
-    private func anchor(of node: CanvasNode, facing other: CanvasNode, side: CanvasEdge.Side?) -> CGPoint {
-        let frame = node.frame
-        let resolved: CanvasEdge.Side = side ?? {
-            let dx = other.frame.midX - frame.midX
-            let dy = other.frame.midY - frame.midY
-            if abs(dx) > abs(dy) { return dx > 0 ? .right : .left }
-            return dy > 0 ? .bottom : .top
-        }()
-
-        return switch resolved {
-        case .top: CGPoint(x: frame.midX, y: frame.minY)
-        case .bottom: CGPoint(x: frame.midX, y: frame.maxY)
-        case .left: CGPoint(x: frame.minX, y: frame.midY)
-        case .right: CGPoint(x: frame.maxX, y: frame.midY)
-        }
-    }
-
-    private func arrowHead(at point: CGPoint, from origin: CGPoint) -> some View {
-        let angle = atan2(point.y - origin.y, point.x - origin.x)
-        let length: CGFloat = 10
-        let spread: CGFloat = .pi / 7
-
-        return Path { path in
-            path.move(to: point)
-            path.addLine(to: CGPoint(
-                x: point.x - length * cos(angle - spread),
-                y: point.y - length * sin(angle - spread)
-            ))
-            path.move(to: point)
-            path.addLine(to: CGPoint(
-                x: point.x - length * cos(angle + spread),
-                y: point.y - length * sin(angle + spread)
-            ))
-        }
-        .stroke(theme.color(.borderStrong), lineWidth: 1.5)
     }
 
     // MARK: Nodes
@@ -125,14 +46,9 @@ struct BoardContentLayer: View {
                         lineWidth: 2
                     )
             )
-            .overlay {
-                if isSelected {
-                    ForEach(BoardGeometry.Handle.allCases, id: \.self) { handle in
-                        resizeHandle(node, handle: handle, in: frame)
-                    }
-                }
-            }
-            .contentShape(Rectangle())
+            // A group answers the pointer on its frame only; everything else answers
+            // over its whole rectangle.
+            .contentShape(hitShape(for: node))
             .onTapGesture(count: 2) { open(node) }
             .onTapGesture { workspace.select(nodeID: node.id, adding: modifiers.contains(.shift)) }
             .contextMenu {
@@ -159,63 +75,100 @@ struct BoardContentLayer: View {
                 Divider()
                 Button("Elimina") { workspace.delete(nodeIDs: targets(node)) }
             }
-            .gesture(
-                // `.global`, not a named space: a named space that fails to resolve falls back
-                // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
-                // mouse move was reported as 170 units and then divided by the zoom again.
-                DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                    .onChanged { value in
-                        // Selecting on drag start keeps a drag of an unselected card
-                        // from moving whatever was selected before.
-                        if !workspace.isDragging {
-                            if !workspace.selection.contains(node.id) {
-                                workspace.select(nodeID: node.id, adding: modifiers.contains(.shift))
-                            }
-                            workspace.beginDrag(nodeIDs: workspace.selection, anchor: node.id)
-                        }
-                        // Screen translation to board units: at 58% zoom a 100-point
-                        // drag is 172 board units, not 100.
-                        workspace.updateDrag(translation: CGSize(
-                            width: value.translation.width / workspace.zoom,
-                            height: value.translation.height / workspace.zoom
-                        ))
-                    }
-                    .onEnded { _ in workspace.endDrag() }
-            )
+            .gesture(cardGesture(node))
+            // The grips come after the card's own gesture, which is what puts them
+            // above it: attached before, the card's drag took the pointer first and
+            // the corners could never be grabbed.
+            .overlay { grips(node, isSelected: isSelected, frame: frame) }
             .position(x: frame.midX, y: frame.midY)
-            // Visual feedback for the drag. Safe now that the gesture measures in
-            // `.global`: moving the view no longer moves the space it is measured in.
-            .offset(workspace.dragOffsetInPoints(for: node.id))
+            // Visual feedback for the drag, in board units: this offset is applied
+            // inside the board's `scaleEffect`, so the scale is already accounted for
+            // and multiplying by the zoom here applied it twice. At 68% the card
+            // trailed the pointer by a third of every move and then jumped into
+            // place on release, which reads as a card that will not be grabbed.
+            .offset(workspace.dragOffset(for: node.id))
     }
 
-    /// One of the eight grips of SPEC §6.3, placed on the card's edge.
-    private func resizeHandle(
-        _ node: CanvasNode,
-        handle: BoardGeometry.Handle,
-        in frame: CGRect
-    ) -> some View {
-        let unit = handle.unitPoint
-        return RoundedRectangle(cornerRadius: 2)
-            .fill(theme.color(.canvasSelection))
-            .frame(width: 9, height: 9)
-            .position(x: unit.x * frame.width, y: unit.y * frame.height)
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        if workspace.resizingNodeID != node.id {
-                            workspace.beginResize(nodeID: node.id, handle: handle)
-                        }
-                        workspace.updateResize(
-                            translation: CGSize(
-                                width: value.translation.width / workspace.zoom,
-                                height: value.translation.height / workspace.zoom
-                            ),
-                            // Shift locks the proportions (SPEC §6.3).
-                            lockAspect: modifiers.contains(.shift)
-                        )
+    /// Dragging a card: moves it, or draws an arrow from it when Freccia is the
+    /// active tool (SPEC §6.4, tool 11).
+    ///
+    /// One gesture for both because SwiftUI delivers one drag per view; two would
+    /// race for it.
+    private func cardGesture(_ node: CanvasNode) -> some Gesture {
+        // `.global`, not a named space: a named space that fails to resolve falls back
+        // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
+        // mouse move was reported as 170 units and then divided by the zoom again.
+        DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { value in
+                // Screen translation to board units: at 58% zoom a 100-point
+                // drag is 172 board units, not 100.
+                let translation = CGSize(
+                    width: value.translation.width / workspace.zoom,
+                    height: value.translation.height / workspace.zoom
+                )
+                guard workspace.tool != .arrow else {
+                    if workspace.arrowSourceID == nil { workspace.beginArrow(from: node.id) }
+                    workspace.updateArrow(translation: translation)
+                    return
+                }
+                // Selecting on drag start keeps a drag of an unselected card
+                // from moving whatever was selected before.
+                if !workspace.isDragging {
+                    if !workspace.selection.contains(node.id) {
+                        workspace.select(nodeID: node.id, adding: modifiers.contains(.shift))
                     }
-                    .onEnded { _ in workspace.endResize() }
+                    workspace.beginDrag(nodeIDs: workspace.selection, anchor: node.id)
+                }
+                workspace.updateDrag(translation: translation)
+            }
+            .onEnded { _ in
+                if workspace.arrowSourceID != nil {
+                    workspace.endArrow()
+                    return
+                }
+                workspace.endDrag()
+            }
+    }
+
+    /// The eight grips of SPEC §6.3, on a frame wide enough to hold them.
+    ///
+    /// The overlay is grown by one target on each side because a corner grip is
+    /// centred on the corner: half of it falls outside the card, and content outside
+    /// its parent's bounds is drawn but never hit.
+    @ViewBuilder
+    private func grips(_ node: CanvasNode, isSelected: Bool, frame: CGRect) -> some View {
+        if isSelected {
+            let target = BoardGeometry.boardUnits(
+                BoardGeometry.handleTargetScreenSize, at: workspace.zoom
             )
+            ZStack {
+                ForEach(BoardGeometry.Handle.allCases, id: \.self) { handle in
+                    ResizeHandleView(
+                        workspace: workspace,
+                        node: node,
+                        handle: handle,
+                        frame: frame,
+                        modifiers: modifiers
+                    )
+                }
+            }
+            .frame(width: frame.width + target, height: frame.height + target)
+        }
+    }
+
+    /// What the pointer can touch on a card.
+    ///
+    /// A group is hollow: it is a container, so a click in its middle belongs to
+    /// whatever is inside it, and only its frame moves the group itself (SPEC §6.5).
+    private func hitShape(for node: CanvasNode) -> AnyShape {
+        guard node.isGroup else { return AnyShape(Rectangle()) }
+        return AnyShape(
+            GroupFrameShape(
+                band: BoardGeometry.boardUnits(
+                    BoardGeometry.groupBandScreenWidth, at: workspace.zoom
+                )
+            )
+        )
     }
 
     /// The cards worth drawing at the current pan and zoom (SPEC §6.3, culling).
