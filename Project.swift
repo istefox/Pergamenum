@@ -60,5 +60,20 @@ let project = Project(
             resources: ["Resources/Themes/**", "Resources/vocabolari.json"],
             dependencies: [.target(name: projectName)]
         ),
+        // The board's pointer behaviour cannot be reached from the unit suite: what
+        // broke in SPEC §6.3 and §6.5 was hit testing and gesture priority, and both
+        // exist only once SwiftUI has laid the views out and a real drag arrives.
+        // This target drives the running app and reads the result back off disk.
+        .target(
+            name: "\(projectName)UITests",
+            destinations: .macOS,
+            product: .uiTests,
+            bundleId: "\(bundleId).uitests",
+            deploymentTargets: .macOS(deploymentTarget),
+            infoPlist: .default,
+            sources: ["UITests/**"],
+            dependencies: [.target(name: projectName)],
+            settings: .settings(base: baseSettings)
+        ),
     ]
 )

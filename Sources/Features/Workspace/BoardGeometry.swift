@@ -30,6 +30,48 @@ enum BoardGeometry {
     /// be grabbed again.
     static let minimumSize = CGSize(width: 40, height: 30)
 
+    // MARK: Grip and frame sizing
+
+    /// The size a grip is drawn at, and the size of the target around it, both in
+    /// screen points.
+    ///
+    /// Screen points, not board units, and that is the whole point: the grips live
+    /// inside the board's `scaleEffect`, so a size expressed in board units shrinks
+    /// with the zoom. At 68% a 9-unit grip was 6 points across and at 25% it was 2,
+    /// which is why the corners could not be grabbed. Every user of these divides by
+    /// the zoom, so a grip stays the same size to the hand at every scale.
+    static let handleScreenSize: CGFloat = 10
+    /// Larger than what is drawn: 10 points is what the eye wants and 24 is what the
+    /// hand needs. The difference is invisible and is the reason the grip is hittable.
+    static let handleTargetScreenSize: CGFloat = 24
+    /// How wide the band of a group's frame is, the only part of a group that
+    /// responds to the pointer (SPEC §6.5).
+    static let groupBandScreenWidth: CGFloat = 16
+
+    /// Converts one of the sizes above into board units at the given zoom.
+    static func boardUnits(_ screenPoints: CGFloat, at zoom: CGFloat) -> CGFloat {
+        screenPoints / max(zoom, 0.01)
+    }
+
+    // MARK: Hit testing
+
+    /// The card under a board point, used to decide where an arrow lands.
+    ///
+    /// The last match wins because later nodes are drawn on top. A group counts only
+    /// when nothing else is there: a group covers every card it holds, so preferring
+    /// it would make every arrow drawn inside one land on the container instead of
+    /// the card the user aimed at.
+    static func nodeID(
+        at point: CGPoint,
+        among nodes: [CanvasNode],
+        excluding excluded: String? = nil
+    ) -> String? {
+        let candidates = nodes.filter { $0.id != excluded && $0.frame.contains(point) }
+        return candidates.last(where: { !$0.isGroup })?.id ?? candidates.last?.id
+    }
+
+    // MARK: Resize
+
     /// Applies a resize drag to a card.
     ///
     /// `lockAspect` is the Shift modifier of SPEC §6.3. A side grip with Shift held

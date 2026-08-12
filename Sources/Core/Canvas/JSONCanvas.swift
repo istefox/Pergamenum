@@ -123,6 +123,14 @@ struct CanvasNode: Identifiable, Equatable, Sendable {
 
     var frame: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 
+    /// A container rather than a card. Asked often enough by the board, which treats
+    /// the two differently at every step: a group is hollow to the pointer, it is not
+    /// a preferred arrow target, and moving it moves what it holds.
+    var isGroup: Bool {
+        if case .group = kind { return true }
+        return false
+    }
+
     var typeName: String {
         switch kind {
         case .text: "text"
