@@ -17,6 +17,10 @@ let baseSettings: SettingsDictionary = [
     // cost an afternoon to recognise, twice mistaken for a broken read.
     "CODE_SIGN_IDENTITY": "Apple Development",
     "SWIFT_VERSION": "6.0",
+    // Named explicitly rather than left to the default: without it the asset catalog
+    // compiles the set and nothing points the bundle at it, so the app ships with the
+    // generic document icon and the set looks like it did not work.
+    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
 ]
 
 let project = Project(
