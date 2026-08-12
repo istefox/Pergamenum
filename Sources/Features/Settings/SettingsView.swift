@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Environment(ThemeEngine.self) private var engine
     @Environment(EventKitStore.self) private var calendar
     @Environment(ReminderScheduler.self) private var reminders
+    @State private var testProblem: String?
 
     var body: some View {
         TabView {
@@ -147,8 +148,24 @@ struct SettingsView: View {
                 Text("I promemoria @remind non possono essere mostrati: le notifiche di Pergamenum sono disattivate in Impostazioni di Sistema.")
                     .themedText(.caption, color: .textTertiary)
             } else {
-                Text("^[\(reminders.scheduledIDs.count) promemoria](inflect: true) @remind in attesa.")
+                Text("^[\(reminders.pendingCount) promemoria](inflect: true) @remind in attesa nel sistema.")
                     .themedText(.caption, color: .textTertiary)
+                Text(reminders.deliverySummary).themedText(.caption, color: .textTertiary)
+                // Authorised and silent is a real state, and it is the one nobody can
+                // diagnose: the reminder fires on time and nothing appears.
+                if reminders.isSilent {
+                    Text("Le notifiche sono autorizzate ma gli avvisi sono disattivati: un @remind viene consegnato e non si vede. Si riattiva da Impostazioni di Sistema › Notifiche › Pergamenum.")
+                        .themedText(.caption, color: .taskOverdue)
+                }
+                Button("Invia una notifica di prova") {
+                    Task { testProblem = await reminders.sendTestNotification() }
+                }
+                if let testProblem {
+                    Text(testProblem).themedText(.caption, color: .taskOverdue)
+                } else {
+                    Text("Arriva dopo qualche secondo: macOS non mostra una notifica mentre la sua app è in primo piano.")
+                        .themedText(.caption, color: .textTertiary)
+                }
             }
 
             if let problem = reminders.lastAccessError {

@@ -68,6 +68,7 @@ struct PergamenumApp: App {
                 .task(id: vault.scanGeneration) {
                     await reminders.refreshAccessStatus()
                     await reminders.reschedule(for: vault.index.allTasks)
+                    await reminders.refreshPending()
                 }
                 .task {
                     // Reopens the vault the app was last in (SPEC §10, "Vault
