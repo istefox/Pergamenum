@@ -133,10 +133,26 @@ struct SettingsView: View {
             LabeledContent("Accesso Promemoria") { accessLabel(calendar.reminderAccess) }
 
             if !calendar.eventAccess.isGranted || !calendar.reminderAccess.isGranted {
-                Button("Richiedi accesso") {
-                    Task { await calendar.requestAccess() }
+                // Asking is only offered while asking can still do something. macOS
+                // shows the dialog once; after a refusal the request returns in
+                // silence, and a button that silently does nothing is worse than no
+                // button at all.
+                if calendar.canStillBeAsked {
+                    Button("Richiedi accesso") {
+                        Task { await calendar.requestAccess() }
+                    }
                 }
-                Text("macOS chiede il consenso una sola volta. Se l'hai già negato, si cambia da Impostazioni di Sistema › Privacy e sicurezza.")
+                if calendar.eventAccess == .denied {
+                    Button("Apri Impostazioni di Sistema: Calendario") {
+                        EventKitStore.openPrivacySettings(for: .event)
+                    }
+                }
+                if calendar.reminderAccess == .denied {
+                    Button("Apri Impostazioni di Sistema: Promemoria") {
+                        EventKitStore.openPrivacySettings(for: .reminder)
+                    }
+                }
+                Text("macOS chiede il consenso una sola volta. Al ritorno da Impostazioni di Sistema il permesso viene riletto da solo.")
                     .themedText(.caption, color: .textTertiary)
             }
 
