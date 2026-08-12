@@ -341,6 +341,14 @@ final class EventKitStore: CalendarStore {
         }
         reminder.isCompleted = completed
         try store.save(reminder, commit: true)
+
+        // The cache is corrected here rather than left to the next fetch. Ticking a
+        // box has to register instantly, and `reminders(dueOn:)` reads this cache:
+        // without the line the tick appeared only if something else happened to
+        // refresh first.
+        if let index = cachedReminders.firstIndex(where: { $0.id == reminderID }) {
+            cachedReminders[index].isCompleted = completed
+        }
     }
 
     /// Creates a reminder in the Reminders app (SPEC §10, Calendario).
@@ -365,13 +373,20 @@ final class EventKitStore: CalendarStore {
         reminder.calendar = list
 
         try store.save(reminder, commit: true)
-        return CalendarReminder(
+        let created = CalendarReminder(
             id: reminder.calendarItemIdentifier,
             title: title,
             due: due,
             isCompleted: false,
             listTitle: list.title
         )
+        // Added to the cache immediately, for the same reason as above. `createEvent`
+        // has no equivalent because events are read live; reminders go through a cache,
+        // and a cache that does not know about a write the same object just made is a
+        // cache that lies. It happened to look right only because the store-changed
+        // observer fired first, which is luck, not design.
+        cachedReminders.append(created)
+        return created
     }
 
     /// Titles of the reminder lists that can be written to.
