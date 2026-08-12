@@ -85,15 +85,71 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-12: **Index persisted.** `.pergamenum/cache.db` through the system SQLite,
+  no package dependency. Measured on the real vault: 77 of 77 notes reused, scan from
+  207 ms to 150 ms. A row whose file changed is discarded rather than trusted, and a
+  corrupt or older-schema file yields nothing rather than half a vault.
+- 2026-08-12: **Board interaction and note file operations.** Marquee, eight resize
+  grips, alignment guides and whole-document undo; rename, move and delete a note from
+  the sidebar, with wikilinks rewritten across the vault and board cards repointed.
+  Export as Markdown, HTML or PDF. Mini-calendar with the daily-note context menu.
+- 2026-08-12: 387 tests green, SwiftLint without errors, 80 source files.
 - 2026-08-11: repository bootstrapped, scaffolding level "standard", first commit
   pushed. Tuist project builds and tests green against the macOS 26 target, with the
   URL scheme and EventKit usage descriptions already declared in the manifest.
-  Specification v2.2 committed. Next step: M0, starting with the ADR and the design
-  token system.
+  Specification v2.2 committed.
+- 2026-08-11: ADR-0001 accepted (single target with folder-enforced layers,
+  disposable GRDB index, content-hash FSEvents reconciliation, DTCG theming).
+- 2026-08-11: **§12 and §4.5 closed.** Global search with the `tag:`, `path:`,
+  `task:` and quoted-phrase operators, a Settings window, and the "Nota correlata"
+  flow that asks for a reason in both directions and writes both notes atomically.
+- 2026-08-11: **Mouse interaction verified.** Selecting, dragging, resizing and the
+  spacebar Quick Look all exercised with real CGEvent mouse input on the test vault.
+  Dragging was badly broken and is now correct to the unit.
+- 2026-08-11: **M6 complete.** All `pergamenum://` routes verified end to end against
+  the registered scheme, the vault-wide conformance linter, complete menus, convention
+  import and local notifications for `@remind`.
+- 2026-08-11: **M5 code complete, EventKit unverified.** Day view, timeline, time
+  blocks stored in the daily note, EventKit read/write and two-way Reminders behind a
+  protocol. Reading and writing real events needs the permission dialog answered.
+- 2026-08-11: **M4 complete.** Task syntax of §7.1 with line-surgical rewriting, the
+  five Attività views, task-to-note links navigable in both directions, quick
+  rescheduling and quick capture. Verified on the test vault: the views group and
+  count correctly and a task rewrites its own note without touching anything else.
+- 2026-08-11: **M3 complete, mouse interaction unverified.** PDF thumbnails
+  through PDFKit with a bucketed disk cache, `.eml` header cards with RFC 2047
+  decoding, URI cards per scheme, and Quick Look on the spacebar and from the Vista
+  menu. Card rendering verified on a real PDF and a real message; selecting, dragging
+  and the preview panel need a human at the trackpad - synthetic clicks do not reach
+  the window in this environment.
+- 2026-08-11: **M2 complete.** JSON Canvas 1.0 codec that round-trips an Obsidian
+  canvas property for property, board hierarchy mapped onto real folders, the ten
+  available tools of §6.4, pan, zoom, resize and connectors.
+- 2026-08-11: **M1 code complete, awaiting acceptance on the real Labs vault.** Vault
+  opening, note list with filter, quick switcher, markdown editor with applied styling
+  and wikilink completion, conformant frontmatter generation, conformance panel,
+  backlinks, unresolved links, and an in-memory index. Verified on a synthetic vault:
+  browsing left every file byte-identical. 103 tests.
+- 2026-08-11: **M0 accepted** by Stefano; ochre accent confirmed.
+- 2026-08-11: M0 code complete. 28 colour tokens, 5
+  type styles, spacing, radius and shadow tokens in two complete DTCG files; a
+  ThemeEngine that resolves them totally and layers vault themes on top; the gallery
+  and the four screen mockups. 17 tests green. M1 does not start until the mockups
+  are approved (SPEC §13).
 
 ## Open questions
 
-- Which module boundaries: one app target or feature modules as separate Tuist targets?
-- GRDB schema and migration strategy for the rebuildable index.
-- FSEvents reconciliation: how to handle an external edit landing mid-write.
-- Where the `harness-system` repo lives on disk for the "Importa convenzioni…" command.
+- EventKit has never been exercised against the real frameworks: Calendar and
+  Reminders are still at "permission not requested". The logic around it is covered by
+  stubs, the code that talks to EventKit is not.
+- The 46 non-conformant notes the linter reports on the real Labs vault: never
+  reviewed. The linter reports, it does not correct.
+
+## Decisions closed since the brief was written
+
+- Module boundaries: one app target with folder-enforced layers (ADR-0001).
+- The index is the system SQLite in `.pergamenum/cache.db`, not GRDB: four columns do
+  not justify a dependency carried for the life of the app.
+- FSEvents reconciliation: content hash per file, so an external edit landing mid-write
+  is re-read rather than half-indexed.
+- `harness-system` is read at a path chosen in the open panel, never assumed.

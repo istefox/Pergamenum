@@ -1,0 +1,54 @@
+# SwiftLint configuration for Pergamenum.
+#
+# Written deliberately rather than left at the defaults: without this file SwiftLint
+# reported errors on names the file formats themselves fix, which drowned the findings
+# that are real. The size and complexity rules are kept ON for that reason - they are
+# the ones pointing at actual structural debt.
+
+included:
+  - Sources
+  - Tests
+  - Project.swift
+
+disabled_rules:
+  # Trailing commas in multi-line literals are used throughout this codebase and by
+  # Swift's own formatter: a diff that adds one line then touches the line above it is
+  # noisier than the comma it removes.
+  - trailing_comma
+
+identifier_name:
+  # `x` and `y` are the JSON Canvas 1.0 key names (SPEC §6.2) and `s`, `m`, `l` are the
+  # DTCG spacing scale (SPEC §11.3). Renaming either would move this code away from the
+  # specification it implements, which is worse than a short name.
+  min_length:
+    warning: 1
+    error: 1
+  excluded:
+    - id
+
+nesting:
+  # Two levels: an enum's own nested case type (BoardGeometry.Guide.Axis) reads better
+  # where it belongs than hoisted to file scope.
+  type_level: 2
+
+line_length:
+  warning: 120
+  error: 200
+  ignores_comments: false
+  ignores_urls: true
+
+# Kept at their defaults on purpose, and currently failing on four types
+# (VaultController, WorkspaceView, WorkspaceController, VaultBrowser). That is real
+# debt, recorded rather than configured away.
+file_length:
+  warning: 400
+  error: 1000
+
+type_body_length:
+  warning: 250
+  error: 350
+
+excluded:
+  - .build
+  - Derived
+  - Tuist

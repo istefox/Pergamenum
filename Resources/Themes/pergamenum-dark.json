@@ -1,0 +1,96 @@
+{
+  "$schema": "https://tr.designtokens.org/format/",
+  "$description": "Pergamenum dark theme. Warm ink ground, parchment text, amber accent.",
+  "meta": {
+    "name": { "$type": "string", "$value": "Pergamenum Dark" },
+    "appearance": { "$type": "string", "$value": "dark" }
+  },
+  "color": {
+    "$type": "color",
+    "background": {
+      "primary": { "$value": "#1A1917" },
+      "secondary": { "$value": "#222120" },
+      "tertiary": { "$value": "#2C2A27" }
+    },
+    "surface": {
+      "card": { "$value": "#242320" },
+      "raised": { "$value": "#2C2A27" },
+      "sunken": { "$value": "#141311" }
+    },
+    "border": {
+      "subtle": { "$value": "#34322E" },
+      "strong": { "$value": "#4A473F" }
+    },
+    "text": {
+      "primary": { "$value": "#F2EFE9" },
+      "secondary": { "$value": "#A8A398" },
+      "tertiary": { "$value": "#77726A" },
+      "inverted": { "$value": "#1A1917" }
+    },
+    "accent": {
+      "primary": { "$value": "#E0A96D" },
+      "muted": { "$value": "#3A2E22" },
+      "onAccent": { "$value": "#1A1917" }
+    },
+    "canvas": {
+      "background": { "$value": "#141311" },
+      "grid": { "$value": "#26241F" },
+      "selection": { "$value": "#E0A96D" }
+    },
+    "task": {
+      "open": { "$value": "#F2EFE9" },
+      "done": { "$value": "#77726A" },
+      "scheduled": { "$value": "#8AB4E8" },
+      "overdue": { "$value": "#F2B8B5" },
+      "cancelled": { "$value": "#77726A" }
+    },
+    "sticky": {
+      "yellow": { "$value": "#4A3F1E" },
+      "green": { "$value": "#2E3D2A" },
+      "blue": { "$value": "#26374A" },
+      "pink": { "$value": "#4A2E32" },
+      "grey": { "$value": "#33312D" }
+    }
+  },
+  "font": {
+    "$type": "typography",
+    "title": {
+      "$value": { "fontFamily": "system", "fontSize": 22, "fontWeight": 600, "lineHeight": 1.2 }
+    },
+    "heading": {
+      "$value": { "fontFamily": "system", "fontSize": 16, "fontWeight": 600, "lineHeight": 1.3 }
+    },
+    "body": {
+      "$value": { "fontFamily": "system", "fontSize": 13, "fontWeight": 400, "lineHeight": 1.5 }
+    },
+    "caption": {
+      "$value": { "fontFamily": "system", "fontSize": 11, "fontWeight": 400, "lineHeight": 1.35 }
+    },
+    "mono": {
+      "$value": { "fontFamily": "monospace", "fontSize": 12, "fontWeight": 400, "lineHeight": 1.45 }
+    }
+  },
+  "spacing": {
+    "$type": "dimension",
+    "xs": { "$value": { "value": 4, "unit": "px" } },
+    "s": { "$value": { "value": 8, "unit": "px" } },
+    "m": { "$value": { "value": 16, "unit": "px" } },
+    "l": { "$value": { "value": 24, "unit": "px" } },
+    "xl": { "$value": { "value": 40, "unit": "px" } }
+  },
+  "radius": {
+    "$type": "dimension",
+    "card": { "$value": { "value": 10, "unit": "px" } },
+    "control": { "$value": { "value": 6, "unit": "px" } },
+    "sticky": { "$value": { "value": 4, "unit": "px" } }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "card": {
+      "$value": { "color": "#00000052", "offsetX": 0, "offsetY": 1, "blur": 3, "spread": 0 }
+    },
+    "raised": {
+      "$value": { "color": "#00000073", "offsetX": 0, "offsetY": 6, "blur": 18, "spread": 0 }
+    }
+  }
+}
