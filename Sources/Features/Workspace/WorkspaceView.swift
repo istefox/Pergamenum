@@ -60,6 +60,12 @@ struct WorkspaceView: View {
             if let root = vault.root { workspace.attach(to: CanvasStore(root: root)) }
         }
         .onDisappear { workspace.flushPendingSave() }
+        // `pergamenum://canvas?file=…&node=…` parks its target on the controller, and
+        // this is what acts on it. Nothing did before: the route reported success and
+        // opened nothing at all. Checked on appear too, because a link that launches
+        // the app arrives before this view exists.
+        .task { openPendingCanvas() }
+        .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
         .onChange(of: vault.pendingWorkspacePlacement) { _, pending in
             // A note sent here from the editor lands on the board of its own folder,
             // which is where it already lives on disk.
@@ -95,6 +101,13 @@ struct WorkspaceView: View {
         }
     }
 
+    private func openPendingCanvas() {
+        guard let pending = vault.consumePendingCanvasRoute() else { return }
+        if let missing = workspace.openRoute(pending, viewport: viewportSize) {
+            vault.recordProblem("il link punta a una card che non esiste: \(missing)")
+        }
+    }
+
     // MARK: Board
 
     private var board: some View {
@@ -123,8 +136,8 @@ struct WorkspaceView: View {
                 .scaleEffect(workspace.zoom, anchor: .topLeading)
                 .offset(workspace.pan)
 
-                guides
-                marqueeOverlay
+                BoardGuides(workspace: workspace)
+                BoardMarquee(workspace: workspace)
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)
@@ -233,47 +246,6 @@ struct WorkspaceView: View {
                 workspace.endPan()
                 workspace.endMarquee(adding: modifiers.contains(.shift))
             }
-    }
-
-    /// The selection rectangle, drawn in view coordinates over the board.
-    @ViewBuilder
-    private var marqueeOverlay: some View {
-        if let rect = workspace.marqueeRect {
-            let origin = viewPoint(rect.origin)
-            Rectangle()
-                .fill(theme.color(.canvasSelection).opacity(0.12))
-                .overlay(Rectangle().strokeBorder(theme.color(.canvasSelection), lineWidth: 1))
-                .frame(width: rect.width * workspace.zoom, height: rect.height * workspace.zoom)
-                .position(
-                    x: origin.x + rect.width * workspace.zoom / 2,
-                    y: origin.y + rect.height * workspace.zoom / 2
-                )
-                .allowsHitTesting(false)
-        }
-    }
-
-    /// Alignment guides, shown only while a drag is snapping to something (SPEC §6.3).
-    private var guides: some View {
-        Canvas { context, size in
-            for guide in workspace.activeGuides {
-                var path = Path()
-                switch guide.axis {
-                case .vertical:
-                    let x = guide.position * workspace.zoom + workspace.pan.width
-                    path.move(to: CGPoint(x: x, y: 0))
-                    path.addLine(to: CGPoint(x: x, y: size.height))
-                case .horizontal:
-                    let y = guide.position * workspace.zoom + workspace.pan.height
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: size.width, y: y))
-                }
-                context.stroke(
-                    path, with: .color(theme.color(.accentPrimary)),
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                )
-            }
-        }
-        .allowsHitTesting(false)
     }
 
     private var panGesture: some Gesture {

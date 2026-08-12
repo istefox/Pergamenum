@@ -54,3 +54,33 @@ extension WorkspaceController {
         )
     }
 }
+
+extension WorkspaceController {
+    /// Acts on a `pergamenum://canvas` link (SPEC §9).
+    ///
+    /// The route names a `.canvas` file; this controller works in folders, because a
+    /// board *is* a folder (SPEC §6.2), so the folder is the file's parent.
+    ///
+    /// Returns the node id when the link named a card this board does not have, so the
+    /// caller can say so. A link to a card someone has since deleted still opens the
+    /// board: arriving at the right place with nothing selected beats arriving nowhere.
+    @discardableResult
+    func openRoute(_ route: (path: String, nodeID: String?), viewport: CGSize) -> String? {
+        let folder = (route.path as NSString).deletingLastPathComponent
+        if folder != self.folder { open(folder: folder) }
+
+        guard let nodeID = route.nodeID else { return nil }
+        guard let node = document.nodes.first(where: { $0.id == nodeID }) else { return nodeID }
+
+        selection = [nodeID]
+        // Skipped before the first layout pass, when the viewport is still zero and
+        // centring would put the board somewhere arbitrary.
+        if viewport != .zero {
+            centre(
+                on: CGPoint(x: node.x + node.width / 2, y: node.y + node.height / 2),
+                in: viewport
+            )
+        }
+        return nil
+    }
+}

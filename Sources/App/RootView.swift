@@ -27,6 +27,17 @@ struct RootView: View {
 
     var body: some View {
         content
+            // A `pergamenum://canvas` link has to bring the Workspace forward before
+            // anything can act on it: the view that consumes the route only exists
+            // while that pane is shown, so from any other pane the link did nothing at
+            // all. Switching the pane here, where Navigation lives, is the whole fix -
+            // the consuming happens in WorkspaceView, once it is on screen.
+            .onChange(of: vault.routeState.pendingCanvas?.path) { _, pending in
+                if pending != nil { navigation.pane = .workspace }
+            }
+            .task {
+                if vault.routeState.pendingCanvas != nil { navigation.pane = .workspace }
+            }
             .sheet(isPresented: Bindable(navigation).isShowingTaskSyntaxHelp) {
                 HelpSheet(topic: .taskSyntax) { navigation.isShowingTaskSyntaxHelp = false }
             }

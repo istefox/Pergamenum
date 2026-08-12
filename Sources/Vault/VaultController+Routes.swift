@@ -121,8 +121,15 @@ extension VaultController {
                 _ = try openDailyNote(for: .today)
             }
             let existing = try store.read(path).text
-            let separator = existing.hasSuffix("\n") ? "" : "\n"
-            let hash = try store.write(existing + separator + text + "\n", to: path)
+            // A blank line, not merely a newline. Captured into a note whose last line
+            // is a list item - which a daily note's Timeline section always ends with -
+            // a single newline makes the text a lazy continuation of that bullet in
+            // CommonMark: the capture is swallowed into the last time block instead of
+            // standing on its own, and lands inside a section this app rewrites.
+            var body = existing
+            while body.hasSuffix("\n") { body.removeLast() }
+            let separator = body.isEmpty ? "" : "\n\n"
+            let hash = try store.write(body + separator + text + "\n", to: path)
             selfWrittenHashes[path] = hash
             index.update(try store.read(path).record, at: path)
             return true
