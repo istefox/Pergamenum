@@ -140,6 +140,15 @@ struct VaultCommands: Commands {
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 
+    /// Exports the open note without its frontmatter or its "Note correlate"
+    /// section (SPEC §10).
+    private func export(as format: NoteExporter.Format) {
+        guard let note = vault.openNote else { return }
+        if let problem = NoteExporter.export(title: note.title, text: note.text, as: format) {
+            vault.recordProblem(problem)
+        }
+    }
+
     private func revealOpenNote() {
         guard let note = vault.openNote, let root = vault.root else { return }
         NSWorkspace.shared.activateFileViewerSelecting([
@@ -200,6 +209,12 @@ struct VaultCommands: Commands {
             }
             Button("Importa convenzioni…") { VaultOpenPanel.chooseHarnessRepository(into: vault) }
                 .disabled(vault.root == nil)
+            Menu("Esporta nota") {
+                ForEach(NoteExporter.Format.allCases) { format in
+                    Button(format.title) { export(as: format) }
+                }
+            }
+            .disabled(vault.openNote == nil)
             Divider()
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
