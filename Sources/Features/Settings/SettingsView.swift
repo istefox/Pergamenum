@@ -154,6 +154,9 @@ struct SettingsView: View {
                 }
                 Text("macOS chiede il consenso una sola volta. Al ritorno da Impostazioni di Sistema il permesso viene riletto da solo.")
                     .themedText(.caption, color: .textTertiary)
+                if let problem = calendar.lastAccessError {
+                    Text(problem).themedText(.caption, color: .taskOverdue)
+                }
             }
 
             if calendar.eventAccess.isGranted {

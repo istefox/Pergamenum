@@ -192,12 +192,30 @@ final class EventKitStore: CalendarStore {
     /// Requested separately because the two are separate grants: a user may allow
     /// Calendar and refuse Reminders, and the app has to keep working with whichever
     /// it got rather than treating the pair as one switch.
+    /// Why the last request failed, when it failed.
+    ///
+    /// Kept rather than swallowed. A `try?` here turns "macOS refused to even ask" into
+    /// a status that reads "non richiesto" forever, which is indistinguishable from a
+    /// button nobody pressed: the one state where the user needs to be told something
+    /// is the one state that said nothing.
+    private(set) var lastAccessError: String?
+
     func requestAccess() async {
+        lastAccessError = nil
         if eventAccess == .notDetermined {
-            _ = try? await store.requestFullAccessToEvents()
+            do {
+                _ = try await store.requestFullAccessToEvents()
+            } catch {
+                lastAccessError = "Calendario: \(error.localizedDescription)"
+            }
         }
         if reminderAccess == .notDetermined {
-            _ = try? await store.requestFullAccessToReminders()
+            do {
+                _ = try await store.requestFullAccessToReminders()
+            } catch {
+                let reminders = "Promemoria: \(error.localizedDescription)"
+                lastAccessError = lastAccessError.map { "\($0)\n\(reminders)" } ?? reminders
+            }
         }
         refreshAccessStatus()
     }
@@ -237,8 +255,15 @@ final class EventKitStore: CalendarStore {
 
     func refreshReminders(on day: CalendarDate) async {
         guard reminderAccess.isGranted, let range = Self.dayRange(day) else { return }
+        // No lower bound, and that is the fix for a bug this app was creating for
+        // itself. A reminder whose due date carries no time - which is what
+        // `createReminder` below writes, and what the Reminders app calls a reminder
+        // "on" a day - sits at exactly midnight. Bounded by `range.start`, also exactly
+        // midnight, EventKit never returned it: Pergamenum created reminders it could
+        // not then see. The upper bound still keeps the fetch bounded, and
+        // `reminders(dueOn:)` does the day filtering itself, so nothing extra is shown.
         let predicate = store.predicateForIncompleteReminders(
-            withDueDateStarting: range.start, ending: range.end, calendars: nil
+            withDueDateStarting: nil, ending: range.end, calendars: nil
         )
         // Converted to value types inside the callback: `EKReminder` is not Sendable,
         // so the array itself cannot cross back over the continuation.
