@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(VaultController.self) private var vault
     @Environment(ThemeEngine.self) private var engine
     @Environment(EventKitStore.self) private var calendar
+    @Environment(ReminderScheduler.self) private var reminders
 
     var body: some View {
         TabView {
@@ -131,6 +132,28 @@ struct SettingsView: View {
         return Form {
             LabeledContent("Accesso Calendario") { accessLabel(calendar.eventAccess) }
             LabeledContent("Accesso Promemoria") { accessLabel(calendar.reminderAccess) }
+            LabeledContent("Accesso Notifiche") { accessLabel(reminders.access) }
+
+            // `@remind(...)` markers are parsed whatever this says; without the grant
+            // nothing is ever scheduled from them (SPEC §7.1).
+            if reminders.access == .notDetermined {
+                Button("Richiedi accesso alle notifiche") {
+                    Task {
+                        await reminders.requestAccess()
+                        await reminders.reschedule(for: vault.index.allTasks)
+                    }
+                }
+            } else if reminders.access == .denied {
+                Text("I promemoria @remind non possono essere mostrati: le notifiche di Pergamenum sono disattivate in Impostazioni di Sistema.")
+                    .themedText(.caption, color: .textTertiary)
+            } else {
+                Text("^[\(reminders.scheduledIDs.count) promemoria](inflect: true) @remind in attesa.")
+                    .themedText(.caption, color: .textTertiary)
+            }
+
+            if let problem = reminders.lastAccessError {
+                Text(problem).themedText(.caption, color: .taskOverdue)
+            }
 
             if !calendar.eventAccess.isGranted || !calendar.reminderAccess.isGranted {
                 // Asking is only offered while asking can still do something. macOS

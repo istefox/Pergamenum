@@ -142,7 +142,15 @@ final class VaultController {
             IndexCache(url: cacheURL).save(records)
         }.value
         if !problem.isEmpty { problems.append("cache: \(problem)") }
+
+        // Bumped last, once the index is whole. Anything that has to react to the
+        // vault's contents watches this rather than the task array itself, which is
+        // rebuilt on every scan and would fire on identical content.
+        scanGeneration += 1
     }
+
+    /// Incremented at the end of every completed scan. See `rescan()`.
+    private(set) var scanGeneration = 0
 
     // MARK: Notes
 
@@ -483,13 +491,23 @@ final class VaultController {
         problems.append(contentsOf: result.problems.map { "import: \($0)" })
         guard result.problems.isEmpty else { return }
 
-        vocabulary = result.vocabulary
+        var imported = result.vocabulary
+        // Says where the tables came from and when, and that this file is a replica.
+        // Without it the first import silently deleted the only warning against
+        // hand-editing what harness-system owns (SPEC §1, principle 5).
+        imported.note = """
+            Replica of the closed tables of harness-system, imported from \
+            \(repository.path(percentEncoded: false)) on \(CalendarDate.today). \
+            The repo is the source of truth: when a convention changes, re-run \
+            "Importa convenzioni…" rather than editing this file.
+            """
+        vocabulary = imported
         guard let root else { return }
         let url = privateDirectory(in: root).appending(path: VaultLayout.vocabularyFile)
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(result.vocabulary).write(to: url, options: .atomic)
+            try encoder.encode(imported).write(to: url, options: .atomic)
         } catch {
             problems.append("vocabolari.json could not be written: \(error.localizedDescription)")
         }

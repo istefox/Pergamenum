@@ -598,3 +598,30 @@ func recognisesURLs(_ text: String) {
 func rejectsWhatIsNotAURL(_ text: String) {
     #expect(!EditorEdits.isURL(text))
 }
+
+@Test func theVocabularyFileKeepsItsCommentThroughARoundTrip() throws {
+    // The shipped file carries a `_comment` saying harness-system owns these tables.
+    // The importer wrote only the five tables, so the first real import deleted the one
+    // sentence telling the reader not to hand-edit the file they were looking at.
+    var vocabulary = Vocabulary(
+        type: ["note"], status: ["draft"], area: ["training"],
+        source: ["web"], deliverableKind: ["report"]
+    )
+    vocabulary.note = "Replica: re-import rather than editing."
+
+    let data = try JSONEncoder().encode(vocabulary)
+    let asText = try #require(String(data: data, encoding: .utf8))
+    // Written under the key the file has always used, not under "note".
+    #expect(asText.contains("\"_comment\""))
+    #expect(try JSONDecoder().decode(Vocabulary.self, from: data) == vocabulary)
+}
+
+@Test func aVocabularyFileWithNoCommentStillReads() throws {
+    // Every vault written before the comment existed.
+    let json = Data("""
+    {"type":["note"],"status":[],"area":[],"source":[],"deliverableKind":[]}
+    """.utf8)
+    let decoded = try JSONDecoder().decode(Vocabulary.self, from: json)
+    #expect(decoded.note == nil)
+    #expect(decoded.type == ["note"])
+}

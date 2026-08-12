@@ -25,8 +25,18 @@ final class ReminderScheduler {
         }
     }
 
+    /// Why the last request failed, when it failed. Kept rather than swallowed, for the
+    /// same reason as `EventKitStore.lastAccessError`: a refusal by the system to even
+    /// ask is otherwise indistinguishable from a button nobody pressed.
+    private(set) var lastAccessError: String?
+
     func requestAccess() async {
-        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        lastAccessError = nil
+        do {
+            _ = try await center.requestAuthorization(options: [.alert, .sound])
+        } catch {
+            lastAccessError = error.localizedDescription
+        }
         await refreshAccessStatus()
     }
 
