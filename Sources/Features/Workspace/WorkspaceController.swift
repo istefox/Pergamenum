@@ -94,7 +94,15 @@ final class WorkspaceController {
     var canUndo: Bool { history.canUndo }
     var canRedo: Bool { history.canRedo }
 
-    private var store: CanvasStore?
+    var store: CanvasStore?
+
+    /// Strokes being drawn right now, before they are written to their SVG, and the
+    /// node whose SVG is being edited when a drawing was reopened (SPEC §6.2).
+    ///
+    /// Stored here because an extension cannot hold state; the drawing behaviour that
+    /// uses them lives in `WorkspaceController+Drawing`.
+    var activeDrawing = Drawing.empty
+    var editingDrawingNodeID: String?
     /// Renders and caches card previews. Lives here rather than in the view so a
     /// board reopened after navigation reuses the same in-memory renders.
     private(set) var thumbnails: ThumbnailStore?
@@ -176,7 +184,7 @@ final class WorkspaceController {
 
     /// Applies a change and schedules the write. Every mutation goes through here so
     /// no path can edit the board and forget to save it.
-    private func mutate(
+    func mutate(
         creatingOnDisk created: String? = nil,
         _ change: (inout CanvasDocument) -> Void
     ) {
@@ -224,15 +232,19 @@ final class WorkspaceController {
     /// 112, 262, 662, 1780, then 4965 points. The drag is therefore a transient
     /// offset the view draws with, committed once on release - which also turns
     /// twelve autosaves into one.
-    private(set) var draggingIDs: Set<String> = []
-    private(set) var dragTranslation: CGSize = .zero
+    /// Transient gesture state, written only by `WorkspaceController+Gestures` and
+    /// read by the board. Internal rather than `private(set)` because that file is the
+    /// one that owns it; what protects the model is that no gesture touches the
+    /// document until it ends, not the access level of these.
+    var draggingIDs: Set<String> = []
+    var dragTranslation: CGSize = .zero
 
     var isDragging: Bool { !draggingIDs.isEmpty }
 
     /// The card the pointer is on, whose edges the alignment guides work from.
-    private var dragAnchorID: String?
+    var dragAnchorID: String?
     /// Guides to draw while a drag is in flight (SPEC §6.3).
-    private(set) var activeGuides: [BoardGeometry.Guide] = []
+    var activeGuides: [BoardGeometry.Guide] = []
 
     /// Whether the board draws a grid, and whether cards land on it. Both come from
     /// the vault settings (SPEC §12, "Canvas (griglia, snap)").
@@ -243,122 +255,14 @@ final class WorkspaceController {
     /// look misaligned.
     static let gridStep: CGFloat = 24
 
-    func beginDrag(nodeIDs: Set<String>, anchor: String? = nil) {
-        guard draggingIDs.isEmpty else { return }
-        // Moving a group moves what it holds (SPEC §6.5).
-        draggingIDs = BoardGeometry.expandingGroups(nodeIDs, among: document.nodes)
-        dragAnchorID = anchor ?? nodeIDs.first
-        dragTranslation = .zero
-        activeGuides = []
-    }
-
-    /// Records the gesture's total translation, already converted to board units, and
-    /// pulls the card onto whatever it lines up with.
-    func updateDrag(translation: CGSize) {
-        guard !draggingIDs.isEmpty else { return }
-        guard let anchorID = dragAnchorID, let anchor = document.node(id: anchorID) else {
-            dragTranslation = translation
-            return
-        }
-
-        let proposed = anchor.frame.offsetBy(dx: translation.width, dy: translation.height)
-        let others = document.nodes
-            .filter { !draggingIDs.contains($0.id) }
-            .map(\.frame)
-        // The threshold is in board units, so the pull is the same handful of pixels
-        // whatever the zoom: a fixed board threshold would be imperceptible zoomed out
-        // and would fight the pointer zoomed in.
-        let (snapped, guides) = BoardGeometry.snapped(
-            proposed, to: others,
-            threshold: 6 / max(zoom, 0.01),
-            gridStep: snapsToGrid ? Self.gridStep : nil
-        )
-        dragTranslation = CGSize(width: snapped.minX - anchor.x, height: snapped.minY - anchor.y)
-        activeGuides = guides
-    }
-
-    /// Applies the drag to the model and clears the transient state.
-    func endDrag() {
-        defer {
-            draggingIDs = []
-            dragTranslation = .zero
-            dragAnchorID = nil
-            activeGuides = []
-        }
-        guard !draggingIDs.isEmpty,
-              dragTranslation != .zero
-        else { return }
-        move(nodeIDs: draggingIDs, by: dragTranslation)
-    }
-
-    /// The offset a node should be drawn with while a drag is in flight.
-    ///
-    /// In board units, which is what the model uses.
-    func dragOffset(for nodeID: String) -> CGSize {
-        draggingIDs.contains(nodeID) ? dragTranslation : .zero
-    }
-
-    /// The same offset in screen points, for the view: the node layer is already
-    /// scaled, so applying board units there would move the card by zoom times too
-    /// little.
-    func dragOffsetInPoints(for nodeID: String) -> CGSize {
-        let offset = dragOffset(for: nodeID)
-        return CGSize(width: offset.width * zoom, height: offset.height * zoom)
-    }
-
-    /// Pan at the moment the background drag began, held here for the same reason as
     /// the drag translation.
-    private var panOrigin: CGSize?
+    var panOrigin: CGSize?
 
     /// The marquee being dragged, in board units (SPEC §6.3).
-    private var marqueeStart: CGPoint?
-    private(set) var marqueeRect: CGRect?
+    var marqueeStart: CGPoint?
+    var marqueeRect: CGRect?
 
-    func beginMarquee(at point: CGPoint) {
-        marqueeStart = point
-        marqueeRect = CGRect(origin: point, size: .zero)
-    }
 
-    func updateMarquee(to point: CGPoint) {
-        guard let start = marqueeStart else { return }
-        marqueeRect = BoardGeometry.rect(from: start, to: point)
-    }
-
-    /// Commits the marquee. `adding` is the Shift modifier: without it the marquee
-    /// replaces the selection, with it the caught cards join what was already chosen.
-    func endMarquee(adding: Bool = false) {
-        defer {
-            marqueeStart = nil
-            marqueeRect = nil
-        }
-        guard let rect = marqueeRect else { return }
-        let caught = BoardGeometry.nodeIDs(in: rect, among: document.nodes)
-        selection = adding ? selection.union(caught) : caught
-    }
-
-    /// Chooses a card, or adds it to the selection when Shift is held.
-    func select(nodeID: String, adding: Bool) {
-        selection = adding ? BoardGeometry.toggling(nodeID, in: selection) : [nodeID]
-    }
-
-    /// Returns to Seleziona after a tool has been used once, unless the user locked
-    /// the tool by double clicking it (SPEC §6.4, "one-shot").
-    func finishToolUse() {
-        if !isToolLocked { tool = .select }
-    }
-
-    func beginPan() {
-        if panOrigin == nil { panOrigin = pan }
-    }
-
-    func updatePan(translation: CGSize) {
-        guard let origin = panOrigin else { return }
-        pan = CGSize(width: origin.width + translation.width, height: origin.height + translation.height)
-    }
-
-    func endPan() {
-        panOrigin = nil
-    }
 
     func move(nodeIDs: Set<String>, by delta: CGSize) {
         guard !delta.width.isZero || !delta.height.isZero else { return }
@@ -375,47 +279,11 @@ final class WorkspaceController {
     /// Transient for the same reason the drag is: committing on every frame would
     /// write the file dozens of times and fill the undo stack with a step per frame,
     /// so Cmd+Z would undo one pixel of a resize.
-    private(set) var resizingNodeID: String?
-    private var resizeHandle: BoardGeometry.Handle = .bottomRight
-    private var resizeOriginalFrame: CGRect = .zero
-    private(set) var resizedFrame: CGRect?
+    var resizingNodeID: String?
+    var resizeHandle: BoardGeometry.Handle = .bottomRight
+    var resizeOriginalFrame: CGRect = .zero
+    var resizedFrame: CGRect?
 
-    func beginResize(nodeID: String, handle: BoardGeometry.Handle) {
-        guard let node = document.node(id: nodeID) else { return }
-        resizingNodeID = nodeID
-        resizeHandle = handle
-        resizeOriginalFrame = node.frame
-        resizedFrame = node.frame
-    }
-
-    /// `lockAspect` is the Shift modifier of SPEC §6.3.
-    func updateResize(translation: CGSize, lockAspect: Bool) {
-        guard resizingNodeID != nil else { return }
-        resizedFrame = BoardGeometry.resized(
-            resizeOriginalFrame, handle: resizeHandle, by: translation, lockAspect: lockAspect
-        )
-    }
-
-    func endResize() {
-        defer {
-            resizingNodeID = nil
-            resizedFrame = nil
-        }
-        guard let nodeID = resizingNodeID, let frame = resizedFrame, frame != resizeOriginalFrame
-        else { return }
-        mutate { document in
-            guard let index = document.nodes.firstIndex(where: { $0.id == nodeID }) else { return }
-            document.nodes[index].x = frame.minX
-            document.nodes[index].y = frame.minY
-            document.nodes[index].width = frame.width
-            document.nodes[index].height = frame.height
-        }
-    }
-
-    /// The frame a card should be drawn with, accounting for a resize in flight.
-    func displayFrame(for node: CanvasNode) -> CGRect {
-        node.id == resizingNodeID ? (resizedFrame ?? node.frame) : node.frame
-    }
 
     func resize(nodeID: String, to size: CGSize) {
         // A node with zero or negative extent cannot be grabbed again, so the minimum
@@ -568,199 +436,6 @@ final class WorkspaceController {
         return contents.subfolders.contains(path) ? path : nil
     }
 
-    // MARK: Importing
-
-    /// Copies files into the board's folder and places a card for each.
-    ///
-    /// `.eml` files go through the assisted rename of SPEC §4.2: the proposal comes
-    /// from the message's own headers, and the caller confirms it. Everything else
-    /// keeps its name, deduplicated so an import never overwrites an earlier one.
-    @discardableResult
-    func importFiles(_ urls: [URL], at point: CGPoint) -> [ImportProposal] {
-        guard let store else { return [] }
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
-
-        var proposals: [ImportProposal] = []
-        for (index, url) in urls.enumerated() {
-            let original = url.lastPathComponent
-            var proposed = original
-
-            if url.pathExtension.lowercased() == "eml",
-               let data = try? Data(contentsOf: url) {
-                let text = String(data: data, encoding: .utf8)
-                    ?? String(data: data, encoding: .isoLatin1)
-                    ?? ""
-                proposed = ImportNaming.proposedEmailFileName(
-                    headers: EmailHeaderParser.parse(text),
-                    currentFileName: original,
-                    today: .today
-                )
-            }
-            proposals.append(ImportProposal(
-                source: url,
-                originalName: original,
-                proposedName: ImportNaming.uniqueFileName(proposed, in: directory),
-                // Cascaded so several files dropped at once do not land on top of
-                // each other.
-                point: CGPoint(x: point.x + CGFloat(index) * 24, y: point.y + CGFloat(index) * 24)
-            ))
-        }
-        return proposals
-    }
-
-    struct ImportProposal: Identifiable, Sendable {
-        let id = UUID()
-        var source: URL
-        var originalName: String
-        /// Editable by the user before the copy happens.
-        var proposedName: String
-        var point: CGPoint
-    }
-
-    /// Performs a confirmed import: copies the file in and places its card.
-    @discardableResult
-    func commitImport(_ proposal: ImportProposal) -> String? {
-        guard let store else { return nil }
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
-        let destination = directory.appending(path: proposal.proposedName, directoryHint: .notDirectory)
-
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            // Copy rather than move: the source may be outside the vault, and moving a
-            // file out of someone's Downloads folder is not what "import" promises.
-            try FileManager.default.copyItem(at: proposal.source, to: destination)
-        } catch {
-            recordProblem("import di \(proposal.originalName): \(error.localizedDescription)")
-            return nil
-        }
-
-        let relativePath = folder.isEmpty
-            ? proposal.proposedName
-            : "\(folder)/\(proposal.proposedName)"
-        let id = placeFile(relativePath, at: proposal.point, creatingOnDisk: relativePath)
-        refreshContents()
-        return id
-    }
-
-    // MARK: Drawing
-
-    /// Strokes being drawn right now, before they are written to their SVG.
-    private(set) var activeDrawing = Drawing.empty
-    /// The node whose SVG is being edited, when a drawing was reopened (SPEC §6.2).
-    private(set) var editingDrawingNodeID: String?
-
-    func beginStroke(at point: CGPoint, color: String, width: CGFloat, opacity: Double) {
-        activeDrawing.strokes.append(
-            Drawing.Stroke(points: [point], color: color, width: width, opacity: opacity)
-        )
-    }
-
-    func extendStroke(to point: CGPoint) {
-        guard !activeDrawing.strokes.isEmpty else { return }
-        activeDrawing.strokes[activeDrawing.strokes.count - 1].points.append(point)
-    }
-
-    /// Removes strokes passing near a point, which is what the eraser does.
-    func eraseStrokes(near point: CGPoint, radius: CGFloat) {
-        activeDrawing.strokes.removeAll { stroke in
-            stroke.points.contains { candidate in
-                hypot(candidate.x - point.x, candidate.y - point.y) <= radius
-            }
-        }
-    }
-
-    /// Writes the active strokes to an SVG and places or updates its card.
-    ///
-    /// The node keeps its identity when a drawing is reopened, so editing ink does not
-    /// leave the old card behind next to the new one.
-    @discardableResult
-    func commitDrawing(date: CalendarDate = .today) -> String? {
-        guard let store, !activeDrawing.strokes.isEmpty else { return nil }
-        let bounds = activeDrawing.bounds
-
-        let relativePath: String
-        if let editingID = editingDrawingNodeID,
-           let node = document.node(id: editingID),
-           case .file(let existing, _) = node.kind {
-            relativePath = existing
-        } else {
-            relativePath = folder.isEmpty
-                ? nextDrawingName(date: date, in: store.root)
-                : "\(folder)/\(nextDrawingName(date: date, in: store.root.appending(path: folder)))"
-        }
-
-        let url = store.root.appending(path: relativePath, directoryHint: .notDirectory)
-        do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try Data(DrawingSVG.encode(activeDrawing).utf8).write(to: url, options: .atomic)
-        } catch {
-            recordProblem("salvataggio del disegno: \(error.localizedDescription)")
-            return nil
-        }
-
-        let id: String
-        if let editingID = editingDrawingNodeID {
-            mutate { document in
-                guard let index = document.nodes.firstIndex(where: { $0.id == editingID }) else { return }
-                document.nodes[index].width = max(40, bounds.width)
-                document.nodes[index].height = max(30, bounds.height)
-            }
-            id = editingID
-        } else {
-            id = addNode(CanvasNode(
-                id: CanvasID.generate(),
-                kind: .file(path: relativePath, subpath: nil),
-                x: bounds.minX, y: bounds.minY,
-                width: max(40, bounds.width), height: max(30, bounds.height)
-            ), creatingOnDisk: relativePath)
-        }
-
-        activeDrawing = .empty
-        editingDrawingNodeID = nil
-        refreshContents()
-        return id
-    }
-
-    func discardDrawing() {
-        activeDrawing = .empty
-        editingDrawingNodeID = nil
-    }
-
-    /// Reopens a drawing card for editing, when its SVG is one this app wrote.
-    /// Returns false for an imported illustration, which is an image and not ink.
-    @discardableResult
-    func editDrawing(nodeID: String) -> Bool {
-        guard let store,
-              let node = document.node(id: nodeID),
-              case .file(let path, _) = node.kind,
-              path.lowercased().hasSuffix(".svg"),
-              let text = try? String(contentsOf: store.root.appending(path: path), encoding: .utf8),
-              let drawing = DrawingSVG.decode(text)
-        else { return false }
-
-        activeDrawing = drawing
-        editingDrawingNodeID = nodeID
-        return true
-    }
-
-    /// First free `disegno-YYYYMMDD-NNN.svg` in a folder.
-    private func nextDrawingName(date: CalendarDate, in directory: URL) -> String {
-        for sequence in 1...999 {
-            let name = DrawingSVG.fileName(for: date, sequence: sequence)
-            let candidate = directory.appending(path: name, directoryHint: .notDirectory)
-            if !FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) {
-                return name
-            }
-        }
-        return DrawingSVG.fileName(for: date, sequence: 999)
-    }
-
     // MARK: Saving
 
     private func scheduleSave() {
@@ -793,56 +468,5 @@ final class WorkspaceController {
         }
     }
 
-    // MARK: Viewport
 
-    func zoom(by factor: CGFloat) {
-        zoom = min(max(zoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
-    }
-
-    /// Sets the zoom directly, clamped to the range of SPEC §6.1. Used by the pinch
-    /// gesture, which computes an absolute value rather than a step.
-    func setZoom(_ value: CGFloat) {
-        zoom = min(max(value, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
-    }
-
-    func resetZoom() {
-        zoom = 1
-        pan = .zero
-    }
-
-    /// The rectangle enclosing every node, in board coordinates.
-    var contentBounds: CGRect? {
-        guard let first = document.nodes.first else { return nil }
-        return document.nodes.dropFirst().reduce(first.frame) { $0.union($1.frame) }
-    }
-
-    /// Fits every node in the given viewport (the "adatta alla vista" control).
-    ///
-    /// The board's coordinate space is centred on the origin and routinely negative -
-    /// Obsidian writes nodes at x = -720 - so a freshly opened board shows nothing at
-    /// all unless the view is placed over the content rather than over the origin.
-    func zoomToFit(in viewport: CGSize) {
-        guard let bounds = contentBounds, viewport.width > 0, viewport.height > 0 else {
-            resetZoom()
-            return
-        }
-        let margin: CGFloat = 80
-        let scale = min(
-            (viewport.width - margin) / max(bounds.width, 1),
-            (viewport.height - margin) / max(bounds.height, 1)
-        )
-        zoom = min(max(scale, Self.zoomRange.lowerBound), min(1, Self.zoomRange.upperBound))
-        centre(on: CGPoint(x: bounds.midX, y: bounds.midY), in: viewport)
-    }
-
-    /// Places a board point at the middle of the viewport.
-    ///
-    /// The view scales from its top-left corner and then offsets, so a board point `p`
-    /// lands at `p * zoom + pan`; solving for the viewport centre gives this.
-    func centre(on point: CGPoint, in viewport: CGSize) {
-        pan = CGSize(
-            width: viewport.width / 2 - point.x * zoom,
-            height: viewport.height / 2 - point.y * zoom
-        )
-    }
 }

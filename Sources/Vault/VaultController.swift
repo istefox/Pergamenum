@@ -40,10 +40,26 @@ final class VaultController {
 
     /// Hashes the app itself wrote, keyed by path. A watcher event whose file hashes
     /// to the recorded value is the app's own write coming back and is ignored.
-    private var selfWrittenHashes: [String: String] = [:]
+    var selfWrittenHashes: [String: String] = [:]
 
-    private var watcher: VaultWatcher?
-    private var store: NoteStore?
+    var watcher: VaultWatcher?
+    var store: NoteStore?
+
+    /// Everything the `pergamenum://` routes hold between arriving and being acted on
+    /// (SPEC §9). One value rather than four properties, so the routing extension owns
+    /// its own state instead of reaching into the controller's.
+    struct RouteState {
+        /// A route that arrived before the vault was open, replayed once it is.
+        var pending: PergamenumRoute?
+        /// A canvas the Workspace should open when it next appears.
+        var pendingCanvas: (path: String, nodeID: String?)?
+        /// A query the quick switcher should start from.
+        var pendingSearch: String?
+        /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
+        var noteIDs: [String: String] = [:]
+    }
+
+    var routeState = RouteState()
 
     /// Where opened vaults are remembered. Injected so a test never writes into the
     /// list the app reads at launch.
@@ -84,8 +100,8 @@ final class VaultController {
         await rescan()
         startWatching(url)
 
-        if let route = pendingRoute {
-            pendingRoute = nil
+        if let route = routeState.pending {
+            routeState.pending = nil
             handle(route)
         }
     }
@@ -163,52 +179,6 @@ final class VaultController {
         }
     }
 
-    /// Creates a note with a conformant frontmatter block already in place.
-    ///
-    /// The generated block is the closed four-key schema in fixed order, with the tag
-    /// set the note's category requires (SPEC §4.3, tag.md 5.1): a daily note gets
-    /// `type-note` alone, an inbox capture adds `status-inbox`, and an ordinary note
-    /// gets `type-note` plus whatever topic the caller supplies.
-    ///
-    /// Refuses rather than sanitising silently: a title the rules reject is a decision
-    /// for the user, and quietly renaming their note is how a vault fills with titles
-    /// nobody chose.
-    @discardableResult
-    func createNote(
-        title: String,
-        in folder: String = "",
-        date: CalendarDate,
-        category: NoteCategory = .note,
-        topics: [Tag] = []
-    ) throws -> String {
-        guard let store else { throw CreationError.alreadyExists("nessun vault aperto") }
-
-        let violations = category == .daily
-            ? NoteName.validateDaily(title)
-            : NoteName.validate(title)
-        guard violations.isEmpty else { throw CreationError.invalidTitle(violations) }
-
-        let fileName = NoteName.fileName(for: title)
-        let relativePath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
-        guard !FileManager.default.fileExists(
-            atPath: store.url(for: relativePath).path(percentEncoded: false)
-        ) else { throw CreationError.alreadyExists(relativePath) }
-
-        var frontmatter = Frontmatter.empty
-        frontmatter.date = date
-        frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")] + topics + (
-            category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
-        ))
-
-        let text = FrontmatterSerializer.render(frontmatter) + "\n"
-        let hash = try store.write(text, to: relativePath)
-        selfWrittenHashes[relativePath] = hash
-
-        index.update(try store.read(relativePath).record, at: relativePath)
-        openNote(at: relativePath)
-        return relativePath
-    }
-
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
     @discardableResult
     func openDailyNote(for date: CalendarDate) throws -> String {
@@ -250,6 +220,14 @@ final class VaultController {
     /// Closes the note in the editor, for when the file it shows is no longer there.
     func closeOpenNote() {
         openNote = nil
+    }
+
+    /// Replaces the open note wholesale.
+    ///
+    /// The one door for code outside this file: `openNote` stays read-only everywhere
+    /// else, so a view cannot quietly swap the buffer under the editor.
+    func replaceOpenNote(_ note: OpenNote) {
+        openNote = note
     }
 
     /// Resolves an external change the user chose to accept, replacing the buffer.
@@ -390,32 +368,6 @@ final class VaultController {
         }
     }
 
-    /// Copies a dropped file into the folder of the note being edited and returns its
-    /// name for the embed (SPEC §5).
-    ///
-    /// Copied, not referenced in place: an embed that pointed outside the vault would
-    /// break the day the file moves or the volume is not mounted, and the vault would
-    /// stop being self-contained.
-    func importFileIntoVault(_ source: URL, near notePath: String) -> String? {
-        guard let store else { return nil }
-        let folder = (notePath as NSString).deletingLastPathComponent
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
-
-        let name = ImportNaming.uniqueFileName(source.lastPathComponent, in: directory)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(
-                at: source, to: directory.appending(path: name, directoryHint: .notDirectory)
-            )
-            return name
-        } catch {
-            problems.append("copia di \(source.lastPathComponent): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
     /// Puts the open note on its folder's board and switches to the Workspace
     /// (SPEC §5, "Apri nel canvas").
     func openCurrentNoteInWorkspace() {
@@ -429,287 +381,6 @@ final class VaultController {
     func consumePendingWorkspacePlacement() -> String? {
         defer { pendingWorkspacePlacement = nil }
         return pendingWorkspacePlacement
-    }
-
-    // MARK: Structural links
-
-    /// Creates a structural link in both directions (wikilink.md W-05).
-    ///
-    /// Atomic by construction: both files are rendered in memory first and neither is
-    /// written unless both can be. A half-created link is worse than none, because the
-    /// linter would then report a discrepancy the app itself caused.
-    @discardableResult
-    func addStructuralLink(
-        from sourcePath: String,
-        to targetTitle: String,
-        reason: String,
-        reverseReason: String
-    ) -> Bool {
-        guard let store else { return false }
-        guard let targetPath = index.resolve(title: targetTitle).first else {
-            problems.append("nessuna nota si chiama «\(targetTitle)»")
-            return false
-        }
-        guard targetPath != sourcePath else {
-            problems.append("\(RelatedLink.Error.linkingToItself)")
-            return false
-        }
-
-        do {
-            let source = try store.read(sourcePath)
-            let target = try store.read(targetPath)
-
-            // Both renders happen before either write.
-            let updatedSource = try RelatedLink.add(
-                target: target.record.title, reason: reason,
-                to: source.text, selfTitle: source.record.title
-            )
-            let updatedTarget = try RelatedLink.add(
-                target: source.record.title, reason: reverseReason,
-                to: target.text, selfTitle: target.record.title
-            )
-
-            selfWrittenHashes[sourcePath] = try store.write(updatedSource, to: sourcePath)
-            selfWrittenHashes[targetPath] = try store.write(updatedTarget, to: targetPath)
-
-            index.update(try store.read(sourcePath).record, at: sourcePath)
-            index.update(try store.read(targetPath).record, at: targetPath)
-
-            if openNote?.relativePath == sourcePath { openNote(at: sourcePath) }
-            return true
-        } catch {
-            problems.append("legame strutturale: \(error)")
-            return false
-        }
-    }
-
-    // MARK: Search
-
-    struct SearchResult: Identifiable, Sendable {
-        var id: String { path }
-        var path: String
-        var title: String
-        /// The first matching line, for context in the result list.
-        var excerpt: String
-    }
-
-    /// Full-text search across the vault (SPEC §12).
-    ///
-    /// Reads each note from disk rather than searching a cached copy of its text: the
-    /// index holds structure, not content, and returning a hit for text that is no
-    /// longer there is worse than taking a moment longer.
-    func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
-        guard let store, !query.isEmpty else { return [] }
-
-        var results: [SearchResult] = []
-        for record in index.allNotes {
-            guard let (_, text) = try? store.read(record.relativePath) else { continue }
-            guard query.matches(record: record, text: text) else { continue }
-
-            results.append(SearchResult(
-                path: record.relativePath,
-                title: record.title,
-                excerpt: Self.excerpt(for: query, in: text)
-            ))
-            if results.count >= limit { break }
-        }
-        return results
-    }
-
-    /// The first line containing a searched word or phrase.
-    private static func excerpt(for query: SearchQuery, in text: String) -> String {
-        let needles = query.phrases + query.words
-        guard !needles.isEmpty else { return "" }
-
-        for line in text.components(separatedBy: "\n") {
-            let folded = SearchQuery.fold(line)
-            if needles.contains(where: { folded.contains(SearchQuery.fold($0)) }) {
-                return line.trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return ""
-    }
-
-    // MARK: URL scheme
-
-    /// Handles a `pergamenum://` link (SPEC §9).
-    ///
-    /// Returns false when the route names something that is not there, so the caller
-    /// can say so rather than silently doing nothing: a link from DEVONthink that
-    /// quietly fails is worse than one that reports the note has moved.
-    /// Traces URL handling.
-    ///
-    /// A link that silently does nothing is indistinguishable from a broken scheme
-    /// registration, and that ambiguity cost real time to diagnose; every route now
-    /// says what it did.
-    private static let routeLog = Logger(subsystem: AppInfo.bundleIdentifier, category: "url-scheme")
-
-    @discardableResult
-    func handle(_ route: PergamenumRoute) -> Bool {
-        Self.routeLog.notice("route ricevuta: \(String(describing: route), privacy: .public)")
-        let outcome = perform(route)
-        Self.routeLog.notice("route esito: \(outcome, privacy: .public)")
-        return outcome
-    }
-
-    private func perform(_ route: PergamenumRoute) -> Bool {
-        // A link can arrive before the vault has finished opening - the app may have
-        // been launched *by* the link. Holding the route and replaying it is the
-        // difference between a link that works from cold and one that only works when
-        // the app happened to be running.
-        guard let store else {
-            pendingRoute = route
-            return false
-        }
-
-        switch route {
-        case .note(let path):
-            guard FileManager.default.fileExists(
-                atPath: store.url(for: path).path(percentEncoded: false)
-            ) else {
-                problems.append("il link punta a una nota che non esiste: \(path)")
-                return false
-            }
-            openNote(at: path)
-            return true
-
-        case .noteID(let id):
-            // IDs live in the index, not in the frontmatter (SPEC §9), so an unknown
-            // one means the note was renamed outside the app.
-            guard let path = noteIDs[id] else {
-                problems.append("nessuna nota con id \(id)")
-                return false
-            }
-            openNote(at: path)
-            return true
-
-        case .canvas(let path, let nodeID):
-            pendingCanvasRoute = (path, nodeID)
-            return true
-
-        case .day(let date):
-            return openDaily(date)
-
-        case .today:
-            return openDaily(.today)
-
-        case .search(let query):
-            pendingSearch = query
-            isShowingQuickSwitcher = true
-            return true
-
-        case .capture(let text, let notePath):
-            return append(text: text, to: notePath)
-
-        case .addTask(let text):
-            return captureTask(text)
-        }
-    }
-
-    /// Opens the daily note for a route, reporting why when it cannot.
-    ///
-    /// `try?` here swallowed the reason and left a link that did nothing with no way
-    /// to find out why.
-    private func openDaily(_ date: CalendarDate) -> Bool {
-        do {
-            _ = try openDailyNote(for: date)
-            return true
-        } catch {
-            Self.routeLog.error("daily note fallita: \(String(describing: error), privacy: .public)")
-            problems.append("nota giornaliera: \(error)")
-            return false
-        }
-    }
-
-    /// A route that arrived before the vault was open, replayed once it is.
-    private var pendingRoute: PergamenumRoute?
-
-    /// A canvas the Workspace should open when it next appears.
-    private(set) var pendingCanvasRoute: (path: String, nodeID: String?)?
-    /// A query the quick switcher should start from.
-    private(set) var pendingSearch: String?
-    /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
-    private var noteIDs: [String: String] = [:]
-
-    func consumePendingCanvasRoute() -> (path: String, nodeID: String?)? {
-        defer { pendingCanvasRoute = nil }
-        return pendingCanvasRoute
-    }
-
-    func consumePendingSearch() -> String? {
-        defer { pendingSearch = nil }
-        return pendingSearch
-    }
-
-    /// Appends text to a note without opening it, for the capture route.
-    private func append(text: String, to notePath: String?) -> Bool {
-        guard let store else { return false }
-        let path = notePath ?? {
-            settings.dailyFolder.isEmpty
-                ? NoteName.dailyFileName(for: .today)
-                : "\(settings.dailyFolder)/\(NoteName.dailyFileName(for: .today))"
-        }()
-
-        do {
-            if !FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false)) {
-                _ = try openDailyNote(for: .today)
-            }
-            let existing = try store.read(path).text
-            let separator = existing.hasSuffix("\n") ? "" : "\n"
-            let hash = try store.write(existing + separator + text + "\n", to: path)
-            selfWrittenHashes[path] = hash
-            index.update(try store.read(path).record, at: path)
-            return true
-        } catch {
-            problems.append("capture: \(error)")
-            return false
-        }
-    }
-
-    // MARK: Watching
-
-    private func startWatching(_ url: URL) {
-        let watcher = VaultWatcher(root: url) { [weak self] paths in
-            Task { @MainActor [weak self] in
-                self?.reconcile(paths)
-            }
-        }
-        watcher.start()
-        self.watcher = watcher
-    }
-
-    /// Applies external changes, one path at a time.
-    private func reconcile(_ paths: [String]) {
-        guard let store else { return }
-
-        for path in paths {
-            let fileURL = store.url(for: path)
-            guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
-                index.update(nil, at: path)
-                continue
-            }
-            guard let (record, text) = try? store.read(path) else { continue }
-
-            // The app's own write coming back. Compared by content hash rather than
-            // by a time window, so a real external edit is never mistaken for it.
-            if selfWrittenHashes[path] == record.contentHash {
-                selfWrittenHashes.removeValue(forKey: path)
-                continue
-            }
-
-            index.update(record, at: path)
-
-            guard var note = openNote, note.relativePath == path else { continue }
-            if note.hasUnsavedChanges {
-                // Never merge, never discard: ask.
-                note.externalChangePending = text
-                openNote = note
-            } else {
-                note.text = text
-                note.savedText = text
-                openNote = note
-            }
-        }
     }
 
     // MARK: Vault-private files
@@ -822,52 +493,6 @@ final class VaultController {
         } catch {
             problems.append("vocabolari.json could not be written: \(error.localizedDescription)")
         }
-    }
-
-    /// Validates any note in the vault by path, for the vault-wide conformance view.
-    ///
-    /// Reads the file rather than trusting the index: the linter's whole job is to
-    /// report what is on disk, and a stale index row would report a note as clean
-    /// after someone edited it in Obsidian.
-    func violations(forRecordAt relativePath: String) -> NoteViolations? {
-        guard let store, let (_, text) = try? store.read(relativePath) else { return nil }
-        return violations(
-            path: relativePath,
-            title: NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent),
-            text: text
-        )
-    }
-
-    /// Validates the open note against every convention rule, for the conformance view.
-    func violations(for note: OpenNote) -> NoteViolations {
-        violations(path: note.relativePath, title: note.title, text: note.text)
-    }
-
-    private func violations(path: String, title: String, text: String) -> NoteViolations {
-        let document = NoteDocument.parse(text)
-        let category = NoteName.category(
-            forFileName: (path as NSString).lastPathComponent,
-            dailyFolder: settings.dailyFolder,
-            path: path
-        )
-        let discrepancies = RelatedSection.discrepancies(
-            frontmatterRelated: document.frontmatter.related,
-            sectionLinks: RelatedSection.parse(from: document.body)
-        )
-        // A daily note is judged by its own naming rule: `20260811` would fail the
-        // ordinary title check for looking like a version-less date, and passing it
-        // through `validate` would report every daily note as non-conformant.
-        let nameViolations = category == .daily
-            ? NoteName.validateDaily(title)
-            : NoteName.validate(title)
-
-        return NoteViolations(
-            name: nameViolations,
-            frontmatter: FrontmatterRules.validate(document),
-            tags: TagRules.validate(document.frontmatter.tags, category: category, vocabulary: vocabulary),
-            relatedMissingInSection: discrepancies.missingInSection,
-            relatedMissingInFrontmatter: discrepancies.missingInFrontmatter
-        )
     }
 }
 
