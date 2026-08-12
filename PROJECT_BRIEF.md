@@ -85,6 +85,15 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-12: **Index persisted.** `.pergamenum/cache.db` through the system SQLite,
+  no package dependency. Measured on the real vault: 77 of 77 notes reused, scan from
+  207 ms to 150 ms. A row whose file changed is discarded rather than trusted, and a
+  corrupt or older-schema file yields nothing rather than half a vault.
+- 2026-08-12: **Board interaction and note file operations.** Marquee, eight resize
+  grips, alignment guides and whole-document undo; rename, move and delete a note from
+  the sidebar, with wikilinks rewritten across the vault and board cards repointed.
+  Export as Markdown, HTML or PDF. Mini-calendar with the daily-note context menu.
+- 2026-08-12: 387 tests green, SwiftLint without errors, 80 source files.
 - 2026-08-11: repository bootstrapped, scaffolding level "standard", first commit
   pushed. Tuist project builds and tests green against the macOS 26 target, with the
   URL scheme and EventKit usage descriptions already declared in the manifest.
@@ -130,7 +139,17 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Open questions
 
-- Which module boundaries: one app target or feature modules as separate Tuist targets?
-- GRDB schema and migration strategy for the rebuildable index.
-- FSEvents reconciliation: how to handle an external edit landing mid-write.
-- Where the `harness-system` repo lives on disk for the "Importa convenzioni…" command.
+- EventKit has never been exercised against the real frameworks: Calendar and
+  Reminders are still at "permission not requested". The logic around it is covered by
+  stubs, the code that talks to EventKit is not.
+- The 46 non-conformant notes the linter reports on the real Labs vault: never
+  reviewed. The linter reports, it does not correct.
+
+## Decisions closed since the brief was written
+
+- Module boundaries: one app target with folder-enforced layers (ADR-0001).
+- The index is the system SQLite in `.pergamenum/cache.db`, not GRDB: four columns do
+  not justify a dependency carried for the life of the app.
+- FSEvents reconciliation: content hash per file, so an external edit landing mid-write
+  is re-read rather than half-indexed.
+- `harness-system` is read at a path chosen in the open panel, never assumed.
