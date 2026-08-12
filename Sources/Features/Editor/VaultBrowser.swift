@@ -94,6 +94,9 @@ struct VaultBrowser: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .tag(note.relativePath)
+                    // Dragged onto a task line in the editor, this becomes a wikilink
+                    // (SPEC §7.2).
+                    .draggable(note.title)
                     .contextMenu { rowMenu(note) }
                 }
             }

@@ -240,6 +240,16 @@ final class CompletingTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        // A note title dragged from the sidebar onto a task line links the two
+        // (SPEC §7.2, "collegamento assistito"). Checked before the file case: a
+        // sidebar row carries a string, not a URL.
+        if let title = sender.draggingPasteboard.string(forType: .string),
+           !title.contains("\n"),
+           noteTitles.contains(title),
+           linkTitle(title, at: sender.draggingLocation) {
+            return true
+        }
+
         let urls = sender.draggingPasteboard.readObjects(
             forClasses: [NSURL.self], options: nil
         ) as? [URL] ?? []
@@ -252,6 +262,28 @@ final class CompletingTextView: NSTextView {
         guard !embeds.isEmpty else { return super.performDragOperation(sender) }
 
         insertText(embeds.joined(separator: "\n"), replacementRange: selectedRange())
+        return true
+    }
+
+    /// Appends `[[title]]` to the task line under the drop point.
+    ///
+    /// Only a task line: dropping a note in the middle of a paragraph would rewrite
+    /// prose the user did not ask to change, and §7.2 is about tasks.
+    private func linkTitle(_ title: String, at windowPoint: NSPoint) -> Bool {
+        let point = convert(windowPoint, from: nil)
+        let index = characterIndexForInsertion(at: point)
+        let text = string as NSString
+        guard index <= text.length else { return false }
+
+        let lineRange = text.lineRange(for: NSRange(location: min(index, max(0, text.length - 1)), length: 0))
+        let line = text.substring(with: lineRange)
+        guard TaskParser.parse(line: line, sourcePath: "", lineIndex: 0) != nil else { return false }
+        guard !line.contains("[[\(title)]]") else { return true }
+
+        // Before the newline, so the link joins the task rather than starting a line.
+        let trimmed = line.hasSuffix("\n") ? String(line.dropLast()) : line
+        let replacement = trimmed + " [[\(title)]]" + (line.hasSuffix("\n") ? "\n" : "")
+        insertText(replacement, replacementRange: lineRange)
         return true
     }
 

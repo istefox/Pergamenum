@@ -56,6 +56,14 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                 header
+                MiniCalendar(
+                    day: day,
+                    onSelect: { controller.show($0) },
+                    onOpenDailyNote: { date in
+                        controller.show(date)
+                        controller.openDailyNote()
+                    }
+                )
                 references
                 noteBody
             }
