@@ -157,16 +157,24 @@ Binding order, each yielding a usable app (SPEC §13):
   and the four screen mockups. 17 tests green. M1 does not start until the mockups
   are approved (SPEC §13).
 
-## Open questions
+## Vault decisions
 
-- The 46 non-conformant notes the linter reports on the real Labs vault: never
-  reviewed. The linter reports, it does not correct, and so does this project: the
-  notes are Stefano's, and 198 of the violations collapse into four causes - 43 missing
-  `topic-*`, 32 missing `type-note`, 21 with no frontmatter at all, and 11 carrying a
-  foreign schema (`title`, `created`, `description`: Web Clipper output).
-- Two notes in `00 Inbox` have what look like live API keys in their file names
-  (Resend, Anthropic). If they are real they need revoking at source; nothing in this
-  repo can do that.
+Neither of these is an open question. Both were put to Stefano on 2026-08-12 and
+both were decided; they are written down because a vault that trips the linter and
+a file name that looks like a credential will each be found again by whoever looks
+next, and finding them without the decision attached costs an afternoon.
+
+- **The 46 non-conformant notes stay as they are.** 198 violations collapsing into
+  four causes: 43 missing `topic-*`, 32 missing `type-note`, 21 with no frontmatter
+  at all, and 11 carrying a foreign schema (`title`, `created`, `description`: Web
+  Clipper output). The first two are judgement, not mechanics. This matches what the
+  spec asks of the linter anyway - it reports, it does not correct - and the app
+  behaves correctly by leaving them alone. If the mechanical subset is ever wanted,
+  the out-of-schema keys are the deterministic part.
+- **The two file names in `00 Inbox` that look like API keys stay as they are.**
+  Asked and answered: "tieni le chiavi come sono". Nothing in this repo could revoke
+  them regardless - that happens at Resend and Anthropic, with credentials this
+  project does not have and should not have.
 
 ## Verification practice
 
