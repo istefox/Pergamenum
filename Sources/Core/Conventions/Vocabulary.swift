@@ -17,6 +17,20 @@ struct Vocabulary: Equatable, Sendable, Codable {
     /// Deliverable kinds from naming.md 6.1, used by the export file name builder.
     var deliverableKind: Set<String>
 
+    /// A line for whoever opens the file, written as `_comment` and never read back.
+    ///
+    /// The file shipped with one saying that harness-system is the source of truth and
+    /// that the way to change this file is to re-import, not to edit it (SPEC §1,
+    /// principle 5). The importer used to drop it - it wrote the five tables and
+    /// nothing else - so the first real import removed the one sentence telling the
+    /// reader not to hand-edit what they were looking at.
+    var note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type, status, area, source, deliverableKind
+        case note = "_comment"
+    }
+
     /// An empty vocabulary. Every closed-family value is unknown until the real
     /// tables are imported, so the linter reports rather than silently accepting.
     /// Chosen over a guessed table on purpose: a wrong closed value would be written

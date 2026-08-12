@@ -131,6 +131,19 @@ final class DayController {
     /// Blocks live in the daily note, so writing them is a note edit like any other.
     private func write(_ newBlocks: [TimeBlock]) {
         let sorted = newBlocks.sorted { $0.startMinutes < $1.startMinutes }
+        // Opened here when it is not already, and created from the template when it
+        // does not exist. "Blocca" means put this on the day; that the block is stored
+        // in the daily note is this app's business, not the user's. Before this the
+        // button did nothing at all unless the note happened to be open, and said so
+        // only in Impostazioni, Avanzate - which is to say, silently.
+        if noteText == nil {
+            do {
+                _ = try vault.openDailyNote(for: day)
+            } catch {
+                report("nota del giorno: \(error)")
+                return
+            }
+        }
         guard let text = noteText else {
             report("la nota di \(day.compactForm) non è aperta")
             return

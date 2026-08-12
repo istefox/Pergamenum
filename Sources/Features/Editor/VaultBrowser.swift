@@ -464,6 +464,12 @@ struct QuickSwitcher: View {
                 .font(theme.font(.title))
                 .padding(theme.spacing(.m))
                 .onSubmit { open(selection ?? results.first?.relativePath) }
+                // `pergamenum://search?q=` parks its query on the controller and this
+                // is what picks it up. Without it the route opened the switcher with an
+                // empty field: the link worked, visibly, and did the wrong thing.
+                .task {
+                    if let pending = vault.consumePendingSearch() { query = pending }
+                }
 
             Divider()
 

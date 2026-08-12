@@ -156,6 +156,9 @@ Corpo.
     let onDisk = try String(contentsOf: vault.root.appending(path: "Destinazione.md"), encoding: .utf8)
     #expect(onDisk.hasSuffix("appunto veloce\n"))
     #expect(onDisk.hasPrefix(routableNote))
+    // A blank line before it, not merely a newline. The first version checked only
+    // that the text was last, which it was - fused onto whatever came before.
+    #expect(onDisk.hasSuffix("\n\nappunto veloce\n"))
     // SPEC §9: capture does not bring the app forward, and it does not open the note.
     #expect(controller.openNote == nil)
     controller.close()
@@ -278,5 +281,50 @@ Corpo.
     """, to: "Nota.md")
 
     #expect(controller.violations(forRecordAt: "Nota.md")?.frontmatter.contains(.foreignKey("title")) == true)
+    controller.close()
+}
+
+@MainActor
+@Test func aCaptureUnderAListDoesNotBecomePartOfTheLastBullet() async throws {
+    // The shape a daily note is always in by the afternoon: a Timeline section whose
+    // last line is a time block. Appended with a single newline the captured text is a
+    // lazy continuation of that bullet in CommonMark, so the note reads as though the
+    // block were titled "Riunione Riga catturata" - and the text sits inside a section
+    // the app rewrites on the next block change.
+    let vault = try RouteVault()
+    try vault.write("""
+    ---
+    date: 2026-08-12
+    tags:
+      - type-note
+    ---
+
+    ## Timeline
+
+    - 09:00-09:30 Riunione
+    """, to: "Giorno.md")
+
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+    #expect(controller.handle(.capture(text: "Riga catturata", notePath: "Giorno.md")))
+
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Giorno.md"), encoding: .utf8)
+    #expect(onDisk.contains("- 09:00-09:30 Riunione\n\nRiga catturata\n"))
+    controller.close()
+}
+
+@MainActor
+@Test func twoCapturesInARowStayTwoSeparateLines() async throws {
+    let vault = try RouteVault()
+    try vault.write(routableNote, to: "Destinazione.md")
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    #expect(controller.handle(.capture(text: "primo", notePath: "Destinazione.md")))
+    #expect(controller.handle(.capture(text: "secondo", notePath: "Destinazione.md")))
+
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Destinazione.md"), encoding: .utf8)
+    // Not fused into one paragraph: two captures are two notes to self, not one.
+    #expect(onDisk.hasSuffix("primo\n\nsecondo\n"))
     controller.close()
 }

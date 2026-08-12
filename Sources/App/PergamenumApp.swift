@@ -30,6 +30,10 @@ struct PergamenumApp: App {
     @State private var vault = VaultController()
     @State private var calendar = EventKitStore()
     @State private var navigation = Navigation()
+    /// Local notifications for `@remind(...)` (SPEC §7.1). Held here so it outlives
+    /// any one view: it was written, unit-tested and never instantiated, so the
+    /// markers parsed correctly and no notification was ever scheduled.
+    @State private var reminders = ReminderScheduler()
     /// The day view's controller, created here rather than inside the view so the
     /// Calendario menu can act on the day being shown (SPEC §10).
     @State private var day: DayController
@@ -54,9 +58,18 @@ struct PergamenumApp: App {
                 .environment(vault)
                 .environment(calendar)
                 .environment(navigation)
+                .environment(reminders)
                 .environment(day)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
+                // Rescheduled on every completed scan, against the whole vault: the
+                // tasks on disk are the source of truth, so the scheduler replaces its
+                // pending notifications wholesale rather than trying to diff them.
+                .task(id: vault.scanGeneration) {
+                    await reminders.refreshAccessStatus()
+                    await reminders.reschedule(for: vault.index.allTasks)
+                    await reminders.refreshPending()
+                }
                 .task {
                     // Reopens the vault the app was last in (SPEC §10, "Vault
                     // recenti"). Guarded on `root` so a link that already opened one
@@ -93,6 +106,10 @@ struct PergamenumApp: App {
                 .environment(themeEngine)
                 .environment(vault)
                 .environment(calendar)
+                // A separate scene with its own environment: an object injected into
+                // the main window is not visible here, and reading one that is missing
+                // is a trap at run time, not a compile error.
+                .environment(reminders)
                 .themed(by: themeEngine)
         }
     }

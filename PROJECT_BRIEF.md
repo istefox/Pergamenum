@@ -85,6 +85,22 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-12: **Everything written but never run was run, and most of it was broken.**
+  Nine defects, none reachable by a test, all found by exercising the real thing:
+  EventKit killed the app the moment the day view opened with Reminders granted
+  (a completion block inheriting main-actor isolation off the main thread); all-day
+  events were drawn nowhere; the app created reminders it could not then read back;
+  "Blocca" did nothing unless the daily note happened to be open; the `search` route
+  dropped its query and the `canvas` route opened nothing; capture fused itself onto
+  the last list item; the convention import deleted its own warning against
+  hand-editing; `@remind` was never wired in at all; and once wired, it fired
+  invisibly whenever Pergamenum was the app in front, which is when it matters most.
+  Read and write against real calendars, both URL routes, Quick Look, SVG drawing,
+  the harness import and a notification on screen are all now verified by running.
+- 2026-08-12: **The app was signed ad-hoc.** `DEVELOPMENT_TEAM` was set and
+  `CODE_SIGN_IDENTITY` defaulted to `-`, so TCC keyed every privacy grant to the
+  binary hash and each rebuild threw the Calendar and Reminders permission away. It
+  was twice mistaken for a broken read before the signature was looked at.
 - 2026-08-12: **Index persisted.** `.pergamenum/cache.db` through the system SQLite,
   no package dependency. Measured on the real vault: 77 of 77 notes reused, scan from
   207 ms to 150 ms. A row whose file changed is discarded rather than trusted, and a
@@ -106,9 +122,13 @@ Binding order, each yielding a usable app (SPEC §13):
 - 2026-08-11: **Mouse interaction verified.** Selecting, dragging, resizing and the
   spacebar Quick Look all exercised with real CGEvent mouse input on the test vault.
   Dragging was badly broken and is now correct to the unit.
-- 2026-08-11: **M6 complete.** All `pergamenum://` routes verified end to end against
-  the registered scheme, the vault-wide conformance linter, complete menus, convention
-  import and local notifications for `@remind`.
+- 2026-08-11: **M6 code complete.** The `pergamenum://` routes, the vault-wide
+  conformance linter, complete menus and convention import.
+  *Corrected on 2026-08-12: this entry originally read "M6 complete. All
+  `pergamenum://` routes verified end to end … and local notifications for `@remind`".
+  Two of the eight routes had never worked and the notification scheduler had never
+  been instantiated. The claim was not true when it was written; the entry below
+  records what running them actually found.*
 - 2026-08-11: **M5 code complete, EventKit unverified.** Day view, timeline, time
   blocks stored in the daily note, EventKit read/write and two-way Reminders behind a
   protocol. Reading and writing real events needs the permission dialog answered.
@@ -139,11 +159,30 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Open questions
 
-- EventKit has never been exercised against the real frameworks: Calendar and
-  Reminders are still at "permission not requested". The logic around it is covered by
-  stubs, the code that talks to EventKit is not.
 - The 46 non-conformant notes the linter reports on the real Labs vault: never
-  reviewed. The linter reports, it does not correct.
+  reviewed. The linter reports, it does not correct, and so does this project: the
+  notes are Stefano's, and 198 of the violations collapse into four causes - 43 missing
+  `topic-*`, 32 missing `type-note`, 21 with no frontmatter at all, and 11 carrying a
+  foreign schema (`title`, `created`, `description`: Web Clipper output).
+- Two notes in `00 Inbox` have what look like live API keys in their file names
+  (Resend, Anthropic). If they are real they need revoking at source; nothing in this
+  repo can do that.
+
+## Verification practice
+
+Every defect worth the name in this project was found by running the app, never by
+reading it, and the tests were green throughout. The pattern repeated often enough to
+be worth writing down: unit tests cluster around a seam - a pure function, a parser, a
+stub - and the seam itself goes unexercised. Five green tests covered the notification
+request builder while nothing ever instantiated the scheduler.
+
+Two corollaries, both paid for:
+
+- A stub answers synchronously on the main actor, which is the one case that works.
+  The EventKit crash lived in the gap between that and a real background callback.
+- "Scheduled" and "seen" are different claims. The system's pending queue drained on
+  time, which proved delivery and nothing about visibility; the notification was
+  invisible because the app was frontmost. Only looking at the screen settled it.
 
 ## Decisions closed since the brief was written
 

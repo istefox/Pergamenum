@@ -231,3 +231,85 @@ private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")
     #expect(first.first?.identifier == second.first?.identifier)
     #expect(first.first?.identifier == item.id)
 }
+
+// MARK: - Access state
+
+/// `EventKitStore` can be constructed in tests: reading the authorization status never
+/// opens a dialog, and nothing here touches the store's contents. Everything below is
+/// about the state the app is in *before* anyone has said yes, which is exactly the
+/// state that was never checked.
+
+@MainActor
+@Test func aStoreThatHasNeverBeenAskedCanStillBeAsked() {
+    let store = EventKitStore()
+    // Whatever this machine's real answer is, "can still be asked" must agree with it
+    // rather than with a guess: a button offering to ask is only honest while asking
+    // can still produce a dialog.
+    let expected = store.eventAccess == .notDetermined || store.reminderAccess == .notDetermined
+    #expect(store.canStillBeAsked == expected)
+}
+
+@MainActor
+@Test func aDeniedStoreIsNeverOfferedTheRequestAgain() {
+    let store = EventKitStore()
+    if store.eventAccess == .denied, store.reminderAccess == .denied {
+        // macOS asks once. Offering it again would be a button that does nothing.
+        #expect(!store.canStillBeAsked)
+    }
+}
+
+@MainActor
+@Test func noExternalChangeHasBeenSeenAtBirth() {
+    // The day view reloads on a change; a store that claimed one at launch would make
+    // it reload twice on every start.
+    #expect(EventKitStore().changeCount == 0)
+}
+
+@Test func thePrivacyPaneURLNamesTheRightPane() {
+    // The two entities land on two different panes, and sending a user refused on
+    // Reminders to the Calendar pane is the kind of thing nobody notices until they
+    // are already lost in Impostazioni di Sistema.
+    #expect(EventKitStore.privacyPaneURL(for: .event)?.absoluteString
+        == "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
+    #expect(EventKitStore.privacyPaneURL(for: .reminder)?.absoluteString
+        == "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")
+}
+
+// MARK: - All-day events
+
+private func event(_ title: String, allDay: Bool, hour: Int) -> CalendarEvent {
+    let start = EventKitStore.date(day, hour: hour, minute: 0)!
+    return CalendarEvent(
+        id: title, title: title, start: start, end: start.addingTimeInterval(3600),
+        isAllDay: allDay, calendarTitle: "Personale", isEditable: true
+    )
+}
+
+@Test func anAllDayEventIsKeptOutOfTheHourGrid() {
+    // Found on a real calendar: the grid starts at 06:00 and places an entry by its
+    // start time, so an all-day event at midnight was drawn above the first line and
+    // vanished. Holidays and deadlines were missing from every day that had them.
+    let split = [
+        event("Assunzione di Maria", allDay: true, hour: 0),
+        event("Qualifiche", allDay: false, hour: 15),
+    ].splitByAllDay
+
+    #expect(split.allDay.map(\.title) == ["Assunzione di Maria"])
+    #expect(split.timed.map(\.title) == ["Qualifiche"])
+}
+
+@Test func aDayWithNoAllDayEventHasAnEmptyStrip() {
+    // The strip is hidden on an empty list rather than drawn as a blank band.
+    #expect([event("Sprint", allDay: false, hour: 11)].splitByAllDay.allDay.isEmpty)
+}
+
+@Test func everyEventLandsOnExactlyOneSideOfTheSplit() {
+    let events = [
+        event("A", allDay: true, hour: 0), event("B", allDay: false, hour: 9),
+        event("C", allDay: true, hour: 0), event("D", allDay: false, hour: 18),
+    ]
+    let split = events.splitByAllDay
+    // Neither dropped nor counted twice: the bug being guarded against was a whole
+    // category silently disappearing.
+    #expect(split.allDay.count + split.timed.count == events.count)
+}

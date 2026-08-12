@@ -9,6 +9,13 @@ let deploymentTarget = "26.0"
 let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "T7H24G7BFW",
     "CODE_SIGN_STYLE": "Automatic",
+    // Without this the default is "-", an ad-hoc signature, and the team above is
+    // never used. That is not cosmetic: TCC keys a privacy grant to the signing
+    // identity, and an ad-hoc signature has none, so it keys on the binary hash
+    // instead. Every rebuild then throws away the Calendar and Reminders permission -
+    // grant access, change one line, and the app is a stranger to macOS again. It
+    // cost an afternoon to recognise, twice mistaken for a broken read.
+    "CODE_SIGN_IDENTITY": "Apple Development",
     "SWIFT_VERSION": "6.0",
 ]
 
@@ -34,7 +41,10 @@ let project = Project(
             ]),
             sources: ["Sources/**"],
             resources: ["Resources/**"],
-            dependencies: []
+            dependencies: [],
+            // Repeated on the target because a target-level value wins over the
+            // project base, and the generated target carries "-" by default.
+            settings: .settings(base: baseSettings)
         ),
         .target(
             name: "\(projectName)Tests",

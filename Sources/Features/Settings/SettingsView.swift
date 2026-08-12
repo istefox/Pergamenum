@@ -10,6 +10,8 @@ struct SettingsView: View {
     @Environment(VaultController.self) private var vault
     @Environment(ThemeEngine.self) private var engine
     @Environment(EventKitStore.self) private var calendar
+    @Environment(ReminderScheduler.self) private var reminders
+    @State private var testProblem: String?
 
     var body: some View {
         TabView {
@@ -131,13 +133,70 @@ struct SettingsView: View {
         return Form {
             LabeledContent("Accesso Calendario") { accessLabel(calendar.eventAccess) }
             LabeledContent("Accesso Promemoria") { accessLabel(calendar.reminderAccess) }
+            LabeledContent("Accesso Notifiche") { accessLabel(reminders.access) }
+
+            // `@remind(...)` markers are parsed whatever this says; without the grant
+            // nothing is ever scheduled from them (SPEC §7.1).
+            if reminders.access == .notDetermined {
+                Button("Richiedi accesso alle notifiche") {
+                    Task {
+                        await reminders.requestAccess()
+                        await reminders.reschedule(for: vault.index.allTasks)
+                    }
+                }
+            } else if reminders.access == .denied {
+                Text("I promemoria @remind non possono essere mostrati: le notifiche di Pergamenum sono disattivate in Impostazioni di Sistema.")
+                    .themedText(.caption, color: .textTertiary)
+            } else {
+                Text("^[\(reminders.pendingCount) promemoria](inflect: true) @remind in attesa nel sistema.")
+                    .themedText(.caption, color: .textTertiary)
+                Text(reminders.deliverySummary).themedText(.caption, color: .textTertiary)
+                // Authorised and silent is a real state, and it is the one nobody can
+                // diagnose: the reminder fires on time and nothing appears.
+                if reminders.isSilent {
+                    Text("Le notifiche sono autorizzate ma gli avvisi sono disattivati: un @remind viene consegnato e non si vede. Si riattiva da Impostazioni di Sistema › Notifiche › Pergamenum.")
+                        .themedText(.caption, color: .taskOverdue)
+                }
+                Button("Invia una notifica di prova") {
+                    Task { testProblem = await reminders.sendTestNotification() }
+                }
+                if let testProblem {
+                    Text(testProblem).themedText(.caption, color: .taskOverdue)
+                } else {
+                    Text("Arriva dopo qualche secondo: macOS non mostra una notifica mentre la sua app è in primo piano.")
+                        .themedText(.caption, color: .textTertiary)
+                }
+            }
+
+            if let problem = reminders.lastAccessError {
+                Text(problem).themedText(.caption, color: .taskOverdue)
+            }
 
             if !calendar.eventAccess.isGranted || !calendar.reminderAccess.isGranted {
-                Button("Richiedi accesso") {
-                    Task { await calendar.requestAccess() }
+                // Asking is only offered while asking can still do something. macOS
+                // shows the dialog once; after a refusal the request returns in
+                // silence, and a button that silently does nothing is worse than no
+                // button at all.
+                if calendar.canStillBeAsked {
+                    Button("Richiedi accesso") {
+                        Task { await calendar.requestAccess() }
+                    }
                 }
-                Text("macOS chiede il consenso una sola volta. Se l'hai già negato, si cambia da Impostazioni di Sistema › Privacy e sicurezza.")
+                if calendar.eventAccess == .denied {
+                    Button("Apri Impostazioni di Sistema: Calendario") {
+                        EventKitStore.openPrivacySettings(for: .event)
+                    }
+                }
+                if calendar.reminderAccess == .denied {
+                    Button("Apri Impostazioni di Sistema: Promemoria") {
+                        EventKitStore.openPrivacySettings(for: .reminder)
+                    }
+                }
+                Text("macOS chiede il consenso una sola volta. Al ritorno da Impostazioni di Sistema il permesso viene riletto da solo.")
                     .themedText(.caption, color: .textTertiary)
+                if let problem = calendar.lastAccessError {
+                    Text(problem).themedText(.caption, color: .taskOverdue)
+                }
             }
 
             if calendar.eventAccess.isGranted {

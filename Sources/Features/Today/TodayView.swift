@@ -32,6 +32,13 @@ struct TodayView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .task(id: day) { await controller.load() }
+        // Reloads when EventKit says the store moved, or when the app comes back to
+        // the front having been granted access in the meantime. Without this the
+        // permission the user has just given stays invisible until the next launch.
+        .task(id: calendar.changeCount) {
+            guard calendar.changeCount > 0 else { return }
+            await controller.load()
+        }
         .sheet(isPresented: Bindable(controller).isChoosingDate) { datePicker }
         .sheet(isPresented: Bindable(controller).isCreatingEvent) {
             draftSheet(title: "Nuovo evento", showsTime: true) {
@@ -186,7 +193,7 @@ struct TodayView: View {
                     }
                 }
 
-                ForEach(events) { event in
+                ForEach(timedEvents) { event in
                     entry(title: event.title, subtitle: event.calendarTitle,
                           start: minutes(from: event.start), duration: duration(of: event),
                           token: .accentMuted, isEvent: true)
@@ -208,16 +215,63 @@ struct TodayView: View {
         }
         .frame(width: 300)
         .background(theme.color(.backgroundSecondary))
-        .safeAreaInset(edge: .top) { timelineHeader }
+        .safeAreaInset(edge: .top) {
+            VStack(spacing: 0) {
+                timelineHeader
+                allDayStrip
+            }
+        }
     }
+
+    /// Events with no hour of their own, above the grid.
+    ///
+    /// The grid runs 06:00 to 22:00 (SPEC §8.3) and places an event by its start time.
+    /// An all-day event starts at midnight, so laid out that way it lands above the
+    /// first line and is drawn nowhere: on a real calendar a whole category of entry
+    /// - holidays, deadlines, birthdays - was simply missing from the day.
+    @ViewBuilder
+    private var allDayStrip: some View {
+        if !allDayEvents.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(allDayEvents) { event in
+                    HStack(spacing: theme.spacing(.xs)) {
+                        Text("TUTTO IL GIORNO").themedText(.caption, color: .textTertiary)
+                        Text(event.title)
+                            .themedText(.caption, color: .textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, theme.spacing(.xs))
+                    .padding(.vertical, 3)
+                    .background(theme.color(.accentMuted))
+                    .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+                    .help(event.calendarTitle)
+                }
+            }
+            .padding(.horizontal, theme.spacing(.s))
+            .padding(.bottom, theme.spacing(.xs))
+            .background(theme.color(.backgroundSecondary))
+        }
+    }
+
+    private var allDayEvents: [CalendarEvent] { events.splitByAllDay.allDay }
+    private var timedEvents: [CalendarEvent] { events.splitByAllDay.timed }
 
     private var timelineHeader: some View {
         HStack(spacing: theme.spacing(.xs)) {
             Text("TIMELINE").themedText(.caption, color: .textTertiary)
             Spacer()
-            if !calendar.eventAccess.isGranted {
+            if calendar.eventAccess == .notDetermined {
                 Button("Consenti Calendario") {
                     Task { await calendar.requestAccess(); await controller.load() }
+                }
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .accentPrimary)
+            } else if calendar.eventAccess == .denied {
+                // After a refusal the request is a no-op, so the timeline points at the
+                // only thing that can still change the answer.
+                Button("Calendario negato: apri Impostazioni") {
+                    EventKitStore.openPrivacySettings(for: .event)
                 }
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)
