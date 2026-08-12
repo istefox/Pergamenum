@@ -73,3 +73,6 @@ Tuist/.build/
 
 # Claude Code session artifacts
 .remember/
+
+# Session context written by the SessionStart hook: generated state, not source.
+.claude/context.md

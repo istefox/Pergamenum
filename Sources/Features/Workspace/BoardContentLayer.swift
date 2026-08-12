@@ -139,7 +139,25 @@ struct BoardContentLayer: View {
                 Button("Apri") { open(node) }
                 Button("Copia link Pergamenum") { copyLink(to: node) }
                 Divider()
-                Button("Elimina") { workspace.delete(nodeIDs: [node.id]) }
+                Menu("Colore") {
+                    Button("Nessuno") { workspace.setColor(nil, forNodeIDs: targets(node)) }
+                    ForEach(1...6, id: \.self) { preset in
+                        Button(Self.colorNames[preset - 1]) {
+                            workspace.setColor(.preset(preset), forNodeIDs: targets(node))
+                        }
+                    }
+                }
+                Menu("Ridimensiona") {
+                    ForEach(Self.sizePresets, id: \.name) { preset in
+                        Button(preset.name) {
+                            for id in targets(node) {
+                                workspace.resize(nodeID: id, to: preset.size)
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button("Elimina") { workspace.delete(nodeIDs: targets(node)) }
             }
             .gesture(
                 // `.global`, not a named space: a named space that fails to resolve falls back
@@ -230,6 +248,24 @@ struct BoardContentLayer: View {
 
     /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card
     /// can be linked to from Obsidian, DEVONthink or Mail (SPEC §9).
+    /// The cards an action applies to: the whole selection when the card is part of
+    /// it, otherwise just this one. Acting on the selection when the user right-clicked
+    /// something outside it is how a context menu deletes the wrong thing.
+    private func targets(_ node: CanvasNode) -> Set<String> {
+        workspace.selection.contains(node.id) ? workspace.selection : [node.id]
+    }
+
+    /// The JSON Canvas preset colours (SPEC §6.2), named as the spec numbers them.
+    private static let colorNames = ["Rosso", "Arancio", "Giallo", "Verde", "Ciano", "Viola"]
+
+    /// The presets of SPEC §10, "ridimensiona a preset".
+    private static let sizePresets: [(name: String, size: CGSize)] = [
+        ("Piccola", CGSize(width: 200, height: 120)),
+        ("Media", CGSize(width: 320, height: 220)),
+        ("Grande", CGSize(width: 480, height: 360)),
+        ("Colonna", CGSize(width: 260, height: 520)),
+    ]
+
     private func copyLink(to node: CanvasNode) {
         guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }
         let boardPath = store.boardPath(forFolder: workspace.folder)

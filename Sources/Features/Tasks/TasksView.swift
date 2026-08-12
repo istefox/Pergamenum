@@ -8,6 +8,8 @@ struct TasksView: View {
     @State private var isCapturing = false
     @State private var captureText = ""
     @State private var selectedTaskID: String?
+    /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
+    @State private var linking: TaskItem?
 
     private var today: CalendarDate { .today }
 
@@ -19,6 +21,20 @@ struct TasksView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: $isCapturing) { captureSheet }
+        .sheet(item: $linking) { task in
+            QuickSwitcher { path in
+                // The wikilink is the link (SPEC §7.2): no extra syntax, and it is
+                // written into the task's own line in its own note.
+                let title = NoteName.title(fromFileName: (path as NSString).lastPathComponent)
+                vault.apply(.link(title), to: task)
+                linking = nil
+            }
+        }
+        .onChange(of: vault.isLinkingSelectedTask) { _, requested in
+            guard requested, let task = vault.selectedTask else { return }
+            linking = task
+            vault.isLinkingSelectedTask = false
+        }
         .onChange(of: vault.isCapturingTask) { _, requested in
             guard requested else { return }
             isCapturing = true
@@ -193,6 +209,8 @@ struct TasksView: View {
         Button("+2 giorni") { vault.apply(.schedule(today.adding(days: 2)), to: task) }
         Button("Settimana prossima") { vault.apply(.schedule(today.adding(days: 7)), to: task) }
         Button("Togli la data") { vault.apply(.schedule(nil), to: task) }
+        Divider()
+        Button("Collega nota o board…") { linking = task }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
         Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }

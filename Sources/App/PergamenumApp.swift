@@ -123,6 +123,8 @@ struct TaskCommands: Commands {
                 .disabled(vault.selectedTask == nil)
 
             Divider()
+            Button("Collega nota o board…") { vault.isLinkingSelectedTask = true }
+                .disabled(vault.selectedTask == nil)
             Button("Vai alla nota di origine") {
                 if let task = vault.selectedTask { vault.openNote(at: task.sourcePath) }
             }
