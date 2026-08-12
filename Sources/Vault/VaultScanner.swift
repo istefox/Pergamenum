@@ -13,22 +13,43 @@ struct VaultScanner: Sendable {
         /// of skipped: a note missing from the index is invisible in search and in
         /// backlinks, and the user has no way to notice on their own.
         var failures: [(path: String, reason: String)]
+        /// How many of the records came from the cache rather than from disk.
+        var reusedFromCache = 0
 
         var isEmpty: Bool { records.isEmpty && failures.isEmpty }
+    }
+
+    /// Records already known, keyed by path, from `.pergamenum/cache.db`.
+    ///
+    /// A cached record is reused only when the file's size and modification date both
+    /// still match. That is a cheap check against a stale cache; the expensive and
+    /// exact one - the content hash - would mean reading the file, which is the work
+    /// being avoided.
+    var cached: [String: IndexCache.Entry] = [:]
+
+    /// How many notes the last scan took from the cache, for the index panel.
+    final class Statistics: @unchecked Sendable {
+        var reused = 0
     }
 
     func scan() -> Outcome {
         let store = NoteStore(root: root)
         var records: [NoteRecord] = []
         var failures: [(String, String)] = []
+        var reused = 0
 
-        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
+        let keys: [URLResourceKey] = [
+            .isDirectoryKey, .nameKey, .fileSizeKey, .contentModificationDateKey,
+        ]
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: keys,
             options: [.skipsPackageDescendants]
         ) else {
-            return Outcome(records: [], failures: [(root.lastPathComponent, "the vault could not be opened")])
+            return Outcome(
+                records: [],
+                failures: [(root.lastPathComponent, "the vault could not be opened")]
+            )
         }
 
         while let url = enumerator.nextObject() as? URL {
@@ -45,13 +66,18 @@ struct VaultScanner: Sendable {
             guard url.pathExtension.lowercased() == "md" else { continue }
 
             let relativePath = Self.relativePath(of: url, under: root)
+            if let entry = cached[relativePath], isUnchanged(entry, at: url) {
+                records.append(entry.record.record)
+                reused += 1
+                continue
+            }
             do {
                 records.append(try store.read(relativePath).record)
             } catch {
                 failures.append((relativePath, "\(error)"))
             }
         }
-        return Outcome(records: records, failures: failures)
+        return Outcome(records: records, failures: failures, reusedFromCache: reused)
     }
 
     /// Percent-decoded, separator-normalised path of `url` relative to `root`.
@@ -61,5 +87,25 @@ struct VaultScanner: Sendable {
         guard filePath.hasPrefix(rootPath) else { return url.lastPathComponent }
         let trimmed = filePath.dropFirst(rootPath.count)
         return trimmed.hasPrefix("/") ? String(trimmed.dropFirst()) : String(trimmed)
+    }
+}
+
+extension VaultScanner {
+    /// Whether a cached row still describes the file on disk.
+    static func isUnchanged(_ entry: IndexCache.Entry, size: Int, modifiedAt: Date?) -> Bool {
+        guard let modifiedAt else { return false }
+        // Sub-second precision differs between file systems and between the value
+        // Foundation reports on read and on write, so the comparison is to the second.
+        return entry.byteSize == size
+            && abs(entry.modifiedAt.timeIntervalSince(modifiedAt)) < 1
+    }
+
+    private func isUnchanged(_ entry: IndexCache.Entry, at url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return Self.isUnchanged(
+            entry,
+            size: values?.fileSize ?? -1,
+            modifiedAt: values?.contentModificationDate
+        )
     }
 }

@@ -112,7 +112,7 @@ Corpo.
     let vault = try RouteVault()
     try vault.write(routableNote, to: "01 Progetti/Nota.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.note(path: "01 Progetti/Nota.md")))
@@ -123,7 +123,7 @@ Corpo.
 @MainActor
 @Test func reportsALinkToANoteThatIsNotThere() async throws {
     let vault = try RouteVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     // A link from DEVONthink that quietly does nothing is worse than one that says
@@ -136,7 +136,7 @@ Corpo.
 @MainActor
 @Test func theDayRouteOpensOrCreatesTheDailyNote() async throws {
     let vault = try RouteVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.day(CalendarDate(iso: "2026-08-11")!)))
@@ -149,7 +149,7 @@ Corpo.
     let vault = try RouteVault()
     try vault.write(routableNote, to: "Destinazione.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.capture(text: "appunto veloce", notePath: "Destinazione.md")))
@@ -164,7 +164,7 @@ Corpo.
 @MainActor
 @Test func theTaskRouteLandsInTheInbox() async throws {
     let vault = try RouteVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.addTask("Richiamare Rossi")))
@@ -176,7 +176,7 @@ Corpo.
 @MainActor
 @Test func theSearchRouteOpensTheQuickSwitcherWithItsQuery() async throws {
     let vault = try RouteVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.search("trasmissibilità")))
@@ -190,7 +190,7 @@ Corpo.
 @MainActor
 @Test func theCanvasRouteIsHandedToTheWorkspace() async throws {
     let vault = try RouteVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.handle(.canvas(path: "Area/Area.canvas", nodeID: "7a1f")))
@@ -218,7 +218,7 @@ Corpo.
     Senza topic, con chiave fuori schema.
     """, to: "Non conforme v2.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     let clean = controller.violations(forRecordAt: "Conforme.md")
@@ -244,7 +244,7 @@ Corpo.
     Giornata.
     """, to: "Calendar/20260811.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     // `20260811` would fail the ordinary title check; a daily note is correct exactly
@@ -260,7 +260,7 @@ Corpo.
     let vault = try RouteVault()
     try vault.write(routableNote, to: "Nota.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     #expect(controller.violations(forRecordAt: "Nota.md")?.isEmpty == true)
 

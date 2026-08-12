@@ -18,6 +18,9 @@ final class NoteIndex {
     /// Files that failed to read during the last scan, surfaced in the UI.
     private(set) var failures: [String] = []
     private(set) var lastScanDuration: Duration = .zero
+    /// How many notes the last scan took from `.pergamenum/cache.db` rather than
+    /// reading again (SPEC §12).
+    private(set) var reusedFromCache = 0
 
     /// Lowercased title to the paths that carry it. A vault can legitimately hold two
     /// notes with the same title in different folders; a wikilink to that title is
@@ -35,6 +38,7 @@ final class NoteIndex {
         notes = Dictionary(uniqueKeysWithValues: outcome.records.map { ($0.relativePath, $0) })
         failures = outcome.failures.map { "\($0.path): \($0.reason)" }
         lastScanDuration = duration
+        reusedFromCache = outcome.reusedFromCache
         rebuildDerivedIndexes()
     }
 

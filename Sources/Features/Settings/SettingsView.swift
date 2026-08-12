@@ -179,8 +179,16 @@ struct SettingsView: View {
             LabeledContent("Ultima scansione") {
                 Text(scanDuration).themedText(.body, color: .textSecondary)
             }
+            LabeledContent("Riusate dalla cache") {
+                Text("\(vault.index.reusedFromCache) su \(vault.index.count)")
+                    .themedText(.body, color: .textSecondary)
+            }
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
+            Button("Svuota cache e ricostruisci") { Task { await vault.clearCache() } }
+                .disabled(vault.root == nil)
+            Text("La cache sta in .pergamenum/cache.db e non è mai la fonte di verità: una riga il cui file è cambiato viene scartata.")
+                .themedText(.caption, color: .textTertiary)
 
             if !vault.index.failures.isEmpty {
                 Section("File non leggibili") {

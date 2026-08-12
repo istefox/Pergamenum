@@ -155,7 +155,7 @@ private struct LinkVault: ~Copyable {
     try vault.write(note, to: "Origine.md")
     try vault.write(note, to: "03 Risorse/Destinazione.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.addStructuralLink(
@@ -185,7 +185,7 @@ private struct LinkVault: ~Copyable {
     }
     try vault.write(full, to: "Pieno.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     #expect(!controller.addStructuralLink(
         from: "Origine.md", to: "Pieno", reason: "a", reverseReason: "b"
@@ -202,7 +202,7 @@ private struct LinkVault: ~Copyable {
     let vault = try LinkVault()
     try vault.write(note, to: "Origine.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     #expect(!controller.addStructuralLink(
         from: "Origine.md", to: "Inesistente", reason: "a", reverseReason: "b"

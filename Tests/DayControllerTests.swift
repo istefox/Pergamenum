@@ -98,7 +98,7 @@ private func makeController(
     vault: borrowing DayVault,
     store: StubCalendarStore
 ) async throws -> (DayController, VaultController) {
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     controller.openNote(at: "Calendar/20260811.md")
 

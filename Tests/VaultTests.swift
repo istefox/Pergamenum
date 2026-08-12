@@ -237,7 +237,7 @@ private func makeRecord(
     try vault.write(sampleNote, to: "Uno.md")
     try vault.write(sampleNote, to: "Calendar/20260811.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.index.count == 2)
@@ -255,7 +255,7 @@ private func makeRecord(
     let vault = try TemporaryVault()
     try vault.write(sampleNote, to: "Uno.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     controller.openNote(at: "Uno.md")
 
@@ -287,7 +287,7 @@ private func makeRecord(
     corpo senza topic
     """, to: "Nota v2.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     controller.openNote(at: "Nota v2.md")
     let note = try #require(controller.openNote)
@@ -336,7 +336,7 @@ private func makeRecord(
     | Offerta | offerta |
     """, to: "convenzioni/naming.md")
 
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     controller.importConventions(from: repository.root)
 
@@ -351,7 +351,7 @@ private func makeRecord(
 @MainActor
 @Test func reportsAnUnreadableHarnessCheckoutInsteadOfClearingTheVocabulary() async throws {
     let vault = try TemporaryVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
     let before = controller.vocabulary
 
@@ -366,7 +366,7 @@ private func makeRecord(
 @MainActor
 @Test func createsANoteWithAConformantFrontmatter() async throws {
     let vault = try TemporaryVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     let path = try controller.createNote(
@@ -391,7 +391,7 @@ private func makeRecord(
 @MainActor
 @Test func createsAnInboxCaptureWithStatusInbox() async throws {
     let vault = try TemporaryVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     let path = try controller.createNote(
@@ -407,7 +407,7 @@ private func makeRecord(
 @MainActor
 @Test func refusesToCreateANoteWithANonConformantTitle() async throws {
     let vault = try TemporaryVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     // Sanitising silently is how a vault fills with titles nobody chose.
@@ -424,7 +424,7 @@ private func makeRecord(
 @Test func refusesToOverwriteAnExistingNote() async throws {
     let vault = try TemporaryVault()
     try vault.write(sampleNote, to: "Esistente.md")
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     #expect(throws: VaultController.CreationError.self) {
@@ -439,7 +439,7 @@ private func makeRecord(
 @MainActor
 @Test func opensOrCreatesTheDailyNoteInTheConfiguredFolder() async throws {
     let vault = try TemporaryVault()
-    let controller = VaultController()
+    let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
     let date = CalendarDate(iso: "2026-08-11")!

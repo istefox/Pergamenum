@@ -45,6 +45,14 @@ final class VaultController {
     private var watcher: VaultWatcher?
     private var store: NoteStore?
 
+    /// Where opened vaults are remembered. Injected so a test never writes into the
+    /// list the app reads at launch.
+    private let recents: RecentVaults
+
+    init(recents: RecentVaults = RecentVaults()) {
+        self.recents = recents
+    }
+
     struct OpenNote: Equatable, Sendable {
         var relativePath: String
         var title: String
@@ -70,7 +78,7 @@ final class VaultController {
         store = NoteStore(root: url)
         // Recorded on open rather than on close, so a crash still leaves the vault
         // reachable from the recents menu next launch.
-        RecentVaults().remember(url)
+        recents.remember(url)
         loadSettings(from: url)
         loadVocabulary(from: url)
         await rescan()
@@ -101,10 +109,23 @@ final class VaultController {
 
         let clock = ContinuousClock()
         let start = clock.now
+        let cacheURL = privateDirectory(in: root).appending(path: VaultLayout.cacheFile)
+        let cached = IndexCache(url: cacheURL).load()
+
         let outcome = await Task.detached(priority: .userInitiated) {
-            VaultScanner(root: root).scan()
+            var scanner = VaultScanner(root: root)
+            scanner.cached = cached
+            return scanner.scan()
         }.value
         index.replaceAll(with: outcome, duration: clock.now - start)
+
+        // Written after the index is in place: the cache is an optimisation, and the
+        // app must be usable whether or not it can be saved (SPEC §12).
+        let records = outcome.records
+        let problem: String = await Task.detached(priority: .utility) {
+            IndexCache(url: cacheURL).save(records)
+        }.value
+        if !problem.isEmpty { problems.append("cache: \(problem)") }
     }
 
     // MARK: Notes
@@ -767,6 +788,14 @@ final class VaultController {
 
     /// Re-imports the closed vocabularies from the harness-system checkout and writes
     /// the replica back into the vault.
+    /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
+    /// (SPEC §12, Avanzate › svuota cache).
+    func clearCache() async {
+        guard let root else { return }
+        IndexCache(url: privateDirectory(in: root).appending(path: VaultLayout.cacheFile)).clear()
+        await rescan()
+    }
+
     func importConventions(from repository: URL) {
         let conventions = repository.appending(path: "convenzioni", directoryHint: .isDirectory)
         let tagURL = conventions.appending(path: "tag.md")

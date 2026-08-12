@@ -11,6 +11,15 @@ struct RecentVaults {
 
     private let defaults: UserDefaults
 
+    /// A list backed by a throwaway suite, for tests.
+    ///
+    /// Not a convenience: with the real `UserDefaults`, running the suite left the
+    /// user's own recents list full of temporary vaults and the app reopened one of
+    /// them at launch. Running the tests must not change the app.
+    static func volatile() -> RecentVaults {
+        RecentVaults(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())") ?? .standard)
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
@@ -35,7 +44,9 @@ struct RecentVaults {
 
     /// Moves a vault to the front of the list.
     func remember(_ url: URL) {
-        let path = url.standardizedFileURL.path(percentEncoded: false)
+        // Symlinks resolved: /tmp and /private/tmp are the same vault, and listing it
+        // twice would offer the user a choice that is not one.
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
         var updated = paths.filter { $0 != path }
         updated.insert(path, at: 0)
         defaults.set(Array(updated.prefix(Self.maximum)), forKey: Self.key)
