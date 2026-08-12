@@ -6,13 +6,18 @@ struct TodayView: View {
     @Environment(VaultController.self) private var vault
     @Environment(EventKitStore.self) private var calendar
 
-    /// Built on first appearance because it needs the environment's vault and store.
-    @State private var controller: DayController?
+    /// Created at app level so the Calendario menu can act on the same day (SPEC §10).
+    @Environment(DayController.self) private var controller
 
-    private var day: CalendarDate { controller?.day ?? .today }
-    private var blocks: [TimeBlock] { controller?.blocks ?? [] }
-    private var events: [CalendarEvent] { controller?.events ?? [] }
-    private var reminders: [CalendarReminder] { controller?.reminders ?? [] }
+    @State private var draftTitle = ""
+    @State private var draftStartHour = 9
+    @State private var draftDurationMinutes = 60
+    @State private var draftDate = CalendarDate.today
+
+    private var day: CalendarDate { controller.day }
+    private var blocks: [TimeBlock] { controller.blocks }
+    private var events: [CalendarEvent] { controller.events }
+    private var reminders: [CalendarReminder] { controller.reminders }
 
     /// The hours the timeline shows (SPEC §8.3).
     private let firstHour = 6
@@ -26,10 +31,22 @@ struct TodayView: View {
             timeline
         }
         .background(theme.color(.backgroundPrimary))
-        .task(id: day) {
-            let controller = controller ?? DayController(store: calendar, vault: vault)
-            self.controller = controller
-            await controller.load()
+        .task(id: day) { await controller.load() }
+        .sheet(isPresented: Bindable(controller).isChoosingDate) { datePicker }
+        .sheet(isPresented: Bindable(controller).isCreatingEvent) {
+            draftSheet(title: "Nuovo evento", showsTime: true) {
+                controller.createEvent(
+                    title: draftTitle,
+                    startMinutes: draftStartHour * 60,
+                    durationMinutes: draftDurationMinutes,
+                    calendarTitle: calendar.writeCalendarTitle
+                )
+            }
+        }
+        .sheet(isPresented: Bindable(controller).isCreatingReminder) {
+            draftSheet(title: "Nuovo promemoria", showsTime: false) {
+                controller.createReminder(title: draftTitle)
+            }
         }
     }
 
@@ -54,7 +71,7 @@ struct TodayView: View {
             Text(longDate).themedText(.body, color: .textSecondary)
             Spacer()
             Button { move(by: -1) } label: { Image(systemName: "chevron.left") }
-            Button { controller?.show(.today) } label: { Text("Oggi").themedText(.caption) }
+            Button { controller.show(.today) } label: { Text("Oggi").themedText(.caption) }
             Button { move(by: 1) } label: { Image(systemName: "chevron.right") }
         }
         .buttonStyle(.plain)
@@ -94,7 +111,7 @@ struct TodayView: View {
                         }
                         .buttonStyle(.plain)
                         Spacer()
-                        Button("Blocca") { controller?.addBlock(from: task) }
+                        Button("Blocca") { controller.addBlock(from: task) }
                             .buttonStyle(.plain)
                             .themedText(.caption, color: .accentPrimary)
                             .help("Crea un time block da questo task")
@@ -108,7 +125,7 @@ struct TodayView: View {
                         HStack(spacing: theme.spacing(.xs)) {
                             Image(systemName: reminder.isCompleted ? "checkmark.square" : "square")
                                 .foregroundStyle(theme.color(.taskOpen))
-                                .onTapGesture { controller?.toggle(reminder) }
+                                .onTapGesture { controller.toggle(reminder) }
                             Text(reminder.title).themedText(.body)
                             Text(reminder.listTitle).themedText(.caption, color: .textTertiary)
                         }
@@ -136,7 +153,7 @@ struct TodayView: View {
             )
             .frame(minHeight: 320)
         } else {
-            Button("Apri la nota di \(day.compactForm)") { controller?.openDailyNote() }
+            Button("Apri la nota di \(day.compactForm)") { controller.openDailyNote() }
                 .buttonStyle(.plain)
                 .themedText(.body, color: .accentPrimary)
         }
@@ -172,10 +189,10 @@ struct TodayView: View {
                           token: .stickyBlue, isEvent: false)
                         .contextMenu {
                             Button(block.isPublished ? "Già pubblicato" : "Pubblica sul Calendario") {
-                                controller?.publish(block, toCalendarTitled: calendar.writeCalendarTitle)
+                                controller.publish(block, toCalendarTitled: calendar.writeCalendarTitle)
                             }
                             .disabled(block.isPublished || !calendar.eventAccess.isGranted)
-                            Button("Rimuovi") { controller?.remove(block) }
+                            Button("Rimuovi") { controller.remove(block) }
                         }
                 }
             }
@@ -192,7 +209,7 @@ struct TodayView: View {
             Spacer()
             if !calendar.eventAccess.isGranted {
                 Button("Consenti Calendario") {
-                    Task { await calendar.requestAccess(); await controller?.load() }
+                    Task { await calendar.requestAccess(); await controller.load() }
                 }
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)
@@ -243,6 +260,86 @@ struct TodayView: View {
     // MARK: Actions
 
     private func move(by days: Int) {
-        controller?.move(by: days)
+        controller.move(by: days)
+    }
+
+    /// "Vai a data…" from the Calendario menu.
+    private var datePicker: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Vai a data").themedText(.title)
+            DatePicker(
+                "Giorno",
+                selection: Binding(
+                    get: { EventKitStore.date(draftDate, hour: 12, minute: 0) ?? Date() },
+                    set: { draftDate = CalendarDate($0) }
+                ),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+
+            HStack {
+                Spacer()
+                Button("Annulla") { controller.isChoosingDate = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Vai") {
+                    controller.show(draftDate)
+                    controller.isChoosingDate = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .background(theme.color(.surfaceCard))
+    }
+
+    /// The sheet behind "Nuovo evento" and "Nuovo promemoria".
+    private func draftSheet(
+        title: String,
+        showsTime: Bool,
+        confirm: @escaping () -> Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text(title).themedText(.title)
+            Text("Sul giorno mostrato: \(day.description)")
+                .themedText(.caption, color: .textSecondary)
+            TextField("Titolo", text: $draftTitle)
+                .textFieldStyle(.roundedBorder)
+
+            if showsTime {
+                HStack(spacing: theme.spacing(.m)) {
+                    Picker("Ora", selection: $draftStartHour) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(String(format: "%02d:00", hour)).tag(hour)
+                        }
+                    }
+                    Picker("Durata", selection: $draftDurationMinutes) {
+                        ForEach([15, 30, 45, 60, 90, 120], id: \.self) { minutes in
+                            Text("\(minutes) min").tag(minutes)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Annulla") { dismissDraft() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Crea") {
+                    _ = confirm()
+                    dismissDraft()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(draftTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 460)
+        .background(theme.color(.surfaceCard))
+    }
+
+    private func dismissDraft() {
+        draftTitle = ""
+        controller.isCreatingEvent = false
+        controller.isCreatingReminder = false
     }
 }

@@ -17,6 +17,15 @@ struct NoteTextView: NSViewRepresentable {
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
     var onDropFile: ((URL) -> String?)?
+    /// Text the Inserisci menu asked for, applied at the cursor and then reported as
+    /// applied so it is not inserted twice on the next view update (SPEC §10).
+    var insertion: (text: String, cursorBack: Int)?
+    var onInsertionApplied: () -> Void = {}
+    /// Raised by the Modifica menu; opens AppKit's own find bar.
+    var findRequest: FindRequest?
+    var onFindApplied: () -> Void = {}
+
+    enum FindRequest { case find, replace }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -34,6 +43,10 @@ struct NoteTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
+        // Trova e Sostituisci of SPEC §10: AppKit's find bar already does incremental
+        // search, replace-all and the scope of the current text view.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.linkTextAttributes = [:]
         textView.onPasteURL = { [weak textView] pasted in
             guard let textView, let selectionRange = textView.selectedRanges.first as? NSRange,
@@ -76,6 +89,25 @@ struct NoteTextView: NSViewRepresentable {
             ))
         }
         context.coordinator.applyStyling(to: textView, theme: theme)
+
+        if let insertion {
+            // After the text sync above, so the insertion is not overwritten by the
+            // model value that predates it.
+            textView.insertText(insertion.text, replacementRange: textView.selectedRange())
+            let cursor = textView.selectedRange().location - insertion.cursorBack
+            textView.setSelectedRange(NSRange(location: max(0, cursor), length: 0))
+            onInsertionApplied()
+        }
+
+        if let findRequest {
+            textView.window?.makeFirstResponder(textView)
+            textView.performTextFinderAction(
+                NSMenuItem(title: "", action: nil, keyEquivalent: "").withFinderTag(
+                    findRequest == .find ? .showFindInterface : .showReplaceInterface
+                )
+            )
+            onFindApplied()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -299,5 +331,14 @@ final class CompletingTextView: NSTextView {
             if (atLineStart || afterSpace), !prefix.contains(" ") { return .tag(prefix: prefix) }
         }
         return nil
+    }
+}
+
+private extension NSMenuItem {
+    /// `performTextFinderAction` reads the sender's tag, so the action has to arrive
+    /// wearing one.
+    func withFinderTag(_ action: NSTextFinder.Action) -> NSMenuItem {
+        tag = action.rawValue
+        return self
     }
 }

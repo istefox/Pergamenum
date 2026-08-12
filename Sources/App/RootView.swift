@@ -12,58 +12,30 @@ struct RootView: View {
     /// non-optional binding SwiftUI writes the focused row back over the initial
     /// value, so the window opened on an arbitrary pane.
     @Environment(VaultController.self) private var vault
-    @State private var selectedPane: Pane? = .vault
-    private var pane: Pane { selectedPane ?? .vault }
+    @Environment(Navigation.self) private var navigation
 
-    /// Named `Pane` rather than `Section` so it does not shadow `SwiftUI.Section`
-    /// inside this file's view builders.
-    enum Pane: String, CaseIterable, Identifiable, Hashable {
-        case vault
-        case tokens
-        case editor
-        case workspace
-        case today
-        case tasks
-        case conformance
-
-        var id: String { rawValue }
-
-        /// Panes still showing a mockup rather than the real feature. They stay in the
-        /// sidebar as the reference the milestone is built against, and each one leaves
-        /// as its milestone lands.
-        var isMockup: Bool {
-            switch self {
-            case .vault, .tokens, .workspace, .tasks, .today, .conformance: false
-            case .editor: true
-            }
-        }
-
-        var title: String {
-            switch self {
-            case .vault: "Vault"
-            case .tokens: "Design system"
-            case .editor: "Editor"
-            case .workspace: "Workspace"
-            case .today: "Oggi"
-            case .tasks: "Attività"
-            case .conformance: "Conformità"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .vault: "books.vertical"
-            case .tokens: "paintpalette"
-            case .editor: "doc.text"
-            case .workspace: "square.on.square"
-            case .today: "calendar"
-            case .tasks: "checklist"
-            case .conformance: "checkmark.seal"
-            }
-        }
+    /// Optional, which is the shape a macOS sidebar `List` expects: with a
+    /// non-optional binding SwiftUI writes the focused row back over the initial
+    /// value, so the window opened on an arbitrary pane.
+    private var selectedPane: Binding<Navigation.Pane?> {
+        Binding(
+            get: { navigation.pane },
+            set: { if let new = $0 { navigation.pane = new } }
+        )
     }
+    private var pane: Navigation.Pane { navigation.pane }
 
     var body: some View {
+        content
+            .sheet(isPresented: Bindable(navigation).isShowingTaskSyntaxHelp) {
+                HelpSheet(topic: .taskSyntax) { navigation.isShowingTaskSyntaxHelp = false }
+            }
+            .sheet(isPresented: Bindable(navigation).isShowingConventionsHelp) {
+                HelpSheet(topic: .conventions) { navigation.isShowingConventionsHelp = false }
+            }
+    }
+
+    private var content: some View {
         NavigationSplitView {
             sidebar
         } detail: {
@@ -86,8 +58,8 @@ struct RootView: View {
     /// with `Identifiable` rows the latter binds the selection to the element's `id`,
     /// which silently ignored the initial value.
     private var sidebar: some View {
-        List(selection: $selectedPane) {
-            ForEach(Pane.allCases) { item in
+        List(selection: selectedPane) {
+            ForEach(Navigation.Pane.allCases) { item in
                 HStack {
                     Label(item.title, systemImage: item.symbol)
                     if item.isMockup {

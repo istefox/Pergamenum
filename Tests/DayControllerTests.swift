@@ -41,6 +41,17 @@ private final class StubCalendarStore: CalendarStore {
         return event
     }
 
+    @discardableResult
+    func createReminder(title: String, due: CalendarDate?, listTitle: String?) throws -> CalendarReminder {
+        if let failure { throw failure }
+        let reminder = CalendarReminder(
+            id: "reminder-\(storedReminders.count)", title: title, due: due,
+            isCompleted: false, listTitle: listTitle ?? "Predefinito"
+        )
+        storedReminders.append(reminder)
+        return reminder
+    }
+
     func setCompleted(_ completed: Bool, reminderID: String) throws {
         if let failure { throw failure }
         completedCalls.append((reminderID, completed))
@@ -273,5 +284,51 @@ private func makeController(
     ]
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
     #expect(dayController.reminders.map(\.title) == ["Oggi"])
+    vaultController.close()
+}
+
+@MainActor
+@Test func creatingAnEventPutsItOnTheDayShown() async throws {
+    let vault = try DayVault()
+    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    #expect(dayController.createEvent(title: "Riunione", startMinutes: 15 * 60, durationMinutes: 60))
+    #expect(store.createdEvents.count == 1)
+    #expect(store.createdEvents[0].title == "Riunione")
+    vaultController.close()
+}
+
+@MainActor
+@Test func creatingAReminderGivesItTheDayShownAsItsDueDate() async throws {
+    let vault = try DayVault()
+    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    #expect(dayController.createReminder(title: "Richiamare Rossi"))
+    #expect(store.storedReminders.first?.due == day)
+    // It has to appear in the day at once, not after the next refresh.
+    #expect(dayController.reminders.map(\.title) == ["Richiamare Rossi"])
+    vaultController.close()
+}
+
+@MainActor
+@Test func publishingEveryBlockReportsHowManyWent() async throws {
+    let vault = try DayVault()
+    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    for (index, name) in ["Uno", "Due", "Tre"].enumerated() {
+        let task = TaskParser.parse(line: "- [ ] \(name)", sourcePath: "x.md", lineIndex: index)!
+        _ = dayController.addBlock(from: task)
+    }
+    #expect(dayController.publishAllBlocks() == 3)
+    #expect(store.createdEvents.count == 3)
+    // A second run has nothing left to do rather than duplicating the three events.
+    #expect(dayController.publishAllBlocks() == 0)
+    #expect(store.createdEvents.count == 3)
     vaultController.close()
 }

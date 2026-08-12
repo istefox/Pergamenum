@@ -29,6 +29,18 @@ struct PergamenumApp: App {
     @State private var themeEngine = ThemeEngine()
     @State private var vault = VaultController()
     @State private var calendar = EventKitStore()
+    @State private var navigation = Navigation()
+    /// The day view's controller, created here rather than inside the view so the
+    /// Calendario menu can act on the day being shown (SPEC §10).
+    @State private var day: DayController
+
+    init() {
+        let vault = VaultController()
+        let calendar = EventKitStore()
+        _vault = State(initialValue: vault)
+        _calendar = State(initialValue: calendar)
+        _day = State(initialValue: DayController(store: calendar, vault: vault))
+    }
 
     var body: some Scene {
         // `Window`, not `WindowGroup`: on macOS a `pergamenum://` link with no window
@@ -41,6 +53,8 @@ struct PergamenumApp: App {
                 .environment(themeEngine)
                 .environment(vault)
                 .environment(calendar)
+                .environment(navigation)
+                .environment(day)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
                 .task {
@@ -62,9 +76,13 @@ struct PergamenumApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             VaultCommands(vault: vault)
-            LinkCommands(vault: vault)
+            EditCommands(navigation: navigation)
+            InsertCommands(navigation: navigation, vault: vault)
+            ViewCommands(navigation: navigation, vault: vault)
             TaskCommands(vault: vault)
+            CalendarCommands(day: day, calendar: calendar, navigation: navigation)
             ThemeCommands(engine: themeEngine)
+            HelpCommands(navigation: navigation)
         }
 
         // After the WindowGroup on purpose: the first scene in the body is the app's
@@ -76,21 +94,6 @@ struct PergamenumApp: App {
                 .environment(vault)
                 .environment(calendar)
                 .themed(by: themeEngine)
-        }
-    }
-}
-
-/// The Inserisci-menu entry for a structural link (SPEC §10, §4.5).
-struct LinkCommands: Commands {
-    let vault: VaultController
-
-    var body: some Commands {
-        CommandMenu("Inserisci") {
-            Button("Nota correlata…") { vault.isAddingRelatedLink = true }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-                .disabled(vault.openNote == nil)
-            Button("Apri nel Workspace") { vault.openCurrentNoteInWorkspace() }
-                .disabled(vault.openNote == nil)
         }
     }
 }

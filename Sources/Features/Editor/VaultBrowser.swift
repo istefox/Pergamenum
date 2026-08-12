@@ -5,6 +5,11 @@ import SwiftUI
 struct VaultBrowser: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
+    /// Held here rather than read straight from `Navigation`, because the insertion has
+    /// to be consumed once: read directly it would be re-applied on every view update
+    /// until something else changed it.
+    @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @State private var isShowingInspector = true
     @State private var filter = ""
     /// The note the rename sheet is editing. The title being typed lives inside the
@@ -98,6 +103,9 @@ struct VaultBrowser: View {
             statusBar
         }
         .background(theme.color(.backgroundSecondary))
+        .onChange(of: navigation.pendingInsertion) { _, _ in
+            pendingInsertion = navigation.consumeInsertion()
+        }
         .sheet(item: $renaming) { note in
             RenameNoteSheet(note: note) { newTitle in
                 vault.renameNote(at: note.relativePath, to: newTitle)
@@ -143,6 +151,12 @@ struct VaultBrowser: View {
         }
         Divider()
         Button("Elimina…", role: .destructive) { deleting = note }
+    }
+
+    private var findRequest: NoteTextView.FindRequest? {
+        if navigation.isReplaceRequested { return .replace }
+        if navigation.isFindRequested { return .find }
+        return nil
     }
 
     private var filteredNotes: [NoteRecord] {
@@ -210,7 +224,14 @@ struct VaultBrowser: View {
                     noteTitles: vault.index.allNotes.map(\.title),
                     tagSuggestions: tagSuggestions,
                     onFollowLink: follow(title:),
-                    onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) }
+                    onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
+                    insertion: pendingInsertion,
+                    onInsertionApplied: { pendingInsertion = nil },
+                    findRequest: findRequest,
+                    onFindApplied: {
+                        navigation.isFindRequested = false
+                        navigation.isReplaceRequested = false
+                    }
                 )
             }
             .background(theme.color(.backgroundPrimary))
@@ -407,6 +428,11 @@ enum ConformanceText {
 struct QuickSwitcher: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
+    /// Held here rather than read straight from `Navigation`, because the insertion has
+    /// to be consumed once: read directly it would be re-applied on every view update
+    /// until something else changed it.
+    @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selection: String?
@@ -454,6 +480,11 @@ struct QuickSwitcher: View {
 struct NewNoteSheet: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
+    /// Held here rather than read straight from `Navigation`, because the insertion has
+    /// to be consumed once: read directly it would be re-applied on every view update
+    /// until something else changed it.
+    @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""

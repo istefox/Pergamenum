@@ -140,7 +140,6 @@ tags:
 
 @Test func renamingStaysInTheSameFolder() throws {
     let vault = try OpsVault()
-    let root = vault.root
     try vault.write(header, to: "02 Aree/coding/Nota.md")
     let outcome = try vault.operations.rename(
         "02 Aree/coding/Nota.md", to: "Nota rinominata", knownPaths: ["02 Aree/coding/Nota.md"]
@@ -216,7 +215,6 @@ tags:
 
 @Test func deletingSomethingThatIsNotThereIsAnError() throws {
     let vault = try OpsVault()
-    let root = vault.root
     #expect(throws: NoteFileOperations.OperationError.self) {
         try vault.operations.trash("Mai esistita.md", knownPaths: [])
     }

@@ -17,6 +17,11 @@ final class DayController {
     private(set) var reminders: [CalendarReminder] = []
     private(set) var problems: [String] = []
 
+    /// Raised by the Calendario menu; the day view shows the matching sheet.
+    var isChoosingDate = false
+    var isCreatingEvent = false
+    var isCreatingReminder = false
+
     private let store: any CalendarStore
     private let vault: VaultController
 
@@ -140,6 +145,61 @@ final class DayController {
     private func report(_ message: String) {
         problems.append(message)
         vault.recordProblem(message)
+    }
+
+    /// Publishes every block that is not on the calendar yet (SPEC §10, Calendario).
+    ///
+    /// Reports how many went and how many did not, rather than stopping at the first
+    /// failure: a calendar that refused one event has no reason to refuse the rest.
+    @discardableResult
+    func publishAllBlocks(toCalendarTitled calendarTitle: String? = nil) -> Int {
+        var published = 0
+        for block in blocks where !block.isPublished {
+            // Re-read from `blocks` each time: publishing rewrites the array.
+            guard let current = blocks.first(where: { $0.id == block.id }), !current.isPublished
+            else { continue }
+            if publish(current, toCalendarTitled: calendarTitle) { published += 1 }
+        }
+        return published
+    }
+
+    /// Creates an event on the day being shown (SPEC §10, Calendario › Nuovo evento).
+    @discardableResult
+    func createEvent(
+        title: String,
+        startMinutes: Int,
+        durationMinutes: Int,
+        calendarTitle: String? = nil
+    ) -> Bool {
+        guard let start = EventKitStore.date(day, hour: startMinutes / 60, minute: startMinutes % 60),
+              let end = EventKitStore.date(
+                  day,
+                  hour: (startMinutes + durationMinutes) / 60,
+                  minute: (startMinutes + durationMinutes) % 60
+              )
+        else { return false }
+
+        do {
+            _ = try store.createEvent(title: title, start: start, end: end, calendarTitle: calendarTitle)
+            events = store.events(on: day)
+            return true
+        } catch {
+            report("nuovo evento: \(error)")
+            return false
+        }
+    }
+
+    /// Creates a reminder due on the day being shown.
+    @discardableResult
+    func createReminder(title: String, listTitle: String? = nil) -> Bool {
+        do {
+            _ = try store.createReminder(title: title, due: day, listTitle: listTitle)
+            reminders = store.reminders(dueOn: day)
+            return true
+        } catch {
+            report("nuovo promemoria: \(error)")
+            return false
+        }
     }
 
     // MARK: Reminders

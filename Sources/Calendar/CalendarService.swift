@@ -49,6 +49,9 @@ protocol CalendarStore: AnyObject {
     @discardableResult
     func createEvent(title: String, start: Date, end: Date, calendarTitle: String?) throws -> CalendarEvent
     func setCompleted(_ completed: Bool, reminderID: String) throws
+    /// Creates a reminder in the Reminders app (SPEC §10, Calendario).
+    @discardableResult
+    func createReminder(title: String, due: CalendarDate?, listTitle: String?) throws -> CalendarReminder
     /// Titles of the calendars that can be written to.
     var writableCalendarTitles: [String] { get }
 }
@@ -210,6 +213,46 @@ final class EventKitStore: CalendarStore {
         }
         reminder.isCompleted = completed
         try store.save(reminder, commit: true)
+    }
+
+    /// Creates a reminder in the Reminders app (SPEC §10, Calendario).
+    @discardableResult
+    func createReminder(
+        title: String, due: CalendarDate?, listTitle: String?
+    ) throws -> CalendarReminder {
+        guard reminderAccess.isGranted else { throw CalendarError.noAccess }
+
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = title
+        if let due {
+            reminder.dueDateComponents = DateComponents(
+                year: due.year, month: due.month, day: due.day
+            )
+        }
+        let lists = store.calendars(for: .reminder).filter(\.allowsContentModifications)
+        guard let list = listTitle.flatMap({ title in lists.first { $0.title == title } })
+            ?? store.defaultCalendarForNewReminders()
+            ?? lists.first
+        else { throw CalendarError.noWritableCalendar }
+        reminder.calendar = list
+
+        try store.save(reminder, commit: true)
+        return CalendarReminder(
+            id: reminder.calendarItemIdentifier,
+            title: title,
+            due: due,
+            isCompleted: false,
+            listTitle: list.title
+        )
+    }
+
+    /// Titles of the reminder lists that can be written to.
+    var writableReminderListTitles: [String] {
+        guard reminderAccess.isGranted else { return [] }
+        return store.calendars(for: .reminder)
+            .filter(\.allowsContentModifications)
+            .map(\.title)
+            .sorted()
     }
 
     private func calendar(named title: String?) -> EKCalendar? {
