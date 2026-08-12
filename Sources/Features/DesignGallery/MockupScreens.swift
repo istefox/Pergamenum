@@ -450,14 +450,26 @@ struct TasksMockup: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     group("In ritardo", [
-                        ("Verificare i dati di targa", "!2026-08-08", true, "20260804 Riunione tecnica"),
+                        MockTask(
+                            text: "Verificare i dati di targa", date: "!2026-08-08",
+                            isOverdue: true, source: "20260804 Riunione tecnica"
+                        ),
                     ])
                     group("Oggi", [
-                        ("Rivedere la curva sotto 4 Hz", ">2026-08-11", false, "Trasmissibilità e rapporto di frequenza"),
-                        ("Rispondere a Rossi Impianti", ">2026-08-11", false, "00 Inbox/Capture"),
+                        MockTask(
+                            text: "Rivedere la curva sotto 4 Hz", date: ">2026-08-11",
+                            isOverdue: false, source: "Trasmissibilità e rapporto di frequenza"
+                        ),
+                        MockTask(
+                            text: "Rispondere a Rossi Impianti", date: ">2026-08-11",
+                            isOverdue: false, source: "00 Inbox/Capture"
+                        ),
                     ])
                     group("Completati", [
-                        ("Esportare il grafico", "@done(2026-08-11)", false, "Curva di trasmissibilità"),
+                        MockTask(
+                            text: "Esportare il grafico", date: "@done(2026-08-11)",
+                            isOverdue: false, source: "Curva di trasmissibilità"
+                        ),
                     ])
                 }
                 .padding(theme.spacing(.l))
@@ -467,21 +479,32 @@ struct TasksMockup: View {
         }
     }
 
-    private func group(_ title: String, _ rows: [(String, String, Bool, String)]) -> some View {
+    /// One row of the mockup, named rather than a four-member tuple: `row.2` says
+    /// nothing about what it holds.
+    struct MockTask: Identifiable {
+        var id: String { text }
+        var text: String
+        var date: String
+        var isOverdue: Bool
+        var source: String
+    }
+
+    private func group(_ title: String, _ rows: [MockTask]) -> some View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
             Text(title).themedText(.heading)
-            ForEach(rows, id: \.0) { row in
+            ForEach(rows) { row in
                 ThemedCard(padding: .s) {
                     HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
                         Image(systemName: title == "Completati" ? "checkmark.square" : "square")
-                            .foregroundStyle(theme.color(row.2 ? .taskOverdue : .taskOpen))
+                            .foregroundStyle(theme.color(row.isOverdue ? .taskOverdue : .taskOpen))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(row.0)
+                            Text(row.text)
                                 .themedText(.body, color: title == "Completati" ? .taskDone : .textPrimary)
-                            Text("↗ \(row.3)").themedText(.caption, color: .textTertiary)
+                            Text("↗ \(row.source)").themedText(.caption, color: .textTertiary)
                         }
                         Spacer()
-                        Text(row.1).themedText(.mono, color: row.2 ? .taskOverdue : .taskScheduled)
+                        Text(row.date)
+                            .themedText(.mono, color: row.isOverdue ? .taskOverdue : .taskScheduled)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

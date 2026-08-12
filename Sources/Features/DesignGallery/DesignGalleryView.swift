@@ -9,6 +9,16 @@ struct DesignGalleryView: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeEngine.self) private var engine
 
+    private var tokenSummary: String {
+        [
+            "\(ColorToken.allCases.count) colori",
+            "\(FontToken.allCases.count) stili di testo",
+            "\(SpacingToken.allCases.count) spaziature",
+            "\(RadiusToken.allCases.count) raggi",
+            "\(ShadowToken.allCases.count) ombre",
+        ].joined(separator: " · ")
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: theme.spacing(.l)) {
@@ -66,8 +76,7 @@ struct DesignGalleryView: View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text(theme.name)
                 .themedText(.title)
-            Text("\(ColorToken.allCases.count) colori · \(FontToken.allCases.count) stili di testo · \(SpacingToken.allCases.count) spaziature · \(RadiusToken.allCases.count) raggi · \(ShadowToken.allCases.count) ombre")
-                .themedText(.caption, color: .textSecondary)
+            Text(tokenSummary).themedText(.caption, color: .textSecondary)
         }
     }
 

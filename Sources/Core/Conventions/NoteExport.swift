@@ -82,31 +82,34 @@ enum NoteExport {
 
 /// The markdown-to-HTML conversion behind `NoteExport.html`.
 enum MarkdownHTML {
-    static func render(_ markdown: String) -> String {
+    /// The blocks being accumulated while the lines are read.
+    ///
+    /// A type rather than a handful of local variables and nested closures: the reader
+    /// of `render` should see the line-by-line decisions, not the bookkeeping each one
+    /// implies.
+    private struct Blocks {
         var html: [String] = []
         var listKind: String?
-        var inCode = false
-        var codeLines: [String] = []
         var paragraph: [String] = []
         var quote: [String] = []
         var table: [[String]] = []
 
-        func closeParagraph() {
+        mutating func closeParagraph() {
             guard !paragraph.isEmpty else { return }
             html.append("<p>\(inline(paragraph.joined(separator: " ")))</p>")
             paragraph = []
         }
-        func closeList() {
+        mutating func closeList() {
             guard let kind = listKind else { return }
             html.append("</\(kind)>")
             listKind = nil
         }
-        func closeQuote() {
+        mutating func closeQuote() {
             guard !quote.isEmpty else { return }
             html.append("<blockquote><p>\(inline(quote.joined(separator: " ")))</p></blockquote>")
             quote = []
         }
-        func closeTable() {
+        mutating func closeTable() {
             guard !table.isEmpty else { return }
             var rows = table
             let head = rows.removeFirst()
@@ -124,23 +127,29 @@ enum MarkdownHTML {
             html.append(out)
             table = []
         }
-        func closeAll() {
+        mutating func closeAll() {
             closeParagraph()
             closeList()
             closeQuote()
             closeTable()
         }
+    }
+
+    static func render(_ markdown: String) -> String {
+        var blocks = Blocks()
+        var inCode = false
+        var codeLines: [String] = []
 
         for rawLine in markdown.components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
 
             if line.hasPrefix("```") {
                 if inCode {
-                    html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
+                    blocks.html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
                     codeLines = []
                     inCode = false
                 } else {
-                    closeAll()
+                    blocks.closeAll()
                     inCode = true
                 }
                 continue
@@ -151,59 +160,59 @@ enum MarkdownHTML {
             }
 
             if line.isEmpty {
-                closeAll()
+                blocks.closeAll()
                 continue
             }
 
             if line.hasPrefix("#") {
                 let level = min(6, line.prefix { $0 == "#" }.count)
                 let content = line.dropFirst(level).trimmingCharacters(in: .whitespaces)
-                closeAll()
-                html.append("<h\(level)>\(inline(content))</h\(level)>")
+                blocks.closeAll()
+                blocks.html.append("<h\(level)>\(inline(content))</h\(level)>")
                 continue
             }
 
             if line.hasPrefix("|"), line.hasSuffix("|") {
-                closeParagraph()
-                closeList()
-                closeQuote()
-                table.append(
+                blocks.closeParagraph()
+                blocks.closeList()
+                blocks.closeQuote()
+                blocks.table.append(
                     line.dropFirst().dropLast()
                         .components(separatedBy: "|")
                         .map { $0.trimmingCharacters(in: .whitespaces) }
                 )
                 continue
             }
-            closeTable()
+            blocks.closeTable()
 
             if line.hasPrefix("> ") || line == ">" {
-                closeParagraph()
-                closeList()
-                quote.append(String(line.dropFirst(line == ">" ? 1 : 2)))
+                blocks.closeParagraph()
+                blocks.closeList()
+                blocks.quote.append(String(line.dropFirst(line == ">" ? 1 : 2)))
                 continue
             }
-            closeQuote()
+            blocks.closeQuote()
 
             if let item = listItem(line) {
-                closeParagraph()
-                if listKind != item.kind {
-                    closeList()
-                    html.append("<\(item.kind)>")
-                    listKind = item.kind
+                blocks.closeParagraph()
+                if blocks.listKind != item.kind {
+                    blocks.closeList()
+                    blocks.html.append("<\(item.kind)>")
+                    blocks.listKind = item.kind
                 }
-                html.append("<li>\(inline(item.content))</li>")
+                blocks.html.append("<li>\(inline(item.content))</li>")
                 continue
             }
-            closeList()
+            blocks.closeList()
 
-            paragraph.append(line)
+            blocks.paragraph.append(line)
         }
 
         if inCode, !codeLines.isEmpty {
-            html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
+            blocks.html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
         }
-        closeAll()
-        return html.joined(separator: "\n")
+        blocks.closeAll()
+        return blocks.html.joined(separator: "\n")
     }
 
     private static func listItem(_ line: String) -> (kind: String, content: String)? {

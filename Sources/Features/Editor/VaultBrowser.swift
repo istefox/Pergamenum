@@ -377,9 +377,15 @@ struct VaultBrowser: View {
 /// in one place and testable.
 enum ConformanceText {
     static func lines(_ violations: NoteViolations) -> [String] {
-        var lines: [String] = []
+        nameLines(violations.name)
+            + frontmatterLines(violations.frontmatter)
+            + tagLines(violations.tags)
+            + relatedLines(violations)
+    }
 
-        for violation in violations.name {
+    private static func nameLines(_ violations: [NoteName.Violation]) -> [String] {
+        var lines: [String] = []
+        for violation in violations {
             switch violation {
             case .empty: lines.append("Il titolo è vuoto")
             case .containsForbiddenCharacter(let character): lines.append("Carattere vietato nel titolo: \(character)")
@@ -389,7 +395,12 @@ enum ConformanceText {
             case .malformedDailyName(let name): lines.append("Daily note non in formato YYYYMMDD: \(name)")
             }
         }
-        for violation in violations.frontmatter {
+        return lines
+    }
+
+    private static func frontmatterLines(_ violations: [FrontmatterViolation]) -> [String] {
+        var lines: [String] = []
+        for violation in violations {
             switch violation {
             case .missingBlock: lines.append("Frontmatter assente")
             case .missingDate: lines.append("Manca la chiave date")
@@ -402,7 +413,12 @@ enum ConformanceText {
             case .relatedOutOfSyncWithSection: lines.append("related e Note correlate non coincidono")
             }
         }
-        for violation in violations.tags {
+        return lines
+    }
+
+    private static func tagLines(_ violations: [TagViolation]) -> [String] {
+        var lines: [String] = []
+        for violation in violations {
             switch violation {
             case .malformed(let raw): lines.append("Tag malformato: \(raw)")
             case .notInVocabulary(let tag): lines.append("\(tag) non è nel vocabolario chiuso")
@@ -414,6 +430,11 @@ enum ConformanceText {
             case .missingRequiredTag(let name): lines.append("Manca il tag obbligatorio \(name)")
             }
         }
+        return lines
+    }
+
+    private static func relatedLines(_ violations: NoteViolations) -> [String] {
+        var lines: [String] = []
         lines.append(contentsOf: violations.relatedMissingInSection.map {
             "\($0) è in related ma non in Note correlate"
         })
@@ -428,11 +449,6 @@ enum ConformanceText {
 struct QuickSwitcher: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
-    /// Held here rather than read straight from `Navigation`, because the insertion has
-    /// to be consumed once: read directly it would be re-applied on every view update
-    /// until something else changed it.
-    @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selection: String?
@@ -480,11 +496,6 @@ struct QuickSwitcher: View {
 struct NewNoteSheet: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
-    /// Held here rather than read straight from `Navigation`, because the insertion has
-    /// to be consumed once: read directly it would be re-applied on every view update
-    /// until something else changed it.
-    @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""
