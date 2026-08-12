@@ -23,7 +23,9 @@ handoff; the spec wins on any conflict.
 - Tooling: Tuist 4 for project generation, Swift Testing for tests, Xcode 26 toolchain
 - Bundle identifier: `it.stefer.pergamenum` (lowercase, unlike the folder name).
   URL scheme `pergamenum://`. Automatic signing, team `T7H24G7BFW`. Developer ID
-  distribution, no App Store, not sandboxed in v1.
+  distribution, no App Store, not sandboxed in v1. Apple Developer account:
+  `istefoxdev@gmail.com`, name Stefano Ferri - this is the Apple ID notarization
+  authenticates with, not the git commit address.
 - Frameworks: PDFKit, EventKit, QuickLookThumbnailing, QuickLookUI, UserNotifications,
   GRDB (SQLite cache only)
 
