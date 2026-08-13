@@ -4,8 +4,9 @@
 # remember: the number of commits behind HEAD.
 #
 # Every notarized build before this script went out as 1.0 (1), so two copies of the
-# app were indistinguishable from the outside. Now Informazioni reads 1.0 (55), and
-# `git rev-list --count HEAD` on any commit says which one that was.
+# app were indistinguishable from the outside. Now Informazioni reads a number that
+# changes with every release, and `git rev-list --count HEAD` on any commit says which
+# release that commit would have produced.
 #
 # Usage:  scripts/release.sh
 #
@@ -58,7 +59,7 @@ TUIST_BUILD_NUMBER="$BUILD" tuist generate --no-open >/dev/null
 archive="$OUTPUT/$BUILD.xcarchive"
 export_dir="$OUTPUT/$BUILD"
 mkdir -p "$OUTPUT"
-[ -e "$archive" ] && fail "$archive esiste già: la build $BUILD è già stata fatta"
+[ -e "$archive" ] && fail "$archive esiste già: la build $BUILD è già stata fatta (sposta build/release/$BUILD* per rifarla)"
 
 step "Archivio"
 xcodebuild -workspace "$SCHEME.xcworkspace" -scheme "$SCHEME" \
@@ -99,9 +100,15 @@ step "Verifico il bundle"
 stamped="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$BUNDLE/Contents/Info.plist")"
 [ "$stamped" = "$BUILD" ] || fail "il bundle dice build $stamped, doveva dire $BUILD"
 
-codesign -dv --verbose=4 "$BUNDLE" 2>&1 | grep -q 'flags=.*runtime' \
+# Read once into a variable, and matched with a here-string rather than through a
+# pipe. `codesign … | grep -q` looks right and fails on a correct bundle: grep exits at
+# the first match, codesign dies of SIGPIPE, and pipefail reports that 141 as the
+# pipeline's status. The first run of this script refused to ship a bundle that had the
+# hardened runtime all along.
+signature="$(codesign -dv --verbose=4 "$BUNDLE" 2>&1)"
+grep -q 'flags=.*runtime' <<<"$signature" \
     || fail "hardened runtime assente: la notarizzazione la rifiuterebbe"
-codesign -dv --verbose=4 "$BUNDLE" 2>&1 | grep -q 'Authority=Developer ID Application' \
+grep -q 'Authority=Developer ID Application' <<<"$signature" \
     || fail "non è firmata con Developer ID"
 codesign --verify --deep --strict "$BUNDLE" || fail "la firma non verifica"
 
@@ -123,7 +130,8 @@ xcrun stapler validate "$BUNDLE" >/dev/null || fail "il ticket non è allegato"
 
 # The last check is the one the user's Mac will do: everything above can pass on a
 # bundle Gatekeeper still refuses.
-spctl -a -t exec -vvv "$BUNDLE" 2>&1 | grep -q 'source=Notarized Developer ID' \
+verdict="$(spctl -a -t exec -vvv "$BUNDLE" 2>&1)"
+grep -q 'source=Notarized Developer ID' <<<"$verdict" \
     || fail "Gatekeeper non la riconosce come notarizzata"
 
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
