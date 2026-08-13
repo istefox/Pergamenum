@@ -107,24 +107,14 @@ extension VaultController {
         var scheduled: CalendarDate?
         /// `!YYYY-MM-DD`, past which it is late.
         var due: CalendarDate?
-        /// `@remind(YYYY-MM-DD HH:MM)`.
+        /// `@remind(YYYY-MM-DD HH:MM)`, set inside the Programma panel.
         var reminder: TaskReminder?
+        /// `@repeat(n/N)`, the finite recurrence of SPEC §7.1.
+        var recurrence: TaskRecurrence?
 
-        /// The one date the composer offers, written as both markers.
-        ///
-        /// A task is due on a day and wants showing on it, which in the file is two
-        /// separate things: `>` is what the day views and the daily note read, `!` is
-        /// what turns the task red once the day has passed. Setting only the second
-        /// would file a task that appears in no view at all until it is already late.
-        /// Rescheduling later moves `>` alone, which is right: the plan changes, the
-        /// deadline does not.
-        var deadline: CalendarDate? {
-            get { due ?? scheduled }
-            set {
-                scheduled = newValue
-                due = newValue
-            }
-        }
+        /// The day the task belongs to, for whoever has to put it somewhere: the day it
+        /// shows up on, or failing that the day it is due.
+        var day: CalendarDate? { scheduled ?? due }
 
         var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
     }
@@ -152,7 +142,8 @@ extension VaultController {
                 forNewTask: draft.text,
                 scheduled: draft.scheduled,
                 due: draft.due,
-                reminder: draft.reminder
+                reminder: draft.reminder,
+                recurrence: draft.recurrence
             )
             let separator = body.hasSuffix("\n") ? "" : "\n"
             let updated = body + separator + line + "\n"

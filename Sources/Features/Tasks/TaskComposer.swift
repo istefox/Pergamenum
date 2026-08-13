@@ -19,10 +19,13 @@ struct TaskComposer: View {
     /// Bumped to put the caret back in the text after a popover or a menu took focus.
     @State private var focusRequest = 0
 
-    /// Which of the two date chips has its popover open. One at a time, and held as a
+    /// Which of the two date chips has its panel open. One at a time, and held as a
     /// value so opening the second closes the first.
     private enum DatePopover: String, Identifiable {
-        case deadline, reminder
+        /// `>`: the day the task shows up on, with the quick choices and the reminder.
+        case scheduled
+        /// `!`: the day past which it is late, a calendar and nothing else.
+        case due
         var id: String { rawValue }
     }
 
@@ -111,19 +114,32 @@ struct TaskComposer: View {
     private var footer: some View {
         HStack(spacing: theme.spacing(.s)) {
             chip(
-                .deadline,
+                .scheduled,
                 symbol: "calendar",
-                title: "Scadenza",
-                value: draft.deadline.map { "\($0)" }
+                title: "Programma",
+                value: draft.scheduled.map { "\($0)" }
             )
             chip(
-                .reminder,
-                symbol: "bell",
-                title: "Promemoria",
-                value: draft.reminder.map { reminder in
-                    String(format: "%@ %02d:%02d", reminder.date.description, reminder.hour, reminder.minute)
-                }
+                .due,
+                symbol: "flag",
+                title: "Scadenza",
+                value: draft.due.map { "\($0)" }
             )
+            // The reminder is set inside the Programma panel, where Craft keeps it, so
+            // it shows here only once there is one to show.
+            if let reminder = draft.reminder {
+                Label(
+                    String(format: "%02d:%02d", reminder.hour, reminder.minute),
+                    systemImage: "alarm"
+                )
+                .themedText(.caption, color: .textSecondary)
+                .accessibilityIdentifier("task-composer-reminder-badge")
+            }
+            if let recurrence = draft.recurrence {
+                Label("\(recurrence.total)×", systemImage: "arrow.triangle.2.circlepath")
+                    .themedText(.caption, color: .textSecondary)
+                    .accessibilityIdentifier("task-composer-repeat-badge")
+            }
 
             Spacer()
 
@@ -212,17 +228,26 @@ struct TaskComposer: View {
     @ViewBuilder
     private func popoverContent(for popover: DatePopover) -> some View {
         switch popover {
-        case .deadline:
-            DateChoice(title: "Scadenza", date: $draft.deadline) { open = nil }
-        case .reminder:
-            ReminderChoice(reminder: $draft.reminder, day: draft.deadline ?? .today) { open = nil }
+        case .scheduled:
+            SchedulePanel(
+                date: $draft.scheduled,
+                reminder: $draft.reminder,
+                recurrence: $draft.recurrence
+            ) { open = nil }
+        case .due:
+            DuePanel(date: $draft.due) { open = nil }
         }
     }
 
     private func clear(_ popover: DatePopover) {
         switch popover {
-        case .deadline: draft.deadline = nil
-        case .reminder: draft.reminder = nil
+        case .scheduled:
+            draft.scheduled = nil
+            // The reminder hangs off the day the task shows up on; left behind it would
+            // fire for a task with no date at all.
+            draft.reminder = nil
+        case .due:
+            draft.due = nil
         }
     }
 
@@ -305,110 +330,5 @@ private struct DestinationPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// A day, with the shortcuts that cover most of the choices (SPEC §7.3).
-private struct DateChoice: View {
-    @Environment(\.theme) private var theme
-    let title: String
-    @Binding var date: CalendarDate?
-    let onDone: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(title).themedText(.caption, color: .textTertiary)
-            HStack {
-                quick("Oggi", days: 0)
-                quick("Domani", days: 1)
-                quick("Settimana prossima", days: 7)
-            }
-            DatePicker(
-                "",
-                selection: Binding(
-                    // Midday, through the one conversion the app already has: a date
-                    // built at midnight lands on the previous day in some zones.
-                    get: { EventKitStore.date(date ?? .today, hour: 12, minute: 0) ?? Date() },
-                    set: { date = CalendarDate($0) }
-                ),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .frame(width: 260)
-
-            HStack {
-                Button("Togli") {
-                    date = nil
-                    onDone()
-                }
-                Spacer()
-                Button("Fatto", action: onDone).keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(theme.spacing(.m))
-    }
-
-    private func quick(_ label: String, days: Int) -> some View {
-        Button(label) {
-            date = CalendarDate.today.adding(days: days)
-            onDone()
-        }
-        .buttonStyle(.link)
-        .accessibilityIdentifier("date-quick-\(days)")
-    }
-}
-
-/// A day and a time, which is what `@remind(...)` carries.
-private struct ReminderChoice: View {
-    @Environment(\.theme) private var theme
-    @Binding var reminder: TaskReminder?
-    /// The day the reminder starts on: the task's own deadline when it has one, since
-    /// a reminder for a task due on Friday is almost never wanted for today.
-    let day: CalendarDate
-    let onDone: () -> Void
-
-    /// Nine in the morning, which is the hour the Inserisci menu writes too - a
-    /// reminder defaulting to "now" fires while you are still typing the task.
-    @State private var moment = Date()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text("Promemoria").themedText(.caption, color: .textTertiary)
-            DatePicker("", selection: $moment, displayedComponents: .date)
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .frame(width: 260)
-            // The hour as a field rather than in the graphical picker, which draws a
-            // clock face you have to aim at to set nine o'clock.
-            DatePicker("Ora", selection: $moment, displayedComponents: .hourAndMinute)
-                .fixedSize()
-
-            HStack {
-                Button("Togli") {
-                    reminder = nil
-                    onDone()
-                }
-                Spacer()
-                Button("Fatto") {
-                    let clock = Calendar.current.dateComponents([.hour, .minute], from: moment)
-                    reminder = TaskReminder(
-                        date: CalendarDate(moment),
-                        hour: clock.hour ?? 9,
-                        minute: clock.minute ?? 0
-                    )
-                    onDone()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(theme.spacing(.m))
-        .onAppear {
-            moment = if let reminder {
-                EventKitStore.date(reminder.date, hour: reminder.hour, minute: reminder.minute) ?? moment
-            } else {
-                EventKitStore.date(day, hour: 9, minute: 0) ?? moment
-            }
-        }
     }
 }

@@ -33,32 +33,39 @@ import Testing
     #expect(line == "- [ ] Chiamare il fornitore >2026-09-01 @remind(2026-09-01 08:00) !2026-08-20")
 }
 
-/// The composer offers one date, not two. It has to write both markers all the same:
-/// with `!` alone the task is in no view until it is already late, since Oggi reads
-/// `>` or overdue, Prossimi reads `>`, and Inbox is what has neither.
-@Test func theOneDateTheComposerOffersIsWrittenAsBothMarkers() {
+/// The two dates are two decisions, and the panel keeps them apart: Programma is the
+/// day the task shows up on, Scadenza the day past which it is late.
+@Test func programmaAndScadenzaAreWrittenAsTheirOwnMarkers() {
     var draft = VaultController.TaskDraft(text: "Consegnare la relazione")
-    #expect(draft.deadline == nil)
+    #expect(draft.day == nil)
 
-    draft.deadline = CalendarDate(iso: "2026-08-20")
-    #expect(draft.scheduled == CalendarDate(iso: "2026-08-20"))
-    #expect(draft.due == CalendarDate(iso: "2026-08-20"))
+    draft.scheduled = CalendarDate(iso: "2026-08-17")
+    draft.due = CalendarDate(iso: "2026-08-20")
+    #expect(draft.day == CalendarDate(iso: "2026-08-17"))
     #expect(TaskParser.line(forNewTask: draft.text, scheduled: draft.scheduled, due: draft.due)
-        == "- [ ] Consegnare la relazione >2026-08-20 !2026-08-20")
-
-    draft.deadline = nil
-    #expect(draft.scheduled == nil)
-    #expect(draft.due == nil)
+        == "- [ ] Consegnare la relazione >2026-08-17 !2026-08-20")
 }
 
-/// A task written by hand, or by an older build, can carry one marker only. Reading
-/// the deadline back must not depend on both being there.
-@Test func aDeadlineIsReadFromWhicheverMarkerIsPresent() {
-    var draft = VaultController.TaskDraft(text: "Ereditato", due: CalendarDate(iso: "2026-08-20"))
-    #expect(draft.deadline == CalendarDate(iso: "2026-08-20"))
+/// The day a capture belongs to, for the pane that has to show it: the day it surfaces
+/// on, or failing that the day it is due.
+@Test func theDayOfADraftFallsBackToTheDueDate() {
+    var draft = VaultController.TaskDraft(text: "Solo scadenza", due: CalendarDate(iso: "2026-08-20"))
+    #expect(draft.day == CalendarDate(iso: "2026-08-20"))
 
-    draft = VaultController.TaskDraft(text: "Ereditato", scheduled: CalendarDate(iso: "2026-08-15"))
-    #expect(draft.deadline == CalendarDate(iso: "2026-08-15"))
+    draft.scheduled = CalendarDate(iso: "2026-08-15")
+    #expect(draft.day == CalendarDate(iso: "2026-08-15"))
+}
+
+/// The reminder and the finite recurrence of SPEC §7.1, both set inside the Programma
+/// panel, are markers on the same line and nothing else.
+@Test func theReminderAndTheRepetitionAreWrittenOnTheLine() {
+    let line = TaskParser.line(
+        forNewTask: "Rivedere il preventivo",
+        scheduled: CalendarDate(iso: "2026-08-17"),
+        reminder: TaskReminder(date: CalendarDate(iso: "2026-08-17")!, hour: 8, minute: 30),
+        recurrence: TaskRecurrence(completed: 0, total: 3)
+    )
+    #expect(line == "- [ ] Rivedere il preventivo >2026-08-17 @remind(2026-08-17 08:30) @repeat(0/3)")
 }
 
 @MainActor
