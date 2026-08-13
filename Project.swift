@@ -39,6 +39,20 @@ let appConfigurations: [Configuration] = [
     .release(name: "Release", settings: ["ENABLE_HARDENED_RUNTIME": "YES"]),
 ]
 
+// The version shown in Informazioni. Raised by hand when the app reaches a version
+// worth naming; the build number underneath it is what tells two builds apart.
+let marketingVersion = "1.0"
+
+// The number of commits behind HEAD, handed in by `scripts/release.sh` as
+// TUIST_BUILD_NUMBER. Not a counter kept in this file: a counter has to be remembered,
+// and every notarized build until now went out as 1.0 (1), so nothing on disk said
+// which one it was.
+//
+// Zero means nobody handed one in, which is what an ordinary `tuist generate` does.
+// A build numbered 0 is therefore a development build by construction, and the release
+// script refuses to ship one.
+let buildNumber = Environment.buildNumber.getString(default: "0")
+
 let project = Project(
     name: projectName,
     settings: .settings(base: baseSettings),
@@ -50,6 +64,10 @@ let project = Project(
             bundleId: bundleId,
             deploymentTargets: .macOS(deploymentTarget),
             infoPlist: .extendingDefault(with: [
+                // Both spelled out: the default Tuist extends carries 1.0 and 1, so
+                // without these every build ever made claimed to be the same one.
+                "CFBundleShortVersionString": .string(marketingVersion),
+                "CFBundleVersion": .string(buildNumber),
                 "CFBundleURLTypes": [
                     [
                         "CFBundleURLName": .string(bundleId),
