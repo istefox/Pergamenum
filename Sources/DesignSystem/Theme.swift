@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A fully resolved theme: every token the app can ask for has a value.
@@ -40,6 +41,26 @@ struct Theme: Identifiable, Equatable, Sendable {
     func font(_ token: FontToken) -> Font {
         let value = fonts[token] ?? Theme.emergency.fonts[token]!
         return Font.system(size: value.size, weight: value.weight.asFontWeight, design: value.family.asDesign)
+    }
+
+    /// The same face as `font(_:)`, for the AppKit views the app bridges to.
+    ///
+    /// Without it a bridged control would have to name a size and a weight of its own,
+    /// which is the hardcoding the token system exists to prevent - the rule is about
+    /// where the value comes from, not about which framework draws it.
+    func nsFont(_ token: FontToken) -> NSFont {
+        let value = fonts[token] ?? Theme.emergency.fonts[token]!
+        let weight = value.weight.asNSFontWeight
+        switch value.family {
+        case .monospace:
+            return NSFont.monospacedSystemFont(ofSize: value.size, weight: weight)
+        case .serif:
+            let system = NSFont.systemFont(ofSize: value.size, weight: weight)
+            let descriptor = system.fontDescriptor.withDesign(.serif) ?? system.fontDescriptor
+            return NSFont(descriptor: descriptor, size: value.size) ?? system
+        case .system:
+            return NSFont.systemFont(ofSize: value.size, weight: weight)
+        }
     }
 
     /// SwiftUI takes spacing *between* lines, while DTCG expresses a multiple of the
@@ -227,6 +248,23 @@ private extension Int {
     /// DTCG numeric weights map onto the nine SwiftUI weights; anything between two
     /// stops rounds down to the lighter one, which is how CSS behaves.
     var asFontWeight: Font.Weight {
+        switch self {
+        case ..<150: .ultraLight
+        case ..<250: .thin
+        case ..<350: .light
+        case ..<450: .regular
+        case ..<550: .medium
+        case ..<650: .semibold
+        case ..<750: .bold
+        case ..<850: .heavy
+        default: .black
+        }
+    }
+}
+
+private extension Int {
+    /// The same nine stops as `asFontWeight`, in AppKit's units.
+    var asNSFontWeight: NSFont.Weight {
         switch self {
         case ..<150: .ultraLight
         case ..<250: .thin

@@ -253,6 +253,25 @@ enum TaskParser {
         return line.trimmingTrailingWhitespace() + " >\(date)"
     }
 
+    /// The line for a task that does not exist yet, in the marker order of SPEC §7.1.
+    ///
+    /// A marker already typed into the text wins over the one the composer holds: the
+    /// two would otherwise both be written, and a line carrying two `>` dates parses
+    /// back to whichever the scanner meets first, which is not a choice anyone made.
+    static func line(
+        forNewTask text: String,
+        scheduled: CalendarDate? = nil,
+        due: CalendarDate? = nil,
+        reminder: TaskReminder? = nil
+    ) -> String {
+        let body = text.trimmingCharacters(in: .whitespaces)
+        var line = "- [ ] " + body
+        if let scheduled, markerRange(in: body, prefix: ">") == nil { line += " >\(scheduled)" }
+        if let due, markerRange(in: body, prefix: "!") == nil { line += " !\(due)" }
+        if let reminder, !body.contains("@remind(") { line += " " + reminder.rendered }
+        return line
+    }
+
     /// Adds or replaces a wikilink to a note or canvas, which is how "Collega
     /// nota/canvas…" works (SPEC §7.2).
     static func line(for task: TaskItem, addingLinkTo target: String) -> String {

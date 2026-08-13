@@ -278,10 +278,7 @@ private struct NoteTreeRow: View {
 
     @ViewBuilder
     private var folderMenu: some View {
-        Button("Nuova nota qui") {
-            vault.newNoteFolder = node.id
-            vault.isCreatingNote = true
-        }
+        Button("Nuova nota qui") { vault.beginNewNote(in: node.id) }
         Button(isOpen ? "Comprimi" : "Espandi") { toggle() }
         Divider()
         Button("Rivela nel Finder") {

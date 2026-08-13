@@ -66,10 +66,11 @@ struct PergamenumApp: App {
                 .environment(shortcuts)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
-                // Rescheduled on every completed scan, against the whole vault: the
-                // tasks on disk are the source of truth, so the scheduler replaces its
-                // pending notifications wholesale rather than trying to diff them.
-                .task(id: vault.scanGeneration) {
+                // Rescheduled on every completed scan and on every task the app writes,
+                // against the whole vault: the tasks on disk are the source of truth, so
+                // the scheduler replaces its pending notifications wholesale rather than
+                // trying to diff them.
+                .task(id: vault.taskGeneration) {
                     await reminders.refreshAccessStatus()
                     await reminders.reschedule(for: vault.index.allTasks)
                     await reminders.refreshPending()
@@ -92,7 +93,7 @@ struct PergamenumApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            VaultCommands(vault: vault, shortcuts: shortcuts)
+            VaultCommands(vault: vault, navigation: navigation, shortcuts: shortcuts)
             EditCommands(navigation: navigation, shortcuts: shortcuts)
             InsertCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
             ViewCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
@@ -127,6 +128,15 @@ struct TaskCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Task") {
+            // The composer's destination picker in one command, for the case it is
+            // always used for: a task about the note you are looking at.
+            Button("Nuovo task in questa nota") {
+                guard let note = vault.openNote else { return }
+                vault.beginTaskCapture(into: .note(note.relativePath))
+            }
+            .disabled(vault.openNote == nil)
+
+            Divider()
             Button("Completa o riapri") {
                 if let task = vault.selectedTask { vault.toggle(task) }
             }
@@ -159,6 +169,7 @@ struct TaskCommands: Commands {
 /// The File-menu entries that need an open notes folder (SPEC §10).
 struct VaultCommands: Commands {
     let vault: VaultController
+    let navigation: Navigation
     let shortcuts: ShortcutStore
 
     /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting
@@ -187,9 +198,11 @@ struct VaultCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            // Brings the Note pane forward as well: the composer is part of the editor
+            // now, so from any other pane the command would compose out of sight.
             Button("Nuova nota") {
-                vault.newNoteFolder = ""
-                vault.isCreatingNote = true
+                navigation.pane = .notes
+                vault.beginNewNote()
             }
                 .keyboardShortcut(shortcuts.shortcut(for: .newNote))
                 .disabled(vault.root == nil)
@@ -204,7 +217,7 @@ struct VaultCommands: Commands {
             }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
                 .disabled(vault.root == nil)
-            Button("Nuovo task rapido") { vault.isCapturingTask = true }
+            Button("Nuovo task rapido") { vault.beginTaskCapture() }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickTask))
                 .disabled(vault.root == nil)
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }

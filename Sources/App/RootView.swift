@@ -74,6 +74,15 @@ struct RootView: View {
         )) {
             GlobalSearchView()
         }
+        // At window level rather than inside the Attività pane: quick capture is meant
+        // to work from wherever you are, and presented by that pane the command did
+        // nothing at all from the other four.
+        .sheet(isPresented: Binding(
+            get: { vault.taskDraft != nil },
+            set: { if !$0 { vault.taskDraft = nil } }
+        )) {
+            TaskComposer { vault.taskDraft = nil }
+        }
         // Wide enough for the Note pane's own three columns beside this sidebar:
         // below this the outer sidebar gets squeezed into an unreadable strip.
         .frame(minWidth: 1180, minHeight: 700)
