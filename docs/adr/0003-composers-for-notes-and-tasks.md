@@ -33,12 +33,25 @@ becomes the editor showing it, and the cursor is put in the text. Escape or Annu
 drops the draft. The File-menu command switches to the Note pane first, since the
 composer is now part of that pane rather than a window of its own.
 
-**D2. The task composer is a panel with a destination and three dates.** It carries,
-top to bottom: the destination note (Inbox by default, any note through a searchable
-picker), the text, and chips for `>` pianificata, `!` scadenza and `@remind`, then a
-Crea button whose menu offers "Crea e apri la nota" and "Crea e continua". What it
-writes is the ordinary markdown line of SPEC §7.1 - there is no second representation
-of a task anywhere, which is what keeps the vault the source of truth.
+**D2. The task composer is a panel with a destination, one date and a reminder.** It
+carries, top to bottom: the destination note (Inbox by default, any note through a
+searchable picker), the text, a Scadenza chip and a Promemoria chip, then a Crea button
+whose menu offers "Crea e apri la nota" and "Crea e continua". What it writes is the
+ordinary markdown line of SPEC §7.1 - there is no second representation of a task
+anywhere, which is what keeps the vault the source of truth.
+
+*Revised 2026-08-13, same day.* The panel first offered three dates: Programma (`>`),
+Scadenza (`!`) and Promemoria. Programma and Scadenza are the same decision asked
+twice at capture time, so they are now one field called Scadenza, which writes **both**
+markers with that date. Writing `!` alone would have been the tidier file and the worse
+app: `tasks(for:on:)` puts a task in Oggi when it is scheduled today or already late,
+in Prossimi when it is scheduled within the week, and in Inbox when it has neither
+marker - so a task with a due date only would sit in no view at all until the day it
+became late. `>` is when it shows up, `!` is when it turns red, and one date sets both.
+Rescheduling later (Cmd+0/1/2/3) still moves `>` alone, which is right: the plan
+changes, the deadline does not. `TaskDraft.deadline` is the computed property that
+holds the pair together, and it reads back from whichever marker a hand-written task
+happens to carry.
 
 **D3. Only the inbox note is created on demand.** A destination that is a note has to
 exist; the composer refuses and says so otherwise. Inventing a note from a task

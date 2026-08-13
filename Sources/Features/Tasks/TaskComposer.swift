@@ -19,10 +19,10 @@ struct TaskComposer: View {
     /// Bumped to put the caret back in the text after a popover or a menu took focus.
     @State private var focusRequest = 0
 
-    /// Which of the three date chips has its popover open. One at a time, and held as
-    /// a value so opening a second closes the first.
+    /// Which of the two date chips has its popover open. One at a time, and held as a
+    /// value so opening the second closes the first.
     private enum DatePopover: String, Identifiable {
-        case scheduled, due, reminder
+        case deadline, reminder
         var id: String { rawValue }
     }
 
@@ -111,16 +111,10 @@ struct TaskComposer: View {
     private var footer: some View {
         HStack(spacing: theme.spacing(.s)) {
             chip(
-                .scheduled,
+                .deadline,
                 symbol: "calendar",
-                title: "Programma",
-                value: draft.scheduled.map { "\($0)" }
-            )
-            chip(
-                .due,
-                symbol: "flag",
                 title: "Scadenza",
-                value: draft.due.map { "\($0)" }
+                value: draft.deadline.map { "\($0)" }
             )
             chip(
                 .reminder,
@@ -218,19 +212,16 @@ struct TaskComposer: View {
     @ViewBuilder
     private func popoverContent(for popover: DatePopover) -> some View {
         switch popover {
-        case .scheduled:
-            DateChoice(title: "Programma", date: $draft.scheduled) { open = nil }
-        case .due:
-            DateChoice(title: "Scadenza", date: $draft.due) { open = nil }
+        case .deadline:
+            DateChoice(title: "Scadenza", date: $draft.deadline) { open = nil }
         case .reminder:
-            ReminderChoice(reminder: $draft.reminder) { open = nil }
+            ReminderChoice(reminder: $draft.reminder, day: draft.deadline ?? .today) { open = nil }
         }
     }
 
     private func clear(_ popover: DatePopover) {
         switch popover {
-        case .scheduled: draft.scheduled = nil
-        case .due: draft.due = nil
+        case .deadline: draft.deadline = nil
         case .reminder: draft.reminder = nil
         }
     }
@@ -372,12 +363,14 @@ private struct DateChoice: View {
 private struct ReminderChoice: View {
     @Environment(\.theme) private var theme
     @Binding var reminder: TaskReminder?
+    /// The day the reminder starts on: the task's own deadline when it has one, since
+    /// a reminder for a task due on Friday is almost never wanted for today.
+    let day: CalendarDate
     let onDone: () -> Void
 
-    /// Nine in the morning of the day being composed, which is the hour the Inserisci
-    /// menu writes too - a reminder defaulting to "now" fires while you are still
-    /// typing the task.
-    @State private var moment = EventKitStore.date(.today, hour: 9, minute: 0) ?? Date()
+    /// Nine in the morning, which is the hour the Inserisci menu writes too - a
+    /// reminder defaulting to "now" fires while you are still typing the task.
+    @State private var moment = Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
@@ -411,8 +404,11 @@ private struct ReminderChoice: View {
         }
         .padding(theme.spacing(.m))
         .onAppear {
-            guard let reminder else { return }
-            moment = EventKitStore.date(reminder.date, hour: reminder.hour, minute: reminder.minute) ?? moment
+            moment = if let reminder {
+                EventKitStore.date(reminder.date, hour: reminder.hour, minute: reminder.minute) ?? moment
+            } else {
+                EventKitStore.date(day, hour: 9, minute: 0) ?? moment
+            }
         }
     }
 }

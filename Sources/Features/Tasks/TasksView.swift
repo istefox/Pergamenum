@@ -33,16 +33,20 @@ struct TasksView: View {
             linking = task
             vault.isLinkingSelectedTask = false
         }
-        // A task captured into the inbox with no date belongs to a view that may not be
-        // the one showing, and a capture that appears nowhere reads as a capture that
-        // failed. So the pane follows the task.
-        .onChange(of: vault.taskGeneration) { _, _ in
-            guard let capture = vault.consumeLastCapture() else { return }
-            view = switch capture.scheduled {
-            case .none: .inbox
-            case .some(let day) where day == today: .today
-            default: .upcoming
-            }
+        // A captured task belongs to a view that may not be the one showing, and a
+        // capture that appears nowhere reads as a capture that failed. So the pane
+        // follows the task - on arrival too, since the composer works from every
+        // section and the capture usually happens while this view does not exist.
+        .task { followLastCapture() }
+        .onChange(of: vault.taskGeneration) { _, _ in followLastCapture() }
+    }
+
+    private func followLastCapture() {
+        guard let capture = vault.consumeLastCapture() else { return }
+        view = switch capture.deadline {
+        case .none: .inbox
+        case .some(let day) where day <= today: .today
+        default: .upcoming
         }
     }
 

@@ -82,20 +82,24 @@ final class ComposerUITests: XCTestCase {
 
     // MARK: Task composer
 
-    func testTheTaskComposerCarriesTheDestinationAndTheThreeDates() throws {
+    func testTheTaskComposerCarriesTheDestinationTheDeadlineAndTheReminder() throws {
         show("Attività")
         toolbarButton("Cattura rapida").click()
 
         let text = app.textFields["task-composer-text"]
         XCTAssertTrue(text.waitForExistence(timeout: 5), "il composer dei task non si è aperto")
         XCTAssertTrue(app.buttons["task-composer-destination"].exists, "manca la destinazione")
-        for chip in ["scheduled", "due", "reminder"] {
+        for chip in ["deadline", "reminder"] {
             XCTAssertTrue(
                 app.buttons["task-composer-\(chip)"].exists,
                 "manca il campo data «\(chip)»"
             )
         }
         XCTAssertTrue(app.buttons["task-composer-create"].exists, "manca il pulsante Crea")
+        // One date, not two: "Programma" and "Scadenza" were the same decision asked
+        // twice, and the second of them filed tasks into no view at all.
+        XCTAssertFalse(app.buttons["task-composer-scheduled"].exists, "il campo Programma è ancora lì")
+        XCTAssertFalse(app.buttons["task-composer-due"].exists, "ci sono ancora due campi data")
     }
 
     func testATaskComposedWithADateIsWrittenWithThatDate() throws {
@@ -107,10 +111,10 @@ final class ComposerUITests: XCTestCase {
         text.click()
         text.typeText("Task dal composer")
 
-        app.buttons["task-composer-scheduled"].click()
-        let today = app.descendants(matching: .any).matching(identifier: "date-quick-0").firstMatch
-        XCTAssertTrue(today.waitForExistence(timeout: 5), "il popover della data non si è aperto")
-        today.click()
+        app.buttons["task-composer-deadline"].click()
+        let quickToday = app.descendants(matching: .any).matching(identifier: "date-quick-0").firstMatch
+        XCTAssertTrue(quickToday.waitForExistence(timeout: 5), "il popover della data non si è aperto")
+        quickToday.click()
 
         app.buttons["task-composer-create"].click()
 
@@ -122,7 +126,13 @@ final class ComposerUITests: XCTestCase {
             if written.contains("Task dal composer") { break }
             Thread.sleep(forTimeInterval: 0.25)
         }
-        XCTAssertTrue(written.contains("- [ ] Task dal composer >"), "il task non porta la data: \(written)")
+        // Both markers from the one field: `>` is what the day views read, `!` is what
+        // turns the task red once the day has passed.
+        let today = todayISO()
+        XCTAssertTrue(
+            written.contains("- [ ] Task dal composer >\(today) !\(today)"),
+            "il task non porta la scadenza nei due marcatori: \(written)"
+        )
     }
 
     /// Setting a date used to cost the text: SwiftUI gave focus back to the field by
@@ -137,7 +147,7 @@ final class ComposerUITests: XCTestCase {
         text.click()
         text.typeText("Primo pezzo")
 
-        app.buttons["task-composer-scheduled"].click()
+        app.buttons["task-composer-deadline"].click()
         let today = app.descendants(matching: .any).matching(identifier: "date-quick-0").firstMatch
         XCTAssertTrue(today.waitForExistence(timeout: 5))
         today.click()
@@ -158,6 +168,25 @@ final class ComposerUITests: XCTestCase {
         )
     }
 
+    /// Captured from the Note pane, the task lands in Inbox - a view Attività does not
+    /// open on. Arriving there afterwards has to show it, or the capture reads as lost.
+    func testAttivitaOpensOnTheViewTheCapturedTaskLandedIn() throws {
+        app.menuBars.menuItems["Nuovo task rapido"].click()
+        let text = app.textFields["task-composer-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.click()
+        text.typeText("Task catturato da Note")
+        app.buttons["task-composer-create"].click()
+
+        show("Attività")
+        let row = app.descendants(matching: .any).matching(identifier: "task-row").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "la sezione non si è messa sulla vista del task")
+        XCTAssertTrue(
+            app.staticTexts["Inbox"].exists,
+            "il task senza scadenza è in Inbox, ma la vista mostrata è un'altra"
+        )
+    }
+
     func testTheTaskComposerOpensFromAPaneThatIsNotAttivita() throws {
         show("Conformità")
         // Through the menu, which is where the command lives: presented by the Attività
@@ -170,6 +199,12 @@ final class ComposerUITests: XCTestCase {
     }
 
     // MARK: Fixture
+
+    private func todayISO() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
 
     private func makeVault() throws {
         vault = URL(filePath: NSTemporaryDirectory())

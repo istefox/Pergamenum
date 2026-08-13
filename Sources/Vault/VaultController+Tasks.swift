@@ -110,6 +110,22 @@ extension VaultController {
         /// `@remind(YYYY-MM-DD HH:MM)`.
         var reminder: TaskReminder?
 
+        /// The one date the composer offers, written as both markers.
+        ///
+        /// A task is due on a day and wants showing on it, which in the file is two
+        /// separate things: `>` is what the day views and the daily note read, `!` is
+        /// what turns the task red once the day has passed. Setting only the second
+        /// would file a task that appears in no view at all until it is already late.
+        /// Rescheduling later moves `>` alone, which is right: the plan changes, the
+        /// deadline does not.
+        var deadline: CalendarDate? {
+            get { due ?? scheduled }
+            set {
+                scheduled = newValue
+                due = newValue
+            }
+        }
+
         var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
