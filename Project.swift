@@ -68,6 +68,10 @@ let project = Project(
                 // without these every build ever made claimed to be the same one.
                 "CFBundleShortVersionString": .string(marketingVersion),
                 "CFBundleVersion": .string(buildNumber),
+                // Without this the about panel prints "Copyright ©. All rights
+                // reserved." with nothing between the symbol and the full stop, which
+                // is the panel the build number is read from.
+                "NSHumanReadableCopyright": "© 2026 Stefano Ferri",
                 "CFBundleURLTypes": [
                     [
                         "CFBundleURLName": .string(bundleId),
