@@ -46,6 +46,22 @@ struct RGBA: Equatable, Sendable {
             alpha = Double(value & 0xFF) / 255
         }
     }
+
+    init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+
+    /// The value as a token file writes it: `#RRGGBB`, or `#RRGGBBAA` when it is not
+    /// opaque. The short forms are only ever read, never written, so a file this app
+    /// produces reads the same way to every other tool.
+    var hexString: String {
+        func byte(_ value: Double) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
+        let base = String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+        return alpha >= 1 ? base : base + String(format: "%02X", byte(alpha))
+    }
 }
 
 struct TypographyValue: Equatable, Sendable {

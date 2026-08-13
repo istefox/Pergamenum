@@ -17,6 +17,14 @@ struct ViewCommands: Commands {
                     )
             }
             Divider()
+            // Not Cmd+Shift+E, which SPEC §10 assigns to the source/style toggle:
+            // the Calendario menu already binds that key to "Nuovo promemoria", and a
+            // second command on the same key simply never fires. The collision with
+            // the spec predates this menu entry and is left as it is.
+            Toggle("Modalità lettura", isOn: Bindable(navigation).isReadingMode)
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(vault.openNote == nil)
+            Divider()
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }
                 .keyboardShortcut(.space, modifiers: [])
                 .disabled(vault.root == nil)

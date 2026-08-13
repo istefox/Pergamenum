@@ -12,8 +12,6 @@ final class Navigation {
     /// The panes of the sidebar.
     enum Pane: String, CaseIterable, Identifiable, Hashable, Sendable {
         case vault
-        case tokens
-        case editor
         case workspace
         case today
         case tasks
@@ -21,14 +19,9 @@ final class Navigation {
 
         var id: String { rawValue }
 
-        /// Panes still showing a mockup rather than the real feature.
-        var isMockup: Bool { self == .editor }
-
         var title: String {
             switch self {
             case .vault: "Vault"
-            case .tokens: "Design system"
-            case .editor: "Editor"
             case .workspace: "Workspace"
             case .today: "Oggi"
             case .tasks: "Attività"
@@ -39,8 +32,6 @@ final class Navigation {
         var symbol: String {
             switch self {
             case .vault: "books.vertical"
-            case .tokens: "paintpalette"
-            case .editor: "doc.text"
             case .workspace: "square.on.square"
             case .today: "calendar"
             case .tasks: "checklist"
@@ -58,6 +49,14 @@ final class Navigation {
     }
 
     var pane: Pane = .vault
+
+    /// Whether the Vault shows the note rendered rather than as source.
+    ///
+    /// Here rather than in `VaultBrowser` because SPEC §10 puts the switch in the
+    /// Vista menu, on Cmd+Shift+E, and a menu that cannot reach the state it names
+    /// is a menu that does nothing - which is what the shortcut hung on the picker
+    /// did, silently.
+    var isReadingMode = false
 
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///

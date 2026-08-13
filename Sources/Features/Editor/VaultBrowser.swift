@@ -218,24 +218,28 @@ struct VaultBrowser: View {
                 editorHeader(note)
                 if note.externalChangePending != nil { conflictBanner }
                 Divider()
-                NoteTextView(
-                    text: Binding(
-                        get: { vault.openNote?.text ?? "" },
-                        set: { vault.updateOpenNoteText($0) }
-                    ),
-                    theme: theme,
-                    noteTitles: vault.index.allNotes.map(\.title),
-                    tagSuggestions: tagSuggestions,
-                    onFollowLink: follow(title:),
-                    onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
-                    insertion: pendingInsertion,
-                    onInsertionApplied: { pendingInsertion = nil },
-                    findRequest: findRequest,
-                    onFindApplied: {
-                        navigation.isFindRequested = false
-                        navigation.isReplaceRequested = false
-                    }
-                )
+                if navigation.isReadingMode {
+                    MarkdownReadingView(text: note.text, onFollowLink: follow(title:))
+                } else {
+                    NoteTextView(
+                        text: Binding(
+                            get: { vault.openNote?.text ?? "" },
+                            set: { vault.updateOpenNoteText($0) }
+                        ),
+                        theme: theme,
+                        noteTitles: vault.index.allNotes.map(\.title),
+                        tagSuggestions: tagSuggestions,
+                        onFollowLink: follow(title:),
+                        onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
+                        insertion: pendingInsertion,
+                        onInsertionApplied: { pendingInsertion = nil },
+                        findRequest: findRequest,
+                        onFindApplied: {
+                            navigation.isFindRequested = false
+                            navigation.isReplaceRequested = false
+                        }
+                    )
+                }
             }
             .background(theme.color(.backgroundPrimary))
         } else {
@@ -250,6 +254,17 @@ struct VaultBrowser: View {
                 Text(note.relativePath).themedText(.caption, color: .textTertiary)
             }
             Spacer()
+            // Modifica / Lettura, the toggle SPEC §10 puts on Cmd+Shift+E. Reading
+            // mode renders the note; the editor keeps showing the source with style
+            // applied, which is what §7.1 asks for and what §14 keeps a live preview
+            // out of.
+            Picker("", selection: Bindable(navigation).isReadingMode) {
+                Text("Modifica").tag(false)
+                Text("Lettura").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             if note.hasUnsavedChanges {
                 Button("Salva", action: vault.saveOpenNote)
                     .keyboardShortcut("s", modifiers: .command)
