@@ -54,6 +54,18 @@ final class ThemeEngine {
     /// in the vault. The emergency theme is deliberately not among them.
     var selectableThemes: [Theme] { themes }
 
+    /// Where the vault keeps its themes, once one is open. Nil means no vault, and
+    /// with no vault there is nowhere to save a customisation to: a colour picked
+    /// then would have nowhere to live and would vanish on the next launch, so
+    /// Settings says so rather than pretending.
+    private(set) var userThemesDirectory: URL?
+
+    /// The colours Settings has written, and the appearance they build on.
+    private(set) var customization: ThemeCustomization.Draft?
+
+    /// Anything that went wrong writing a customisation, shown next to the wells.
+    private(set) var customizationProblem: String?
+
     private let defaults: UserDefaults
     private static let selectionKey = "theme.selection"
 
@@ -63,6 +75,116 @@ final class ThemeEngine {
         themes = loaded.themes
         problems = loaded.problems
         selection = ThemeEngine.restoreSelection(from: defaults)
+    }
+
+    /// Points the engine at a vault and loads whatever themes it holds.
+    ///
+    /// Until this was called from the app, `loadUserThemes` was reachable only from
+    /// the test suite: the vault's `themes` directory was read by nobody, so a theme
+    /// file dropped into a vault did nothing and the Settings picker could only ever
+    /// list the two bundled themes.
+    func attach(vaultRoot: URL) {
+        let directory = vaultRoot
+            .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
+            .appending(path: VaultLayout.themesDirectory, directoryHint: .isDirectory)
+        userThemesDirectory = directory
+        loadUserThemes(in: directory)
+        customization = ThemeCustomization.load(from: directory)
+        customizationProblem = nil
+        dropSelectionIfItsThemeIsGone()
+    }
+
+    /// A remembered theme that this vault does not have is not a theme.
+    ///
+    /// The selection is a per-user preference and the themes come from the vault, so
+    /// the two can disagree: open vault A, pick its theme, open vault B, and the
+    /// preference still names a file that is not there. `current` already fell back
+    /// to the system appearance, but the picker showed no selection at all, which
+    /// reads as a broken control rather than as a theme that moved.
+    private func dropSelectionIfItsThemeIsGone() {
+        guard case .named(let id) = selection, !themes.contains(where: { $0.id == id }) else { return }
+        selection = .followSystem
+    }
+
+    /// Forgets the vault's themes when it closes, so a theme from the vault just
+    /// closed cannot stay on screen over the next one.
+    func detachVault() {
+        userThemesDirectory = nil
+        customization = nil
+        customizationProblem = nil
+        themes = themes.filter { $0.id.hasPrefix("pergamenum-") }
+        if case .named = selection { selection = .followSystem }
+    }
+
+    // MARK: Colour customisation
+
+    /// The value a colour well should open on: what the user chose, or what the
+    /// theme underneath currently renders.
+    func customizableColor(_ token: ColorToken) -> RGBA {
+        customization?.colors[token] ?? current.rawColor(token)
+    }
+
+    /// Writes one colour into the vault's customisation file and switches to it.
+    ///
+    /// The write happens first and the selection follows it: selecting a theme whose
+    /// file failed to appear would leave the app pointing at a theme that is not
+    /// there, and `current` would silently fall back to the system appearance while
+    /// Settings claimed the customisation was active.
+    func setCustomColor(_ token: ColorToken, to value: RGBA) {
+        guard let directory = userThemesDirectory else {
+            customizationProblem = "nessun vault aperto: non c'è dove salvare il tema"
+            return
+        }
+        var draft = customization ?? ThemeCustomization.Draft(appearance: current.appearance, colors: [:])
+        draft.colors[token] = value
+        apply(draft, in: directory)
+    }
+
+    /// Drops one colour back to the theme underneath.
+    func clearCustomColor(_ token: ColorToken) {
+        guard let directory = userThemesDirectory, var draft = customization else { return }
+        draft.colors.removeValue(forKey: token)
+        if draft.isEmpty {
+            resetCustomization()
+            return
+        }
+        apply(draft, in: directory)
+    }
+
+    /// Rebuilds the customisation on the appearance showing right now, keeping the
+    /// colours already chosen. This is what makes a light customisation usable as a
+    /// starting point for a dark one instead of a dead end.
+    func rebaseCustomization(on appearance: ThemeAppearance) {
+        guard let directory = userThemesDirectory else { return }
+        var draft = customization ?? ThemeCustomization.Draft(appearance: appearance, colors: [:])
+        draft.appearance = appearance
+        apply(draft, in: directory)
+    }
+
+    /// Deletes the file and goes back to the theme that was underneath.
+    func resetCustomization() {
+        guard let directory = userThemesDirectory else { return }
+        do {
+            try ThemeCustomization.remove(from: directory)
+            customization = nil
+            customizationProblem = nil
+            if selection == .named(ThemeCustomization.id) { selection = .followSystem }
+            loadUserThemes(in: directory)
+        } catch {
+            customizationProblem = "\(error)"
+        }
+    }
+
+    private func apply(_ draft: ThemeCustomization.Draft, in directory: URL) {
+        do {
+            try ThemeCustomization.write(draft, to: directory)
+            customization = draft
+            customizationProblem = nil
+            loadUserThemes(in: directory)
+            selection = .named(ThemeCustomization.id)
+        } catch {
+            customizationProblem = "\(error)"
+        }
     }
 
     /// Adds or replaces themes from a vault directory. Each file inherits from the

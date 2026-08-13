@@ -16,12 +16,15 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             general.tabItem { Label("Generali", systemImage: "gearshape") }
+            DesignSystemSettings().tabItem { Label("Design system", systemImage: "paintpalette") }
             canvasTab.tabItem { Label("Canvas", systemImage: "rectangle.3.group") }
             conventions.tabItem { Label("Convenzioni", systemImage: "checkmark.seal") }
             calendarTab.tabItem { Label("Calendario", systemImage: "calendar") }
             advanced.tabItem { Label("Avanzate", systemImage: "wrench.and.screwdriver") }
         }
-        .frame(width: 560, height: 420)
+        // Taller than it was: the design system pane lists every colour token with
+        // its well, and at 420 the list showed four rows and a scroll bar.
+        .frame(width: 620, height: 560)
     }
 
     // MARK: Generali

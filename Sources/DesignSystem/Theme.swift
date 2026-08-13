@@ -26,8 +26,15 @@ struct Theme: Identifiable, Equatable, Sendable {
     // MARK: Lookup
 
     func color(_ token: ColorToken) -> Color {
-        let rgba = colors[token] ?? Theme.emergency.colors[token]!
+        let rgba = rawColor(token)
         return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
+    }
+
+    /// The same colour as the token file holds it, for the parts of the app that
+    /// write tokens rather than draw with them: a colour well has to open on the
+    /// stored value and a customisation has to be saved back as hex.
+    func rawColor(_ token: ColorToken) -> RGBA {
+        colors[token] ?? Theme.emergency.colors[token]!
     }
 
     func font(_ token: FontToken) -> Font {

@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// The M0 shell: a sidebar over the design system gallery and the mockups of the
-/// screens M1 to M5 will implement for real.
+/// The window's panes.
 ///
-/// This is scaffolding with an expiry date. Once M1 lands, the sidebar becomes the
-/// vault's note tree and the gallery moves behind a developer-only menu item.
+/// The sidebar lists the app's actual work and nothing else. The design system left
+/// it for Settings, where the look of the app belongs, and the editor mockup left it
+/// for the Vault, which has had the real editor since M1 - a mockup beside the thing
+/// it was a mockup of is a place for a user to go and find nothing.
 struct RootView: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeEngine.self) private var engine
@@ -37,6 +38,18 @@ struct RootView: View {
             }
             .task {
                 if vault.routeState.pendingCanvas != nil { navigation.pane = .workspace }
+                if let root = vault.root { engine.attach(vaultRoot: root) }
+            }
+            // The vault's own themes (SPEC §11.3). Without this the engine never
+            // looked at `.pergamenum/themes/` outside the test suite, so a theme file
+            // in a vault did nothing at all and the picker in Settings could only
+            // ever offer the two bundled themes.
+            .onChange(of: vault.root) { _, newRoot in
+                if let newRoot {
+                    engine.attach(vaultRoot: newRoot)
+                } else {
+                    engine.detachVault()
+                }
             }
             .sheet(isPresented: Bindable(navigation).isShowingTaskSyntaxHelp) {
                 HelpSheet(topic: .taskSyntax) { navigation.isShowingTaskSyntaxHelp = false }
@@ -71,14 +84,8 @@ struct RootView: View {
     private var sidebar: some View {
         List(selection: selectedPane) {
             ForEach(Navigation.Pane.allCases) { item in
-                HStack {
-                    Label(item.title, systemImage: item.symbol)
-                    if item.isMockup {
-                        Spacer()
-                        Text("mockup").themedText(.caption, color: .textTertiary)
-                    }
-                }
-                .tag(item)
+                Label(item.title, systemImage: item.symbol)
+                    .tag(item)
             }
         }
         .scrollContentBackground(.hidden)
@@ -91,8 +98,6 @@ struct RootView: View {
     private var detail: some View {
         switch pane {
         case .vault: vaultPane
-        case .tokens: DesignGalleryView()
-        case .editor: EditorMockup()
         case .workspace: workspacePane
         case .today: todayPane
         case .tasks: tasksPane
