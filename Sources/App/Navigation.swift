@@ -11,7 +11,7 @@ import Observation
 final class Navigation {
     /// The panes of the sidebar.
     enum Pane: String, CaseIterable, Identifiable, Hashable, Sendable {
-        case vault
+        case notes
         case workspace
         case today
         case tasks
@@ -21,7 +21,7 @@ final class Navigation {
 
         var title: String {
             switch self {
-            case .vault: "Vault"
+            case .notes: "Note"
             case .workspace: "Workspace"
             case .today: "Oggi"
             case .tasks: "Attività"
@@ -31,7 +31,7 @@ final class Navigation {
 
         var symbol: String {
             switch self {
-            case .vault: "books.vertical"
+            case .notes: "doc.text"
             case .workspace: "square.on.square"
             case .today: "calendar"
             case .tasks: "checklist"
@@ -39,18 +39,26 @@ final class Navigation {
             }
         }
 
-        /// The Vista menu's shortcut, where §10 gives one.
-        var shortcut: Character? {
+        /// The catalogue entry holding this pane's shortcut.
+        ///
+        /// Through the catalogue rather than as a literal here, so the Vista menu and
+        /// the Scorciatoie settings pane read the same value and the user can change
+        /// it. The panes used to share Cmd+T with the File menu's "Nota di oggi": two
+        /// commands on one key, one of which never fired.
+        var shortcut: ShortcutCommand {
             switch self {
-            case .today: "t"
-            default: nil
+            case .notes: .paneNotes
+            case .workspace: .paneWorkspace
+            case .today: .paneToday
+            case .tasks: .paneTasks
+            case .conformance: .paneConformance
             }
         }
     }
 
-    var pane: Pane = .vault
+    var pane: Pane = .notes
 
-    /// Whether the Vault shows the note rendered rather than as source.
+    /// Whether the Note pane shows the note rendered rather than as source.
     ///
     /// Here rather than in `VaultBrowser` because SPEC §10 puts the switch in the
     /// Vista menu, on Cmd+Shift+E, and a menu that cannot reach the state it names
@@ -71,7 +79,7 @@ final class Navigation {
     func insert(_ text: String, cursorBack offset: Int = 0) {
         pendingInsertion = text
         pendingCursorOffset = offset
-        pane = .vault
+        pane = .notes
     }
 
     func consumeInsertion() -> (text: String, cursorBack: Int)? {

@@ -37,7 +37,7 @@ final class DesignAndReadingUITests: XCTestCase {
     // MARK: The sidebar carries the app's work, not its reference material
 
     func testTheSidebarNoLongerCarriesTheDesignSystemOrTheEditorMockup() throws {
-        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Workspace"].exists)
         // The gallery moved into Settings and the mockup was dropped: the Vault has
         // had the real editor since M1.
@@ -49,7 +49,7 @@ final class DesignAndReadingUITests: XCTestCase {
     // MARK: A theme file in the vault is a theme the app offers
 
     func testAThemeFileInTheVaultReachesTheThemePicker() throws {
-        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
 
         // Scoped to the window and matched by label: app-wide, `firstMatch` picked
         // the Touch Bar's own popup and the click failed on it.
@@ -74,7 +74,7 @@ final class DesignAndReadingUITests: XCTestCase {
     // MARK: The design system is a setting, and its colours can be reset
 
     func testTheDesignSystemPaneEditsTheVaultsOwnThemeFile() throws {
-        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
 
         app.typeKey(",", modifierFlags: .command)
         let tab = app.buttons["Design system"]
@@ -108,7 +108,7 @@ final class DesignAndReadingUITests: XCTestCase {
     // MARK: Reading mode
 
     func testReadingModeRendersTheNoteAndTheEditorStillShowsTheSource() throws {
-        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
 
         let note = text(withValue: "20260812_Nota_Lettura")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
@@ -212,7 +212,7 @@ final class DesignAndReadingUITests: XCTestCase {
 
     /// Selects the fixture note and switches to reading mode.
     private func openNoteInReadingMode() throws {
-        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         let note = text(withValue: "20260812_Nota_Lettura")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
         note.click()

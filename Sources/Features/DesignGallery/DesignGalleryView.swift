@@ -128,7 +128,7 @@ struct DesignGalleryView: View {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     specimen(.title, "font.title", "Trasmissibilità e rapporto di frequenza")
                     specimen(.heading, "font.heading", "Note correlate")
-                    specimen(.body, "font.body", "Il vault resta leggibile su disco: se Pergamenum sparisse, i dati restano usabili.")
+                    specimen(.body, "font.body", "Le note restano leggibili su disco: se Pergamenum sparisse, i dati restano usabili.")
                     specimen(.caption, "font.caption", "modificata 5 minuti fa · 3 backlink")
                     specimen(.mono, "font.mono", "- [ ] Rivedere la curva >2026-08-15")
                 }

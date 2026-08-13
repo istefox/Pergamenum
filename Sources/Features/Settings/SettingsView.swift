@@ -2,9 +2,10 @@ import SwiftUI
 
 /// The settings window of SPEC §12.
 ///
-/// Vault-level settings are written into `.pergamenum/settings.json`, so the same
-/// vault opened on another Mac behaves the same. The theme is a per-user preference
-/// and stays in `UserDefaults`.
+/// Settings that belong to a notes folder are written into
+/// `.pergamenum/settings.json`, so the same folder opened on another Mac behaves the
+/// same. The theme and the keyboard shortcuts are per-user preferences and stay in
+/// `UserDefaults`.
 struct SettingsView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
@@ -16,6 +17,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             general.tabItem { Label("Generali", systemImage: "gearshape") }
+            ShortcutSettings().tabItem { Label("Scorciatoie", systemImage: "keyboard") }
             DesignSystemSettings().tabItem { Label("Design system", systemImage: "paintpalette") }
             canvasTab.tabItem { Label("Canvas", systemImage: "rectangle.3.group") }
             conventions.tabItem { Label("Convenzioni", systemImage: "checkmark.seal") }
@@ -32,7 +34,7 @@ struct SettingsView: View {
     private var general: some View {
         @Bindable var engine = engine
         return Form {
-            LabeledContent("Vault") {
+            LabeledContent("Cartella note") {
                 Text(vault.root?.lastPathComponent ?? "nessuno")
                     .themedText(.body, color: .textSecondary)
             }
@@ -42,7 +44,7 @@ struct SettingsView: View {
                     .lineLimit(2)
                     .textSelection(.enabled)
             }
-            Button("Apri un altro vault…") { VaultOpenPanel.chooseVault(into: vault) }
+            Button("Apri un'altra cartella…") { VaultOpenPanel.chooseVault(into: vault) }
 
             Picker("Tema", selection: $engine.selection) {
                 Text("Sistema").tag(ThemeEngine.Selection.followSystem)
@@ -83,11 +85,11 @@ struct SettingsView: View {
                     get: { vault.settings.copyDroppedFiles },
                     set: { value in vault.updateSettings { $0.copyDroppedFiles = value } }
                 )) {
-                    Text("Copia nel vault").tag(true)
+                    Text("Copia nella cartella note").tag(true)
                     Text("Riferimento dove sono").tag(false)
                 }
                 .pickerStyle(.radioGroup)
-                Text("Un riferimento fuori dal vault si rompe il giorno in cui il file viene spostato o il volume non è montato.")
+                Text("Un riferimento fuori dalla cartella note si rompe il giorno in cui il file viene spostato o il volume non è montato.")
                     .themedText(.caption, color: .textTertiary)
             }
         }
