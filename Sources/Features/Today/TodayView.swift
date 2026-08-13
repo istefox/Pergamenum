@@ -24,10 +24,13 @@ struct TodayView: View {
     private let hourHeight: CGFloat = 44
 
     var body: some View {
-        HStack(spacing: 0) {
+        // A split rather than two fixed columns: how much of the day is note and how
+        // much is timeline is the user's call, and it changes with what they are doing.
+        HSplitView {
             noteColumn
-            Divider()
+                .frame(minWidth: 420)
             timeline
+                .frame(minWidth: 220, idealWidth: 300, maxWidth: 520)
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { DayToolbar(controller: controller, calendar: calendar) }
@@ -63,7 +66,7 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                 header
-                MiniCalendar(
+                DayMonthSection(
                     day: day,
                     onSelect: { controller.show($0) },
                     onOpenDailyNote: { date in
@@ -211,7 +214,6 @@ struct TodayView: View {
             }
             .padding(.vertical, theme.spacing(.s))
         }
-        .frame(width: 300)
         .background(theme.color(.backgroundSecondary))
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {

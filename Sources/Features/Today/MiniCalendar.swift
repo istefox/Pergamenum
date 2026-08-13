@@ -30,6 +30,10 @@ struct MiniCalendar: View {
             // away is a deliberate act and survives until the day changes.
             visibleMonth = newDay
         }
+        // A container element, so the grid can be found and measured from outside the
+        // app without giving every one of its 42 cells an identifier.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mini-calendar")
     }
 
     private var header: some View {
