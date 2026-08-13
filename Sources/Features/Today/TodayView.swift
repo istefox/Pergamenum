@@ -9,6 +9,9 @@ struct TodayView: View {
     /// Created at app level so the Calendario menu can act on the same day (SPEC §10).
     @Environment(DayController.self) private var controller
 
+    /// The note column's width, handed to the month so it tracks the divider.
+    @State private var columnWidth: CGFloat = 0
+
     @State private var draftTitle = ""
     @State private var draftStartHour = 9
     @State private var draftDurationMinutes = 60
@@ -72,7 +75,8 @@ struct TodayView: View {
                     onOpenDailyNote: { date in
                         controller.show(date)
                         controller.openDailyNote()
-                    }
+                    },
+                    columnWidth: columnWidth
                 )
                 references
                 noteBody
@@ -81,6 +85,11 @@ struct TodayView: View {
             .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            columnWidth = width
+        }
     }
 
     /// The day being shown. The three buttons that used to sit here moved to the
@@ -88,20 +97,16 @@ struct TodayView: View {
     /// it is a duplicate.
     private var header: some View {
         HStack(spacing: theme.spacing(.s)) {
-            Text(day.compactForm).themedText(.title)
-            Text(longDate).themedText(.body, color: .textSecondary)
+            // The date as it is written in Italian. The compact `20260813` is the file
+            // name (naming.md 4.6) and belongs where the file is named, not here.
+            Text(day.italianForm).themedText(.title)
+            Text(weekday).themedText(.body, color: .textSecondary)
             Spacer()
         }
     }
 
-    private var longDate: String {
-        var components = DateComponents()
-        components.year = day.year
-        components.month = day.month
-        components.day = day.day
-        guard let date = Calendar.current.date(from: components) else { return "" }
-        return date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "it_IT")))
-    }
+    /// `giovedì`, beside the date rather than repeating it.
+    private var weekday: String { DateEntry.weekdayName(of: day) }
 
     /// Tasks scheduled on this day, shown by reference: the task stays in its own note
     /// and this is a pointer to it (SPEC §7.3, "pianificare = link, non copia").

@@ -59,6 +59,12 @@ struct CalendarDate: Equatable, Hashable, Sendable, Comparable, CustomStringConv
         String(format: "%04d%02d%02d", year, month, day)
     }
 
+    /// `11/08/2026`, the way a date is written in Italian and the only form the
+    /// interface shows a person. The ISO form stays for the file and the markers.
+    var italianForm: String {
+        String(format: "%02d/%02d/%04d", day, month, year)
+    }
+
     init?(year: Int, month: Int, day: Int) {
         guard (1...12).contains(month), day >= 1 else { return nil }
         guard day <= CalendarDate.daysInMonth(month: month, year: year) else { return nil }

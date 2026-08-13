@@ -71,10 +71,11 @@ final class DayViewUITests: XCTestCase {
         day.click()
         app.buttons["go-to-date-confirm"].click()
 
-        let compact = target.replacingOccurrences(of: "-", with: "")
+        let parts = target.split(separator: "-")
+        let shown = "\(parts[2])/\(parts[1])/\(parts[0])"
         XCTAssertTrue(
-            app.staticTexts[compact].waitForExistence(timeout: 5),
-            "la vista non si è spostata su \(compact)"
+            app.staticTexts[shown].waitForExistence(timeout: 5),
+            "la vista non si è spostata su \(shown)"
         )
     }
 
@@ -89,7 +90,7 @@ final class DayViewUITests: XCTestCase {
         app.buttons["go-to-date-confirm"].click()
 
         XCTAssertTrue(
-            app.staticTexts["20270305"].waitForExistence(timeout: 5),
+            app.staticTexts["05/03/2027"].waitForExistence(timeout: 5),
             "la data scritta a mano non ha spostato la vista"
         )
     }
@@ -113,30 +114,54 @@ final class DayViewUITests: XCTestCase {
         XCTAssertTrue(month.waitForExistence(timeout: 5), "il mese non si riapre")
     }
 
-    /// The grip that sets the width is there and changes it.
-    ///
-    /// The drag goes whichever way has room and is undone at the end: the width is a
-    /// real preference in the app's own defaults, so a test that left it at the minimum
-    /// would both change what the user sees and make its own next run assert nothing.
-    func testTheMonthWidthCanBeDragged() throws {
-        let handle = app.descendants(matching: .any).matching(identifier: "month-resize").firstMatch
-        XCTAssertTrue(handle.waitForExistence(timeout: 5), "manca la maniglia della larghezza")
+    /// The month is sized by the column, not by a grip of its own: dragging the
+    /// divider that gives room to the timeline resizes it too.
+    func testTheMonthFollowsTheDividerAndHasNoGripOfItsOwn() throws {
         XCTAssertTrue(month.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "month-resize").firstMatch.exists,
+            "la maniglia è ancora lì"
+        )
 
         let before = month.frame.width
-        let distance: CGFloat = before < 400 ? 80 : -80
-        drag(handle, by: distance)
 
-        let after = month.frame.width
-        XCTAssertEqual(after, before + distance, accuracy: 8, "la maniglia non ha cambiato la larghezza")
+        // The splitter picked by where it is, not by index: `app.splitGroups.firstMatch`
+        // is the window's own sidebar split, and dragging that collapsed the sidebar -
+        // a state the app remembers, so every later launch started without it.
+        let dividers = app.descendants(matching: .splitter).allElementsBoundByIndex
+        guard let divider = dividers.first(where: { $0.frame.minX > 400 }) else {
+            return XCTFail("non trovo il divisorio fra colonna e timeline")
+        }
 
-        drag(handle, by: -distance)
-        XCTAssertEqual(month.frame.width, before, accuracy: 8, "la larghezza non è tornata dov'era")
+        // Rightwards: the timeline opens at its widest, so there is only room the other
+        // way, and a drag that cannot move anything proves nothing.
+        let grab = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        grab.press(forDuration: 0.2, thenDragTo: grab.withOffset(CGVector(dx: 160, dy: 0)))
+
+        XCTAssertGreaterThan(month.frame.width, before, "allargando la colonna il mese non è cresciuto")
+        XCTAssertTrue(app.staticTexts["Note"].exists, "la trascinata ha preso il divisorio sbagliato")
+
+        // Put it back, so the next test starts where this one did.
+        let moved = app.descendants(matching: .splitter).allElementsBoundByIndex
+            .first { $0.frame.minX > 400 } ?? divider
+        let back = moved.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        back.press(forDuration: 0.2, thenDragTo: back.withOffset(CGVector(dx: -160, dy: 0)))
     }
 
-    private func drag(_ element: XCUIElement, by dx: CGFloat) {
-        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: dx, dy: 0)))
+    /// The header showed `20260813`, which is the file name, not a date.
+    func testTheHeaderShowsTheDateTheItalianWay() throws {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM/yyyy"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        let today = formatter.string(from: Date())
+
+        XCTAssertTrue(
+            app.staticTexts[today].waitForExistence(timeout: 5),
+            "l'intestazione non mostra \(today)"
+        )
+        let compact = today.replacingOccurrences(of: "/", with: "")
+        let reversed = String(compact.suffix(4) + compact.prefix(4))
+        XCTAssertFalse(app.staticTexts[reversed].exists, "l'intestazione mostra ancora la forma compatta")
     }
 
     /// The month grid, as one element rather than 42 cells.

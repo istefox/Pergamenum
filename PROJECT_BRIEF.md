@@ -85,6 +85,12 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-13: **La data del giorno si legge, e il mese segue il divisorio.**
+  L'intestazione della vista Oggi mostrava `20260813`, che è il nome del file
+  (naming.md 4.6), non una data: ora è `13/08/2026` seguita dal giorno della settimana.
+  La maniglia del mese è sparita, perché era una seconda maniglia accanto a un divisorio
+  che c'era già: la larghezza del mese è metà della colonna, quindi trascinando il
+  divisorio della timeline il calendario cresce e cala con lei, entro 210 e 460 punti.
 - 2026-08-13: **La vista Oggi si regola, e «Vai a data» usa il calendario dell'app.**
   La sheet mostrava il date picker grafico di SwiftUI, che disegna `Aug 2026` e
   `Mo Tu We` in blu di sistema dentro un'interfaccia italiana e a token: ora è lo stesso
