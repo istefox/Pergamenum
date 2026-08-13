@@ -88,8 +88,10 @@ Binding order, each yielding a usable app (SPEC §13):
 - 2026-08-13: **Note e task si compongono, non si dichiarano in una finestra volante.**
   Una nota nuova si intitola nella colonna dell'editor e alla conferma quella stessa
   colonna diventa la nota, con il cursore già dentro. La cattura rapida è il pannello di
-  Craft: nota di destinazione, testo, data pianificata, scadenza e promemoria, e la
-  scrive come riga markdown di §7.1. Il pannello lo presenta la finestra, non la sezione
+  Craft: nota di destinazione, testo, scadenza e promemoria, e la scrive come riga
+  markdown di §7.1. La scadenza è un campo solo e scrive due marcatori, `>` e `!`: il
+  primo è quello che le viste del giorno leggono, il secondo quello che fa diventare
+  rosso il task quando il giorno è passato. Il pannello lo presenta la finestra, non la sezione
   Attività, perché da lì il comando non faceva niente nelle altre quattro sezioni.
   Trovato usandolo: SwiftUI restituisce il fuoco a un `TextField` selezionandolo tutto,
   quindi tornare da un popover di data faceva sostituire il testo al primo tasto

@@ -33,6 +33,34 @@ import Testing
     #expect(line == "- [ ] Chiamare il fornitore >2026-09-01 @remind(2026-09-01 08:00) !2026-08-20")
 }
 
+/// The composer offers one date, not two. It has to write both markers all the same:
+/// with `!` alone the task is in no view until it is already late, since Oggi reads
+/// `>` or overdue, Prossimi reads `>`, and Inbox is what has neither.
+@Test func theOneDateTheComposerOffersIsWrittenAsBothMarkers() {
+    var draft = VaultController.TaskDraft(text: "Consegnare la relazione")
+    #expect(draft.deadline == nil)
+
+    draft.deadline = CalendarDate(iso: "2026-08-20")
+    #expect(draft.scheduled == CalendarDate(iso: "2026-08-20"))
+    #expect(draft.due == CalendarDate(iso: "2026-08-20"))
+    #expect(TaskParser.line(forNewTask: draft.text, scheduled: draft.scheduled, due: draft.due)
+        == "- [ ] Consegnare la relazione >2026-08-20 !2026-08-20")
+
+    draft.deadline = nil
+    #expect(draft.scheduled == nil)
+    #expect(draft.due == nil)
+}
+
+/// A task written by hand, or by an older build, can carry one marker only. Reading
+/// the deadline back must not depend on both being there.
+@Test func aDeadlineIsReadFromWhicheverMarkerIsPresent() {
+    var draft = VaultController.TaskDraft(text: "Ereditato", due: CalendarDate(iso: "2026-08-20"))
+    #expect(draft.deadline == CalendarDate(iso: "2026-08-20"))
+
+    draft = VaultController.TaskDraft(text: "Ereditato", scheduled: CalendarDate(iso: "2026-08-15"))
+    #expect(draft.deadline == CalendarDate(iso: "2026-08-15"))
+}
+
 @MainActor
 @Test func aTaskCanBeComposedIntoAChosenNoteRatherThanTheInbox() async throws {
     let vault = try ComposerVault()
