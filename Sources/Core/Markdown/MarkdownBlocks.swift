@@ -21,6 +21,9 @@ enum MarkdownBlock: Equatable, Sendable {
     case quote([String])
     case code(language: String?, lines: [String])
     case rule
+    /// A GFM table, which SPEC §5 puts in the required dialect alongside CommonMark
+    /// and task lists - and which the Inserisci menu already writes.
+    case table(Table)
 
     struct TaskLine: Equatable, Sendable {
         var isDone: Bool
@@ -28,6 +31,18 @@ enum MarkdownBlock: Equatable, Sendable {
         /// "not done" - the vocabulary is `[ ]`, `[x]`, `[-]`, `[>]` (SPEC §7.1).
         var marker: Character
         var text: String
+    }
+
+    struct Table: Equatable, Sendable {
+        var header: [String]
+        /// One per column, taken from the delimiter row. Always the same count as
+        /// `header`: a table whose delimiter row disagrees is not a table at all.
+        var alignments: [Column]
+        /// Every row padded or truncated to the header's width, as GFM requires, so
+        /// a view can index a row by column without checking its length.
+        var rows: [[String]]
+
+        enum Column: Equatable, Sendable { case leading, center, trailing }
     }
 }
 
@@ -47,6 +62,14 @@ enum MarkdownBlockParser {
             if trimmed.hasPrefix("```") {
                 state.flushAll()
                 state.blocks.append(Self.fence(opening: trimmed, consuming: &lines))
+                continue
+            }
+            // Needs the line after this one to decide, which is why it lives here and
+            // not in the accumulator: `| a | b |` is a table only when a delimiter row
+            // follows it, and an ordinary paragraph may well contain a pipe.
+            if let table = Self.table(header: trimmed, consuming: &lines) {
+                state.flushAll()
+                state.blocks.append(table)
                 continue
             }
             state.take(line, trimmed: trimmed)
@@ -70,6 +93,91 @@ enum MarkdownBlockParser {
         // An unclosed fence ends at the end of the note rather than running off it,
         // which would render the rest of the note as nothing.
         return .code(language: language.isEmpty ? nil : language, lines: content)
+    }
+
+    // MARK: Tables
+
+    /// A table starting at `header`, or nil when these lines are not one.
+    ///
+    /// Consumes nothing unless it returns a table, so a paragraph that happens to
+    /// contain a pipe is handed back untouched.
+    private static func table(
+        header: String,
+        consuming lines: inout ArraySlice<String>
+    ) -> MarkdownBlock? {
+        guard header.contains("|") else { return nil }
+        guard let delimiter = lines.first?.trimmingCharacters(in: .whitespaces) else { return nil }
+        let columns = cells(in: header)
+        guard let alignments = alignments(in: delimiter), alignments.count == columns.count else {
+            return nil
+        }
+
+        lines = lines.dropFirst()
+        var rows: [[String]] = []
+        // The table runs to the first blank line or the first line with no pipe in it,
+        // which is where GFM ends one.
+        while let next = lines.first?.trimmingCharacters(in: .whitespaces),
+              !next.isEmpty, next.contains("|") {
+            lines = lines.dropFirst()
+            rows.append(fit(cells(in: next), to: columns.count))
+        }
+        return .table(MarkdownBlock.Table(header: columns, alignments: alignments, rows: rows))
+    }
+
+    /// The column alignments a delimiter row declares, or nil when the line is not one.
+    private static func alignments(in line: String) -> [MarkdownBlock.Table.Column]? {
+        let parts = cells(in: line)
+        guard !parts.isEmpty else { return nil }
+        var result: [MarkdownBlock.Table.Column] = []
+        for part in parts {
+            let left = part.hasPrefix(":")
+            let right = part.hasSuffix(":")
+            let dashes = part.dropFirst(left ? 1 : 0).dropLast(right && part.count > 1 ? 1 : 0)
+            guard !dashes.isEmpty, dashes.allSatisfy({ $0 == "-" }) else { return nil }
+            switch (left, right) {
+            case (true, true): result.append(.center)
+            case (false, true): result.append(.trailing)
+            default: result.append(.leading)
+            }
+        }
+        return result
+    }
+
+    /// Splits a row on its unescaped pipes, dropping the optional outer ones.
+    private static func cells(in row: String) -> [String] {
+        var body = row.trimmingCharacters(in: .whitespaces)[...]
+        if body.hasPrefix("|") { body = body.dropFirst() }
+        if body.hasSuffix("|"), !body.hasSuffix("\\|") { body = body.dropLast() }
+
+        var result: [String] = []
+        var current = ""
+        var escaped = false
+        for character in body {
+            if escaped {
+                // Only `\|` is an escape here; anything else keeps its backslash,
+                // so a Windows path in a cell survives the trip.
+                if character != "|" { current.append("\\") }
+                current.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "|" {
+                result.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        result.append(current.trimmingCharacters(in: .whitespaces))
+        return result
+    }
+
+    /// Pads a short row and drops a long one's extra cells, as GFM specifies.
+    private static func fit(_ row: [String], to width: Int) -> [String] {
+        if row.count == width { return row }
+        if row.count > width { return Array(row.prefix(width)) }
+        return row + Array(repeating: "", count: width - row.count)
     }
 
     /// The lines seen so far that have not yet become a block.

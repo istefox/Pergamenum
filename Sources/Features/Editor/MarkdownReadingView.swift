@@ -16,6 +16,10 @@ struct MarkdownReadingView: View {
     /// Called when a `[[wikilink]]` is clicked, with the note's title.
     let onFollowLink: (String) -> Void
 
+    @State private var position = ScrollPosition()
+    @State private var metrics = Metrics()
+    @FocusState private var isFocused: Bool
+
     /// The note without its frontmatter: reading mode shows the note, and the
     /// metadata already has its own place in the inspector.
     private var blocks: [MarkdownBlock] {
@@ -33,6 +37,31 @@ struct MarkdownReadingView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .scrollPosition($position)
+        // A SwiftUI ScrollView on macOS takes the wheel and the trackpad but not the
+        // keyboard: it is not focusable, so Page Down went nowhere and a note could
+        // only be read with a hand on the trackpad. Focus is taken when the view
+        // appears because in reading mode there is nothing else to type into.
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .onAppear { isFocused = true }
+        .onScrollGeometryChange(for: Metrics.self) { geometry in
+            Metrics(
+                offset: geometry.contentOffset.y,
+                viewport: geometry.containerSize.height,
+                content: geometry.contentSize.height
+            )
+        } action: { _, updated in
+            metrics = updated
+        }
+        .onKeyPress(.pageDown) { scroll(by: page) }
+        .onKeyPress(.space) { scroll(by: page) }
+        .onKeyPress(.pageUp) { scroll(by: -page) }
+        .onKeyPress(.downArrow) { scroll(by: Self.lineStep) }
+        .onKeyPress(.upArrow) { scroll(by: -Self.lineStep) }
+        .onKeyPress(.home) { scroll(to: 0) }
+        .onKeyPress(.end) { scroll(to: metrics.maximumOffset) }
         .background(theme.color(.backgroundPrimary))
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == Self.noteScheme else { return .systemAction }
@@ -41,6 +70,39 @@ struct MarkdownReadingView: View {
             onFollowLink(title)
             return .handled
         })
+    }
+
+    // MARK: Keyboard scrolling
+
+    /// What the scroll view last reported about itself.
+    ///
+    /// Needed because the keys move by a distance rather than to a view: without the
+    /// viewport height there is no "one page", and without the content height there is
+    /// no bottom to stop at.
+    private struct Metrics: Equatable {
+        var offset: CGFloat = 0
+        var viewport: CGFloat = 0
+        var content: CGFloat = 0
+
+        var maximumOffset: CGFloat { max(0, content - viewport) }
+    }
+
+    /// A hair under a full viewport, so the line you were reading is still on screen
+    /// after the jump.
+    private var page: CGFloat { max(1, metrics.viewport * 0.9) }
+    private static let lineStep: CGFloat = 48
+
+    private func scroll(by delta: CGFloat) -> KeyPress.Result {
+        scroll(to: metrics.offset + delta)
+    }
+
+    private func scroll(to target: CGFloat) -> KeyPress.Result {
+        let clamped = min(max(0, target), metrics.maximumOffset)
+        // Already against that end: leave the key to whatever else wants it rather
+        // than swallowing it into a scroll that cannot happen.
+        guard abs(clamped - metrics.offset) > 0.5 else { return .ignored }
+        position.scrollTo(y: clamped)
+        return .handled
     }
 
     /// A scheme of this view's own, distinct from the app's `pergamenum://` router:
@@ -101,6 +163,58 @@ struct MarkdownReadingView: View {
             Rectangle()
                 .fill(theme.color(.borderSubtle))
                 .frame(height: 1)
+
+        case .table(let table):
+            self.table(table)
+        }
+    }
+
+    /// A GFM table.
+    ///
+    /// A `Grid` rather than a horizontally scrolling one: the reading column is capped
+    /// at 760 points and every other block wraps inside it, so a table that wraps is
+    /// the consistent choice and never leaves content off the side of the page.
+    private func table(_ table: MarkdownBlock.Table) -> some View {
+        Grid(alignment: .topLeading, horizontalSpacing: theme.spacing(.m), verticalSpacing: theme.spacing(.xs)) {
+            GridRow {
+                ForEach(Array(table.header.enumerated()), id: \.offset) { index, cell in
+                    Text(inline(cell, base: theme.font(.body).weight(.semibold)))
+                        .multilineTextAlignment(textAlignment(table.alignments[index]))
+                        // Set on the header cell only: a grid column takes its
+                        // alignment from the first row that states one.
+                        .gridColumnAlignment(alignment(table.alignments[index]))
+                }
+            }
+            Rectangle()
+                .fill(theme.color(.borderSubtle))
+                .frame(height: 1)
+                .gridCellColumns(max(table.header.count, 1))
+            ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { index, cell in
+                        Text(inline(cell))
+                            .themedText(.body)
+                            .multilineTextAlignment(textAlignment(table.alignments[index]))
+                    }
+                }
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    private func alignment(_ column: MarkdownBlock.Table.Column) -> HorizontalAlignment {
+        switch column {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func textAlignment(_ column: MarkdownBlock.Table.Column) -> TextAlignment {
+        switch column {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
         }
     }
 

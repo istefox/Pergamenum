@@ -25,11 +25,11 @@ final class WorkspaceBoardUITests: XCTestCase {
         continueAfterFailure = false
         try makeVault()
 
-        // The app records every vault it opens in the user's own preferences. Left
-        // alone, a run of this suite fills that list with temporary vaults that are
-        // deleted a moment later, evicts the real ones, and the app then starts with
-        // no vault at all. Snapshotted here and put back in tearDown.
-        previousRecents = appDefaults?.stringArray(forKey: Self.recentsKey)
+        // Nothing is snapshotted or restored here. `-recentVaults` below lands in the
+        // argument domain, and `RecentVaults.remember` refuses to persist a list that
+        // arrived that way, so this run cannot reach the user's own recents at all.
+        // A guard on this side could not have worked: the XCUITest runner is sandboxed
+        // and its `UserDefaults(suiteName:)` is a private copy in its own container.
 
         app = XCUIApplication()
         // NSUserDefaults reads the argument domain, so the app reopens this vault at
@@ -42,18 +42,7 @@ final class WorkspaceBoardUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
-        if let previousRecents {
-            appDefaults?.set(previousRecents, forKey: Self.recentsKey)
-        } else {
-            appDefaults?.removeObject(forKey: Self.recentsKey)
-        }
     }
-
-    private var previousRecents: [String]?
-    private static let recentsKey = "recentVaults"
-    /// Computed rather than stored: a `static let` of a non-Sendable type does not
-    /// pass Swift 6's strict concurrency check.
-    private var appDefaults: UserDefaults? { UserDefaults(suiteName: "it.stefer.pergamenum") }
 
     // MARK: 1. A corner grip can be grabbed and resizes the card
 

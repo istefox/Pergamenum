@@ -9,7 +9,6 @@ import XCTest
 final class DesignAndReadingUITests: XCTestCase {
     private var vault: URL!
     private var app: XCUIApplication!
-    private var previousRecents: [String]?
 
     private var themesDirectory: URL {
         vault.appending(path: ".pergamenum/themes", directoryHint: .isDirectory)
@@ -19,9 +18,11 @@ final class DesignAndReadingUITests: XCTestCase {
         continueAfterFailure = false
         try makeVault()
 
-        // The app records every vault it opens in the user's own preferences; put
-        // back what was there so a test run does not empty the user's list.
-        previousRecents = appDefaults?.stringArray(forKey: Self.recentsKey)
+        // Nothing is snapshotted or restored here. `-recentVaults` below lands in the
+        // argument domain, and `RecentVaults.remember` refuses to persist a list that
+        // arrived that way, so this run cannot reach the user's own recents at all.
+        // A guard on this side could not have worked: the XCUITest runner is sandboxed
+        // and its `UserDefaults(suiteName:)` is a private copy in its own container.
 
         app = XCUIApplication()
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
@@ -31,15 +32,7 @@ final class DesignAndReadingUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
-        if let previousRecents {
-            appDefaults?.set(previousRecents, forKey: Self.recentsKey)
-        } else {
-            appDefaults?.removeObject(forKey: Self.recentsKey)
-        }
     }
-
-    private static let recentsKey = "recentVaults"
-    private var appDefaults: UserDefaults? { UserDefaults(suiteName: "it.stefer.pergamenum") }
 
     // MARK: The sidebar carries the app's work, not its reference material
 
@@ -151,6 +144,82 @@ final class DesignAndReadingUITests: XCTestCase {
         )
     }
 
+    // MARK: Tables
+
+    func testReadingModeRendersATableRatherThanItsPipes() throws {
+        try openNoteInReadingMode()
+
+        // Each cell is drawn on its own, so the header and a body cell are separate
+        // pieces of text rather than one line of pipes.
+        XCTAssertTrue(text(withValue: "Proprietà").waitForExistence(timeout: 5), "l'intestazione non è resa")
+        XCTAssertTrue(text(withValue: "layout").exists, "una cella del corpo non è resa")
+        XCTAssertTrue(text(withValue: "Template da usare").exists)
+
+        // And the markup is gone: before this the whole table came out verbatim,
+        // separator row included.
+        XCTAssertFalse(text(withValue: "| layout | stringa | Template da usare |").exists,
+                       "la riga è ancora testo grezzo")
+        XCTAssertFalse(text(withValue: "|:--|:-:|--:|").exists, "la riga separatrice è visibile")
+    }
+
+    // MARK: Keyboard scrolling
+
+    func testReadingModeScrollsWithTheKeyboard() throws {
+        try openNoteInReadingMode()
+
+        let anchor = text(withValue: "Titolo della nota")
+        XCTAssertTrue(anchor.waitForExistence(timeout: 5))
+        let before = anchor.frame.origin.y
+
+        // A SwiftUI ScrollView takes the wheel but is not focusable, so this key went
+        // nowhere and a note could only be read with a hand on the trackpad.
+        app.typeKey(XCUIKeyboardKey.pageDown, modifierFlags: [])
+        XCTAssertTrue(
+            waitForTop(of: anchor) { $0 < before - 50 },
+            "Page Down non ha fatto scorrere la nota"
+        )
+
+        // End reaches the bottom, and the last heading is on screen once it does.
+        app.typeKey(XCUIKeyboardKey.end, modifierFlags: [])
+        let bottom = text(withValue: "Fondo della nota")
+        XCTAssertTrue(bottom.waitForExistence(timeout: 5), "Fine non ha raggiunto il fondo")
+
+        // Home comes back, and the title is where it started.
+        app.typeKey(XCUIKeyboardKey.home, modifierFlags: [])
+        XCTAssertTrue(
+            waitForTop(of: anchor) { $0 >= before - 1 },
+            "Inizio non è tornato in cima"
+        )
+    }
+
+    /// Waits for an element's top edge to satisfy a condition.
+    ///
+    /// Polled rather than expressed as an `NSPredicate`: `frame` comes back as an
+    /// `NSValue`, which is not key-value coding compliant for `origin`, so a predicate
+    /// on `frame.origin.y` throws instead of evaluating.
+    private func waitForTop(
+        of element: XCUIElement,
+        timeout: TimeInterval = 5,
+        _ satisfies: (CGFloat) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if satisfies(element.frame.origin.y) { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return false
+    }
+
+    /// Selects the fixture note and switches to reading mode.
+    private func openNoteInReadingMode() throws {
+        XCTAssertTrue(app.staticTexts["Vault"].waitForExistence(timeout: 10))
+        let note = text(withValue: "20260812_Nota_Lettura")
+        XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
+        note.click()
+        XCTAssertTrue(app.radioButtons["Lettura"].waitForExistence(timeout: 5))
+        app.radioButtons["Lettura"].click()
+    }
+
     /// A label the app draws as text: SwiftUI exposes it as the element's `value`,
     /// so the subscript form, which matches identifier or label, never finds it.
     private func text(withValue value: String) -> XCUIElement {
@@ -204,6 +273,8 @@ final class DesignAndReadingUITests: XCTestCase {
     }
     """
 
+    /// Long on purpose: the keyboard-scrolling test needs a note that does not fit in
+    /// the window, or Page Down has nowhere to go and the test passes without moving.
     private static let note = """
     ---
     date: 2026-08-12
@@ -220,5 +291,14 @@ final class DesignAndReadingUITests: XCTestCase {
 
     - [ ] da fare
     - [x] fatto
+
+    | Proprietà | Tipo | Effetto |
+    |:--|:-:|--:|
+    | layout | stringa | Template da usare |
+    | date | data | Data di pubblicazione |
+
+    \(String(repeating: "Riempitivo per rendere la nota più alta della finestra.\n\n", count: 60))
+
+    ## Fondo della nota
     """
 }

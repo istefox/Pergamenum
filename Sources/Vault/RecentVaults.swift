@@ -7,9 +7,26 @@ import Foundation
 /// inside one of them.
 struct RecentVaults {
     static let maximum = 8
-    private static let key = "recentVaults"
+    /// Internal rather than private so a test can name the key it is asserting on.
+    static let key = "recentVaults"
 
     private let defaults: UserDefaults
+
+    /// True when the list was handed to this launch on the command line, as
+    /// `-recentVaults "(…)"`.
+    ///
+    /// The argument domain outranks the persistent one, so an override is what the app
+    /// reads for the whole session no matter what is written underneath it. Writing
+    /// underneath it anyway is how the UI suite emptied the user's real list: each run
+    /// pointed the app at a throwaway vault, the app dutifully persisted it, the
+    /// throwaway was deleted a moment later, and after enough runs nothing in the list
+    /// still existed - so the app opened no vault at all.
+    ///
+    /// The tests cannot undo that from their side. The XCUITest runner is sandboxed,
+    /// so the `UserDefaults(suiteName: "it.stefer.pergamenum")` it opens is a private
+    /// copy inside its own container, and the snapshot-and-restore both suites used to
+    /// perform was writing to a file the app never reads.
+    private let isOverridden: Bool
 
     /// A list backed by a throwaway suite, for tests.
     ///
@@ -20,8 +37,13 @@ struct RecentVaults {
         RecentVaults(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())") ?? .standard)
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, isOverridden: Bool? = nil) {
         self.defaults = defaults
+        // Injectable because the argument domain is process-wide: every UserDefaults
+        // instance shares it, so a test that set one would be setting it for the whole
+        // run, and two tests doing so in parallel would read each other's.
+        self.isOverridden = isOverridden
+            ?? (defaults.volatileDomain(forName: UserDefaults.argumentDomain)[Self.key] != nil)
     }
 
     /// Paths of the vaults opened before, most recent first, filtered to those that
@@ -44,6 +66,9 @@ struct RecentVaults {
 
     /// Moves a vault to the front of the list.
     func remember(_ url: URL) {
+        // A temporary override stays temporary: promoting it to permanent user data is
+        // not something a command-line argument should be able to do.
+        guard !isOverridden else { return }
         // Symlinks resolved: /tmp and /private/tmp are the same vault, and listing it
         // twice would offer the user a choice that is not one.
         let path = url.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
