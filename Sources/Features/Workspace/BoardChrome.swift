@@ -6,12 +6,14 @@ import SwiftUI
 /// Lifted out of `WorkspaceView` so that file holds the board itself. Each view takes
 /// exactly what it needs, which is also what makes it readable on its own.
 
-/// Breadcrumb, undo/redo, save state and the two panel toggles (SPEC §6.1).
+/// Breadcrumb and save state (SPEC §6.1).
+///
+/// Undo, redo, Anteprima and the tray toggle used to live here too and are now in the
+/// window toolbar: they are window-level commands, and the top bar is about where you
+/// are on the board, not what you can do to it.
 struct BoardTopBar: View {
     @Environment(\.theme) private var theme
     let workspace: WorkspaceController
-    @Binding var isShowingQuickLook: Bool
-    @Binding var isShowingTray: Bool
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
@@ -33,44 +35,11 @@ struct BoardTopBar: View {
 
             Spacer()
 
-            Button { workspace.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.color(workspace.canUndo ? .textSecondary : .textTertiary))
-                .disabled(!workspace.canUndo)
-                .help("Annulla (Cmd+Z)")
-                .keyboardShortcut("z", modifiers: .command)
-
-            Button { workspace.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.color(workspace.canRedo ? .textSecondary : .textTertiary))
-                .disabled(!workspace.canRedo)
-                .help("Ripeti (Maiusc+Cmd+Z)")
-                .keyboardShortcut("z", modifiers: [.command, .shift])
-
             Label(
                 workspace.hasUnsavedChanges ? "Salvataggio…" : "Salvato",
                 systemImage: workspace.hasUnsavedChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
             )
             .themedText(.caption, color: .textSecondary)
-
-            Button {
-                isShowingQuickLook = true
-            } label: {
-                Label("Anteprima", systemImage: "eye")
-            }
-            .buttonStyle(.plain)
-            .themedText(.caption, color: .textSecondary)
-            .disabled(workspace.selectedFileURLs.isEmpty)
-            .help("Anteprima rapida del file selezionato (barra spaziatrice)")
-
-            Button {
-                isShowingTray.toggle()
-            } label: {
-                Label("Nuovi elementi", systemImage: "tray")
-            }
-            .buttonStyle(.plain)
-            .themedText(.caption, color: .textSecondary)
-            .help("Elementi della cartella non ancora posati sulla board")
         }
         .padding(.horizontal, theme.spacing(.m))
         .padding(.vertical, theme.spacing(.s))

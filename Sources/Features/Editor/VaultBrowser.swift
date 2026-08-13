@@ -72,6 +72,12 @@ struct VaultBrowser: View {
             }
             .help("Vai alla nota")
             .disabled(vault.root == nil)
+
+            Button { vault.isShowingGlobalSearch = true } label: {
+                Label("Ricerca globale", systemImage: "text.magnifyingglass")
+            }
+            .help("Cerca in tutte le note")
+            .disabled(vault.root == nil)
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
