@@ -23,6 +23,22 @@ let baseSettings: SettingsDictionary = [
     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
 ]
 
+// Release only, and on the app target only. Notarization rejects a bundle without the
+// hardened runtime, and exportArchive signs with whatever the project declares - so
+// leaving this out meant every Developer ID export came back unhardened and had to be
+// re-signed by hand before it could be submitted, which is how the first two builds were
+// notarized.
+//
+// It cannot go in the shared base: the unit test bundle is hosted inside the app, at
+// Contents/PlugIns, and the hardened runtime refuses to dlopen code signed by a different
+// team - which is exactly what a test bundle is. Enabling it everywhere builds an app that
+// ships correctly and cannot run its own tests. Debug therefore stays unhardened, and
+// nothing is ever distributed from Debug.
+let appConfigurations: [Configuration] = [
+    .debug(name: "Debug"),
+    .release(name: "Release", settings: ["ENABLE_HARDENED_RUNTIME": "YES"]),
+]
+
 let project = Project(
     name: projectName,
     settings: .settings(base: baseSettings),
@@ -48,7 +64,7 @@ let project = Project(
             dependencies: [],
             // Repeated on the target because a target-level value wins over the
             // project base, and the generated target carries "-" by default.
-            settings: .settings(base: baseSettings)
+            settings: .settings(base: baseSettings, configurations: appConfigurations)
         ),
         .target(
             name: "\(projectName)Tests",
