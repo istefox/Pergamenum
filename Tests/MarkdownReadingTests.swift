@@ -114,3 +114,92 @@ import Testing
     let spans = MarkdownInlineParser.spans(in: "**forte con *corsivo***")
     #expect(spans.contains { $0.text == "corsivo" && $0.styles == [.strong, .emphasis] })
 }
+
+// MARK: - Tables
+
+/// SPEC §5 puts GFM tables in the required dialect, and the Inserisci menu already
+/// writes one. Until now the reading view had no table block at all, so every row of
+/// every table in the vault came out as a paragraph full of pipes - the separator row
+/// included.
+
+@Test func aTableNeedsItsDelimiterRowToBeATable() {
+    let table = MarkdownBlockParser.blocks(in: "| a | b |\n|---|---|\n| 1 | 2 |")
+    #expect(table == [.table(MarkdownBlock.Table(
+        header: ["a", "b"],
+        alignments: [.leading, .leading],
+        rows: [["1", "2"]]
+    ))])
+
+    // The same first line without one is prose that happens to contain a pipe, and
+    // reading it as a table would eat the paragraph under it.
+    #expect(MarkdownBlockParser.blocks(in: "| a | b |\ntesto") == [.paragraph("| a | b |\ntesto")])
+}
+
+@Test func aDelimiterRowOfTheWrongWidthIsNotATable() {
+    // GFM requires the delimiter to have exactly as many cells as the header.
+    let blocks = MarkdownBlockParser.blocks(in: "| a | b |\n|---|")
+    #expect(blocks == [.paragraph("| a | b |\n|---|")])
+}
+
+@Test func colonsInTheDelimiterSetTheColumnAlignment() {
+    let blocks = MarkdownBlockParser.blocks(in: "| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |")
+    guard case .table(let table) = blocks.first else {
+        Issue.record("atteso un blocco tabella, trovato \(blocks)")
+        return
+    }
+    #expect(table.alignments == [.leading, .center, .trailing])
+}
+
+@Test func rowsArePaddedAndTruncatedToTheHeaderWidth() {
+    let blocks = MarkdownBlockParser.blocks(in: "| a | b |\n|---|---|\n| 1 |\n| 1 | 2 | 3 |")
+    guard case .table(let table) = blocks.first else {
+        Issue.record("atteso un blocco tabella, trovato \(blocks)")
+        return
+    }
+    // A view indexes a row by column, so a short row would crash it and a long one
+    // would draw a cell the table has no column for.
+    #expect(table.rows == [["1", ""], ["1", "2"]])
+}
+
+@Test func anEscapedPipeStaysInsideItsCell() {
+    let blocks = MarkdownBlockParser.blocks(in: "| comando | esito |\n|---|---|\n| a \\| b | ok |")
+    guard case .table(let table) = blocks.first else {
+        Issue.record("atteso un blocco tabella, trovato \(blocks)")
+        return
+    }
+    #expect(table.rows == [["a | b", "ok"]])
+}
+
+@Test func aBackslashThatEscapesNothingKeepsItself() {
+    let blocks = MarkdownBlockParser.blocks(in: "| percorso |\n|---|\n| C:\\dati |")
+    guard case .table(let table) = blocks.first else {
+        Issue.record("atteso un blocco tabella, trovato \(blocks)")
+        return
+    }
+    #expect(table.rows == [["C:\\dati"]])
+}
+
+@Test func aBlankLineEndsTheTable() {
+    let blocks = MarkdownBlockParser.blocks(in: "| a |\n|---|\n| 1 |\n\ntesto dopo")
+    #expect(blocks.count == 2)
+    #expect(blocks.last == .paragraph("testo dopo"))
+}
+
+@Test func aTableInsideAFenceIsCode() {
+    // The fence is checked first, so a table in a code sample stays a code sample.
+    let blocks = MarkdownBlockParser.blocks(in: "```markdown\n| a |\n|---|\n```")
+    #expect(blocks == [.code(language: "markdown", lines: ["| a |", "|---|"])])
+}
+
+@Test func aRuleAfterAParagraphIsStillARule() {
+    // `---` reaches the table check before the rule check, and a paragraph above it
+    // may well contain a pipe: the widths disagree, so it stays a rule.
+    let blocks = MarkdownBlockParser.blocks(in: "testo con | pipe\n---\naltro")
+    #expect(blocks == [.paragraph("testo con | pipe"), .rule, .paragraph("altro")])
+}
+
+@Test func aTableEndsTheParagraphAboveIt() {
+    let blocks = MarkdownBlockParser.blocks(in: "introduzione\n| a |\n|---|\n| 1 |")
+    #expect(blocks.count == 2)
+    #expect(blocks.first == .paragraph("introduzione"))
+}
