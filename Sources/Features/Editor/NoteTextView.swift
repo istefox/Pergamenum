@@ -24,6 +24,9 @@ struct NoteTextView: NSViewRepresentable {
     /// Raised by the Modifica menu; opens AppKit's own find bar.
     var findRequest: FindRequest?
     var onFindApplied: () -> Void = {}
+    /// Bumped when the cursor should move into the editor, which is what makes a note
+    /// created in the composer open ready to be typed into.
+    var focusRequest = 0
 
     enum FindRequest { case find, replace }
 
@@ -99,6 +102,11 @@ struct NoteTextView: NSViewRepresentable {
             onInsertionApplied()
         }
 
+        if focusRequest != context.coordinator.lastFocusRequest {
+            context.coordinator.lastFocusRequest = focusRequest
+            context.coordinator.takeFocus()
+        }
+
         if let findRequest {
             textView.window?.makeFirstResponder(textView)
             textView.performTextFinderAction(
@@ -119,9 +127,25 @@ struct NoteTextView: NSViewRepresentable {
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
+        /// The focus request already honoured, so the cursor is not stolen back on
+        /// every subsequent update.
+        var lastFocusRequest = 0
 
         init(parent: NoteTextView) {
             self.parent = parent
+        }
+
+        /// Puts the cursor in the editor.
+        ///
+        /// Retried once on the next pass because a text view built during this same
+        /// update is not in a window yet, and `makeFirstResponder` on no window is a
+        /// silent no-op - the note would open with the caret nowhere.
+        func takeFocus() {
+            guard let textView, textView.window?.makeFirstResponder(textView) != true else { return }
+            Task { @MainActor [weak self] in
+                guard let textView = self?.textView else { return }
+                textView.window?.makeFirstResponder(textView)
+            }
         }
 
         func textDidChange(_ notification: Notification) {

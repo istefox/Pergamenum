@@ -11,6 +11,9 @@ struct VaultBrowser: View {
     /// until something else changed it.
     @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @State private var isShowingInspector = true
+    /// Bumped after a note is created, so the editor that replaces the composer opens
+    /// with the cursor already in it.
+    @State private var focusRequest = 0
 
     var body: some View {
         HSplitView {
@@ -38,12 +41,6 @@ struct VaultBrowser: View {
             }
         }
         .sheet(isPresented: Binding(
-            get: { vault.isCreatingNote },
-            set: { vault.isCreatingNote = $0 }
-        )) {
-            NewNoteSheet()
-        }
-        .sheet(isPresented: Binding(
             get: { vault.isAddingRelatedLink },
             set: { vault.isAddingRelatedLink = $0 }
         )) {
@@ -58,10 +55,7 @@ struct VaultBrowser: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            Button {
-                vault.newNoteFolder = ""
-                vault.isCreatingNote = true
-            } label: {
+            Button { vault.beginNewNote() } label: {
                 Label("Nuova nota", systemImage: "square.and.pencil")
             }
             .help("Nuova nota")
@@ -112,7 +106,16 @@ struct VaultBrowser: View {
 
     @ViewBuilder
     private var editor: some View {
-        if let note = vault.openNote {
+        if let draft = vault.newNote {
+            NewNoteComposer(
+                draft: draft,
+                onCreated: { _ in
+                    vault.newNote = nil
+                    focusRequest += 1
+                },
+                onCancel: { vault.newNote = nil }
+            )
+        } else if let note = vault.openNote {
             VStack(spacing: 0) {
                 editorHeader(note)
                 if note.externalChangePending != nil { conflictBanner }
@@ -136,7 +139,8 @@ struct VaultBrowser: View {
                         onFindApplied: {
                             navigation.isFindRequested = false
                             navigation.isReplaceRequested = false
-                        }
+                        },
+                        focusRequest: focusRequest
                     )
                 }
             }
@@ -412,73 +416,6 @@ struct QuickSwitcher: View {
     private func open(_ path: String?) {
         guard let path else { return }
         onOpen(path)
-    }
-}
-
-/// Names a new note and reports why a title is refused, rather than sanitising it
-/// behind the user's back.
-struct NewNoteSheet: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var title = ""
-    @State private var folder = ""
-    @State private var topic = ""
-    @State private var error: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Nuova nota").themedText(.title)
-
-            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                TextField("Titolo", text: $title)
-                TextField("Cartella (vuota = radice)", text: $folder)
-                TextField("topic-… (facoltativo)", text: $topic)
-            }
-            .textFieldStyle(.roundedBorder)
-
-            if let error {
-                Text(error).themedText(.caption, color: .taskOverdue)
-            } else {
-                Text("Il titolo è il nome del file: niente / \\ : * ? \" < > | # ^ [ ], massimo \(NoteName.maximumLength) caratteri, nessun suffisso di versione.")
-                    .themedText(.caption, color: .textTertiary)
-            }
-
-            HStack {
-                Spacer()
-                Button("Annulla") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Crea", action: create)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 520)
-        .background(theme.color(.surfaceCard))
-        // Set by "Nuova nota qui" on a folder in the tree, and cleared by the File
-        // menu's own command, so the sheet starts where the user asked for it.
-        .onAppear { folder = vault.newNoteFolder }
-    }
-
-    private func create() {
-        let topics = Tag(topic).map { [$0] } ?? []
-        if !topic.isEmpty, topics.isEmpty {
-            error = "«\(topic)» non è un tag conforme (namespace-valore, minuscolo)"
-            return
-        }
-        do {
-            try vault.createNote(
-                title: title.trimmingCharacters(in: .whitespaces),
-                in: folder.trimmingCharacters(in: .whitespaces),
-                date: .today,
-                topics: topics
-            )
-            dismiss()
-        } catch {
-            self.error = ConformanceText.creationFailure(error)
-        }
     }
 }
 

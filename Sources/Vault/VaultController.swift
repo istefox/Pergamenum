@@ -20,17 +20,14 @@ final class VaultController {
 
     /// The note currently open in the editor.
     private(set) var openNote: OpenNote?
-    /// Set by the New Note command; the browser shows the naming sheet when true.
-    var isCreatingNote = false
-    /// The folder the naming sheet starts in, set by "Nuova nota qui" on a folder in
-    /// the tree. Empty means the vault root, which is what the File menu's command
-    /// leaves it at.
-    var newNoteFolder = ""
+    /// The note being created, while it is still only a name being typed.
+    ///
+    /// Held here rather than in the browser because the New Note command is in the menu
+    /// bar and has to work from any pane. Nil means nothing is being created.
+    var newNote: NoteDraft?
     /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
     /// watches it so the panel can be opened from the menu as well as the spacebar.
     var isShowingQuickLook = false
-    /// Set by the Cattura rapida command (SPEC §7.4, Cmd+Shift+N).
-    var isCapturingTask = false
     /// Set by the "Nota correlata…" command.
     var isAddingRelatedLink = false
     /// Set by the "Verifica conformità" command; the Conformità pane runs the linter
@@ -155,10 +152,24 @@ final class VaultController {
         // vault's contents watches this rather than the task array itself, which is
         // rebuilt on every scan and would fire on identical content.
         scanGeneration += 1
+        taskGeneration += 1
     }
 
     /// Incremented at the end of every completed scan. See `rescan()`.
     private(set) var scanGeneration = 0
+
+    /// Records that a task line was written, which is what reschedules reminders.
+    /// The one door for the tasks extension, since the counter stays read-only.
+    func recordTaskWrite() {
+        taskGeneration += 1
+    }
+
+    /// Incremented by every completed scan and by every task line the app writes.
+    ///
+    /// Separate from `scanGeneration` because reminders have to be rescheduled when a
+    /// `@remind` is captured in the app, not only when a scan finds one on disk: a task
+    /// composed with a reminder used to notify nothing until the next full rescan.
+    private(set) var taskGeneration = 0
 
     // MARK: Notes
 
@@ -181,6 +192,21 @@ final class VaultController {
 
     func updateOpenNoteText(_ text: String) {
         openNote?.text = text
+    }
+
+    /// A note that does not exist yet: the name being typed, and where it will go.
+    struct NoteDraft: Equatable, Sendable {
+        var folder = ""
+        var title = ""
+        var topic = ""
+    }
+
+    /// Starts a new note in a folder, empty meaning the vault root.
+    ///
+    /// The naming used to happen in a sheet floating over the window; it now happens in
+    /// the editor pane itself, so a new note is composed where it will be edited.
+    func beginNewNote(in folder: String = "") {
+        newNote = NoteDraft(folder: folder)
     }
 
     enum CreationError: Error, CustomStringConvertible {
@@ -267,58 +293,9 @@ final class VaultController {
     }
 
     // MARK: Tasks
-
-    /// Completes, reopens, cancels or reschedules a task by rewriting its source line.
-    ///
-    /// Writes the markdown file, never an index row: the file is the truth, and a task
-    /// completed from any view has to change the note it lives in (SPEC §7.3).
-    @discardableResult
-    func apply(_ change: TaskChange, to task: TaskItem) -> Bool {
-        guard let store else { return false }
-        do {
-            let (_, text) = try store.read(task.sourcePath)
-            let newLine: String = switch change {
-            case .state(let state):
-                TaskParser.line(for: task, settingState: state, today: .today)
-            case .schedule(let date):
-                TaskParser.line(for: task, scheduledOn: date)
-            case .link(let target):
-                TaskParser.line(for: task, addingLinkTo: target)
-            }
-
-            guard let updated = TaskParser.rewrite(
-                text, at: task.lineIndex, expecting: task.rawLine, with: newLine
-            ) else {
-                // The line moved or changed under us. Rescanning and asking again is
-                // the only safe answer; rewriting by line number alone would edit
-                // whatever now sits there.
-                problems.append("il task non è più dove risultava: \(task.sourcePath)")
-                Task { await rescan() }
-                return false
-            }
-
-            let hash = try store.write(updated, to: task.sourcePath)
-            selfWrittenHashes[task.sourcePath] = hash
-            index.update(try store.read(task.sourcePath).record, at: task.sourcePath)
-
-            // Keep an open editor in step rather than leaving it showing the old line.
-            if var note = openNote, note.relativePath == task.sourcePath, !note.hasUnsavedChanges {
-                note.text = updated
-                note.savedText = updated
-                openNote = note
-            }
-            return true
-        } catch {
-            problems.append("\(task.sourcePath): \(error)")
-            return false
-        }
-    }
-
-    enum TaskChange: Sendable {
-        case state(TaskItem.State)
-        case schedule(CalendarDate?)
-        case link(String)
-    }
+    //
+    // The behaviour is in VaultController+Tasks.swift; only the state an extension
+    // cannot declare lives here.
 
     /// Set by the Task menu; the Attività view opens the quick switcher (SPEC §7.2).
     var isLinkingSelectedTask = false
@@ -330,59 +307,13 @@ final class VaultController {
     /// a shortcut for rescheduling, it is a shortcut for rescheduling sometimes.
     var selectedTask: TaskItem?
 
-    /// Reschedules the selected task by whole days from today, or clears its date.
-    @discardableResult
-    func rescheduleSelectedTask(daysFromToday: Int?) -> Bool {
-        guard let task = selectedTask else { return false }
-        let date = daysFromToday.map { CalendarDate.today.adding(days: $0) }
-        let changed = apply(.schedule(date), to: task)
-        if changed {
-            // Re-resolve the task so a second shortcut acts on the rewritten line
-            // rather than the stale one it replaced.
-            selectedTask = index.allTasks.first { $0.sourcePath == task.sourcePath && $0.text == task.text }
-        }
-        return changed
-    }
+    /// The task being composed (SPEC §7.4, Cattura rapida). Nil means the composer is
+    /// closed; it lives here so the command works from any pane.
+    var taskDraft: TaskDraft?
 
-    /// Toggles between open and done, which is what a checkbox click means.
-    @discardableResult
-    func toggle(_ task: TaskItem) -> Bool {
-        apply(.state(task.state == .done ? .open : .done), to: task)
-    }
-
-    /// Quick capture (SPEC §7.4): appends a task to the inbox note, creating it if
-    /// needed. Inbox tasks carry no date and no project, which is what puts them in
-    /// the Inbox view.
-    @discardableResult
-    func captureTask(_ text: String) -> Bool {
-        guard let store else { return false }
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return false }
-
-        let relativePath = "00 Inbox/Capture.md"
-        do {
-            let existing = try? store.read(relativePath)
-            let body = existing?.text ?? {
-                var frontmatter = Frontmatter.empty
-                frontmatter.date = .today
-                frontmatter.tags = TagRules.ordered([
-                    Tag(namespace: .type, value: "note"),
-                    Tag(namespace: .status, value: "inbox"),
-                ])
-                return FrontmatterSerializer.render(frontmatter) + "\n"
-            }()
-
-            let separator = body.hasSuffix("\n") ? "" : "\n"
-            let updated = body + separator + "- [ ] " + trimmed + "\n"
-            let hash = try store.write(updated, to: relativePath)
-            selfWrittenHashes[relativePath] = hash
-            index.update(try store.read(relativePath).record, at: relativePath)
-            return true
-        } catch {
-            problems.append("cattura rapida: \(error)")
-            return false
-        }
-    }
+    /// The last task the composer wrote, until a view has reacted to it. Written by
+    /// `captureTask` and read once through `consumeLastCapture`.
+    var lastCapture: TaskDraft?
 
     /// Puts the open note on its folder's board and switches to the Workspace
     /// (SPEC §5, "Apri nel canvas").

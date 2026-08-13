@@ -5,8 +5,6 @@ struct TasksView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
     @State private var view: NoteIndex.TaskView = .today
-    @State private var isCapturing = false
-    @State private var captureText = ""
     @State private var selectedTaskID: String?
     /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
     @State private var linking: TaskItem?
@@ -21,7 +19,6 @@ struct TasksView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { toolbar }
-        .sheet(isPresented: $isCapturing) { captureSheet }
         .sheet(item: $linking) { task in
             QuickSwitcher { path in
                 // The wikilink is the link (SPEC §7.2): no extra syntax, and it is
@@ -36,10 +33,16 @@ struct TasksView: View {
             linking = task
             vault.isLinkingSelectedTask = false
         }
-        .onChange(of: vault.isCapturingTask) { _, requested in
-            guard requested else { return }
-            isCapturing = true
-            vault.isCapturingTask = false
+        // A task captured into the inbox with no date belongs to a view that may not be
+        // the one showing, and a capture that appears nowhere reads as a capture that
+        // failed. So the pane follows the task.
+        .onChange(of: vault.taskGeneration) { _, _ in
+            guard let capture = vault.consumeLastCapture() else { return }
+            view = switch capture.scheduled {
+            case .none: .inbox
+            case .some(let day) where day == today: .today
+            default: .upcoming
+            }
         }
     }
 
@@ -51,7 +54,7 @@ struct TasksView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button { isCapturing = true } label: {
+            Button { vault.beginTaskCapture() } label: {
                 Label("Cattura rapida", systemImage: "plus.circle")
             }
             .help("Cattura rapida di un task")
@@ -128,7 +131,7 @@ struct TasksView: View {
             Spacer()
 
             Button {
-                isCapturing = true
+                vault.beginTaskCapture()
             } label: {
                 Label("Cattura rapida", systemImage: "plus.circle")
                     .themedText(.caption, color: .accentPrimary)
@@ -288,36 +291,6 @@ struct TasksView: View {
         }
     }
 
-    // MARK: Quick capture
-
-    private var captureSheet: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Cattura rapida").themedText(.title)
-            Text("Il task finisce in 00 Inbox/Capture.md, senza data e senza progetto.")
-                .themedText(.caption, color: .textSecondary)
-            TextField("- [ ] …", text: $captureText)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(capture)
-            HStack {
-                Spacer()
-                Button("Annulla") { isCapturing = false; captureText = "" }
-                    .keyboardShortcut(.cancelAction)
-                Button("Aggiungi", action: capture)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(captureText.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 520)
-        .background(theme.color(.surfaceCard))
-    }
-
-    private func capture() {
-        guard vault.captureTask(captureText) else { return }
-        captureText = ""
-        isCapturing = false
-        view = .inbox
-    }
 }
 
 extension CalendarDate {
