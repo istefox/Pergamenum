@@ -106,7 +106,21 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 tuist generate --no-open                                                                        # regenerate after editing Project.swift
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' build
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
+scripts/release.sh                                                                              # signed, notarized, numbered build
 ```
+
+## Versioning
+
+`CFBundleShortVersionString` is `marketingVersion` in `Project.swift`, raised by hand.
+`CFBundleVersion` is the number of commits behind HEAD, handed to the manifest as
+`TUIST_BUILD_NUMBER` by `scripts/release.sh` - so Informazioni shows `1.0 (56)` and
+`git rev-list --count HEAD` says which commit that was. An ordinary `tuist generate`
+passes no number and the build is stamped `0`, which is what marks it a development
+build; the release script refuses to ship one, refuses to run off `main` and refuses a
+dirty tree, because a release you cannot come back to is not a release.
+
+Never install a release build over `/Applications/Pergamenum.app` without asking, and
+move the previous copy aside rather than deleting it.
 
 ## Working agreements
 

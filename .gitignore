@@ -61,6 +61,10 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
+# Release artefacts written by scripts/release.sh: archives, exports and
+# notarization logs are build output, not source.
+build/
+
 # Tuist
 Derived/
 *.xcodeproj

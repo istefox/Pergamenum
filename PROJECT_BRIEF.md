@@ -85,6 +85,12 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-13: **Builds are numbered.** Every notarized build until now shipped as
+  `1.0 (1)`, so two copies of the app were indistinguishable from the outside and
+  there was no way to tell which one was installed. `CFBundleVersion` is now the
+  commit count, stamped by `scripts/release.sh`, which also refuses to run off main,
+  on a dirty tree, or on a bundle whose build number, hardened runtime, signature,
+  notarization status, staple or Gatekeeper verdict is not what it should be.
 - 2026-08-13: **The pane is called Note, it shows the folders, and the shortcuts move.**
   The sidebar's flat list of every note became the folder tree of §4.1, opened around
   whatever note the app opens. Every remappable command lives in one catalogue that
