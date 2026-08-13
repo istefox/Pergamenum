@@ -85,6 +85,16 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-13: **Every section has its toolbar.** Exactly one view in the app declared
+  a `.toolbar`, so four panes out of five showed an empty strip where their commands
+  should have been. Oggi carries the Calendario menu's day navigation and the two
+  creation commands, Attività carries quick capture and the four actions on the
+  selected task, Conformità carries the linter, and the Workspace's undo, redo,
+  Anteprima and tray toggle moved out of the board's own top bar, which keeps the
+  breadcrumb and the save state. Where a pane already had the same control inside it,
+  the control moved rather than being duplicated. "Verifica conformità" became a real
+  menu command in the process: a toolbar button with no menu equivalent has no
+  shortcut and cannot be given one.
 - 2026-08-13: **Builds are numbered.** Every notarized build until now shipped as
   `1.0 (1)`, so two copies of the app were indistinguishable from the outside and
   there was no way to tell which one was installed. `CFBundleVersion` is now the

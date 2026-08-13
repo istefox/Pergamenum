@@ -23,6 +23,16 @@ struct ViewCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
                 .disabled(vault.openNote == nil)
             Divider()
+            // Brings the pane forward as well as asking for the check: the view that
+            // runs the linter only exists while that pane is shown, so from anywhere
+            // else the command would do nothing at all.
+            Button("Verifica conformità") {
+                navigation.pane = .conformance
+                vault.isCheckingConformance = true
+            }
+            .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
+            .disabled(vault.root == nil)
+            Divider()
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
                 .disabled(vault.root == nil)

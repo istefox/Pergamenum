@@ -33,11 +33,7 @@ struct WorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BoardTopBar(
-                workspace: workspace,
-                isShowingQuickLook: $isShowingQuickLook,
-                isShowingTray: $isShowingTray
-            )
+            BoardTopBar(workspace: workspace)
             Divider()
             HStack(spacing: 0) {
                 BoardToolbar(workspace: workspace)
@@ -50,6 +46,7 @@ struct WorkspaceView: View {
             }
         }
         .background(theme.color(.backgroundPrimary))
+        .toolbar { toolbar }
         .quickLook(urls: workspace.selectedFileURLs, isPresented: $isShowingQuickLook)
         .onChange(of: vault.isShowingQuickLook) { _, requested in
             guard requested else { return }
@@ -105,6 +102,44 @@ struct WorkspaceView: View {
         guard let pending = vault.consumePendingCanvasRoute() else { return }
         if let missing = workspace.openRoute(pending, viewport: viewportSize) {
             vault.recordProblem("il link punta a una card che non esiste: \(missing)")
+        }
+    }
+
+    /// The board's window-level commands.
+    ///
+    /// Undo and redo keep the shortcuts they had in the top bar. They are not in the
+    /// shortcut catalogue: the standard Modifica menu already shows Annulla and
+    /// Ripeti, they do not reach the board, and reconciling the two is a change to
+    /// the undo architecture rather than to a toolbar.
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button { workspace.undo() } label: {
+                Label("Annulla", systemImage: "arrow.uturn.backward")
+            }
+            .help("Annulla")
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(!workspace.canUndo)
+
+            Button { workspace.redo() } label: {
+                Label("Ripeti", systemImage: "arrow.uturn.forward")
+            }
+            .help("Ripeti")
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!workspace.canRedo)
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button { isShowingQuickLook = true } label: {
+                Label("Anteprima", systemImage: "eye")
+            }
+            .help("Anteprima rapida del file selezionato (barra spaziatrice)")
+            .disabled(workspace.selectedFileURLs.isEmpty)
+
+            Toggle(isOn: $isShowingTray) {
+                Label("Nuovi elementi", systemImage: "tray")
+            }
+            .help("Elementi della cartella non ancora posati sulla board")
         }
     }
 

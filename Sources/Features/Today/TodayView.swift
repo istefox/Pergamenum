@@ -12,7 +12,6 @@ struct TodayView: View {
     @State private var draftTitle = ""
     @State private var draftStartHour = 9
     @State private var draftDurationMinutes = 60
-    @State private var draftDate = CalendarDate.today
 
     private var day: CalendarDate { controller.day }
     private var blocks: [TimeBlock] { controller.blocks }
@@ -31,6 +30,7 @@ struct TodayView: View {
             timeline
         }
         .background(theme.color(.backgroundPrimary))
+        .toolbar { DayToolbar(controller: controller, calendar: calendar) }
         .task(id: day) { await controller.load() }
         // Reloads when EventKit says the store moved, or when the app comes back to
         // the front having been granted access in the meantime. Without this the
@@ -39,7 +39,7 @@ struct TodayView: View {
             guard calendar.changeCount > 0 else { return }
             await controller.load()
         }
-        .sheet(isPresented: Bindable(controller).isChoosingDate) { datePicker }
+        .sheet(isPresented: Bindable(controller).isChoosingDate) { DayDatePicker(controller: controller) }
         .sheet(isPresented: Bindable(controller).isCreatingEvent) {
             draftSheet(title: "Nuovo evento", showsTime: true) {
                 controller.createEvent(
@@ -80,17 +80,15 @@ struct TodayView: View {
         }
     }
 
+    /// The day being shown. The three buttons that used to sit here moved to the
+    /// window toolbar: two day navigators a few centimetres apart is not a toolbar,
+    /// it is a duplicate.
     private var header: some View {
         HStack(spacing: theme.spacing(.s)) {
             Text(day.compactForm).themedText(.title)
             Text(longDate).themedText(.body, color: .textSecondary)
             Spacer()
-            Button { move(by: -1) } label: { Image(systemName: "chevron.left") }
-            Button { controller.show(.today) } label: { Text("Oggi").themedText(.caption) }
-            Button { move(by: 1) } label: { Image(systemName: "chevron.right") }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(theme.color(.textSecondary))
     }
 
     private var longDate: String {
@@ -321,39 +319,7 @@ struct TodayView: View {
 
     // MARK: Actions
 
-    private func move(by days: Int) {
-        controller.move(by: days)
-    }
-
     /// "Vai a data…" from the Calendario menu.
-    private var datePicker: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Vai a data").themedText(.title)
-            DatePicker(
-                "Giorno",
-                selection: Binding(
-                    get: { EventKitStore.date(draftDate, hour: 12, minute: 0) ?? Date() },
-                    set: { draftDate = CalendarDate($0) }
-                ),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-
-            HStack {
-                Spacer()
-                Button("Annulla") { controller.isChoosingDate = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Vai") {
-                    controller.show(draftDate)
-                    controller.isChoosingDate = false
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .background(theme.color(.surfaceCard))
-    }
-
     /// The sheet behind "Nuovo evento" and "Nuovo promemoria".
     private func draftSheet(
         title: String,

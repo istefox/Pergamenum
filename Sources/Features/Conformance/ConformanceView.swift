@@ -26,6 +26,32 @@ struct ConformanceView: View {
             content
         }
         .background(theme.color(.backgroundPrimary))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: check) {
+                    Label("Verifica ora", systemImage: "checkmark.seal")
+                }
+                .help("Verifica le note contro le convenzioni harness")
+                .disabled(isChecking || vault.root == nil)
+            }
+        }
+        // Asked for from the Vista menu, which cannot call into a view. The pane is
+        // brought forward by the command itself, so by the time this fires the view
+        // exists to answer.
+        .onChange(of: vault.isCheckingConformance) { _, requested in
+            guard requested else { return }
+            vault.isCheckingConformance = false
+            check()
+        }
+        .task {
+            // A request that arrived while another pane was showing: the command sets
+            // the flag and switches pane in the same breath, so this view appears
+            // after the change and never sees the transition.
+            if vault.isCheckingConformance {
+                vault.isCheckingConformance = false
+                check()
+            }
+        }
     }
 
     private var header: some View {
@@ -41,8 +67,9 @@ struct ConformanceView: View {
                     .themedText(.caption, color: .taskOverdue)
                     .help("Le famiglie chiuse non sono verificabili finché non importi le convenzioni")
             }
-            Button(isChecking ? "Verifica…" : "Verifica ora", action: check)
-                .disabled(isChecking || vault.root == nil)
+            if isChecking {
+                ProgressView().controlSize(.small)
+            }
         }
         .padding(theme.spacing(.m))
     }

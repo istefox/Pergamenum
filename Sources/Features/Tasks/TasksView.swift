@@ -20,6 +20,7 @@ struct TasksView: View {
             list
         }
         .background(theme.color(.backgroundPrimary))
+        .toolbar { toolbar }
         .sheet(isPresented: $isCapturing) { captureSheet }
         .sheet(item: $linking) { task in
             QuickSwitcher { path in
@@ -40,6 +41,64 @@ struct TasksView: View {
             isCapturing = true
             vault.isCapturingTask = false
         }
+    }
+
+    /// Capture, and the Task menu's actions on whatever is selected.
+    ///
+    /// The five views stay in the sidebar, where SPEC §7.4 puts them: they are where
+    /// you are, not something you do. Every button here is also a menu item with a
+    /// shortcut the user can change.
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button { isCapturing = true } label: {
+                Label("Cattura rapida", systemImage: "plus.circle")
+            }
+            .help("Cattura rapida di un task")
+            .disabled(vault.root == nil)
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                if let task = selected { vault.toggle(task) }
+            } label: {
+                Label("Completa o riapri", systemImage: "checkmark.circle")
+            }
+            .help("Completa o riapre il task selezionato")
+            .disabled(selected == nil)
+
+            Button {
+                if let task = selected { vault.apply(.schedule(today), to: task) }
+            } label: {
+                Label("Pianifica oggi", systemImage: "calendar.badge.clock")
+            }
+            .help("Pianifica il task selezionato per oggi")
+            .disabled(selected == nil)
+
+            Button { linking = selected } label: {
+                Label("Collega nota o board", systemImage: "link")
+            }
+            .help("Collega il task a una nota o a una board")
+            .disabled(selected == nil)
+
+            Button {
+                if let task = selected { vault.openNote(at: task.sourcePath) }
+            } label: {
+                Label("Vai alla nota di origine", systemImage: "doc.text.magnifyingglass")
+            }
+            .help("Apre la nota in cui il task è scritto")
+            .disabled(selected == nil)
+        }
+    }
+
+    /// The selected task as the index has it now.
+    ///
+    /// Read back through the controller rather than kept here: the row selection is
+    /// an id, and a task rewritten by one of these actions is a different value with
+    /// the same id.
+    private var selected: TaskItem? {
+        guard let selectedTaskID else { return nil }
+        return vault.index.allTasks.first { $0.id == selectedTaskID }
     }
 
     // MARK: Sidebar
@@ -196,6 +255,11 @@ struct TasksView: View {
             // Shared with the Task menu so Cmd+0/1/2/3 act on what is selected here.
             vault.selectedTask = task
         }
+        // The row is a stack of texts and buttons, and reported that way it has no
+        // label of its own: from outside the app - to VoiceOver as much as to a test -
+        // the list read as a column of blanks.
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("task-row")
         .contextMenu { contextMenu(task) }
     }
 
