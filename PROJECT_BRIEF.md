@@ -85,6 +85,14 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-13: **La vista Oggi si regola, e «Vai a data» usa il calendario dell'app.**
+  La sheet mostrava il date picker grafico di SwiftUI, che disegna `Aug 2026` e
+  `Mo Tu We` in blu di sistema dentro un'interfaccia italiana e a token: ora è lo stesso
+  calendario dei pannelli task, con in più un campo dove scrivere la data. Il mese in
+  cima alla colonna riempiva tutta la larghezza, stirando le celle: adesso ha una
+  maniglia per la larghezza e una freccia per chiuderlo, e le due scelte restano fra un
+  avvio e l'altro. Colonna e timeline sono un `HSplitView`, quindi anche la loro
+  divisione è regolabile.
 - 2026-08-13: **Note e task si compongono, non si dichiarano in una finestra volante.**
   Una nota nuova si intitola nella colonna dell'editor e alla conferma quella stessa
   colonna diventa la nota, con il cursore già dentro. La cattura rapida è il pannello di
