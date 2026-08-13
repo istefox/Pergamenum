@@ -66,3 +66,39 @@ private let thursday = CalendarDate(iso: "2026-08-13")!
     #expect(DateEntry.monthName(month: 8, year: 2026) == "agosto")
     #expect(DateEntry.monthName(month: 1, year: 2026) == "gennaio")
 }
+
+/// The day view's title. The compact form is the file name (naming.md 4.6) and was
+/// what the header showed: `20260813` is not how anyone writes a date.
+@Test func aDateIsWrittenTheItalianWayForTheInterface() {
+    #expect(thursday.italianForm == "13/08/2026")
+    #expect(CalendarDate(iso: "2026-01-05")?.italianForm == "05/01/2026")
+    // And the file name is untouched by it.
+    #expect(thursday.compactForm == "20260813")
+    #expect(thursday.description == "2026-08-13")
+}
+
+@Test func theWeekdayIsNamedInItalian() {
+    #expect(DateEntry.weekdayName(of: thursday) == "giovedì")
+    #expect(DateEntry.weekdayName(of: CalendarDate(iso: "2026-08-16")!) == "domenica")
+}
+
+/// The month follows the column: the grip it replaces was one handle too many next to
+/// a divider that was already there.
+@Test func theMonthWidthFollowsTheColumnBetweenItsBounds() {
+    #expect(DayMonthSection.calendarWidth(inColumnOf: 0) == DayMonthSection.narrowest)
+    #expect(DayMonthSection.calendarWidth(inColumnOf: 200) == DayMonthSection.narrowest)
+    #expect(DayMonthSection.calendarWidth(inColumnOf: 2000) == DayMonthSection.widest)
+
+    let narrow = DayMonthSection.calendarWidth(inColumnOf: 420)
+    let wide = DayMonthSection.calendarWidth(inColumnOf: 620)
+    #expect(narrow < wide, "allargando la colonna il mese non è cresciuto")
+    #expect(narrow >= DayMonthSection.narrowest && wide <= DayMonthSection.widest)
+}
+
+/// A seven-column grid 460 wide with 22-point cells draws rectangles four times wider
+/// than tall, which is the look this replaces.
+@Test func theCellsKeepTheirProportionsAsTheGridGrows() {
+    #expect(DayMonthSection.cellHeight(forWidth: 210) == 22)
+    #expect(DayMonthSection.cellHeight(forWidth: 460) > 22)
+    #expect(DayMonthSection.cellHeight(forWidth: 2000) == 34)
+}

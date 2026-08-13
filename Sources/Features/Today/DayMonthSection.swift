@@ -1,14 +1,12 @@
-import AppKit
 import SwiftUI
 
-/// The month at the top of the day view, at whatever size the user has left it.
+/// The month at the top of the day view, sized by the column it sits in.
 ///
 /// It used to fill the column, which on a wide window stretched the cells into
-/// rectangles a month tall. Now it has a width the user drags and a chevron that puts
-/// it away, and both choices are remembered.
-///
-/// Its own type because `TodayView` is at SwiftLint's limit for a view body, and
-/// because a section that owns two preferences is a thing rather than a fragment.
+/// rectangles a month tall; then it had a grip of its own, which was one handle too
+/// many in a view that already has a divider. Now it follows the split between the
+/// note column and the timeline: drag that, and the month grows or shrinks with the
+/// column. The chevron still puts it away, and that choice is remembered.
 struct DayMonthSection: View {
     @Environment(\.theme) private var theme
 
@@ -16,24 +14,27 @@ struct DayMonthSection: View {
     let onSelect: (CalendarDate) -> Void
     let onOpenDailyNote: (CalendarDate) -> Void
 
-    @AppStorage("todayShowsMonth") private var isShowing = true
-    @AppStorage("todayMonthWidth") private var width = 300.0
+    /// The width of the column the section sits in, measured by the day view: the
+    /// content around it is capped for readability, so measuring here would see a
+    /// constant and the month would stop following the divider on a wide window.
+    let columnWidth: CGFloat
 
-    private static let narrowest = 220.0
-    private static let widest = 520.0
+    @AppStorage("todayShowsMonth") private var isShowing = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             header
             if isShowing {
-                HStack(alignment: .top, spacing: 0) {
-                    MiniCalendar(day: day, onSelect: onSelect, onOpenDailyNote: onOpenDailyNote)
-                        .frame(width: width)
-                    handle
-                    Spacer(minLength: 0)
-                }
+                MiniCalendar(
+                    day: day,
+                    onSelect: onSelect,
+                    onOpenDailyNote: onOpenDailyNote,
+                    cellHeight: Self.cellHeight(forWidth: Self.calendarWidth(inColumnOf: columnWidth))
+                )
+                .frame(width: Self.calendarWidth(inColumnOf: columnWidth))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -54,25 +55,28 @@ struct DayMonthSection: View {
         .onTapGesture { isShowing.toggle() }
     }
 
-    /// The grip that sets the width. Dragging is the only way to say "this much": a
-    /// menu of three sizes is a guess about which three.
-    private var handle: some View {
-        RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(theme.color(.borderSubtle))
-            .frame(width: 4, height: 44)
-            .padding(.horizontal, theme.spacing(.xs))
-            .contentShape(Rectangle())
-            .accessibilityIdentifier("month-resize")
-            .accessibilityLabel("Larghezza del mese")
-            .help("Trascina per cambiare la larghezza del mese")
-            .gesture(
-                DragGesture()
-                    .onChanged { drag in
-                        width = min(Self.widest, max(Self.narrowest, width + drag.translation.width))
-                    }
-            )
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
+    // MARK: Sizing
+    //
+    // Static and pure, so what the month does at every column width can be checked
+    // without a window: the whole point is that it tracks the divider, and "it looked
+    // right on my screen" is not that.
+
+    /// Half the column, within bounds.
+    ///
+    /// Not the whole column: a seven-column grid given 900 points draws cells 128 wide
+    /// and 22 tall, which is the stretched look this replaces. Not a fixed width
+    /// either, or dragging the divider would leave it alone. Half keeps it tracking
+    /// across the widths the window actually takes.
+    static func calendarWidth(inColumnOf available: CGFloat) -> CGFloat {
+        guard available > 0 else { return narrowest }
+        return min(widest, max(narrowest, available * 0.5))
     }
+
+    /// Cell height from cell width, so the grid keeps its proportions as it grows.
+    static func cellHeight(forWidth width: CGFloat) -> CGFloat {
+        min(34, max(22, (width / 7) * 0.62))
+    }
+
+    static let narrowest: CGFloat = 210
+    static let widest: CGFloat = 460
 }

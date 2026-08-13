@@ -13,6 +13,9 @@ struct MiniCalendar: View {
     let day: CalendarDate
     let onSelect: (CalendarDate) -> Void
     let onOpenDailyNote: (CalendarDate) -> Void
+    /// Set by the day view from the width it has, so the grid keeps its proportions
+    /// instead of drawing cells four times wider than tall.
+    var cellHeight: CGFloat = 22
 
     /// The month being shown, which follows the day unless the user pages away.
     @State private var visibleMonth: CalendarDate?
@@ -77,7 +80,7 @@ struct MiniCalendar: View {
             let isToday = date == .today
             Text("\(date.day)")
                 .themedText(.caption, color: date.month == month.month ? .textPrimary : .textTertiary)
-                .frame(maxWidth: .infinity, minHeight: 22)
+                .frame(maxWidth: .infinity, minHeight: cellHeight)
                 .background(isChosen ? theme.color(.accentPrimary) : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                 .overlay(alignment: .bottom) {
@@ -105,7 +108,7 @@ struct MiniCalendar: View {
                     }
                 }
         } else {
-            Color.clear.frame(maxWidth: .infinity, minHeight: 22)
+            Color.clear.frame(maxWidth: .infinity, minHeight: cellHeight)
         }
     }
 

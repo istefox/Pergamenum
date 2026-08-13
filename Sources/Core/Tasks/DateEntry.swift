@@ -96,6 +96,13 @@ enum DateEntry {
         return Self.hintFormatter.string(from: date)
     }
 
+    /// `giovedì`, in the same fixed zone as everything else here: formatted through the
+    /// machine's zone a day built at midday can come out as the day before.
+    static func weekdayName(of day: CalendarDate, calendar: Calendar = .gregorianUTC) -> String {
+        guard let date = date(of: day, calendar: calendar) else { return "" }
+        return Self.weekdayFormatter.string(from: date)
+    }
+
     /// The month a calendar page is showing, as `agosto`.
     static func monthName(month: Int, year: Int, calendar: Calendar = .gregorianUTC) -> String {
         guard let day = CalendarDate(year: year, month: month, day: 1),
@@ -124,6 +131,14 @@ enum DateEntry {
         formatter.locale = uiLocale
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.setLocalizedDateFormatFromTemplate("EEE d MMM")
+        return formatter
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = uiLocale
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEEE"
         return formatter
     }()
 
