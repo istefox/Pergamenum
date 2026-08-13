@@ -43,7 +43,7 @@ struct TasksView: View {
 
     private func followLastCapture() {
         guard let capture = vault.consumeLastCapture() else { return }
-        view = switch capture.deadline {
+        view = switch capture.day {
         case .none: .inbox
         case .some(let day) where day <= today: .today
         default: .upcoming
@@ -295,18 +295,4 @@ struct TasksView: View {
         }
     }
 
-}
-
-extension CalendarDate {
-    /// The date some whole days later, through the calendar so month ends behave.
-    func adding(days: Int) -> CalendarDate {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        guard let start = DateComponents(
-                calendar: calendar, year: year, month: month, day: day
-              ).date,
-              let moved = calendar.date(byAdding: .day, value: days, to: start)
-        else { return self }
-        return CalendarDate(moved, in: calendar)
-    }
 }

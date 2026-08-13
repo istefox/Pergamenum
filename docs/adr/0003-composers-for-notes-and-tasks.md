@@ -40,18 +40,26 @@ whose menu offers "Crea e apri la nota" and "Crea e continua". What it writes is
 ordinary markdown line of SPEC §7.1 - there is no second representation of a task
 anywhere, which is what keeps the vault the source of truth.
 
-*Revised 2026-08-13, same day.* The panel first offered three dates: Programma (`>`),
-Scadenza (`!`) and Promemoria. Programma and Scadenza are the same decision asked
-twice at capture time, so they are now one field called Scadenza, which writes **both**
-markers with that date. Writing `!` alone would have been the tidier file and the worse
-app: `tasks(for:on:)` puts a task in Oggi when it is scheduled today or already late,
-in Prossimi when it is scheduled within the week, and in Inbox when it has neither
-marker - so a task with a due date only would sit in no view at all until the day it
-became late. `>` is when it shows up, `!` is when it turns red, and one date sets both.
-Rescheduling later (Cmd+0/1/2/3) still moves `>` alone, which is right: the plan
-changes, the deadline does not. `TaskDraft.deadline` is the computed property that
-holds the pair together, and it reads back from whichever marker a hand-written task
-happens to carry.
+*Revised twice on 2026-08-13.* First the three date fields (Programma, Scadenza,
+Promemoria) became one called Scadenza that wrote both markers, because Programma and
+Scadenza read as the same decision asked twice. Then they became two again, with the
+names the right way round and a panel each:
+
+- **Programma** (`>`) opens the list: Oggi, Domani, La prossima settimana, Fra 2
+  settimane, Fra 3 settimane, Fra un mese, Seleziona data…, and below a divider
+  Ricordami… and Ripeti…, which is where the reminder and the finite `@repeat(n/N)`
+  now live. A list, because the day wanted at capture time is nearly always one of a
+  handful and paging a calendar to find it is work.
+- **Scadenza** (`!`) opens a calendar and nothing else, because a deadline is a
+  particular day someone already has in mind.
+
+Both fields take a date typed into them (`20/08`, `2026-09-01`, `domani`); anything
+that does not read as a date is refused rather than guessed.
+
+The consequence to know: a task given a Scadenza and no Programma is in no task view
+until the day it becomes late, because SPEC §7.4 defines Oggi as `>oggi` plus overdue
+and Prossimi as the next seven days of `>`. That is the specified behaviour and this
+ADR does not change it; the Programma field is what puts a task in front of you.
 
 **D3. Only the inbox note is created on demand.** A destination that is a note has to
 exist; the composer refuses and says so otherwise. Inventing a note from a task

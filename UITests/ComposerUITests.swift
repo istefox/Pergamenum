@@ -82,24 +82,120 @@ final class ComposerUITests: XCTestCase {
 
     // MARK: Task composer
 
-    func testTheTaskComposerCarriesTheDestinationTheDeadlineAndTheReminder() throws {
+    func testTheTaskComposerCarriesTheDestinationProgrammaAndScadenza() throws {
         show("Attività")
         toolbarButton("Cattura rapida").click()
 
         let text = app.textFields["task-composer-text"]
         XCTAssertTrue(text.waitForExistence(timeout: 5), "il composer dei task non si è aperto")
         XCTAssertTrue(app.buttons["task-composer-destination"].exists, "manca la destinazione")
-        for chip in ["deadline", "reminder"] {
+        XCTAssertTrue(app.buttons["task-composer-scheduled"].exists, "manca il campo Programma")
+        XCTAssertTrue(app.buttons["task-composer-due"].exists, "manca il campo Scadenza")
+        XCTAssertTrue(app.buttons["task-composer-create"].exists, "manca il pulsante Crea")
+
+        // The reminder is inside the Programma panel now, not a third chip of its own.
+        XCTAssertFalse(app.buttons["task-composer-reminder"].exists, "il promemoria è ancora un campo a sé")
+    }
+
+    /// The panel of the screenshot: a field, the quick choices with the day beside
+    /// each, the calendar one row down, and the reminder and the repetition below.
+    func testTheProgrammaPanelListsTheQuickChoicesAndTheExtras() throws {
+        show("Attività")
+        toolbarButton("Cattura rapida").click()
+        XCTAssertTrue(app.textFields["task-composer-text"].waitForExistence(timeout: 5))
+        app.buttons["task-composer-scheduled"].click()
+
+        XCTAssertTrue(app.textFields["date-panel-field"].waitForExistence(timeout: 5), "manca il campo del pannello")
+        for option in ["today", "tomorrow", "next-week", "two-weeks", "three-weeks", "one-month", "choose"] {
             XCTAssertTrue(
-                app.buttons["task-composer-\(chip)"].exists,
-                "manca il campo data «\(chip)»"
+                app.descendants(matching: .any).matching(identifier: "date-option-\(option)").firstMatch.exists,
+                "manca la scelta «\(option)» nel pannello Programma"
             )
         }
-        XCTAssertTrue(app.buttons["task-composer-create"].exists, "manca il pulsante Crea")
-        // One date, not two: "Programma" and "Scadenza" were the same decision asked
-        // twice, and the second of them filed tasks into no view at all.
-        XCTAssertFalse(app.buttons["task-composer-scheduled"].exists, "il campo Programma è ancora lì")
-        XCTAssertFalse(app.buttons["task-composer-due"].exists, "ci sono ancora due campi data")
+        for extra in ["remind", "repeat"] {
+            XCTAssertTrue(
+                app.descendants(matching: .any).matching(identifier: "date-option-\(extra)").firstMatch.exists,
+                "manca la riga «\(extra)» in fondo al pannello"
+            )
+        }
+    }
+
+    /// The reminder moved inside the Programma panel, where Craft keeps it. It has to
+    /// still reach the line, which is the only place a reminder exists.
+    func testTheReminderSetInsideTheProgrammaPanelReachesTheLine() throws {
+        show("Attività")
+        toolbarButton("Cattura rapida").click()
+        let text = app.textFields["task-composer-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.click()
+        text.typeText("Task con promemoria")
+
+        app.buttons["task-composer-scheduled"].click()
+        let today = app.descendants(matching: .any).matching(identifier: "date-option-today").firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        today.click()
+
+        app.buttons["task-composer-scheduled"].click()
+        let remind = app.descendants(matching: .any).matching(identifier: "date-option-remind").firstMatch
+        XCTAssertTrue(remind.waitForExistence(timeout: 5))
+        remind.click()
+        let done = app.buttons["reminder-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), "la pagina del promemoria non si è aperta")
+        done.click()
+
+        app.buttons["task-composer-create"].click()
+        let written = captured(containing: "Task con promemoria")
+        XCTAssertTrue(
+            written.contains("@remind(\(iso(daysFromToday: 0))"),
+            "il promemoria non è finito sulla riga: \(written)"
+        )
+    }
+
+    /// "Fra 2 settimane" is one of the choices added to Craft's three, and the day it
+    /// writes is the one the panel promised.
+    func testAChoiceFurtherOutWritesTheDayItNames() throws {
+        show("Attività")
+        toolbarButton("Cattura rapida").click()
+        let text = app.textFields["task-composer-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.click()
+        text.typeText("Task fra due settimane")
+
+        app.buttons["task-composer-scheduled"].click()
+        let twoWeeks = app.descendants(matching: .any).matching(identifier: "date-option-two-weeks").firstMatch
+        XCTAssertTrue(twoWeeks.waitForExistence(timeout: 5))
+        twoWeeks.click()
+        app.buttons["task-composer-create"].click()
+
+        let expected = iso(daysFromToday: 14)
+        XCTAssertTrue(
+            captured(containing: "Task fra due settimane").contains("- [ ] Task fra due settimane >\(expected)"),
+            "il task non porta il giorno promesso dalla riga: \(captured(containing: "Task fra due settimane"))"
+        )
+    }
+
+    /// Scadenza opens on a calendar and writes `!`, which is a different marker from
+    /// the one Programma writes.
+    func testTheScadenzaPanelIsACalendarAndWritesTheDueMarker() throws {
+        show("Attività")
+        toolbarButton("Cattura rapida").click()
+        let text = app.textFields["task-composer-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.click()
+        text.typeText("Task con scadenza")
+
+        app.buttons["task-composer-due"].click()
+        XCTAssertTrue(app.textFields["due-panel-field"].waitForExistence(timeout: 5), "manca il campo Scadenza")
+
+        let target = iso(daysFromToday: 3)
+        let day = app.descendants(matching: .any).matching(identifier: "day-\(target)").firstMatch
+        XCTAssertTrue(day.waitForExistence(timeout: 5), "il calendario non mostra il giorno \(target)")
+        day.click()
+        app.buttons["task-composer-create"].click()
+
+        let written = captured(containing: "Task con scadenza")
+        XCTAssertTrue(written.contains("- [ ] Task con scadenza !\(target)"), "manca il marcatore di scadenza: \(written)")
+        XCTAssertFalse(written.contains(">\(target)"), "la scadenza ha scritto anche la data pianificata")
     }
 
     func testATaskComposedWithADateIsWrittenWithThatDate() throws {
@@ -111,27 +207,18 @@ final class ComposerUITests: XCTestCase {
         text.click()
         text.typeText("Task dal composer")
 
-        app.buttons["task-composer-deadline"].click()
-        let quickToday = app.descendants(matching: .any).matching(identifier: "date-quick-0").firstMatch
-        XCTAssertTrue(quickToday.waitForExistence(timeout: 5), "il popover della data non si è aperto")
+        app.buttons["task-composer-scheduled"].click()
+        let quickToday = app.descendants(matching: .any).matching(identifier: "date-option-today").firstMatch
+        XCTAssertTrue(quickToday.waitForExistence(timeout: 5), "il pannello Programma non si è aperto")
         quickToday.click()
 
         app.buttons["task-composer-create"].click()
 
         // In the note on disk, which is the only place a task exists.
-        let inbox = vault.appending(path: "00 Inbox/Capture.md")
-        var written = ""
-        for _ in 0..<20 {
-            written = (try? String(contentsOf: inbox, encoding: .utf8)) ?? ""
-            if written.contains("Task dal composer") { break }
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        // Both markers from the one field: `>` is what the day views read, `!` is what
-        // turns the task red once the day has passed.
-        let today = todayISO()
+        let written = captured(containing: "Task dal composer")
         XCTAssertTrue(
-            written.contains("- [ ] Task dal composer >\(today) !\(today)"),
-            "il task non porta la scadenza nei due marcatori: \(written)"
+            written.contains("- [ ] Task dal composer >\(iso(daysFromToday: 0))"),
+            "il task non porta la data programmata: \(written)"
         )
     }
 
@@ -147,8 +234,8 @@ final class ComposerUITests: XCTestCase {
         text.click()
         text.typeText("Primo pezzo")
 
-        app.buttons["task-composer-deadline"].click()
-        let today = app.descendants(matching: .any).matching(identifier: "date-quick-0").firstMatch
+        app.buttons["task-composer-scheduled"].click()
+        let today = app.descendants(matching: .any).matching(identifier: "date-option-today").firstMatch
         XCTAssertTrue(today.waitForExistence(timeout: 5))
         today.click()
 
@@ -200,10 +287,25 @@ final class ComposerUITests: XCTestCase {
 
     // MARK: Fixture
 
-    private func todayISO() -> String {
+    private func iso(daysFromToday days: Int) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return formatter.string(from: calendar.date(byAdding: .day, value: days, to: Date()) ?? Date())
+    }
+
+    /// The inbox note, once the line containing a phrase has reached it.
+    private func captured(containing phrase: String) -> String {
+        let inbox = vault.appending(path: "00 Inbox/Capture.md")
+        var written = ""
+        for _ in 0..<20 {
+            written = (try? String(contentsOf: inbox, encoding: .utf8)) ?? ""
+            if written.contains(phrase) { break }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return written
     }
 
     private func makeVault() throws {

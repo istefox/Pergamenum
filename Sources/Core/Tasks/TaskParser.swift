@@ -262,13 +262,15 @@ enum TaskParser {
         forNewTask text: String,
         scheduled: CalendarDate? = nil,
         due: CalendarDate? = nil,
-        reminder: TaskReminder? = nil
+        reminder: TaskReminder? = nil,
+        recurrence: TaskRecurrence? = nil
     ) -> String {
         let body = text.trimmingCharacters(in: .whitespaces)
         var line = "- [ ] " + body
         if let scheduled, markerRange(in: body, prefix: ">") == nil { line += " >\(scheduled)" }
         if let due, markerRange(in: body, prefix: "!") == nil { line += " !\(due)" }
         if let reminder, !body.contains("@remind(") { line += " " + reminder.rendered }
+        if let recurrence, !body.contains("@repeat(") { line += " " + recurrence.rendered }
         return line
     }
 
