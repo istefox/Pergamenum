@@ -21,7 +21,7 @@ extension VaultController {
         category: NoteCategory = .note,
         topics: [Tag] = []
     ) throws -> String {
-        guard let store else { throw CreationError.alreadyExists("nessun vault aperto") }
+        guard let store else { throw CreationError.alreadyExists("nessuna cartella note aperta") }
 
         let violations = category == .daily
             ? NoteName.validateDaily(title)

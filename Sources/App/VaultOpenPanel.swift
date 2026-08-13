@@ -9,8 +9,8 @@ import Foundation
 enum VaultOpenPanel {
     static func chooseVault(into controller: VaultController) {
         guard let url = pickDirectory(
-            title: "Scegli il vault",
-            message: "Seleziona la cartella del vault (per esempio Labs)."
+            title: "Scegli la cartella delle note",
+            message: "Seleziona la cartella che contiene le note (per esempio Labs)."
         ) else { return }
         // The recents list is written by `VaultController.open` itself, so a vault
         // opened from the menu, from a link or from this panel is recorded once, in

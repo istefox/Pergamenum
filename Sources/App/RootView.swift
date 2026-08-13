@@ -4,8 +4,8 @@ import SwiftUI
 ///
 /// The sidebar lists the app's actual work and nothing else. The design system left
 /// it for Settings, where the look of the app belongs, and the editor mockup left it
-/// for the Vault, which has had the real editor since M1 - a mockup beside the thing
-/// it was a mockup of is a place for a user to go and find nothing.
+/// for the Note pane, which has had the real editor since M1 - a mockup beside the
+/// thing it was a mockup of is a place for a user to go and find nothing.
 struct RootView: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeEngine.self) private var engine
@@ -14,6 +14,7 @@ struct RootView: View {
     /// value, so the window opened on an arbitrary pane.
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
+    @Environment(ShortcutStore.self) private var shortcuts
 
     /// Optional, which is the shape a macOS sidebar `List` expects: with a
     /// non-optional binding SwiftUI writes the focused row back over the initial
@@ -73,7 +74,7 @@ struct RootView: View {
         )) {
             GlobalSearchView()
         }
-        // Wide enough for the vault pane's own three columns beside this sidebar:
+        // Wide enough for the Note pane's own three columns beside this sidebar:
         // below this the outer sidebar gets squeezed into an unreadable strip.
         .frame(minWidth: 1180, minHeight: 700)
     }
@@ -97,7 +98,7 @@ struct RootView: View {
     @ViewBuilder
     private var detail: some View {
         switch pane {
-        case .vault: vaultPane
+        case .notes: notesPane
         case .workspace: workspacePane
         case .today: todayPane
         case .tasks: tasksPane
@@ -108,7 +109,7 @@ struct RootView: View {
     @ViewBuilder
     private var conformancePane: some View {
         if vault.root == nil {
-            needsVault("Il linter verifica le note del vault contro le convenzioni harness.")
+            needsVault("Il linter verifica le note contro le convenzioni harness.")
         } else {
             ConformanceView()
         }
@@ -117,7 +118,7 @@ struct RootView: View {
     @ViewBuilder
     private var todayPane: some View {
         if vault.root == nil {
-            needsVault("La vista Oggi mostra la nota giornaliera del vault e la timeline.")
+            needsVault("La vista Oggi mostra la nota giornaliera e la timeline.")
         } else {
             TodayView()
         }
@@ -126,7 +127,7 @@ struct RootView: View {
     @ViewBuilder
     private var tasksPane: some View {
         if vault.root == nil {
-            needsVault("Le attività sono i task scritti nelle note del vault.")
+            needsVault("Le attività sono i task scritti nelle note.")
         } else {
             TasksView()
         }
@@ -135,7 +136,7 @@ struct RootView: View {
     @ViewBuilder
     private var workspacePane: some View {
         if vault.root == nil {
-            needsVault("Il Workspace è una vista spaziale delle cartelle del vault.")
+            needsVault("Il Workspace è una vista spaziale delle cartelle delle note.")
         } else {
             WorkspaceView()
         }
@@ -143,33 +144,33 @@ struct RootView: View {
 
     private func needsVault(_ explanation: String) -> some View {
         VStack(spacing: theme.spacing(.m)) {
-            Image(systemName: "books.vertical")
+            Image(systemName: "folder")
                 .font(.system(size: 40))
                 .foregroundStyle(theme.color(.textTertiary))
-            Text("Nessun vault aperto").themedText(.title)
+            Text("Nessuna cartella note aperta").themedText(.title)
             Text(explanation)
                 .themedText(.body, color: .textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
-            Button("Apri vault…") { VaultOpenPanel.chooseVault(into: vault) }
+            Button("Apri cartella note…") { VaultOpenPanel.chooseVault(into: vault) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
-    private var vaultPane: some View {
+    private var notesPane: some View {
         if vault.root == nil {
             VStack(spacing: theme.spacing(.m)) {
-                Image(systemName: "books.vertical")
+                Image(systemName: "folder")
                     .font(.system(size: 40))
                     .foregroundStyle(theme.color(.textTertiary))
-                Text("Nessun vault aperto").themedText(.title)
-                Text("Scegli la cartella del vault. Pergamenum non la modifica finché non salvi una nota.")
+                Text("Nessuna cartella note aperta").themedText(.title)
+                Text("Scegli la cartella che contiene le note. Pergamenum non la modifica finché non salvi una nota.")
                     .themedText(.body, color: .textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                Button("Apri vault…") { VaultOpenPanel.chooseVault(into: vault) }
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("Apri cartella note…") { VaultOpenPanel.chooseVault(into: vault) }
+                    .keyboardShortcut(shortcuts.shortcut(for: .openVault))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

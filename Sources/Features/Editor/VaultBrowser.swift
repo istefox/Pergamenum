@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The vault view: note tree on the left, editor in the middle, inspector on the
+/// The Note view: folder tree on the left, editor in the middle, inspector on the
 /// right. This is the M1 screen the Editor mockup described.
 struct VaultBrowser: View {
     @Environment(\.theme) private var theme
@@ -11,17 +11,10 @@ struct VaultBrowser: View {
     /// until something else changed it.
     @State private var pendingInsertion: (text: String, cursorBack: Int)?
     @State private var isShowingInspector = true
-    @State private var filter = ""
-    /// The note the rename sheet is editing. The title being typed lives inside the
-    /// sheet: held here alongside it, the two were set in the same action and the
-    /// sheet validated the old value while showing the new one.
-    @State private var renaming: NoteRecord?
-    /// The note the delete confirmation is about (SPEC §10: never without asking).
-    @State private var deleting: NoteRecord?
 
     var body: some View {
         HSplitView {
-            noteList
+            NoteListPane()
                 .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
             editor
                 .frame(minWidth: 360)
@@ -30,15 +23,9 @@ struct VaultBrowser: View {
                     .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isShowingInspector.toggle()
-                } label: {
-                    Label("Ispettore", systemImage: "sidebar.right")
-                }
-                .help("Backlink, conformità, link non risolti")
-            }
+        .toolbar { toolbar }
+        .onChange(of: navigation.pendingInsertion) { _, _ in
+            pendingInsertion = navigation.consumeInsertion()
         }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: Binding(
@@ -64,149 +51,55 @@ struct VaultBrowser: View {
         }
     }
 
-    // MARK: Note list
-
-    private var noteList: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: "magnifyingglass").foregroundStyle(theme.color(.textTertiary))
-                TextField("Filtra", text: $filter)
-                    .textFieldStyle(.plain)
-                    .themedText(.body)
+    /// The commands worth a click, in the place macOS puts them.
+    ///
+    /// Every one of these is also a menu item with a shortcut: the toolbar is the
+    /// discoverable copy, not a second implementation. Nothing lives only here.
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                vault.newNoteFolder = ""
+                vault.isCreatingNote = true
+            } label: {
+                Label("Nuova nota", systemImage: "square.and.pencil")
             }
-            .padding(theme.spacing(.s))
+            .help("Nuova nota")
+            .disabled(vault.root == nil)
 
-            Divider()
+            Button { vault.isShowingQuickSwitcher = true } label: {
+                Label("Vai alla nota", systemImage: "magnifyingglass")
+            }
+            .help("Vai alla nota")
+            .disabled(vault.root == nil)
+        }
 
-            // Selection binding rather than a Button per row: inside a List only the
-            // button's own bounds respond, so most of the row was dead to a click.
-            List(selection: selectedPath) {
-                ForEach(filteredNotes, id: \.relativePath) { note in
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(note.title)
-                            .themedText(.body)
-                            .lineLimit(1)
-                        if !note.folder.isEmpty {
-                            Text(note.folder)
-                                .themedText(.caption, color: .textTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .tag(note.relativePath)
-                    // Dragged onto a task line in the editor, this becomes a wikilink
-                    // (SPEC §7.2).
-                    .draggable(note.title)
-                    .contextMenu { rowMenu(note) }
-                }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button(action: vault.saveOpenNote) {
+                Label("Salva", systemImage: "arrow.down.doc")
             }
-            .scrollContentBackground(.hidden)
+            .help("Salva la nota")
+            .disabled(vault.openNote?.hasUnsavedChanges != true)
 
-            Divider()
-            statusBar
-        }
-        .background(theme.color(.backgroundSecondary))
-        .onChange(of: navigation.pendingInsertion) { _, _ in
-            pendingInsertion = navigation.consumeInsertion()
-        }
-        .sheet(item: $renaming) { note in
-            RenameNoteSheet(note: note) { newTitle in
-                vault.renameNote(at: note.relativePath, to: newTitle)
-                renaming = nil
-            } onCancel: {
-                renaming = nil
+            Toggle(isOn: Bindable(navigation).isReadingMode) {
+                Label("Modalità lettura", systemImage: "book")
             }
-        }
-        .confirmationDialog(
-            "Eliminare «\(deleting?.title ?? "")»?",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Sposta nel Cestino", role: .destructive) {
-                if let note = deleting { vault.trashNote(at: note.relativePath) }
-                deleting = nil
-            }
-            Button("Annulla", role: .cancel) { deleting = nil }
-        } message: {
-            Text("Va nel Cestino del Finder, non è una cancellazione definitiva. I link che puntavano qui resteranno non risolti.")
-        }
-    }
+            .help("Modalità lettura")
+            .disabled(vault.openNote == nil)
 
-    /// The note context menu of SPEC §10: rename with link updating (W-08), move,
-    /// delete.
-    @ViewBuilder
-    private func rowMenu(_ note: NoteRecord) -> some View {
-        Button("Apri") { vault.openNote(at: note.relativePath) }
-        Button("Rinomina…") { renaming = note }
-        Menu("Sposta in") {
-            Button("(radice)") { vault.moveNote(at: note.relativePath, toFolder: "") }
-            ForEach(vault.folders, id: \.self) { folder in
-                Button(folder) { vault.moveNote(at: note.relativePath, toFolder: folder) }
-                    .disabled(folder == note.folder)
+            Button {
+                isShowingInspector.toggle()
+            } label: {
+                Label("Ispettore", systemImage: "sidebar.right")
             }
+            .help("Backlink, conformità, link non risolti")
         }
-        Divider()
-        Button("Rivela nel Finder") {
-            guard let root = vault.root else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([
-                root.appending(path: note.relativePath, directoryHint: .notDirectory),
-            ])
-        }
-        Divider()
-        Button("Elimina…", role: .destructive) { deleting = note }
     }
 
     private var findRequest: NoteTextView.FindRequest? {
         if navigation.isReplaceRequested { return .replace }
         if navigation.isFindRequested { return .find }
         return nil
-    }
-
-    private var filteredNotes: [NoteRecord] {
-        filter.isEmpty ? vault.index.allNotes : vault.index.search(filter, limit: 200)
-    }
-
-    /// Reads the open note's path and opens whatever the list selects. Selection is
-    /// derived from the controller rather than duplicated in view state, so opening a
-    /// note from a backlink or the quick switcher also moves the highlight.
-    private var selectedPath: Binding<String?> {
-        Binding(
-            get: { vault.openNote?.relativePath },
-            set: { path in
-                guard let path, path != vault.openNote?.relativePath else { return }
-                vault.openNote(at: path)
-            }
-        )
-    }
-
-    private var statusBar: some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            if vault.isScanning {
-                ProgressView().controlSize(.small)
-                Text("Scansione…").themedText(.caption, color: .textSecondary)
-            } else {
-                Text("\(vault.index.count) note").themedText(.caption, color: .textSecondary)
-                if vault.index.lastScanDuration > .zero {
-                    Text("· \(scanDurationText)").themedText(.caption, color: .textTertiary)
-                }
-            }
-            Spacer()
-            if !vault.index.failures.isEmpty {
-                Label("\(vault.index.failures.count)", systemImage: "exclamationmark.triangle")
-                    .themedText(.caption, color: .taskOverdue)
-                    .help(vault.index.failures.joined(separator: "\n"))
-            }
-        }
-        .padding(.horizontal, theme.spacing(.s))
-        .padding(.vertical, theme.spacing(.xs))
-    }
-
-    /// Reported so the in-memory index decision of ADR-0001 can be revisited on a
-    /// measurement rather than on a guess.
-    private var scanDurationText: String {
-        let milliseconds = vault.index.lastScanDuration.components.attoseconds / 1_000_000_000_000_000
-        let seconds = vault.index.lastScanDuration.components.seconds
-        return seconds > 0 ? "\(seconds),\(milliseconds / 100) s" : "\(milliseconds) ms"
     }
 
     // MARK: Editor
@@ -266,8 +159,9 @@ struct VaultBrowser: View {
             .labelsHidden()
             .fixedSize()
             if note.hasUnsavedChanges {
+                // No shortcut of its own: File > Salva already carries one, and the
+                // user may have moved it.
                 Button("Salva", action: vault.saveOpenNote)
-                    .keyboardShortcut("s", modifiers: .command)
             } else {
                 Label("Salvato", systemImage: "checkmark.circle")
                     .themedText(.caption, color: .textSecondary)
@@ -557,6 +451,9 @@ struct NewNoteSheet: View {
         .padding(theme.spacing(.l))
         .frame(width: 520)
         .background(theme.color(.surfaceCard))
+        // Set by "Nuova nota qui" on a folder in the tree, and cleared by the File
+        // menu's own command, so the sheet starts where the user asked for it.
+        .onAppear { folder = vault.newNoteFolder }
     }
 
     private func create() {
@@ -592,55 +489,5 @@ extension ConformanceText {
             )
             return lines(named).joined(separator: "; ")
         }
-    }
-}
-
-/// Renaming a note, with the title being typed held here and nowhere else.
-private struct RenameNoteSheet: View {
-    @Environment(\.theme) private var theme
-    let note: NoteRecord
-    let onConfirm: (String) -> Void
-    let onCancel: () -> Void
-
-    @State private var title: String
-
-    init(note: NoteRecord, onConfirm: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
-        self.note = note
-        self.onConfirm = onConfirm
-        self.onCancel = onCancel
-        _title = State(initialValue: note.title)
-    }
-
-    private var violations: [NoteName.Violation] { NoteName.validate(title) }
-    private var canRename: Bool { violations.isEmpty && title != note.title }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rinomina nota").themedText(.title)
-            Text("I wikilink che puntano a «\(note.title)» vengono riscritti (W-08).")
-                .themedText(.caption, color: .textSecondary)
-
-            TextField("Titolo", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { if canRename { onConfirm(title) } }
-
-            ForEach(ConformanceText.lines(NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )), id: \.self) { line in
-                Text(line).themedText(.caption, color: .taskOverdue)
-            }
-
-            HStack {
-                Spacer()
-                Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("Rinomina") { onConfirm(title) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canRename)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 460)
-        .background(theme.color(.surfaceCard))
     }
 }

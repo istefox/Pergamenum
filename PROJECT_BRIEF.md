@@ -85,6 +85,14 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-13: **The pane is called Note, it shows the folders, and the shortcuts move.**
+  The sidebar's flat list of every note became the folder tree of §4.1, opened around
+  whatever note the app opens. Every remappable command lives in one catalogue that
+  both the menu bar and a new Scorciatoie settings pane read, so a key can be changed,
+  cleared or put back, and a conflict between two commands is reported. The catalogue
+  immediately found one that had been there for a while: the Vista menu's "Oggi" and
+  the File menu's daily note were both on Cmd+T, where only one of them ever fired.
+  ADR-0002 records the naming decision, which the specification does not yet reflect.
 - 2026-08-12: **Everything written but never run was run, and most of it was broken.**
   Nine defects, none reachable by a test, all found by exercising the real thing:
   EventKit killed the app the moment the day view opened with Reminders granted

@@ -6,15 +6,13 @@ import SwiftUI
 struct ViewCommands: Commands {
     let navigation: Navigation
     let vault: VaultController
+    let shortcuts: ShortcutStore
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
             ForEach(Navigation.Pane.allCases) { pane in
                 Button(pane.title) { navigation.pane = pane }
-                    .keyboardShortcut(
-                        pane.shortcut.map { KeyEquivalent($0) } ?? "\0",
-                        modifiers: .command
-                    )
+                    .keyboardShortcut(shortcuts.shortcut(for: pane.shortcut))
             }
             Divider()
             // Not Cmd+Shift+E, which SPEC §10 assigns to the source/style toggle:
@@ -22,11 +20,11 @@ struct ViewCommands: Commands {
             // second command on the same key simply never fires. The collision with
             // the spec predates this menu entry and is left as it is.
             Toggle("Modalità lettura", isOn: Bindable(navigation).isReadingMode)
-                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
                 .disabled(vault.openNote == nil)
             Divider()
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }
-                .keyboardShortcut(.space, modifiers: [])
+                .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
                 .disabled(vault.root == nil)
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
@@ -43,6 +41,7 @@ struct CalendarCommands: Commands {
     let day: DayController
     let calendar: EventKitStore
     let navigation: Navigation
+    let shortcuts: ShortcutStore
 
     var body: some Commands {
         CommandMenu("Calendario") {
@@ -51,9 +50,9 @@ struct CalendarCommands: Commands {
                 day.show(.today)
             }
             Button("Giorno precedente") { day.move(by: -1) }
-                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .keyboardShortcut(shortcuts.shortcut(for: .previousDay))
             Button("Giorno successivo") { day.move(by: 1) }
-                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .keyboardShortcut(shortcuts.shortcut(for: .nextDay))
             Button("Vai a data…") {
                 navigation.pane = .today
                 day.isChoosingDate = true
@@ -64,14 +63,14 @@ struct CalendarCommands: Commands {
                 navigation.pane = .today
                 day.isCreatingEvent = true
             }
-            .keyboardShortcut("e", modifiers: .command)
+            .keyboardShortcut(shortcuts.shortcut(for: .newEvent))
             .disabled(!calendar.eventAccess.isGranted)
 
             Button("Nuovo promemoria") {
                 navigation.pane = .today
                 day.isCreatingReminder = true
             }
-            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .keyboardShortcut(shortcuts.shortcut(for: .newReminder))
             .disabled(!calendar.reminderAccess.isGranted)
 
             Divider()
@@ -92,11 +91,12 @@ struct CalendarCommands: Commands {
 struct InsertCommands: Commands {
     let navigation: Navigation
     let vault: VaultController
+    let shortcuts: ShortcutStore
 
     var body: some Commands {
         CommandMenu("Inserisci") {
             Button("Wikilink") { navigation.insert("[[]]", cursorBack: 2) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.shortcut(for: .insertWikilink))
             Button("Tag") { navigation.insert("#") }
             Button("Task") { navigation.insert("- [ ] ") }
             Divider()
@@ -105,7 +105,7 @@ struct InsertCommands: Commands {
             Button("Promemoria") { navigation.insert("@remind(\(CalendarDate.today) 09:00) ") }
             Divider()
             Button("Nota correlata…") { vault.isAddingRelatedLink = true }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.shortcut(for: .insertRelated))
                 .disabled(vault.openNote == nil)
             Button("Tabella") { navigation.insert(Self.table) }
             Button("Immagine o file…") { insertFile() }
@@ -164,6 +164,7 @@ struct HelpCommands: Commands {
 /// The Modifica-menu entries SPEC §10 adds to the standard ones.
 struct EditCommands: Commands {
     let navigation: Navigation
+    let shortcuts: ShortcutStore
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -175,13 +176,13 @@ struct EditCommands: Commands {
                 NSPasteboard.general.setString(plain, forType: .string)
                 NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
             }
-            .keyboardShortcut("v", modifiers: [.command, .shift, .option])
+            .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
 
             Divider()
             Button("Trova nella nota") { navigation.isFindRequested = true }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut(shortcuts.shortcut(for: .findInNote))
             Button("Sostituisci") { navigation.isReplaceRequested = true }
-                .keyboardShortcut("f", modifiers: [.command, .option])
+                .keyboardShortcut(shortcuts.shortcut(for: .replaceInNote))
         }
     }
 }

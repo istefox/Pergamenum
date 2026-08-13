@@ -22,6 +22,10 @@ final class VaultController {
     private(set) var openNote: OpenNote?
     /// Set by the New Note command; the browser shows the naming sheet when true.
     var isCreatingNote = false
+    /// The folder the naming sheet starts in, set by "Nuova nota qui" on a folder in
+    /// the tree. Empty means the vault root, which is what the File menu's command
+    /// leaves it at.
+    var newNoteFolder = ""
     /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
     /// watches it so the panel can be opened from the menu as well as the spacebar.
     var isShowingQuickLook = false

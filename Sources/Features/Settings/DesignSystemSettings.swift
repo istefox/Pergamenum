@@ -36,7 +36,7 @@ struct DesignSystemSettings: View {
                 }
                 if engine.userThemesDirectory == nil {
                     Label(
-                        "Apri un vault per poter salvare i colori: un tema vive nel vault, non nell'app.",
+                        "Apri una cartella note per poter salvare i colori: un tema vive lì, non nell'app.",
                         systemImage: "exclamationmark.triangle"
                     )
                     .themedText(.caption, color: .taskOverdue)
@@ -52,7 +52,7 @@ struct DesignSystemSettings: View {
                         Button("Ripristina", role: .destructive) { engine.resetCustomization() }
                     }
                 } else {
-                    Text("Scegli un colore qui sotto e viene salvato come tema del vault.")
+                    Text("Scegli un colore qui sotto e viene salvato come tema della cartella note.")
                         .themedText(.caption, color: .textTertiary)
                 }
                 if let problem = engine.customizationProblem {

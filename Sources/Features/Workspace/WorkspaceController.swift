@@ -217,7 +217,7 @@ final class WorkspaceController {
             refreshContents()
             return true
         case .blocked(let name):
-            recordProblem("«\(name)» è stata creata nel vault: annullare toglierebbe la card e lascerebbe il file. Eliminalo dal Finder se non lo vuoi.")
+            recordProblem("«\(name)» è stata creata su disco: annullare toglierebbe la card e lascerebbe il file. Eliminalo dal Finder se non lo vuoi.")
             return false
         case .nothingToDo:
             return false
@@ -395,7 +395,7 @@ final class WorkspaceController {
     /// Creates a real directory and puts its card on the board (SPEC §6.4, tool 4).
     @discardableResult
     func createFolder(named name: String, at point: CGPoint) throws -> String {
-        guard let store else { throw CanvasStore.StoreError.alreadyExists("nessun vault aperto") }
+        guard let store else { throw CanvasStore.StoreError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try store.createFolder(named: name, in: folder)
         let id = placeFile(relativePath, at: point, creatingOnDisk: relativePath)
         refreshContents()

@@ -132,7 +132,7 @@ final class ThemeEngine {
     /// Settings claimed the customisation was active.
     func setCustomColor(_ token: ColorToken, to value: RGBA) {
         guard let directory = userThemesDirectory else {
-            customizationProblem = "nessun vault aperto: non c'è dove salvare il tema"
+            customizationProblem = "nessuna cartella note aperta: non c'è dove salvare il tema"
             return
         }
         var draft = customization ?? ThemeCustomization.Draft(appearance: current.appearance, colors: [:])
