@@ -13,6 +13,52 @@ extension VaultController {
         return settings.dailyFolder.isEmpty ? fileName : "\(settings.dailyFolder)/\(fileName)"
     }
 
+    /// A day's blocks, read from its note.
+    ///
+    /// From the file, or from the editor buffer when that note happens to be open, so a
+    /// block typed by hand and not yet saved is not contradicted by the timeline beside
+    /// it.
+    func timeBlocks(on day: CalendarDate) -> [TimeBlock] {
+        guard let text = dailyNoteText(for: day) else { return [] }
+        return TimeBlockSection.parse(from: text, day: day)
+    }
+
+    /// Replaces a day's blocks, creating the daily note when it is missing.
+    ///
+    /// Writes the file, never the editor. Blocking out a day is not a reason to take the
+    /// editor somewhere the user did not ask to go: the day view used to open the daily
+    /// note to write a block into it and leave that pane on screen afterwards, which is
+    /// how a deleted block kept leaving an empty box behind. An editor already showing
+    /// that note is kept in step, as the task writes do.
+    @discardableResult
+    func setTimeBlocks(_ blocks: [TimeBlock], on day: CalendarDate) -> Bool {
+        guard let store else { return false }
+        let relativePath = dailyNotePath(for: day)
+        // Nothing to write and nothing to write it into: a day with no blocks and no
+        // note is a day this app has no business creating a file for.
+        if blocks.isEmpty, dailyNoteText(for: day) == nil { return true }
+
+        do {
+            let body = try dailyNoteBody(for: day)
+            let updated = TimeBlockSection.write(
+                blocks.sorted { $0.startMinutes < $1.startMinutes }, into: body
+            )
+            let hash = try store.write(updated, to: relativePath)
+            selfWrittenHashes[relativePath] = hash
+            index.update(try store.read(relativePath).record, at: relativePath)
+
+            if var note = openNote, note.relativePath == relativePath, !note.hasUnsavedChanges {
+                note.text = updated
+                note.savedText = updated
+                replaceOpenNote(note)
+            }
+            return true
+        } catch {
+            recordProblem("blocchi tempo: \(error)")
+            return false
+        }
+    }
+
     /// Adds a block to a day's timeline, creating the daily note when it is missing.
     ///
     /// Returns the block as it was placed: the requested start is honoured unless
@@ -24,45 +70,30 @@ extension VaultController {
         startMinutes: Int,
         durationMinutes: Int? = nil
     ) -> TimeBlock? {
-        guard let store else { return nil }
-        let relativePath = dailyNotePath(for: day)
         let duration = durationMinutes ?? settings.blockMinutes
-
-        do {
-            let body = try dailyNoteBody(for: day)
-            let existing = TimeBlockSection.parse(from: body, day: day)
-            guard let start = TimeBlock.freeStart(from: startMinutes, in: existing, duration: duration)
-            else {
-                recordProblem("blocco tempo: nessuno spazio libero il \(day.compactForm)")
-                return nil
-            }
-
-            let block = TimeBlock(
-                day: day,
-                startMinutes: start,
-                durationMinutes: duration,
-                title: title,
-                sourceTaskID: nil,
-                isPublished: false
-            )
-            let updated = TimeBlockSection.write(
-                (existing + [block]).sorted { $0.startMinutes < $1.startMinutes }, into: body
-            )
-            let hash = try store.write(updated, to: relativePath)
-            selfWrittenHashes[relativePath] = hash
-            index.update(try store.read(relativePath).record, at: relativePath)
-
-            // Keep an editor showing that note in step, as the task writes do.
-            if var note = openNote, note.relativePath == relativePath, !note.hasUnsavedChanges {
-                note.text = updated
-                note.savedText = updated
-                replaceOpenNote(note)
-            }
-            return block
-        } catch {
-            recordProblem("blocco tempo: \(error)")
+        let existing = timeBlocks(on: day)
+        guard let start = TimeBlock.freeStart(from: startMinutes, in: existing, duration: duration)
+        else {
+            recordProblem("blocco tempo: nessuno spazio libero il \(day.compactForm)")
             return nil
         }
+
+        let block = TimeBlock(
+            day: day,
+            startMinutes: start,
+            durationMinutes: duration,
+            title: title,
+            sourceTaskID: nil,
+            isPublished: false
+        )
+        return setTimeBlocks(existing + [block], on: day) ? block : nil
+    }
+
+    /// The daily note's text when there is one, without creating anything.
+    private func dailyNoteText(for day: CalendarDate) -> String? {
+        let relativePath = dailyNotePath(for: day)
+        if let note = openNote, note.relativePath == relativePath { return note.text }
+        return try? store?.read(relativePath).text
     }
 
     /// The daily note's text, written from the template first when the file is not

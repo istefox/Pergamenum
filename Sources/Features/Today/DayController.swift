@@ -56,7 +56,7 @@ final class DayController {
     func reload() {
         events = store.events(on: day)
         reminders = store.reminders(dueOn: day)
-        blocks = noteText.map { TimeBlockSection.parse(from: $0, day: day) } ?? []
+        blocks = vault.timeBlocks(on: day)
     }
 
     /// Opens the daily note for the day shown, creating it from the template when it
@@ -68,12 +68,6 @@ final class DayController {
             report("nota del giorno: \(error)")
         }
         reload()
-    }
-
-    /// The daily note's text, when it is the note currently open.
-    private var noteText: String? {
-        guard let note = vault.openNote, note.relativePath.contains(day.compactForm) else { return nil }
-        return note.text
     }
 
     // MARK: Blocks
@@ -139,46 +133,21 @@ final class DayController {
         return true
     }
 
-    /// Blocks live in the daily note, so writing them is a note edit like any other.
+    /// Blocks live in the daily note's `## Timeline` section, so writing them is a write
+    /// to that file - and only to that file.
+    ///
+    /// "Blocca" means put this on the day; where the block is stored is this app's
+    /// business, not the user's, and neither is the note it goes into. Writing it used
+    /// to go through the editor: the day view opened the daily note to edit its buffer,
+    /// which left an editor pane on screen that nobody had asked for and that outlived
+    /// the block itself.
     private func write(_ newBlocks: [TimeBlock]) {
         let sorted = newBlocks.sorted { $0.startMinutes < $1.startMinutes }
-        // Opened here when it is not already, and created from the template when it
-        // does not exist. "Blocca" means put this on the day; that the block is stored
-        // in the daily note is this app's business, not the user's. Before this the
-        // button did nothing at all unless the note happened to be open, and said so
-        // only in Impostazioni, Avanzate - which is to say, silently.
-        if noteText == nil {
-            do {
-                _ = try vault.openDailyNote(for: day)
-            } catch {
-                report("nota del giorno: \(error)")
-                return
-            }
-        }
-        guard let text = noteText else {
-            report("la nota di \(day.compactForm) non è aperta")
+        guard vault.setTimeBlocks(sorted, on: day) else {
+            report("blocchi tempo del \(day.compactForm): scrittura non riuscita")
             return
         }
-        vault.updateOpenNoteText(TimeBlockSection.write(sorted, into: text))
-        vault.saveOpenNote()
         blocks = sorted
-        closeTheNoteTheBlockOpened()
-    }
-
-    /// Blocking out a day opens the daily note; taking the last block away has to undo
-    /// that too, or the day is left with an empty editor under the task list - a pane
-    /// the user never asked for, showing a note with nothing in it.
-    ///
-    /// Only when the note holds nothing else: a day someone has written about is a day
-    /// they are reading, and no click on a block's delete says otherwise. The file stays
-    /// on disk either way; this closes a pane, it does not remove a note.
-    private func closeTheNoteTheBlockOpened() {
-        guard blocks.isEmpty,
-              let note = vault.openNote,
-              note.relativePath.contains(day.compactForm),
-              NoteDocument.parse(note.text).body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return }
-        vault.closeOpenNote()
     }
 
     /// Records a failure both here, where a test can see it, and on the vault, which is

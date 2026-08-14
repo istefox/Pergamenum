@@ -110,14 +110,18 @@ tags:
 
 """
 
+/// `openingTheDailyNote: false` for the tests about what the day view does to the
+/// editor: with it open from the start there is no way to tell a pane the user asked
+/// for from one a block opened behind their back.
 @MainActor
 func makeController(
     vault: borrowing DayVault,
-    store: StubCalendarStore
+    store: StubCalendarStore,
+    openingTheDailyNote: Bool = true
 ) async throws -> (DayController, VaultController) {
     let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
-    controller.openNote(at: "Calendar/20260811.md")
+    if openingTheDailyNote { controller.openNote(at: "Calendar/20260811.md") }
 
     let day = DayController(store: store, vault: controller)
     day.show(CalendarDate(iso: "2026-08-11")!)
