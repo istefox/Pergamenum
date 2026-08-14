@@ -58,8 +58,12 @@ enum TaskParser {
             tags: []
         )
 
-        task.scheduled = date(in: body, prefix: ">")
-        task.due = date(in: body, prefix: "!")
+        let scheduled = marker(in: body, prefix: ">")
+        let due = marker(in: body, prefix: "!")
+        task.scheduled = scheduled?.date
+        task.scheduledTime = scheduled?.time
+        task.due = due?.date
+        task.dueTime = due?.time
         task.completed = annotationDate(in: body, name: "done")
         task.reminder = reminder(in: body)
         task.recurrence = recurrence(in: body)
@@ -80,21 +84,34 @@ enum TaskParser {
         }
     }
 
-    /// `>YYYY-MM-DD` or `!YYYY-MM-DD`, at a word boundary.
+    /// `>YYYY-MM-DD` or `!YYYY-MM-DD`, with the optional ` HH:MM` of ADR-0004, at a
+    /// word boundary.
     ///
     /// The boundary matters: a blockquote `>` and a comparison `x > 3` are not dates,
     /// and neither is the `>` inside an HTML tag.
-    private static func date(in body: String, prefix: Character) -> CalendarDate? {
+    private static func marker(
+        in body: String, prefix: Character
+    ) -> (date: CalendarDate, time: TaskTime?)? {
         let characters = Array(body)
         for index in characters.indices where characters[index] == prefix {
             let precededByBoundary = index == 0 || characters[index - 1] == " "
-            guard precededByBoundary, index + 10 < characters.count + 1,
-                  index + 1 + 10 <= characters.count
-            else { continue }
+            guard precededByBoundary, index + 1 + 10 <= characters.count else { continue }
             let candidate = String(characters[(index + 1)..<(index + 1 + 10)])
-            if let date = CalendarDate(iso: candidate) { return date }
+            if let date = CalendarDate(iso: candidate) {
+                return (date, time(in: characters, at: index + 11))
+            }
         }
         return nil
+    }
+
+    /// The ` HH:MM` that may follow a date marker, read from where the date ends.
+    ///
+    /// Only a well-formed hour counts: the character after a date is a space in every
+    /// task that carries another marker too, and `>2026-08-15 !2026-08-20` must not
+    /// read the second marker as an hour.
+    private static func time(in characters: [Character], at index: Int) -> TaskTime? {
+        guard index + 6 <= characters.count, characters[index] == " " else { return nil }
+        return TaskTime(text: String(characters[(index + 1)..<(index + 6)]))
     }
 
     private static func annotationDate(in body: String, name: String) -> CalendarDate? {
@@ -196,6 +213,8 @@ enum TaskParser {
         return result
     }
 
+    /// The whole marker, hour included, so removing one leaves no `15:00` stranded in
+    /// the middle of a sentence.
     private static func markerRange(in text: String, prefix: Character) -> Range<String.Index>? {
         let characters = Array(text)
         for index in characters.indices where characters[index] == prefix {
@@ -204,8 +223,9 @@ enum TaskParser {
             let candidate = String(characters[(index + 1)..<(index + 1 + 10)])
             guard CalendarDate(iso: candidate) != nil else { continue }
 
+            let length = time(in: characters, at: index + 11) == nil ? 11 : 17
             let start = text.index(text.startIndex, offsetBy: index)
-            let end = text.index(start, offsetBy: 11)
+            let end = text.index(start, offsetBy: length)
             return start..<end
         }
         return nil
@@ -244,13 +264,18 @@ enum TaskParser {
     }
 
     /// The line for a task moved to a new day, or with its schedule cleared.
-    static func line(for task: TaskItem, scheduledOn date: CalendarDate?) -> String {
+    ///
+    /// The hour goes with the day: "domani" said by a reschedule command is a day and
+    /// not a time, and carrying the old `09:00` onto it would invent one.
+    static func line(
+        for task: TaskItem, scheduledOn date: CalendarDate?, at time: TaskTime? = nil
+    ) -> String {
         var line = task.rawLine
         if let existing = markerRange(in: line, prefix: ">") {
             line.removeSubrange(withPrecedingSpace(existing, in: line))
         }
         guard let date else { return line.trimmingTrailingWhitespace() }
-        return line.trimmingTrailingWhitespace() + " >\(date)"
+        return line.trimmingTrailingWhitespace() + " >\(date)" + (time.map { " " + $0.text } ?? "")
     }
 
     /// The line for a task that does not exist yet, in the marker order of SPEC §7.1.
@@ -261,14 +286,20 @@ enum TaskParser {
     static func line(
         forNewTask text: String,
         scheduled: CalendarDate? = nil,
+        scheduledTime: TaskTime? = nil,
         due: CalendarDate? = nil,
+        dueTime: TaskTime? = nil,
         reminder: TaskReminder? = nil,
         recurrence: TaskRecurrence? = nil
     ) -> String {
         let body = text.trimmingCharacters(in: .whitespaces)
         var line = "- [ ] " + body
-        if let scheduled, markerRange(in: body, prefix: ">") == nil { line += " >\(scheduled)" }
-        if let due, markerRange(in: body, prefix: "!") == nil { line += " !\(due)" }
+        if let scheduled, markerRange(in: body, prefix: ">") == nil {
+            line += " >\(scheduled)" + (scheduledTime.map { " " + $0.text } ?? "")
+        }
+        if let due, markerRange(in: body, prefix: "!") == nil {
+            line += " !\(due)" + (dueTime.map { " " + $0.text } ?? "")
+        }
         if let reminder, !body.contains("@remind(") { line += " " + reminder.rendered }
         if let recurrence, !body.contains("@repeat(") { line += " " + recurrence.rendered }
         return line

@@ -19,6 +19,9 @@ struct DayMonthSection: View {
     /// constant and the month would stop following the divider on a wide window.
     let columnWidth: CGFloat
 
+    /// Days carrying a task with a `!` deadline, marked on the grid.
+    var dueDays: Set<CalendarDate> = []
+
     @AppStorage("todayShowsMonth") private var isShowing = true
 
     var body: some View {
@@ -29,7 +32,8 @@ struct DayMonthSection: View {
                     day: day,
                     onSelect: onSelect,
                     onOpenDailyNote: onOpenDailyNote,
-                    cellHeight: Self.cellHeight(forWidth: Self.calendarWidth(inColumnOf: columnWidth))
+                    cellHeight: Self.cellHeight(forWidth: Self.calendarWidth(inColumnOf: columnWidth)),
+                    dueDays: dueDays
                 )
                 .frame(width: Self.calendarWidth(inColumnOf: columnWidth))
             }

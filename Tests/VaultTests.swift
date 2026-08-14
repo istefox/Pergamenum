@@ -490,3 +490,24 @@ private func makeRecord(
         try store.write("x", to: "../fuori.md")
     }
 }
+
+// MARK: Settings
+
+/// A settings file written before a key existed must not lose the rest of the file for
+/// it, and a hand-edited value must not be able to make every time block zero minutes
+/// long - which is to say invisible.
+@Test func settingsDecodeKeyByKeyAndClampTheBlockDuration() throws {
+    let older = Data("""
+    {"dailyFolder":"Diario","copyDroppedFiles":false}
+    """.utf8)
+    let settings = try JSONDecoder().decode(VaultSettings.self, from: older)
+    #expect(settings.dailyFolder == "Diario")
+    #expect(!settings.copyDroppedFiles)
+    #expect(settings.blockMinutes == TimeBlock.defaultDuration)
+
+    let broken = Data(#"{"blockMinutes":0}"#.utf8)
+    #expect(try JSONDecoder().decode(VaultSettings.self, from: broken).blockMinutes == 5)
+
+    let chosen = Data(#"{"blockMinutes":45}"#.utf8)
+    #expect(try JSONDecoder().decode(VaultSettings.self, from: chosen).blockMinutes == 45)
+}

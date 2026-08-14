@@ -85,6 +85,18 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-14: **Le date dei task portano un'ora, e la vista Oggi filtra invece di
+  duplicare.** `>2026-08-15 09:00` e `!2026-08-20 18:00`: l'ora sta dopo la data, così
+  chi legge solo la data - Obsidian, o una versione precedente - continua a leggere
+  bene il giorno (ADR-0004). Un task con un'ora può diventare anche un blocco sulla
+  timeline del suo giorno, e il composer lo chiede con una casella invece di deciderlo.
+  Nella toolbar della sezione Oggi: un pulsante per il nuovo task, il campanello che da
+  creatore di promemoria è diventato il filtro delle scadenze in arrivo («Nuovo
+  promemoria» resta nel menu Calendario), e un filtro per rivedere i completati. I
+  giorni con una scadenza sono segnati sul mese, sempre. «Blocca» si chiama «Inserisci
+  Blocco Tempo», la sua durata è in Impostazioni › Attività, parte dall'ora del task
+  quando ce l'ha, e si elimina sia dall'elenco nella colonna della nota sia dal blocco
+  sulla timeline.
 - 2026-08-13: **La data del giorno si legge, e il mese segue il divisorio.**
   L'intestazione della vista Oggi mostrava `20260813`, che è il nome del file
   (naming.md 4.6), non una data: ora è `13/08/2026` seguita dal giorno della settimana.

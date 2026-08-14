@@ -332,3 +332,49 @@ private func makeController(
     #expect(store.createdEvents.count == 3)
     vaultController.close()
 }
+
+@MainActor
+@Test func aBlockUsesTheTaskHourAndTheDurationFromSettings() async throws {
+    let vault = try DayVault()
+    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+    vaultController.updateSettings { $0.blockMinutes = 45 }
+
+    // A task due at 15:00 blocked out at nine in the morning is a plan for a different
+    // day than the one written down.
+    let task = TaskParser.parse(
+        line: "- [ ] Collaudo !2026-08-11 15:00", sourcePath: "x.md", lineIndex: 0
+    )!
+    let block = try #require(dayController.addBlock(from: task))
+    #expect(block.startMinutes == 15 * 60)
+    #expect(block.durationMinutes == 45)
+
+    let onDisk = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8
+    )
+    #expect(onDisk.contains("- 15:00-15:45 Collaudo"))
+    vaultController.close()
+}
+
+@MainActor
+@Test func aBlockIsRemovedFromTheNoteItLivesIn() async throws {
+    let vault = try DayVault()
+    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
+    let block = try #require(dayController.addBlock(from: task))
+    dayController.remove(block)
+
+    #expect(dayController.blocks.isEmpty)
+    let onDisk = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8
+    )
+    #expect(!onDisk.contains("Sopralluogo pressa"))
+    #expect(!onDisk.contains("- 09:00-"))
+    // The section stays, empty: the note keeps its shape between one plan and the next.
+    #expect(onDisk.contains("## Timeline"))
+    vaultController.close()
+}

@@ -22,6 +22,13 @@ final class DayController {
     var isCreatingEvent = false
     var isCreatingReminder = false
 
+    /// The day view's two filters, both off by default.
+    ///
+    /// `showsDueTasks` lists what falls due next; `showsCompleted` keeps finished tasks
+    /// in the day's list instead of dropping them the moment they are ticked.
+    var showsDueTasks = false
+    var showsCompleted = false
+
     private let store: any CalendarStore
     private let vault: VaultController
 
@@ -73,19 +80,23 @@ final class DayController {
 
     /// Turns a task into a block at the first free slot from `preferredStart`.
     ///
-    /// Placed rather than overlapped: two blocks at the same time say nothing about
-    /// what the day actually looks like, which is the whole point of a timeline.
+    /// The task's own hour wins when it has one: a task due at 15:00 blocked out at
+    /// nine in the morning is a plan for a different day than the one written down.
+    /// The duration is the one set in Impostazioni (SPEC §8.3's 30 minutes by default).
     @discardableResult
-    func addBlock(from task: TaskItem, preferredStart: Int = 9 * 60) -> TimeBlock? {
-        var start = TimeBlock.snap(preferredStart)
-        while blocks.contains(where: { $0.startMinutes <= start && start < $0.endMinutes }) {
-            start += TimeBlock.defaultDuration
-            guard start < 24 * 60 else { return nil }
-        }
+    func addBlock(from task: TaskItem, preferredStart: Int? = nil) -> TimeBlock? {
+        let preferred = preferredStart
+            ?? task.scheduledTime?.minutes
+            ?? task.dueTime?.minutes
+            ?? 9 * 60
+        let duration = vault.settings.blockMinutes
+        guard let start = TimeBlock.freeStart(from: preferred, in: blocks, duration: duration)
+        else { return nil }
+
         let block = TimeBlock(
             day: day,
             startMinutes: start,
-            durationMinutes: TimeBlock.defaultDuration,
+            durationMinutes: duration,
             title: task.text,
             sourceTaskID: task.id,
             isPublished: false

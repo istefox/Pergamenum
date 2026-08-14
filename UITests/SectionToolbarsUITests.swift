@@ -57,12 +57,24 @@ final class SectionToolbarsUITests: XCTestCase {
 
     func testTheOggiSectionCarriesTheCalendarCommands() throws {
         show("Oggi")
-        // "Nuovo evento" and "Nuovo promemoria" are there whether or not EventKit has
-        // been granted: a control that disappears leaves the user hunting for a
-        // feature they were told exists.
+        // "Nuovo evento" is there whether or not EventKit has been granted: a control
+        // that disappears leaves the user hunting for a feature they were told exists.
         for label in ["Giorno precedente", "Giorno successivo", "Vai a data",
-                      "Aggiorna da EventKit", "Nuovo evento", "Nuovo promemoria"] {
+                      "Aggiorna da EventKit", "Nuovo evento", "Nuovo task"] {
             XCTAssertTrue(button(label).exists, "«\(label)» non è nella toolbar della sezione Oggi")
+        }
+        // The bell became a filter, so the toolbar no longer creates a reminder. The
+        // command it used to duplicate is still in the Calendario menu, keys and all.
+        XCTAssertFalse(
+            app.toolbars.buttons["Nuovo promemoria"].exists,
+            "il campanello crea ancora un promemoria invece di filtrare"
+        )
+        XCTAssertTrue(
+            app.menuBars.menuItems["Nuovo promemoria"].exists,
+            "«Nuovo promemoria» è sparito anche dal menu Calendario"
+        )
+        for label in ["Scadenze in arrivo", "Mostra completati"] {
+            XCTAssertTrue(toggle(label).exists, "manca il filtro «\(label)»")
         }
 
         // And it acts on the day the pane is showing, which is the whole reason for

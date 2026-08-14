@@ -37,6 +37,20 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
         max(0, ((minutes + step / 2) / step) * step)
     }
 
+    /// The first start at or after `preferred` where a block of `duration` sits in no
+    /// other block, or nil when the day runs out.
+    ///
+    /// Placed rather than overlapped: two blocks at the same time say nothing about
+    /// what the day actually looks like, which is the whole point of a timeline.
+    static func freeStart(from preferred: Int, in blocks: [TimeBlock], duration: Int) -> Int? {
+        var start = snap(preferred)
+        while blocks.contains(where: { $0.startMinutes <= start && start < $0.endMinutes }) {
+            start += max(15, duration)
+            guard start < 24 * 60 else { return nil }
+        }
+        return start
+    }
+
     func overlaps(_ other: TimeBlock) -> Bool {
         day == other.day && startMinutes < other.endMinutes && other.startMinutes < endMinutes
     }

@@ -16,6 +16,9 @@ struct MiniCalendar: View {
     /// Set by the day view from the width it has, so the grid keeps its proportions
     /// instead of drawing cells four times wider than tall.
     var cellHeight: CGFloat = 22
+    /// Days an open task is due on. A deadline is the one date whose whole purpose is
+    /// to be seen before it arrives, so the month carries it.
+    var dueDays: Set<CalendarDate> = []
 
     /// The month being shown, which follows the day unless the user pages away.
     @State private var visibleMonth: CalendarDate?
@@ -84,14 +87,24 @@ struct MiniCalendar: View {
                 .background(isChosen ? theme.color(.accentPrimary) : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                 .overlay(alignment: .bottom) {
-                    // A dot for a day that already has a daily note, so the month
-                    // shows where the record is rather than only where the cursor is.
-                    if hasDailyNote(date) {
-                        Circle()
-                            .fill(theme.color(isChosen ? .onAccent : .accentPrimary))
-                            .frame(width: 3, height: 3)
-                            .offset(y: -1)
+                    // One dot for a day that already has a daily note, so the month
+                    // shows where the record is rather than only where the cursor is;
+                    // one for a day something is due on, in the colour a deadline is
+                    // drawn in everywhere else.
+                    HStack(spacing: 2) {
+                        if hasDailyNote(date) {
+                            Circle()
+                                .fill(theme.color(isChosen ? .onAccent : .accentPrimary))
+                                .frame(width: 3, height: 3)
+                        }
+                        if dueDays.contains(date) {
+                            Circle()
+                                .fill(theme.color(isChosen ? .onAccent : .taskOverdue))
+                                .frame(width: 3, height: 3)
+                                .accessibilityIdentifier("due-dot-\(date)")
+                        }
                     }
+                    .offset(y: -1)
                 }
                 .overlay {
                     if isToday, !isChosen {

@@ -40,8 +40,12 @@ struct TaskItem: Equatable, Sendable, Identifiable {
 
     /// `>YYYY-MM-DD`: the day it should surface on.
     var scheduled: CalendarDate?
+    /// The hour written after that day, when there is one: `>YYYY-MM-DD HH:MM`.
+    var scheduledTime: TaskTime?
     /// `!YYYY-MM-DD`: past this it is late.
     var due: CalendarDate?
+    /// The hour the task is due at, when it has one: `!YYYY-MM-DD HH:MM`.
+    var dueTime: TaskTime?
     /// `@done(YYYY-MM-DD)`.
     var completed: CalendarDate?
     /// `@remind(YYYY-MM-DD HH:MM)`.
@@ -70,6 +74,42 @@ struct TaskItem: Equatable, Sendable, Identifiable {
     func isScheduled(on day: CalendarDate) -> Bool {
         scheduled == day
     }
+}
+
+/// An hour of the day, as it is written after a `>` or `!` date.
+///
+/// SPEC §7.1 spells both markers as a bare `YYYY-MM-DD`, and this adds an optional
+/// ` HH:MM` after it (ADR-0004). The extension is readable by anything that already
+/// reads the marker: a parser that stops at the date - Obsidian, or a Pergamenum
+/// older than this - still gets the day right and leaves the hour in the task text.
+struct TaskTime: Equatable, Sendable, Comparable, Hashable {
+    var hour: Int
+    var minute: Int
+
+    /// Clamped rather than failable: the hour comes from a picker or from a parsed
+    /// string that was already validated, and a call site that cannot fail is one
+    /// that never force-unwraps.
+    init(hour: Int, minute: Int) {
+        self.hour = min(max(hour, 0), 23)
+        self.minute = min(max(minute, 0), 59)
+    }
+
+    /// `HH:MM` exactly, refusing anything else. This is the parsing door.
+    init?(text: some StringProtocol) {
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0].count == 2, parts[1].count == 2,
+              let hour = Int(parts[0]), let minute = Int(parts[1]),
+              (0...23).contains(hour), (0...59).contains(minute)
+        else { return nil }
+        self.init(hour: hour, minute: minute)
+    }
+
+    /// Minutes from midnight, the unit the timeline works in.
+    var minutes: Int { hour * 60 + minute }
+
+    var text: String { String(format: "%02d:%02d", hour, minute) }
+
+    static func < (lhs: TaskTime, rhs: TaskTime) -> Bool { lhs.minutes < rhs.minutes }
 }
 
 struct TaskReminder: Equatable, Sendable {

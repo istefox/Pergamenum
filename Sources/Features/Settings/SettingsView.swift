@@ -20,6 +20,7 @@ struct SettingsView: View {
             ShortcutSettings().tabItem { Label("Scorciatoie", systemImage: "keyboard") }
             DesignSystemSettings().tabItem { Label("Design system", systemImage: "paintpalette") }
             canvasTab.tabItem { Label("Canvas", systemImage: "rectangle.3.group") }
+            TaskSettings().tabItem { Label("Attività", systemImage: "checklist") }
             conventions.tabItem { Label("Convenzioni", systemImage: "checkmark.seal") }
             calendarTab.tabItem { Label("Calendario", systemImage: "calendar") }
             advanced.tabItem { Label("Avanzate", systemImage: "wrench.and.screwdriver") }

@@ -158,13 +158,20 @@ final class NoteIndex {
     ///
     /// `today` includes overdue tasks, because a task that slipped is exactly what the
     /// day view has to surface; SPEC §7.3 rules out moving it silently.
-    func tasks(for view: TaskView, on day: CalendarDate) -> [TaskItem] {
-        let open = allTasks.filter(\.state.isOpen)
+    /// `includingCompleted` widens every view to the tasks already done, which is what
+    /// the "mostra completati" filter turns on: what got finished today is part of the
+    /// day, and a list that hides it reads as a day where nothing happened.
+    func tasks(
+        for view: TaskView, on day: CalendarDate, includingCompleted: Bool = false
+    ) -> [TaskItem] {
+        let open = includingCompleted ? allTasks : allTasks.filter(\.state.isOpen)
         switch view {
         case .inbox:
             return open.filter { $0.scheduled == nil && $0.due == nil && $0.project == nil }
         case .today:
-            return open.filter { $0.isScheduled(on: day) || $0.isOverdue(on: day) }
+            return open.filter {
+                $0.isScheduled(on: day) || $0.isOverdue(on: day) || $0.completed == day
+            }
         case .upcoming:
             return open
                 .filter { task in
@@ -177,6 +184,30 @@ final class NoteIndex {
         case .all:
             return open
         }
+    }
+
+    /// Open tasks carrying a `!` date on or after a day, soonest first.
+    ///
+    /// The day view's bell shows these: a deadline is the one date that matters before
+    /// it arrives, and until now the only way to see the next one was to page the
+    /// calendar until it turned up.
+    func dueTasks(from day: CalendarDate, within days: Int = 30) -> [TaskItem] {
+        allTasks
+            .filter(\.state.isOpen)
+            .filter { task in
+                guard let due = task.due else { return false }
+                return due >= day && daysBetween(day, due) <= days
+            }
+            .sorted { lhs, rhs in
+                let left = (lhs.due ?? day, lhs.dueTime?.minutes ?? -1)
+                let right = (rhs.due ?? day, rhs.dueTime?.minutes ?? -1)
+                return left.0 == right.0 ? left.1 < right.1 : left.0 < right.0
+            }
+    }
+
+    /// Every day an open task is due on, for the marks on the month grid.
+    var dueDays: Set<CalendarDate> {
+        Set(allTasks.filter(\.state.isOpen).compactMap(\.due))
     }
 
     /// Open task counts per view, for the sidebar badges.
