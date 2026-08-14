@@ -363,3 +363,124 @@ tags:
     #expect(!controller.captureTask("   "))
     controller.close()
 }
+
+// MARK: Hours on the date markers (ADR-0004)
+
+/// `>2026-08-15 09:00` reads as a day and an hour. A parser that stops at the day -
+/// Obsidian, or a Pergamenum older than this - still gets the day right, which is why
+/// the hour goes after it rather than inside it.
+@Test func aDateMarkerCanCarryAnHour() throws {
+    let task = try #require(TaskParser.parse(
+        line: "- [ ] Collaudo >2026-08-15 09:00 !2026-08-20 18:30",
+        sourcePath: "x.md", lineIndex: 0
+    ))
+    #expect(task.scheduled == CalendarDate(iso: "2026-08-15"))
+    #expect(task.scheduledTime == TaskTime(hour: 9, minute: 0))
+    #expect(task.due == CalendarDate(iso: "2026-08-20"))
+    #expect(task.dueTime == TaskTime(hour: 18, minute: 30))
+    #expect(task.text == "Collaudo")
+}
+
+/// Two markers in a row: the second must not be read as the first one's hour.
+@Test func aMarkerFollowingAnotherIsNotItsHour() throws {
+    let task = try #require(TaskParser.parse(
+        line: "- [ ] Consegna >2026-08-15 !2026-08-20",
+        sourcePath: "x.md", lineIndex: 0
+    ))
+    #expect(task.scheduledTime == nil)
+    #expect(task.dueTime == nil)
+    #expect(task.text == "Consegna")
+}
+
+/// Anything that is not a well-formed `HH:MM` stays part of the task text rather than
+/// being guessed at: a task that silently moved to 09:00 is worse than one with an
+/// odd-looking word in it.
+@Test func onlyAWellFormedHourCounts() throws {
+    let task = try #require(TaskParser.parse(
+        line: "- [ ] Riunione >2026-08-15 25:99 in sede",
+        sourcePath: "x.md", lineIndex: 0
+    ))
+    #expect(task.scheduled == CalendarDate(iso: "2026-08-15"))
+    #expect(task.scheduledTime == nil)
+    #expect(task.text == "Riunione 25:99 in sede")
+}
+
+/// "Domani" is a day, not a time: rescheduling drops an hour rather than carrying it
+/// onto a day nobody said anything about.
+@Test func reschedulingDropsTheHour() throws {
+    let task = try #require(TaskParser.parse(
+        line: "- [ ] Collaudo >2026-08-15 09:00", sourcePath: "x.md", lineIndex: 0
+    ))
+    #expect(TaskParser.line(for: task, scheduledOn: CalendarDate(iso: "2026-08-16"))
+        == "- [ ] Collaudo >2026-08-16")
+    #expect(TaskParser.line(for: task, scheduledOn: nil) == "- [ ] Collaudo")
+    #expect(TaskParser.line(for: task, scheduledOn: CalendarDate(iso: "2026-08-16"),
+                            at: TaskTime(hour: 14, minute: 15))
+        == "- [ ] Collaudo >2026-08-16 14:15")
+}
+
+/// An hour is clamped rather than refused when it comes from a picker, and refused
+/// rather than clamped when it comes from text: one cannot fail, the other must.
+@Test func anHourIsClampedFromAPickerAndStrictFromText() {
+    #expect(TaskTime(hour: 30, minute: 90) == TaskTime(hour: 23, minute: 59))
+    #expect(TaskTime(text: "09:30") == TaskTime(hour: 9, minute: 30))
+    #expect(TaskTime(text: "9:30") == nil)
+    #expect(TaskTime(text: "24:00") == nil)
+    #expect(TaskTime(text: "sera") == nil)
+    #expect(TaskTime(hour: 9, minute: 5).text == "09:05")
+}
+
+// MARK: The day view's filters
+
+@MainActor
+@Test func theDueFilterListsWhatFallsDueNextAndTheMonthMarksIt() async throws {
+    let vault = try TaskVault()
+    try vault.write("""
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    ---
+
+    - [ ] Vicina !2026-08-12 18:00
+    - [ ] Lontana !2026-11-30
+    - [x] Fatta !2026-08-13 @done(2026-08-11)
+    - [ ] Senza scadenza
+    """, to: "Scadenze.md")
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    let day = CalendarDate(iso: "2026-08-11")!
+    let due = controller.index.dueTasks(from: day)
+    // Within thirty days, soonest first, and only what is still open.
+    #expect(due.map(\.text) == ["Vicina"])
+    #expect(controller.index.dueTasks(from: day, within: 200).map(\.text) == ["Vicina", "Lontana"])
+
+    // The month grid marks the same days, and never a completed one.
+    #expect(controller.index.dueDays.contains(CalendarDate(iso: "2026-08-12")!))
+    #expect(!controller.index.dueDays.contains(CalendarDate(iso: "2026-08-13")!))
+    controller.close()
+}
+
+@MainActor
+@Test func theCompletedFilterKeepsFinishedTasksInTheDay() async throws {
+    let vault = try TaskVault()
+    try vault.write("""
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    ---
+
+    - [ ] Aperta >2026-08-11
+    - [x] Chiusa >2026-08-11 @done(2026-08-11)
+    """, to: "Giornata.md")
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    let day = CalendarDate(iso: "2026-08-11")!
+    #expect(controller.index.tasks(for: .today, on: day).map(\.text) == ["Aperta"])
+    #expect(controller.index.tasks(for: .today, on: day, includingCompleted: true).map(\.text)
+        == ["Aperta", "Chiusa"])
+    controller.close()
+}
