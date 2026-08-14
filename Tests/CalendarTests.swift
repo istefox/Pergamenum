@@ -121,6 +121,37 @@ Sopralluogo in reparto stampaggio.
     #expect(TimeBlockSection.write([], into: note) == note)
 }
 
+@Test func removingTheLastBlockRemovesTheSection() {
+    let updated = TimeBlockSection.write([], into: dailyNote)
+
+    #expect(!updated.contains("## Timeline"))
+    #expect(!updated.contains("Sopralluogo pressa 4"))
+    // Everything the user wrote is still there, spaced as it was.
+    #expect(updated.contains("Sopralluogo in reparto stampaggio.\n\n## Note correlate"))
+    #expect(updated.contains("[[Curva di trasmissibilità]]"))
+}
+
+@Test func removingTheLastBlockOfATrailingSectionLeavesTheNoteClosed() {
+    let note = "---\ndate: 2026-08-11\n---\n\nCorpo.\n\n## Timeline\n\n- 09:00-09:30 Primo\n"
+    #expect(TimeBlockSection.write([], into: note) == "---\ndate: 2026-08-11\n---\n\nCorpo.\n")
+}
+
+@Test func removingTheLastBlockOfANoteThatIsOnlyASection() {
+    #expect(TimeBlockSection.write([], into: "## Timeline\n\n- 09:00-09:30 Primo\n").isEmpty)
+}
+
+@Test func addingABlockBackRecreatesTheSection() {
+    let emptied = TimeBlockSection.write([], into: dailyNote)
+    let blocks = [
+        TimeBlock(day: day, startMinutes: 600, durationMinutes: 60,
+                  title: "Di nuovo", sourceTaskID: nil, isPublished: false),
+    ]
+    let refilled = TimeBlockSection.write(blocks, into: emptied)
+
+    #expect(TimeBlockSection.parse(from: refilled, day: day).map(\.title) == ["Di nuovo"])
+    #expect(refilled.contains("## Note correlate"))
+}
+
 @Test func roundTripsTheSection() {
     let original = TimeBlockSection.parse(from: dailyNote, day: day)
     let rewritten = TimeBlockSection.write(original, into: dailyNote)

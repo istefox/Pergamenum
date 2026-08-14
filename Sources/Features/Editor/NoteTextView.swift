@@ -380,11 +380,11 @@ final class CompletingTextView: NSTextView {
         }
         if let hash = beforeCursor.range(of: "#", options: .backwards) {
             let prefix = String(beforeCursor[hash.lowerBound...])
-            let precedingIndex = beforeCursor.index(before: hash.lowerBound)
             let atLineStart = hash.lowerBound == beforeCursor.startIndex
-            let afterSpace = !atLineStart && beforeCursor[precedingIndex] == " "
+            // `.last`, not `index(before:)`: a line that begins with `#` has nothing before it.
+            let afterSpace = beforeCursor.dropLast(prefix.count).last == " "
             // `# ` opens a heading, not a tag, and a space ends the tag.
-            if (atLineStart || afterSpace), !prefix.contains(" ") { return .tag(prefix: prefix) }
+            if atLineStart || afterSpace, !prefix.contains(" ") { return .tag(prefix: prefix) }
         }
         return nil
     }
