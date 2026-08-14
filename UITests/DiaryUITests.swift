@@ -1,0 +1,269 @@
+import XCTest
+
+/// The Diario pane, driven the way a person drives it: the toolbar, the composer, the
+/// timeline, and the file all of it ends up in.
+///
+/// The diary writes on its own - there is no Salva - so every one of these also checks
+/// the file on disk. A day that is only on screen is a day that is not written down.
+final class DiaryUITests: XCTestCase {
+    private var vault: URL!
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "DiaryUITest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+
+        app = XCUIApplication()
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        showDiary()
+    }
+
+    override func tearDownWithError() throws {
+        app?.terminate()
+        try? FileManager.default.removeItem(at: vault)
+    }
+
+    private func showDiary() {
+        let row = app.staticTexts["Diario"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Diario non è nella barra laterale")
+        row.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(identifier: "diary-header").firstMatch
+                .waitForExistence(timeout: 5),
+            "la sezione Diario non si è aperta"
+        )
+    }
+
+    /// The pane carries its own toolbar, like every other section.
+    func testTheDiarySectionCarriesItsToolbar() throws {
+        for label in ["Nuovo blocco", "Giorno precedente", "Giorno successivo", "Vai a data"] {
+            XCTAssertTrue(
+                app.toolbars.buttons[label].waitForExistence(timeout: 5),
+                "«\(label)» non è nella toolbar del Diario"
+            )
+        }
+    }
+
+    /// Both halves of the page are there at once: the markdown on one side and the
+    /// same text rendered on the other, with no mode to switch into.
+    func testTheEditorAndThePreviewAreBothOnScreen() throws {
+        XCTAssertTrue(element("diary-editor").waitForExistence(timeout: 5), "manca l'editor")
+        XCTAssertTrue(element("diary-preview").waitForExistence(timeout: 5), "manca l'anteprima")
+        XCTAssertTrue(element("diary-timeline").waitForExistence(timeout: 5), "manca la giornata")
+    }
+
+    /// The whole point of the pane: block out a couple of hours, give them a name, and
+    /// find both on the timeline and in the file.
+    func testABlockIsComposedAndWrittenToTheFile() throws {
+        app.toolbars.buttons["Nuovo blocco"].click()
+
+        let title = app.textFields["diary-sheet-title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda del blocco non si è aperta")
+        title.click()
+        title.typeText("Sopralluogo pressa 4")
+        app.buttons["diary-sheet-save"].firstMatch.click()
+
+        XCTAssertTrue(entry.waitForExistence(timeout: 5), "il blocco non compare sulla giornata")
+        XCTAssertTrue(
+            waitForDiary { $0.contains("## Diario") && $0.contains("Sopralluogo pressa 4") },
+            "il blocco non è finito nel file del giorno"
+        )
+    }
+
+    /// And out again, from the x that sits on the block itself.
+    func testABlockIsDeletedFromTheTimeline() throws {
+        composeBlock(named: "Da eliminare")
+
+        entry.hover()
+        let remove = app.buttons["diary-remove-entry"].firstMatch
+        XCTAssertTrue(remove.waitForExistence(timeout: 5), "manca la x sul blocco")
+        remove.click()
+
+        XCTAssertTrue(
+            waitForDiary { !$0.contains("## Diario") },
+            "il file conserva la sezione dopo l'eliminazione"
+        )
+        XCTAssertFalse(entry.waitForExistence(timeout: 2), "il blocco è ancora disegnato")
+    }
+
+    /// A click on a block opens it, and what is changed there is written.
+    func testABlockIsOpenedAndRenamed() throws {
+        composeBlock(named: "Primo nome")
+
+        entry.click()
+        let title = app.textFields["diary-sheet-title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "il clic sul blocco non lo apre")
+        title.click()
+        title.typeKey("a", modifierFlags: .command)
+        title.typeText("Secondo nome")
+        app.buttons["diary-sheet-save"].firstMatch.click()
+
+        XCTAssertTrue(
+            waitForDiary { $0.contains("Secondo nome") && !$0.contains("Primo nome") },
+            "il nuovo nome non è nel file"
+        )
+    }
+
+    /// The composer's own delete, for the block that is already open.
+    func testABlockIsDeletedFromItsSheet() throws {
+        composeBlock(named: "Da eliminare dalla scheda")
+
+        entry.click()
+        let delete = app.buttons["diary-sheet-delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "la scheda non offre di eliminare")
+        delete.click()
+
+        XCTAssertTrue(waitForDiary { !$0.contains("## Diario") }, "il blocco è rimasto nel file")
+    }
+
+    /// What is typed in the editor is written without anybody asking for it, and the
+    /// day that was left is written before the next one is read.
+    func testTypingIsSavedAndSurvivesAChangeOfDay() throws {
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "manca l'editor markdown")
+        editor.click()
+        editor.typeText("## Mattina\n\nRiunione con il cliente.\n")
+
+        XCTAssertTrue(
+            waitForDiary { $0.contains("Riunione con il cliente.") },
+            "quello che è stato scritto non è finito nel file"
+        )
+
+        app.toolbars.buttons["Giorno successivo"].click()
+        app.toolbars.buttons["Giorno precedente"].click()
+
+        XCTAssertTrue(
+            waitForDiary { $0.contains("Riunione con il cliente.") },
+            "il testo si è perso cambiando giorno"
+        )
+    }
+
+    /// Two blocks at the same hour are both drawn: the diary records what happened, and
+    /// what happened overlaps.
+    func testTwoBlocksAtTheSameHourAreBothKept() throws {
+        composeBlock(named: "Riunione")
+        composeBlock(named: "Telefonata")
+
+        let entries = app.descendants(matching: .any).matching(identifier: "diary-entry")
+        XCTAssertTrue(waitFor { entries.count == 2 }, "i due blocchi non sono entrambi sulla giornata")
+        XCTAssertTrue(
+            waitForDiary { $0.contains("Riunione") && $0.contains("Telefonata") },
+            "i due blocchi non sono entrambi nel file"
+        )
+    }
+
+    /// Dragging over empty time blocks it out, from where the drag started to where it
+    /// ended, on the ten-minute grid.
+    func testDraggingOverEmptyTimeBlocksItOut() throws {
+        let nine = hourLine("09:00")
+        let eleven = hourLine("11:00")
+        XCTAssertTrue(nine.waitForExistence(timeout: 5), "manca la riga delle 09:00")
+
+        let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
+        let to = eleven.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
+        from.press(forDuration: 0.2, thenDragTo: to)
+
+        let range = app.staticTexts["diary-sheet-range"].firstMatch
+        XCTAssertTrue(range.waitForExistence(timeout: 5), "il trascinamento non apre la scheda")
+        XCTAssertTrue(
+            (range.value as? String ?? "").hasSuffix("09:00-11:00"),
+            "il blocco trascinato non copre le due ore: \(range.value ?? "")"
+        )
+
+        let title = app.textFields["diary-sheet-title"].firstMatch
+        title.click()
+        title.typeText("Due ore di cantiere")
+        app.buttons["diary-sheet-save"].firstMatch.click()
+
+        XCTAssertTrue(
+            waitForDiary { $0.contains("- 09:00-11:00 Due ore di cantiere") },
+            "l'orario trascinato non è finito nel file"
+        )
+    }
+
+    /// And a block already on the day is moved by dragging it.
+    func testABlockIsMovedByDragging() throws {
+        let nine = hourLine("09:00")
+        XCTAssertTrue(nine.waitForExistence(timeout: 5), "manca la riga delle 09:00")
+        let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
+        let ten = hourLine("10:00").coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
+        from.press(forDuration: 0.2, thenDragTo: ten)
+
+        let title = app.textFields["diary-sheet-title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda non si è aperta")
+        title.click()
+        title.typeText("Da spostare")
+        app.buttons["diary-sheet-save"].firstMatch.click()
+        XCTAssertTrue(waitForDiary { $0.contains("- 09:00-10:00 Da spostare") }, "il blocco non è stato scritto")
+
+        // Two hours down the grid, which is 120 points at sixty to the hour.
+        let block = entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        block.press(forDuration: 0.3, thenDragTo: block.withOffset(CGVector(dx: 0, dy: 120)))
+
+        XCTAssertTrue(
+            waitForDiary { $0.contains("- 11:00-12:00 Da spostare") },
+            "il blocco non si è spostato di due ore"
+        )
+    }
+
+    // MARK: Support
+
+    /// The label of an hour on the grid, which is the only fixed landmark a drag can be
+    /// measured from.
+    private func hourLine(_ text: String) -> XCUIElement {
+        app.staticTexts.matching(identifier: "diary-grid").matching(
+            NSPredicate(format: "value == %@", text)
+        ).firstMatch
+    }
+
+    private var entry: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "diary-entry").firstMatch
+    }
+
+    private func element(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    /// Opens the composer from the toolbar, names the block and saves it.
+    private func composeBlock(named name: String) {
+        app.toolbars.buttons["Nuovo blocco"].click()
+        let title = app.textFields["diary-sheet-title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda del blocco non si è aperta")
+        title.click()
+        title.typeText(name)
+        app.buttons["diary-sheet-save"].firstMatch.click()
+        XCTAssertTrue(waitForDiary { $0.contains(name) }, "«\(name)» non è stato scritto")
+    }
+
+    /// Polls the diary file, because the write happens on the app's side of the process
+    /// boundary and the diary saves on its own schedule.
+    private func waitForDiary(timeout: TimeInterval = 6, _ condition: (String) -> Bool) -> Bool {
+        let path = vault
+            .appending(path: "Diario", directoryHint: .isDirectory)
+            .appending(path: "\(compactToday).md", directoryHint: .notDirectory)
+        return waitFor(timeout: timeout) {
+            guard let text = try? String(contentsOf: path, encoding: .utf8) else { return false }
+            return condition(text)
+        }
+    }
+
+    private func waitFor(timeout: TimeInterval = 6, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        } while Date() < deadline
+        return false
+    }
+
+    /// `20260814`, in the machine's own zone because `CalendarDate.today` is.
+    private var compactToday: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = .current
+        return formatter.string(from: Date())
+    }
+}

@@ -136,6 +136,14 @@ struct NoteTextView: NSViewRepresentable {
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
+        /// The same guard for the completion list.
+        ///
+        /// `complete(nil)` puts the first candidate into the text as it opens the list,
+        /// and that edit calls `textDidChange` straight back. The context is still a
+        /// completion one - `#area-training` is a tag prefix like `#a` was - so the
+        /// list was offered again, and again, until the stack ran out and the app
+        /// died. Typing a `#` at the start of any line was enough.
+        private var isCompleting = false
         /// The focus request already honoured, so the cursor is not stolen back on
         /// every subsequent update.
         var lastFocusRequest = 0
@@ -162,9 +170,13 @@ struct NoteTextView: NSViewRepresentable {
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
 
-            if let completing = textView as? CompletingTextView, completing.shouldOfferCompletion() {
-                completing.complete(nil)
-            }
+            guard !isCompleting,
+                  let completing = textView as? CompletingTextView,
+                  completing.shouldOfferCompletion()
+            else { return }
+            isCompleting = true
+            defer { isCompleting = false }
+            completing.complete(nil)
         }
 
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {

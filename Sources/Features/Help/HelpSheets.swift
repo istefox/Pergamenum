@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The two Aiuto entries of SPEC §10.
+/// The Aiuto entries of SPEC §10, plus the diary's own format.
 ///
 /// The text is written here rather than opening the repository documents: the app has
 /// to be usable on a Mac where the harness-system checkout is not present, and a Help
@@ -14,11 +14,13 @@ struct HelpSheet: View {
     enum Topic {
         case taskSyntax
         case conventions
+        case diary
 
         var title: String {
             switch self {
             case .taskSyntax: "Guida sintassi task"
             case .conventions: "Convenzioni harness"
+            case .diary: "Come funziona il Diario"
             }
         }
     }
@@ -68,6 +70,7 @@ struct HelpSheet: View {
         switch topic {
         case .taskSyntax: Self.taskSyntax
         case .conventions: Self.conventions
+        case .diary: Self.diary
         }
     }
 
@@ -93,6 +96,34 @@ struct HelpSheet: View {
             ("Cmd+Invio", "completa o riapri"),
             ("Cmd+0 / 1 / 2 / 3", "oggi, domani, +2 giorni, settimana prossima"),
             ("Cmd+Maiusc+N", "cattura rapida in 00 Inbox/Capture.md"),
+        ]),
+    ]
+
+    /// What the Diario pane does and what it writes, since the file is meant to be
+    /// read and edited outside this app as well.
+    private static let diary: [Section] = [
+        Section(heading: "La pagina", rows: [
+            ("Editor e anteprima", "il markdown a sinistra e la resa accanto, dal vivo"),
+            ("Ctrl+Cmd+6", "apre la sezione Diario"),
+            ("Diario/YYYYMMDD.md", "un file per giorno, nella cartella impostata in Impostazioni"),
+        ]),
+        Section(heading: "La giornata", rows: [
+            ("06:00 - 20:00", "le ore mostrate; la griglia si allarga se un blocco esce"),
+            ("10 minuti", "il passo: ogni inizio e ogni durata cadono su un multiplo di 10"),
+            ("trascina sul vuoto", "blocca quel tempo e apre la scheda"),
+            ("clic sul vuoto", "un blocco di un'ora da quel punto"),
+            ("clic sul blocco", "modifica titolo, nota, orario, colore"),
+            ("trascina il blocco", "lo sposta; il bordo inferiore ne cambia la durata"),
+        ]),
+        Section(heading: "Nel file", rows: [
+            ("## Diario", "la sezione che tiene i blocchi, in fondo alla nota"),
+            ("- 09:00-11:30 Titolo", "un blocco: inizio, fine, nome"),
+            ("  due spazi davanti", "la nota del blocco, una riga o più"),
+            ("[colore:verde]", "colore del blocco, in coda alla riga"),
+        ]),
+        Section(heading: "Non è il Calendario", rows: [
+            ("nessun EventKit", "il diario non legge e non scrive Calendario o Promemoria"),
+            ("Oggi › Timeline", "è l'altra cosa: quella sì pubblica sul Calendario"),
         ]),
     ]
 

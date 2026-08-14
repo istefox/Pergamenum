@@ -1,18 +1,24 @@
 import SwiftUI
 
-/// The "Vai a data" sheet of the Calendario menu.
+/// The "Vai a data" sheet, used by every pane that shows one day at a time.
 ///
 /// The month is the app's own calendar, the one the task panels use: SwiftUI's
 /// graphical `DatePicker` drew `Aug 2026` and `Mo Tu We` in system blue inside an
 /// interface that is Italian and themed everywhere else, and no token could reach it.
-struct DayDatePicker: View {
+///
+/// It takes a day and two closures rather than a controller: the Oggi pane and the
+/// Diario pane both need it and neither owns the other's state.
+struct GoToDateSheet: View {
     @Environment(\.theme) private var theme
-    let controller: DayController
+    /// The day the sheet opens on.
+    let day: CalendarDate
+    let onGo: (CalendarDate) -> Void
+    let onCancel: () -> Void
 
     @State private var chosen: CalendarDate?
     @State private var typed = ""
 
-    private var day: CalendarDate { chosen ?? controller.day }
+    private var selected: CalendarDate { chosen ?? day }
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
@@ -33,11 +39,11 @@ struct DayDatePicker: View {
             .background(theme.color(.surfaceSunken))
             .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
 
-            MonthCalendar(selection: Binding(get: { day }, set: { chosen = $0 }), today: .today)
+            MonthCalendar(selection: Binding(get: { selected }, set: { chosen = $0 }), today: .today)
 
             HStack {
                 Spacer()
-                Button("Annulla") { controller.isChoosingDate = false }
+                Button("Annulla", action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button("Vai", action: go)
                     .keyboardShortcut(.defaultAction)
@@ -49,11 +55,11 @@ struct DayDatePicker: View {
         .background(theme.color(.surfaceCard))
         // Starts on the day being shown rather than on today: "vai a data" from the
         // 14th usually means somewhere near the 14th.
-        .onAppear { chosen = controller.day }
+        .onAppear { chosen = day }
     }
 
     private func go() {
-        controller.show(day)
-        controller.isChoosingDate = false
+        onGo(selected)
+        onCancel()
     }
 }

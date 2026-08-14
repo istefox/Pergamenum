@@ -111,6 +111,20 @@ struct SettingsView: View {
                 }
             ))
             .disabled(vault.root == nil)
+            TextField("Cartella diario", text: Binding(
+                get: { vault.settings.diaryFolder },
+                set: { value in
+                    vault.updateSettings {
+                        $0.diaryFolder = value.trimmingCharacters(in: .whitespaces)
+                    }
+                }
+            ))
+            .disabled(vault.root == nil)
+            Text("""
+                Il diario scrive un file per giorno, con lo stesso nome della daily note: \
+                tenerlo in una cartella sua è quello che li distingue.
+                """)
+                .themedText(.caption, color: .textTertiary)
             Section("Vocabolari chiusi") {
                 LabeledContent("type") { Text("\(vault.vocabulary.type.count) valori") }
                 LabeledContent("status") { Text("\(vault.vocabulary.status.count) valori") }

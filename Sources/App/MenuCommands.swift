@@ -167,6 +167,7 @@ struct HelpCommands: Commands {
         CommandGroup(replacing: .help) {
             Button("Guida sintassi task") { navigation.isShowingTaskSyntaxHelp = true }
             Button("Convenzioni harness") { navigation.isShowingConventionsHelp = true }
+            Button("Come funziona il Diario") { navigation.isShowingDiaryHelp = true }
         }
     }
 }
