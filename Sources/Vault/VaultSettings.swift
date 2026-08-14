@@ -17,14 +17,21 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var boardShowsGrid: Bool
     /// Whether cards land on that grid when nothing else aligns them.
     var boardSnapsToGrid: Bool
+    /// How long a time block lasts when the app makes one (SPEC §8.3 puts the default
+    /// at 30 minutes; this is that default, made settable).
+    var blockMinutes: Int
 
     static let `default` = VaultSettings(
         dailyFolder: "Calendar",
         harnessRepositoryPath: nil,
         copyDroppedFiles: true,
         boardShowsGrid: true,
-        boardSnapsToGrid: false
+        boardSnapsToGrid: false,
+        blockMinutes: TimeBlock.defaultDuration
     )
+
+    /// The durations the settings offer, in minutes.
+    static let blockDurations = [15, 30, 45, 60, 90, 120]
 
     /// Decoded key by key, each falling back to its default.
     ///
@@ -43,6 +50,11 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.boardShowsGrid
         boardSnapsToGrid = try container.decodeIfPresent(Bool.self, forKey: .boardSnapsToGrid)
             ?? fallback.boardSnapsToGrid
+        // Clamped as well as defaulted: a hand-edited settings.json holding 0 would
+        // make every block zero minutes long and every one of them invisible.
+        let minutes = try container.decodeIfPresent(Int.self, forKey: .blockMinutes)
+            ?? fallback.blockMinutes
+        blockMinutes = min(max(minutes, 5), 480)
     }
 
     init(
@@ -50,13 +62,15 @@ struct VaultSettings: Codable, Equatable, Sendable {
         harnessRepositoryPath: String?,
         copyDroppedFiles: Bool,
         boardShowsGrid: Bool,
-        boardSnapsToGrid: Bool
+        boardSnapsToGrid: Bool,
+        blockMinutes: Int = TimeBlock.defaultDuration
     ) {
         self.dailyFolder = dailyFolder
         self.harnessRepositoryPath = harnessRepositoryPath
         self.copyDroppedFiles = copyDroppedFiles
         self.boardShowsGrid = boardShowsGrid
         self.boardSnapsToGrid = boardSnapsToGrid
+        self.blockMinutes = blockMinutes
     }
 }
 
