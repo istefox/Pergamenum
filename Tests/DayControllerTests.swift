@@ -278,28 +278,60 @@ import Testing
     vaultController.close()
 }
 
-/// The block opened the note; removing it closes it again, so the day is not left with
-/// an empty editor pane under the task list.
+/// A block is written to the file and never to the editor: the day view does not open a
+/// note because someone blocked out half an hour, so there is no pane to be left behind
+/// when the block goes.
 @MainActor
-@Test func removingTheLastBlockClosesANoteThatHeldNothingElse() async throws {
+@Test func blockingOutADayNeverOpensTheNoteInTheEditor() async throws {
     let vault = try DayVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
-    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+    let (dayController, vaultController) = try await makeController(
+        vault: vault, store: store, openingTheDailyNote: false
+    )
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
-    #expect(vaultController.openNote != nil, "il blocco ha chiuso la nota invece di scriverci")
+    #expect(vaultController.openNote == nil, "il blocco ha aperto la nota nell'editor")
+    #expect(dayController.blocks.map(\.id) == [block.id])
+
+    let written = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8
+    )
+    #expect(written.contains("- 09:00-09:30 Sopralluogo"), "il blocco non è finito nel file")
 
     dayController.remove(block)
     #expect(dayController.blocks.isEmpty)
-    #expect(vaultController.openNote == nil, "il riquadro della nota resta aperto e vuoto")
+    #expect(vaultController.openNote == nil)
+    let afterwards = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8
+    )
+    #expect(afterwards == emptyDailyNote, "la nota non è tornata com'era")
+    vaultController.close()
+}
 
-    // And the way back: closing the note is not a dead end, blocking the day again
-    // reopens it and writes the block as it did the first time.
-    let again = try #require(dayController.addBlock(from: task))
-    #expect(dayController.blocks.map(\.id) == [again.id])
-    #expect(vaultController.openNote?.text.contains("## Timeline") == true)
+/// A day with no note at all: blocking it out writes one, and taking the block away does
+/// not leave the app writing files for a day nobody asked about.
+@MainActor
+@Test func aDayWithoutANoteGetsOneOnlyWhenSomethingIsWrittenToIt() async throws {
+    let vault = try DayVault()
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(
+        vault: vault, store: store, openingTheDailyNote: false
+    )
+    let path = vault.root.appending(path: "Calendar/20260811.md")
+
+    dayController.remove(TimeBlock(
+        day: testDay, startMinutes: 540, durationMinutes: 30,
+        title: "Mai esistito", sourceTaskID: nil, isPublished: false
+    ))
+    #expect(!FileManager.default.fileExists(atPath: path.path(percentEncoded: false)),
+            "una cancellazione a vuoto ha creato la nota del giorno")
+
+    let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
+    #expect(dayController.addBlock(from: task) != nil)
+    #expect(FileManager.default.fileExists(atPath: path.path(percentEncoded: false)))
+    #expect(vaultController.openNote == nil, "la nota creata è stata anche aperta")
     vaultController.close()
 }
 

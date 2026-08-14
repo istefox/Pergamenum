@@ -60,6 +60,11 @@ final class TimeBlockUITests: XCTestCase {
             timelineBlock.waitForExistence(timeout: 5),
             "il blocco non compare sulla timeline"
         )
+        // The block is written to the file, not through the editor: no pane opens.
+        XCTAssertTrue(
+            app.buttons["Apri la nota di \(compactToday)"].exists,
+            "inserire un blocco ha aperto la nota nell'editor"
+        )
 
         let remove = app.descendants(matching: .any).matching(identifier: "remove-block").firstMatch
         XCTAssertTrue(remove.waitForExistence(timeout: 5), "il blocco non si può eliminare dalla nota")
