@@ -75,18 +75,21 @@ struct DayTimeline: View {
             token: .stickyBlue, isEvent: false
         ))
             .overlay(alignment: .topTrailing) {
-                if hoveredBlock == block.id {
-                    Button {
-                        controller.remove(block)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(theme.color(.textSecondary))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(2)
-                    .help("Elimina il blocco")
-                    .accessibilityIdentifier("timeline-remove-block")
+                // Always in the hierarchy, only its opacity follows the pointer. Built
+                // by `if hoveredBlock == block.id` it left on mouse-down - the rebuild
+                // took the button away between press and release - so the click landed
+                // on nothing and the block stayed, on the timeline and in the note.
+                Button {
+                    controller.remove(block)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(theme.color(.textSecondary))
                 }
+                .buttonStyle(.plain)
+                .padding(2)
+                .opacity(hoveredBlock == block.id ? 1 : 0.35)
+                .help("Elimina il blocco")
+                .accessibilityIdentifier("timeline-remove-block")
             }
             .onHover { hoveredBlock = $0 ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock) }
             .contextMenu {
@@ -96,6 +99,10 @@ struct DayTimeline: View {
                 .disabled(block.isPublished || !calendar.eventAccess.isGranted)
                 Button("Elimina il blocco") { controller.remove(block) }
             }
+            // `.contain` before the identifier, or the hover delete inside disappears
+            // from XCUI along with everything else the entry draws.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("timeline-block")
     }
 
     /// Events with no hour of their own, above the grid.
