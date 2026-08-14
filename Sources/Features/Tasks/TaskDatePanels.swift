@@ -10,6 +10,7 @@ struct SchedulePanel: View {
     @Environment(\.theme) private var theme
 
     @Binding var date: CalendarDate?
+    @Binding var time: TaskTime?
     @Binding var reminder: TaskReminder?
     @Binding var recurrence: TaskRecurrence?
     let onDone: () -> Void
@@ -75,10 +76,7 @@ struct SchedulePanel: View {
             }
             row(id: "choose", title: "Seleziona data…", hint: nil) { page = .calendar }
             if date != nil {
-                row(id: "clear", title: "Togli la data", hint: nil) {
-                    date = nil
-                    onDone()
-                }
+                row(id: "clear", title: "Togli la data", hint: nil, action: clearDate)
             }
         }
         .padding(.vertical, theme.spacing(.xs))
@@ -86,6 +84,8 @@ struct SchedulePanel: View {
 
     private var extras: some View {
         VStack(alignment: .leading, spacing: 0) {
+            TaskTimeRow(time: $time, isEnabled: date != nil)
+
             row(
                 id: "remind",
                 symbol: "alarm",
@@ -194,6 +194,14 @@ struct SchedulePanel: View {
         onDone()
     }
 
+    /// Clearing the day clears the hour with it: `>` carries both, and an hour with no
+    /// day is written nowhere.
+    private func clearDate() {
+        date = nil
+        time = nil
+        onDone()
+    }
+
     private func pickFirst() {
         if let typed {
             pick(typed)
@@ -211,6 +219,7 @@ struct DuePanel: View {
     @Environment(\.theme) private var theme
 
     @Binding var date: CalendarDate?
+    @Binding var time: TaskTime?
     let onDone: () -> Void
 
     @State private var query = ""
@@ -240,20 +249,34 @@ struct DuePanel: View {
 
             Divider()
 
+            // Picking a day still closes the panel, as it did before and as the
+            // Programma panel does: a day is a decision. The hour is set by clicking
+            // the chip again - it then reopens on that day with the Orario row live.
             MonthCalendar(selection: $date, today: today) { _ in onDone() }
                 .padding(theme.spacing(.s))
 
-            if date != nil {
-                Divider()
-                Button("Togli la scadenza") {
-                    date = nil
-                    onDone()
+            Divider()
+            TaskTimeRow(time: $time, isEnabled: date != nil)
+
+            Divider()
+            HStack {
+                if date != nil {
+                    Button("Togli la scadenza") {
+                        date = nil
+                        time = nil
+                        onDone()
+                    }
+                    .buttonStyle(.plain)
+                    .themedText(.caption, color: .accentPrimary)
+                    .accessibilityIdentifier("due-panel-clear")
                 }
-                .buttonStyle(.plain)
-                .themedText(.caption, color: .accentPrimary)
-                .padding(theme.spacing(.s))
-                .accessibilityIdentifier("due-panel-clear")
+                Spacer()
+                Button("Fatto", action: onDone)
+                    .buttonStyle(.plain)
+                    .themedText(.caption, color: .accentPrimary)
+                    .accessibilityIdentifier("due-panel-done")
             }
+            .padding(theme.spacing(.s))
         }
         .frame(width: 340)
     }

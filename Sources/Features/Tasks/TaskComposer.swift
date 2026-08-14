@@ -44,6 +44,7 @@ struct TaskComposer: View {
                 onSubmit: create
             )
             .frame(height: theme.spacing(.l))
+            blockRow
             footer
         }
         .padding(theme.spacing(.m))
@@ -109,6 +110,24 @@ struct TaskComposer: View {
         draft.destination == .inbox ? "tray" : "doc.text"
     }
 
+    // MARK: Timeline
+
+    /// Asked rather than assumed: a task with an hour can also be a block on that day's
+    /// timeline, and whether the day gets planned that way is the user's call. Shown
+    /// only once there is an hour, since a block with no time has nowhere to go.
+    @ViewBuilder
+    private var blockRow: some View {
+        if let slot = draft.blockSlot {
+            Toggle(isOn: $draft.blocksTheDay) {
+                Text("Mettilo anche nell'orario del giorno, alle \(slot.time.text)")
+                    .themedText(.caption, color: .textSecondary)
+            }
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier("task-composer-block")
+            .help("Crea un blocco tempo nella nota del \(slot.day.italianForm)")
+        }
+    }
+
     // MARK: Footer
 
     private var footer: some View {
@@ -117,13 +136,13 @@ struct TaskComposer: View {
                 .scheduled,
                 symbol: "calendar",
                 title: "Programma",
-                value: draft.scheduled.map { "\($0)" }
+                value: value(draft.scheduled, draft.scheduledTime)
             )
             chip(
                 .due,
                 symbol: "flag",
                 title: "Scadenza",
-                value: draft.due.map { "\($0)" }
+                value: value(draft.due, draft.dueTime)
             )
             // The reminder is set inside the Programma panel, where Craft keeps it, so
             // it shows here only once there is one to show.
@@ -180,6 +199,13 @@ struct TaskComposer: View {
         }
     }
 
+    /// What a chip reads once it has a date: `20/08/2026`, and the hour when there is
+    /// one. Italian, like the day view's header - the ISO form belongs in the file.
+    private func value(_ date: CalendarDate?, _ time: TaskTime?) -> String? {
+        guard let date else { return nil }
+        return date.italianForm + (time.map { " \($0.text)" } ?? "")
+    }
+
     /// One date chip: label alone when unset, value plus a clear button when set.
     private func chip(_ popover: DatePopover, symbol: String, title: String, value: String?) -> some View {
         HStack(spacing: theme.spacing(.xs)) {
@@ -231,11 +257,12 @@ struct TaskComposer: View {
         case .scheduled:
             SchedulePanel(
                 date: $draft.scheduled,
+                time: $draft.scheduledTime,
                 reminder: $draft.reminder,
                 recurrence: $draft.recurrence
             ) { open = nil }
         case .due:
-            DuePanel(date: $draft.due) { open = nil }
+            DuePanel(date: $draft.due, time: $draft.dueTime) { open = nil }
         }
     }
 
@@ -243,12 +270,17 @@ struct TaskComposer: View {
         switch popover {
         case .scheduled:
             draft.scheduled = nil
+            draft.scheduledTime = nil
             // The reminder hangs off the day the task shows up on; left behind it would
             // fire for a task with no date at all.
             draft.reminder = nil
         case .due:
             draft.due = nil
+            draft.dueTime = nil
         }
+        // Nothing left to block out: the checkbox is gone from the panel, and leaving
+        // it set would plan a day the task no longer has.
+        if draft.blockSlot == nil { draft.blocksTheDay = false }
     }
 
     // MARK: Creating

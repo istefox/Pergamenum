@@ -105,8 +105,17 @@ extension VaultController {
         var destination = TaskDestination.inbox
         /// `>YYYY-MM-DD`, the day it surfaces on.
         var scheduled: CalendarDate?
+        /// The hour on that day, when the panel set one (ADR-0004).
+        var scheduledTime: TaskTime?
         /// `!YYYY-MM-DD`, past which it is late.
         var due: CalendarDate?
+        /// The hour it is due at, when the panel set one.
+        var dueTime: TaskTime?
+        /// Whether the task also becomes a block on its day's timeline.
+        ///
+        /// Only ever true with an hour to put it at: a block is a span of a day, and a
+        /// date with no time says nothing about where on the day it goes.
+        var blocksTheDay = false
         /// `@remind(YYYY-MM-DD HH:MM)`, set inside the Programma panel.
         var reminder: TaskReminder?
         /// `@repeat(n/N)`, the finite recurrence of SPEC §7.1.
@@ -115,6 +124,15 @@ extension VaultController {
         /// The day the task belongs to, for whoever has to put it somewhere: the day it
         /// shows up on, or failing that the day it is due.
         var day: CalendarDate? { scheduled ?? due }
+
+        /// The day and hour a block would be made at, when the draft has both. The
+        /// scheduled hour wins: it is where the work is meant to happen, while a
+        /// deadline is when it stops being on time.
+        var blockSlot: (day: CalendarDate, time: TaskTime)? {
+            if let scheduled, let scheduledTime { return (scheduled, scheduledTime) }
+            if let due, let dueTime { return (due, dueTime) }
+            return nil
+        }
 
         var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
     }
@@ -141,7 +159,9 @@ extension VaultController {
             let line = TaskParser.line(
                 forNewTask: draft.text,
                 scheduled: draft.scheduled,
+                scheduledTime: draft.scheduledTime,
                 due: draft.due,
+                dueTime: draft.dueTime,
                 reminder: draft.reminder,
                 recurrence: draft.recurrence
             )
@@ -157,6 +177,12 @@ extension VaultController {
                 note.savedText = updated
                 replaceOpenNote(note)
             }
+            // The block comes after the task line is safely written: a block for a task
+            // that failed to be captured is a plan for work nobody recorded.
+            if draft.blocksTheDay, let slot = draft.blockSlot {
+                addTimeBlock(title: draft.text, on: slot.day, startMinutes: slot.time.minutes)
+            }
+
             lastCapture = draft
             recordTaskWrite()
             return true

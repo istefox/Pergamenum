@@ -287,13 +287,13 @@ final class ComposerUITests: XCTestCase {
 
     // MARK: Fixture
 
+    /// In the machine's own zone, because `CalendarDate.today` is: in GMT this helper
+    /// names yesterday for the two hours after local midnight, and the app does not.
     private func iso(daysFromToday days: Int) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        return formatter.string(from: calendar.date(byAdding: .day, value: days, to: Date()) ?? Date())
+        formatter.timeZone = .current
+        return formatter.string(from: Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date())
     }
 
     /// The inbox note, once the line containing a phrase has reached it.

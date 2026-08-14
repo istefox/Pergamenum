@@ -173,6 +173,117 @@ import Testing
     controller.close()
 }
 
+// MARK: Hours on the markers (ADR-0004)
+
+/// A day is what SPEC §7.1 spells; an hour is what a deadline at 15:00 needs. It goes
+/// after the date, so a reader that stops at the date still gets the day right.
+@Test func anHourIsWrittenAfterItsDate() throws {
+    let line = TaskParser.line(
+        forNewTask: "Consegnare la relazione",
+        scheduled: CalendarDate(iso: "2026-08-17"),
+        scheduledTime: TaskTime(hour: 9, minute: 30),
+        due: CalendarDate(iso: "2026-08-20"),
+        dueTime: TaskTime(hour: 18, minute: 0)
+    )
+    #expect(line == "- [ ] Consegnare la relazione >2026-08-17 09:30 !2026-08-20 18:00")
+
+    let task = try #require(TaskParser.parse(line: line, sourcePath: "x.md", lineIndex: 0))
+    #expect(task.scheduledTime == TaskTime(hour: 9, minute: 30))
+    #expect(task.dueTime == TaskTime(hour: 18, minute: 0))
+    // The hour comes out of the text with its date, or the task reads "… 09:30 18:00".
+    #expect(task.text == "Consegnare la relazione")
+}
+
+/// The block is made at the hour the work is planned for, and a deadline stands in
+/// only when there is no planned hour: a deadline says when it stops being on time.
+@Test func theBlockSlotPrefersThePlannedHourOverTheDeadline() {
+    var draft = VaultController.TaskDraft(text: "Montaggio")
+    #expect(draft.blockSlot == nil)
+
+    draft.due = CalendarDate(iso: "2026-08-20")
+    draft.dueTime = TaskTime(hour: 18, minute: 0)
+    #expect(draft.blockSlot?.day == CalendarDate(iso: "2026-08-20"))
+    #expect(draft.blockSlot?.time == TaskTime(hour: 18, minute: 0))
+
+    draft.scheduled = CalendarDate(iso: "2026-08-17")
+    draft.scheduledTime = TaskTime(hour: 9, minute: 0)
+    #expect(draft.blockSlot?.day == CalendarDate(iso: "2026-08-17"))
+    #expect(draft.blockSlot?.time == TaskTime(hour: 9, minute: 0))
+}
+
+/// A date with no hour makes no block: a block is a span of a day, and a date alone
+/// says nothing about where on the day it goes.
+@Test func aDraftWithNoHourHasNoSlotToBlockOut() {
+    var draft = VaultController.TaskDraft(text: "Senza orario")
+    draft.due = CalendarDate(iso: "2026-08-20")
+    #expect(draft.blockSlot == nil)
+}
+
+@MainActor
+@Test func aTaskWithAnHourCanAlsoBecomeABlockOnItsDay() async throws {
+    let vault = try ComposerVault()
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    var draft = VaultController.TaskDraft(text: "Collaudo linea 2")
+    draft.due = CalendarDate(iso: "2026-08-20")
+    draft.dueTime = TaskTime(hour: 15, minute: 0)
+    draft.blocksTheDay = true
+    #expect(controller.captureTask(draft))
+
+    // The task line, in the note it was captured into.
+    let inbox = try String(
+        contentsOf: vault.root.appending(path: "00 Inbox/Capture.md"), encoding: .utf8
+    )
+    #expect(inbox.contains("- [ ] Collaudo linea 2 !2026-08-20 15:00"))
+
+    // And the block, in the daily note of the day it is due - created for the purpose,
+    // since planning a day should not depend on having opened it first.
+    let daily = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260820.md"), encoding: .utf8
+    )
+    #expect(daily.contains("## Timeline"))
+    #expect(daily.contains("- 15:00-15:30 Collaudo linea 2"))
+    #expect(daily.contains("date: 2026-08-20"))
+    controller.close()
+}
+
+@MainActor
+@Test func withoutTheCheckboxNoBlockIsMade() async throws {
+    let vault = try ComposerVault()
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    var draft = VaultController.TaskDraft(text: "Solo il task")
+    draft.due = CalendarDate(iso: "2026-08-20")
+    draft.dueTime = TaskTime(hour: 15, minute: 0)
+    #expect(controller.captureTask(draft))
+
+    #expect(!FileManager.default.fileExists(
+        atPath: vault.root.appending(path: "Calendar/20260820.md").path(percentEncoded: false)
+    ))
+    controller.close()
+}
+
+@MainActor
+@Test func aSecondBlockOnTheSameDayIsPlacedAfterTheFirst() async throws {
+    let vault = try ComposerVault()
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+
+    let day = CalendarDate(iso: "2026-08-20")!
+    #expect(controller.addTimeBlock(title: "Primo", on: day, startMinutes: 15 * 60) != nil)
+    let second = try #require(controller.addTimeBlock(title: "Secondo", on: day, startMinutes: 15 * 60))
+
+    #expect(second.startMinutes == 15 * 60 + 30)
+    let daily = try String(
+        contentsOf: vault.root.appending(path: "Calendar/20260820.md"), encoding: .utf8
+    )
+    #expect(daily.contains("- 15:00-15:30 Primo"))
+    #expect(daily.contains("- 15:30-16:00 Secondo"))
+    controller.close()
+}
+
 // MARK: Fixture
 
 private struct ComposerVault: ~Copyable {
