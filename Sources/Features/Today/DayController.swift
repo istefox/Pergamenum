@@ -162,6 +162,23 @@ final class DayController {
         vault.updateOpenNoteText(TimeBlockSection.write(sorted, into: text))
         vault.saveOpenNote()
         blocks = sorted
+        closeTheNoteTheBlockOpened()
+    }
+
+    /// Blocking out a day opens the daily note; taking the last block away has to undo
+    /// that too, or the day is left with an empty editor under the task list - a pane
+    /// the user never asked for, showing a note with nothing in it.
+    ///
+    /// Only when the note holds nothing else: a day someone has written about is a day
+    /// they are reading, and no click on a block's delete says otherwise. The file stays
+    /// on disk either way; this closes a pane, it does not remove a note.
+    private func closeTheNoteTheBlockOpened() {
+        guard blocks.isEmpty,
+              let note = vault.openNote,
+              note.relativePath.contains(day.compactForm),
+              NoteDocument.parse(note.text).body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        vault.closeOpenNote()
     }
 
     /// Records a failure both here, where a test can see it, and on the vault, which is

@@ -102,6 +102,12 @@ final class TimeBlockUITests: XCTestCase {
                 .firstMatch.waitForExistence(timeout: 2),
             "\(source): la card BLOCCHI TEMPO è ancora lì", line: line
         )
+        // The editor the block opened closes with it: the note it wrote into holds
+        // nothing else, and an empty pane under the task list is not a day's note.
+        XCTAssertTrue(
+            app.buttons["Apri la nota di \(compactToday)"].waitForExistence(timeout: 5),
+            "\(source): il riquadro vuoto della nota è ancora aperto", line: line
+        )
     }
 
     private var timelineBlock: XCUIElement {
@@ -111,12 +117,9 @@ final class TimeBlockUITests: XCTestCase {
     /// Polls the daily note on disk until it satisfies `condition`, because the write
     /// happens on the app's side of the process boundary.
     private func waitForDailyNote(timeout: TimeInterval = 5, _ condition: (String) -> Bool) -> Bool {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        formatter.timeZone = .current
         let path = vault
             .appending(path: "Calendar", directoryHint: .isDirectory)
-            .appending(path: "\(formatter.string(from: Date())).md", directoryHint: .notDirectory)
+            .appending(path: "\(compactToday).md", directoryHint: .notDirectory)
 
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
@@ -124,6 +127,15 @@ final class TimeBlockUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.2)
         } while Date() < deadline
         return false
+    }
+
+    /// `20260814`, the daily note's file name and the day named in the button that
+    /// stands in for the editor when no note is open.
+    private var compactToday: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = .current
+        return formatter.string(from: Date())
     }
 
     /// In the machine's own zone, because `CalendarDate.today` is.

@@ -2,115 +2,10 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-/// A `CalendarStore` that never touches EventKit.
-///
-/// EventKit needs a permission dialog only a person can answer, which is exactly why
-/// the protocol exists: everything this app does around it is ordinary logic and is
-/// tested here.
-@MainActor
-private final class StubCalendarStore: CalendarStore {
-    var eventAccess: CalendarAccess = .granted
-    var reminderAccess: CalendarAccess = .granted
-    var writableCalendarTitles: [String] = ["Pergamenum", "Lavoro"]
-
-    private(set) var createdEvents: [CalendarEvent] = []
-    private(set) var completedCalls: [(id: String, completed: Bool)] = []
-    var storedReminders: [CalendarReminder] = []
-    /// When set, every write fails with it.
-    var failure: CalendarError?
-
-    func requestAccess() async {}
-
-    /// The real store fetches reminders here; this one already has them.
-    func refreshReminders(on day: CalendarDate) async {}
-
-    func events(on day: CalendarDate) -> [CalendarEvent] { createdEvents }
-
-    func reminders(dueOn day: CalendarDate) -> [CalendarReminder] {
-        storedReminders.filter { $0.due == day }
-    }
-
-    @discardableResult
-    func createEvent(title: String, start: Date, end: Date, calendarTitle: String?) throws -> CalendarEvent {
-        if let failure { throw failure }
-        let event = CalendarEvent(
-            id: "event-\(createdEvents.count)", title: title, start: start, end: end,
-            isAllDay: false, calendarTitle: calendarTitle ?? "Predefinito", isEditable: true
-        )
-        createdEvents.append(event)
-        return event
-    }
-
-    @discardableResult
-    func createReminder(title: String, due: CalendarDate?, listTitle: String?) throws -> CalendarReminder {
-        if let failure { throw failure }
-        let reminder = CalendarReminder(
-            id: "reminder-\(storedReminders.count)", title: title, due: due,
-            isCompleted: false, listTitle: listTitle ?? "Predefinito"
-        )
-        storedReminders.append(reminder)
-        return reminder
-    }
-
-    func setCompleted(_ completed: Bool, reminderID: String) throws {
-        if let failure { throw failure }
-        completedCalls.append((reminderID, completed))
-        storedReminders = storedReminders.map { reminder in
-            var copy = reminder
-            if copy.id == reminderID { copy.isCompleted = completed }
-            return copy
-        }
-    }
-}
-
-private struct DayVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-day-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
-
-private let day = CalendarDate(iso: "2026-08-11")!
-
-private let dailyNote = """
----
-date: 2026-08-11
-tags:
-  - type-note
----
-
-Sopralluogo in reparto stampaggio.
-"""
-
-@MainActor
-private func makeController(
-    vault: borrowing DayVault,
-    store: StubCalendarStore
-) async throws -> (DayController, VaultController) {
-    let controller = VaultController(recents: .volatile())
-    await controller.open(vault.root)
-    controller.openNote(at: "Calendar/20260811.md")
-
-    let day = DayController(store: store, vault: controller)
-    day.show(CalendarDate(iso: "2026-08-11")!)
-    return (day, controller)
-}
-
 @MainActor
 @Test func turnsATaskIntoABlockAndWritesItIntoTheNote() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -132,7 +27,7 @@ private func makeController(
 @MainActor
 @Test func placesASecondBlockAfterTheFirstRatherThanOnTopOfIt() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -150,7 +45,7 @@ private func makeController(
 @MainActor
 @Test func publishingWritesTheEventAndMarksTheBlock() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -170,7 +65,7 @@ private func makeController(
 @MainActor
 @Test func doesNotMarkABlockPublishedWhenTheCalendarRefuses() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -191,7 +86,7 @@ private func makeController(
 @MainActor
 @Test func doesNotPublishTheSameBlockTwice() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -208,7 +103,7 @@ private func makeController(
 @MainActor
 @Test func removingABlockTakesItOutOfTheNote() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -225,7 +120,7 @@ private func makeController(
 @MainActor
 @Test func readsBlocksAlreadyInTheNote() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote + "\n\n## Timeline\n\n- 14:00-15:00 Riunione [published]\n",
+    try vault.write(dayNoteWithProse + "\n\n## Timeline\n\n- 14:00-15:00 Riunione [published]\n",
                     to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -239,10 +134,10 @@ private func makeController(
 @MainActor
 @Test func completingAReminderGoesThroughToTheStore() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
-        CalendarReminder(id: "r1", title: "Richiamare", due: day, isCompleted: false, listTitle: "Lavoro"),
+        CalendarReminder(id: "r1", title: "Richiamare", due: testDay, isCompleted: false, listTitle: "Lavoro"),
     ]
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -258,10 +153,10 @@ private func makeController(
 @MainActor
 @Test func reportsAReminderTheStoreRefuses() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
-        CalendarReminder(id: "r1", title: "Sparito", due: day, isCompleted: false, listTitle: "Lavoro"),
+        CalendarReminder(id: "r1", title: "Sparito", due: testDay, isCompleted: false, listTitle: "Lavoro"),
     ]
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
     let reminder = try #require(dayController.reminders.first)
@@ -275,10 +170,10 @@ private func makeController(
 @MainActor
 @Test func showsOnlyTheRemindersDueOnTheDayShown() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
-        CalendarReminder(id: "oggi", title: "Oggi", due: day, isCompleted: false, listTitle: "L"),
+        CalendarReminder(id: "oggi", title: "Oggi", due: testDay, isCompleted: false, listTitle: "L"),
         CalendarReminder(id: "domani", title: "Domani",
                          due: CalendarDate(iso: "2026-08-12"), isCompleted: false, listTitle: "L"),
     ]
@@ -290,7 +185,7 @@ private func makeController(
 @MainActor
 @Test func creatingAnEventPutsItOnTheDayShown() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -303,12 +198,12 @@ private func makeController(
 @MainActor
 @Test func creatingAReminderGivesItTheDayShownAsItsDueDate() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
     #expect(dayController.createReminder(title: "Richiamare Rossi"))
-    #expect(store.storedReminders.first?.due == day)
+    #expect(store.storedReminders.first?.due == testDay)
     // It has to appear in the day at once, not after the next refresh.
     #expect(dayController.reminders.map(\.title) == ["Richiamare Rossi"])
     vaultController.close()
@@ -317,7 +212,7 @@ private func makeController(
 @MainActor
 @Test func publishingEveryBlockReportsHowManyWent() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -336,7 +231,7 @@ private func makeController(
 @MainActor
 @Test func aBlockUsesTheTaskHourAndTheDurationFromSettings() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
     vaultController.updateSettings { $0.blockMinutes = 45 }
@@ -360,7 +255,7 @@ private func makeController(
 @MainActor
 @Test func aBlockIsRemovedFromTheNoteItLivesIn() async throws {
     let vault = try DayVault()
-    try vault.write(dailyNote, to: "Calendar/20260811.md")
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
 
@@ -377,6 +272,61 @@ private func makeController(
     // The section goes with the last block. An empty `## Timeline` is a heading the
     // user never wrote, left behind by a plan that no longer exists.
     #expect(!onDisk.contains("## Timeline"))
-    #expect(onDisk == dailyNote + "\n")
+    #expect(onDisk == dayNoteWithProse + "\n")
+    // The note says something of its own, so the editor showing it stays open.
+    #expect(vaultController.openNote != nil)
+    vaultController.close()
+}
+
+/// The block opened the note; removing it closes it again, so the day is not left with
+/// an empty editor pane under the task list.
+@MainActor
+@Test func removingTheLastBlockClosesANoteThatHeldNothingElse() async throws {
+    let vault = try DayVault()
+    try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
+    let block = try #require(dayController.addBlock(from: task))
+    #expect(vaultController.openNote != nil, "il blocco ha chiuso la nota invece di scriverci")
+
+    dayController.remove(block)
+    #expect(dayController.blocks.isEmpty)
+    #expect(vaultController.openNote == nil, "il riquadro della nota resta aperto e vuoto")
+
+    // And the way back: closing the note is not a dead end, blocking the day again
+    // reopens it and writes the block as it did the first time.
+    let again = try #require(dayController.addBlock(from: task))
+    #expect(dayController.blocks.map(\.id) == [again.id])
+    #expect(vaultController.openNote?.text.contains("## Timeline") == true)
+    vaultController.close()
+}
+
+/// The task the block came from is none of this: it lives in its own note and a block's
+/// delete has no business touching it.
+@MainActor
+@Test func removingABlockLeavesTheTaskItCameFromAlone() async throws {
+    let vault = try DayVault()
+    try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
+    let source = """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    ---
+
+    - [ ] Sopralluogo >2026-08-11
+    """
+    try vault.write(source, to: "Attivita.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    let task = TaskParser.parse(line: "- [ ] Sopralluogo >2026-08-11", sourcePath: "Attivita.md", lineIndex: 6)!
+    let block = try #require(dayController.addBlock(from: task))
+    dayController.remove(block)
+
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Attivita.md"), encoding: .utf8)
+    #expect(onDisk == source, "la nota del task è cambiata")
     vaultController.close()
 }
