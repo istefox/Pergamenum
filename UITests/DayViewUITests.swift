@@ -24,6 +24,24 @@ final class DayViewUITests: XCTestCase {
             atomically: true, encoding: .utf8
         )
 
+        // Tasks for the day view's lists: one planned for today, one already done, one
+        // falling due in three days. Written with today's dates so the views that
+        // depend on "oggi" are exercised rather than merely rendered.
+        try """
+        ---
+        date: 2026-08-13
+        tags:
+          - type-note
+        ---
+
+        - [ ] Task di oggi >\(isoToday())
+        - [x] Task chiuso >\(isoToday()) @done(\(isoToday()))
+        - [ ] Task in scadenza !\(isoToday(plus: 3)) 15:00
+        """.write(
+            to: vault.appending(path: "Attivita.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+
         app = XCUIApplication()
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
         app.launch()
@@ -36,12 +54,14 @@ final class DayViewUITests: XCTestCase {
         try? FileManager.default.removeItem(at: vault)
     }
 
+    /// In the machine's own zone, because `CalendarDate.today` is: formatted in GMT
+    /// these helpers disagree with the app for the two hours after local midnight, and
+    /// a test that only fails at night is worse than no test.
     private func isoToday(plus days: Int = 0) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = .current
         return formatter.string(from: calendar.date(byAdding: .day, value: days, to: Date()) ?? Date())
     }
 
@@ -152,7 +172,7 @@ final class DayViewUITests: XCTestCase {
     func testTheHeaderShowsTheDateTheItalianWay() throws {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd/MM/yyyy"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = .current
         let today = formatter.string(from: Date())
 
         XCTAssertTrue(
@@ -162,6 +182,92 @@ final class DayViewUITests: XCTestCase {
         let compact = today.replacingOccurrences(of: "/", with: "")
         let reversed = String(compact.suffix(4) + compact.prefix(4))
         XCTAssertFalse(app.staticTexts[reversed].exists, "l'intestazione mostra ancora la forma compatta")
+    }
+
+    // MARK: The toolbar's task controls
+
+    /// Capture from the day one is looking at, without going to Attività for it.
+    func testTheToolbarCapturesANewTask() throws {
+        let button = app.toolbars.buttons["Nuovo task"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "manca il pulsante del nuovo task")
+        button.click()
+        XCTAssertTrue(
+            app.textFields["task-composer-text"].waitForExistence(timeout: 5),
+            "il pulsante non apre il composer"
+        )
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// The bell used to create a reminder, which the Calendario menu already does. It
+    /// is a filter now: what falls due next, listed and marked on the month.
+    func testTheBellShowsWhatFallsDueNext() throws {
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "due-tasks-card").firstMatch.exists,
+            "l'elenco delle scadenze è mostrato senza che sia stato chiesto"
+        )
+
+        let bell = app.toolbars.checkBoxes["Scadenze in arrivo"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 5), "manca il filtro delle scadenze")
+        bell.click()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(identifier: "due-tasks-card")
+                .firstMatch.waitForExistence(timeout: 5),
+            "il filtro non mostra le scadenze"
+        )
+        XCTAssertTrue(app.staticTexts["Task in scadenza"].exists, "il task con scadenza non è elencato")
+
+        bell.click()
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "due-tasks-card")
+                .firstMatch.waitForExistence(timeout: 2),
+            "il filtro non si spegne"
+        )
+    }
+
+    /// A day with a deadline on it is marked on the month, whether or not the filter
+    /// is on: a deadline exists to be seen before it arrives.
+    func testTheMonthMarksTheDaysSomethingIsDueOn() throws {
+        let due = app.descendants(matching: .any)
+            .matching(identifier: "due-dot-\(isoToday(plus: 3))").firstMatch
+        XCTAssertTrue(due.waitForExistence(timeout: 5), "il giorno della scadenza non è segnato sul mese")
+    }
+
+    /// Completed tasks leave the day's list the moment they are ticked, which is right
+    /// until one wants to see what got done.
+    func testTheCompletedFilterBringsFinishedTasksBack() throws {
+        XCTAssertTrue(app.staticTexts["Task di oggi"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Task chiuso"].exists, "i completati sono mostrati di default")
+
+        let filter = app.toolbars.checkBoxes["Mostra completati"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5), "manca il filtro dei completati")
+        filter.click()
+        XCTAssertTrue(
+            app.staticTexts["Task chiuso"].waitForExistence(timeout: 5),
+            "il filtro non mostra i task completati"
+        )
+        filter.click()
+    }
+
+    /// "Blocca" read as blocking the task. The button says what it does, and what it
+    /// makes can be undone from the note column as well as from the timeline.
+    func testATimeBlockIsInsertedAndCanBeDeleted() throws {
+        let insert = app.buttons["insert-time-block"].firstMatch
+        XCTAssertTrue(insert.waitForExistence(timeout: 5), "manca «Inserisci Blocco Tempo»")
+        XCTAssertEqual(insert.label, "Inserisci Blocco Tempo", "il pulsante ha ancora il vecchio nome")
+        insert.click()
+
+        let blocks = app.descendants(matching: .any).matching(identifier: "blocks-card").firstMatch
+        XCTAssertTrue(blocks.waitForExistence(timeout: 5), "il blocco non compare nella colonna della nota")
+
+        let remove = app.descendants(matching: .any).matching(identifier: "remove-block").firstMatch
+        XCTAssertTrue(remove.waitForExistence(timeout: 5), "il blocco non si può eliminare dalla nota")
+        remove.click()
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "blocks-card")
+                .firstMatch.waitForExistence(timeout: 2),
+            "il blocco è ancora lì dopo l'eliminazione"
+        )
     }
 
     /// The month grid, as one element rather than 42 cells.

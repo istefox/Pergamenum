@@ -17,14 +17,6 @@ struct TodayView: View {
     @State private var draftDurationMinutes = 60
 
     private var day: CalendarDate { controller.day }
-    private var blocks: [TimeBlock] { controller.blocks }
-    private var events: [CalendarEvent] { controller.events }
-    private var reminders: [CalendarReminder] { controller.reminders }
-
-    /// The hours the timeline shows (SPEC §8.3).
-    private let firstHour = 6
-    private let lastHour = 22
-    private let hourHeight: CGFloat = 44
 
     var body: some View {
         // A split rather than two fixed columns: how much of the day is note and how
@@ -32,11 +24,11 @@ struct TodayView: View {
         HSplitView {
             noteColumn
                 .frame(minWidth: 420)
-            timeline
+            DayTimeline(controller: controller, calendar: calendar)
                 .frame(minWidth: 220, idealWidth: 300, maxWidth: 520)
         }
         .background(theme.color(.backgroundPrimary))
-        .toolbar { DayToolbar(controller: controller, calendar: calendar) }
+        .toolbar { DayToolbar(controller: controller, calendar: calendar, vault: vault) }
         .task(id: day) { await controller.load() }
         // Reloads when EventKit says the store moved, or when the app comes back to
         // the front having been granted access in the meantime. Without this the
@@ -45,6 +37,10 @@ struct TodayView: View {
             guard calendar.changeCount > 0 else { return }
             await controller.load()
         }
+        // A task captured from the day view can land on this very day, and the block it
+        // may have created lands in this note: reread rather than leave the day showing
+        // what it held a moment ago.
+        .onChange(of: vault.taskGeneration) { _, _ in controller.reload() }
         .sheet(isPresented: Bindable(controller).isChoosingDate) { DayDatePicker(controller: controller) }
         .sheet(isPresented: Bindable(controller).isCreatingEvent) {
             draftSheet(title: "Nuovo evento", showsTime: true) {
@@ -76,9 +72,10 @@ struct TodayView: View {
                         controller.show(date)
                         controller.openDailyNote()
                     },
-                    columnWidth: columnWidth
+                    columnWidth: columnWidth,
+                    dueDays: vault.index.dueDays
                 )
-                references
+                DayReferences(controller: controller)
                 noteBody
             }
             .padding(theme.spacing(.l))
@@ -108,55 +105,6 @@ struct TodayView: View {
     /// `giovedì`, beside the date rather than repeating it.
     private var weekday: String { DateEntry.weekdayName(of: day) }
 
-    /// Tasks scheduled on this day, shown by reference: the task stays in its own note
-    /// and this is a pointer to it (SPEC §7.3, "pianificare = link, non copia").
-    private var references: some View {
-        let scheduled = vault.index.tasks(for: .today, on: day)
-        return ThemedCard {
-            VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-                Text("PIANIFICATI OGGI").themedText(.caption, color: .textTertiary)
-                if scheduled.isEmpty {
-                    Text("nessun task").themedText(.caption, color: .textTertiary)
-                }
-                ForEach(scheduled) { task in
-                    HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
-                        Image(systemName: "square")
-                            .foregroundStyle(theme.color(task.isOverdue(on: day) ? .taskOverdue : .taskOpen))
-                            .onTapGesture { vault.toggle(task) }
-                        Text(task.text).themedText(.body)
-                        Button {
-                            vault.openNote(at: task.sourcePath)
-                        } label: {
-                            Text("↗ \(NoteName.title(fromFileName: (task.sourcePath as NSString).lastPathComponent))")
-                                .themedText(.caption, color: .textTertiary)
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                        Button("Blocca") { controller.addBlock(from: task) }
-                            .buttonStyle(.plain)
-                            .themedText(.caption, color: .accentPrimary)
-                            .help("Crea un time block da questo task")
-                    }
-                }
-
-                if !reminders.isEmpty {
-                    Divider()
-                    Text("PROMEMORIA").themedText(.caption, color: .textTertiary)
-                    ForEach(reminders) { reminder in
-                        HStack(spacing: theme.spacing(.xs)) {
-                            Image(systemName: reminder.isCompleted ? "checkmark.square" : "square")
-                                .foregroundStyle(theme.color(.taskOpen))
-                                .onTapGesture { controller.toggle(reminder) }
-                            Text(reminder.title).themedText(.body)
-                            Text(reminder.listTitle).themedText(.caption, color: .textTertiary)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
     @ViewBuilder
     private var noteBody: some View {
         if let note = vault.openNote, note.relativePath.contains(day.compactForm) {
@@ -180,153 +128,8 @@ struct TodayView: View {
         }
     }
 
-    // MARK: Timeline
-
-    private var timeline: some View {
-        ScrollView {
-            ZStack(alignment: .topLeading) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(firstHour...lastHour, id: \.self) { hour in
-                        HStack(alignment: .top, spacing: theme.spacing(.s)) {
-                            Text(String(format: "%02d:00", hour))
-                                .themedText(.caption, color: .textTertiary)
-                                .frame(width: 44, alignment: .trailing)
-                            Rectangle()
-                                .fill(theme.color(.borderSubtle))
-                                .frame(height: 1)
-                        }
-                        .frame(height: hourHeight, alignment: .top)
-                    }
-                }
-
-                ForEach(timedEvents) { event in
-                    entry(title: event.title, subtitle: event.calendarTitle,
-                          start: minutes(from: event.start), duration: duration(of: event),
-                          token: .accentMuted, isEvent: true)
-                }
-                ForEach(blocks) { block in
-                    entry(title: block.title, subtitle: block.isPublished ? "pubblicato" : "solo nella nota",
-                          start: block.startMinutes, duration: block.durationMinutes,
-                          token: .stickyBlue, isEvent: false)
-                        .contextMenu {
-                            Button(block.isPublished ? "Già pubblicato" : "Pubblica sul Calendario") {
-                                controller.publish(block, toCalendarTitled: calendar.writeCalendarTitle)
-                            }
-                            .disabled(block.isPublished || !calendar.eventAccess.isGranted)
-                            Button("Rimuovi") { controller.remove(block) }
-                        }
-                }
-            }
-            .padding(.vertical, theme.spacing(.s))
-        }
-        .background(theme.color(.backgroundSecondary))
-        .safeAreaInset(edge: .top) {
-            VStack(spacing: 0) {
-                timelineHeader
-                allDayStrip
-            }
-        }
-    }
-
-    /// Events with no hour of their own, above the grid.
-    ///
-    /// The grid runs 06:00 to 22:00 (SPEC §8.3) and places an event by its start time.
-    /// An all-day event starts at midnight, so laid out that way it lands above the
-    /// first line and is drawn nowhere: on a real calendar a whole category of entry
-    /// - holidays, deadlines, birthdays - was simply missing from the day.
-    @ViewBuilder
-    private var allDayStrip: some View {
-        if !allDayEvents.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(allDayEvents) { event in
-                    HStack(spacing: theme.spacing(.xs)) {
-                        Text("TUTTO IL GIORNO").themedText(.caption, color: .textTertiary)
-                        Text(event.title)
-                            .themedText(.caption, color: .textPrimary)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, theme.spacing(.xs))
-                    .padding(.vertical, 3)
-                    .background(theme.color(.accentMuted))
-                    .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-                    .help(event.calendarTitle)
-                }
-            }
-            .padding(.horizontal, theme.spacing(.s))
-            .padding(.bottom, theme.spacing(.xs))
-            .background(theme.color(.backgroundSecondary))
-        }
-    }
-
-    private var allDayEvents: [CalendarEvent] { events.splitByAllDay.allDay }
-    private var timedEvents: [CalendarEvent] { events.splitByAllDay.timed }
-
-    private var timelineHeader: some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            Text("TIMELINE").themedText(.caption, color: .textTertiary)
-            Spacer()
-            if calendar.eventAccess == .notDetermined {
-                Button("Consenti Calendario") {
-                    Task { await calendar.requestAccess(); await controller.load() }
-                }
-                .buttonStyle(.plain)
-                .themedText(.caption, color: .accentPrimary)
-            } else if calendar.eventAccess == .denied {
-                // After a refusal the request is a no-op, so the timeline points at the
-                // only thing that can still change the answer.
-                Button("Calendario negato: apri Impostazioni") {
-                    EventKitStore.openPrivacySettings(for: .event)
-                }
-                .buttonStyle(.plain)
-                .themedText(.caption, color: .accentPrimary)
-            }
-        }
-        .padding(.horizontal, theme.spacing(.s))
-        .padding(.vertical, theme.spacing(.xs))
-        .background(theme.color(.backgroundSecondary))
-    }
-
-    private func entry(
-        title: String, subtitle: String, start: Int, duration: Int,
-        token: ColorToken, isEvent: Bool
-    ) -> some View {
-        let offset = CGFloat(start - firstHour * 60) / 60 * hourHeight
-        let height = max(18, CGFloat(duration) / 60 * hourHeight)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(title).themedText(.caption).lineLimit(1)
-            if height > 30 {
-                Text(subtitle).themedText(.caption, color: .textTertiary).lineLimit(1)
-            }
-        }
-        .padding(.horizontal, theme.spacing(.xs))
-        .padding(.vertical, 2)
-        .frame(width: 236, height: height, alignment: .topLeading)
-        .background(theme.color(token))
-        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-        .overlay(alignment: .leading) {
-            // Events from the calendar and blocks from the note are distinguishable at
-            // a glance: only one of them is something this app owns.
-            Rectangle()
-                .fill(theme.color(isEvent ? .accentPrimary : .taskScheduled))
-                .frame(width: 2)
-        }
-        .offset(x: 52, y: offset)
-    }
-
-    private func minutes(from date: Date) -> Int {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
-    }
-
-    private func duration(of event: CalendarEvent) -> Int {
-        max(15, Int(event.end.timeIntervalSince(event.start) / 60))
-    }
-
     // MARK: Actions
 
-    /// "Vai a data…" from the Calendario menu.
     /// The sheet behind "Nuovo evento" and "Nuovo promemoria".
     private func draftSheet(
         title: String,
@@ -335,7 +138,7 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             Text(title).themedText(.title)
-            Text("Sul giorno mostrato: \(day.description)")
+            Text("Sul giorno mostrato: \(day.italianForm)")
                 .themedText(.caption, color: .textSecondary)
             TextField("Titolo", text: $draftTitle)
                 .textFieldStyle(.roundedBorder)
@@ -348,7 +151,7 @@ struct TodayView: View {
                         }
                     }
                     Picker("Durata", selection: $draftDurationMinutes) {
-                        ForEach([15, 30, 45, 60, 90, 120], id: \.self) { minutes in
+                        ForEach(VaultSettings.blockDurations, id: \.self) { minutes in
                             Text("\(minutes) min").tag(minutes)
                         }
                     }
