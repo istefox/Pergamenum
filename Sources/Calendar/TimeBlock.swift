@@ -102,13 +102,12 @@ enum TimeBlockSection {
         return blocks.sorted { $0.startMinutes < $1.startMinutes }
     }
 
-    /// Rewrites the section, creating it at the end of the note when absent.
+    /// Rewrites the section, creating it at the end of the note when absent and taking
+    /// it away entirely when the last block goes.
     static func write(_ blocks: [TimeBlock], into body: String) -> String {
-        let rendered = render(blocks)
-
         guard let sectionRange = body.range(of: heading) else {
             let separator = body.hasSuffix("\n") ? "\n" : "\n\n"
-            return blocks.isEmpty ? body : body + separator + rendered
+            return blocks.isEmpty ? body : body + separator + render(blocks)
         }
 
         // The section ends at the next heading, or at the end of the note.
@@ -117,7 +116,21 @@ enum TimeBlockSection {
         let end = nextHeading?.lowerBound ?? body.endIndex
 
         var result = body
-        result.replaceSubrange(sectionRange.lowerBound..<end, with: rendered)
+        guard blocks.isEmpty else {
+            result.replaceSubrange(sectionRange.lowerBound..<end, with: render(blocks))
+            return result
+        }
+
+        // Deleting the last block deletes the section: a bare `## Timeline` heading is
+        // not something the user wrote, and leaving it behind means the note keeps a
+        // trace of a plan that no longer exists.
+        var start = sectionRange.lowerBound
+        while start > body.startIndex, body[body.index(before: start)].isWhitespace {
+            start = body.index(before: start)
+        }
+        // One newline closes the paragraph above; nothing at all when the note started
+        // with the section.
+        result.replaceSubrange(start..<end, with: start == body.startIndex ? "" : "\n")
         return result
     }
 

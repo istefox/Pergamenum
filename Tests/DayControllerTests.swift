@@ -374,7 +374,9 @@ private func makeController(
     )
     #expect(!onDisk.contains("Sopralluogo pressa"))
     #expect(!onDisk.contains("- 09:00-"))
-    // The section stays, empty: the note keeps its shape between one plan and the next.
-    #expect(onDisk.contains("## Timeline"))
+    // The section goes with the last block. An empty `## Timeline` is a heading the
+    // user never wrote, left behind by a plan that no longer exists.
+    #expect(!onDisk.contains("## Timeline"))
+    #expect(onDisk == dailyNote + "\n")
     vaultController.close()
 }

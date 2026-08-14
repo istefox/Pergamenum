@@ -260,6 +260,11 @@ final class DayViewUITests: XCTestCase {
         let blocks = app.descendants(matching: .any).matching(identifier: "blocks-card").firstMatch
         XCTAssertTrue(blocks.waitForExistence(timeout: 5), "il blocco non compare nella colonna della nota")
 
+        XCTAssertTrue(
+            waitForDailyNote { $0.contains("## Timeline") },
+            "il blocco non è finito nella nota del giorno"
+        )
+
         let remove = app.descendants(matching: .any).matching(identifier: "remove-block").firstMatch
         XCTAssertTrue(remove.waitForExistence(timeout: 5), "il blocco non si può eliminare dalla nota")
         remove.click()
@@ -268,6 +273,33 @@ final class DayViewUITests: XCTestCase {
                 .firstMatch.waitForExistence(timeout: 2),
             "il blocco è ancora lì dopo l'eliminazione"
         )
+        // The heading goes with the last block. Left behind, it was both a lie about the
+        // day and the line whose deletion used to take the app down with it.
+        XCTAssertTrue(
+            waitForDailyNote { !$0.contains("## Timeline") },
+            "la nota conserva un «## Timeline» vuoto dopo l'eliminazione del blocco"
+        )
+    }
+
+    /// Polls the daily note on disk until it satisfies `condition`, because the write
+    /// happens on the app's side of the process boundary.
+    private func waitForDailyNote(
+        timeout: TimeInterval = 5,
+        _ condition: (String) -> Bool
+    ) -> Bool {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = .current
+        let path = vault
+            .appending(path: "Calendar", directoryHint: .isDirectory)
+            .appending(path: "\(formatter.string(from: Date())).md", directoryHint: .notDirectory)
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let text = try? String(contentsOf: path, encoding: .utf8), condition(text) { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        } while Date() < deadline
+        return false
     }
 
     /// The month grid, as one element rather than 42 cells.
