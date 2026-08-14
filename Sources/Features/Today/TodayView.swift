@@ -41,7 +41,13 @@ struct TodayView: View {
         // may have created lands in this note: reread rather than leave the day showing
         // what it held a moment ago.
         .onChange(of: vault.taskGeneration) { _, _ in controller.reload() }
-        .sheet(isPresented: Bindable(controller).isChoosingDate) { DayDatePicker(controller: controller) }
+        .sheet(isPresented: Bindable(controller).isChoosingDate) {
+            GoToDateSheet(
+                day: day,
+                onGo: { controller.show($0) },
+                onCancel: { controller.isChoosingDate = false }
+            )
+        }
         .sheet(isPresented: Bindable(controller).isCreatingEvent) {
             draftSheet(title: "Nuovo evento", showsTime: true) {
                 controller.createEvent(

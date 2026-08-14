@@ -58,6 +58,9 @@ struct RootView: View {
             .sheet(isPresented: Bindable(navigation).isShowingConventionsHelp) {
                 HelpSheet(topic: .conventions) { navigation.isShowingConventionsHelp = false }
             }
+            .sheet(isPresented: Bindable(navigation).isShowingDiaryHelp) {
+                HelpSheet(topic: .diary) { navigation.isShowingDiaryHelp = false }
+            }
     }
 
     private var content: some View {
@@ -110,8 +113,18 @@ struct RootView: View {
         case .notes: notesPane
         case .workspace: workspacePane
         case .today: todayPane
+        case .diary: diaryPane
         case .tasks: tasksPane
         case .conformance: conformancePane
+        }
+    }
+
+    @ViewBuilder
+    private var diaryPane: some View {
+        if vault.root == nil {
+            needsVault("Il diario tiene la giornata: il testo libero e le ore che sono state usate.")
+        } else {
+            DiaryView()
         }
     }
 

@@ -13,16 +13,7 @@ extension VaultBrowser {
     /// the same logic: that is what already picks a free name and copies into the note's
     /// folder, for a dropped file and now for a pasted one.
     func save(pastedImage data: Data, in note: VaultController.OpenNote) -> String? {
-        let temporary = FileManager.default.temporaryDirectory
-            .appending(path: ImportNaming.pastedImageFileName(on: .today), directoryHint: .notDirectory)
-        do {
-            try data.write(to: temporary, options: .atomic)
-        } catch {
-            vault.recordProblem("immagine incollata: \(error.localizedDescription)")
-            return nil
-        }
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        return vault.importFileIntoVault(temporary, near: note.relativePath)
+        vault.importPastedImage(data, near: note.relativePath)
     }
 
     /// Opens the Quick Look panel on an embedded file.

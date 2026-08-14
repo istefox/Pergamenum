@@ -167,17 +167,8 @@ struct VaultBrowser: View {
         .background(theme.color(.accentMuted))
     }
 
-    private var tagSuggestions: [String] {
-        let used = vault.index.tagUsage().map { "#\($0.tag.description)" }
-        let closed = vault.vocabulary.type.map { "#type-\($0)" }
-            + vault.vocabulary.status.map { "#status-\($0)" }
-            + vault.vocabulary.area.map { "#area-\($0)" }
-            + vault.vocabulary.source.map { "#source-\($0)" }
-        // Values already in the vault come first (SPEC §4.4, open families), then the
-        // closed vocabulary so a value outside it is never suggested.
-        var seen = Set<String>()
-        return (used + closed.sorted()).filter { seen.insert($0).inserted }
-    }
+    /// On the controller since the Diario pane's editor offers the same list.
+    private var tagSuggestions: [String] { vault.tagSuggestions }
 
     func follow(title: String) {
         let matches = vault.index.resolve(title: title)

@@ -40,6 +40,10 @@ struct PergamenumApp: App {
     /// The day view's controller, created here rather than inside the view so the
     /// Calendario menu can act on the day being shown (SPEC §10).
     @State private var day: DayController
+    /// The Diario pane's controller. At app level so a day being written survives a
+    /// switch to another pane and back: as view state it would be rebuilt, and the
+    /// unsaved end of a sentence would go with it.
+    @State private var diary: DiaryController
 
     init() {
         let vault = VaultController()
@@ -47,6 +51,7 @@ struct PergamenumApp: App {
         _vault = State(initialValue: vault)
         _calendar = State(initialValue: calendar)
         _day = State(initialValue: DayController(store: calendar, vault: vault))
+        _diary = State(initialValue: DiaryController(vault: vault))
     }
 
     var body: some Scene {
@@ -63,6 +68,7 @@ struct PergamenumApp: App {
                 .environment(navigation)
                 .environment(reminders)
                 .environment(day)
+                .environment(diary)
                 .environment(shortcuts)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }

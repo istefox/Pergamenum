@@ -51,7 +51,9 @@ Taken and not to be reopened without a stated reason (SPEC §14): native SwiftUI
 Electron; macOS 26 Tahoe baseline with no fallbacks; no email body rendering; no full
 live preview in v1; pure JSON Canvas 1.0 for the canvas format; harness conventions
 as native schema; closed 4-key frontmatter with note IDs living in the index rather
-than in files; DTCG design tokens instead of CSS or a webview; infinite recurrences
+than in files; (the "no live preview" ruling is about the editor hiding syntax while
+typing - the Diario pane's rendering sits *beside* an unchanged source editor, see
+ADR-0005); DTCG design tokens instead of CSS or a webview; infinite recurrences
 delegated to Apple Reminders; sync delegated to iCloud Drive; Quick Look not used as
 an `.eml` renderer.
 
@@ -85,6 +87,16 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-14: **Il Diario è una sezione a sé: la giornata scritta, e le ore che ha
+  preso.** A sinistra il markdown del giorno con l'anteprima viva accanto, nella stessa
+  pagina e senza modalità da cambiare; a destra le ore dalle 06:00 alle 20:00, tagliate
+  ogni dieci minuti. Si trascina sul vuoto per bloccare del tempo, si clicca per
+  aprirlo, si trascina il blocco per spostarlo e il bordo inferiore per allungarlo: ogni
+  blocco ha un titolo, una nota e un colore. Due blocchi alla stessa ora convivono
+  affiancati, perché una giornata vissuta si sovrappone. Non tocca EventKit: il file è
+  `Diario/YYYYMMDD.md`, la sezione è `## Diario`, e si salva da solo (ADR-0005). Ne è
+  uscito anche un crash che c'era da prima: scrivere `#` a inizio riga in un editor
+  qualsiasi rientrava nella lista di completamento all'infinito e chiudeva l'app.
 - 2026-08-14: **Le date dei task portano un'ora, e la vista Oggi filtra invece di
   duplicare.** `>2026-08-15 09:00` e `!2026-08-20 18:00`: l'ora sta dopo la data, così
   chi legge solo la data - Obsidian, o una versione precedente - continua a leggere

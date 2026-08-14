@@ -14,6 +14,7 @@ final class Navigation {
         case notes
         case workspace
         case today
+        case diary
         case tasks
         case conformance
 
@@ -24,6 +25,7 @@ final class Navigation {
             case .notes: "Note"
             case .workspace: "Workspace"
             case .today: "Oggi"
+            case .diary: "Diario"
             case .tasks: "Attività"
             case .conformance: "Conformità"
             }
@@ -34,6 +36,7 @@ final class Navigation {
             case .notes: "doc.text"
             case .workspace: "square.on.square"
             case .today: "calendar"
+            case .diary: "book.closed"
             case .tasks: "checklist"
             case .conformance: "checkmark.seal"
             }
@@ -50,6 +53,12 @@ final class Navigation {
             case .notes: .paneNotes
             case .workspace: .paneWorkspace
             case .today: .paneToday
+            // Sixth key for the fourth row on purpose: the raw values of
+            // `ShortcutCommand` are the keys of the overrides file, so renumbering the
+            // panes to close the gap would silently move a binding the user had
+            // changed. The Diario pane sits beside Oggi, where it belongs, and takes
+            // the next free key.
+            case .diary: .paneDiary
             case .tasks: .paneTasks
             case .conformance: .paneConformance
             }
@@ -91,9 +100,10 @@ final class Navigation {
         return (text, pendingCursorOffset)
     }
 
-    /// The two Aiuto entries of SPEC §10.
+    /// The Aiuto entries of SPEC §10, and the Diario pane's own.
     var isShowingTaskSyntaxHelp = false
     var isShowingConventionsHelp = false
+    var isShowingDiaryHelp = false
 
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false

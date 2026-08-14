@@ -33,6 +33,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneToday
     case paneTasks
     case paneConformance
+    case paneDiary
     case readingMode
     case runConformanceCheck
 
@@ -78,7 +79,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .insertWikilink, .insertRelated:
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
-             .readingMode, .runConformanceCheck:
+             .paneDiary, .readingMode, .runConformanceCheck:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
             .task
@@ -111,6 +112,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneToday: "Vai a Oggi"
         case .paneTasks: "Vai ad Attività"
         case .paneConformance: "Vai a Conformità"
+        case .paneDiary: "Vai a Diario"
         case .readingMode: "Modalità lettura"
         case .runConformanceCheck: "Verifica conformità"
         case .taskToggle: "Completa o riapri il task"
@@ -153,6 +155,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneToday: KeyBinding("3", [.command, .control])
         case .paneTasks: KeyBinding("4", [.command, .control])
         case .paneConformance: KeyBinding("5", [.command, .control])
+        case .paneDiary: KeyBinding("6", [.command, .control])
         case .readingMode: KeyBinding("m", [.command, .shift])
         case .runConformanceCheck: KeyBinding("l", [.command, .control])
         case .taskToggle: KeyBinding("return", .command)

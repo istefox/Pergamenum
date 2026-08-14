@@ -75,6 +75,42 @@ extension VaultController {
         }
     }
 
+    /// Writes an image from the clipboard into the vault beside a note and returns its
+    /// file name for the embed.
+    ///
+    /// A screenshot has no file to drop, so without this it could not enter a note at
+    /// all. It goes through a temporary file because the import path copies files, and
+    /// one code path for both means a pasted picture is named and placed exactly like a
+    /// dropped one.
+    func importPastedImage(_ data: Data, near notePath: String) -> String? {
+        let temporary = FileManager.default.temporaryDirectory
+            .appending(path: ImportNaming.pastedImageFileName(on: .today), directoryHint: .notDirectory)
+        do {
+            try data.write(to: temporary, options: .atomic)
+        } catch {
+            recordProblem("immagine incollata: \(error.localizedDescription)")
+            return nil
+        }
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        return importFileIntoVault(temporary, near: notePath)
+    }
+
+    /// The tags the editor offers after a `#`, most useful first.
+    ///
+    /// Values already in the vault come first (SPEC §4.4, open families), then the
+    /// closed vocabulary so a value outside it is never suggested. On the controller
+    /// rather than in one view because two editors need the same list, and a second
+    /// copy of this is a copy that drifts.
+    var tagSuggestions: [String] {
+        let used = index.tagUsage().map { "#\($0.tag.description)" }
+        let closed = vocabulary.type.map { "#type-\($0)" }
+            + vocabulary.status.map { "#status-\($0)" }
+            + vocabulary.area.map { "#area-\($0)" }
+            + vocabulary.source.map { "#source-\($0)" }
+        var seen = Set<String>()
+        return (used + closed.sorted()).filter { seen.insert($0).inserted }
+    }
+
     /// Creates a structural link in both directions (wikilink.md W-05).
     ///
     /// Atomic by construction: both files are rendered in memory first and neither is

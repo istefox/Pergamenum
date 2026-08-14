@@ -19,6 +19,13 @@ struct MarkdownReadingView: View {
     var notePath: String = ""
     var vaultRoot: URL?
     var thumbnails: ThumbnailStore?
+    /// Whether this view takes the keyboard when it appears.
+    ///
+    /// True in reading mode, where there is nothing else to type into. False when the
+    /// rendering sits beside an editor, as it does in the Diario pane: a preview that
+    /// steals focus takes the caret out of the note the moment it is drawn, and every
+    /// keystroke after that goes to the scroller.
+    var takesFocus = true
 
     @State private var position = ScrollPosition()
     @State private var metrics = Metrics()
@@ -46,10 +53,10 @@ struct MarkdownReadingView: View {
         // keyboard: it is not focusable, so Page Down went nowhere and a note could
         // only be read with a hand on the trackpad. Focus is taken when the view
         // appears because in reading mode there is nothing else to type into.
-        .focusable()
+        .focusable(takesFocus)
         .focusEffectDisabled()
         .focused($isFocused)
-        .onAppear { isFocused = true }
+        .onAppear { if takesFocus { isFocused = true } }
         .onScrollGeometryChange(for: Metrics.self) { geometry in
             Metrics(
                 offset: geometry.contentOffset.y,

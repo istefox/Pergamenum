@@ -8,6 +8,13 @@ import Foundation
 struct VaultSettings: Codable, Equatable, Sendable {
     /// Folder holding the `YYYYMMDD.md` daily notes, relative to the vault root.
     var dailyFolder: String
+    /// Folder holding the `YYYYMMDD.md` diary notes, relative to the vault root.
+    ///
+    /// Its own folder rather than the daily one: the daily note is what has to be done
+    /// and the diary is what was actually done, and a day that is both leaves neither
+    /// readable. Set to the same value as `dailyFolder` they share one file, which
+    /// still works - the diary owns its section and nothing else.
+    var diaryFolder: String
     /// Where the `harness-system` checkout lives, for "Importa convenzioni…".
     /// Absolute, and absent until the user points at it.
     var harnessRepositoryPath: String?
@@ -21,8 +28,13 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// at 30 minutes; this is that default, made settable).
     var blockMinutes: Int
 
+    /// Named so the memberwise initialiser can default to it without repeating the
+    /// string in every test that builds settings by hand.
+    static let defaultDiaryFolder = "Diario"
+
     static let `default` = VaultSettings(
         dailyFolder: "Calendar",
+        diaryFolder: VaultSettings.defaultDiaryFolder,
         harnessRepositoryPath: nil,
         copyDroppedFiles: true,
         boardShowsGrid: true,
@@ -43,6 +55,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         let fallback = VaultSettings.default
         dailyFolder = try container.decodeIfPresent(String.self, forKey: .dailyFolder)
             ?? fallback.dailyFolder
+        diaryFolder = try container.decodeIfPresent(String.self, forKey: .diaryFolder)
+            ?? fallback.diaryFolder
         harnessRepositoryPath = try container.decodeIfPresent(String.self, forKey: .harnessRepositoryPath)
         copyDroppedFiles = try container.decodeIfPresent(Bool.self, forKey: .copyDroppedFiles)
             ?? fallback.copyDroppedFiles
@@ -59,6 +73,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
 
     init(
         dailyFolder: String,
+        diaryFolder: String = VaultSettings.defaultDiaryFolder,
         harnessRepositoryPath: String?,
         copyDroppedFiles: Bool,
         boardShowsGrid: Bool,
@@ -66,6 +81,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         blockMinutes: Int = TimeBlock.defaultDuration
     ) {
         self.dailyFolder = dailyFolder
+        self.diaryFolder = diaryFolder
         self.harnessRepositoryPath = harnessRepositoryPath
         self.copyDroppedFiles = copyDroppedFiles
         self.boardShowsGrid = boardShowsGrid
