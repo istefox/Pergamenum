@@ -54,7 +54,9 @@ struct WorkspaceView: View {
             vault.isShowingQuickLook = false
         }
         .onAppear {
-            if let root = vault.root { workspace.attach(to: CanvasStore(root: root)) }
+            if let root = vault.root {
+                workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails)
+            }
         }
         .onDisappear { workspace.flushPendingSave() }
         // `pergamenum://canvas?file=…&node=…` parks its target on the controller, and
@@ -78,7 +80,9 @@ struct WorkspaceView: View {
         }
         .onChange(of: vault.root) { _, newRoot in
             workspace.detach()
-            if let newRoot { workspace.attach(to: CanvasStore(root: newRoot)) }
+            if let newRoot {
+                workspace.attach(to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails)
+            }
         }
         .sheet(item: $newItemDraft) { draft in
             newItemSheet(draft)

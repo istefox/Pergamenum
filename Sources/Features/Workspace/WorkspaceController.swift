@@ -118,9 +118,11 @@ final class WorkspaceController {
 
     // MARK: Navigation
 
-    func attach(to store: CanvasStore) {
+    /// `thumbnails` comes from the vault, which owns the cache. Nil is a board with no
+    /// renderer: cards fall back to their symbols, which is what the tests exercise.
+    func attach(to store: CanvasStore, thumbnails: ThumbnailStore? = nil) {
         self.store = store
-        thumbnails = ThumbnailStore(root: store.root)
+        self.thumbnails = thumbnails
         open(folder: "")
     }
 

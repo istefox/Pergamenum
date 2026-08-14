@@ -114,6 +114,22 @@ func canonicalisesTheCounterparty(_ testCase: (raw: String, expected: String)) {
     #expect(ImportNaming.kebabCase("").isEmpty)
 }
 
+/// A pasted screenshot has no name of its own, so the app gives it one. Same shape as
+/// the drawings of SPEC §6.2, and `uniqueFileName` handles a second one the same day.
+@Test func namesAPastedImageAfterTheDay() throws {
+    let day = try #require(CalendarDate(iso: "2026-08-14"))
+    #expect(ImportNaming.pastedImageFileName(on: day) == "immagine-20260814.png")
+
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-paste-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try Data("x".utf8).write(to: directory.appending(path: "immagine-20260814.png"))
+
+    #expect(ImportNaming.uniqueFileName("immagine-20260814.png", in: directory)
+        == "immagine-20260814-2.png")
+}
+
 @Test func proposesTheNameFromTheMessageHeaders() {
     let headers = EmailHeaderParser.parse("""
     Date: Tue, 4 Aug 2026 09:15:00 +0200

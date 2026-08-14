@@ -24,6 +24,11 @@ enum MarkdownBlock: Equatable, Sendable {
     /// A GFM table, which SPEC §5 puts in the required dialect alongside CommonMark
     /// and task lists - and which the Inserisci menu already writes.
     case table(Table)
+    /// A file on a line of its own: `![[foto.png]]` or `![didascalia](foto.png)`.
+    ///
+    /// Only a whole line becomes one. Inside a paragraph an embed stays a span, because
+    /// a picture in the middle of a sentence would cut the sentence in two.
+    case embed(target: String, alt: String?)
 
     struct TaskLine: Equatable, Sendable {
         var isDone: Bool
@@ -70,6 +75,14 @@ enum MarkdownBlockParser {
             if let table = Self.table(header: trimmed, consuming: &lines) {
                 state.flushAll()
                 state.blocks.append(table)
+                continue
+            }
+            // A remote target is deliberately left to the inline path, which renders it
+            // as a link: this app fetches nothing over the network, so there is no
+            // picture to draw for it.
+            if let embed = Attachment.embed(inLine: trimmed), !Attachment.isRemote(embed.target) {
+                state.flushAll()
+                state.blocks.append(.embed(target: embed.target, alt: embed.alt))
                 continue
             }
             state.take(line, trimmed: trimmed)
