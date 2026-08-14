@@ -18,6 +18,10 @@ enum MarkdownStyler {
         case linkSyntax
         /// The target part of a wikilink, which is what a click follows.
         case linkTarget(String)
+        /// The file name inside `![[foto.png]]`. Separate from `linkTarget` because it
+        /// leads to a file, not to a note: clicking it used to ask the vault for a note
+        /// called "foto.png" and, finding none, do nothing at all.
+        case embedTarget(String)
         /// An inline `#tag` in the body.
         case tag(String)
         /// The `- [ ]` marker of a task line.
@@ -257,7 +261,7 @@ enum MarkdownStyler {
             if let targetEnd = text.index(targetStart, offsetBy: link.target.count, limitedBy: upper) {
                 result.append(StyledRange(
                     range: targetStart..<targetEnd,
-                    span: .linkTarget(link.target)
+                    span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.target)
                 ))
             }
         }

@@ -3,9 +3,9 @@ import SwiftUI
 /// The Note view: folder tree on the left, editor in the middle, inspector on the
 /// right. This is the M1 screen the Editor mockup described.
 struct VaultBrowser: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
+    @Environment(\.theme) var theme
+    @Environment(VaultController.self) var vault
+    @Environment(Navigation.self) var navigation
     /// Held here rather than read straight from `Navigation`, because the insertion has
     /// to be consumed once: read directly it would be re-applied on every view update
     /// until something else changed it.
@@ -14,6 +14,12 @@ struct VaultBrowser: View {
     /// Bumped after a note is created, so the editor that replaces the composer opens
     /// with the cursor already in it.
     @State private var focusRequest = 0
+    /// The embedded file a click asked to see, and the panel that shows it. Empty until
+    /// there is one: the Quick Look host takes first responder whenever it has a file,
+    /// and taking it before the user has asked for anything would be taking it for
+    /// nothing.
+    @State var previewURLs: [URL] = []
+    @State var isPreviewingEmbed = false
 
     var body: some View {
         HSplitView {
@@ -96,12 +102,6 @@ struct VaultBrowser: View {
         }
     }
 
-    private var findRequest: NoteTextView.FindRequest? {
-        if navigation.isReplaceRequested { return .replace }
-        if navigation.isFindRequested { return .find }
-        return nil
-    }
-
     // MARK: Editor
 
     @ViewBuilder
@@ -121,7 +121,7 @@ struct VaultBrowser: View {
                 if note.externalChangePending != nil { conflictBanner }
                 Divider()
                 if navigation.isReadingMode {
-                    MarkdownReadingView(text: note.text, onFollowLink: follow(title:))
+                    reading(note)
                 } else {
                     NoteTextView(
                         text: Binding(
@@ -132,7 +132,9 @@ struct VaultBrowser: View {
                         noteTitles: vault.index.allNotes.map(\.title),
                         tagSuggestions: tagSuggestions,
                         onFollowLink: follow(title:),
+                        onOpenEmbed: { name in preview(embed: name, in: note) },
                         onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
+                        onPasteImage: { data in save(pastedImage: data, in: note) },
                         insertion: pendingInsertion,
                         onInsertionApplied: { pendingInsertion = nil },
                         findRequest: findRequest,
@@ -145,43 +147,12 @@ struct VaultBrowser: View {
                 }
             }
             .background(theme.color(.backgroundPrimary))
+            .quickLook(urls: previewURLs, isPresented: $isPreviewingEmbed)
         } else {
             emptyState
         }
     }
 
-    private func editorHeader(_ note: VaultController.OpenNote) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(note.title).themedText(.heading)
-                Text(note.relativePath).themedText(.caption, color: .textTertiary)
-            }
-            Spacer()
-            // Modifica / Lettura, the toggle SPEC §10 puts on Cmd+Shift+E. Reading
-            // mode renders the note; the editor keeps showing the source with style
-            // applied, which is what §7.1 asks for and what §14 keeps a live preview
-            // out of.
-            Picker("", selection: Bindable(navigation).isReadingMode) {
-                Text("Modifica").tag(false)
-                Text("Lettura").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            if note.hasUnsavedChanges {
-                // No shortcut of its own: File > Salva already carries one, and the
-                // user may have moved it.
-                Button("Salva", action: vault.saveOpenNote)
-            } else {
-                Label("Salvato", systemImage: "checkmark.circle")
-                    .themedText(.caption, color: .textSecondary)
-            }
-        }
-        .padding(theme.spacing(.s))
-    }
-
-    /// An external edit arrived while this note had unsaved changes. Neither side is
-    /// discarded without the user choosing (ADR-0001 §D3.4).
     private var conflictBanner: some View {
         HStack(spacing: theme.spacing(.s)) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -208,7 +179,7 @@ struct VaultBrowser: View {
         return (used + closed.sorted()).filter { seen.insert($0).inserted }
     }
 
-    private func follow(title: String) {
+    func follow(title: String) {
         let matches = vault.index.resolve(title: title)
         guard let first = matches.first else { return }
         vault.openNote(at: first)

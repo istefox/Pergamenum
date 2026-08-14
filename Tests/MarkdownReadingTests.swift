@@ -11,6 +11,24 @@ import Testing
     #expect(MarkdownBlockParser.blocks(in: "#project-vibrofer") == [.paragraph("#project-vibrofer")])
 }
 
+@Test func aFileOnALineOfItsOwnBecomesAnEmbed() {
+    #expect(MarkdownBlockParser.blocks(in: "![[foto.png]]") == [.embed(target: "foto.png", alt: nil)])
+    #expect(MarkdownBlockParser.blocks(in: "![Pressa 4](foto.png)")
+        == [.embed(target: "foto.png", alt: "Pressa 4")])
+    // In the middle of a sentence it stays a paragraph and reading mode draws it as a
+    // label: a picture there would cut the sentence in two.
+    #expect(MarkdownBlockParser.blocks(in: "vedi ![[foto.png]] qui")
+        == [.paragraph("vedi ![[foto.png]] qui")])
+    // Remote: left to the inline path, which makes it a link. Nothing is fetched.
+    #expect(MarkdownBlockParser.blocks(in: "![](https://vibrofer.it/foto.png)")
+        == [.paragraph("![](https://vibrofer.it/foto.png)")])
+}
+
+@Test func anEmbedInsideAFenceIsCode() {
+    let blocks = MarkdownBlockParser.blocks(in: "```\n![[foto.png]]\n```")
+    #expect(blocks == [.code(language: nil, lines: ["![[foto.png]]"])])
+}
+
 @Test func consecutiveBulletsBecomeOneList() {
     let blocks = MarkdownBlockParser.blocks(in: "- uno\n- due\n- tre")
     #expect(blocks == [.bulletList(["uno", "due", "tre"])])

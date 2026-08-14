@@ -12,6 +12,9 @@ final class VaultController {
     private(set) var settings = VaultSettings.default
     private(set) var vocabulary = Vocabulary.empty
     let index = NoteIndex()
+    /// Renders and caches previews of the vault's files: the Workspace's cards, and the
+    /// pictures reading mode draws inside a note. Nil while no vault is open.
+    private(set) var thumbnails: ThumbnailStore?
 
     private(set) var isScanning = false
     /// Problems worth showing: an unreadable note, a settings file that would not
@@ -97,6 +100,10 @@ final class VaultController {
 
         root = url
         store = NoteStore(root: url)
+        // Owned here, not by the Workspace that used to create it: the cache in
+        // `.pergamenum/thumbnails` belongs to the vault, and reading mode needs the same
+        // renderer to draw a picture embedded in a note.
+        thumbnails = ThumbnailStore(root: url)
         // Recorded on open rather than on close, so a crash still leaves the vault
         // reachable from the recents menu next launch.
         recents.remember(url)
@@ -116,6 +123,7 @@ final class VaultController {
         watcher = nil
         root = nil
         store = nil
+        thumbnails = nil
         openNote = nil
         selfWrittenHashes.removeAll()
         index.replaceAll(with: .init(records: [], failures: []), duration: .zero)

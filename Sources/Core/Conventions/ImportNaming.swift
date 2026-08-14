@@ -89,6 +89,15 @@ enum ImportNaming {
     /// Overwriting an imported file would destroy the earlier one silently, and two
     /// messages from the same sender on the same day about the same subject is an
     /// ordinary occurrence, not an error.
+    /// `immagine-20260814.png`, for a picture pasted from the clipboard.
+    ///
+    /// A screenshot arrives with no name of its own, so the app gives it one in the
+    /// shape SPEC §6.2 already uses for drawings (`disegno-YYYYMMDD-nnn.svg`);
+    /// `uniqueFileName` adds the `-2` when a day gets more than one.
+    static func pastedImageFileName(on date: CalendarDate) -> String {
+        "immagine-\(date.compactForm).png"
+    }
+
     static func uniqueFileName(
         _ proposed: String,
         in directory: URL,

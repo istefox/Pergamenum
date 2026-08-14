@@ -11,10 +11,14 @@ import SwiftUI
 /// Every colour, size and spacing comes from the theme, so a customised theme changes
 /// this view too.
 struct MarkdownReadingView: View {
-    @Environment(\.theme) private var theme
+    @Environment(\.theme) var theme
     let text: String
     /// Called when a `[[wikilink]]` is clicked, with the note's title.
     let onFollowLink: (String) -> Void
+    /// Where the note lives, so an embedded file is looked for beside it first.
+    var notePath: String = ""
+    var vaultRoot: URL?
+    var thumbnails: ThumbnailStore?
 
     @State private var position = ScrollPosition()
     @State private var metrics = Metrics()
@@ -126,14 +130,8 @@ struct MarkdownReadingView: View {
                 .themedText(.body)
                 .textSelection(.enabled)
 
-        case .bulletList(let items):
-            list(items) { _, item in marker("•", Text(inline(item))) }
-
-        case .numberedList(let items):
-            list(items) { index, item in marker("\(index + 1).", Text(inline(item))) }
-
-        case .tasks(let lines):
-            list(lines) { _, line in taskRow(line) }
+        case .bulletList, .numberedList, .tasks:
+            listView(for: block)
 
         case .quote(let lines):
             HStack(alignment: .top, spacing: theme.spacing(.s)) {
@@ -166,55 +164,27 @@ struct MarkdownReadingView: View {
 
         case .table(let table):
             self.table(table)
+
+        case .embed(let target, let alt):
+            EmbeddedFileView(
+                target: target, alt: alt, notePath: notePath, root: vaultRoot, thumbnails: thumbnails
+            )
         }
     }
 
-    /// A GFM table.
-    ///
-    /// A `Grid` rather than a horizontally scrolling one: the reading column is capped
-    /// at 760 points and every other block wraps inside it, so a table that wraps is
-    /// the consistent choice and never leaves content off the side of the page.
-    private func table(_ table: MarkdownBlock.Table) -> some View {
-        Grid(alignment: .topLeading, horizontalSpacing: theme.spacing(.m), verticalSpacing: theme.spacing(.xs)) {
-            GridRow {
-                ForEach(Array(table.header.enumerated()), id: \.offset) { index, cell in
-                    Text(inline(cell, base: theme.font(.body).weight(.semibold)))
-                        .multilineTextAlignment(textAlignment(table.alignments[index]))
-                        // Set on the header cell only: a grid column takes its
-                        // alignment from the first row that states one.
-                        .gridColumnAlignment(alignment(table.alignments[index]))
-                }
-            }
-            Rectangle()
-                .fill(theme.color(.borderSubtle))
-                .frame(height: 1)
-                .gridCellColumns(max(table.header.count, 1))
-            ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
-                GridRow {
-                    ForEach(Array(row.enumerated()), id: \.offset) { index, cell in
-                        Text(inline(cell))
-                            .themedText(.body)
-                            .multilineTextAlignment(textAlignment(table.alignments[index]))
-                    }
-                }
-            }
-        }
-        .textSelection(.enabled)
-    }
-
-    private func alignment(_ column: MarkdownBlock.Table.Column) -> HorizontalAlignment {
-        switch column {
-        case .leading: .leading
-        case .center: .center
-        case .trailing: .trailing
-        }
-    }
-
-    private func textAlignment(_ column: MarkdownBlock.Table.Column) -> TextAlignment {
-        switch column {
-        case .leading: .leading
-        case .center: .center
-        case .trailing: .trailing
+    /// The three list shapes, together in one place: bullets, numbers and tasks differ
+    /// only in what leads each row.
+    @ViewBuilder
+    private func listView(for block: MarkdownBlock) -> some View {
+        switch block {
+        case .bulletList(let items):
+            list(items) { _, item in marker("•", Text(inline(item))) }
+        case .numberedList(let items):
+            list(items) { index, item in marker("\(index + 1).", Text(inline(item))) }
+        case .tasks(let lines):
+            list(lines) { _, line in taskRow(line) }
+        default:
+            EmptyView()
         }
     }
 
@@ -279,7 +249,7 @@ struct MarkdownReadingView: View {
 
     /// Turns one block's text into an attributed string, with the theme's fonts and
     /// with links the view can act on.
-    private func inline(_ text: String, base: Font? = nil) -> AttributedString {
+    func inline(_ text: String, base: Font? = nil) -> AttributedString {
         let baseFont = base ?? theme.font(.body)
         var result = AttributedString()
         for span in MarkdownInlineParser.spans(in: text) {

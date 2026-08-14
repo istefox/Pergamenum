@@ -76,10 +76,19 @@ func stylesHeadings(_ level: Int) {
     #expect(styled(text, .linkSyntax) == "[[Curva di trasmissibilità]]")
 }
 
-@Test func stylesEmbedsAsLinksToo() {
+/// An embed is styled like a link but is not one: it leads to a file, and clicking it
+/// used to ask the vault for a note named "schema.pdf" and, finding none, do nothing.
+@Test func stylesAnEmbedAsItsOwnKindOfLink() {
     let text = "![[schema.pdf]]"
     #expect(styled(text, .linkSyntax) == "![[schema.pdf]]")
-    #expect(styled(text, .linkTarget("schema.pdf")) == "schema.pdf")
+    #expect(styled(text, .embedTarget("schema.pdf")) == "schema.pdf")
+    #expect(styled(text, .linkTarget("schema.pdf")) == nil)
+}
+
+/// `!` opens a deadline (`!2026-08-11`), and an embed starts with the same character.
+@Test func anEmbedIsNotADeadline() {
+    #expect(!spans("![[foto.png]]").contains(.due))
+    #expect(spans("scadenza !2026-08-11").contains(.due))
 }
 
 @Test func stylesWikilinksInsideTheBodyOfANoteWithFrontmatter() {
