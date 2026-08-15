@@ -1,6 +1,10 @@
 import Foundation
 
 /// Keeping up with changes made outside the app (SPEC §12, watcher FSEvents).
+///
+/// The index side is on `VaultSession` (ADR-0007 §D3). What is left here is the
+/// editor's answer to a note that changed underneath it, which is the one decision an
+/// app has to make and a command-line tool does not.
 extension VaultController {
     func startWatching(_ url: URL) {
         let watcher = VaultWatcher(root: url) { [weak self] paths in
@@ -12,37 +16,20 @@ extension VaultController {
         self.watcher = watcher
     }
 
-    /// Applies external changes, one path at a time.
+    /// Applies external changes, and puts the editor in front of the ones it is showing.
     func reconcile(_ paths: [String]) {
-        guard let store else { return }
+        guard let session else { return }
 
-        for path in paths {
-            let fileURL = store.url(for: path)
-            guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
-                index.update(nil, at: path)
-                continue
-            }
-            guard let (record, text) = try? store.read(path) else { continue }
-
-            // The app's own write coming back. Compared by content hash rather than
-            // by a time window, so a real external edit is never mistaken for it.
-            if selfWrittenHashes[path] == record.contentHash {
-                selfWrittenHashes.removeValue(forKey: path)
-                continue
-            }
-
-            index.update(record, at: path)
-
-            guard var note = openNote, note.relativePath == path else { continue }
+        for change in session.reconcile(paths) {
+            guard var note = openNote, note.relativePath == change.path else { continue }
             if note.hasUnsavedChanges {
                 // Never merge, never discard: ask.
-                note.externalChangePending = text
-                replaceOpenNote(note)
+                note.externalChangePending = change.text
             } else {
-                note.text = text
-                note.savedText = text
-                replaceOpenNote(note)
+                note.text = change.text
+                note.savedText = change.text
             }
+            replaceOpenNote(note)
         }
     }
 }

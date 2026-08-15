@@ -8,10 +8,17 @@ import SwiftUI
 @MainActor
 @Observable
 final class VaultController {
-    private(set) var root: URL?
-    private(set) var settings = VaultSettings.default
-    private(set) var vocabulary = Vocabulary.empty
-    let index = NoteIndex()
+    /// The open vault. Nil means none is (ADR-0007 §D3).
+    ///
+    /// Everything this type used to own about the vault now lives here, and the
+    /// properties below read straight through: one copy of the state, held by the
+    /// object that a headless process holds too.
+    private(set) var session: VaultSession?
+
+    var root: URL? { session?.root }
+    var settings: VaultSettings { session?.settings ?? .default }
+    var vocabulary: Vocabulary { session?.vocabulary ?? .empty }
+    var index: IndexSnapshot { session?.index ?? IndexSnapshot() }
     /// Renders and caches previews of the vault's files: the Workspace's cards, and the
     /// pictures reading mode draws inside a note. Nil while no vault is open.
     private(set) var thumbnails: ThumbnailStore?
@@ -19,7 +26,7 @@ final class VaultController {
     private(set) var isScanning = false
     /// Problems worth showing: an unreadable note, a settings file that would not
     /// parse, a vocabulary that could not be loaded.
-    private(set) var problems: [String] = []
+    var problems: [String] { session?.problems ?? [] }
 
     /// The note currently open in the editor.
     private(set) var openNote: OpenNote?
@@ -48,10 +55,13 @@ final class VaultController {
 
     /// Hashes the app itself wrote, keyed by path. A watcher event whose file hashes
     /// to the recorded value is the app's own write coming back and is ignored.
-    var selfWrittenHashes: [String: String] = [:]
+    var selfWrittenHashes: [String: String] {
+        get { session?.selfWrittenHashes ?? [:] }
+        set { session?.selfWrittenHashes = newValue }
+    }
 
     var watcher: VaultWatcher?
-    var store: NoteStore?
+    var store: NoteStore? { session?.store }
 
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). One value rather than four properties, so the routing extension owns
@@ -96,10 +106,13 @@ final class VaultController {
     func open(_ url: URL) async {
         watcher?.stop()
         watcher = nil
-        problems = []
 
-        root = url
-        store = NoteStore(root: url)
+        // The session reads settings and vocabulary as it is built, which is why this
+        // is one statement rather than the four it replaced.
+        session = VaultSession(
+            root: url,
+            bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
+        )
         // Owned here, not by the Workspace that used to create it: the cache in
         // `.pergamenum/thumbnails` belongs to the vault, and reading mode needs the same
         // renderer to draw a picture embedded in a note.
@@ -107,8 +120,6 @@ final class VaultController {
         // Recorded on open rather than on close, so a crash still leaves the vault
         // reachable from the recents menu next launch.
         recents.remember(url)
-        loadSettings(from: url)
-        loadVocabulary(from: url)
         await rescan()
         startWatching(url)
 
@@ -121,40 +132,19 @@ final class VaultController {
     func close() {
         watcher?.stop()
         watcher = nil
-        root = nil
-        store = nil
+        session = nil
         thumbnails = nil
         openNote = nil
-        selfWrittenHashes.removeAll()
-        index.replaceAll(with: .init(records: [], failures: []), duration: .zero)
     }
 
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the
     /// index being stale (SPEC §12, "rigenera indice").
     func rescan() async {
-        guard let root else { return }
+        guard let session else { return }
         isScanning = true
         defer { isScanning = false }
 
-        let clock = ContinuousClock()
-        let start = clock.now
-        let cacheURL = privateDirectory(in: root).appending(path: VaultLayout.cacheFile)
-        let cached = IndexCache(url: cacheURL).load()
-
-        let outcome = await Task.detached(priority: .userInitiated) {
-            var scanner = VaultScanner(root: root)
-            scanner.cached = cached
-            return scanner.scan()
-        }.value
-        index.replaceAll(with: outcome, duration: clock.now - start)
-
-        // Written after the index is in place: the cache is an optimisation, and the
-        // app must be usable whether or not it can be saved (SPEC §12).
-        let records = outcome.records
-        let problem: String = await Task.detached(priority: .utility) {
-            IndexCache(url: cacheURL).save(records)
-        }.value
-        if !problem.isEmpty { problems.append("cache: \(problem)") }
+        await session.rescan()
 
         // Bumped last, once the index is whole. Anything that has to react to the
         // vault's contents watches this rather than the task array itself, which is
@@ -182,9 +172,9 @@ final class VaultController {
     // MARK: Notes
 
     func openNote(at relativePath: String) {
-        guard let store else { return }
+        guard let session else { return }
         do {
-            let (record, text) = try store.read(relativePath)
+            let (record, text) = try session.read(relativePath)
             openNote = OpenNote(
                 relativePath: relativePath,
                 title: record.title,
@@ -192,9 +182,9 @@ final class VaultController {
                 savedText: text,
                 externalChangePending: nil
             )
-            index.update(record, at: relativePath)
+            session.updateIndex(record, at: relativePath)
         } catch {
-            problems.append("\(relativePath): \(error)")
+            recordProblem("\(relativePath): \(error)")
         }
     }
 
@@ -217,53 +207,25 @@ final class VaultController {
         newNote = NoteDraft(folder: folder)
     }
 
-    enum CreationError: Error, CustomStringConvertible {
-        case invalidTitle([NoteName.Violation])
-        case alreadyExists(String)
-
-        var description: String {
-            switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
-            case .alreadyExists(let path): "esiste già: \(path)"
-            }
-        }
-    }
-
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
     @discardableResult
     func openDailyNote(for date: CalendarDate) throws -> String {
-        guard let store else { throw CreationError.alreadyExists("nessun vault aperto") }
-        let relativePath = settings.dailyFolder.isEmpty
-            ? NoteName.dailyFileName(for: date)
-            : "\(settings.dailyFolder)/\(NoteName.dailyFileName(for: date))"
-
-        if FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false)) {
-            openNote(at: relativePath)
-            return relativePath
-        }
-        return try createNote(
-            title: date.compactForm,
-            in: settings.dailyFolder,
-            date: date,
-            category: .daily
-        )
+        guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
+        let relativePath = try session.dailyNote(for: date)
+        openNote(at: relativePath)
+        return relativePath
     }
 
-    /// Writes the open note. Files first, index second: a crash between the two must
-    /// leave the file correct, never the cache (ADR-0001 §D2.3).
+    /// Writes the open note.
     func saveOpenNote() {
-        guard let store, var note = openNote, note.hasUnsavedChanges else { return }
+        guard let session, var note = openNote, note.hasUnsavedChanges else { return }
         do {
-            let hash = try store.write(note.text, to: note.relativePath)
-            selfWrittenHashes[note.relativePath] = hash
+            try session.write(note.text, to: note.relativePath)
             note.savedText = note.text
             note.externalChangePending = nil
             openNote = note
-
-            let record = try store.read(note.relativePath).record
-            index.update(record, at: note.relativePath)
         } catch {
-            problems.append("\(note.relativePath): \(error)")
+            recordProblem("\(note.relativePath): \(error)")
         }
     }
 
@@ -278,6 +240,26 @@ final class VaultController {
     /// else, so a view cannot quietly swap the buffer under the editor.
     func replaceOpenNote(_ note: OpenNote) {
         openNote = note
+    }
+
+    /// Puts the editor back in step after a write the session made underneath it.
+    ///
+    /// This is the fourth of the four things every write in this app used to do by
+    /// hand, and the only one that is the facade's business: the session writes the
+    /// file, records the hash and updates the index, and then this decides whether the
+    /// editor should notice.
+    ///
+    /// A buffer with unsaved changes is left alone. It is the user's work, and
+    /// ADR-0001 §D3.4 says to ask rather than to merge; the watcher will raise the
+    /// question when the write comes back round.
+    func syncOpenNote(with result: VaultSession.WriteResult) {
+        guard var note = openNote,
+              note.relativePath == result.path,
+              !note.hasUnsavedChanges
+        else { return }
+        note.text = result.text
+        note.savedText = result.text
+        replaceOpenNote(note)
     }
 
     /// Resolves an external change the user chose to accept, replacing the buffer.
@@ -297,7 +279,7 @@ final class VaultController {
     /// Records a problem for the UI to show without interrupting what the user is
     /// doing. Used where the failure is recoverable by retrying.
     func recordProblem(_ message: String) {
-        problems.append(message)
+        session?.recordProblem(message)
     }
 
     // MARK: Tasks
@@ -339,125 +321,30 @@ final class VaultController {
     }
 
     // MARK: Vault-private files
-
-    private func privateDirectory(in root: URL) -> URL {
-        root.appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
-    }
-
-    private func loadSettings(from root: URL) {
-        let url = privateDirectory(in: root).appending(path: VaultLayout.settingsFile)
-        guard let data = try? Data(contentsOf: url) else {
-            settings = .default
-            return
-        }
-        do {
-            settings = try JSONDecoder().decode(VaultSettings.self, from: data)
-        } catch {
-            // Defaults rather than a failure to open: a damaged settings file must not
-            // make the vault unreachable. It is not overwritten either, so the user
-            // can repair it by hand.
-            settings = .default
-            problems.append("\(VaultLayout.settingsFile): \(error.localizedDescription); using defaults")
-        }
-    }
+    //
+    // Settings, vocabulary and the cache all live on the session now (ADR-0007 §D3).
+    // What stays here is the door the menus and the settings window already knock on.
 
     /// Applies a settings change and writes `settings.json` back.
-    ///
-    /// Written immediately rather than on close: a setting that survives only a clean
-    /// quit is a setting the user cannot rely on.
     func updateSettings(_ change: (inout VaultSettings) -> Void) {
-        var updated = settings
-        change(&updated)
-        guard updated != settings else { return }
-        settings = updated
-
-        guard let root else { return }
-        let directory = privateDirectory(in: root)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(updated)
-                .write(to: directory.appending(path: VaultLayout.settingsFile), options: .atomic)
-        } catch {
-            problems.append("\(VaultLayout.settingsFile): \(error.localizedDescription)")
-        }
+        session?.updateSettings(change)
     }
 
-    /// Loads the vocabulary replica from the vault, seeding it from the bundled copy
-    /// the first time (SPEC §4.6).
-    private func loadVocabulary(from root: URL) {
-        let directory = privateDirectory(in: root)
-        let url = directory.appending(path: VaultLayout.vocabularyFile)
-
-        if !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
-            guard let bundled = Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json") else {
-                problems.append("the bundled vocabolari.json is missing")
-                return
-            }
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                try FileManager.default.copyItem(at: bundled, to: url)
-            } catch {
-                problems.append("vocabolari.json could not be created: \(error.localizedDescription)")
-                return
-            }
-        }
-
-        do {
-            vocabulary = try JSONDecoder().decode(Vocabulary.self, from: try Data(contentsOf: url))
-        } catch {
-            vocabulary = .empty
-            problems.append("\(VaultLayout.vocabularyFile): \(error.localizedDescription)")
-        }
+    /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
+    /// (SPEC §12, Avanzate › svuota cache).
+    func clearCache() async {
+        guard let session else { return }
+        isScanning = true
+        defer { isScanning = false }
+        await session.clearCache()
+        scanGeneration += 1
+        taskGeneration += 1
     }
 
     /// Re-imports the closed vocabularies from the harness-system checkout and writes
     /// the replica back into the vault.
-    /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
-    /// (SPEC §12, Avanzate › svuota cache).
-    func clearCache() async {
-        guard let root else { return }
-        IndexCache(url: privateDirectory(in: root).appending(path: VaultLayout.cacheFile)).clear()
-        await rescan()
-    }
-
     func importConventions(from repository: URL) {
-        let conventions = repository.appending(path: "convenzioni", directoryHint: .isDirectory)
-        let tagURL = conventions.appending(path: "tag.md")
-        let namingURL = conventions.appending(path: "naming.md")
-
-        guard let tagDocument = try? String(contentsOf: tagURL, encoding: .utf8),
-              let namingDocument = try? String(contentsOf: namingURL, encoding: .utf8)
-        else {
-            problems.append("convenzioni/tag.md or naming.md could not be read at \(repository.path(percentEncoded: false))")
-            return
-        }
-
-        let result = HarnessImporter.parse(tagDocument: tagDocument, namingDocument: namingDocument)
-        problems.append(contentsOf: result.problems.map { "import: \($0)" })
-        guard result.problems.isEmpty else { return }
-
-        var imported = result.vocabulary
-        // Says where the tables came from and when, and that this file is a replica.
-        // Without it the first import silently deleted the only warning against
-        // hand-editing what harness-system owns (SPEC §1, principle 5).
-        imported.note = """
-            Replica of the closed tables of harness-system, imported from \
-            \(repository.path(percentEncoded: false)) on \(CalendarDate.today). \
-            The repo is the source of truth: when a convention changes, re-run \
-            "Importa convenzioni…" rather than editing this file.
-            """
-        vocabulary = imported
-        guard let root else { return }
-        let url = privateDirectory(in: root).appending(path: VaultLayout.vocabularyFile)
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(imported).write(to: url, options: .atomic)
-        } catch {
-            problems.append("vocabolari.json could not be written: \(error.localizedDescription)")
-        }
+        session?.importConventions(from: repository)
     }
 }
 

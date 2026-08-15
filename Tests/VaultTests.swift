@@ -4,7 +4,8 @@ import Testing
 
 /// A throwaway vault on disk, so the file-touching layers are tested against a real
 /// file system rather than a mock that cannot reproduce atomic writes or enumeration.
-private struct TemporaryVault: ~Copyable {
+/// Shared with `VaultSessionTests`, which needs the same throwaway vault.
+struct TemporaryVault: ~Copyable {
     let root: URL
 
     init() throws {
@@ -124,8 +125,8 @@ Corpo con un [[Altro titolo]] e un ![[schema.pdf]].
 // MARK: - Index
 
 @MainActor
-private func populatedIndex() throws -> NoteIndex {
-    let index = NoteIndex()
+private func populatedIndex() throws -> IndexSnapshot {
+    var index = IndexSnapshot()
     let records = [
         makeRecord(path: "A.md", title: "Alfa", links: ["Beta", "Mancante"]),
         makeRecord(path: "B.md", title: "Beta", links: ["Alfa"]),
@@ -160,7 +161,7 @@ private func makeRecord(
 
 @MainActor
 @Test func reportsAmbiguousTitles() {
-    let index = NoteIndex()
+    var index = IndexSnapshot()
     index.replaceAll(with: .init(records: [
         makeRecord(path: "uno/Doppio.md", title: "Doppio"),
         makeRecord(path: "due/Doppio.md", title: "Doppio"),
@@ -180,7 +181,7 @@ private func makeRecord(
 
 @MainActor
 @Test func countsStructuralLinksAsBacklinksToo() {
-    let index = NoteIndex()
+    var index = IndexSnapshot()
     index.replaceAll(with: .init(records: [
         makeRecord(path: "A.md", title: "Alfa", related: ["\"[[Beta]]\""]),
         makeRecord(path: "B.md", title: "Beta"),
@@ -192,7 +193,7 @@ private func makeRecord(
 
 @MainActor
 @Test func removingANoteClearsTheBacklinksItProduced() throws {
-    let index = try populatedIndex()
+    var index = try populatedIndex()
     index.update(nil, at: "A.md")
 
     #expect(index.count == 2)

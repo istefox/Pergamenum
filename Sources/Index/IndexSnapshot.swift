@@ -1,19 +1,17 @@
 import Foundation
-import Observation
 
-/// The rebuildable index: titles, links, backlinks and tags derived from the files.
+/// The rebuildable index as a value: titles, links, backlinks and tags derived from
+/// the files, with no framework underneath it.
 ///
 /// Never the source of truth (SPEC §3, principle 3). Deleting it loses nothing,
 /// because everything in it comes from a vault scan.
 ///
-/// Held in memory for now rather than in the SQLite cache ADR-0001 §D2 describes.
-/// The contract that ADR states - disposable, rebuilt from a scan, never written as
-/// the primary effect of a user action - is satisfied either way, and the choice
-/// between them is a question about cold-scan cost on the real Labs vault, which is
-/// worth measuring before paying for a dependency. See the ADR's update note.
-@MainActor
-@Observable
-final class NoteIndex {
+/// A value rather than an observable object, so a process without SwiftUI can hold
+/// one: the CLI and the MCP server of ADR-0007 need every query below and none of the
+/// observation. `VaultSession` owns the one the app reads, and observation reaches it
+/// through the session, so the views and the connector get the same answers from the
+/// same code.
+struct IndexSnapshot: Sendable {
     private(set) var notes: [String: NoteRecord] = [:]
     /// Files that failed to read during the last scan, surfaced in the UI.
     private(set) var failures: [String] = []
@@ -32,9 +30,11 @@ final class NoteIndex {
     /// links panel shows what the user typed rather than the lookup key.
     private var backlinkDisplayForm: [String: String] = [:]
 
+    init() {}
+
     // MARK: Population
 
-    func replaceAll(with outcome: VaultScanner.Outcome, duration: Duration) {
+    mutating func replaceAll(with outcome: VaultScanner.Outcome, duration: Duration) {
         notes = Dictionary(uniqueKeysWithValues: outcome.records.map { ($0.relativePath, $0) })
         failures = outcome.failures.map { "\($0.path): \($0.reason)" }
         lastScanDuration = duration
@@ -44,7 +44,7 @@ final class NoteIndex {
 
     /// Applies a single file's change. Passing nil removes the note, which is what a
     /// deletion or a move out of the vault looks like from the watcher.
-    func update(_ record: NoteRecord?, at relativePath: String) {
+    mutating func update(_ record: NoteRecord?, at relativePath: String) {
         if let record {
             notes[relativePath] = record
         } else {
@@ -58,7 +58,7 @@ final class NoteIndex {
     /// Incremental maintenance would need the note's *previous* link set to know what
     /// to unlink, and getting that wrong leaves phantom backlinks that nothing ever
     /// clears. At vault scale a full rebuild is cheap and cannot drift.
-    private func rebuildDerivedIndexes() {
+    private mutating func rebuildDerivedIndexes() {
         titleIndex.removeAll(keepingCapacity: true)
         backlinkIndex.removeAll(keepingCapacity: true)
         backlinkDisplayForm.removeAll(keepingCapacity: true)
@@ -225,6 +225,8 @@ final class NoteIndex {
         return calendar.dateComponents([.day], from: start, to: end).day ?? .max
     }
 
+    // MARK: Tags and fuzzy search
+
     /// Tag usage counts, for autocomplete to offer values already in the vault first
     /// (SPEC §4.4, open families).
     func tagUsage() -> [(tag: Tag, count: Int)] {
@@ -252,40 +254,5 @@ final class NoteIndex {
             .sorted { $0.1 == $1.1 ? $0.0.title.count < $1.0.title.count : $0.1 > $1.1 }
             .prefix(limit)
             .map(\.0)
-    }
-}
-
-/// Subsequence matching with a bonus for contiguous runs and word starts, which is
-/// what makes `trf` find "Trasmissibilità e rapporto di frequenza".
-enum FuzzyMatch {
-    static func score(query: String, candidate: String) -> Int? {
-        let needle = Array(query.lowercased())
-        let haystack = Array(candidate.lowercased())
-        guard !needle.isEmpty, needle.count <= haystack.count else {
-            return needle.isEmpty ? 0 : nil
-        }
-
-        var score = 0
-        var haystackIndex = 0
-        var previousMatchIndex = -2
-
-        for character in needle {
-            var found = false
-            while haystackIndex < haystack.count {
-                defer { haystackIndex += 1 }
-                guard haystack[haystackIndex] == character else { continue }
-
-                score += 1
-                if haystackIndex == previousMatchIndex + 1 { score += 3 }
-                if haystackIndex == 0 || haystack[haystackIndex - 1] == " " { score += 2 }
-                previousMatchIndex = haystackIndex
-                found = true
-                break
-            }
-            guard found else { return nil }
-        }
-        // Shorter candidates win ties: an exact short title should outrank a long one
-        // that merely contains the same letters.
-        return score
     }
 }
