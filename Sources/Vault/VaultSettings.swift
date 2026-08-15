@@ -27,6 +27,12 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// How long a time block lasts when the app makes one (SPEC §8.3 puts the default
     /// at 30 minutes; this is that default, made settable).
     var blockMinutes: Int
+    /// The hours the Oggi pane's timeline draws.
+    var dayHours: HourWindow
+    /// The hours the Diario pane's timeline draws. Its own setting rather than one
+    /// shared with the day view: the two panes are about different parts of a day, and
+    /// a single number would make one of them wrong.
+    var diaryHours: HourWindow
 
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
@@ -39,7 +45,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
         copyDroppedFiles: true,
         boardShowsGrid: true,
         boardSnapsToGrid: false,
-        blockMinutes: TimeBlock.defaultDuration
+        blockMinutes: TimeBlock.defaultDuration,
+        dayHours: .dayDefault,
+        diaryHours: .diaryDefault
     )
 
     /// The durations the settings offer, in minutes.
@@ -69,6 +77,12 @@ struct VaultSettings: Codable, Equatable, Sendable {
         let minutes = try container.decodeIfPresent(Int.self, forKey: .blockMinutes)
             ?? fallback.blockMinutes
         blockMinutes = min(max(minutes, 5), 480)
+        // Clamped on the way in, since `settings.json` is meant to be edited by hand
+        // and a window that runs backwards would draw a grid of negative height.
+        dayHours = (try container.decodeIfPresent(HourWindow.self, forKey: .dayHours)
+            ?? fallback.dayHours).clamped
+        diaryHours = (try container.decodeIfPresent(HourWindow.self, forKey: .diaryHours)
+            ?? fallback.diaryHours).clamped
     }
 
     init(
@@ -78,7 +92,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
         copyDroppedFiles: Bool,
         boardShowsGrid: Bool,
         boardSnapsToGrid: Bool,
-        blockMinutes: Int = TimeBlock.defaultDuration
+        blockMinutes: Int = TimeBlock.defaultDuration,
+        dayHours: HourWindow = .dayDefault,
+        diaryHours: HourWindow = .diaryDefault
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -87,6 +103,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.boardShowsGrid = boardShowsGrid
         self.boardSnapsToGrid = boardSnapsToGrid
         self.blockMinutes = blockMinutes
+        self.dayHours = dayHours
+        self.diaryHours = diaryHours
     }
 }
 

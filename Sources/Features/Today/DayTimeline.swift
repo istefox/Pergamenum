@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The hourly timeline of the day view (SPEC §8.3): 06:00 to 22:00, the calendar's
-/// events, and the blocks written in the daily note.
+/// The hourly timeline of the day view (SPEC §8.3): the hours set in Impostazioni,
+/// the calendar's events, and the blocks written in the daily note.
 ///
 /// Split out of `TodayView` when the note column grew its own sections: two columns in
 /// one type was past what SwiftLint allows and past what is readable.
@@ -10,11 +10,23 @@ struct DayTimeline: View {
 
     let controller: DayController
     let calendar: EventKitStore
+    /// The hours to draw, from `settings.json` (SPEC §8.3's 06:00 to 22:00 by default).
+    let window: HourWindow
 
-    /// The hours the timeline shows (SPEC §8.3).
-    private let firstHour = 6
-    private let lastHour = 22
     private let hourHeight: CGFloat = 44
+
+    /// The window widened to reach everything on the day: an event at 23:00 under a
+    /// window ending at 18:00 would otherwise be drawn below the grid and never seen.
+    private var hours: HourWindow {
+        window.covering(
+            startMinutes: blocks.map(\.startMinutes) + timedEvents.map { minutes(from: $0.start) },
+            endMinutes: blocks.map(\.endMinutes)
+                + timedEvents.map { minutes(from: $0.start) + duration(of: $0) }
+        )
+    }
+
+    private var firstHour: Int { hours.first }
+    private var lastHour: Int { hours.last }
 
     @State private var hoveredBlock: String?
 
@@ -24,7 +36,7 @@ struct DayTimeline: View {
     var body: some View {
         ScrollView {
             ZStack(alignment: .topLeading) {
-                hours
+                hourLines
                 ForEach(timedEvents) { event in
                     entry(Entry(
                         title: event.title, subtitle: event.calendarTitle,
@@ -47,7 +59,7 @@ struct DayTimeline: View {
         }
     }
 
-    private var hours: some View {
+    private var hourLines: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(firstHour...lastHour, id: \.self) { hour in
                 HStack(alignment: .top, spacing: theme.spacing(.s)) {

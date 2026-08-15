@@ -285,17 +285,21 @@ final class DiaryController {
 
     // MARK: Timeline geometry
 
-    /// The first hour the timeline draws: 06:00, or earlier when an entry starts before
-    /// it. A day written by hand may hold anything, and an entry the grid cannot reach
-    /// is an entry the user cannot see.
-    var firstHour: Int {
-        min(DiaryGrid.firstHour, entries.map { $0.startMinutes / 60 }.min() ?? DiaryGrid.firstHour)
+    /// The hours the grid draws: what Impostazioni says, widened to reach every block
+    /// on the day.
+    ///
+    /// The setting says which hours are always there; it does not decide which hours
+    /// exist. A block at 05:30 under a window starting at eight would be drawn above
+    /// the grid, where nothing is - invisible, and impossible to move back.
+    var hours: HourWindow {
+        vault.settings.diaryHours.covering(
+            startMinutes: entries.map(\.startMinutes),
+            endMinutes: entries.map(\.endMinutes)
+        )
     }
 
-    /// The last hour drawn, which is always midnight. Nothing can run past it: an entry
-    /// is clamped to the day it belongs to, so there is no case where the grid would
-    /// have to grow at this end.
-    var lastHour: Int { DiaryGrid.lastHour }
+    var firstHour: Int { hours.first }
+    var lastHour: Int { hours.last }
 
     var placements: [DiaryLayout.Placement] { DiaryLayout.place(entries) }
 

@@ -58,7 +58,8 @@ rule, for the opposite reason: a day written down as it was lived has a call ins
 meeting in it. `DiaryLayout` groups blocks that touch into clusters and gives each the
 leftmost free lane, which is what a calendar does.
 
-**D5. 06:00 to midnight, and earlier when the day asks.** The evening is part of a
+**D5. 06:00 to midnight, and earlier when the day asks.** (Made a setting by ADR-0006;
+what follows is now the default rather than the rule.) The evening is part of a
 diary - it is written *in* the evening - so the grid runs to 24:00 rather than stopping
 at the end of a working day. Upwards it grows to the earliest start, so a block written
 by hand at 04:30 is never invisible; downwards it has nowhere to grow, since an entry
