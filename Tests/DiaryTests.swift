@@ -154,6 +154,22 @@ import Testing
     #expect(prose.contains("- [[Qualcosa]]"))
 }
 
+/// The end of the day is written 24:00 and read back as such. 00:00 in that position
+/// would be a block that ends before it starts, and the parser would drop it.
+@Test func writesAndReadsMidnightAsTheEndOfTheDay() {
+    let entry = DiaryEntry(startMinutes: 23 * 60, durationMinutes: 60, title: "Chiusura")
+    let written = DiarySection.write([entry], into: "")
+
+    #expect(written.contains("- 23:00-24:00 Chiusura"))
+    let read = DiarySection.parse(from: written)
+    #expect(read.count == 1)
+    #expect(read[0].endMinutes == DiaryGrid.dayMinutes)
+    // 24:00 is the only hour past 23 that means anything.
+    #expect(DiarySection.minutes(from: "24:00") == DiaryGrid.dayMinutes)
+    #expect(DiarySection.minutes(from: "24:10") == nil)
+    #expect(DiarySection.minutes(from: "25:00") == nil)
+}
+
 @Test func refusesTimesThatAreNotTimes() {
     let text = """
     ## Diario

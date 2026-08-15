@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The diary's hourly grid: 06:00 to 20:00 by default, cut every ten minutes.
+/// The diary's hourly grid: 06:00 to midnight, cut every ten minutes.
 ///
 /// Everything on it is the user's: blocks are created by dragging over empty time,
 /// moved by dragging them, made longer by pulling their bottom edge, and opened by
@@ -97,9 +97,9 @@ struct DiaryTimeline: View {
                 hourLine(hour, withHalfHour: true)
                     .frame(height: hourHeight, alignment: .top)
             }
-            // The line that closes the day. Without it the grid ended under the 19:00
-            // row with nothing to say where 20:00 was, and a block running to 20:00
-            // stopped in mid-air.
+            // The line that closes the day. Without it the grid ended under the 23:00
+            // row with nothing to say where midnight was, and a block running to the
+            // end of the day stopped in mid-air.
             hourLine(lastHour).frame(height: 0, alignment: .top)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
