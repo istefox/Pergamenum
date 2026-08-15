@@ -53,6 +53,14 @@ The arrangement has a property worth keeping deliberately: `Sources/Core` is sup
 depend on nothing but the standard library, and now a stray `import SwiftUI` there breaks
 the CLI build. The rule enforces itself instead of being remembered.
 
+Compiling the same files is not by itself enough to keep two connectors saying the same
+thing, and the implementation found where: the JSON `perg --json` produced was defined
+inside the CLI, out of the server's reach, so each would have grown its own idea of what
+a note looks like. `Sources/Connector/` holds the answer shapes and the operations over
+them - the reads, the writes with their guardrails, and the lookups that turn a string
+into a date, a view or a task. Both binaries encode the same payloads through the same
+encoder; what is left in `Sources/CLI` and `Sources/MCPServer` is how each is spoken to.
+
 **D3. The orchestration moves out of `VaultController`.** Creating a note, capturing a
 task, rewriting a task line, writing a day's blocks and running the linter live in
 extensions on a `@MainActor @Observable` type that imports SwiftUI, so no headless process
@@ -105,6 +113,12 @@ loses nothing that the vault does not still hold.
   backwards-compatibility probe on stdio, so this works with current clients; it is a 0.x
   that lags, and the CLI is deliberately independent of it so that a client which stops
   probing costs the MCP layer and nothing else.
+- The MCP protocol layer cannot be reached from `PergamenumTests`: its sources compile
+  into a tool that links the SDK, and pulling them into the test bundle would mean linking
+  that SDK into the app to satisfy an `import`. Everything underneath is covered by the
+  suite, and the protocol itself by `scripts/mcp-smoke.py`, which drives a real server
+  over stdio against a vault it makes and throws away. Not as good as a unit test, and
+  said out loud rather than left as an apparent gap in coverage.
 - An assistant writing to a note the editor has open with unsaved changes raises the
   external-change prompt of ADR-0001 §D3.4. That is the correct behaviour and it will
   happen more often than it does today.

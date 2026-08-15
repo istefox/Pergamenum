@@ -126,7 +126,9 @@ let project = Project(
             // Everything but the CLI: `Sources/CLI/main.swift` is top-level code, and a
             // module that contains any cannot also carry an `@main` type - the app
             // stopped compiling the moment the glob swallowed it.
-            sources: .init(globs: [.glob("Sources/**", excluding: ["Sources/CLI/**"])]),
+            sources: .init(globs: [
+                .glob("Sources/**", excluding: ["Sources/CLI/**", "Sources/MCPServer/**"]),
+            ]),
             resources: ["Resources/**"],
             dependencies: [],
             // Repeated on the target because a target-level value wins over the
@@ -178,6 +180,30 @@ let project = Project(
             sources: SourceFilesList(globs: sharedSources + ["Sources/CLI/**"]),
             dependencies: [],
             settings: .settings(base: baseSettings)
+        ),
+        // The other half of ADR-0007: the same vault, spoken to over MCP.
+        //
+        // The one target in this project with an external dependency. It compiles the
+        // same shared files as `perg` and calls `VaultSession` in the same process - it
+        // does not shell out to the CLI, which would put a text format between two
+        // programs that can pass values.
+        .target(
+            name: "pergamenum-mcp",
+            destinations: .macOS,
+            product: .commandLineTool,
+            bundleId: "\(bundleId).mcp",
+            deploymentTargets: .macOS(deploymentTarget),
+            infoPlist: .default,
+            sources: SourceFilesList(globs: sharedSources + ["Sources/MCPServer/**"]),
+            dependencies: [.external(name: "MCP")],
+            // A hyphen is not a Swift identifier, so the generated PRODUCT_NAME comes
+            // out as `pergamenum_mcp` and the binary with it. The module keeps the
+            // underscored name, which nothing reads; the file on disk is what goes in a
+            // client's configuration, and it should be the name the docs use.
+            settings: .settings(base: baseSettings.merging([
+                "PRODUCT_NAME": "pergamenum-mcp",
+                "PRODUCT_MODULE_NAME": "pergamenum_mcp",
+            ]))
         ),
     ]
 )

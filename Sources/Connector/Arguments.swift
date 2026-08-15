@@ -17,8 +17,12 @@ struct Arguments {
     private(set) var flags: Set<String> = []
 
     /// Every `--name` that takes no value.
+    ///
+    /// One list for both connectors, so `--dry-run` means the same thing wherever it is
+    /// typed. `allow-write` belongs to the MCP server alone and is harmless here: `perg`
+    /// writes when told to and has no such switch to shadow.
     static let flagNames: Set<String> = [
-        "json", "help", "dry-run", "apply", "version", "all", "completed",
+        "json", "help", "dry-run", "apply", "version", "all", "completed", "allow-write",
     ]
 
     enum ParseError: Error, CustomStringConvertible {

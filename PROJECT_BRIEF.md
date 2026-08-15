@@ -87,6 +87,29 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-15: **Il vault parla MCP: `pergamenum-mcp`.** ADR-0007, seconda metà. Un
+  processo locale che parla JSON-RPC su stdin e stdout, avviato dal client e vivo quanto
+  lui: Pergamenum non apre nessuna porta e questo nemmeno. Dodici strumenti di lettura
+  (ricerca, note, link, backlink, task, giornata, conformità, statistiche, journal) e otto
+  di scrittura, più le note esposte come risorse `pergamenum://note?file=…`, cioè lo
+  stesso link che «Copia link Pergamenum» mette negli appunti. La scrittura ha due
+  lucchetti: senza `--allow-write` gli strumenti che scrivono non compaiono nemmeno in
+  `tools/list`, e quando ci sono il loro `dryRun` vale **true** se omesso, quindi un
+  modello che se ne dimentica riceve un diff e non una modifica. Registrarlo:
+  `claude mcp add pergamenum -- /usr/local/bin/pergamenum-mcp --vault ~/Labs`.
+  Prima dipendenza SPM del repo, `modelcontextprotocol/swift-sdk` 0.12.1, statica perché
+  un eseguibile a riga di comando non ha un bundle in cui infilare un framework.
+  Il livello di protocollo non ha unit test e non può averli senza linkare l'SDK
+  nell'app: lo verifica `scripts/mcp-smoke.py`, che pilota un server vero su stdio contro
+  un vault che si crea e si butta.
+
+- 2026-08-15: **Una sola implementazione dietro i due connettori.** Le strutture JSON che
+  `perg --json` produceva stavano dentro `Sources/CLI/`, dove il server MCP non le può
+  compilare: due payload scritti a mano per la stessa nota sarebbero divergiti alla prima
+  aggiunta di un campo. `Sources/Connector/` tiene le forme e le operazioni, i due front
+  end tengono solo il modo in cui gli si parla. Regola pratica: una capacità nuova va lì,
+  non dentro uno dei due, altrimenti l'altro non ce l'ha.
+
 - 2026-08-15: **Il vault si raggiunge senza l'app: `perg`.** ADR-0007. Tutto quello che
   l'app sa fare su un vault viveva in estensioni di `VaultController`, che importa
   SwiftUI, quindi nessun processo senza interfaccia poteva chiamarlo; ora sta su

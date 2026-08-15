@@ -18,14 +18,10 @@ enum Output {
         FileHandle.standardError.write(Data("perg: \(text)\n".utf8))
     }
 
-    /// Prints a value as JSON, sorted and indented so a diff of two runs is readable.
+    /// Prints a value as JSON, through the encoder both connectors share.
     static func json(_ value: some Encodable) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
         do {
-            let data = try encoder.encode(value)
-            FileHandle.standardOutput.write(data)
+            FileHandle.standardOutput.write(Data(try ConnectorJSON.encode(value).utf8))
             FileHandle.standardOutput.write(Data("\n".utf8))
         } catch let encodingFailure {
             // Reported rather than swallowed: a caller waiting on JSON that never
