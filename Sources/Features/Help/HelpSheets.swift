@@ -108,7 +108,7 @@ struct HelpSheet: View {
             ("Diario/YYYYMMDD.md", "un file per giorno, nella cartella impostata in Impostazioni"),
         ]),
         Section(heading: "La giornata", rows: [
-            ("06:00 - 20:00", "le ore mostrate; la griglia si allarga se un blocco esce"),
+            ("06:00 - 24:00", "le ore mostrate; la griglia sale più su se un blocco inizia prima"),
             ("10 minuti", "il passo: ogni inizio e ogni durata cadono su un multiplo di 10"),
             ("trascina sul vuoto", "blocca quel tempo e apre la scheda"),
             ("clic sul vuoto", "un blocco di un'ora da quel punto"),

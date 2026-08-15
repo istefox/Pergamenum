@@ -76,10 +76,12 @@ enum DiaryGrid {
     /// Every time in the diary lands on a ten-minute mark.
     static let step = 10
     static let minimumDuration = 10
-    /// The hours the timeline always shows. It grows past them when an entry asks it
-    /// to, so a 22:00 entry written by hand is never invisible.
+    /// The hours the timeline always shows: the morning through to midnight. It grows
+    /// upwards when an entry starts before six, so a 04:30 entry written by hand is
+    /// never invisible; downwards there is nowhere to grow, since no entry can end
+    /// after the day does.
     static let firstHour = 6
-    static let lastHour = 20
+    static let lastHour = 24
     static let dayMinutes = 24 * 60
 
     /// The durations the composer offers: ten minutes to eight hours, ten at a time.
@@ -88,8 +90,14 @@ enum DiaryGrid {
     /// The minute marks a start time may fall on, within one hour.
     static let minuteMarks: [Int] = Array(stride(from: 0, to: 60, by: step))
 
+    /// `07:30`, and `24:00` for the end of the day.
+    ///
+    /// Midnight at the end of a block is written as 24:00, not as 00:00: a block from
+    /// 23:00 to 00:00 reads as ending before it starts, and read back it would be
+    /// refused - the last hour of the day would lose every block written in it.
     static func timeText(_ minutes: Int) -> String {
-        String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+        guard minutes != dayMinutes else { return "24:00" }
+        return String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
     }
 
     /// Rounds to the nearest ten-minute mark, which is the only granularity the diary
@@ -294,11 +302,15 @@ enum DiarySection {
         return nil
     }
 
+    /// `24:00` is read as the end of the day, and is the only hour past 23 accepted -
+    /// it is what this app writes for a block that runs to midnight.
     static func minutes(from text: String) -> Int? {
         let parts = text.split(separator: ":")
         guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]),
-              (0...23).contains(hour), (0...59).contains(minute)
+              (0...59).contains(minute)
         else { return nil }
+        if hour == 24 { return minute == 0 ? DiaryGrid.dayMinutes : nil }
+        guard (0...23).contains(hour) else { return nil }
         return hour * 60 + minute
     }
 

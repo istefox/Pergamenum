@@ -14,7 +14,7 @@ has to happen. Nothing recorded what actually did happen, hour by hour, in the w
 the person it happened to.
 
 What was asked for is a journal: free markdown for the day, a rendered view of it that
-does not require switching modes, and a column of hours from 06:00 to 20:00 where a
+does not require switching modes, and a column of hours from 06:00 to midnight where a
 stretch of time can be blocked out, named, and annotated. Ten minutes is the unit -
 10, 20, 30, and up through two or three hours. It answers to nothing outside the vault:
 no EventKit, no publication, no sync.
@@ -58,10 +58,11 @@ rule, for the opposite reason: a day written down as it was lived has a call ins
 meeting in it. `DiaryLayout` groups blocks that touch into clusters and gives each the
 leftmost free lane, which is what a calendar does.
 
-**D5. 06:00 to 20:00, and further when the day asks.** The window is what was asked
-for, but a block outside it must not be invisible, so the grid grows down to the
-earliest start and up to the latest end. A day that only holds ordinary hours draws
-exactly the fourteen that were asked for.
+**D5. 06:00 to midnight, and earlier when the day asks.** The evening is part of a
+diary - it is written *in* the evening - so the grid runs to 24:00 rather than stopping
+at the end of a working day. Upwards it grows to the earliest start, so a block written
+by hand at 04:30 is never invisible; downwards it has nowhere to grow, since an entry
+is clamped to the day it belongs to.
 
 **D6. The section is markdown, and the prose and the section never touch.** The file
 holds the day's text and then:

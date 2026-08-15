@@ -292,12 +292,10 @@ final class DiaryController {
         min(DiaryGrid.firstHour, entries.map { $0.startMinutes / 60 }.min() ?? DiaryGrid.firstHour)
     }
 
-    /// The last hour drawn, 20:00 unless something runs past it. An entry ending at
-    /// 21:30 asks for the 21:00 line as well as the one above it.
-    var lastHour: Int {
-        let latest = entries.map { ($0.endMinutes + 59) / 60 }.max() ?? DiaryGrid.lastHour
-        return min(24, max(DiaryGrid.lastHour, latest))
-    }
+    /// The last hour drawn, which is always midnight. Nothing can run past it: an entry
+    /// is clamped to the day it belongs to, so there is no case where the grid would
+    /// have to grow at this end.
+    var lastHour: Int { DiaryGrid.lastHour }
 
     var placements: [DiaryLayout.Placement] { DiaryLayout.place(entries) }
 

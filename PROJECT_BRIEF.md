@@ -89,7 +89,7 @@ Binding order, each yielding a usable app (SPEC §13):
 
 - 2026-08-14: **Il Diario è una sezione a sé: la giornata scritta, e le ore che ha
   preso.** A sinistra il markdown del giorno con l'anteprima viva accanto, nella stessa
-  pagina e senza modalità da cambiare; a destra le ore dalle 06:00 alle 20:00, tagliate
+  pagina e senza modalità da cambiare; a destra le ore dalle 06:00 alle 24:00, tagliate
   ogni dieci minuti. Si trascina sul vuoto per bloccare del tempo, si clicca per
   aprirlo, si trascina il blocco per spostarlo e il bordo inferiore per allungarlo: ogni
   blocco ha un titolo, una nota e un colore. Due blocchi alla stessa ora convivono
