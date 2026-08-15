@@ -4,7 +4,7 @@ import SwiftUI
 struct TasksView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
-    @State private var view: NoteIndex.TaskView = .today
+    @State private var view: IndexSnapshot.TaskView = .today
     @State private var selectedTaskID: String?
     /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
     @State private var linking: TaskItem?
@@ -115,7 +115,7 @@ struct TasksView: View {
         return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text("ATTIVITÀ").themedText(.caption, color: .textTertiary)
 
-            ForEach(NoteIndex.TaskView.allCases) { item in
+            ForEach(IndexSnapshot.TaskView.allCases) { item in
                 HStack {
                     Text(item.title)
                         .themedText(.body, color: item == view ? .textPrimary : .textSecondary)

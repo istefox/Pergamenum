@@ -265,13 +265,35 @@ be worth writing down: unit tests cluster around a seam - a pure function, a par
 stub - and the seam itself goes unexercised. Five green tests covered the notification
 request builder while nothing ever instantiated the scheduler.
 
-Two corollaries, both paid for:
+Three corollaries, all paid for:
 
 - A stub answers synchronously on the main actor, which is the one case that works.
   The EventKit crash lived in the gap between that and a real background callback.
 - "Scheduled" and "seen" are different claims. The system's pending queue drained on
   time, which proved delivery and nothing about visibility; the notification was
   invisible because the app was frontmost. Only looking at the screen settled it.
+- A red test is a claim about the test as much as about the code. `DiaryUITests` failed
+  four of ten on a refactor branch against one and two on an untouched `main`, which
+  read as a regression - the messages said the hour grid and the toolbar buttons were
+  missing. A throwaway UI test that opened the pane and photographed it found 19 grid
+  lines and every button present. They were five-second timeouts against elements that
+  exist, on suites that relaunch the app once per test. Ask what the screen shows before
+  believing what the assertion says (#29).
+
+Driving the running app has one trap worth naming. `open pergamenum://…` goes through
+LaunchServices, which picks the *registered* bundle - the copy in `/Applications` - and
+launches it, ignoring the Debug build already running and reviving a copy that was just
+killed. Two instances then race for every route, and the writes land in whatever vault
+the installed app had open rather than in the throwaway one. Force the bundle:
+
+```bash
+open -n "$DEBUG_APP" --args -recentVaults "(\"$VAULT\")"   # launch
+open -a "$DEBUG_APP" "pergamenum://today"                  # and route to that one
+```
+
+`-recentVaults` reaches the app through the argument domain, which outranks the
+persistent one, and `RecentVaults.remember` refuses to write a value that arrived that
+way - so a test vault never displaces the real list.
 
 ## Decisions closed since the brief was written
 

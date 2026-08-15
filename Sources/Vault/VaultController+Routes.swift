@@ -108,34 +108,25 @@ extension VaultController {
     }
 
     /// Appends text to a note without opening it, for the capture route.
+    ///
+    /// Creating the missing note goes through `openDailyNote`, which does open it: a
+    /// capture into a day that has no note yet leaves that note in the editor, and
+    /// that was true before the session existed. Deliberately unchanged here.
     private func append(text: String, to notePath: String?) -> Bool {
-        guard let store else { return false }
-        let path = notePath ?? {
-            settings.dailyFolder.isEmpty
-                ? NoteName.dailyFileName(for: .today)
-                : "\(settings.dailyFolder)/\(NoteName.dailyFileName(for: .today))"
-        }()
+        guard let session else { return false }
+        let path = notePath ?? session.dailyNotePath(for: .today)
 
-        do {
-            if !FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false)) {
+        if !session.exists(path) {
+            do {
                 _ = try openDailyNote(for: .today)
+            } catch {
+                recordProblem("capture: \(error)")
+                return false
             }
-            let existing = try store.read(path).text
-            // A blank line, not merely a newline. Captured into a note whose last line
-            // is a list item - which a daily note's Timeline section always ends with -
-            // a single newline makes the text a lazy continuation of that bullet in
-            // CommonMark: the capture is swallowed into the last time block instead of
-            // standing on its own, and lands inside a section this app rewrites.
-            var body = existing
-            while body.hasSuffix("\n") { body.removeLast() }
-            let separator = body.isEmpty ? "" : "\n\n"
-            let hash = try store.write(body + separator + text + "\n", to: path)
-            selfWrittenHashes[path] = hash
-            index.update(try store.read(path).record, at: path)
-            return true
-        } catch {
-            recordProblem("capture: \(error)")
-            return false
         }
+
+        let outcome = session.append(text: text, to: path)
+        if let result = outcome.result { syncOpenNote(with: result) }
+        return outcome.succeeded
     }
 }
