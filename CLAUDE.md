@@ -106,8 +106,43 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 tuist generate --no-open                                                                        # regenerate after editing Project.swift
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' build
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
+xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build    # the CLI
 scripts/release.sh                                                                              # signed, notarized, numbered build
+scripts/install-cli.sh [dir]                                                                    # build perg Release and put it on the PATH
 ```
+
+## AI connector
+
+ADR-0007. The vault is reachable without the app, so an assistant works on the files
+through the app's own conventions and Pergamenum never opens a socket.
+
+`VaultSession` owns an open vault with no user interface under it - settings,
+vocabulary, index, and the single `write` every change goes through.
+`VaultController` is the observable facade over it and keeps only what the views watch:
+the editor buffer, the selection, the drafts, the route state. Anything that belongs to
+the vault rather than to the window goes on the session, or the CLI cannot reach it.
+
+`perg` is a `.commandLineTool` target compiling **the same files on disk** as the app -
+`Sources/Core/**` plus the pure files under `Vault` and `Index`, named explicitly in
+`sharedSources` in `Project.swift`. Not a framework, not a module: nothing is `public`
+and there is no second implementation of the conventions to drift. Two consequences
+worth remembering:
+
+- a new file under `Sources/Core` that imports SwiftUI **breaks the CLI build**, which
+  is ADR-0001 §D1 enforcing itself. It found three inverted dependencies the first time
+  it ran.
+- a new file elsewhere that the CLI needs must be added to `sharedSources` by hand.
+
+Writes from a connector carry three guardrails (§D6), and they live on `VaultSession`
+so the MCP server inherits them: `isDryRun` computes a write without performing it,
+`UnifiedDiff` shows what would change, and `WriteJournal` records what was replaced so
+`perg journal undo` can put it back - refusing when the file has moved on since.
+The app sets none of them: a person editing their own note does not need an undo log.
+
+Not in the CLI, on purpose: EventKit (TCC would attribute a command-line tool's
+calendar access to the terminal that launched it), and `note rename|move|trash`, which
+rewrite links across many notes outside `VaultSession.write` and so are not covered by
+the journal.
 
 ## Versioning
 

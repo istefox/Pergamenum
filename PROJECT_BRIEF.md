@@ -87,6 +87,21 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-15: **Il vault si raggiunge senza l'app: `perg`.** ADR-0007. Tutto quello che
+  l'app sa fare su un vault viveva in estensioni di `VaultController`, che importa
+  SwiftUI, quindi nessun processo senza interfaccia poteva chiamarlo; ora sta su
+  `VaultSession`, e `perg` compila gli stessi file dell'app in un secondo binario.
+  Legge (`note`, `search`, `task`, `day`, `lint`, `index`), scrive (`note new|append`,
+  `task add|done|reopen|reschedule`, `day block add`) e apre l'app sulle rotte
+  `pergamenum://` quando serve una schermata. Ogni scrittura ha tre reti: `--dry-run`
+  mostra il diff senza toccare niente, il journal in `.pergamenum/ai-journal/` conserva
+  il testo sostituito, e `journal undo` si rifiuta se il file è cambiato dopo. Non ci
+  sono EventKit (il permesso Calendario di un tool a riga di comando lo prende il
+  terminale, non Pergamenum) né rinomina/spostamento/eliminazione, che riscrivono i link
+  in molte note fuori da `VaultSession.write` e quindi il journal non li coprirebbe per
+  intero. Compilare `Core` da solo ha fatto emergere tre dipendenze invertite che c'erano
+  da sempre: `RGBA`, `NoteViolations` e la mappa colore→token del diario.
+
 - 2026-08-15: **Le ore della giornata si impostano, una finestra per sezione.**
   Impostazioni › Giornata tiene due righe, «Oggi» e «Diario», ciascuna con l'ora di
   inizio e quella di fine: partono da 06:00-22:00 e 06:00-24:00, cioè quello che le due

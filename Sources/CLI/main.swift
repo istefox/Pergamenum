@@ -18,6 +18,7 @@ func dispatch(_ group: String, _ arguments: Arguments) async throws -> ExitCode 
     case "lint": return try await LintCommands.run(arguments)
     case "index": return try await IndexCommands.run(arguments)
     case "journal": return try await JournalCommands.run(arguments)
+    case "app": return try await AppCommands.run(arguments)
     case "help":
         Output.line(Help.text)
         return .success

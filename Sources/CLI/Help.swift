@@ -50,6 +50,14 @@ enum Help {
     INDICE
       index stats          quante note, quanti task, quanto ha impiegato la scansione
 
+    APP
+      app open today                    porta l'app sulla giornata di oggi
+      app open note <percorso>          apre quella nota
+      app open day <data>
+      app open search <query>
+                           l'unico comando che ha bisogno dell'app: la lancia se è
+                           chiusa. --app <bundle> per indirizzare una copia precisa
+
     JOURNAL
       journal log          le scritture fatte da perg, dalla più vecchia [--limit n]
       journal undo <id>    rimette il file com'era, e si rifiuta se qualcuno lo ha
