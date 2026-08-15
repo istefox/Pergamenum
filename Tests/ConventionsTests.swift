@@ -87,6 +87,56 @@ func reportsDateTags(_ raw: String) {
     #expect(violations.isEmpty)
 }
 
+// MARK: - The capture exemption (#30)
+
+/// The category is what a file name and a path can say; `status-inbox` is what the note
+/// itself says. The topic exemption of SPEC §4.7 hangs on the second, because the linter
+/// only ever has the first and it never spells `.capture`.
+private let inboxVocabulary = Vocabulary(
+    type: ["note"], status: ["inbox"], area: [], source: [], deliverableKind: []
+)
+
+@Test func aNoteMarkedInboxDoesNotNeedATopicYet() {
+    let tags = [Tag("type-note")!, Tag("status-inbox")!]
+    // Judged as `.note`, which is the only thing `NoteName.category` can return for
+    // `00 Inbox/Capture.md` - and still conformant.
+    let violations = TagRules.validate(tags, category: .note, vocabulary: inboxVocabulary)
+    #expect(violations.isEmpty, "\(violations)")
+}
+
+@Test func aNoteMarkedInboxStillNeedsTypeNote() {
+    // The exemption is about the subject, not about the kind: a capture is still a note.
+    let violations = TagRules.validate(
+        [Tag("status-inbox")!], category: .note, vocabulary: inboxVocabulary
+    )
+    #expect(violations.contains(.missingRequiredTag("type-note")))
+    #expect(!violations.contains(.missingRequiredTag("topic-*")))
+}
+
+@Test func anOrdinaryNoteWithoutTheInboxTagStillNeedsATopic() {
+    // The negative control: without `status-inbox` nothing changed.
+    let violations = TagRules.validate(
+        [Tag("type-note")!], category: .note, vocabulary: inboxVocabulary
+    )
+    #expect(violations.contains(.missingRequiredTag("topic-*")))
+}
+
+@Test func filingACaptureUnderATopicKeepsItConformant() {
+    let tags = [Tag("type-note")!, Tag("topic-acustica")!, Tag("status-inbox")!]
+    let violations = TagRules.validate(tags, category: .note, vocabulary: inboxVocabulary)
+    #expect(violations.isEmpty, "\(violations)")
+}
+
+@Test func aCategoryKnowsWhichTagsItsNotesAreBornWith() {
+    // One rule, read by `createNote` and by the inbox template both. They used to write
+    // the same set out separately, which is how the app came to generate a file its own
+    // linter flagged.
+    #expect(TagRules.initialTags(for: .capture).map(\.description) == ["type-note", "status-inbox"])
+    #expect(TagRules.initialTags(for: .daily).map(\.description) == ["type-note"])
+    #expect(TagRules.initialTags(for: .note, topics: [Tag("topic-acustica")!]).map(\.description)
+        == ["type-note", "topic-acustica"])
+}
+
 @Test func reportsClosedFamilyValueOutsideTheVocabulary() {
     let vocabulary = Vocabulary(
         type: ["note"], status: ["inbox"], area: [], source: [], deliverableKind: []

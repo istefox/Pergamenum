@@ -133,10 +133,30 @@ enum TagRules {
         if !tags.contains(where: { $0.namespace == .type && $0.value == "note" }) {
             missing.append(.missingRequiredTag("type-note"))
         }
-        if !tags.contains(where: { $0.namespace == .topic }) {
+        // A capture has no subject yet, and SPEC §4.7 lists it beside `daily` as an
+        // exception to the topic rule. It is recognised here, by the tag, rather than in
+        // `NoteName.category`: that function is handed a file name and a path and knows
+        // nothing about frontmatter, and a note is a capture because of what it declares
+        // rather than because of where it sits. `status-inbox` is the one status an
+        // ordinary note may carry (tag.md 5.1), and saying "not filed yet" is its whole
+        // job - so a note wearing it is exempt until somebody files it.
+        let isCapture = tags.contains { $0.namespace == .status && $0.value == "inbox" }
+        if !isCapture, !tags.contains(where: { $0.namespace == .topic }) {
             missing.append(.missingRequiredTag("topic-*"))
         }
         return missing
+    }
+
+    /// The tags a note of a category is born with (SPEC §4.3, tag.md 5.1).
+    ///
+    /// One place rather than two. The inbox note used to have its tag set written out by
+    /// hand in `inboxTemplate`, next to a `createNote` that built the same set from the
+    /// same rule - which is how the app came to generate a file its own linter flagged
+    /// without anybody noticing (#30).
+    static func initialTags(for category: NoteCategory, topics: [Tag] = []) -> [Tag] {
+        ordered([Tag(namespace: .type, value: "note")] + topics + (
+            category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
+        ))
     }
 
     /// T-07 forbids date tags. Catches the shapes a date actually takes in practice:
@@ -169,12 +189,17 @@ enum TagRules {
 
 /// The note kinds whose tag rules differ (tag.md 5.1).
 enum NoteCategory: Equatable, Sendable {
-    /// An ordinary note: needs `type-note` plus at least one `topic-*`, and may not
-    /// carry a `status-*` other than `status-inbox`.
+    /// An ordinary note: needs `type-note` plus at least one `topic-*`, unless it is
+    /// wearing `status-inbox` - the one `status-*` it may carry.
     case note
     /// A daily note: `type-note` alone is correct and complete.
     case daily
     /// An inbox capture with no subject yet: `type-note` + `status-inbox`.
+    ///
+    /// Used when a note is *written*, to say which tags it starts with. It is not what
+    /// the linter sees: `NoteName.category` derives a category from a file name and a
+    /// path, and a capture is not recognisable from either. When a note is *judged*, the
+    /// exemption comes from `status-inbox` itself - see `missingRequired`.
     case capture
 
     var requiresTopic: Bool { self == .note }

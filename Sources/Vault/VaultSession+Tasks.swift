@@ -140,10 +140,7 @@ extension VaultSession {
         guard destination == .inbox else { return nil }
         var frontmatter = Frontmatter.empty
         frontmatter.date = .today
-        frontmatter.tags = TagRules.ordered([
-            Tag(namespace: .type, value: "note"),
-            Tag(namespace: .status, value: "inbox"),
-        ])
+        frontmatter.tags = TagRules.initialTags(for: .capture)
         return FrontmatterSerializer.render(frontmatter) + "\n"
     }
 }
