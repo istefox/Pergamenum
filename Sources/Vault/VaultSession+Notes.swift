@@ -52,9 +52,7 @@ extension VaultSession {
 
         var frontmatter = Frontmatter.empty
         frontmatter.date = date
-        frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")] + topics + (
-            category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
-        ))
+        frontmatter.tags = TagRules.initialTags(for: category, topics: topics)
 
         return try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
     }

@@ -88,15 +88,14 @@ private func openSession(_ root: URL) async -> VaultSession {
 
     // The inbox is born with a frontmatter block rather than as a bare list, and
     // carries the tags `NoteCategory.capture` calls for (tag.md 5.1).
-    //
-    // Not asserted here: that the linter then calls it conformant. It does not, and
-    // that is a fact about the vocabulary rules rather than about this write -
-    // `NoteName.category` can only ever return `.daily` or `.note`, so the `.capture`
-    // exemption that lets an inbox note skip `topic-*` is unreachable from the linter's
-    // side. Left as it stands, because a refactor is not the place to change what the
-    // rules say.
     #expect(result.text.hasPrefix("---\n"))
     #expect(result.text.contains("- status-inbox"))
+
+    // And the linter agrees. This assertion is the point of #30: the app used to write a
+    // file its own conformance pane flagged, because the `topic-*` exemption of SPEC §4.7
+    // was reachable only when a note was created and never when it was judged.
+    let violations = try #require(session.violations(forRecordAt: result.path))
+    #expect(violations.isEmpty, "la nota inbox che l'app scrive da sé non è conforme: \(violations)")
 }
 
 @MainActor
