@@ -31,7 +31,7 @@ private func openSession(_ root: URL) async -> VaultSession {
         in: "01 Progetti",
         date: CalendarDate(iso: "2026-08-11")!,
         topics: [Tag("topic-acoustics")!]
-    )
+    ).path
     #expect(path == "01 Progetti/Nota nuova.md")
 
     let text = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)

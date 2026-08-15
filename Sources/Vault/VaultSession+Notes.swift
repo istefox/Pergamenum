@@ -36,7 +36,7 @@ extension VaultSession {
         date: CalendarDate,
         category: NoteCategory = .note,
         topics: [Tag] = []
-    ) throws -> String {
+    ) throws -> WriteResult {
         let violations = category == .daily
             ? NoteName.validateDaily(title)
             : NoteName.validate(title)
@@ -52,8 +52,7 @@ extension VaultSession {
             category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
         ))
 
-        try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
-        return relativePath
+        return try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
     }
 
     // MARK: Daily notes
@@ -75,7 +74,7 @@ extension VaultSession {
             in: settings.dailyFolder,
             date: date,
             category: .daily
-        )
+        ).path
     }
 
     // MARK: Files brought in

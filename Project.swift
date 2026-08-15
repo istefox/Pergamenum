@@ -89,6 +89,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+TimeBlocks.swift",
     "Sources/Vault/VaultSession+Watching.swift",
     "Sources/Vault/VaultSettings.swift",
+    "Sources/Vault/WriteJournal.swift",
 ]
 
 let project = Project(

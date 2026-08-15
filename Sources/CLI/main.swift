@@ -11,18 +11,47 @@ import Foundation
 /// push the entry point's branching over what SwiftLint allows.
 func dispatch(_ group: String, _ arguments: Arguments) async throws -> ExitCode {
     switch group {
-    case "note": return try await NoteCommands.run(arguments)
+    case "note": return try await noteGroup(arguments)
+    case "task": return try await taskGroup(arguments)
+    case "day": return try await dayGroup(arguments)
     case "search": return try await SearchCommands.run(arguments)
-    case "task": return try await TaskCommands.run(arguments)
-    case "day": return try await DayCommands.run(arguments)
     case "lint": return try await LintCommands.run(arguments)
     case "index": return try await IndexCommands.run(arguments)
+    case "journal": return try await JournalCommands.run(arguments)
     case "help":
         Output.line(Help.text)
         return .success
     default:
         throw CommandError("«\(group)» non è un gruppo di comandi; prova «perg help»", code: .usage)
     }
+}
+
+/// Each group splits its writing subcommands from its reading ones here rather than
+/// inside one switch: nested, the entry point's branching outgrew what SwiftLint allows
+/// and, more to the point, what a reader can follow.
+func noteGroup(_ arguments: Arguments) async throws -> ExitCode {
+    switch arguments.word(1) {
+    case "new": return try await WriteCommands.noteNew(arguments)
+    case "append": return try await WriteCommands.noteAppend(arguments)
+    default: return try await NoteCommands.run(arguments)
+    }
+}
+
+func taskGroup(_ arguments: Arguments) async throws -> ExitCode {
+    switch arguments.word(1) {
+    case "add": return try await WriteCommands.taskAdd(arguments)
+    case "done": return try await WriteCommands.taskChange(arguments, .done)
+    case "reopen": return try await WriteCommands.taskChange(arguments, .reopen)
+    case "reschedule": return try await WriteCommands.taskChange(arguments, .reschedule)
+    default: return try await TaskCommands.run(arguments)
+    }
+}
+
+func dayGroup(_ arguments: Arguments) async throws -> ExitCode {
+    if arguments.word(1) == "block", arguments.word(2) == "add" {
+        return try await WriteCommands.blockAdd(arguments)
+    }
+    return try await DayCommands.run(arguments)
 }
 
 func run() async -> ExitCode {
