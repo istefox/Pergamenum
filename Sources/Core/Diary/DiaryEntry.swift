@@ -54,18 +54,6 @@ enum DiaryColour: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// The token drawn behind the entry. The sticky family exists for exactly this:
-    /// a coloured surface that a custom theme can restate.
-    var token: ColorToken {
-        switch self {
-        case .blu: .stickyBlue
-        case .verde: .stickyGreen
-        case .giallo: .stickyYellow
-        case .rosa: .stickyPink
-        case .grigio: .stickyGrey
-        }
-    }
-
     /// The label in the picker, in the UI's language.
     var label: String { rawValue.capitalized }
 }

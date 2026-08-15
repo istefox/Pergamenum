@@ -11,59 +11,6 @@ enum TokenValue: Equatable, Sendable {
     case string(String)
 }
 
-/// Straight sRGB components in 0...1. Kept framework-free so `Core`-style logic and
-/// tests can handle tokens without importing SwiftUI.
-struct RGBA: Equatable, Sendable {
-    var red: Double
-    var green: Double
-    var blue: Double
-    var alpha: Double
-
-    /// Parses `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA`, with or without the hash.
-    /// Returns nil rather than a default colour: a malformed value must be reported
-    /// as a parse failure, never silently rendered as black.
-    init?(hex: String) {
-        var digits = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if digits.hasPrefix("#") { digits.removeFirst() }
-        guard digits.allSatisfy(\.isHexDigit) else { return nil }
-
-        // Expand shorthand: #A3F -> #AA33FF, so both forms take the same path below.
-        if digits.count == 3 || digits.count == 4 {
-            digits = digits.map { "\($0)\($0)" }.joined()
-        }
-        guard digits.count == 6 || digits.count == 8,
-              let value = UInt32(digits, radix: 16) else { return nil }
-
-        if digits.count == 6 {
-            red = Double((value >> 16) & 0xFF) / 255
-            green = Double((value >> 8) & 0xFF) / 255
-            blue = Double(value & 0xFF) / 255
-            alpha = 1
-        } else {
-            red = Double((value >> 24) & 0xFF) / 255
-            green = Double((value >> 16) & 0xFF) / 255
-            blue = Double((value >> 8) & 0xFF) / 255
-            alpha = Double(value & 0xFF) / 255
-        }
-    }
-
-    init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
-        self.red = red
-        self.green = green
-        self.blue = blue
-        self.alpha = alpha
-    }
-
-    /// The value as a token file writes it: `#RRGGBB`, or `#RRGGBBAA` when it is not
-    /// opaque. The short forms are only ever read, never written, so a file this app
-    /// produces reads the same way to every other tool.
-    var hexString: String {
-        func byte(_ value: Double) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
-        let base = String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
-        return alpha >= 1 ? base : base + String(format: "%02X", byte(alpha))
-    }
-}
-
 struct TypographyValue: Equatable, Sendable {
     enum Family: String, Equatable, Sendable {
         case system
