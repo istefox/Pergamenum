@@ -23,7 +23,7 @@ extension VaultController {
         guard let session else { throw CreationError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try session.createNote(
             title: title, in: folder, date: date, category: category, topics: topics
-        )
+        ).path
         openNote(at: relativePath)
         return relativePath
     }

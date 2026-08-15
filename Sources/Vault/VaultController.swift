@@ -347,21 +347,3 @@ final class VaultController {
         session?.importConventions(from: repository)
     }
 }
-
-struct NoteViolations: Equatable, Sendable {
-    var name: [NoteName.Violation]
-    var frontmatter: [FrontmatterViolation]
-    var tags: [TagViolation]
-    var relatedMissingInSection: [String]
-    var relatedMissingInFrontmatter: [String]
-
-    var isEmpty: Bool {
-        name.isEmpty && frontmatter.isEmpty && tags.isEmpty
-            && relatedMissingInSection.isEmpty && relatedMissingInFrontmatter.isEmpty
-    }
-
-    var count: Int {
-        name.count + frontmatter.count + tags.count
-            + relatedMissingInSection.count + relatedMissingInFrontmatter.count
-    }
-}

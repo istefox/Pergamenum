@@ -106,8 +106,67 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 tuist generate --no-open                                                                        # regenerate after editing Project.swift
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' build
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
+xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build    # the CLI
+xcodebuild -workspace Pergamenum.xcworkspace -scheme pergamenum-mcp -destination 'platform=macOS' build
 scripts/release.sh                                                                              # signed, notarized, numbered build
+scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
+scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
 ```
+
+## AI connector
+
+ADR-0007. The vault is reachable without the app, so an assistant works on the files
+through the app's own conventions and Pergamenum never opens a socket.
+
+`VaultSession` owns an open vault with no user interface under it - settings,
+vocabulary, index, and the single `write` every change goes through.
+`VaultController` is the observable facade over it and keeps only what the views watch:
+the editor buffer, the selection, the drafts, the route state. Anything that belongs to
+the vault rather than to the window goes on the session, or the CLI cannot reach it.
+
+`perg` and `pergamenum-mcp` are `.commandLineTool` targets compiling **the same files on
+disk** as the app - `Sources/Core/**`, `Sources/Connector/**` and the pure files under
+`Vault` and `Index`, named explicitly in `sharedSources` in `Project.swift`. Not a
+framework, not a module: nothing is `public` and there is no second implementation of the
+conventions to drift. Three consequences worth remembering:
+
+- a new file under `Sources/Core` that imports SwiftUI **breaks both tool builds**, which
+  is ADR-0001 §D1 enforcing itself. It found three inverted dependencies the first time
+  it ran.
+- a new file outside those globs that a tool needs must be added to `sharedSources` by
+  hand.
+- `Sources/CLI/**` and `Sources/MCPServer/**` are excluded from the app target, because
+  each holds a `main.swift` of top-level code and a module may contain only one.
+
+`Sources/Connector/` is where anything a connector does actually lives: `VaultAPI` holds
+the payload shapes both encode, the reads, the writes, and the lookups that turn a string
+into a date, a view or a task. **A new capability goes there, not into one of the two
+front ends** - a read implemented in `Sources/CLI` is a read the MCP server does not have.
+The front ends only translate: `Sources/CLI` reads flags and prints for a person,
+`Sources/MCPServer` declares JSON schemas and answers over stdio.
+
+Writes carry three guardrails (§D6) that live on `VaultSession` and are armed in one
+place, `VaultAPI.arm`: `isDryRun` computes a write without performing it, `UnifiedDiff`
+shows what would change, and `WriteJournal` records what was replaced so `undo` can put
+it back - refusing when the file has moved on since. The app arms none of them: a person
+editing their own note does not need an undo log. On the MCP side there is a second lock:
+write tools are absent from `tools/list` without `--allow-write`, and each one's `dryRun`
+defaults to **true**, so a model that omits it gets a diff instead of a change.
+
+Registering the server, read-only first:
+
+```bash
+claude mcp add pergamenum -- /usr/local/bin/pergamenum-mcp --vault ~/Labs
+```
+
+The protocol layer has no unit tests and cannot have them without linking the MCP SDK
+into the app; `scripts/mcp-smoke.py` drives a real server over stdio instead, and is the
+thing to run after touching `Sources/MCPServer`.
+
+Not in either connector, on purpose: EventKit (TCC would attribute a command-line tool's
+calendar access to the terminal that launched it), and `note rename|move|trash`, which
+rewrite links across many notes outside `VaultSession.write` and so are not covered by
+the journal.
 
 ## Versioning
 

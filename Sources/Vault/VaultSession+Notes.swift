@@ -12,7 +12,11 @@ extension VaultSession {
 
         var description: String {
             switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
+            // Each violation described on its own rather than the array interpolated:
+            // interpolating a collection describes its elements the way a debugger
+            // would, module name and all, and this sentence is read by a person.
+            case .invalidTitle(let violations):
+                "titolo non conforme: " + violations.map { "\($0)" }.joined(separator: ", ")
             case .alreadyExists(let path): "esiste già: \(path)"
             }
         }
@@ -36,7 +40,7 @@ extension VaultSession {
         date: CalendarDate,
         category: NoteCategory = .note,
         topics: [Tag] = []
-    ) throws -> String {
+    ) throws -> WriteResult {
         let violations = category == .daily
             ? NoteName.validateDaily(title)
             : NoteName.validate(title)
@@ -52,8 +56,7 @@ extension VaultSession {
             category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
         ))
 
-        try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
-        return relativePath
+        return try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
     }
 
     // MARK: Daily notes
@@ -75,7 +78,7 @@ extension VaultSession {
             in: settings.dailyFolder,
             date: date,
             category: .daily
-        )
+        ).path
     }
 
     // MARK: Files brought in

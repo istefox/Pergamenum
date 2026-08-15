@@ -111,6 +111,24 @@ final class VaultSession {
         }
     }
 
+    /// Records what every write replaced, when a caller has asked for a net.
+    ///
+    /// Nil for the app, which is the point: a person editing their own note in their
+    /// own editor does not need an undo log beside the file. A connector writing on
+    /// behalf of a model does (ADR-0007 §D6), and it sets this.
+    @ObservationIgnored var journal: WriteJournal?
+
+    /// What the journal records as the cause. Set by the caller before it writes.
+    @ObservationIgnored var journalCommand = ""
+
+    /// When true, writes are computed and not performed.
+    ///
+    /// The alternative was a `preview` variant of every write, which is two code paths
+    /// for one behaviour and the second one drifts. This way `--dry-run` exercises the
+    /// same arithmetic, the same conventions and the same refusals as the real thing,
+    /// and stops one line short of the disk.
+    @ObservationIgnored var isDryRun = false
+
     /// Writes a note, records the hash so the watcher knows it as ours, and re-reads
     /// it into the index.
     ///
@@ -118,9 +136,31 @@ final class VaultSession {
     /// never the cache (ADR-0001 §D2.3).
     @discardableResult
     func write(_ text: String, to relativePath: String) throws -> WriteResult {
+        // Read first, and only when somebody is going to use it: the journal needs what
+        // was there, and a dry run needs nothing at all.
+        let existing = (journal != nil && !isDryRun) ? try? read(relativePath) : nil
+
+        guard !isDryRun else { return WriteResult(path: relativePath, text: text) }
+
         let hash = try store.write(text, to: relativePath)
         selfWrittenHashes[relativePath] = hash
         index.update(try store.read(relativePath).record, at: relativePath)
+
+        if let journal {
+            let now = Date()
+            let problem = journal.record(WriteJournal.Entry(
+                id: WriteJournal.makeID(at: now),
+                timestamp: now,
+                path: relativePath,
+                hashBefore: existing?.record.contentHash,
+                hashAfter: hash,
+                textBefore: existing?.text,
+                command: journalCommand
+            ))
+            // The write happened; the net did not. Say so rather than pretending the
+            // change can be undone.
+            if let problem { recordProblem(problem) }
+        }
         return WriteResult(path: relativePath, text: text)
     }
 
@@ -228,7 +268,17 @@ final class VaultSession {
 
         if !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
             guard let bundled = bundledVocabulary else {
-                problems.append("the bundled vocabolari.json is missing")
+                // Two different situations, and telling them apart matters: the app
+                // shipping without its copy is a broken build, while a command-line
+                // tool never had one to begin with and is working as designed on a
+                // vault that has no replica yet (ADR-0007 §D2).
+                problems.append(
+                    """
+                    nessun vocabolario: \(VaultLayout.privateDirectory)/\(VaultLayout.vocabularyFile) \
+                    non esiste e questo processo non ha una copia da cui crearlo; \
+                    le regole sui tag non verranno applicate
+                    """
+                )
                 return
             }
             do {
