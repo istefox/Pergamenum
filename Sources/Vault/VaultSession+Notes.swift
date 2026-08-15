@@ -12,7 +12,11 @@ extension VaultSession {
 
         var description: String {
             switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
+            // Each violation described on its own rather than the array interpolated:
+            // interpolating a collection describes its elements the way a debugger
+            // would, module name and all, and this sentence is read by a person.
+            case .invalidTitle(let violations):
+                "titolo non conforme: " + violations.map { "\($0)" }.joined(separator: ", ")
             case .alreadyExists(let path): "esiste già: \(path)"
             }
         }
