@@ -6,29 +6,19 @@ import Foundation
 /// (SPEC §12). Parsed by `SearchQuery`, which is the app's own parser: a second
 /// grammar here would be a second thing to keep in step.
 enum SearchCommands {
-    struct Hit: Encodable {
-        let path: String
-        let title: String
-        let excerpt: String
-    }
-
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {
-        let raw = arguments.rest(from: 1)
-        guard !raw.isEmpty else {
-            throw CommandError(#"uso: perg search <query>   es. perg search 'tag:type-note curva'"#, code: .usage)
-        }
-
         let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
-        let limit = arguments["limit"].flatMap(Int.init) ?? 200
-        let results = session.search(SearchQuery(raw), limit: limit)
+        let hits = try VaultAPI.search(
+            session, arguments.rest(from: 1), limit: arguments["limit"].flatMap(Int.init)
+        )
 
         if arguments.has("json") {
-            Output.json(results.map { Hit(path: $0.path, title: $0.title, excerpt: $0.excerpt) })
+            Output.json(hits)
         } else {
-            for result in results {
-                Output.line(result.path)
-                if !result.excerpt.isEmpty { Output.line("    \(result.excerpt)") }
+            for hit in hits {
+                Output.line(hit.path)
+                if !hit.excerpt.isEmpty { Output.line("    \(hit.excerpt)") }
             }
         }
         // Nothing found is not a failure - it is an answer, and a script testing the

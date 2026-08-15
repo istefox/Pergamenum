@@ -43,7 +43,10 @@ func taskGroup(_ arguments: Arguments) async throws -> ExitCode {
     case "add": return try await WriteCommands.taskAdd(arguments)
     case "done": return try await WriteCommands.taskChange(arguments, .done)
     case "reopen": return try await WriteCommands.taskChange(arguments, .reopen)
-    case "reschedule": return try await WriteCommands.taskChange(arguments, .reschedule)
+    case "reschedule":
+        return try await WriteCommands.taskChange(
+            arguments, try WriteCommands.rescheduleRequest(arguments)
+        )
     default: return try await TaskCommands.run(arguments)
     }
 }
@@ -78,6 +81,10 @@ func run() async -> ExitCode {
     } catch let failure as CommandError {
         Output.error(failure.description)
         return failure.code
+    } catch let refusal as ConnectorError {
+        // Raised by the shared vault API, which has no idea what an exit code is.
+        Output.error(refusal.description)
+        return refusal.isUsage ? .usage : .failure
     } catch {
         Output.error("\(error)")
         return .failure

@@ -71,6 +71,9 @@ let buildNumber = Environment.buildNumber.getString(default: "0")
 // ADR-0001 §D1 enforcing itself instead of being remembered.
 let sharedSources: [SourceFileGlob] = [
     .glob("Sources/Core/**", excluding: ["Sources/Core/Email/MailLink.swift"]),
+    // The vault as an answer: the payload shapes and the operations behind both
+    // connectors, so `perg --json` and an MCP tool call cannot drift apart.
+    .glob("Sources/Connector/**"),
     "Sources/Index/IndexCache.swift",
     "Sources/Index/IndexSnapshot.swift",
     "Sources/Calendar/TimeBlock.swift",

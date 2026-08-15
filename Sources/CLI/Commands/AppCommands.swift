@@ -63,7 +63,7 @@ enum AppCommands {
             return url
         case "day":
             let raw = try requireWord(arguments, 3, "perg app open day <data>")
-            let date = try TaskCommands.resolveDay(raw)
+            let date = try VaultAPI.day(raw)
             guard let url = PergamenumLink.day(date) else {
                 throw CommandError("data non trasformabile in link: \(raw)")
             }

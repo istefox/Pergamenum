@@ -2,58 +2,32 @@ import Foundation
 
 /// What every writing command does around the write itself (ADR-0007 §D6).
 ///
-/// One place, so a command cannot be added that quietly skips the guardrails: opening
-/// a session for writing gives you the journal and the dry-run switch whether you
-/// remember them or not.
+/// The guardrails themselves live in `VaultAPI` so that the MCP server inherits them
+/// rather than reimplementing them; what is left here is the shell's half - reading
+/// `--dry-run` off the command line, and saying the outcome to a person.
 enum Writing {
-    /// Opens a session armed for a write.
+    /// Opens a session and arms it for a write.
     @MainActor
     static func session(_ arguments: Arguments, command: String) async throws -> VaultSession {
-        let root = try VaultResolution.root(from: arguments)
-        let session = await VaultResolution.session(at: root)
-        session.isDryRun = arguments.has("dry-run")
-        session.journalCommand = command
-        // No journal for a dry run: nothing happened, and an entry saying otherwise
-        // would be a lie in the one file whose job is to be trusted.
-        session.journal = session.isDryRun ? nil : WriteJournal(root: root)
+        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        VaultAPI.arm(session, command: command, dryRun: arguments.has("dry-run"))
         return session
     }
 
-    /// Reports a write, as a diff when it was a rehearsal and as a line when it was
-    /// real.
-    ///
-    /// The diff is computed against what is on disk *now* rather than against anything
-    /// the session held, so what it shows is what would actually change.
-    @MainActor
-    static func report(
-        _ result: VaultSession.WriteResult, session: VaultSession, arguments: Arguments
-    ) {
-        let existing = try? session.read(result.path).text
-        let before = existing ?? ""
-        let isNew = existing == nil
-
+    /// Reports a write, as a diff when it was a rehearsal and as a line when it was real.
+    static func report(_ summary: VaultAPI.WriteSummary, arguments: Arguments) {
         if arguments.has("json") {
-            struct Payload: Encodable {
-                let path: String
-                let applied: Bool
-                let diff: String?
-            }
-            Output.json(Payload(
-                path: result.path,
-                applied: !session.isDryRun,
-                diff: UnifiedDiff.between(before, result.text, path: result.path, isNew: isNew)
-            ))
+            Output.json(summary)
             return
         }
+        if let note = summary.note { Output.line(note) }
 
-        guard session.isDryRun else {
-            Output.line("scritto  \(result.path)")
+        guard !summary.applied else {
+            Output.line("scritto  \(summary.path)")
             return
         }
-        guard let diff = UnifiedDiff.between(
-            before, result.text, path: result.path, isNew: isNew
-        ) else {
-            Output.line("niente da cambiare in \(result.path)")
+        guard let diff = summary.diff else {
+            Output.line("niente da cambiare in \(summary.path)")
             return
         }
         Output.line(diff)

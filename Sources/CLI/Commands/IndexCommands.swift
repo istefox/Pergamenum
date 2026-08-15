@@ -2,17 +2,6 @@ import Foundation
 
 /// `perg index …` - what the scan found.
 enum IndexCommands {
-    struct Stats: Encodable {
-        let vault: String
-        let notes: Int
-        let tasks: Int
-        let openTasks: Int
-        let unresolvedLinks: Int
-        let reusedFromCache: Int
-        let failures: [String]
-        let scanMilliseconds: Int
-    }
-
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {
         switch arguments.word(1) {
@@ -25,24 +14,8 @@ enum IndexCommands {
 
     @MainActor
     private static func stats(_ arguments: Arguments) async throws -> ExitCode {
-        let root = try VaultResolution.root(from: arguments)
-        let session = await VaultResolution.session(at: root)
-        let index = session.index
-
-        let duration = index.lastScanDuration.components
-        let milliseconds = Int(duration.seconds * 1000)
-            + Int(duration.attoseconds / 1_000_000_000_000_000)
-
-        let stats = Stats(
-            vault: root.path(percentEncoded: false),
-            notes: index.count,
-            tasks: index.allTasks.count,
-            openTasks: index.allTasks.filter(\.state.isOpen).count,
-            unresolvedLinks: index.unresolvedLinks().count,
-            reusedFromCache: index.reusedFromCache,
-            failures: index.failures,
-            scanMilliseconds: milliseconds
-        )
+        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let stats = VaultAPI.stats(session)
 
         if arguments.has("json") {
             Output.json(stats)

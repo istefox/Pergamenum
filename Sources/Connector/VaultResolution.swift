@@ -1,6 +1,9 @@
 import Foundation
 
-/// Which vault `perg` acts on, and how it opens it.
+/// Which vault a connector acts on, and how it opens it.
+///
+/// Shared by `perg` and by the MCP server: both are started by somebody who did not
+/// necessarily say which vault they meant, and both should land on the same one.
 enum VaultResolution {
     /// In order: `--vault`, `PERGAMENUM_VAULT`, then the vault the app opened last.
     ///
@@ -20,12 +23,12 @@ enum VaultResolution {
         guard let defaults = UserDefaults(suiteName: AppInfo.bundleIdentifier),
               let recent = RecentVaults(defaults: defaults, isOverridden: false).mostRecent
         else {
-            throw CommandError(
+            throw ConnectorError(
                 """
                 nessun vault: passa --vault <cartella>, imposta PERGAMENUM_VAULT, \
                 oppure aprine uno in Pergamenum
                 """,
-                code: .usage
+                usage: true
             )
         }
         return recent
@@ -51,7 +54,7 @@ enum VaultResolution {
         guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory),
               isDirectory.boolValue
         else {
-            throw CommandError("\(source): «\(path)» non è una cartella", code: .usage)
+            throw ConnectorError("\(source): «\(path)» non è una cartella", usage: true)
         }
         return URL(filePath: expanded, directoryHint: .isDirectory)
     }
