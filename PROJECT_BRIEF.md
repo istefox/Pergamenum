@@ -87,6 +87,13 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-15: **Le ore della giornata si impostano, una finestra per sezione.**
+  Impostazioni › Giornata tiene due righe, «Oggi» e «Diario», ciascuna con l'ora di
+  inizio e quella di fine: partono da 06:00-22:00 e 06:00-24:00, cioè quello che le due
+  timeline disegnavano prima. Nessuna delle due nasconde niente - la griglia si allarga
+  da sola fino al blocco o all'evento fuori finestra, e la vista Oggi ora lo fa anche
+  per un evento serale, cosa che prima non faceva (ADR-0006). Una finestra scritta a
+  mano al contrario viene raddrizzata, non obbedita.
 - 2026-08-14: **Il Diario è una sezione a sé: la giornata scritta, e le ore che ha
   preso.** A sinistra il markdown del giorno con l'anteprima viva accanto, nella stessa
   pagina e senza modalità da cambiare; a destra le ore dalle 06:00 alle 24:00, tagliate

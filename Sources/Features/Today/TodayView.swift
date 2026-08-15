@@ -24,7 +24,7 @@ struct TodayView: View {
         HSplitView {
             noteColumn
                 .frame(minWidth: 420)
-            DayTimeline(controller: controller, calendar: calendar)
+            DayTimeline(controller: controller, calendar: calendar, window: vault.settings.dayHours)
                 .frame(minWidth: 220, idealWidth: 300, maxWidth: 520)
         }
         .background(theme.color(.backgroundPrimary))

@@ -276,6 +276,26 @@ private func diaryOnDisk(_ root: URL) -> String? {
     controller.close()
 }
 
+/// The hours come from Impostazioni, one window for the diary and another for the day
+/// view, and changing one does not touch the other.
+@MainActor
+@Test func drawsTheHoursSetInSettings() async throws {
+    let vault = try DayVault()
+    let root = vault.root
+    let (diary, controller) = try await makeDiary(vault)
+
+    controller.updateSettings { $0.diaryHours = HourWindow(first: 8, last: 18) }
+    #expect(diary.firstHour == 8)
+    #expect(diary.lastHour == 18)
+    #expect(controller.settings.dayHours == .dayDefault)
+
+    // And a block outside those hours widens the grid rather than vanishing behind it.
+    diary.add(title: "Sera", startMinutes: 21 * 60, durationMinutes: 90)
+    #expect(diary.firstHour == 8)
+    #expect(diary.lastHour == 23)
+    controller.close()
+}
+
 /// An entry before the usual hours must not be invisible: the grid grows up to it.
 @MainActor
 @Test func growsTheGridToReachAnEntryBeforeTheUsualHours() async throws {
