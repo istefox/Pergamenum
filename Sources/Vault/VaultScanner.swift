@@ -63,7 +63,16 @@ struct VaultScanner: Sendable {
                 if VaultLayout.isExcludedDirectory(name) { enumerator.skipDescendants() }
                 continue
             }
-            guard url.pathExtension.lowercased() == "md" else { continue }
+            guard url.pathExtension.lowercased() == "md" else {
+                if let note = Self.evictedNoteName(from: name) {
+                    let placeholder = Self.relativePath(of: url, under: root)
+                    failures.append((
+                        String(placeholder.dropLast(name.count)) + note,
+                        "non è scaricata da iCloud: apri il vault in Finder e scegli «Conserva scaricato»"
+                    ))
+                }
+                continue
+            }
 
             let relativePath = Self.relativePath(of: url, under: root)
             if let entry = cached[relativePath], isUnchanged(entry, at: url) {
@@ -81,6 +90,27 @@ struct VaultScanner: Sendable {
     }
 
     /// Percent-decoded, separator-normalised path of `url` relative to `root`.
+    /// The note an iCloud placeholder stands in for, or nil when the file is something
+    /// else entirely.
+    ///
+    /// With "Optimize Mac Storage" on, iCloud Drive evicts a file it thinks is cold and
+    /// leaves a hidden `.Nota.md.icloud` stub where `Nota.md` was. The stub's extension
+    /// is no longer `md`, so the walk drops it without a word and the note is simply
+    /// gone: absent from search, absent from the linter, and absent from the index that
+    /// resolves wikilinks. What the user sees is a link that stopped resolving, which
+    /// reads exactly like a link they typed wrong - a vault lying in the one way its
+    /// owner cannot tell apart from their own mistake.
+    ///
+    /// Principle 6 puts the vault in iCloud Drive on purpose, so this is a normal state
+    /// of a supported setup rather than an exotic failure, and it is reported.
+    static func evictedNoteName(from fileName: String) -> String? {
+        let suffix = ".icloud"
+        guard fileName.hasPrefix("."), fileName.hasSuffix(suffix) else { return nil }
+        let note = String(fileName.dropFirst().dropLast(suffix.count))
+        guard (note as NSString).pathExtension.lowercased() == "md" else { return nil }
+        return note
+    }
+
     static func relativePath(of url: URL, under root: URL) -> String {
         let rootPath = root.standardizedFileURL.path(percentEncoded: false)
         let filePath = url.standardizedFileURL.path(percentEncoded: false)
