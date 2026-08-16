@@ -35,10 +35,24 @@ step() {
 step "Genero il progetto"
 tuist generate --no-open >/dev/null
 
-[ -d "$DESTINATION" ] || fail "$DESTINATION non esiste"
+# Not created here on purpose - a script that makes directories on the way to somewhere
+# else is a script that puts binaries where nobody meant them to go. It says how instead.
+# Braces around the second one: the guillemet that follows would otherwise be read as
+# part of the variable's name, and the script dies on «unbound variable» while trying to
+# explain something else.
+[ -d "$DESTINATION" ] || fail "$DESTINATION non esiste: creala con «mkdir -p ${DESTINATION}»,
+   e controlla che sia nel PATH, altrimenti installarci dentro non serve a niente"
 if [ ! -w "$DESTINATION" ]; then
     fail "$DESTINATION non è scrivibile: rilancia con sudo, oppure passa una cartella tua (~/bin)"
 fi
+
+# Said before the build rather than after: ten minutes of compilation followed by "and now
+# it is not reachable" is worse than the same sentence up front.
+case ":$PATH:" in
+    *":$DESTINATION:"*) ;;
+    *) echo "install-cli: attenzione, $DESTINATION non è nel PATH; aggiungi" >&2
+       echo "   export PATH=\"$DESTINATION:\$PATH\"   allo ~/.zshrc" >&2 ;;
+esac
 
 for tool in "${TOOLS[@]}"; do
     step "Compilo $tool in Release"
