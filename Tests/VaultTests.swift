@@ -122,6 +122,47 @@ Corpo con un [[Altro titolo]] e un ![[schema.pdf]].
     #expect(outcome.failures.map(\.path) == ["Rotta.md"])
 }
 
+// MARK: - A vault in iCloud Drive (principle 6)
+
+@Test func reportsANoteICloudHasEvictedRatherThanLosingIt() throws {
+    let vault = try TemporaryVault()
+    try vault.write(sampleNote, to: "Presente.md")
+    // What "Optimize Mac Storage" leaves behind in place of `Sfrattata.md`: a hidden
+    // stub whose extension is no longer `md`, which the walk would otherwise drop
+    // without a word.
+    try vault.write("", to: ".Sfrattata.md.icloud")
+    try vault.write("", to: "01 Progetti/.Annidata.md.icloud")
+
+    let outcome = VaultScanner(root: vault.root).scan()
+    #expect(outcome.records.map(\.relativePath) == ["Presente.md"])
+    // Named as the note, not as the stub: the path in the report is the one the user
+    // has to go and look for, and it is what a wikilink to it would say.
+    #expect(Set(outcome.failures.map(\.path)) == ["Sfrattata.md", "01 Progetti/Annidata.md"])
+}
+
+@Test func doesNotMistakeAnOrdinaryHiddenFileForAnEvictedNote() throws {
+    let vault = try TemporaryVault()
+    try vault.write(sampleNote, to: "Presente.md")
+    // Neither of these stands in for a note: the first is some other file iCloud
+    // evicted, the second is not a placeholder at all.
+    try vault.write("", to: ".Allegato.pdf.icloud")
+    try vault.write("", to: ".DS_Store")
+
+    let outcome = VaultScanner(root: vault.root).scan()
+    #expect(outcome.records.map(\.relativePath) == ["Presente.md"])
+    #expect(outcome.failures.isEmpty)
+}
+
+@Test func recognisesThePlaceholderNameAndNothingElse() {
+    #expect(VaultScanner.evictedNoteName(from: ".Nota.md.icloud") == "Nota.md")
+    #expect(VaultScanner.evictedNoteName(from: ".Nota con spazi.MD.icloud") == "Nota con spazi.MD")
+    // A real note, a placeholder for something else, and a file that merely ends in
+    // the word.
+    #expect(VaultScanner.evictedNoteName(from: "Nota.md") == nil)
+    #expect(VaultScanner.evictedNoteName(from: ".Foglio.numbers.icloud") == nil)
+    #expect(VaultScanner.evictedNoteName(from: "Nota.md.icloud") == nil)
+}
+
 // MARK: - Index
 
 @MainActor
