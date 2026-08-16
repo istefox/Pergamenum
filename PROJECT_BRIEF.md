@@ -317,6 +317,18 @@ Three corollaries, all paid for:
   lines and every button present. They were five-second timeouts against elements that
   exist, on suites that relaunch the app once per test. Ask what the screen shows before
   believing what the assertion says (#29).
+- **A red UI test claims something about whoever ran it.** The one above went further
+  than a flaky suite: `ComposerUITests` failed 18 times in 130 runs measured through
+  Claude's tooling, and 0 times in 24 runs of the whole class from Stefano's terminal -
+  same revision, same machine, same minute. Six explanations were built and each was
+  killed by the next measurement (a layout race, a dropped SwiftUI sheet, concurrent
+  compilation, cold-start slowness, the harness's own `pkill`, idle time between runs).
+  The tell was there from the first batch and went unread: every failure sat in position
+  1 to 4 of a run batch and nothing ever failed from position 5 on, which is not how a
+  race in application code behaves. **A UI test number produced by Claude is not
+  evidence; ask Stefano to run the loop from a shell and use his number.** Closed as not
+  reproducible, and the candidate fix was thrown away rather than committed - it changed
+  nothing and would have clicked Crea twice when the first click was merely slow.
 
 Driving the running app has one trap worth naming. `open pergamenum://…` goes through
 LaunchServices, which picks the *registered* bundle - the copy in `/Applications` - and

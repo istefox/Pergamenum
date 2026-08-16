@@ -188,7 +188,10 @@ move the previous copy aside rather than deleting it.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
   without a stated reason.
 - Never edit the `.xcodeproj` or `.xcworkspace` - they are generated. Change
-  `Project.swift` and run `tuist generate`.
+  `Project.swift` and run `tuist generate`. The same applies to *git* operations that add
+  or remove a file: `git stash`, `git checkout <branch>`, dropping a file - the generated
+  project still lists what is no longer there and the build fails naming the compiler
+  rather than the cause. Run `tuist generate` straight after.
 - The pre-commit `weakening-scan.sh` reports every Swift Testing test as
   `zero-assertion-test`. Its body scanner skips lines starting with `#`, treating them
   as comments, and a Swift Testing assertion is `#expect(...)`. The findings are
