@@ -42,6 +42,15 @@ enum ColorToken: String, TokenKey {
     case taskOverdue = "color.task.overdue"
     case taskCancelled = "color.task.cancelled"
 
+    // The five roles a code fence is coloured by (M8). Five and not more: a grammar this
+    // small cannot tell a class from a protocol, and a token nobody can fill honestly is a
+    // colour that lies.
+    case codeKeyword = "color.code.keyword"
+    case codeString = "color.code.string"
+    case codeComment = "color.code.comment"
+    case codeNumber = "color.code.number"
+    case codeType = "color.code.type"
+
     case stickyYellow = "color.sticky.yellow"
     case stickyGreen = "color.sticky.green"
     case stickyBlue = "color.sticky.blue"

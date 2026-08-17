@@ -24,6 +24,10 @@ enum MarkdownStyler {
         case embedTarget(String)
         /// An inline `#tag` in the body.
         case tag(String)
+        /// A whole fenced code block, opening and closing backticks included.
+        case codeBlock
+        /// One token inside a fenced block, from the local grammar.
+        case codeToken(CodeSyntax.Token)
         /// The `- [ ]` marker of a task line.
         case taskMarker(done: Bool)
         /// A `>2026-08-15` scheduling marker.
@@ -50,12 +54,25 @@ enum MarkdownStyler {
             return range.upperBound
         } ?? text.startIndex
 
+        // Fences first, because everything below has to know where they are. Inside one,
+        // markdown is not markdown: `# rigenera` is a shell comment and not a tag,
+        // `>2026-01-01` is a SQL predicate and not a scheduling marker, and a lone `*` is
+        // a wildcard that used to pair with the next one half a note away.
+        let fences = CodeFence.regions(in: text).filter { $0.range.lowerBound >= bodyStart }
+        for fence in fences {
+            result.append(StyledRange(range: fence.range, span: .codeBlock))
+            for span in CodeSyntax.spans(in: text[fence.body], language: fence.language) {
+                result.append(StyledRange(range: span.range, span: .codeToken(span.token)))
+            }
+        }
+
         for lineRange in lineRanges(in: text, from: bodyStart) {
+            guard !fences.contains(where: { $0.range.overlaps(lineRange) }) else { continue }
             let line = String(text[lineRange])
             result.append(contentsOf: spans(inLine: line, at: lineRange, in: text))
         }
 
-        result.append(contentsOf: wikilinkSpans(in: text, from: bodyStart))
+        result.append(contentsOf: wikilinkSpans(in: text, from: bodyStart, outside: fences))
         return result
     }
 
@@ -239,7 +256,11 @@ enum MarkdownStyler {
         return close + 1 - index
     }
 
-    private static func wikilinkSpans(in text: String, from start: String.Index) -> [StyledRange] {
+    private static func wikilinkSpans(
+        in text: String,
+        from start: String.Index,
+        outside fences: [CodeFence.Region]
+    ) -> [StyledRange] {
         var result: [StyledRange] = []
         for link in WikilinkParser.links(in: String(text[start...])) {
             // The parser worked on a slice; shift its indices back onto the full text.
@@ -251,6 +272,10 @@ enum MarkdownStyler {
             let upper = text.index(sliceStart, offsetBy: String(text[start...]).distance(
                 from: String(text[start...]).startIndex, to: link.range.upperBound
             ))
+
+            // `[[Curva]]` written inside a code fence is a wikilink in an example, not a
+            // link to follow: making it clickable would take a person out of the note.
+            guard !fences.contains(where: { $0.range.overlaps(lower..<upper) }) else { continue }
 
             result.append(StyledRange(range: lower..<upper, span: .linkSyntax))
 

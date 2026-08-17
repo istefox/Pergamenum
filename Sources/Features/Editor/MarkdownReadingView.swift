@@ -155,8 +155,8 @@ struct MarkdownReadingView: View {
                 if let language {
                     Text(language).themedText(.caption, color: .textTertiary)
                 }
-                Text(lines.joined(separator: "\n"))
-                    .themedText(.mono, color: .textPrimary)
+                Text(highlighted(lines.joined(separator: "\n"), language: language))
+                    .font(theme.font(.mono))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -250,6 +250,25 @@ struct MarkdownReadingView: View {
         case ">": .taskScheduled
         default: .taskOpen
         }
+    }
+
+    // MARK: Code
+
+    /// A fenced block with the local grammar applied.
+    ///
+    /// The same `CodeSyntax.spans` the editor calls, so the two panes cannot colour the
+    /// same block differently. Where the grammar says nothing - no language, a language
+    /// it does not know, a run of plain identifiers - the text keeps `textPrimary`, which
+    /// is what makes an unknown language degrade to plain monospace instead of to
+    /// something half-coloured.
+    func highlighted(_ code: String, language: String?) -> AttributedString {
+        var result = AttributedString(code)
+        result.foregroundColor = theme.color(.textPrimary)
+        for span in CodeSyntax.spans(in: code[...], language: language) {
+            guard let range = Range(span.range, in: result) else { continue }
+            result[range].foregroundColor = theme.color(span.token.colorToken)
+        }
+        return result
     }
 
     // MARK: Inline
