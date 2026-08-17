@@ -112,3 +112,92 @@ func stylesHeadings(_ level: Int) {
 @Test func handlesAnEmptyNote() {
     #expect(MarkdownStyler.spans(in: "").isEmpty)
 }
+
+// MARK: - Fenced code blocks (M8)
+
+/// The note used by most of the fence tests: three lines of shell, every one of which the
+/// styler used to read as something else entirely.
+private let shellNote = """
+Prima del blocco.
+
+```sh
+# nota per #project-forno
+perg index --vault "$HOME/Labs" >2026-01-01
+echo *tutto*
+```
+
+Dopo il blocco, con #topic-cli e *corsivo*.
+"""
+
+@Test func aFenceIsStyledAsOneBlockIncludingItsBackticks() {
+    #expect(styled(shellNote, .codeBlock)?.hasPrefix("```sh") == true)
+    #expect(styled(shellNote, .codeBlock)?.hasSuffix("```") == true)
+}
+
+@Test func markdownStopsBeingMarkdownInsideAFence() {
+    // The defect this slice closes, in one assertion per shape. The editor had never
+    // known that a fence exists, so a shell comment was styled as a tag, a SQL or shell
+    // `>date` as a scheduling marker, and a pair of wildcards as italics.
+    let result = spans(shellNote)
+    #expect(!result.contains(.tag("#project-forno")))
+    #expect(!result.contains(.scheduled))
+    // Asserted on the text and not on the presence of `.italic`, because there is a real
+    // one further down the note: what must not exist is the pair inside the fence.
+    #expect(italics(shellNote) == ["*corsivo*"])
+}
+
+private func italics(_ text: String) -> [String] {
+    MarkdownStyler.spans(in: text)
+        .filter { $0.span == .italic }
+        .map { String(text[$0.range]) }
+}
+
+@Test func whatIsOutsideTheFenceIsStillMarkdown() {
+    // The other half, and the one a too-eager fix would break: the block must not turn
+    // the rest of the note into code.
+    let result = spans(shellNote)
+    #expect(result.contains(.tag("#topic-cli")))
+    #expect(styled(shellNote, .italic) == "*corsivo*")
+}
+
+@Test func theGrammarReachesTheCodeInsideTheFence() {
+    #expect(spans(shellNote).contains(.codeToken(.comment)))
+    #expect(styled(shellNote, .codeToken(.string)) == "\"$HOME/Labs\"")
+}
+
+@Test func aWikilinkInsideAFenceIsNotClickable() {
+    // An example of the syntax, not a link out of the note.
+    let note = "```md\nvedi [[Altra nota]]\n```"
+    #expect(styled(note, .linkTarget("Altra nota")) == nil)
+    #expect(!spans(note).contains(.linkSyntax))
+}
+
+@Test func anUnclosedFenceEndsWithTheNoteAndSoDoesTheReadingView() {
+    // Asserted on both parsers at once, because they are two traversals of one rule
+    // (`CodeFence`) and the only thing keeping them together is that they agree here.
+    // While someone types the opening backticks, every note is a note with an open fence.
+    let note = "Prima.\n\n```swift\nlet a = 1"
+    #expect(styled(note, .codeBlock) == "```swift\nlet a = 1")
+
+    let blocks = MarkdownBlockParser.blocks(in: note)
+    let code = blocks.compactMap { block -> [String]? in
+        if case .code(_, let lines) = block { return lines }
+        return nil
+    }
+    #expect(code == [["let a = 1"]])
+}
+
+@Test func aFenceWithNothingInItIsStillAFence() {
+    // Two backtick lines and no body: the state a note is in for one keystroke after the
+    // slash menu writes a code block.
+    let note = "```\n```"
+    #expect(styled(note, .codeBlock) == note)
+    #expect(!spans(note).contains { if case .codeToken = $0 { true } else { false } })
+}
+
+@Test func inlineCodeInProseIsUntouchedByAnyOfThis() {
+    // A single backtick run is not a fence and never was; the fence work must not have
+    // moved it.
+    #expect(styled("usa `codice` inline", .code) == "`codice`")
+    #expect(!spans("usa `codice` inline").contains(.codeBlock))
+}

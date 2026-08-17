@@ -64,7 +64,7 @@ enum MarkdownBlockParser {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             // A fence swallows everything up to the closing one, verbatim: a heading
             // or a dash inside a code block is code, not structure.
-            if trimmed.hasPrefix("```") {
+            if CodeFence.marks(trimmed) {
                 state.flushAll()
                 state.blocks.append(Self.fence(opening: trimmed, consuming: &lines))
                 continue
@@ -96,16 +96,16 @@ enum MarkdownBlockParser {
         opening: String,
         consuming lines: inout ArraySlice<String>
     ) -> MarkdownBlock {
-        let language = String(opening.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+        let language = CodeFence.language(declaredBy: opening)
         var content: [String] = []
         while let next = lines.first {
             lines = lines.dropFirst()
-            if next.trimmingCharacters(in: .whitespaces).hasPrefix("```") { break }
+            if CodeFence.marks(next.trimmingCharacters(in: .whitespaces)) { break }
             content.append(next)
         }
         // An unclosed fence ends at the end of the note rather than running off it,
         // which would render the rest of the note as nothing.
-        return .code(language: language.isEmpty ? nil : language, lines: content)
+        return .code(language: language, lines: content)
     }
 
     // MARK: Tables

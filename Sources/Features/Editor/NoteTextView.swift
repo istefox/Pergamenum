@@ -233,10 +233,13 @@ struct NoteTextView: NSViewRepresentable {
             storage.endEditing()
         }
 
+        /// The spans that need more than a colour: a font, a background, a link.
+        ///
+        /// Everything else falls to `colorToken(for:)`, and the `default` here is safe for
+        /// the reason that switch has no default of its own: a span added later reaches it
+        /// and the compiler asks what colour it is.
         private func attributes(for span: MarkdownStyler.Span, theme: Theme) -> [NSAttributedString.Key: Any] {
             switch span {
-            case .frontmatter:
-                [.foregroundColor: NSColor(theme.color(.textSecondary))]
             case .heading(let level):
                 [
                     .font: NSFont.systemFont(ofSize: max(15, 24 - CGFloat(level) * 2), weight: .semibold),
@@ -246,10 +249,12 @@ struct NoteTextView: NSViewRepresentable {
                 [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)]
             case .italic:
                 [.obliqueness: 0.2]
-            case .code:
-                [.foregroundColor: NSColor(theme.color(.textSecondary))]
-            case .linkSyntax:
-                [.foregroundColor: NSColor(theme.color(.textTertiary))]
+            case .codeBlock:
+                // Only a background. The colour is left to whatever the grammar found
+                // inside, and to `textPrimary` where it found nothing - a fence in a
+                // language nobody wrote a grammar for still reads as code because of
+                // this, which is the whole fallback.
+                [.backgroundColor: NSColor(theme.color(.surfaceSunken))]
             case .linkTarget(let target):
                 [
                     .foregroundColor: NSColor(theme.color(.accentPrimary)),
@@ -262,16 +267,23 @@ struct NoteTextView: NSViewRepresentable {
                     .link: embedURL(for: target),
                     .cursor: NSCursor.pointingHand,
                 ]
-            case .tag:
-                [.foregroundColor: NSColor(theme.color(.accentPrimary))]
-            case .taskMarker(let done):
-                [.foregroundColor: NSColor(theme.color(done ? .taskDone : .taskOpen))]
-            case .scheduled:
-                [.foregroundColor: NSColor(theme.color(.taskScheduled))]
-            case .due:
-                [.foregroundColor: NSColor(theme.color(.taskOverdue))]
-            case .annotation:
-                [.foregroundColor: NSColor(theme.color(.textSecondary))]
+            default:
+                [.foregroundColor: NSColor(theme.color(Self.colorToken(for: span)))]
+            }
+        }
+
+        /// Every span's colour, the six above included even though they never arrive here.
+        /// No `default`, on purpose: this is the one table that must stay exhaustive.
+        private static func colorToken(for span: MarkdownStyler.Span) -> ColorToken {
+            switch span {
+            case .heading, .bold, .italic, .codeBlock: .textPrimary
+            case .frontmatter, .code, .annotation: .textSecondary
+            case .linkSyntax: .textTertiary
+            case .tag, .linkTarget, .embedTarget: .accentPrimary
+            case .codeToken(let token): token.colorToken
+            case .taskMarker(let done): done ? .taskDone : .taskOpen
+            case .scheduled: .taskScheduled
+            case .due: .taskOverdue
             }
         }
 

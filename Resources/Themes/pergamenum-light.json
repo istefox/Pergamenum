@@ -44,6 +44,13 @@
       "overdue": { "$value": "#B3261E" },
       "cancelled": { "$value": "#9C968B" }
     },
+    "code": {
+      "keyword": { "$value": "#7E4B7A" },
+      "string": { "$value": "#4B7A4F" },
+      "comment": { "$value": "#9C968B" },
+      "number": { "$value": "#2F6E6B" },
+      "type": { "$value": "#3B6EA5" }
+    },
     "sticky": {
       "yellow": { "$value": "#FBF0C4" },
       "green": { "$value": "#DFEBD4" },
