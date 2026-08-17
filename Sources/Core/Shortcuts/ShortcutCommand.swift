@@ -13,6 +13,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case newNote
     case dailyNote
     case quickTask
+    /// The only command here that is not a menu key: it is registered with the system
+    /// and fires while another application is in front (ADR-0008 §D1). It lives in the
+    /// same catalogue anyway, so it is remappable in the same pane as everything else.
+    case globalCapture
     case quickLook
     case globalSearch
     case quickSwitcher
@@ -71,7 +75,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
 
     var section: Section {
         switch self {
-        case .newNote, .dailyNote, .quickTask, .quickLook, .globalSearch,
+        case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder:
             .file
         case .pastePlain, .findInNote, .replaceInNote:
@@ -95,6 +99,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote: "Nuova nota"
         case .dailyNote: "Nota di oggi"
         case .quickTask: "Nuovo task rapido"
+        case .globalCapture: "Cattura rapida (da qualsiasi app)"
         case .quickLook: "Anteprima rapida"
         case .globalSearch: "Ricerca globale"
         case .quickSwitcher: "Vai alla nota"
@@ -138,6 +143,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote: KeyBinding("n", .command)
         case .dailyNote: KeyBinding("t", .command)
         case .quickTask: KeyBinding("n", [.command, .shift])
+        // Not ⌃Space, which was the first choice and is Craft's: Craft holds it
+        // without asking for exclusivity, so Pergamenum's exclusive registration
+        // *succeeds* and the event still goes to Craft. Tried on 2026-08-17 and only
+        // Craft's panel opened. ⌃⌥Space instead: the system entry that would use it
+        // (id 61, next input source) is disabled on this Mac.
+        case .globalCapture: KeyBinding("space", [.control, .option])
         case .quickLook: KeyBinding("space")
         case .globalSearch: KeyBinding("f", [.command, .shift])
         case .quickSwitcher: KeyBinding("o", .command)

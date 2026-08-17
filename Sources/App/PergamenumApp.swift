@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct PergamenumApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var themeEngine = ThemeEngine()
+    @State private var themeEngine: ThemeEngine
     @State private var vault = VaultController()
     @State private var calendar = EventKitStore()
     @State private var navigation = Navigation()
@@ -44,14 +44,66 @@ struct PergamenumApp: App {
     /// switch to another pane and back: as view state it would be rebuilt, and the
     /// unsaved end of a sentence would go with it.
     @State private var diary: DiaryController
+    /// Global capture (ADR-0008). All three live at app level because the panel has to
+    /// work with no window in front of the user - it is the whole point of the feature -
+    /// and because the hot key is registered with the system once, not per window.
+    @State private var capture = CaptureController()
+    @State private var hotkey = GlobalHotkey()
+    /// Built in `init` rather than when the window appears, so the File menu can carry
+    /// "Cattura rapida" from the first frame. Nothing in the constructor touches AppKit:
+    /// the `NSPanel` itself is made the first time the panel is shown.
+    private let capturePanel: CapturePanel
+    private let menuBarItem: MenuBarItem
+    /// Whether the menu-bar icon is shown. In `UserDefaults` and not in the vault: it is
+    /// a fact about this Mac, not about these notes.
+    @AppStorage("showsMenuBarItem") private var showsMenuBarItem = true
 
     init() {
+        let engine = ThemeEngine()
         let vault = VaultController()
         let calendar = EventKitStore()
+        let capture = CaptureController()
+        let hotkey = GlobalHotkey()
+
+        _themeEngine = State(initialValue: engine)
         _vault = State(initialValue: vault)
         _calendar = State(initialValue: calendar)
+        _capture = State(initialValue: capture)
+        _hotkey = State(initialValue: hotkey)
         _day = State(initialValue: DayController(store: calendar, vault: vault))
         _diary = State(initialValue: DiaryController(vault: vault))
+
+        let panel = CapturePanel(
+            controller: capture,
+            // Read when the panel is shown, not now: the vault is opened after launch
+            // and the theme changes while the app runs.
+            session: { vault.session },
+            theme: { engine.current },
+            shortcutCaption: {
+                guard case .registered(let binding) = hotkey.state else { return nil }
+                return "\(binding.displayString) da qualsiasi app"
+            }
+        )
+        capturePanel = panel
+        // The menu-bar entries go through the URL routes rather than through the
+        // controller directly: they have to raise the window, and the routes already
+        // know how to do that from any state, including a vault still opening.
+        menuBarItem = MenuBarItem(
+            onCapture: { panel.toggle() },
+            onToday: { vault.handle(.today) },
+            onInbox: { vault.handle(.note(path: VaultSession.TaskDestination.inboxPath)) }
+        )
+    }
+
+    /// Registers the shortcut with the system, once the app is up.
+    ///
+    /// From `.task` on the window rather than from `init`: registering a hot key is
+    /// `NSApp`-adjacent work and does not belong in a scene's constructor.
+    @MainActor
+    private func armCapture() {
+        hotkey.onPress = { [capturePanel] in capturePanel.toggle() }
+        hotkey.register(shortcuts.binding(for: .globalCapture))
+        menuBarItem.setShown(showsMenuBarItem)
     }
 
     var body: some Scene {
@@ -72,6 +124,18 @@ struct PergamenumApp: App {
                 .environment(shortcuts)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
+                // Not in `init`: window work and `NSApp` must not happen while the app
+                // is still coming up, and neither the theme nor the vault the panel
+                // reads exists there yet.
+                .task { armCapture() }
+                // The user changed the shortcut in Settings: register the new one and
+                // let the state say whether the system agreed (ADR-0008 §D2).
+                .onChange(of: shortcuts.binding(for: .globalCapture)) { _, binding in
+                    hotkey.register(binding)
+                }
+                .onChange(of: showsMenuBarItem) { _, shown in
+                    menuBarItem.setShown(shown)
+                }
                 // Rescheduled on every completed scan and on every task the app writes,
                 // against the whole vault: the tasks on disk are the source of truth, so
                 // the scheduler replaces its pending notifications wholesale rather than
@@ -99,7 +163,7 @@ struct PergamenumApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            VaultCommands(vault: vault, navigation: navigation, shortcuts: shortcuts)
+            VaultCommands(vault: vault, navigation: navigation, shortcuts: shortcuts, capturePanel: capturePanel)
             EditCommands(navigation: navigation, shortcuts: shortcuts)
             InsertCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
             ViewCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
@@ -122,6 +186,7 @@ struct PergamenumApp: App {
                 // the main window is not visible here, and reading one that is missing
                 // is a trap at run time, not a compile error.
                 .environment(reminders)
+                .environment(hotkey)
                 .themed(by: themeEngine)
         }
     }
@@ -177,6 +242,7 @@ struct VaultCommands: Commands {
     let vault: VaultController
     let navigation: Navigation
     let shortcuts: ShortcutStore
+    let capturePanel: CapturePanel
 
     /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting
     /// into Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
@@ -225,6 +291,12 @@ struct VaultCommands: Commands {
                 .disabled(vault.root == nil)
             Button("Nuovo task rapido") { vault.beginTaskCapture() }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickTask))
+                .disabled(vault.root == nil)
+            // No `.keyboardShortcut`: this one is registered with the system and fires
+            // whether or not Pergamenum is in front (ADR-0008 §D1). A menu equivalent
+            // here as well, because a hot key the system refused leaves the command
+            // reachable, and because a command with no menu entry cannot be discovered.
+            Button("Cattura rapida") { capturePanel.toggle() }
                 .disabled(vault.root == nil)
             Button("Anteprima rapida") { vault.isShowingQuickLook = true }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))

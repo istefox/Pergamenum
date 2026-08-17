@@ -48,17 +48,41 @@ When Apple ships a replacement that needs no grant, this decision is worth reope
 then the choice is between an entitlement-free Carbon call and a keylogger-shaped
 permission prompt.
 
-**D2. Registration can fail, and the failure is visible.**
+**D2. Registration can fail, and the failure is visible — but success is not proof.**
 
 Registration uses `kEventHotKeyExclusive`, which returns `eventHotKeyExistsErr` when
-another process already holds that combination exclusively. That return value is the only
-honest source of truth about whether the shortcut works.
+another process already holds that combination **exclusively**.
 
-The default is `Ctrl+Space`, the same as Craft. On this machine it is free:
-`com.apple.symbolichotkeys` has id 60 (previous input source, `Ctrl+Space`) at
-`enabled = 0`, as are 61 and 64. That table covers **system** shortcuts only - a
-third-party launcher holding the same keys does not appear in it - so the runtime return
-value, not the table, is what the UI reports.
+*Amended 2026-08-17, on trying it.* That last word is doing more work than this ADR first
+gave it. Craft holds `⌃Space` **without** asking for exclusivity, so Pergamenum's exclusive
+registration succeeded, `state` became `.registered`, the settings row looked correct — and
+pressing the keys opened Craft's panel and not ours. Whoever registered first is notified;
+the exclusive flag only stops a *later* exclusive registration.
+
+So there are two failure modes, not one, and only the first is detectable:
+
+- **Refused**, `eventHotKeyExistsErr`: reported, explained, and the user is asked to pick
+  another. This is what the type and the settings row were built for and it works.
+- **Accepted but shadowed**: no API says this happened. Nothing in the return value, nothing
+  queryable afterwards. The only instrument is a human pressing the keys.
+
+The honest response is not a cleverer check, because there is none. It is to say so where
+it will be read: the settings pane now tells the user that a successful registration can
+still be shadowed and that pressing the shortcut is the way to find out. The default moved
+from `⌃Space` to `⌃⌥Space` for the same reason - Craft is on this machine and staying.
+
+This is also why the shortcut is in the ordinary `ShortcutCommand` catalogue rather than
+hard-coded: when the answer is "try another combination", the pane that changes it has to
+be one keystroke away.
+
+The default is `⌃⌥Space`. `com.apple.symbolichotkeys` has ids 60, 61 and 64 at
+`enabled = 0` on this machine, so the system is not using it. That table covers **system**
+shortcuts only, which is precisely how the `⌃Space` mistake was made: it said the
+combination was free, and Craft - which does not appear there - had it.
+
+*(The first version of this paragraph read "The default is `Ctrl+Space`, the same as
+Craft. On this machine it is free". It was wrong within a day, and the sentence about the
+table covering system shortcuts only was already there, unheeded.)*
 
 Impostazioni › Scorciatoie shows the **registered** state, not the configured one. A
 shortcut that could not be taken reads as unavailable with the reason, and offers to pick
@@ -145,10 +169,13 @@ represent and should not learn to.
 - **A hotkey conflict will look like a broken app.** Raycast lives on this machine and does
   not appear in `com.apple.symbolichotkeys`. If it or anything else holds `Ctrl+Space`,
   D2's return value is what turns a mystery into a sentence.
-- **A panel over a full-screen app is a known risk, not a verified behaviour.** Craft's own
-  documentation says its panel does not appear over full-screen applications and the user
-  has to leave full screen. Whether that is a Craft choice or a platform rule is not
-  established here, and it is the first thing to try by hand rather than to assume.
+- **A panel over a full-screen app was a known risk. Tried on 2026-08-17: it appears.**
+  Craft's own documentation says its panel does not appear over full-screen applications
+  and the user has to leave full screen. That is a Craft limitation, not a platform rule -
+  `.fullScreenAuxiliary` in the collection behaviour is enough, and the panel opens over a
+  full-screen window with the app behind it keeping its focus. The paragraph is kept rather
+  than deleted because the shape of it is the lesson: it was written as a thing to try by
+  hand rather than to assume, and trying it is what turned it into a fact.
 - **The signing identity matters more than before.** Nothing in D1 needs a TCC grant, which
   is the point - but the app's existing Calendar and Reminders grants still key on the
   signature, so the `Apple Development` identity rule in `Project.swift` stays load-bearing.
