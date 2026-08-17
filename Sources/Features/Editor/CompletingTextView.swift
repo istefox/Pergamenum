@@ -27,6 +27,9 @@ final class CompletingTextView: NSTextView {
     var onPasteImage: ((Data) -> String?)?
     /// Called with a dropped file, returning the name to embed (SPEC §5).
     var onDropFile: ((URL) -> String?)?
+    /// The headings of a note, for completing `[[Nota#`. Nil where there is no vault to
+    /// look one up in, and then the section context simply offers nothing.
+    var noteSections: ((String) -> [String])?
     /// Called with a click in the view's own coordinates, before the text view does
     /// anything with it; returns true when it handled it. This is how a transcluded note
     /// drawn under a line is opened (ADR-0010): the drawing is not text, so no character
@@ -124,6 +127,10 @@ final class CompletingTextView: NSTextView {
 
     private enum Context {
         case wikilink(prefix: String)
+        /// `[[Nota#pre`, where the note is already named and a heading of *that* note is
+        /// being typed. Kept apart from `.wikilink` because the candidates come from a
+        /// different place and only the part after the `#` is replaced.
+        case section(note: String, prefix: String)
         case tag(prefix: String)
         /// The prefix carries the `/` itself, like the tag one carries its `#`, so the
         /// range to replace is simply its length.
@@ -137,7 +144,7 @@ final class CompletingTextView: NSTextView {
     /// asking AppKit's list for it as well would put two lists on screen at once.
     func shouldOfferCompletion() -> Bool {
         switch completionContext() {
-        case .wikilink, .tag: true
+        case .wikilink, .section, .tag: true
         case .slash, nil: false
         }
     }
@@ -268,6 +275,9 @@ final class CompletingTextView: NSTextView {
         let cursor = selectedRange().location
         let length: Int = switch context {
         case .wikilink(let prefix): prefix.count
+        // Only what follows the `#`: the note's name is already right, and replacing it
+        // too would delete what the completion is a completion *of*.
+        case .section(_, let prefix): prefix.count
         case .tag(let prefix): prefix.count
         case .slash(let prefix): prefix.count
         }
@@ -294,6 +304,8 @@ final class CompletingTextView: NSTextView {
             }
             let matches = scored.prefix(12).map(\.title)
             return matches.isEmpty ? nil : Array(matches)
+        case .section(let note, let prefix):
+            return sections(of: note, matching: prefix)
         case .tag(let prefix):
             let matches = tagSuggestions.filter { $0.hasPrefix(prefix) }.prefix(12)
             return matches.isEmpty ? nil : Array(matches)
@@ -303,6 +315,33 @@ final class CompletingTextView: NSTextView {
             // configurations - and answering nil is what keeps the two from both opening.
             return nil
         }
+    }
+
+    /// The headings of `note` that match what has been typed after the `#`.
+    ///
+    /// The same fuzzy scoring the note titles get, and deliberately not the word-start rule
+    /// the slash menu uses: there the candidates are a fixed command catalogue and the
+    /// reordering on every keystroke was the defect, here they are the headings of one note.
+    ///
+    /// **Ties break in document order**, not by length. A note's sections have an order the
+    /// person wrote and reads them in - the one the index draws - and sorting the shortest
+    /// first offered a `###` from the bottom of the note before the section above it. Seen
+    /// on screen on 2026-08-17; the length rule read as arbitrary the moment it was used.
+    private func sections(of note: String, matching prefix: String) -> [String]? {
+        guard let candidates = noteSections?(note), !candidates.isEmpty else { return nil }
+        var scored: [(section: String, score: Int, order: Int)] = []
+        for (order, section) in candidates.enumerated() {
+            if prefix.isEmpty {
+                scored.append((section, 0, order))
+            } else if let score = FuzzyMatch.score(query: prefix, candidate: section) {
+                scored.append((section, score, order))
+            }
+        }
+        scored.sort { left, right in
+            left.score == right.score ? left.order < right.order : left.score > right.score
+        }
+        let matches = scored.prefix(12).map(\.section)
+        return matches.isEmpty ? nil : Array(matches)
     }
 
     /// Looks backwards from the cursor for a `[[` or `#` trigger on the current line.
@@ -321,7 +360,18 @@ final class CompletingTextView: NSTextView {
         if let open = beforeCursor.range(of: "[[", options: .backwards) {
             let prefix = String(beforeCursor[open.upperBound...])
             // A closed link is not a completion context any more.
-            if !prefix.contains("]]") { return .wikilink(prefix: prefix) }
+            if !prefix.contains("]]") {
+                // A `#` inside an open wikilink names a section of the note before it. The
+                // first `#` wins, as it does in `WikilinkParser`; a `|` means the display
+                // text is being typed, and that is not a heading.
+                if let hash = prefix.firstIndex(of: "#"), !prefix.contains("|") {
+                    return .section(
+                        note: String(prefix[prefix.startIndex..<hash]),
+                        prefix: String(prefix[prefix.index(after: hash)...])
+                    )
+                }
+                return .wikilink(prefix: prefix)
+            }
         }
         if let hash = beforeCursor.range(of: "#", options: .backwards) {
             let prefix = String(beforeCursor[hash.lowerBound...])
