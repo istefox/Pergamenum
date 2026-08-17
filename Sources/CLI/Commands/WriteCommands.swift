@@ -34,6 +34,32 @@ enum WriteCommands {
         return Writing.finish(session)
     }
 
+    // MARK: capture
+
+    /// `perg capture <testo> [--dest note|task|today|note:PERCORSO]`.
+    ///
+    /// The default is `note` and not the URL route's `today`: a shell command with no
+    /// destination is a note being written, while `pergamenum://capture?text=…` has
+    /// meant "append to today" since SPEC §9 published it. The two differ on purpose
+    /// and `CaptureDestination.named` carries no default of its own so that neither can
+    /// drift into the other.
+    @MainActor
+    static func capture(_ arguments: Arguments) async throws -> ExitCode {
+        let session = try await Writing.session(arguments, command: "capture")
+        let destination = try VaultAPI.CaptureDestination.named(
+            arguments["dest"] ?? "note", folder: arguments["folder"]
+        )
+        let summary = try VaultAPI.capture(
+            session,
+            to: destination,
+            text: arguments.rest(from: 1),
+            scheduled: arguments["scheduled"],
+            due: arguments["due"]
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
     // MARK: task
 
     @MainActor

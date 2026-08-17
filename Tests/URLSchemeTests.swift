@@ -14,10 +14,33 @@ private func route(_ string: String) -> PergamenumRoute? {
     #expect(route("pergamenum://day/20260811") == .day(CalendarDate(iso: "2026-08-11")!))
     #expect(route("pergamenum://today") == .today)
     #expect(route("pergamenum://search?q=trasmissibilit%C3%A0") == .search("trasmissibilità"))
-    #expect(route("pergamenum://capture?text=appunto") == .capture(text: "appunto", notePath: nil))
-    #expect(route("pergamenum://capture?text=x&note=Calendar/20260811.md")
-        == .capture(text: "x", notePath: "Calendar/20260811.md"))
+    #expect(route("pergamenum://capture?text=appunto")
+        == .capture(text: "appunto", destination: nil, scheduled: nil, due: nil))
     #expect(route("pergamenum://task?add=Richiamare%20Rossi") == .addTask("Richiamare Rossi"))
+}
+
+/// The capture route grew three parameters (ADR-0008 §D5) and the form SPEC §9 published
+/// had to keep working: a link already sitting in a Shortcut cannot start doing something
+/// else because the panel needed more.
+@Test func theCaptureRouteGainsDestinationsWithoutLosingTheOldForm() {
+    // `?note=` was the only destination there was, and it still means that note.
+    #expect(route("pergamenum://capture?text=x&note=Calendar/20260811.md")
+        == .capture(text: "x", destination: "note:Calendar/20260811.md", scheduled: nil, due: nil))
+
+    // The new spelling, and the dates that only a task can carry.
+    #expect(route("pergamenum://capture?text=x&dest=task&schedule=2026-08-20&deadline=2026-08-25")
+        == .capture(text: "x", destination: "task", scheduled: "2026-08-20", due: "2026-08-25"))
+    #expect(route("pergamenum://capture?text=x&dest=oggi")
+        == .capture(text: "x", destination: "oggi", scheduled: nil, due: nil))
+
+    // Both given: the explicit one wins rather than the two being merged.
+    #expect(route("pergamenum://capture?text=x&dest=task&note=A.md")
+        == .capture(text: "x", destination: "task", scheduled: nil, due: nil))
+
+    // An unreadable destination is not the route's business: it is carried as written
+    // and refused by the connector, which is the only place that knows the four names.
+    #expect(route("pergamenum://capture?text=x&dest=inventata")
+        == .capture(text: "x", destination: "inventata", scheduled: nil, due: nil))
 }
 
 @Test(arguments: [
@@ -152,7 +175,9 @@ Corpo.
     let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.capture(text: "appunto veloce", notePath: "Destinazione.md")))
+    #expect(controller.handle(.capture(
+        text: "appunto veloce", destination: "note:Destinazione.md", scheduled: nil, due: nil
+    )))
     let onDisk = try String(contentsOf: vault.root.appending(path: "Destinazione.md"), encoding: .utf8)
     #expect(onDisk.hasSuffix("appunto veloce\n"))
     #expect(onDisk.hasPrefix(routableNote))
@@ -306,7 +331,9 @@ Corpo.
 
     let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
-    #expect(controller.handle(.capture(text: "Riga catturata", notePath: "Giorno.md")))
+    #expect(controller.handle(.capture(
+        text: "Riga catturata", destination: "note:Giorno.md", scheduled: nil, due: nil
+    )))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Giorno.md"), encoding: .utf8)
     #expect(onDisk.contains("- 09:00-09:30 Riunione\n\nRiga catturata\n"))
@@ -320,8 +347,12 @@ Corpo.
     let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.capture(text: "primo", notePath: "Destinazione.md")))
-    #expect(controller.handle(.capture(text: "secondo", notePath: "Destinazione.md")))
+    #expect(controller.handle(.capture(
+        text: "primo", destination: "note:Destinazione.md", scheduled: nil, due: nil
+    )))
+    #expect(controller.handle(.capture(
+        text: "secondo", destination: "note:Destinazione.md", scheduled: nil, due: nil
+    )))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Destinazione.md"), encoding: .utf8)
     // Not fused into one paragraph: two captures are two notes to self, not one.

@@ -73,8 +73,8 @@ extension VaultController {
             isShowingQuickSwitcher = true
             return true
 
-        case .capture(let text, let notePath):
-            return append(text: text, to: notePath)
+        case .capture(let text, let destination, let scheduled, let due):
+            return capture(text: text, to: destination, scheduled: scheduled, due: due)
 
         case .addTask(let text):
             return captureTask(text)
@@ -107,26 +107,35 @@ extension VaultController {
         return routeState.pendingSearch
     }
 
-    /// Appends text to a note without opening it, for the capture route.
+    /// The capture route, through the same door the panel and the connectors use
+    /// (ADR-0008 §D4, §D5).
     ///
-    /// Creating the missing note goes through `openDailyNote`, which does open it: a
-    /// capture into a day that has no note yet leaves that note in the editor, and
-    /// that was true before the session existed. Deliberately unchanged here.
-    private func append(text: String, to notePath: String?) -> Bool {
+    /// The default is `today` and not the connector's `note`: `?text=…` alone has meant
+    /// "append to today's note" since SPEC §9 published the route, and a link already
+    /// sitting in a Shortcut must not start creating notes instead.
+    ///
+    /// The app arms no guardrails (ADR-0007 §D6): a person editing their own notes does
+    /// not need an undo log, and the session's `isDryRun` stays false.
+    private func capture(
+        text: String, to destination: String?, scheduled: String?, due: String?
+    ) -> Bool {
         guard let session else { return false }
-        let path = notePath ?? session.dailyNotePath(for: .today)
-
-        if !session.exists(path) {
-            do {
-                _ = try openDailyNote(for: .today)
-            } catch {
-                recordProblem("capture: \(error)")
-                return false
+        do {
+            let target = try VaultAPI.CaptureDestination.named(
+                destination ?? "today", folder: nil
+            )
+            let summary = try VaultAPI.capture(
+                session, to: target, text: text, scheduled: scheduled, due: due
+            )
+            // The editor may be holding the note that just grew: re-read it, or the
+            // next keystroke saves the version without the capture in it.
+            if let result = try? session.read(summary.path) {
+                syncOpenNote(with: VaultSession.WriteResult(path: summary.path, text: result.text))
             }
+            return true
+        } catch {
+            recordProblem("capture: \(error)")
+            return false
         }
-
-        let outcome = session.append(text: text, to: path)
-        if let result = outcome.result { syncOpenNote(with: result) }
-        return outcome.succeeded
     }
 }

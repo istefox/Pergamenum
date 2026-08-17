@@ -14,6 +14,7 @@ func dispatch(_ group: String, _ arguments: Arguments) async throws -> ExitCode 
     case "note": return try await noteGroup(arguments)
     case "task": return try await taskGroup(arguments)
     case "day": return try await dayGroup(arguments)
+    case "capture": return try await WriteCommands.capture(arguments)
     case "search": return try await SearchCommands.run(arguments)
     case "lint": return try await LintCommands.run(arguments)
     case "index": return try await IndexCommands.run(arguments)
