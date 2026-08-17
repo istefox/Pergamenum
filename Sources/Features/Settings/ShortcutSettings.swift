@@ -9,6 +9,10 @@ import SwiftUI
 struct ShortcutSettings: View {
     @Environment(\.theme) private var theme
     @Environment(ShortcutStore.self) private var shortcuts
+    /// What the system did with the global capture shortcut (ADR-0008 §D2). Injected
+    /// into this scene as well as the main window: an object put into one is not
+    /// visible in the other, and reading a missing one is a trap at run time.
+    @Environment(GlobalHotkey.self) private var hotkey
 
     var body: some View {
         Form {
@@ -38,6 +42,15 @@ struct ShortcutSettings: View {
         let conflicts = shortcuts.conflicts(with: command)
         return LabeledContent {
             HStack(spacing: theme.spacing(.xs)) {
+                // The global shortcut is the one case where the row can be right and the
+                // shortcut still dead: the system may have refused it. What is shown is
+                // the registration, never the intention (ADR-0008 §D2).
+                if command == .globalCapture, let refusal = hotkey.state.explanation {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(theme.color(.taskOverdue))
+                        .help("Non registrata: \(refusal)")
+                        .accessibilityIdentifier("hotkey-refused")
+                }
                 if !conflicts.isEmpty {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(theme.color(.taskOverdue))
@@ -59,7 +72,15 @@ struct ShortcutSettings: View {
                 .disabled(!shortcuts.isCustomised(command))
             }
         } label: {
-            Text(command.title)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(command.title)
+                // Said in words as well as with the triangle: a badge alone is noticed
+                // and not understood, and this is the state that makes the feature
+                // look broken rather than unavailable.
+                if command == .globalCapture, let refusal = hotkey.state.explanation {
+                    Text(refusal).themedText(.caption, color: .taskOverdue)
+                }
+            }
         }
     }
 }

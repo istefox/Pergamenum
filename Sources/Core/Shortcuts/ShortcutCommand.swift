@@ -13,6 +13,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case newNote
     case dailyNote
     case quickTask
+    /// The only command here that is not a menu key: it is registered with the system
+    /// and fires while another application is in front (ADR-0008 §D1). It lives in the
+    /// same catalogue anyway, so it is remappable in the same pane as everything else.
+    case globalCapture
     case quickLook
     case globalSearch
     case quickSwitcher
@@ -71,7 +75,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
 
     var section: Section {
         switch self {
-        case .newNote, .dailyNote, .quickTask, .quickLook, .globalSearch,
+        case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder:
             .file
         case .pastePlain, .findInNote, .replaceInNote:
@@ -95,6 +99,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote: "Nuova nota"
         case .dailyNote: "Nota di oggi"
         case .quickTask: "Nuovo task rapido"
+        case .globalCapture: "Cattura rapida (da qualsiasi app)"
         case .quickLook: "Anteprima rapida"
         case .globalSearch: "Ricerca globale"
         case .quickSwitcher: "Vai alla nota"
@@ -138,6 +143,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote: KeyBinding("n", .command)
         case .dailyNote: KeyBinding("t", .command)
         case .quickTask: KeyBinding("n", [.command, .shift])
+        // Craft's own combination, and free on this machine: the system table has
+        // ids 60, 61 and 64 all disabled. A third-party launcher does not appear
+        // there, which is why the registration reports what it actually got.
+        case .globalCapture: KeyBinding("space", .control)
         case .quickLook: KeyBinding("space")
         case .globalSearch: KeyBinding("f", [.command, .shift])
         case .quickSwitcher: KeyBinding("o", .command)
