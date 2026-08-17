@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=22 -->
 # PROJECT TASKS
 
-Updated: 2026-08-17 · Open: 17 (P1: 0) · In progress: 0
+Updated: 2026-08-17 · Open: 15 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -10,8 +10,6 @@ Updated: 2026-08-17 · Open: 17 (P1: 0) · In progress: 0
 - [ ] `PG-005` **P2** `NoteFileOperations` does not go through `VaultSession.write`, so the journal covers only part of a link rewrite and neither connector can offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 -->
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
-- [ ] `PG-020` **P2** Reading mode renders `![[nota]]` as "file non trovato nel vault": embedding a *note* is not supported yet and the error box says the wrong thing about it — `Sources/Features/Editor/MarkdownReadingView.swift` <!-- src:session opened:2026-08-17 -->
-  - Seen on screen on 2026-08-17 while checking the outline. Pre-existing, not introduced by M8. The fix is transclusion (PG-017); until then the message should say the target is a note rather than claim the file is missing.
 
 ## In Progress
 
@@ -19,14 +17,15 @@ _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-009` **P2** M8 Menu comandi ed editor: five slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-009` **P2** M8 Menu comandi ed editor: six slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
   - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
-  - Left: transclusion (blocked on PG-017), block links `[[note#heading]]`, floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Left: the editor half of transclusion (the card drawn under the source line, ADR-0010 §D3), block links `[[note#heading]]`, floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Sixth slice merged 2026-08-17: transclusion in the reading view, the index counting it, `IndexCache.schemaVersion` at 2.
   - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
-  - Bumps `IndexCache.schemaVersion` to 2 for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2).
+  - Bumps `IndexCache.schemaVersion` to **3** for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2). It was 2 until ADR-0010 §D7 spent that number in M8.
   - Unblocked: ADR-0009 accepted 2026-08-17.
 - [ ] `PG-013` **P3** M12 La settimana: week and month views, event notes, task grouping and sorting <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
@@ -41,9 +40,6 @@ _Nothing in progress._
 
 - [ ] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0012 would record it <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 -->
-- [ ] `PG-017` **P2** Transclusion needs an ADR before any code — `docs/adr/0010-transclusion-is-a-view-of-another-note.md` <!-- src:session opened:2026-08-17 -->
-  - Rendering `![[nota]]` in reading mode only widens the distance between the two surfaces, and every such addition turns "add direct editing" into "choose between two editors". The ADR has to decide whether the editor draws it too.
-  - ADR-0010 **accepted** 2026-08-17: both surfaces draw it, depth one, and `IndexCache.schemaVersion` goes to 2 in M8 so ADR-0009's `embedTargets` bump becomes 3. Unblocked — the M8 slice can start.
 - [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
 
@@ -58,6 +54,8 @@ _Nothing in progress._
 
 ## Done
 
+- [x] `PG-017` ADR-0010 written and accepted the same day: transclusion is a view of another note, both surfaces draw it, depth one, and a transcluded note counts as a link — the editor half of §D3 is what is left, and it lives in PG-009 (2026-08-17)
+- [x] `PG-020` `![[nota]]` no longer claims a file is missing: a note embed is a note, drawn where it stands, and the message names whichever of the two was actually looked for — closed by the transclusion slice rather than patched (2026-08-17)
 - [x] `PG-022` M8's first five slices merged: the slash menu and its panel, code fence highlighting, the note's index, and heading folding — every one mockup-first and verified by hand (2026-08-17)
 - [x] `PG-001` ADR-0009 accepted after five corrections from Stefano: `has()` defined, `render: board` without `group` is a parse error, the zero and multi `status-*` cases on the board decided, and the borrowed 150 ms replaced by a real measurement — M11 is unblocked (2026-08-17)
 - [x] `PG-008` M7 Cattura globale complete: the connector's `capture` (PR #40) and the global panel (PRs #41), verified by hand over another app and over a full-screen one (2026-08-17)
