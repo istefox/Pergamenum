@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=16 -->
 # PROJECT TASKS
 
-Updated: 2026-08-17 · Open: 13 (P1: 0) · In progress: 1
+Updated: 2026-08-17 · Open: 12 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -13,10 +13,7 @@ Updated: 2026-08-17 · Open: 13 (P1: 0) · In progress: 1
 
 ## In Progress
 
-- [-] `PG-008` **P2** M7 Cattura globale — branch `feature/capture-in-connector` <!-- src:session opened:2026-08-16 -->
-  - ADR-0008 accepted and the panel's mockup approved on 2026-08-17 (PRs #38, #39).
-  - Order is deliberate: the capture write in `Sources/Connector/` first, with its tests, then the
-    AppKit the tests cannot reach.
+_Nothing in progress._
 
 ## Backlog / To Add
 
@@ -42,11 +39,12 @@ Updated: 2026-08-17 · Open: 13 (P1: 0) · In progress: 1
 
 - **Entry point**: `Sources/App/PergamenumApp.swift` · CLI `Sources/CLI/main.swift` · MCP `Sources/MCPServer/main.swift`
 - **Modules**: `Core` (pure, no SwiftUI, compiled by all three binaries) · `Vault` `Index` (files and the rebuildable cache) · `Connector` (the one vault API behind `perg` and `pergamenum-mcp`) · `Features` `DesignSystem` `App` `Calendar` (app only)
-- **Build & test**: `tuist generate --no-open` after editing `Project.swift` or after any git op that adds or removes a file · test-cmd: `xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test`
+- **Build & test**: `tuist generate --no-open` after editing `Project.swift` or after any git op that adds or removes a file · test-cmd: `xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -only-testing:PergamenumTests test` — the Stop hook runs it every turn, so the UI suite is deliberately not in it (see CLAUDE.md)
 - **Key ADRs**: 0001 architecture · 0002 naming and shortcuts · 0003 composers · 0004 hours on task dates · 0005 the diary pane · 0006 timeline hours as a setting · 0007 the AI connector · 0009 views are queries (proposed)
 - **Invariants**: no network call in any feature · every piece of content is a readable file · the index is rebuildable and never the source of truth · frontmatter is exactly `date`, `tags`, `related`, `aliases` · tags are flat and namespaced, no `/` · no colour or font in a view without a token · never commit to `main`, never force-push · a new connector capability goes in `Sources/Connector/`, never in one front end · the repo has no CI, so "green" always means a local `xcodebuild test`
 
 ## Done
 
+- [x] `PG-008` M7 Cattura globale complete: the connector's `capture` (PR #40) and the global panel (PRs #41), verified by hand over another app and over a full-screen one (2026-08-17)
 - [x] `PG-016` ADR-0008 accepted and the capture panel's mockup approved (2026-08-17)
 - [x] `PG-007` ADR-0008, the global capture panel, written and proposed (2026-08-16)
