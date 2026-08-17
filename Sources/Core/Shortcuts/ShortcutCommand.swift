@@ -143,10 +143,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote: KeyBinding("n", .command)
         case .dailyNote: KeyBinding("t", .command)
         case .quickTask: KeyBinding("n", [.command, .shift])
-        // Craft's own combination, and free on this machine: the system table has
-        // ids 60, 61 and 64 all disabled. A third-party launcher does not appear
-        // there, which is why the registration reports what it actually got.
-        case .globalCapture: KeyBinding("space", .control)
+        // Not ⌃Space, which was the first choice and is Craft's: Craft holds it
+        // without asking for exclusivity, so Pergamenum's exclusive registration
+        // *succeeds* and the event still goes to Craft. Tried on 2026-08-17 and only
+        // Craft's panel opened. ⌃⌥Space instead: the system entry that would use it
+        // (id 61, next input source) is disabled on this Mac.
+        case .globalCapture: KeyBinding("space", [.control, .option])
         case .quickLook: KeyBinding("space")
         case .globalSearch: KeyBinding("f", [.command, .shift])
         case .quickSwitcher: KeyBinding("o", .command)

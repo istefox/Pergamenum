@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// What the capture panel holds while it is open, and the one call it makes.
 ///
@@ -120,6 +121,10 @@ final class CaptureController {
     /// text that was refused is still the only copy of it.
     @discardableResult
     func capture(into session: VaultSession?) -> Bool {
+        // Deferred rather than written at each `return`: there are five ways out of this
+        // function and the one that would get forgotten is a failure path.
+        defer { log(outcome) }
+
         guard let session else {
             outcome = .refused("nessuna cartella note aperta")
             return false
@@ -145,6 +150,31 @@ final class CaptureController {
         } catch {
             outcome = .refused("\(error)")
             return false
+        }
+    }
+
+    /// Says where the capture went, or why it did not.
+    ///
+    /// The destination and the resulting path only. **Never the text**: it is the whole
+    /// content of the capture and the system log is not the place for it.
+    ///
+    /// Worth the two lines because the panel closes over another application, so a
+    /// refusal shown for a moment on top of Safari is a refusal nobody reads. This is
+    /// also what makes the write verifiable when the vault is somewhere unreadable - a
+    /// UI-test instance writes into the runner's container, which not even the person
+    /// running it can open.
+    private func log(_ outcome: Outcome?) {
+        switch outcome {
+        case .wrote(let path):
+            Logger.capture.info(
+                "scritto in \(self.destination.rawValue, privacy: .public): \(path, privacy: .public)"
+            )
+        case .refused(let reason):
+            Logger.capture.error(
+                "rifiutato in \(self.destination.rawValue, privacy: .public): \(reason, privacy: .public)"
+            )
+        case nil:
+            break
         }
     }
 

@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import Foundation
+import OSLog
 
 /// The global hot key of ADR-0008 §D1: `RegisterEventHotKey`, not a global `NSEvent`
 /// monitor.
@@ -94,7 +95,7 @@ final class GlobalHotkey {
             pair.code,
             pair.modifiers,
             EventHotKeyID(signature: Self.signature, id: 1),
-            GetEventDispatcherTarget(),
+            GetApplicationEventTarget(),
             // Exclusive on purpose: without it two apps can hold the same combination
             // and both are notified, which reads as the panel opening at random.
             OptionBits(kEventHotKeyExclusive),
@@ -110,6 +111,10 @@ final class GlobalHotkey {
         default:
             state = .failed(binding, status)
         }
+        let outcome = String(describing: state)
+        Logger.capture.info(
+            "registrazione \(binding.displayString, privacy: .public): \(outcome, privacy: .public)"
+        )
         return state
     }
 
@@ -128,6 +133,19 @@ final class GlobalHotkey {
     ///
     /// The handler outlives individual registrations: re-installing it on every change
     /// would leave the previous one attached and fire the panel twice.
+    ///
+    /// **`GetApplicationEventTarget`, not `GetEventDispatcherTarget`.** The first
+    /// version used the dispatcher, `InstallEventHandler` returned `noErr`, the hot key
+    /// registered, an outside probe confirmed the system had handed the combination to
+    /// this app - and pressing it did nothing at all, because the callback was attached
+    /// where a Cocoa app's events never arrive. `CarbonEvents.h` is explicit about
+    /// both: the application target is the one you "install event handler on", while
+    /// the dispatcher is for "exotic apps that need to pick events off the event queue
+    /// and call the dispatcher themselves".
+    ///
+    /// Worth keeping as a warning. Every check said yes - the return code, the
+    /// registration, the probe - and the feature did not work. The only instrument that
+    /// found it was a person pressing the key.
     private func installHandlerIfNeeded() {
         guard handler == nil else { return }
 
@@ -140,8 +158,8 @@ final class GlobalHotkey {
         // would make the handler keep it alive after the app let go.
         let context = Unmanaged.passUnretained(self).toOpaque()
 
-        InstallEventHandler(
-            GetEventDispatcherTarget(),
+        let installed = InstallEventHandler(
+            GetApplicationEventTarget(),
             { _, _, userData in
                 guard let userData else { return OSStatus(eventNotHandledErr) }
                 // The dispatcher calls this on the main thread. Stating that with
@@ -149,9 +167,14 @@ final class GlobalHotkey {
                 // the keystroke instead of a run loop later - and a hop here is exactly
                 // the shape of the EventKit crash this project has already had.
                 MainActor.assumeIsolated {
-                    Unmanaged<GlobalHotkey>.fromOpaque(userData)
-                        .takeUnretainedValue()
-                        .onPress?()
+                    let hotkey = Unmanaged<GlobalHotkey>.fromOpaque(userData).takeUnretainedValue()
+                    // Logged before the action and saying whether there is one: a press
+                    // that arrives here and does nothing is a different defect from a
+                    // press that never arrives, and without this line they look alike.
+                    Logger.capture.info(
+                        "premuta, azione collegata: \(hotkey.onPress != nil, privacy: .public)"
+                    )
+                    hotkey.onPress?()
                 }
                 return noErr
             },
@@ -160,5 +183,9 @@ final class GlobalHotkey {
             context,
             &handler
         )
+        // `noErr` here proves the handler was accepted, and proved nothing about where -
+        // which is exactly the mistake the comment above records. Logged anyway: a
+        // non-zero value would rule the callback out immediately.
+        Logger.capture.info("handler installato: \(installed, privacy: .public)")
     }
 }

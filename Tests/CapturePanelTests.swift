@@ -56,14 +56,21 @@ import Testing
     #expect(CarbonKey.modifierMask(for: [.command, .shift]) == 768)
 }
 
-@Test func theDefaultCaptureShortcutIsControlSpace() {
+@Test func theDefaultCaptureShortcutIsNotTheOneCraftHolds() throws {
+    // ⌃Space was the first default and it was wrong: Craft holds it without asking for
+    // exclusivity, so registering it exclusively *succeeded* while Craft kept getting
+    // the key. Found by pressing it, which is the only instrument that detects this.
     let binding = ShortcutCommand.globalCapture.defaultBinding
-    #expect(binding == KeyBinding("space", .control))
-    let pair = try? #require(CarbonKey.pair(for: binding))
-    // kVK_Space is 49; the panel opening on the wrong key would be indistinguishable
-    // from it not opening at all.
-    #expect(pair?.code == 49)
-    #expect(pair?.modifiers == 4096)
+    #expect(binding == KeyBinding("space", [.control, .option]))
+    #expect(binding != KeyBinding("space", .control))
+
+    // Unwrapped rather than compared through the optional: `pair?.modifiers == 6144`
+    // reads as true and is not, which cost a red test with two identical numbers in it.
+    let pair = try #require(CarbonKey.pair(for: binding))
+    // kVK_Space is 49; control 4096 plus option 2048. A panel opening on the wrong key
+    // would be indistinguishable from it not opening at all.
+    #expect(pair.code == 49)
+    #expect(pair.modifiers == 6144)
 }
 
 // MARK: - The state the settings pane reads

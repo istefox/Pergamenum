@@ -33,6 +33,18 @@ struct ShortcutSettings: View {
                 Pergamenum.
                 """)
                     .themedText(.caption, color: .textTertiary)
+                // Learned by trying it: Craft holds ⌃Spazio without asking the system
+                // for exclusivity, so Pergamenum's own request succeeded, the row looked
+                // right, and only Craft's panel opened. The registration cannot detect
+                // that case, so the pane says it instead of implying otherwise.
+                Text("""
+                «Cattura rapida» è registrata a livello di sistema e funziona anche quando \
+                Pergamenum non è in primo piano. Se un'altra app tiene già la stessa \
+                combinazione, la registrazione può riuscire lo stesso e l'altra app \
+                continuare a rispondere: il modo per accorgersene è premerla. In quel caso \
+                cambiala qui.
+                """)
+                    .themedText(.caption, color: .textTertiary)
             }
         }
         .formStyle(.grouped)

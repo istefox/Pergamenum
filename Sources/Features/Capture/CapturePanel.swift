@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 /// The window the capture panel lives in: a floating, non-activating `NSPanel` that
@@ -57,6 +58,17 @@ final class CapturePanel {
         // application that is not ours.
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
+
+        // Read back from the panel rather than assumed: "ordered front" and "on screen
+        // where the user is looking" are two different claims, and a panel sized to zero
+        // or placed on the other display is invisible while every call above succeeded.
+        Logger.capture.info(
+            """
+            pannello: visibile \(panel.isVisible, privacy: .public) \
+            frame \(NSStringFromRect(panel.frame), privacy: .public) \
+            schermo \(NSStringFromRect(panel.screen?.frame ?? .zero), privacy: .public)
+            """
+        )
     }
 
     func hide() {
