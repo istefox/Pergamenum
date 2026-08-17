@@ -29,7 +29,10 @@ struct PergamenumApp: App {
     @State private var themeEngine: ThemeEngine
     @State private var vault = VaultController()
     @State private var calendar = EventKitStore()
-    @State private var navigation = Navigation()
+    /// Built in `init` rather than inline, because `CommandActions` is assembled there
+    /// and needs it: a `@State` property with an inline default is not readable from the
+    /// initialiser that would use it.
+    @State private var navigation: Navigation
     /// The keyboard shortcuts in force. Held at app level because the menu bar is
     /// built here and the settings window that edits them is a separate scene.
     @State private var shortcuts = ShortcutStore()
@@ -54,6 +57,9 @@ struct PergamenumApp: App {
     /// the `NSPanel` itself is made the first time the panel is shown.
     private let capturePanel: CapturePanel
     private let menuBarItem: MenuBarItem
+    /// Every command in the catalogue, in one callable place, so the menu bar and the
+    /// slash menu of M8 run the same code rather than two copies of it.
+    private let commandActions: CommandActions
     /// Whether the menu-bar icon is shown. In `UserDefaults` and not in the vault: it is
     /// a fact about this Mac, not about these notes.
     @AppStorage("showsMenuBarItem") private var showsMenuBarItem = true
@@ -64,13 +70,16 @@ struct PergamenumApp: App {
         let calendar = EventKitStore()
         let capture = CaptureController()
         let hotkey = GlobalHotkey()
+        let navigation = Navigation()
+        let day = DayController(store: calendar, vault: vault)
 
         _themeEngine = State(initialValue: engine)
         _vault = State(initialValue: vault)
         _calendar = State(initialValue: calendar)
+        _navigation = State(initialValue: navigation)
         _capture = State(initialValue: capture)
         _hotkey = State(initialValue: hotkey)
-        _day = State(initialValue: DayController(store: calendar, vault: vault))
+        _day = State(initialValue: day)
         _diary = State(initialValue: DiaryController(vault: vault))
 
         let panel = CapturePanel(
@@ -92,6 +101,13 @@ struct PergamenumApp: App {
             onCapture: { panel.toggle() },
             onToday: { vault.handle(.today) },
             onInbox: { vault.handle(.note(path: VaultSession.TaskDestination.inboxPath)) }
+        )
+        commandActions = CommandActions(
+            navigation: navigation,
+            vault: vault,
+            day: day,
+            calendar: calendar,
+            capturePanel: panel
         )
     }
 
@@ -122,6 +138,7 @@ struct PergamenumApp: App {
                 .environment(day)
                 .environment(diary)
                 .environment(shortcuts)
+                .environment(commandActions)
                 .themed(by: themeEngine)
                 .onAppear { appDelegate.vault = vault }
                 // Not in `init`: window work and `NSApp` must not happen while the app
@@ -163,12 +180,22 @@ struct PergamenumApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            VaultCommands(vault: vault, navigation: navigation, shortcuts: shortcuts, capturePanel: capturePanel)
-            EditCommands(navigation: navigation, shortcuts: shortcuts)
-            InsertCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
-            ViewCommands(navigation: navigation, vault: vault, shortcuts: shortcuts)
-            TaskCommands(vault: vault, shortcuts: shortcuts)
-            CalendarCommands(day: day, calendar: calendar, navigation: navigation, shortcuts: shortcuts)
+            VaultCommands(
+                vault: vault, navigation: navigation, shortcuts: shortcuts,
+                capturePanel: capturePanel, actions: commandActions
+            )
+            EditCommands(navigation: navigation, shortcuts: shortcuts, actions: commandActions)
+            InsertCommands(
+                navigation: navigation, vault: vault, shortcuts: shortcuts, actions: commandActions
+            )
+            ViewCommands(
+                navigation: navigation, vault: vault, shortcuts: shortcuts, actions: commandActions
+            )
+            TaskCommands(vault: vault, shortcuts: shortcuts, actions: commandActions)
+            CalendarCommands(
+                day: day, calendar: calendar, navigation: navigation,
+                shortcuts: shortcuts, actions: commandActions
+            )
             ThemeCommands(engine: themeEngine)
             HelpCommands(navigation: navigation)
         }
@@ -196,6 +223,7 @@ struct PergamenumApp: App {
 struct TaskCommands: Commands {
     let vault: VaultController
     let shortcuts: ShortcutStore
+    let actions: CommandActions
 
     var body: some Commands {
         CommandMenu("Task") {
@@ -208,20 +236,18 @@ struct TaskCommands: Commands {
             .disabled(vault.openNote == nil)
 
             Divider()
-            Button("Completa o riapri") {
-                if let task = vault.selectedTask { vault.toggle(task) }
-            }
-            .keyboardShortcut(shortcuts.shortcut(for: .taskToggle))
-            .disabled(vault.selectedTask == nil)
+            Button("Completa o riapri") { actions.run(.taskToggle) }
+                .keyboardShortcut(shortcuts.shortcut(for: .taskToggle))
+                .disabled(!actions.canRun(.taskToggle))
 
             Divider()
-            Button("Pianifica oggi") { vault.rescheduleSelectedTask(daysFromToday: 0) }
+            Button("Pianifica oggi") { actions.run(.taskToday) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToday))
-            Button("Domani") { vault.rescheduleSelectedTask(daysFromToday: 1) }
+            Button("Domani") { actions.run(.taskTomorrow) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskTomorrow))
-            Button("+2 giorni") { vault.rescheduleSelectedTask(daysFromToday: 2) }
+            Button("+2 giorni") { actions.run(.taskPlusTwo) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskPlusTwo))
-            Button("Settimana prossima") { vault.rescheduleSelectedTask(daysFromToday: 7) }
+            Button("Settimana prossima") { actions.run(.taskNextWeek) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskNextWeek))
             Button("Togli la data") { vault.rescheduleSelectedTask(daysFromToday: nil) }
                 .disabled(vault.selectedTask == nil)
@@ -243,14 +269,7 @@ struct VaultCommands: Commands {
     let navigation: Navigation
     let shortcuts: ShortcutStore
     let capturePanel: CapturePanel
-
-    /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting
-    /// into Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
-    private func copyLinkToOpenNote() {
-        guard let note = vault.openNote, let url = PergamenumLink.note(path: note.relativePath) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
-    }
+    let actions: CommandActions
 
     /// Exports the open note without its frontmatter or its "Note correlate"
     /// section (SPEC §10).
@@ -261,57 +280,37 @@ struct VaultCommands: Commands {
         }
     }
 
-    private func revealOpenNote() {
-        guard let note = vault.openNote, let root = vault.root else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([
-            root.appending(path: note.relativePath, directoryHint: .notDirectory),
-        ])
-    }
-
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            // Brings the Note pane forward as well: the composer is part of the editor
-            // now, so from any other pane the command would compose out of sight.
-            Button("Nuova nota") {
-                navigation.pane = .notes
-                vault.beginNewNote()
-            }
+            Button("Nuova nota") { actions.run(.newNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newNote))
-                .disabled(vault.root == nil)
-            // Reported rather than swallowed: Cmd+T doing nothing at all, with no
-            // reason given, is the worst outcome when the daily note cannot be created.
-            Button("Oggi") {
-                do {
-                    _ = try vault.openDailyNote(for: .today)
-                } catch {
-                    vault.recordProblem("nota del giorno: \(error)")
-                }
-            }
+                .disabled(!actions.canRun(.newNote))
+            Button("Oggi") { actions.run(.dailyNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
-                .disabled(vault.root == nil)
-            Button("Nuovo task rapido") { vault.beginTaskCapture() }
+                .disabled(!actions.canRun(.dailyNote))
+            Button("Nuovo task rapido") { actions.run(.quickTask) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickTask))
-                .disabled(vault.root == nil)
+                .disabled(!actions.canRun(.quickTask))
             // No `.keyboardShortcut`: this one is registered with the system and fires
             // whether or not Pergamenum is in front (ADR-0008 §D1). A menu equivalent
             // here as well, because a hot key the system refused leaves the command
             // reachable, and because a command with no menu entry cannot be discovered.
-            Button("Cattura rapida") { capturePanel.toggle() }
-                .disabled(vault.root == nil)
-            Button("Anteprima rapida") { vault.isShowingQuickLook = true }
+            Button("Cattura rapida") { actions.run(.globalCapture) }
+                .disabled(!actions.canRun(.globalCapture))
+            Button("Anteprima rapida") { actions.run(.quickLook) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
-                .disabled(vault.root == nil)
-            Button("Ricerca globale…") { vault.isShowingGlobalSearch = true }
+                .disabled(!actions.canRun(.quickLook))
+            Button("Ricerca globale…") { actions.run(.globalSearch) }
                 .keyboardShortcut(shortcuts.shortcut(for: .globalSearch))
-                .disabled(vault.root == nil)
-            Button("Vai alla nota…") { vault.isShowingQuickSwitcher = true }
+                .disabled(!actions.canRun(.globalSearch))
+            Button("Vai alla nota…") { actions.run(.quickSwitcher) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickSwitcher))
-                .disabled(vault.root == nil)
-            Button("Salva") { vault.saveOpenNote() }
+                .disabled(!actions.canRun(.quickSwitcher))
+            Button("Salva") { actions.run(.save) }
                 .keyboardShortcut(shortcuts.shortcut(for: .save))
-                .disabled(vault.openNote?.hasUnsavedChanges != true)
+                .disabled(!actions.canRun(.save))
             Divider()
-            Button("Apri cartella note…") { VaultOpenPanel.chooseVault(into: vault) }
+            Button("Apri cartella note…") { actions.run(.openVault) }
                 .keyboardShortcut(shortcuts.shortcut(for: .openVault))
             Menu("Cartelle recenti") {
                 // Read at build time of the menu, so a vault deleted since the last
@@ -342,12 +341,12 @@ struct VaultCommands: Commands {
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
             Divider()
-            Button("Copia link Pergamenum") { copyLinkToOpenNote() }
+            Button("Copia link Pergamenum") { actions.run(.copyLink) }
                 .keyboardShortcut(shortcuts.shortcut(for: .copyLink))
-                .disabled(vault.openNote == nil)
-            Button("Rivela nel Finder") { revealOpenNote() }
+                .disabled(!actions.canRun(.copyLink))
+            Button("Rivela nel Finder") { actions.run(.revealInFinder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .revealInFinder))
-                .disabled(vault.openNote == nil)
+                .disabled(!actions.canRun(.revealInFinder))
         }
     }
 }

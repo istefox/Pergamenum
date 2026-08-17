@@ -9,6 +9,12 @@ import SwiftUI
 final class CompletingTextView: NSTextView {
     var noteTitles: [String] = []
     var tagSuggestions: [String] = []
+    /// The slash menu's catalogue, already filtered to what can run right now (M8).
+    /// Set from the SwiftUI layer, because whether a command can run is a fact about the
+    /// app and not about the text.
+    var editorCommands: [EditorCommand] = []
+    /// Runs a command the app owns. The text view never performs one itself.
+    var onRunCommand: ((ShortcutCommand) -> Void)?
     /// Called with pasted text; returns true when it handled the paste itself.
     var onPasteURL: ((String) -> Bool)?
     /// Called with the PNG bytes of a pasted image; returns the name it was saved under.
@@ -97,6 +103,9 @@ final class CompletingTextView: NSTextView {
     private enum Context {
         case wikilink(prefix: String)
         case tag(prefix: String)
+        /// The prefix carries the `/` itself, like the tag one carries its `#`, so the
+        /// range to replace is simply its length.
+        case slash(prefix: String)
     }
 
     /// True right after the user typed the trigger, so the list opens without a
@@ -113,6 +122,7 @@ final class CompletingTextView: NSTextView {
         let length: Int = switch context {
         case .wikilink(let prefix): prefix.count
         case .tag(let prefix): prefix.count
+        case .slash(let prefix): prefix.count
         }
         return NSRange(location: cursor - length, length: length)
     }
@@ -140,6 +150,59 @@ final class CompletingTextView: NSTextView {
         case .tag(let prefix):
             let matches = tagSuggestions.filter { $0.hasPrefix(prefix) }.prefix(12)
             return matches.isEmpty ? nil : Array(matches)
+        case .slash(let prefix):
+            // No cap, unlike the two above. Twelve is right for a list of note titles,
+            // where the twelfth is already a bad guess; here the list *is* the catalogue,
+            // and M8 exists to make everything the app can do reachable from the caret.
+            // Capped at twelve, `/` alone showed the editor entries and hid every app
+            // command behind a query you had to know to type. AppKit's list scrolls.
+            let matches = EditorCommand
+                .matching(String(prefix.dropFirst()), in: editorCommands)
+                .map(\.title)
+            return matches.isEmpty ? nil : matches
+        }
+    }
+
+    /// Runs the chosen slash command instead of typing its name into the note.
+    ///
+    /// AppKit's completion list exists to insert the string it shows, so this is the one
+    /// place a command menu can be built on it. Three behaviours worth stating, because
+    /// each would be a visible defect if it were the other way round:
+    ///
+    /// - **Not final**: nothing happens. Arrowing through the list previews a completion
+    ///   by inserting it, which for this list would write "Blocco di codice" into the
+    ///   note while the user is still choosing.
+    /// - **Cancelled**: nothing happens either. Escape has to leave `/cod` exactly as it
+    ///   was typed.
+    /// - **Chosen**: the `/prefisso` is replaced in one edit, so undo takes the whole
+    ///   thing back rather than peeling it a character at a time.
+    override func insertCompletion(
+        _ word: String,
+        forPartialWordRange charRange: NSRange,
+        movement: Int,
+        isFinal: Bool
+    ) {
+        guard case .slash = completionContext() else {
+            super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: isFinal)
+            return
+        }
+        guard isFinal, movement != NSTextMovement.cancel.rawValue else { return }
+        guard let command = editorCommands.first(where: { $0.title == word }) else { return }
+
+        switch command.action {
+        case .insert(let text, let cursorBack):
+            insertText(text, replacementRange: charRange)
+            // Counted in UTF-16, which is what an `NSRange` is measured in: `count` on a
+            // String would put the caret in the wrong place the first time a template
+            // carries an emoji.
+            let end = charRange.location + (text as NSString).length
+            setSelectedRange(NSRange(location: max(charRange.location, end - cursorBack), length: 0))
+        case .app(let appCommand):
+            // The typed `/prefisso` goes first: the command may open a panel or move to
+            // another pane, and coming back to find `/oggi` still in the note reads as
+            // the menu having failed.
+            insertText("", replacementRange: charRange)
+            onRunCommand?(appCommand)
         }
     }
 
@@ -168,6 +231,18 @@ final class CompletingTextView: NSTextView {
             let afterSpace = beforeCursor.dropLast(prefix.count).last == " "
             // `# ` opens a heading, not a tag, and a space ends the tag.
             if atLineStart || afterSpace, !prefix.contains(" ") { return .tag(prefix: prefix) }
+        }
+        // Last, so the two triggers that existed first keep behaving exactly as they did.
+        if let slash = beforeCursor.range(of: "/", options: .backwards) {
+            let prefix = String(beforeCursor[slash.lowerBound...])
+            let atLineStart = slash.lowerBound == beforeCursor.startIndex
+            let afterSpace = beforeCursor.dropLast(prefix.count).last == " "
+            // The strictness is the whole design. `/` is ordinary in prose and in dates
+            // and in URLs, so it opens a menu only where a person would not otherwise be
+            // typing one: at the start of a line or after a space. That rules out
+            // `24/08/2026` (a digit before it), `http://x` (a slash before it) and `e/o`
+            // (a letter before it) without naming any of them, and a space ends the menu.
+            if atLineStart || afterSpace, !prefix.contains(" ") { return .slash(prefix: prefix) }
         }
         return nil
     }

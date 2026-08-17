@@ -6,14 +6,17 @@ struct VaultBrowser: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
     @Environment(Navigation.self) var navigation
+    /// The slash menu runs app commands through this rather than re-implementing them
+    /// (M8). Injected at app level, where every collaborator it needs exists.
+    @Environment(CommandActions.self) var commandActions
     /// Held here rather than read straight from `Navigation`, because the insertion has
     /// to be consumed once: read directly it would be re-applied on every view update
     /// until something else changed it.
-    @State private var pendingInsertion: (text: String, cursorBack: Int)?
+    @State var pendingInsertion: (text: String, cursorBack: Int)?
     @State private var isShowingInspector = true
     /// Bumped after a note is created, so the editor that replaces the composer opens
     /// with the cursor already in it.
-    @State private var focusRequest = 0
+    @State var focusRequest = 0
     /// The embedded file a click asked to see, and the panel that shows it. Empty until
     /// there is one: the Quick Look host takes first responder whenever it has a file,
     /// and taking it before the user has asked for anything would be taking it for
@@ -123,27 +126,7 @@ struct VaultBrowser: View {
                 if navigation.isReadingMode {
                     reading(note)
                 } else {
-                    NoteTextView(
-                        text: Binding(
-                            get: { vault.openNote?.text ?? "" },
-                            set: { vault.updateOpenNoteText($0) }
-                        ),
-                        theme: theme,
-                        noteTitles: vault.index.allNotes.map(\.title),
-                        tagSuggestions: tagSuggestions,
-                        onFollowLink: follow(title:),
-                        onOpenEmbed: { name in preview(embed: name, in: note) },
-                        onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
-                        onPasteImage: { data in save(pastedImage: data, in: note) },
-                        insertion: pendingInsertion,
-                        onInsertionApplied: { pendingInsertion = nil },
-                        findRequest: findRequest,
-                        onFindApplied: {
-                            navigation.isFindRequested = false
-                            navigation.isReplaceRequested = false
-                        },
-                        focusRequest: focusRequest
-                    )
+                    editing(note)
                 }
             }
             .background(theme.color(.backgroundPrimary))
@@ -168,7 +151,7 @@ struct VaultBrowser: View {
     }
 
     /// On the controller since the Diario pane's editor offers the same list.
-    private var tagSuggestions: [String] { vault.tagSuggestions }
+    var tagSuggestions: [String] { vault.tagSuggestions }
 
     func follow(title: String) {
         let matches = vault.index.resolve(title: title)
