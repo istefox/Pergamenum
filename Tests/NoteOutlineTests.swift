@@ -134,6 +134,10 @@ private func titles(_ text: String) -> [String] {
         switch block {
         case .heading(let level, let text): (text, level)
         case .embed(let target, let alt): (alt ?? target, nil)
+        // A note embed became its own block with ADR-0010, and the index still lists it as
+        // one entry. Both have to be counted here or the two go out of step by one for the
+        // rest of the note, which is a click landing on the wrong section.
+        case .transclusion(let reference, let section): (section.map { "\(reference)#\($0)" } ?? reference, nil)
         default: nil
         }
     }

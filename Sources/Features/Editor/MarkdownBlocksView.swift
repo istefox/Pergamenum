@@ -18,6 +18,11 @@ struct MarkdownBlocksView: View {
     var notePath: String = ""
     var vaultRoot: URL?
     var thumbnails: ThumbnailStore?
+    /// How a transcluded note is reached (ADR-0010). Nil where there is no vault behind
+    /// the view, and then a transclusion draws as unresolved rather than as nothing.
+    var transclusions: TransclusionSource?
+    /// False inside a transcluded note: depth one, so the second level is a link.
+    var expandsTransclusions = true
 
     /// A scheme of this view's own, distinct from the app's `pergamenum://` router:
     /// a wikilink is followed inside the window, and routing it through the URL
@@ -52,28 +57,10 @@ struct MarkdownBlocksView: View {
             listView(for: block)
 
         case .quote(let lines):
-            HStack(alignment: .top, spacing: theme.spacing(.s)) {
-                Rectangle()
-                    .fill(theme.color(.borderStrong))
-                    .frame(width: 3)
-                Text(inline(lines.joined(separator: "\n")))
-                    .themedText(.body, color: .textSecondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            quoteView(lines)
 
         case .code(let language, let lines):
-            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                if let language {
-                    Text(language).themedText(.caption, color: .textTertiary)
-                }
-                Text(highlighted(lines.joined(separator: "\n"), language: language))
-                    .font(theme.font(.mono))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(theme.spacing(.s))
-            .background(theme.color(.surfaceSunken))
-            .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+            codeView(language: language, lines: lines)
 
         case .rule:
             Rectangle()
@@ -87,7 +74,43 @@ struct MarkdownBlocksView: View {
             EmbeddedFileView(
                 target: target, alt: alt, notePath: notePath, root: vaultRoot, thumbnails: thumbnails
             )
+
+        case .transclusion(let reference, let section):
+            TranscludedNoteView(
+                reference: reference,
+                section: section,
+                source: transclusions,
+                vaultRoot: vaultRoot,
+                thumbnails: thumbnails,
+                expands: expandsTransclusions
+            )
         }
+    }
+
+    private func quoteView(_ lines: [String]) -> some View {
+        HStack(alignment: .top, spacing: theme.spacing(.s)) {
+            Rectangle()
+                .fill(theme.color(.borderStrong))
+                .frame(width: 3)
+            Text(inline(lines.joined(separator: "\n")))
+                .themedText(.body, color: .textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func codeView(language: String?, lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+            if let language {
+                Text(language).themedText(.caption, color: .textTertiary)
+            }
+            Text(highlighted(lines.joined(separator: "\n"), language: language))
+                .font(theme.font(.mono))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(theme.spacing(.s))
+        .background(theme.color(.surfaceSunken))
+        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
     }
 
     /// The three list shapes, together in one place: bullets, numbers and tasks differ

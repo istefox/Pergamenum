@@ -61,7 +61,39 @@ enum NoteFolding {
         return hidden
     }
 
+    /// The text of one section, its heading line included.
+    ///
+    /// The same rule the folds use, exposed rather than copied: a transclusion of
+    /// `![[nota#sezione]]` shows exactly what folding that section would hide, plus the
+    /// heading itself (ADR-0010 §D5). A second implementation of "up to the next heading of
+    /// the same or a higher level" would drift, and this is the kind of rule nobody notices
+    /// has drifted until a `###` goes missing.
+    ///
+    /// The trailing newline is not part of it: the caller is showing the section, not
+    /// splicing it back into a file.
+    static func sectionRange(in text: String, headingAt entry: Int) -> Range<String.Index>? {
+        let entries = NoteOutline.entries(in: text)
+        guard entries.indices.contains(entry),
+              case .heading(let level) = entries[entry].kind
+        else { return nil }
+
+        let starts = lineStarts(in: text)
+        let headingLine = line(of: entries[entry].range.lowerBound, in: starts)
+        let lastLine = sectionEnd(after: entry, level: level, entries: entries, starts: starts)
+        guard starts.indices.contains(headingLine) else { return nil }
+
+        let lower = starts[headingLine]
+        let upper = endOfLine(max(headingLine, lastLine), in: text, starts: starts)
+        return lower <= upper ? lower..<upper : nil
+    }
+
     // MARK: -
+
+    /// Where a line's text ends, before its newline. The last line ends at the note's end.
+    private static func endOfLine(_ line: Int, in text: String, starts: [String.Index]) -> String.Index {
+        guard starts.indices.contains(line + 1) else { return text.endIndex }
+        return text.index(before: starts[line + 1])
+    }
 
     private static func sections(
         in text: String,

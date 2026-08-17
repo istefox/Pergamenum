@@ -29,6 +29,12 @@ enum MarkdownBlock: Equatable, Sendable {
     /// Only a whole line becomes one. Inside a paragraph an embed stays a span, because
     /// a picture in the middle of a sentence would cut the sentence in two.
     case embed(target: String, alt: String?)
+    /// Another note on a line of its own: `![[nota]]` or `![[nota#sezione]]` (ADR-0010).
+    ///
+    /// Separate from `.embed` because the two resolve differently and fail differently: a
+    /// file that is not there is a missing file, a note that is not there is a missing
+    /// note, and saying the first about the second is the defect this case removes.
+    case transclusion(reference: String, section: String?)
 
     struct TaskLine: Equatable, Sendable {
         var isDone: Bool
@@ -79,10 +85,15 @@ enum MarkdownBlockParser {
             }
             // A remote target is deliberately left to the inline path, which renders it
             // as a link: this app fetches nothing over the network, so there is no
-            // picture to draw for it.
-            if let embed = Attachment.embed(inLine: trimmed), !Attachment.isRemote(embed.target) {
+            // picture to draw for it - `Transclusion.target` returns nil for one.
+            if let target = Transclusion.target(ofLine: trimmed) {
                 state.flushAll()
-                state.blocks.append(.embed(target: embed.target, alt: embed.alt))
+                switch target {
+                case .file(let name, let alt):
+                    state.blocks.append(.embed(target: name, alt: alt))
+                case .note(let reference, let section):
+                    state.blocks.append(.transclusion(reference: reference, section: section))
+                }
                 continue
             }
             state.take(line, trimmed: trimmed)

@@ -19,6 +19,9 @@ struct MarkdownReadingView: View {
     var notePath: String = ""
     var vaultRoot: URL?
     var thumbnails: ThumbnailStore?
+    /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no
+    /// vault behind the view, and then a transclusion says so instead of drawing.
+    var transclusions: TransclusionSource?
     /// Whether this view takes the keyboard when it appears.
     ///
     /// True in reading mode, where there is nothing else to type into. False when the
@@ -51,7 +54,9 @@ struct MarkdownReadingView: View {
     private func blockIndex(ofEntry entry: Int) -> Int? {
         let indexed = blocks.enumerated().filter { _, block in
             switch block {
-            case .heading, .embed: true
+            // A transcluded note is an index entry too: `NoteOutline` lists it, so a view
+            // that did not count it would send every click after the first one line short.
+            case .heading, .embed, .transclusion: true
             default: false
             }
         }
@@ -65,7 +70,8 @@ struct MarkdownReadingView: View {
                 blocks: blocks,
                 notePath: notePath,
                 vaultRoot: vaultRoot,
-                thumbnails: thumbnails
+                thumbnails: thumbnails,
+                transclusions: transclusions
             )
             .padding(theme.spacing(.l))
             .frame(maxWidth: 760, alignment: .leading)

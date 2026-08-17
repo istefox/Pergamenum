@@ -127,9 +127,15 @@ struct IndexCache {
 
     // MARK: SQLite plumbing
 
-    /// Bumped whenever `StoredRecord` changes shape. An older cache is dropped rather
-    /// than migrated: it is rebuilt from the vault in a fraction of a second.
-    static let schemaVersion: Int32 = 1
+    /// Bumped whenever `StoredRecord` changes shape - **or its meaning**. An older cache
+    /// is dropped rather than migrated: it is rebuilt from the vault in a fraction of a
+    /// second, and principle 3 says nothing is lost by discarding it.
+    ///
+    /// 2 (ADR-0010 §D7): the shape is unchanged, but `linkTargets` now counts transcluded
+    /// notes, so every row written by version 1 understates a note's links. A field
+    /// addition could not have repaired that - the rows are not wrong about a column, they
+    /// are wrong about what a column means. M11's `embedTargets` bump is therefore 3.
+    static let schemaVersion: Int32 = 2
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
