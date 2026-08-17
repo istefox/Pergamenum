@@ -42,6 +42,41 @@ private var catalogue: [EditorCommand] { EditorCommand.all(canRun: { _ in true }
 }
 
 @MainActor
+@Test func theQueryHasToStartAWordAndNotMerelyBeScatteredThroughOne() {
+    // Found on screen, typing `/es`: the subsequence matcher accepted "Giorno succ-es-sivo"
+    // and "Ins-e-ri-s-ci wikilink", so the list showed four unrelated commands and rebuilt
+    // itself on every keystroke - it read as scrolling on its own. A menu of fixed entries
+    // is searched by typing the start of a word, and nothing else is a match.
+    #expect(EditorCommand.matching("es", in: catalogue).isEmpty)
+    // The same letters where they do start a word: still found.
+    #expect(EditorCommand.matching("es", in: [
+        EditorCommand(id: "x", title: "Esporta", keywords: [], symbol: "square", action: .insert("", cursorBack: 0)),
+    ]).count == 1)
+}
+
+@MainActor
+@Test func aWordInsideTheTitleIsEnoughAndTheTitleItselfComesFirst() {
+    // `/cod` has to reach "Blocco di codice", or the menu is only usable by someone who
+    // knows each entry's first word.
+    #expect(EditorCommand.matching("cod", in: catalogue).first?.id == "codeBlock")
+    // Between a title that starts with the query and a title that merely contains the
+    // word, the first one wins.
+    let titleFirst = EditorCommand.matching("tit", in: catalogue)
+    #expect(titleFirst.first?.id == "heading1")
+}
+
+@MainActor
+@Test func narrowingAQueryNeverReordersWhatSurvives() {
+    // The other half of the same defect. The rows that match both `t` and `ta` must keep
+    // their relative order, or the row under the selection changes while a person is
+    // still typing towards it.
+    let wide = EditorCommand.matching("t", in: catalogue).map(\.id)
+    let narrow = EditorCommand.matching("ta", in: catalogue).map(\.id)
+    #expect(!narrow.isEmpty)
+    #expect(narrow == wide.filter(narrow.contains))
+}
+
+@MainActor
 @Test func aQueryThatMatchesNothingReturnsNothing() {
     // Not "everything", which is what a filter that gives up looks like from the outside.
     #expect(EditorCommand.matching("zzzqwx", in: catalogue).isEmpty)

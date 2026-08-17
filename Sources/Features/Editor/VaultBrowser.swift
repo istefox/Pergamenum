@@ -9,6 +9,8 @@ struct VaultBrowser: View {
     /// The slash menu runs app commands through this rather than re-implementing them
     /// (M8). Injected at app level, where every collaborator it needs exists.
     @Environment(CommandActions.self) var commandActions
+    /// Read for the key combinations the slash menu shows beside each app command.
+    @Environment(ShortcutStore.self) var shortcuts
     /// Held here rather than read straight from `Navigation`, because the insertion has
     /// to be consumed once: read directly it would be re-applied on every view update
     /// until something else changed it.

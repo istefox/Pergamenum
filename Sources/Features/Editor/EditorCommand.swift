@@ -19,6 +19,10 @@ struct EditorCommand: Identifiable, Sendable, Equatable {
     let keywords: [String]
     let symbol: String
     let action: Action
+    /// The key combination this command also answers to, as the settings pane has it -
+    /// the user's, never the default, or the menu would teach a shortcut that does
+    /// nothing. Nil for the entries that only exist here.
+    var shortcutCaption: String?
 
     enum Action: Sendable, Equatable {
         /// Markdown written at the caret; `cursorBack` puts the caret back inside what
@@ -120,10 +124,16 @@ struct EditorCommand: Identifiable, Sendable, Equatable {
     ///
     /// Writing beats navigating on a tie because the menu opens from the caret, in the
     /// middle of a sentence, and that is where the writing entries belong.
-    static func all(canRun: (ShortcutCommand) -> Bool) -> [EditorCommand] {
-        editorEntries + appEntries.filter { entry in
-            guard case .app(let command) = entry.action else { return true }
-            return canRun(command)
+    static func all(
+        canRun: (ShortcutCommand) -> Bool,
+        caption: (ShortcutCommand) -> String? = { _ in nil }
+    ) -> [EditorCommand] {
+        editorEntries + appEntries.compactMap { entry in
+            guard case .app(let command) = entry.action else { return entry }
+            guard canRun(command) else { return nil }
+            var entry = entry
+            entry.shortcutCaption = caption(command)
+            return entry
         }
     }
 
@@ -131,26 +141,61 @@ struct EditorCommand: Identifiable, Sendable, Equatable {
     ///
     /// An empty query returns everything, in catalogue order: `/` alone has to show the
     /// menu, not an empty list.
+    ///
+    /// **Not `FuzzyMatch`**, which is what the wikilink completion uses and what this used
+    /// at first. That function matches a subsequence, so `es` accepts "Giorno succ*es*sivo"
+    /// and "Inserisci wikilink" - and since the ranking then reorders on every keystroke,
+    /// the list appears to scroll under the caret while showing nothing that was asked for.
+    /// A subsequence is the right rule when the person is looking for a note whose title
+    /// they half remember; it is the wrong rule for a fixed menu, where they are typing the
+    /// beginning of a word. So: the query must start a word, and nothing else matches.
     static func matching(_ query: String, in catalogue: [EditorCommand]) -> [EditorCommand] {
         guard !query.isEmpty else { return catalogue }
+        let needle = query.lowercased()
 
         // Built in steps rather than as one chained expression: the type checker gives up
         // on the chained form, which is the same note `CompletingTextView` already
         // carries for the wikilink scoring.
-        var scored: [(command: EditorCommand, score: Int)] = []
-        for entry in catalogue {
-            let candidates = [entry.title] + entry.keywords
-            var best: Int?
-            for candidate in candidates {
-                guard let score = FuzzyMatch.score(query: query, candidate: candidate) else { continue }
-                if best == nil || score > best! { best = score }
-            }
-            guard let best else { continue }
-            scored.append((entry, best))
+        var scored: [Ranked] = []
+        for (order, entry) in catalogue.enumerated() {
+            guard let rank = entry.rank(startingWith: needle) else { continue }
+            scored.append(Ranked(command: entry, rank: rank, order: order))
         }
+        // Catalogue order breaks a tie, never title length: the order is fixed, so the
+        // rows that survive a keystroke keep the positions they had relative to each
+        // other. That is the difference between a list narrowing and a list reshuffling.
         scored.sort { left, right in
-            left.score == right.score ? left.command.title.count < right.command.title.count : left.score > right.score
+            left.rank == right.rank ? left.order < right.order : left.rank > right.rank
         }
         return scored.map(\.command)
+    }
+
+    /// One entry with what the sort needs: how well it matched, and where it sat in the
+    /// catalogue before the filter ran.
+    private struct Ranked {
+        let command: EditorCommand
+        let rank: Int
+        let order: Int
+    }
+
+    /// How well `needle` starts this entry, or nil when it starts no word of it.
+    ///
+    /// Three tiers, and the order is what a person expects: the title itself, then a word
+    /// inside the title, then a keyword. `tit` reaches "Titolo 1" before "Pianifica il task
+    /// domani" ever reaches it through "tit" - which it does not, and that is the point.
+    private func rank(startingWith needle: String) -> Int? {
+        if title.lowercased().hasPrefix(needle) { return 3 }
+        if Self.aWord(of: title, startsWith: needle) { return 2 }
+        if keywords.contains(where: { Self.aWord(of: $0, startsWith: needle) }) { return 1 }
+        return nil
+    }
+
+    /// Words are runs of letters and digits, so "h2" is one word and "da fare" is two.
+    /// Anything else separates, which keeps punctuation in a title from hiding the word
+    /// after it.
+    private static func aWord(of text: String, startsWith needle: String) -> Bool {
+        text.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .contains { $0.hasPrefix(needle) }
     }
 }

@@ -14,13 +14,14 @@ struct MockupGalleryView: View {
     @State private var screen: Screen = .capture
 
     enum Screen: String, CaseIterable, Identifiable {
-        case capture, editor, workspace, today, tasks
+        case capture, slash, editor, workspace, today, tasks
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .capture: "Cattura"
+            case .slash: "Menu /"
             case .editor: "Editor"
             case .workspace: "Workspace"
             case .today: "Oggi"
@@ -32,7 +33,8 @@ struct MockupGalleryView: View {
         /// the real thing is recognisable as such rather than mistaken for a proposal.
         var milestone: String {
             switch self {
-            case .capture: "M7, da approvare"
+            case .capture: "M7, realizzato"
+            case .slash: "M8, da approvare"
             case .editor: "M1, realizzato"
             case .workspace: "M2 e M3, realizzato"
             case .today: "M5, realizzato"
@@ -69,6 +71,7 @@ struct MockupGalleryView: View {
     private var current: some View {
         switch screen {
         case .capture: CaptureMockup()
+        case .slash: SlashMenuMockup()
         case .editor: EditorMockup()
         case .workspace: WorkspaceMockup()
         case .today: TodayMockup()
