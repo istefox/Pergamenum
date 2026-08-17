@@ -33,6 +33,39 @@ extension VaultBrowser {
         isPreviewingEmbed = true
     }
 
+    /// The editor itself, with everything the text view needs wired to it.
+    ///
+    /// Here rather than inline in `VaultBrowser.body` for the reason this file exists at
+    /// all: the browser is the widest view in the app, and M8 gave the text view two more
+    /// inputs.
+    func editing(_ note: VaultController.OpenNote) -> some View {
+        NoteTextView(
+            text: Binding(
+                get: { vault.openNote?.text ?? "" },
+                set: { vault.updateOpenNoteText($0) }
+            ),
+            theme: theme,
+            noteTitles: vault.index.allNotes.map(\.title),
+            tagSuggestions: tagSuggestions,
+            // Filtered here, once per rebuild: a command the app cannot run right now is
+            // not offered, rather than offered and inert.
+            editorCommands: EditorCommand.all(canRun: commandActions.canRun),
+            onRunCommand: commandActions.run,
+            onFollowLink: follow(title:),
+            onOpenEmbed: { name in preview(embed: name, in: note) },
+            onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
+            onPasteImage: { data in save(pastedImage: data, in: note) },
+            insertion: pendingInsertion,
+            onInsertionApplied: { pendingInsertion = nil },
+            findRequest: findRequest,
+            onFindApplied: {
+                navigation.isFindRequested = false
+                navigation.isReplaceRequested = false
+            },
+            focusRequest: focusRequest
+        )
+    }
+
     var findRequest: NoteTextView.FindRequest? {
         if navigation.isReplaceRequested { return .replace }
         if navigation.isFindRequested { return .find }

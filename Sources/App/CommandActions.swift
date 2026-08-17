@@ -1,0 +1,255 @@
+import AppKit
+import SwiftUI
+
+/// What every command in `ShortcutCommand` actually does, in one callable place.
+///
+/// Until now each action was a closure inside a `Button` in the menu bar, which is fine
+/// while the menu bar is the only way to reach it. M8's slash menu is a second way, and a
+/// second way that re-implemented the actions would be two copies drifting - the same
+/// failure ADR-0007 §D2 keeps out of the connectors, arriving here by a different door.
+///
+/// So the menus and the slash menu both call this, and neither owns the behaviour.
+///
+/// **`canRun` reproduces exactly what the menu bar disables today, including where that
+/// looks like an oversight.** The four rescheduling commands have no `.disabled` in the
+/// Task menu even though they act on the selected task, so they answer `true` here as
+/// well. Making them stricter would be a behaviour change smuggled inside an extraction,
+/// and `CommandActionTests` exists to catch exactly that; if the menu should be stricter,
+/// that is a separate change with its own reason.
+/// A class and `@Observable` for one reason only: this is how everything else in the app
+/// reaches the views, through `.environment(_:)`, and `VaultBrowser()` takes no arguments
+/// on purpose. Nothing here is state and nothing here changes, so nothing observes it.
+@MainActor
+@Observable
+final class CommandActions {
+    let navigation: Navigation
+    let vault: VaultController
+    let day: DayController
+    let calendar: EventKitStore
+    let capturePanel: CapturePanel
+
+    init(
+        navigation: Navigation,
+        vault: VaultController,
+        day: DayController,
+        calendar: EventKitStore,
+        capturePanel: CapturePanel
+    ) {
+        self.navigation = navigation
+        self.vault = vault
+        self.day = day
+        self.calendar = calendar
+        self.capturePanel = capturePanel
+    }
+
+    // MARK: Running
+
+    /// Dispatches by the section the command lives in, which is the same grouping the
+    /// menu bar uses.
+    ///
+    /// The first version was one exhaustive switch over all thirty-three commands, so a
+    /// command added and forgotten was a *compile* error. That is the stronger guarantee
+    /// and it was given up for a reason worth writing down: SwiftLint scores a
+    /// thirty-three-way switch at complexity 31, which its default configuration reports
+    /// as an **error**, and this codebase contains no `swiftlint:disable` anywhere -
+    /// introducing the first one, for a rule that is right in general, is the worse trade.
+    ///
+    /// What replaces it is nearly as good and is not nothing. `ShortcutCommand.section`
+    /// is itself an exhaustive switch, so a new command still cannot compile without being
+    /// given a section; it then reaches that section's method, and the `default` there is
+    /// an `assertionFailure`, so the omission is loud on the first Debug run rather than a
+    /// menu entry that quietly does nothing.
+    func run(_ command: ShortcutCommand) {
+        // The commands whose whole action is raising a flag the window is watching,
+        // handled as the table they are rather than as five identical switch arms.
+        if let flag = Self.flags[command] {
+            vault[keyPath: flag] = true
+            return
+        }
+        switch command.section {
+        case .file: runFile(command)
+        case .edit: runEdit(command)
+        case .insert: runInsert(command)
+        case .view: runView(command)
+        case .task: runTask(command)
+        case .calendar: runCalendar(command)
+        }
+    }
+
+    private func runFile(_ command: ShortcutCommand) {
+        switch command {
+        case .newNote:
+            // The Note pane first: the composer is part of the editor, so from any other
+            // pane the command would compose out of sight.
+            navigation.pane = .notes
+            vault.beginNewNote()
+        case .dailyNote:
+            // Reported rather than swallowed: the command doing nothing at all, with no
+            // reason given, is the worst outcome when the daily note cannot be created.
+            do {
+                _ = try vault.openDailyNote(for: .today)
+            } catch {
+                vault.recordProblem("nota del giorno: \(error)")
+            }
+        case .quickTask:
+            vault.beginTaskCapture()
+        case .globalCapture:
+            capturePanel.toggle()
+        case .save:
+            vault.saveOpenNote()
+        case .openVault:
+            VaultOpenPanel.chooseVault(into: vault)
+        case .copyLink:
+            copyLinkToOpenNote()
+        case .revealInFinder:
+            revealOpenNote()
+        default:
+            assertionFailure("«\(command.title)» è nella sezione File e non è gestito")
+        }
+    }
+
+    private func runEdit(_ command: ShortcutCommand) {
+        switch command {
+        case .pastePlain:
+            pastePlain()
+        case .findInNote:
+            navigation.isFindRequested = true
+        case .replaceInNote:
+            navigation.isReplaceRequested = true
+        default:
+            assertionFailure("«\(command.title)» è nella sezione Modifica e non è gestito")
+        }
+    }
+
+    private func runInsert(_ command: ShortcutCommand) {
+        switch command {
+        case .insertWikilink:
+            navigation.insert("[[]]", cursorBack: 2)
+        default:
+            assertionFailure("«\(command.title)» è nella sezione Inserisci e non è gestito")
+        }
+    }
+
+    private func runView(_ command: ShortcutCommand) {
+        switch command {
+        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary:
+            if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
+                navigation.pane = pane
+            }
+        case .readingMode:
+            navigation.isReadingMode.toggle()
+        case .runConformanceCheck:
+            // Brings the pane forward as well as asking for the check: the view that runs
+            // the linter only exists while that pane is shown, so from anywhere else the
+            // command would do nothing at all.
+            navigation.pane = .conformance
+            vault.isCheckingConformance = true
+        default:
+            assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
+        }
+    }
+
+    private func runTask(_ command: ShortcutCommand) {
+        switch command {
+        case .taskToggle:
+            if let task = vault.selectedTask { vault.toggle(task) }
+        case .taskToday:
+            vault.rescheduleSelectedTask(daysFromToday: 0)
+        case .taskTomorrow:
+            vault.rescheduleSelectedTask(daysFromToday: 1)
+        case .taskPlusTwo:
+            vault.rescheduleSelectedTask(daysFromToday: 2)
+        case .taskNextWeek:
+            vault.rescheduleSelectedTask(daysFromToday: 7)
+        default:
+            assertionFailure("«\(command.title)» è nella sezione Task e non è gestito")
+        }
+    }
+
+    private func runCalendar(_ command: ShortcutCommand) {
+        switch command {
+        case .previousDay:
+            day.move(by: -1)
+        case .nextDay:
+            day.move(by: 1)
+        case .newEvent:
+            navigation.pane = .today
+            day.isCreatingEvent = true
+        case .newReminder:
+            navigation.pane = .today
+            day.isCreatingReminder = true
+        default:
+            assertionFailure("«\(command.title)» è nella sezione Calendario e non è gestito")
+        }
+    }
+
+    // MARK: Whether it can run
+
+    /// The same condition the menu bar puts in `.disabled`, inverted.
+    ///
+    /// The slash menu needs this as a value rather than as a view modifier: it decides
+    /// which commands to *offer*, and offering one that does nothing is how a command
+    /// menu teaches people not to trust it.
+    func canRun(_ command: ShortcutCommand) -> Bool {
+        switch command {
+        case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
+             .quickSwitcher, .runConformanceCheck:
+            vault.root != nil
+        case .save:
+            vault.openNote?.hasUnsavedChanges == true
+        case .copyLink, .revealInFinder, .insertRelated, .readingMode:
+            vault.openNote != nil
+        case .taskToggle:
+            vault.selectedTask != nil
+        case .newEvent:
+            calendar.eventAccess.isGranted
+        case .newReminder:
+            calendar.reminderAccess.isGranted
+        // Everything else is always available, and the menu bar agrees: pane switching,
+        // find, paste, the wikilink insertion and the four rescheduling commands carry no
+        // `.disabled` today. See the type's own note about the last four.
+        case .openVault, .pastePlain, .findInNote, .replaceInNote, .insertWikilink,
+             .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
+             .paneDiary, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek,
+             .previousDay, .nextDay:
+            true
+        }
+    }
+
+    /// Four commands do exactly one thing: set a `Bool` on the controller that some view
+    /// is watching. Written as a table because that is what they are, and because five
+    /// identical switch arms are what pushed this file's dispatch over the complexity the
+    /// linter reports as an error.
+    private static let flags: [ShortcutCommand: ReferenceWritableKeyPath<VaultController, Bool>] = [
+        .quickLook: \.isShowingQuickLook,
+        .globalSearch: \.isShowingGlobalSearch,
+        .quickSwitcher: \.isShowingQuickSwitcher,
+        .insertRelated: \.isAddingRelatedLink,
+    ]
+
+    // MARK: The three that need more than a line
+
+    /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting into
+    /// Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
+    private func copyLinkToOpenNote() {
+        guard let note = vault.openNote, let url = PergamenumLink.note(path: note.relativePath) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+    }
+
+    private func revealOpenNote() {
+        guard let note = vault.openNote, let root = vault.root else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([
+            root.appending(path: note.relativePath, directoryHint: .notDirectory),
+        ])
+    }
+
+    /// The pasteboard is rewritten to its plain text and pasted through the responder
+    /// chain, so this works in any field, not only the editor.
+    private func pastePlain() {
+        let plain = NSPasteboard.general.string(forType: .string) ?? ""
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(plain, forType: .string)
+        NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+    }
+}

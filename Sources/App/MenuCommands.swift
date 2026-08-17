@@ -7,11 +7,12 @@ struct ViewCommands: Commands {
     let navigation: Navigation
     let vault: VaultController
     let shortcuts: ShortcutStore
+    let actions: CommandActions
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
             ForEach(Navigation.Pane.allCases) { pane in
-                Button(pane.title) { navigation.pane = pane }
+                Button(pane.title) { actions.run(pane.shortcut) }
                     .keyboardShortcut(shortcuts.shortcut(for: pane.shortcut))
             }
             Divider()
@@ -19,23 +20,23 @@ struct ViewCommands: Commands {
             // the Calendario menu already binds that key to "Nuovo promemoria", and a
             // second command on the same key simply never fires. The collision with
             // the spec predates this menu entry and is left as it is.
+            // Left as a `Toggle` rather than routed through `actions.run`: the checkmark
+            // beside it is the state, and a button would lose it. The binding is the
+            // action here, so there is no second copy to drift.
             Toggle("Modalità lettura", isOn: Bindable(navigation).isReadingMode)
                 .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
-                .disabled(vault.openNote == nil)
+                .disabled(!actions.canRun(.readingMode))
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere
             // else the command would do nothing at all.
-            Button("Verifica conformità") {
-                navigation.pane = .conformance
-                vault.isCheckingConformance = true
-            }
-            .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
-            .disabled(vault.root == nil)
+            Button("Verifica conformità") { actions.run(.runConformanceCheck) }
+                .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
+                .disabled(!actions.canRun(.runConformanceCheck))
             Divider()
-            Button("Anteprima rapida") { vault.isShowingQuickLook = true }
+            Button("Anteprima rapida") { actions.run(.quickLook) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
-                .disabled(vault.root == nil)
+                .disabled(!actions.canRun(.quickLook))
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
         }
@@ -52,16 +53,18 @@ struct CalendarCommands: Commands {
     let calendar: EventKitStore
     let navigation: Navigation
     let shortcuts: ShortcutStore
+    let actions: CommandActions
 
     var body: some Commands {
         CommandMenu("Calendario") {
+            // Not a `ShortcutCommand`: it has no shortcut, so it stays a closure here.
             Button("Vai a oggi") {
                 navigation.pane = .today
                 day.show(.today)
             }
-            Button("Giorno precedente") { day.move(by: -1) }
+            Button("Giorno precedente") { actions.run(.previousDay) }
                 .keyboardShortcut(shortcuts.shortcut(for: .previousDay))
-            Button("Giorno successivo") { day.move(by: 1) }
+            Button("Giorno successivo") { actions.run(.nextDay) }
                 .keyboardShortcut(shortcuts.shortcut(for: .nextDay))
             Button("Vai a data…") {
                 navigation.pane = .today
@@ -69,19 +72,13 @@ struct CalendarCommands: Commands {
             }
 
             Divider()
-            Button("Nuovo evento") {
-                navigation.pane = .today
-                day.isCreatingEvent = true
-            }
-            .keyboardShortcut(shortcuts.shortcut(for: .newEvent))
-            .disabled(!calendar.eventAccess.isGranted)
+            Button("Nuovo evento") { actions.run(.newEvent) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newEvent))
+                .disabled(!actions.canRun(.newEvent))
 
-            Button("Nuovo promemoria") {
-                navigation.pane = .today
-                day.isCreatingReminder = true
-            }
-            .keyboardShortcut(shortcuts.shortcut(for: .newReminder))
-            .disabled(!calendar.reminderAccess.isGranted)
+            Button("Nuovo promemoria") { actions.run(.newReminder) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newReminder))
+                .disabled(!actions.canRun(.newReminder))
 
             Divider()
             Button("Pubblica i time block sul Calendario") {
@@ -102,10 +99,11 @@ struct InsertCommands: Commands {
     let navigation: Navigation
     let vault: VaultController
     let shortcuts: ShortcutStore
+    let actions: CommandActions
 
     var body: some Commands {
         CommandMenu("Inserisci") {
-            Button("Wikilink") { navigation.insert("[[]]", cursorBack: 2) }
+            Button("Wikilink") { actions.run(.insertWikilink) }
                 .keyboardShortcut(shortcuts.shortcut(for: .insertWikilink))
             Button("Tag") { navigation.insert("#") }
             Button("Task") { navigation.insert("- [ ] ") }
@@ -114,10 +112,10 @@ struct InsertCommands: Commands {
             Button("Scadenza") { navigation.insert("!\(CalendarDate.today) ") }
             Button("Promemoria") { navigation.insert("@remind(\(CalendarDate.today) 09:00) ") }
             Divider()
-            Button("Nota correlata…") { vault.isAddingRelatedLink = true }
+            Button("Nota correlata…") { actions.run(.insertRelated) }
                 .keyboardShortcut(shortcuts.shortcut(for: .insertRelated))
-                .disabled(vault.openNote == nil)
-            Button("Tabella") { navigation.insert(Self.table) }
+                .disabled(!actions.canRun(.insertRelated))
+            Button("Tabella") { navigation.insert(EditorCommand.table) }
             Button("Immagine o file…") { insertFile() }
                 .disabled(vault.openNote == nil)
             Button("Link email da Mail") { insertMailLink() }
@@ -126,13 +124,6 @@ struct InsertCommands: Commands {
                 .disabled(vault.openNote == nil)
         }
     }
-
-    private static let table = """
-    | Colonna | Colonna |
-    |---|---|
-    |  |  |
-
-    """
 
     /// Copies the chosen file into the vault beside the note and embeds it (SPEC §5).
     private func insertFile() {
@@ -176,23 +167,17 @@ struct HelpCommands: Commands {
 struct EditCommands: Commands {
     let navigation: Navigation
     let shortcuts: ShortcutStore
+    let actions: CommandActions
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
-            Button("Incolla come testo puro") {
-                // The pasteboard is rewritten to its plain text and pasted through the
-                // responder chain, so this works in any field, not only the editor.
-                let plain = NSPasteboard.general.string(forType: .string) ?? ""
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(plain, forType: .string)
-                NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-            }
-            .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
+            Button("Incolla come testo puro") { actions.run(.pastePlain) }
+                .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
 
             Divider()
-            Button("Trova nella nota") { navigation.isFindRequested = true }
+            Button("Trova nella nota") { actions.run(.findInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findInNote))
-            Button("Sostituisci") { navigation.isReplaceRequested = true }
+            Button("Sostituisci") { actions.run(.replaceInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .replaceInNote))
         }
     }

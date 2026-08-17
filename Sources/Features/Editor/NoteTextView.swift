@@ -13,6 +13,11 @@ struct NoteTextView: NSViewRepresentable {
     let noteTitles: [String]
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
+    /// The slash menu's catalogue, already filtered to what can run (M8). Passed in
+    /// rather than built here: whether a command can run is a fact about the app, and
+    /// the editor is not the place that knows it.
+    var editorCommands: [EditorCommand] = []
+    var onRunCommand: ((ShortcutCommand) -> Void)?
     let onFollowLink: (String) -> Void
     /// Called with the file name inside `![[foto.png]]` when the embed is clicked. The
     /// editor shows the syntax, not the picture (SPEC §5), so this is how the file
@@ -72,6 +77,9 @@ struct NoteTextView: NSViewRepresentable {
         }
         textView.onDropFile = { url in context.coordinator.parent.onDropFile?(url) }
         textView.onPasteImage = { data in context.coordinator.parent.onPasteImage?(data) }
+        // Through the coordinator like the other three: the closure is read when the
+        // command runs, so it is the current one and not the one this view was built with.
+        textView.onRunCommand = { command in context.coordinator.parent.onRunCommand?(command) }
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -89,6 +97,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.parent = self
         textView.noteTitles = noteTitles
         textView.tagSuggestions = tagSuggestions
+        textView.editorCommands = editorCommands
 
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
