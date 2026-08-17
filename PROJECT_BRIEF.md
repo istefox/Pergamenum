@@ -87,6 +87,20 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-17: **M7 completo, la cattura è globale.** ADR-0008. `VaultAPI.capture` con le
+  quattro destinazioni sta in `Sources/Connector/`, quindi il pannello, `perg capture` e
+  la rotta `pergamenum://capture` sono tre facciate della stessa porta (PR #40). Sopra ci
+  sta un `NSPanel` non attivante su ⌃⌥Spazio, registrato con `RegisterEventHotKey` e non
+  con un monitor globale di `NSEvent`, che vorrebbe l'Accessibilità: l'app non chiede
+  nessun permesso nuovo e il sistema le consegna un evento solo (PR #41).
+  Due cose imparate premendo i tasti, non ragionando. Una registrazione riuscita **non**
+  è una prova: Craft teneva ⌃Spazio senza chiedere l'esclusività, la nostra registrazione
+  esclusiva riusciva, il pannello delle Impostazioni mostrava la riga giusta e si apriva
+  Craft. Nessuna API racconta quel caso, quindi le Impostazioni lo dicono a parole. E
+  l'handler Carbon va installato su `GetApplicationEventTarget()`: sul dispatcher tutto
+  restituisce `noErr` e la callback non viene mai chiamata.
+  Il pannello compare anche sopra un'app a schermo intero, il che rende il limite che
+  Craft documenta una scelta loro e non una regola di macOS.
 - 2026-08-15: **Il vault parla MCP: `pergamenum-mcp`.** ADR-0007, seconda metà. Un
   processo locale che parla JSON-RPC su stdin e stdout, avviato dal client e vivo quanto
   lui: Pergamenum non apre nessuna porta e questo nemmeno. Dodici strumenti di lettura
