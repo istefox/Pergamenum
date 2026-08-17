@@ -203,6 +203,26 @@ move the previous copy aside rather than deleting it.
   collector.tokens`. These are expected false positives, not credentials. Read each
   one before dismissing it - the rule still catches a real key assigned to a variable
   named `token`.
+- `.claude/test-cmd` runs at the end of **every** turn, through the `Stop` hook in
+  `~/.claude/settings.json`. It is therefore restricted to `-only-testing:PergamenumTests`,
+  and that restriction is load-bearing rather than tidiness: with the whole suite in there,
+  each turn ended by launching the UI tests, every `XCUIApplication().launch()` terminated
+  the app the person at the keyboard was using, and each round left an instance alive
+  holding the global hot key exclusively - so the next launch was refused. Two hours went
+  into hunting an external culprit for something the assistant was doing itself. The UI
+  tests still exist and are run deliberately, by hand.
+- **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
+  the app are usually still running on a vault inside
+  `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not
+  readable even with the sandbox disabled. Any manual check reaching a window that shows
+  notes nobody created is reaching one of those. `ps -Ao pid,command | grep
+  Pergamenum.app/Contents/MacOS` shows the vault each instance opened; start by reading it,
+  not by trusting the window.
+- **`-recentVaults` needs the plist array form.** The key holds `[String]`, so
+  `-recentVaults /path` leaves `stringArray(forKey:)` nil and no vault is reopened at
+  launch; `-recentVaults '("/path")'` works. The launch argument outranks the persistent
+  domain, so a throwaway vault reaches a Debug build without touching what the installed
+  app opens.
 - Build and tests must pass before committing. A change that does not build is not done.
 - Keep commits small and atomic, one logical change each.
 - Never disable or delete a test to make a suite pass.
