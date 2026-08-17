@@ -14,6 +14,7 @@ struct DesignSystemSettings: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeEngine.self) private var engine
     @State private var isShowingAllTokens = false
+    @State private var isShowingMockups = false
 
     /// The groups of the gallery, kept in the same order so the two views describe
     /// the palette the same way.
@@ -70,9 +71,16 @@ struct DesignSystemSettings: View {
 
             Section {
                 Button("Mostra tutti i token…") { isShowingAllTokens = true }
+                Button("Mostra i mockup…") { isShowingMockups = true }
             } footer: {
-                Text("Tipografia, spaziature, raggi e ombre restano definiti dal file del tema.")
-                    .themedText(.caption, color: .textTertiary)
+                Text(
+                    """
+                    Tipografia, spaziature, raggi e ombre restano definiti dal file del tema. \
+                    I mockup sono il materiale di riferimento del design: una schermata nuova \
+                    si approva lì prima di essere costruita.
+                    """
+                )
+                .themedText(.caption, color: .textTertiary)
             }
         }
         .formStyle(.grouped)
@@ -88,6 +96,20 @@ struct DesignSystemSettings: View {
                 DesignGalleryView()
             }
             .frame(width: 720, height: 620)
+            .background(theme.color(.backgroundSecondary))
+        }
+        .sheet(isPresented: $isShowingMockups) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Mockup delle schermate").themedText(.heading)
+                    Spacer()
+                    Button("Chiudi") { isShowingMockups = false }
+                }
+                .padding(theme.spacing(.m))
+                Divider()
+                MockupGalleryView()
+            }
+            .frame(width: 780, height: 640)
             .background(theme.color(.backgroundSecondary))
         }
     }
