@@ -41,8 +41,9 @@ _Nothing in progress._
 
 - [ ] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0012 would record it <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 -->
-- [ ] `PG-017` **P2** Transclusion needs an ADR before any code — `docs/20260816_Pergamenum_Roadmap.md` <!-- src:session opened:2026-08-17 -->
+- [ ] `PG-017` **P2** Transclusion needs an ADR before any code — `docs/adr/0010-transclusion-is-a-view-of-another-note.md` <!-- src:session opened:2026-08-17 -->
   - Rendering `![[nota]]` in reading mode only widens the distance between the two surfaces, and every such addition turns "add direct editing" into "choose between two editors". The ADR has to decide whether the editor draws it too.
+  - ADR-0010 written 2026-08-17, status **proposed**: both surfaces draw it, depth one, and `IndexCache.schemaVersion` goes to 2 in M8 so ADR-0009's `embedTargets` bump becomes 3. The slice does not start until Stefano accepts it.
 - [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
 
