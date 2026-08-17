@@ -8,8 +8,11 @@ import SwiftUI
 /// editor and the inspector and is over the size SwiftLint warns at, and the folder
 /// tree is a self-contained piece of it.
 struct NoteListPane: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
+    @Environment(\.theme) var theme
+    @Environment(VaultController.self) var vault
+    /// Reached for the index below the list: a click there is a request the editor
+    /// consumes, and this is where such requests live (M8).
+    @Environment(Navigation.self) var navigation
 
     @State private var filter = ""
     /// The folders currently open, by path. View state rather than a preference: a
@@ -36,8 +39,7 @@ struct NoteListPane: View {
             } else {
                 flatList
             }
-            Divider()
-            statusBar
+            footer
         }
         .background(theme.color(.backgroundSecondary))
         .task(id: vault.scanGeneration) { rebuild() }
@@ -181,37 +183,6 @@ struct NoteListPane: View {
         return result
     }
 
-    // MARK: Status
-
-    private var statusBar: some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            if vault.isScanning {
-                ProgressView().controlSize(.small)
-                Text("Scansione…").themedText(.caption, color: .textSecondary)
-            } else {
-                Text("\(vault.index.count) note").themedText(.caption, color: .textSecondary)
-                if vault.index.lastScanDuration > .zero {
-                    Text("· \(scanDurationText)").themedText(.caption, color: .textTertiary)
-                }
-            }
-            Spacer()
-            if !vault.index.failures.isEmpty {
-                Label("\(vault.index.failures.count)", systemImage: "exclamationmark.triangle")
-                    .themedText(.caption, color: .taskOverdue)
-                    .help(vault.index.failures.joined(separator: "\n"))
-            }
-        }
-        .padding(.horizontal, theme.spacing(.s))
-        .padding(.vertical, theme.spacing(.xs))
-    }
-
-    /// Reported so the in-memory index decision of ADR-0001 can be revisited on a
-    /// measurement rather than on a guess.
-    private var scanDurationText: String {
-        let milliseconds = vault.index.lastScanDuration.components.attoseconds / 1_000_000_000_000_000
-        let seconds = vault.index.lastScanDuration.components.seconds
-        return seconds > 0 ? "\(seconds),\(milliseconds / 100) s" : "\(milliseconds) ms"
-    }
 }
 
 /// One row of the folder tree, and its subtree.
@@ -220,8 +191,8 @@ struct NoteListPane: View {
 /// privately, and this tree has to be opened from outside - by "Espandi tutto", and by
 /// a note being opened from somewhere that is not the sidebar.
 private struct NoteTreeRow: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
+    @Environment(\.theme) var theme
+    @Environment(VaultController.self) var vault
 
     let node: NoteTree.Node
     let depth: Int
@@ -319,7 +290,7 @@ private struct NoteTreeRow: View {
 ///
 /// One type used by both lists, so the tree and the flat list cannot drift apart.
 private struct NoteRowMenu: View {
-    @Environment(VaultController.self) private var vault
+    @Environment(VaultController.self) var vault
     let note: NoteRecord
     @Binding var renaming: NoteRecord?
     @Binding var deleting: NoteRecord?
@@ -348,7 +319,7 @@ private struct NoteRowMenu: View {
 
 /// Renaming a note, with the title being typed held here and nowhere else.
 private struct RenameNoteSheet: View {
-    @Environment(\.theme) private var theme
+    @Environment(\.theme) var theme
     let note: NoteRecord
     let onConfirm: (String) -> Void
     let onCancel: () -> Void

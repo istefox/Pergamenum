@@ -40,6 +40,15 @@ struct NoteTextView: NSViewRepresentable {
     /// Bumped when the cursor should move into the editor, which is what makes a note
     /// created in the composer open ready to be typed into.
     var focusRequest = 0
+    /// A line the index asked to be taken to (M8). The fourth one-shot input, and it
+    /// follows the same shape as the other three: consumed once, then reported as applied.
+    var scrollRequest: Navigation.OutlineJump?
+    var onScrollApplied: () -> Void = {}
+    /// The index's entries, as line ranges. Handed to the text view so it can say which
+    /// one the caret is in without the caret's position having to travel up on every
+    /// arrow key.
+    var outlineRanges: [NSRange] = []
+    var onOutlineEntryChanged: ((Int?) -> Void)?
 
     enum FindRequest { case find, replace }
 
@@ -134,6 +143,12 @@ struct NoteTextView: NSViewRepresentable {
             )
             onFindApplied()
         }
+
+        if let scrollRequest, scrollRequest.id != context.coordinator.lastScrollRequest {
+            context.coordinator.lastScrollRequest = scrollRequest.id
+            context.coordinator.scroll(textView, to: scrollRequest.range)
+            onScrollApplied()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -156,9 +171,43 @@ struct NoteTextView: NSViewRepresentable {
         /// The focus request already honoured, so the cursor is not stolen back on
         /// every subsequent update.
         var lastFocusRequest = 0
+        /// The same, for the index's jumps: without it every later view update would
+        /// scroll back to the last heading clicked.
+        var lastScrollRequest = 0
+        /// The index entry the caret was last reported to be in. Kept so the callback
+        /// fires when it *changes*, not on every arrow key.
+        private var lastOutlineEntry: Int??
 
         init(parent: NoteTextView) {
             self.parent = parent
+        }
+
+        /// Takes the caret to a line the index pointed at.
+        ///
+        /// The caret and not only the scroller: arriving at a section and typing should
+        /// write there, and a view that scrolled without moving the insertion point would
+        /// send the next keystroke back where it came from.
+        func scroll(_ textView: NSTextView, to range: NSRange) {
+            let length = (textView.string as NSString).length
+            guard range.location <= length else { return }
+            let clamped = NSRange(location: range.location, length: min(range.length, length - range.location))
+            textView.setSelectedRange(NSRange(location: clamped.location, length: 0))
+            textView.scrollRangeToVisible(clamped)
+            textView.window?.makeFirstResponder(textView)
+        }
+
+        /// Reports which index entry the caret is inside, and only when it changes.
+        ///
+        /// This runs on every cursor movement, so publishing the offset itself would put
+        /// a SwiftUI update behind every arrow key. The entry changes far less often than
+        /// the caret does.
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            let caret = textView.selectedRange().location
+            let entry = parent.outlineRanges.lastIndex { $0.location <= caret }
+            guard lastOutlineEntry != .some(entry) else { return }
+            lastOutlineEntry = entry
+            parent.onOutlineEntryChanged?(entry)
         }
 
         /// Puts the cursor in the editor.

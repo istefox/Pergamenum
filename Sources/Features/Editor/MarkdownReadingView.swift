@@ -26,6 +26,11 @@ struct MarkdownReadingView: View {
     /// steals focus takes the caret out of the note the moment it is drawn, and every
     /// keystroke after that goes to the scroller.
     var takesFocus = true
+    /// The index entry the sidebar asked to be taken to, as its position in the index
+    /// (M8). This view scrolls by block and the editor by character, so the ordinal is
+    /// what the two have in common.
+    var scrollToEntry: Int?
+    var onScrollApplied: () -> Void = {}
 
     @State private var position = ScrollPosition()
     @State private var metrics = Metrics()
@@ -35,6 +40,23 @@ struct MarkdownReadingView: View {
     /// metadata already has its own place in the inspector.
     private var blocks: [MarkdownBlock] {
         MarkdownBlockParser.blocks(in: NoteDocument.parse(text).body)
+    }
+
+    /// Which block draws the nth index entry.
+    ///
+    /// The bridge between the two surfaces, and the one place they can disagree: the nth
+    /// heading-or-embed block is the nth entry of `NoteOutline`. A test asserts the two
+    /// stay in step on a hostile note, because a click landing on the wrong section is
+    /// not something anybody notices until it happens to them.
+    private func blockIndex(ofEntry entry: Int) -> Int? {
+        let indexed = blocks.enumerated().filter { _, block in
+            switch block {
+            case .heading, .embed: true
+            default: false
+            }
+        }
+        guard entry >= 0, entry < indexed.count else { return nil }
+        return indexed[entry].offset
     }
 
     var body: some View {
@@ -49,6 +71,11 @@ struct MarkdownReadingView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .scrollPosition($position)
+        .onChange(of: scrollToEntry) { _, entry in
+            guard let entry, let block = blockIndex(ofEntry: entry) else { return }
+            withAnimation(.easeOut(duration: 0.2)) { position.scrollTo(id: block) }
+            onScrollApplied()
+        }
         // A SwiftUI ScrollView on macOS takes the wheel and the trackpad but not the
         // keyboard: it is not focusable, so Page Down went nowhere and a note could
         // only be read with a hand on the trackpad. Focus is taken when the view

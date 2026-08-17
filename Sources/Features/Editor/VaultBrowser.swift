@@ -25,6 +25,10 @@ struct VaultBrowser: View {
     /// nothing.
     @State var previewURLs: [URL] = []
     @State var isPreviewingEmbed = false
+    /// The jump the index asked for, held here for the same reason `pendingInsertion` is:
+    /// it must be consumed once, and read straight from `Navigation` it would be re-applied
+    /// on every view update until something else changed (M8).
+    @State var pendingJump: Navigation.OutlineJump?
 
     var body: some View {
         HSplitView {
@@ -40,6 +44,9 @@ struct VaultBrowser: View {
         .toolbar { toolbar }
         .onChange(of: navigation.pendingInsertion) { _, _ in
             pendingInsertion = navigation.consumeInsertion()
+        }
+        .onChange(of: navigation.outlineJump) { _, jump in
+            pendingJump = jump
         }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: Binding(

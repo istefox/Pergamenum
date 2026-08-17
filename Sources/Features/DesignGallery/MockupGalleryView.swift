@@ -14,7 +14,7 @@ struct MockupGalleryView: View {
     @State private var screen: Screen = .capture
 
     enum Screen: String, CaseIterable, Identifiable {
-        case capture, slash, code, editor, workspace, today, tasks
+        case capture, slash, code, outline, editor, workspace, today, tasks
 
         var id: String { rawValue }
 
@@ -23,6 +23,7 @@ struct MockupGalleryView: View {
             case .capture: "Cattura"
             case .slash: "Menu /"
             case .code: "Codice"
+            case .outline: "Indice"
             case .editor: "Editor"
             case .workspace: "Workspace"
             case .today: "Oggi"
@@ -36,7 +37,8 @@ struct MockupGalleryView: View {
             switch self {
             case .capture: "M7, realizzato"
             case .slash: "M8, realizzato"
-            case .code: "M8, da approvare"
+            case .code: "M8, realizzato"
+            case .outline: "M8, da approvare"
             case .editor: "M1, realizzato"
             case .workspace: "M2 e M3, realizzato"
             case .today: "M5, realizzato"
@@ -75,6 +77,7 @@ struct MockupGalleryView: View {
         case .capture: CaptureMockup()
         case .slash: SlashMenuMockup()
         case .code: CodeBlockMockup()
+        case .outline: OutlineMockup()
         case .editor: EditorMockup()
         case .workspace: WorkspaceMockup()
         case .today: TodayMockup()
