@@ -80,6 +80,55 @@ enum Transclusion {
         return nil
     }
 
+    /// One transcluded note, and where its line starts.
+    struct Occurrence: Equatable, Sendable {
+        /// The UTF-16 offset of the line's first character, which is what the layout
+        /// counts in - the same unit `NoteFolding.Layout` hands the editor.
+        var lineOffset: Int
+        var reference: String
+        var section: String?
+    }
+
+    /// Every line of `text` that is nothing but a transcluded note, in document order.
+    ///
+    /// What the editor needs and the block parser cannot give: the parser answers in
+    /// blocks, and decorating a line takes an offset. A file embed is not one of these -
+    /// the editor already shows `![[foto.png]]` as a clickable name and that is unchanged.
+    ///
+    /// Frontmatter and fenced code are skipped through the same two helpers `NoteOutline`
+    /// uses. This is the third feature that would get the fence rule wrong if it wrote the
+    /// rule for itself.
+    static func occurrences(in text: String) -> [Occurrence] {
+        let fences = CodeFence.regions(in: text)
+        var result: [Occurrence] = []
+
+        var lineStart = bodyStart(of: text)
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            defer { lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
+
+            guard !fences.contains(where: { $0.range.overlaps(lineStart..<lineEnd) }) else { continue }
+            guard case .note(let reference, let section)? =
+                    target(ofLine: String(text[lineStart..<lineEnd]))
+            else { continue }
+
+            result.append(Occurrence(
+                lineOffset: text.utf16.distance(from: text.startIndex, to: lineStart),
+                reference: reference,
+                section: section
+            ))
+        }
+        return result
+    }
+
+    /// Where the body starts, taken from the one frontmatter parser rather than from a
+    /// second reading of the `---` rule - `NoteOutline` derives it the same way.
+    private static func bodyStart(of text: String) -> String.Index {
+        let document = NoteDocument.parse(text)
+        guard document.hasFrontmatterBlock else { return text.startIndex }
+        return text.index(text.endIndex, offsetBy: -document.body.count)
+    }
+
     /// Splits `nota#sezione`. The first `#` wins, as it does in `WikilinkParser`: a
     /// heading may contain one, a note title may not carry it unescaped either way.
     private static func split(_ target: String) -> (reference: String, section: String?) {

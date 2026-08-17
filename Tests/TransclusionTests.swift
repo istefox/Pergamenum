@@ -130,6 +130,51 @@ un fonometro
     #expect(blocks.contains(.transclusion(reference: "Prove", section: "Campioni")))
 }
 
+// MARK: - The lines the editor decorates
+
+@Test func occurrencesCarryTheReferenceTheSectionAndTheLineOffset() {
+    let text = "# Titolo\n\n![[Prove]]\n\n![[Prove#Campioni]]\n"
+    let found = Transclusion.occurrences(in: text)
+    #expect(found.count == 2)
+    #expect(found.first == Transclusion.Occurrence(lineOffset: 10, reference: "Prove", section: nil))
+    #expect(found.last?.section == "Campioni")
+    // The offset is UTF-16 and has to land on the line's first character, or the editor
+    // decorates a line nobody named.
+    let ns = text as NSString
+    #expect(found.allSatisfy { ns.substring(from: $0.lineOffset).hasPrefix("![[") })
+}
+
+@Test func occurrencesCountInUTF16SoAnAccentAboveThemDoesNotShiftThem() {
+    // The editor counts in UTF-16 and this vault is written in Italian. Counted in
+    // characters, every accented letter above the line would move it one place early.
+    let text = "# Perché\ncorpo à è ì\n![[Prove]]\n"
+    let found = Transclusion.occurrences(in: text)
+    let ns = text as NSString
+    #expect(found.count == 1)
+    #expect(found.first.map { ns.substring(from: $0.lineOffset).hasPrefix("![[Prove]]") } == true)
+}
+
+@Test func aFileEmbedAndAnInlineEmbedAreNotOccurrences() {
+    #expect(Transclusion.occurrences(in: "![[foto.png]]\n").isEmpty)
+    #expect(Transclusion.occurrences(in: "vedi ![[Prove]] qui\n").isEmpty)
+}
+
+@Test func occurrencesSkipFencesAndFrontmatter() {
+    let text = """
+    ---
+    date: 2026-08-17
+    related: ["![[Prove]]"]
+    ---
+    ```md
+    ![[Nel fence]]
+    ```
+
+    ![[Vera]]
+    """
+    let found = Transclusion.occurrences(in: text)
+    #expect(found.map(\.reference) == ["Vera"])
+}
+
 // MARK: - The index (§D7)
 
 @Test func aTranscludedNoteIsALinkAndAnEmbeddedFileIsNot() {
