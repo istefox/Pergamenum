@@ -1,7 +1,9 @@
 # ADR-0010: Transclusion is a live view of another note, drawn by both surfaces
 
-- Status: proposed
-- Date: 2026-08-17
+- Status: accepted
+- Date: 2026-08-17, accepted 2026-08-17 after review by Stefano. The two points put to him
+  were D7 (a transcluded note counts as a link, at the cost of the schema bump) and D6
+  (depth one); both were accepted as written.
 - Supersedes: nothing. Amends ADR-0009 §D2's schema numbering (see Consequences).
 - Depends on: `docs/20260817_TextKit2_live_editing.md` for what the editor can and cannot
   do without touching the file.
