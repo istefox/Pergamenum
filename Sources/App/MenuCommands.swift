@@ -30,6 +30,18 @@ struct ViewCommands: Commands {
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere
             // else the command would do nothing at all.
+            Divider()
+
+            Button("Ripiega la sezione") { actions.run(.foldSection) }
+                .keyboardShortcut(shortcuts.shortcut(for: .foldSection))
+                .disabled(!actions.canRun(.foldSection))
+
+            Button("Espandi tutto") { actions.run(.unfoldAll) }
+                .keyboardShortcut(shortcuts.shortcut(for: .unfoldAll))
+                .disabled(!actions.canRun(.unfoldAll))
+
+            Divider()
+
             Button("Verifica conformità") { actions.run(.runConformanceCheck) }
                 .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
                 .disabled(!actions.canRun(.runConformanceCheck))

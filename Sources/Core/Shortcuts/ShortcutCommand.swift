@@ -40,6 +40,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneDiary
     case readingMode
     case runConformanceCheck
+    case foldSection
+    case unfoldAll
 
     case taskToggle
     case taskToday
@@ -83,7 +85,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .insertWikilink, .insertRelated:
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
-             .paneDiary, .readingMode, .runConformanceCheck:
+             .paneDiary, .readingMode, .runConformanceCheck, .foldSection, .unfoldAll:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
             .task
@@ -120,6 +122,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneDiary: "Vai a Diario"
         case .readingMode: "Modalità lettura"
         case .runConformanceCheck: "Verifica conformità"
+        case .foldSection: "Ripiega la sezione"
+        case .unfoldAll: "Espandi tutto"
         case .taskToggle: "Completa o riapri il task"
         case .taskToday: "Pianifica il task oggi"
         case .taskTomorrow: "Pianifica il task domani"
@@ -169,6 +173,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneDiary: KeyBinding("6", [.command, .control])
         case .readingMode: KeyBinding("m", [.command, .shift])
         case .runConformanceCheck: KeyBinding("l", [.command, .control])
+        // The keys Xcode uses for the same thing. ⌘← and ⌘→ are already the
+        // Calendario menu's day navigation, so the option key is what keeps them apart.
+        case .foldSection: KeyBinding("left", [.command, .option])
+        case .unfoldAll: KeyBinding("right", [.command, .option])
         case .taskToggle: KeyBinding("return", .command)
         case .taskToday: KeyBinding("0", .command)
         case .taskTomorrow: KeyBinding("1", .command)

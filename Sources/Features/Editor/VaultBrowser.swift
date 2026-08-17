@@ -48,6 +48,13 @@ struct VaultBrowser: View {
         .onChange(of: navigation.outlineJump) { _, jump in
             pendingJump = jump
         }
+        // Folds are held by their position in the index, so they belong to the note they
+        // were made in. Carried over, the third fold of one note would silently become the
+        // third fold of the next one.
+        .onChange(of: vault.openNote?.relativePath) { _, _ in
+            navigation.foldedEntries = []
+            navigation.currentOutlineEntry = nil
+        }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: Binding(
             get: { vault.isShowingQuickSwitcher },

@@ -135,4 +135,18 @@ final class Navigation {
     /// Which index entry the caret is inside, reported by the editor only when it
     /// changes. Nil in reading mode, where there is no caret to be inside anything.
     var currentOutlineEntry: Int?
+
+    /// The index entries whose sections are folded, by ordinal.
+    ///
+    /// Window state and not note state: it is cleared when the note changes, and writing it
+    /// into the file would mean extending a frontmatter schema SPEC §4.3 closes.
+    var foldedEntries: Set<Int> = []
+
+    func toggleFold(_ entry: Int) {
+        if foldedEntries.contains(entry) {
+            foldedEntries.remove(entry)
+        } else {
+            foldedEntries.insert(entry)
+        }
+    }
 }
