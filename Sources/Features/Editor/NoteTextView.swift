@@ -95,11 +95,7 @@ struct NoteTextView: NSViewRepresentable {
             textView.insertText(replacement, replacementRange: selectionRange)
             return true
         }
-        textView.onDropFile = { url in context.coordinator.parent.onDropFile?(url) }
-        textView.onPasteImage = { data in context.coordinator.parent.onPasteImage?(data) }
-        // Through the coordinator like the other three: the closure is read when the
-        // command runs, so it is the current one and not the one this view was built with.
-        textView.onRunCommand = { command in context.coordinator.parent.onRunCommand?(command) }
+        wire(textView, to: context.coordinator)
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -112,14 +108,37 @@ struct NoteTextView: NSViewRepresentable {
         textView.string = text
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
+        return scrollView
+    }
+
+    /// The closures the text view calls back through.
+    ///
+    /// All of them go through the coordinator rather than capturing `self`: the closure is
+    /// read when the event happens, so it is the current one and not the one this view was
+    /// built with. In a method of its own because `makeNSView` is otherwise past the length
+    /// SwiftLint warns at, and a text view with eight callbacks earns the separation.
+    private func wire(_ textView: CompletingTextView, to coordinator: Coordinator) {
+        // The headings of a note, for `[[Nota#`. Through the same source the two surfaces
+        // resolve a transclusion with, so the completion cannot offer a section the
+        // rendition would fail to find - `NoteOutline` strips the markdown from a heading,
+        // which is exactly the form `Transclusion.excerpt` matches against.
+        textView.noteSections = { reference in
+            guard let resolved = coordinator.parent.transclusions?.resolve(reference) else { return [] }
+            return NoteOutline.entries(in: resolved.text).compactMap { entry in
+                guard case .heading = entry.kind else { return nil }
+                return entry.title
+            }
+        }
+        textView.onDropFile = { url in coordinator.parent.onDropFile?(url) }
+        textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
+        textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         // Two decorations, asked in turn: whoever claims the click keeps it. They cannot
         // both claim one - a folded heading's line is not a transclusion's line.
         textView.onClickInMargin = { [weak textView] point in
             guard let textView else { return false }
-            return context.coordinator.openTransclusion(at: point, in: textView)
-                || context.coordinator.unfold(at: point, in: textView)
+            return coordinator.openTransclusion(at: point, in: textView)
+                || coordinator.unfold(at: point, in: textView)
         }
-        return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {

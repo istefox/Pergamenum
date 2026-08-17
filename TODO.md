@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=22 -->
+<!-- project-tasks: prefix=PG lastId=23 -->
 # PROJECT TASKS
 
-Updated: 2026-08-17 · Open: 14 (P1: 0) · In progress: 0
+Updated: 2026-08-17 · Open: 15 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -11,15 +11,21 @@ Updated: 2026-08-17 · Open: 14 (P1: 0) · In progress: 0
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
+- [ ] `PG-023` **P2** AppKit's completion list places itself badly near the bottom of the window: it covers the caret's line or falls out of sight, so a completion started on the last lines of a note cannot be read — `Sources/Features/Editor/CompletingTextView.swift` <!-- src:session opened:2026-08-17 -->
+  - Seen on screen on 2026-08-17 while completing `![[Nota#`. **Not a regression**: the same happens for `[[` title completion, which has been there since M1, and for tags.
+  - The slash menu does not have it because it does not use AppKit's list: `SlashMenu.place(_:under:)` flips above the line with a 6 pt gap when the screen has no room below. The fix is to bring titles, tags and sections onto that panel, which means generalising it away from `EditorCommand` and giving it the arrow/Return/Escape handling AppKit was providing for free.
+  - The cheap alternative, scrolling to make room before opening the list, does not help when the window's bottom edge is near the screen's.
+
 ## In Progress
 
 _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-009` **P2** M8 Menu comandi ed editor: seven slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-009` **P2** M8 Menu comandi ed editor: eight slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
   - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
-  - Left: block links `[[note#heading]]`, floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Left: floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Eighth slice: `[[Nota#` completes that note's headings, in document order, offering exactly the strings `Transclusion.excerpt` can find.
   - Sixth and seventh slices merged 2026-08-17: transclusion in the reading view with the index counting it (`IndexCache.schemaVersion` at 2), then the editor's card drawn under a source line that stays editable. ADR-0010 is fully shipped.
   - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->

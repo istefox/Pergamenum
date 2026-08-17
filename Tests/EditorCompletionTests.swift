@@ -162,3 +162,90 @@ private func textView(_ text: String, cursor: Int) -> CompletingTextView {
     // The range is the wikilink's, not the slash's: from just after `[[`.
     #expect(view.rangeForUserCompletion == NSRange(location: 7, length: 8))
 }
+
+// MARK: - Sections after `#` inside a wikilink (M8)
+
+private let sectioned = """
+# Prove in laboratorio
+
+## Campioni
+
+tre campioni
+
+### Durezza
+
+a freddo
+
+## Strumenti
+
+un fonometro
+"""
+
+@MainActor
+private func completing(_ text: String, cursor: Int, sections: @escaping (String) -> [String]) -> CompletingTextView {
+    let view = textView(text, cursor: cursor)
+    view.noteSections = sections
+    return view
+}
+
+@MainActor
+private func headings(of note: String) -> [String] {
+    NoteOutline.entries(in: note).compactMap { entry in
+        guard case .heading = entry.kind else { return nil }
+        return entry.title
+    }
+}
+
+@MainActor
+@Test func aHashInsideAnOpenWikilinkOffersThatNotesHeadings() {
+    let view = completing("![[Prove#", cursor: 9) { _ in headings(of: sectioned) }
+    let offered = view.completions(forPartialWordRange: view.rangeForUserCompletion, indexOfSelectedItem: nil)
+    // Every heading, in the order the note has them - the order the index draws and the
+    // one the person wrote. Sorting by length instead put a `###` from the bottom of the
+    // note first, which is what the first version did and it read as arbitrary on sight.
+    #expect(offered == ["Prove in laboratorio", "Campioni", "Durezza", "Strumenti"])
+    // The embed form is the one that matters here, and it behaves like the plain one:
+    // `![[Prove#…]]` is what a transclusion of a section is written as.
+    #expect(view.shouldOfferCompletion())
+}
+
+@MainActor
+@Test func typingFiltersTheHeadings() {
+    let view = completing("[[Prove#Cam", cursor: 11) { _ in headings(of: sectioned) }
+    let offered = view.completions(forPartialWordRange: view.rangeForUserCompletion, indexOfSelectedItem: nil)
+    #expect(offered == ["Campioni"])
+}
+
+@MainActor
+@Test func onlyWhatFollowsTheHashIsReplaced() {
+    // The note's name is already right. Replacing it too would delete what the completion
+    // is a completion of, and the user would watch `[[Prove` disappear as they chose.
+    let view = completing("[[Prove#Cam", cursor: 11) { _ in headings(of: sectioned) }
+    #expect(view.rangeForUserCompletion == NSRange(location: 8, length: 3))
+}
+
+@MainActor
+@Test func aPipeMeansTheDisplayTextIsBeingTypedAndNotAHeading() {
+    let view = completing("[[Prove|Cam", cursor: 11) { _ in headings(of: sectioned) }
+    // Still a wikilink context, so the note titles answer - not the headings.
+    #expect(view.completions(forPartialWordRange: view.rangeForUserCompletion, indexOfSelectedItem: nil) == nil)
+}
+
+@MainActor
+@Test func aNoteNobodyCanResolveOffersNothingRatherThanFailing() {
+    let view = completing("[[Fantasma#", cursor: 11) { _ in [] }
+    #expect(view.completions(forPartialWordRange: view.rangeForUserCompletion, indexOfSelectedItem: nil) == nil)
+}
+
+@MainActor
+@Test func everyHeadingOfferedIsOneThatTransclusionCanFind() {
+    // The invariant that makes this feature worth having: the list offers the stripped form
+    // `NoteOutline` produces, and `Transclusion.excerpt` matches against the same form. A
+    // list offering `## **Campioni**` would be a list of sections that resolve to nothing.
+    let view = completing("[[Prove#", cursor: 8) { _ in headings(of: sectioned) }
+    let offered = view.completions(forPartialWordRange: view.rangeForUserCompletion, indexOfSelectedItem: nil)
+    #expect(offered?.isEmpty == false)
+    for heading in offered ?? [] {
+        #expect(Transclusion.excerpt(of: sectioned, section: heading) != nil)
+    }
+}
