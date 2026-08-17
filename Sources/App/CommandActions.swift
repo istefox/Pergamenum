@@ -144,6 +144,13 @@ final class CommandActions {
             // command would do nothing at all.
             navigation.pane = .conformance
             vault.isCheckingConformance = true
+        case .foldSection:
+            // The section the caret is in, which the editor reports as it moves. Without a
+            // caret there is no "this section", and the command is disabled rather than
+            // guessing at the first one.
+            if let entry = navigation.currentOutlineEntry { navigation.toggleFold(entry) }
+        case .unfoldAll:
+            navigation.foldedEntries = []
         default:
             assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
         }
@@ -199,6 +206,11 @@ final class CommandActions {
             vault.openNote?.hasUnsavedChanges == true
         case .copyLink, .revealInFinder, .insertRelated, .readingMode:
             vault.openNote != nil
+        case .foldSection:
+            // Reading mode has no caret, so it has no current section either.
+            navigation.currentOutlineEntry != nil && !navigation.isReadingMode
+        case .unfoldAll:
+            !navigation.foldedEntries.isEmpty
         case .taskToggle:
             vault.selectedTask != nil
         case .newEvent:

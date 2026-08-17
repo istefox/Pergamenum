@@ -48,7 +48,43 @@ struct OutlinePane: View {
 
     private func row(_ entry: NoteOutline.Entry, at index: Int) -> some View {
         let isCurrent = navigation.currentOutlineEntry == index
-        return Button {
+        return HStack(spacing: 0) {
+            chevron(for: entry, at: index)
+            button(entry, at: index, isCurrent: isCurrent)
+        }
+        .padding(.leading, CGFloat(entry.level - 1) * theme.spacing(.m))
+    }
+
+    /// The fold control, and only where there is something to fold: an embed has no
+    /// section, and a heading with nothing under it would fold to nothing.
+    @ViewBuilder
+    private func chevron(for entry: NoteOutline.Entry, at index: Int) -> some View {
+        if case .heading = entry.kind, foldable.contains(index) {
+            Button {
+                navigation.toggleFold(index)
+            } label: {
+                Image(systemName: navigation.foldedEntries.contains(index) ? "chevron.right" : "chevron.down")
+                    .themedText(.caption, color: .textTertiary)
+                    .frame(width: 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(navigation.foldedEntries.contains(index) ? "Espandi la sezione" : "Ripiega la sezione")
+        } else {
+            Color.clear.frame(width: 12)
+        }
+    }
+
+    /// The entries that have at least one line under them. Computed once per rebuild rather
+    /// than per row, because each answer costs a pass over the note.
+    private var foldable: Set<Int> {
+        Set(entries.indices.filter { index in
+            !NoteFolding.hiddenParagraphs(in: text, foldedEntries: [index]).isEmpty
+        })
+    }
+
+    private func button(_ entry: NoteOutline.Entry, at index: Int, isCurrent: Bool) -> some View {
+        Button {
             onSelect(NSRange(entry.range, in: text), index)
         } label: {
             HStack(spacing: theme.spacing(.xs)) {
@@ -64,7 +100,6 @@ struct OutlinePane: View {
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .padding(.leading, CGFloat(entry.level - 1) * theme.spacing(.m))
             .padding(.horizontal, theme.spacing(.xs))
             .padding(.vertical, 3)
             .contentShape(Rectangle())

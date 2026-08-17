@@ -143,6 +143,42 @@ run; `NSTextFinder` counting indices over hidden text; input methods and dead ke
 undo coalescing when a reveal happens mid-typing; and what a collapsed run does to word-wrap
 at the right margin.
 
+## Addendum, same day: hiding whole lines is a different mechanism, and a better-behaved one
+
+Folding a section came up straight after this study and turned out **not** to be the same
+problem. A zero-width font collapses the glyphs of a line; it does nothing to the `\n`, so a
+folded section would be a stack of empty rows.
+
+The mechanism for whole lines is `NSTextContentManagerDelegate.shouldEnumerateTextElement`,
+whose header says returning NO makes an element "skipped from the enumeration", and whose
+companion `enumerateTextElementsFromLocation` says an implementation may "hide some elements
+from the layout". Measured, hiding two paragraphs out of six:
+
+| | before | after |
+|---|---|---|
+| laid-out fragments | 6 | 4 |
+| height | 96.0 | 64.0 |
+
+Then confirmed on screen in the real editor, which is the half the offscreen stack could not
+answer for the earlier findings either.
+
+**And the caret does not walk into them.** Arrow-down from the heading of a folded section
+lands on the next *visible* line: measured, from offset 5 with lines 1-2 hidden, the caret
+went to 33, inside the following heading. The elements are not in the layout, so
+`NSTextSelectionNavigation` never sees them. That is the exact opposite of the zero-width
+route, where the caret stops twice inside a run that occupies no space — and it means the
+expensive part named above, writing the caret-skipping by hand, is **not** needed for
+folding. It is still needed for hiding delimiters.
+
+Two more things learned by doing it:
+
+- A badge saying how much is hidden cannot be text — the note's characters are the file's
+  characters. It exists as a custom `NSTextLayoutFragment` that draws past the end of the
+  line, with `renderingSurfaceBounds` widened so the drawing is not clipped. This works, and
+  it is the same door any inline decoration would go through.
+- `NSTextContentStorage.delegate` is typed as `NSTextContentStorageDelegate`, so the
+  element-hiding hook and the paragraph-substitution hook must live on the *same* object.
+
 ## How far it goes, feature by feature
 
 | NotePlan behaviour | with what is here | evidence |
@@ -153,6 +189,7 @@ at the right margin.
 | hide `**`, `#`, `[[ ]]` when the caret is elsewhere | **reachable** | measured above |
 | show them again when the caret enters the line | **reachable** | measured above |
 | caret behaving sensibly around hidden runs | **must be built** | measured: it does not |
+| folding a whole section | **built, M8** | see the addendum above |
 | clickable checkbox in the text | reachable, unprobed | `NSTextAttachmentViewProvider` exists in the SDK |
 | image drawn inline instead of `![[foto.png]]` | reachable with a caveat | an attachment is one character; the wikilink is many, and length must be preserved, so the picture would have to be drawn by a custom `NSTextLayoutFragment` rather than substituted |
 | tables rendered as grids while editing | **out of reach at sane cost** | the fragment would have to lay out a grid over a length-preserved run |

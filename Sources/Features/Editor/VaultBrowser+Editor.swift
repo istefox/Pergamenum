@@ -79,7 +79,8 @@ extension VaultBrowser {
             outlineRanges: NoteOutline.entries(in: note.text).map {
                 NSRange($0.range, in: note.text)
             },
-            onOutlineEntryChanged: { navigation.currentOutlineEntry = $0 }
+            onOutlineEntryChanged: { navigation.currentOutlineEntry = $0 },
+            foldedEntries: navigation.foldedEntries
         )
     }
 

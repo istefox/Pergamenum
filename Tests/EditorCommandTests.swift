@@ -47,7 +47,8 @@ private var catalogue: [EditorCommand] { EditorCommand.all(canRun: { _ in true }
     // and "Ins-e-ri-s-ci wikilink", so the list showed four unrelated commands and rebuilt
     // itself on every keystroke - it read as scrolling on its own. A menu of fixed entries
     // is searched by typing the start of a word, and nothing else is a match.
-    #expect(EditorCommand.matching("es", in: catalogue).isEmpty)
+    // The only survivor is the one entry that genuinely *starts* with those letters.
+    #expect(EditorCommand.matching("es", in: catalogue).map(\.title) == ["Espandi tutto"])
     // The same letters where they do start a word: still found.
     #expect(EditorCommand.matching("es", in: [
         EditorCommand(id: "x", title: "Esporta", keywords: [], symbol: "square", action: .insert("", cursorBack: 0)),
