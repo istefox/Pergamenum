@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=16 -->
 # PROJECT TASKS
 
-Updated: 2026-08-16 · Open: 15 (P1: 0) · In progress: 0
+Updated: 2026-08-17 · Open: 13 (P1: 0) · In progress: 1
 
 ## Open Issues
 
@@ -13,11 +13,13 @@ Updated: 2026-08-16 · Open: 15 (P1: 0) · In progress: 0
 
 ## In Progress
 
-_none_
+- [-] `PG-008` **P2** M7 Cattura globale — branch `feature/capture-in-connector` <!-- src:session opened:2026-08-16 -->
+  - ADR-0008 accepted and the panel's mockup approved on 2026-08-17 (PRs #38, #39).
+  - Order is deliberate: the capture write in `Sources/Connector/` first, with its tests, then the
+    AppKit the tests cannot reach.
 
 ## Backlog / To Add
 
-- [ ] `PG-008` **P2** M7 Cattura globale: a panel that works when Pergamenum is not the frontmost app — `docs/20260816_Pergamenum_Roadmap.md` <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-009` **P2** M8 Menu comandi ed editor: slash menu, find and replace, outline, code highlighting, transclusion <!-- src:session opened:2026-08-16 -->
   - Starts by putting `completionContext()` under hostile-input test: a lone `#` on a line already took the app down once.
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
@@ -35,7 +37,6 @@ _none_
 - [ ] `PG-001` **P2** ADR-0009 is `proposed`, not accepted: M11 does not start until it is — `docs/adr/0009-views-are-queries-over-the-index.md` <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0012 would record it <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 -->
-- [ ] `PG-016` **P2** ADR-0008 is `proposed`, not accepted: M7 does not start until it is, and the mockup of the panel is approved — `docs/adr/0008-global-capture-panel.md` <!-- src:session opened:2026-08-16 -->
 
 ## Project Map
 
@@ -47,4 +48,5 @@ _none_
 
 ## Done
 
+- [x] `PG-016` ADR-0008 accepted and the capture panel's mockup approved (2026-08-17)
 - [x] `PG-007` ADR-0008, the global capture panel, written and proposed (2026-08-16)
