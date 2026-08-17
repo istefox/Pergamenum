@@ -56,6 +56,10 @@ struct NoteTextView: NSViewRepresentable {
     /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
     /// behind the editor, and then the line stays the plain link it was.
     var transclusions: TransclusionSource?
+    /// Called with an index entry whose fold badge was clicked (PG-021). The same call the
+    /// index's chevron makes, so a section opened from the editor and one opened from the
+    /// sidebar are one gesture with two doors.
+    var onToggleFold: ((Int) -> Void)?
 
     enum FindRequest { case find, replace }
 
@@ -108,9 +112,12 @@ struct NoteTextView: NSViewRepresentable {
         textView.string = text
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
+        // Two decorations, asked in turn: whoever claims the click keeps it. They cannot
+        // both claim one - a folded heading's line is not a transclusion's line.
         textView.onClickInMargin = { [weak textView] point in
             guard let textView else { return false }
             return context.coordinator.openTransclusion(at: point, in: textView)
+                || context.coordinator.unfold(at: point, in: textView)
         }
         return scrollView
     }

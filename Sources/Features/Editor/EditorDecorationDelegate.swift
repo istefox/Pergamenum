@@ -89,6 +89,8 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard let hidden = foldedHeadings[start] else { return standard }
         let fragment = FoldedHeadingFragment(textElement: textElement, range: textElement.elementRange)
         fragment.hiddenLines = hidden
+        // Carried so a click on the badge can say which section it means (PG-021).
+        fragment.headingOffset = start
         fragment.badgeColor = badgeColor
         fragment.badgeBackground = badgeBackground
         return fragment

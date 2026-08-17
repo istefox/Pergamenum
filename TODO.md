@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=22 -->
 # PROJECT TASKS
 
-Updated: 2026-08-17 · Open: 15 (P1: 0) · In progress: 0
+Updated: 2026-08-17 · Open: 14 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -31,8 +31,6 @@ _Nothing in progress._
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes.
-- [ ] `PG-021` **P3** The fold badge is not clickable: a section is folded from the index or from Vista, never from the editor itself — `Sources/Features/Editor/FoldedHeadingFragment.swift` <!-- src:session opened:2026-08-17 -->
-  - Needs hit-testing a rect the fragment draws. Half the work now exists: `CompletingTextView.onClickInMargin` and `TranscludedLineFragment.renditionFrame` do exactly this for a transclusion, and the badge needs the same pair.
 - [ ] `PG-015` **P3** SPEC amendments §5, §7.4, §8 and §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
   - Each is applied before the milestone that depends on it, never after.
 
@@ -54,6 +52,7 @@ _Nothing in progress._
 
 ## Done
 
+- [x] `PG-021` The fold badge opens its own section: the click hit test the transclusion slice built (`onClickInMargin` plus a rectangle the fragment reports) turned out to be exactly what the badge was waiting for (2026-08-17)
 - [x] `PG-017` ADR-0010 written and accepted the same day: transclusion is a view of another note, both surfaces draw it, depth one, and a transcluded note counts as a link — the editor half of §D3 is what is left, and it lives in PG-009 (2026-08-17)
 - [x] `PG-020` `![[nota]]` no longer claims a file is missing: a note embed is a note, drawn where it stands, and the message names whichever of the two was actually looked for — closed by the transclusion slice rather than patched (2026-08-17)
 - [x] `PG-022` M8's first five slices merged: the slash menu and its panel, code fence highlighting, the note's index, and heading folding — every one mockup-first and verified by hand (2026-08-17)

@@ -83,7 +83,8 @@ extension VaultBrowser {
             foldedEntries: navigation.foldedEntries,
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
-            transclusions: transclusionSource
+            transclusions: transclusionSource,
+            onToggleFold: navigation.toggleFold
         )
     }
 

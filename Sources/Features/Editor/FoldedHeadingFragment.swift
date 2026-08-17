@@ -16,6 +16,10 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var hiddenLines = 0
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// The UTF-16 offset of the heading's own line, which is how a click on the badge says
+    /// *which* section to open. The fold itself is held by index-entry ordinal, so this is
+    /// translated on the way out rather than stored twice.
+    nonisolated(unsafe) var headingOffset = 0
 
     private static let gap: CGFloat = 8
     private static let padding = NSSize(width: 6, height: 1)
@@ -45,24 +49,36 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
         )
     }
 
-    override func draw(at point: CGPoint, in context: CGContext) {
-        super.draw(at: point, in: context)
-        guard hiddenLines > 0, let line = textLineFragments.first else { return }
-
-        let text = badge
-        let size = text.size()
-        let origin = CGPoint(
+    /// Where the badge is, relative to a point the fragment is drawn at.
+    ///
+    /// One computation for the drawing and for the hit test (PG-021). Two would drift, and
+    /// the way they would drift is a badge that looks right and cannot be clicked - the
+    /// same shape of defect the transclusion card had a slice ago.
+    func badgeFrame(at point: CGPoint) -> CGRect {
+        guard hiddenLines > 0, let line = textLineFragments.first else { return .null }
+        let size = badge.size()
+        return CGRect(
             x: point.x + line.typographicBounds.maxX + Self.gap,
             y: point.y + line.typographicBounds.minY
-                + (line.typographicBounds.height - size.height - Self.padding.height * 2) / 2
+                + (line.typographicBounds.height - size.height - Self.padding.height * 2) / 2,
+            width: size.width + Self.padding.width * 2,
+            height: size.height + Self.padding.height * 2
         )
-        let box = CGRect(
-            origin: origin,
-            size: CGSize(
-                width: size.width + Self.padding.width * 2,
-                height: size.height + Self.padding.height * 2
-            )
-        )
+    }
+
+    /// The badge in the text container's coordinates, which is where a click arrives after
+    /// `textContainerOrigin` has been taken off it.
+    var badgeFrameInContainer: CGRect {
+        badgeFrame(at: layoutFragmentFrame.origin)
+    }
+
+    override func draw(at point: CGPoint, in context: CGContext) {
+        super.draw(at: point, in: context)
+        guard hiddenLines > 0 else { return }
+
+        let text = badge
+        let box = badgeFrame(at: point)
+        guard !box.isNull else { return }
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)

@@ -140,28 +140,62 @@ extension NoteTextView.Coordinator {
     /// Opens the note drawn under the caret's line, when a click landed on it.
     ///
     /// The fragment knows where it drew, so the hit test is a containment check against the
-    /// area under the source line. The fold badge has the same gap and does not close here
-    /// (PG-021): its rect is inside a fragment that draws a heading, and telling the two
-    /// apart is a different question from this one.
+    /// area under the source line.
     func openTransclusion(at point: CGPoint, in textView: NSTextView) -> Bool {
-        guard let manager = textView.textLayoutManager, !lastRenditions.isEmpty else { return false }
-        // A layout fragment's frame is in the text container's coordinates and the click
-        // arrives in the view's; between them sits `textContainerInset`, 24 by 20 here. The
-        // first version compared the two directly, so the containment test could not
-        // succeed anywhere on the page.
-        let origin = textView.textContainerOrigin
-        let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
-        var opened = false
+        guard !lastRenditions.isEmpty else { return false }
+        return decoration(at: point, in: textView) { (fragment: TranscludedLineFragment) in
+            guard let rendition = fragment.rendition,
+                  fragment.renditionFrame.contains(Self.inContainer(point, of: textView))
+            else { return false }
+            parent.onFollowLink(rendition.reference)
+            return true
+        }
+    }
+
+    /// Opens the section a folded heading is hiding, when the click landed on its badge
+    /// (PG-021).
+    ///
+    /// The fold is held by index-entry ordinal and the fragment knows a character offset,
+    /// so the two are joined by `outlineRanges` - the list the sidebar draws from. Anything
+    /// else would be a second opinion about which section is which.
+    func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
+        guard decorations.isFolding, let onToggleFold = parent.onToggleFold else { return false }
+        return decoration(at: point, in: textView) { (fragment: FoldedHeadingFragment) in
+            guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView)),
+                  let entry = parent.outlineRanges.firstIndex(where: {
+                      $0.location == fragment.headingOffset
+                  })
+            else { return false }
+            onToggleFold(entry)
+            return true
+        }
+    }
+
+    /// Walks the laid-out fragments of one kind and stops at the first that claims the
+    /// click. Shared by the two decorations, because doing it twice is how they would end
+    /// up disagreeing about coordinates.
+    private func decoration<Fragment: NSTextLayoutFragment>(
+        at point: CGPoint,
+        in textView: NSTextView,
+        claimedBy claim: (Fragment) -> Bool
+    ) -> Bool {
+        guard let manager = textView.textLayoutManager else { return false }
+        var handled = false
         let start = manager.documentRange.location
         manager.enumerateTextLayoutFragments(from: start, options: [.ensuresLayout]) { fragment in
-            guard let fragment = fragment as? TranscludedLineFragment,
-                  let rendition = fragment.rendition,
-                  fragment.renditionFrame.contains(inContainer)
-            else { return true }
-            parent.onFollowLink(rendition.reference)
-            opened = true
+            guard let fragment = fragment as? Fragment, claim(fragment) else { return true }
+            handled = true
             return false
         }
-        return opened
+        return handled
+    }
+
+    /// A layout fragment's frame is in the text container's coordinates and a click arrives
+    /// in the view's; between them sits `textContainerInset`, 24 by 20 here. The first
+    /// version of the transclusion click compared the two directly, so the containment test
+    /// could not succeed anywhere on the page.
+    private static func inContainer(_ point: CGPoint, of textView: NSTextView) -> CGPoint {
+        let origin = textView.textContainerOrigin
+        return CGPoint(x: point.x - origin.x, y: point.y - origin.y)
     }
 }
