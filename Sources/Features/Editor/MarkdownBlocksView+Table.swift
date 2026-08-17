@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// In a file of its own so the view stays inside SwiftLint's type body length: a GFM
 /// table is a good third of what reading mode draws, and it draws nothing else.
-extension MarkdownReadingView {
+extension MarkdownBlocksView {
     /// A GFM table.
     ///
     /// A `Grid` rather than a horizontally scrolling one: the reading column is capped

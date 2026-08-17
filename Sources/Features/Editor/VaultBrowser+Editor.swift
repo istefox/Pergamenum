@@ -123,7 +123,7 @@ extension VaultBrowser {
     /// An external edit arrived while this note had unsaved changes. Neither side is
     /// discarded without the user choosing (ADR-0001 §D3.4).
 
-    /// The note as reading mode draws it, pictures included.
+    /// The note as reading mode draws it, pictures and transcluded notes included.
     func reading(_ note: VaultController.OpenNote) -> some View {
         MarkdownReadingView(
             text: note.text,
@@ -131,8 +131,39 @@ extension VaultBrowser {
             notePath: note.relativePath,
             vaultRoot: vault.root,
             thumbnails: vault.thumbnails,
+            transclusions: transclusionSource,
             scrollToEntry: pendingJump?.ordinal,
             onScrollApplied: { pendingJump = nil }
+        )
+    }
+
+    /// Where a `![[nota]]` gets the note it names (ADR-0010 §D1: read fresh, never copied).
+    ///
+    /// Two lookups, in the order §D2 gives them: a reference ending in `.md` is a path, and
+    /// anything else is a title through the index - the same lookup a `[[wikilink]]` uses,
+    /// so the two cannot disagree about which note a name means.
+    ///
+    /// `scanGeneration` rides along so a target edited outside the app is redrawn on the
+    /// next scan, and only then: the id it feeds changes when the vault changes, not when a
+    /// key is pressed.
+    var transclusionSource: TransclusionSource {
+        TransclusionSource(
+            resolve: { reference in
+                guard let session = vault.session else { return nil }
+                let paths = reference.lowercased().hasSuffix(".md")
+                    ? [reference]
+                    : vault.index.resolve(title: reference)
+                for path in paths {
+                    guard let read = try? session.read(path) else { continue }
+                    return TransclusionSource.Resolved(
+                        title: read.record.title,
+                        relativePath: path,
+                        text: read.text
+                    )
+                }
+                return nil
+            },
+            generation: vault.scanGeneration
         )
     }
 }

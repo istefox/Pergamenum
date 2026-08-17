@@ -133,11 +133,17 @@ struct NoteStore: Sendable {
 
     /// Link targets from the body only. Frontmatter `related` is read separately, so
     /// counting it here would double every structural link in the backlink panel.
+    ///
+    /// A transcluded note is a link (ADR-0010 §D7): `![[nota]]` names a note, so the note
+    /// it names shows the backlink and a transclusion pointing nowhere turns up among the
+    /// unresolved links. A file embed is still not one - `![[foto.png]]` stays invisible
+    /// here, which is what leaves `embedTargets` free for M11's gallery (ADR-0009 §D2).
     static func linkTargets(in text: String) -> [String] {
         let document = NoteDocument.parse(text)
         var seen = Set<String>()
         var ordered: [String] = []
-        for link in WikilinkParser.links(in: document.body) where !link.isEmbed {
+        for link in WikilinkParser.links(in: document.body)
+        where !link.isEmbed || Transclusion.isNoteReference(link.target) {
             if seen.insert(link.target).inserted { ordered.append(link.target) }
         }
         return ordered
