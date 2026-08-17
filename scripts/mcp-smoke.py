@@ -164,6 +164,32 @@ def writing(binary, vault):
         check(refusal.get("isError") is True, "un titolo non conforme è rifiutato")
         check("Pergamenum." not in refusal.get("text", ""),
               "il rifiuto è una frase, non un dump del modulo")
+
+        # Capture (ADR-0008). The unit suite covers what it writes; what only a real
+        # server can show is that the tool is declared, that its dryRun defaults the
+        # safe way like every other write, and that a bad destination comes back as a
+        # sentence rather than as a crash on the other side of stdio.
+        check("capture" in names, "capture è fra gli strumenti che scrivono")
+
+        rehearsal = server.payload("capture", {"text": "Appunto", "destination": "today"})
+        check(rehearsal["applied"] is False, "capture senza dryRun non applica")
+
+        captured = server.payload(
+            "capture", {"text": "Appunto", "destination": "today", "dryRun": False})
+        day_note = os.path.join(vault, captured["path"])
+        with open(day_note, encoding="utf-8") as handle:
+            check("Appunto" in handle.read(), "la cattura è sulla nota del giorno")
+
+        refusal = server.payload(
+            "capture", {"text": "x", "destination": "lunatica", "dryRun": False})
+        check(refusal.get("isError") is True, "una destinazione inventata è rifiutata")
+
+        # A date belongs to a task and to nothing else: dropping it silently would
+        # leave the model believing the deadline is there.
+        refusal = server.payload(
+            "capture", {"text": "x", "destination": "today", "due": "2026-08-25",
+                        "dryRun": False})
+        check(refusal.get("isError") is True, "una data fuori da un task è rifiutata")
     finally:
         server.close()
 

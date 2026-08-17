@@ -27,6 +27,16 @@ enum Help {
       note new <titolo>                 [--folder <cartella>] [--topic <tag>] [--date <data>]
       note append <percorso> <testo>    aggiunge in fondo, dopo una riga vuota
 
+    CATTURA
+      capture <testo>      [--dest note|task|today|note:PERCORSO]  (note)
+                           note   una nota nuova, il titolo è la prima riga
+                                  [--folder <cartella>]  (00 Inbox)
+                           task   una riga di task nell'inbox
+                                  [--scheduled <data>] [--due <data>]
+                           today  in fondo alla nota di oggi, creata se manca
+                           note:  in fondo a una nota che esiste già
+                           le date valgono solo con --dest task
+
     TASK
       task list            --view inbox|today|upcoming|by-project|all  (all)
                            --day <YYYY-MM-DD>   il giorno di riferimento (oggi)

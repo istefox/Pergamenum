@@ -143,6 +143,20 @@ final class VaultHost {
             return reply(try VaultAPI.appendToNote(
                 session, at: try arguments.required("path"), text: try arguments.required("text")
             ))
+        case "capture":
+            // "note" when the model says nothing, the same default `perg capture` uses.
+            // The URL route's default is "today" and lives at its own call site, so the
+            // two cannot drift into each other (ADR-0008 §D5).
+            return reply(try VaultAPI.capture(
+                session,
+                to: try VaultAPI.CaptureDestination.named(
+                    arguments.string("destination") ?? "note",
+                    folder: arguments.string("folder")
+                ),
+                text: try arguments.required("text"),
+                scheduled: arguments.string("scheduled"),
+                due: arguments.string("due")
+            ))
         default:
             return try writeWork(name, arguments)
         }

@@ -17,8 +17,12 @@ enum PergamenumRoute: Equatable, Sendable {
     case today
     /// `pergamenum://search?q=<query>`
     case search(String)
-    /// `pergamenum://capture?text=<t>[&note=<path>]`, appended without raising the app.
-    case capture(text: String, notePath: String?)
+    /// `pergamenum://capture?text=<t>[&dest=<d>][&note=<path>][&schedule=<d>][&deadline=<d>]`,
+    /// appended without raising the app.
+    ///
+    /// `dest` is carried as written and resolved by the connector, which owns the four
+    /// destinations of ADR-0008 §D6: this type lives in `Core` and cannot see them.
+    case capture(text: String, destination: String?, scheduled: String?, due: String?)
     /// `pergamenum://task?add=<text>`
     case addTask(String)
 
@@ -61,7 +65,16 @@ enum PergamenumRoute: Equatable, Sendable {
             self = .search(q)
         case "capture":
             guard let text = query("text"), !text.isEmpty else { return nil }
-            self = .capture(text: text, notePath: query("note"))
+            // `?note=<path>` is the form SPEC §9 published and Shortcuts may already
+            // hold, so it keeps working and means what it always meant: append to that
+            // note. An explicit `?dest=` wins when both are given.
+            let destination = query("dest") ?? query("note").map { "note:\($0)" }
+            self = .capture(
+                text: text,
+                destination: destination,
+                scheduled: query("schedule"),
+                due: query("deadline")
+            )
         case "task":
             guard let add = query("add"), !add.isEmpty else { return nil }
             self = .addTask(add)

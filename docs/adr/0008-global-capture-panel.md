@@ -1,7 +1,7 @@
 # ADR-0008: Capture is a global panel, and the write behind it is not the panel's
 
-- Status: proposed
-- Date: 2026-08-16
+- Status: accepted
+- Date: 2026-08-16, accepted 2026-08-17 with the panel's mockup (PR #39)
 - Supersedes: nothing. Adds M7 of `docs/20260816_Pergamenum_Roadmap.md`, which SPEC v2.2
   does not describe. SPEC §7.4 already calls quick capture "globale"; it is not.
 
@@ -110,9 +110,13 @@ New note · task to the inbox · append to today's daily note · append to a cho
 destination is remembered between invocations, because the same one is used twenty times in
 a row and then never again.
 
-The inbox is `00 Inbox/Inbox.md`, a note like any other. SPEC §7.4 defines the Inbox *view*
-as tasks with no date and no project, and that stays exactly as it is - this does not
-replace it, it gives a captured task somewhere to live on disk from the first second.
+The inbox is `00 Inbox/Capture.md`, a note like any other, and it already exists:
+`VaultSession.TaskDestination.inboxPath` has pointed there since M4, and the implementation
+uses that rather than inventing a second inbox. *(This paragraph named `Inbox.md` when the
+ADR was written, from memory rather than from the code. Corrected on implementing it.)*
+SPEC §7.4 defines the Inbox *view* as tasks with no date and no project, and that stays
+exactly as it is - this does not replace it, it gives a captured task somewhere to live on
+disk from the first second.
 Craft's inbox holds tasks attached to no document, which is a state this vault cannot
 represent and should not learn to.
 

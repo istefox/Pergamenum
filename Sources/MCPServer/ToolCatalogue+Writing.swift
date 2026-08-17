@@ -63,6 +63,35 @@ extension ToolCatalogue {
             annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
         ),
         Tool(
+            name: "capture",
+            description: """
+                Cattura una riga dove dice la destinazione: «note» una nota nuova il cui \
+                titolo è la prima riga, «task» una riga di task nell'inbox, «today» in \
+                fondo alla nota di oggi che viene creata se manca, «note:PERCORSO» in \
+                fondo a una nota che esiste. Le date valgono solo per «task». \
+                dryRun è true se omesso.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "text": ["type": "string", "description": "il testo da catturare"],
+                    "destination": [
+                        "type": "string",
+                        "description": "note, task, today oppure note:PERCORSO; note se omessa",
+                    ],
+                    "folder": [
+                        "type": "string",
+                        "description": "solo con «note»: la cartella, «00 Inbox» se omessa",
+                    ],
+                    "scheduled": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],
+                    "due": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["text"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
             name: "complete_task",
             description: "Segna un task come fatto.",
             inputSchema: taskChangeSchema(),
