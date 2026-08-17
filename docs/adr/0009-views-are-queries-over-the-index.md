@@ -1,7 +1,7 @@
 # ADR-0009: A view is a saved query over the index, written in a file
 
-- Status: proposed
-- Date: 2026-08-16
+- Status: accepted
+- Date: 2026-08-16, accepted 2026-08-17 after review by Stefano
 - Supersedes: nothing. Adds the aggregation layer of the roadmap
   (`docs/20260816_Pergamenum_Roadmap.md`, M11), which SPEC v2.2 does not describe.
 
@@ -63,6 +63,13 @@ The body of the block is YAML-shaped rather than YAML: seven keys, all optional 
 never as an empty result - an empty list is indistinguishable from a vault that lost its
 notes, and that confusion has already cost this project an afternoon once.
 
+One key is optional in general and required in one case: **`render: board` without `group`
+is a parse error**, not a board with a single column and not a read-only one. A board is
+columns; without `group` there is nothing to make them out of, and the two alternatives to
+refusing are both worse - a silent single column looks like a filter that matched nothing,
+and a read-only board looks like a bug in the dragging. The error names the line and says
+that a board needs `group`.
+
 **D2. Fields are derived from the index, and the list is closed.**
 
 Everything a view can name is already in `StoredRecord` (`Sources/Index/IndexCache.swift`)
@@ -104,6 +111,13 @@ grammar is boolean combination of a closed set of terms - `path()`, `tag()`, `li
 `and`, `or`, `not` and parentheses. Globs in `tag()` and `path()`; no regular expressions,
 because a regex over a hundred notes is the global search's job and it already has them.
 
+`has()` takes **one field name from the table in D2 and nothing else**: `has(related)`,
+`has(deadline.next)`, `has(date)`. It is true when that field exists and is not empty - an
+absent frontmatter key, an empty list and a note with no open task all read as false. It is
+deliberately not a general property test: it can only name what D2 already names, so it grows
+when that table grows and never on its own. `has(cliente)` does not parse, and the error says
+which names are available.
+
 There is no way to write an expression that is not one of those terms. If a question
 cannot be asked in this grammar, the answer is a new term in a later version with an
 argument for it, not a general mechanism that makes every future question the user's
@@ -142,6 +156,27 @@ The write goes through the vocabulary check of §4.4 like any other tag write. D
 card into a column whose tag is not in the vocabulary is refused with the reason, not
 written and then flagged by the linter afterwards.
 
+**A note does not necessarily carry exactly one `status-*` tag, and what the board does with
+the other two cases is decided here rather than by whoever writes the drag handler.** Nothing
+in SPEC §4.4 says a note has one status, so both cases are ordinary, not malformed.
+
+- **None.** The note appears in a first column, *Senza stato*, which stands for the absence
+  of the tag rather than for a tag. Dragging out of it **adds** the destination's tag;
+  dragging back into it **removes** the tag the note has. The column is therefore not a
+  decoration: it is the only way to take a status off a note with a gesture, and hiding
+  those notes instead would make the board disagree with the folder it claims to show.
+- **Two or more.** The card appears in **every** column it matches. This is the honest
+  rendering - the file really does say both - and a board that showed the note once, in some
+  first-match column, would be a board that lies about the file to keep itself tidy.
+  Dragging then means one thing precisely: the gesture names its source, so the drop
+  **replaces the tag of the column the card was dragged from** with the destination's, and
+  leaves every other `status-*` tag alone. The card stays where its other tags put it.
+
+Both are one tag out and one tag in, which is what keeps the write local, journalled and
+undoable like every other. The alternative considered and refused was to refuse the drag on
+a multi-status note: it would make a legal file feel broken, and the user would have no way
+to fix it from the board that showed the problem.
+
 **D6. A view is recomputed, never stored.**
 
 No materialised result, no cached row set, no "last known" list. The index is rebuilt from
@@ -153,9 +188,21 @@ loses nothing, which is principle 3 still holding after this feature exists.
 A view evaluates on open, on an explicit refresh, and on a watcher change that touches a
 note in its result set or its `from` scope - debounced, never per keystroke. A view using
 `text()` reads every candidate file, which is the same work the global search already does
-across the whole vault; measured on the real vault that scan is 150 ms for 77 notes with a
-warm cache. If a vault ever grows to where that is felt, the answer is a content index and
-a schema bump, decided then, with a number in front of it.
+across the whole vault.
+
+*Corrected 2026-08-17.* The first version of this paragraph said "150 ms for 77 notes with a
+warm cache", and the Consequences below reused the same number for a different operation - a
+full index rebuild. One measurement cannot cover two operations, and that one covered
+neither vault in use: the vault this project opens today holds **2 notes**, so the 77-note
+figure belongs to a vault that is no longer the subject, almost certainly the older Labs one.
+
+What is measured, by `perg index stats` on the current vault on 2026-08-17: **11 ms warm,
+22 ms from a cold cache, 2 notes**. Both numbers are too small to say anything about scale,
+and pretending otherwise is what produced the sentence being corrected. The only fact that
+carries across is the ratio - rebuilding costs about twice reading - and the honest statement
+of the bound is therefore a rule rather than a number: if a vault ever grows to where a
+`text()` view is felt, the answer is a content index and a schema bump, decided then, with a
+measurement taken on that vault at that size.
 
 ## Consequences
 
@@ -168,7 +215,10 @@ a schema bump, decided then, with a number in front of it.
   is not, and `IndexCache.schemaVersion` no longer describes the only compatibility that
   matters.
 - **M11 includes one schema bump**, to 2, adding `embedTargets` for the gallery. Every
-  cached row is discarded on first launch after it and rebuilt - 150 ms, already measured.
+  cached row is discarded on first launch after it and rebuilt. Measured on the current
+  vault on 2026-08-17: 22 ms cold against 11 ms warm, on 2 notes - the cost of the bump is
+  one extra cold scan, and the number that matters is the ratio, not the milliseconds. D7
+  says why this is stated as a ratio.
 - **The board is a new class of write**: a bulk-ish frontmatter edit driven by a gesture
   rather than by typing. It gets the same three guardrails as the connector's writes
   (§D6 of ADR-0007) in the one place it can: journalled, undoable, refused when the tag is
