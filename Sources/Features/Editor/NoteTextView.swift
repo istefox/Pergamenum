@@ -179,10 +179,12 @@ struct NoteTextView: NSViewRepresentable {
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
 
-            guard !isCompleting,
-                  let completing = textView as? CompletingTextView,
-                  completing.shouldOfferCompletion()
-            else { return }
+            guard let completing = textView as? CompletingTextView else { return }
+            // The slash menu first and unconditionally: it has to close when the context
+            // stops being one, not only open when it starts.
+            completing.refreshSlashMenu(theme: parent.theme)
+
+            guard !isCompleting, completing.shouldOfferCompletion() else { return }
             isCompleting = true
             defer { isCompleting = false }
             completing.complete(nil)

@@ -15,6 +15,12 @@ final class CompletingTextView: NSTextView {
     var editorCommands: [EditorCommand] = []
     /// Runs a command the app owns. The text view never performs one itself.
     var onRunCommand: ((ShortcutCommand) -> Void)?
+    /// The slash menu's own window. Owned here because it lives and dies with the text
+    /// view it opens over.
+    let slashMenu = SlashMenu()
+    /// Where the `/` was when the user pressed Escape, so the menu does not come back on
+    /// the next keystroke of the same word.
+    private var dismissedSlashLocation: Int?
     /// Called with pasted text; returns true when it handled the paste itself.
     var onPasteURL: ((String) -> Bool)?
     /// Called with the PNG bytes of a pasted image; returns the name it was saved under.
@@ -108,10 +114,135 @@ final class CompletingTextView: NSTextView {
         case slash(prefix: String)
     }
 
-    /// True right after the user typed the trigger, so the list opens without a
+    /// True right after the user typed `[[` or `#`, so AppKit's list opens without a
     /// keyboard shortcut.
+    ///
+    /// Not the slash menu, which has its own panel and is opened by `refreshSlashMenu`:
+    /// asking AppKit's list for it as well would put two lists on screen at once.
     func shouldOfferCompletion() -> Bool {
-        completionContext() != nil
+        switch completionContext() {
+        case .wikilink, .tag: true
+        case .slash, nil: false
+        }
+    }
+
+    // MARK: The slash menu (M8)
+
+    /// Whether what is under the caret would open the slash menu.
+    ///
+    /// The counterpart of `shouldOfferCompletion` for the trigger that no longer goes
+    /// through AppKit's list, and the thing the trigger's tests assert on: opening the
+    /// real panel needs a window, and the rule is what has to be right.
+    func shouldOpenSlashMenu() -> Bool {
+        guard let location = slashLocation() else { return false }
+        return location != dismissedSlashLocation
+    }
+
+    /// Escape closes the menu **and leaves the text alone**, which needs both halves said.
+    ///
+    /// Deleting the `/` on dismissal was the alternative and it is a trap: a person
+    /// writing `/usr/local` would lose the character, retype it, and reopen the menu -
+    /// a literal slash at the start of a line would be unwritable. It is also against
+    /// this app's own precedent, ADR-0008 §D3, where a capture dismissed by accident
+    /// keeps what was typed.
+    ///
+    /// So the slash stays and the dismissal is remembered instead. Without this the menu
+    /// reopened on the very next keystroke, because the context was still a slash context
+    /// - Escape closed it for exactly as long as the user did not type.
+    func dismissSlashMenu() {
+        dismissedSlashLocation = slashLocation()
+        slashMenu.hide()
+    }
+
+    /// Where the `/` that would open the menu sits, or nil when there is none.
+    private func slashLocation() -> Int? {
+        guard case .slash(let prefix) = completionContext() else { return nil }
+        return selectedRange().location - prefix.count
+    }
+
+    /// Opens, updates or closes the slash menu for whatever is under the caret now.
+    ///
+    /// Called on every keystroke, from the same place that offers the other two
+    /// completions. Closing is as important as opening: the menu has to go the moment the
+    /// context stops being one, or it hangs over a note nobody is filtering any more.
+    func refreshSlashMenu(theme: Theme) {
+        guard case .slash(let prefix) = completionContext() else {
+            // Out of a slash context entirely: forget the dismissal too, so the next `/`
+            // opens the menu as the first one did.
+            dismissedSlashLocation = nil
+            slashMenu.hide()
+            return
+        }
+        guard shouldOpenSlashMenu() else { return }
+        let query = String(prefix.dropFirst())
+        slashMenu.show(
+            EditorCommand.matching(query, in: editorCommands),
+            query: query,
+            // Screen coordinates already, which is what the panel wants: converting this
+            // by hand is how a popup ends up on the wrong display.
+            caretRect: firstRect(forCharacterRange: selectedRange(), actualRange: nil),
+            over: window,
+            theme: theme
+        )
+    }
+
+    /// The keys the menu owns while it is open, and only while it is open.
+    ///
+    /// Handled here rather than in the panel because the panel never becomes key: the text
+    /// view keeps first responder throughout, which is what lets typing carry on filtering
+    /// the list. Anything not in this list falls through, so every other key still edits
+    /// the note.
+    override func doCommand(by selector: Selector) {
+        guard slashMenu.isVisible else {
+            super.doCommand(by: selector)
+            return
+        }
+        switch selector {
+        case #selector(moveUp(_:)):
+            slashMenu.moveSelection(by: -1)
+        case #selector(moveDown(_:)):
+            slashMenu.moveSelection(by: 1)
+        case #selector(insertNewline(_:)), #selector(insertTab(_:)):
+            runSelectedSlashCommand()
+        // Escape reaches a text view as either of these depending on what else is
+        // installed, so both are caught rather than the one that happened to work.
+        case #selector(cancelOperation(_:)), #selector(complete(_:)):
+            dismissSlashMenu()
+        default:
+            super.doCommand(by: selector)
+        }
+    }
+
+    /// Replaces the typed `/prefisso` with what the chosen command produces.
+    ///
+    /// One edit, so undo takes the whole thing back rather than peeling it a character at
+    /// a time. The menu closes first: a command that opens a panel or changes pane would
+    /// otherwise leave a list floating over whatever it opened.
+    private func runSelectedSlashCommand() {
+        guard let command = slashMenu.selected else { return }
+        let range = rangeForUserCompletion
+        slashMenu.hide()
+
+        switch command.action {
+        case .insert(let text, let cursorBack):
+            insertText(text, replacementRange: range)
+            // Counted in UTF-16, which is what an `NSRange` is measured in: `count` on a
+            // String would put the caret in the wrong place the first time a template
+            // carries an emoji.
+            let end = range.location + (text as NSString).length
+            setSelectedRange(NSRange(location: max(range.location, end - cursorBack), length: 0))
+        case .app(let appCommand):
+            // The typed `/prefisso` goes first: the command may open a panel or move to
+            // another pane, and coming back to find `/oggi` still in the note reads as the
+            // menu having failed.
+            insertText("", replacementRange: range)
+            onRunCommand?(appCommand)
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        slashMenu.hide()
+        return super.resignFirstResponder()
     }
 
     override var rangeForUserCompletion: NSRange {
@@ -150,59 +281,11 @@ final class CompletingTextView: NSTextView {
         case .tag(let prefix):
             let matches = tagSuggestions.filter { $0.hasPrefix(prefix) }.prefix(12)
             return matches.isEmpty ? nil : Array(matches)
-        case .slash(let prefix):
-            // No cap, unlike the two above. Twelve is right for a list of note titles,
-            // where the twelfth is already a bad guess; here the list *is* the catalogue,
-            // and M8 exists to make everything the app can do reachable from the caret.
-            // Capped at twelve, `/` alone showed the editor entries and hid every app
-            // command behind a query you had to know to type. AppKit's list scrolls.
-            let matches = EditorCommand
-                .matching(String(prefix.dropFirst()), in: editorCommands)
-                .map(\.title)
-            return matches.isEmpty ? nil : matches
-        }
-    }
-
-    /// Runs the chosen slash command instead of typing its name into the note.
-    ///
-    /// AppKit's completion list exists to insert the string it shows, so this is the one
-    /// place a command menu can be built on it. Three behaviours worth stating, because
-    /// each would be a visible defect if it were the other way round:
-    ///
-    /// - **Not final**: nothing happens. Arrowing through the list previews a completion
-    ///   by inserting it, which for this list would write "Blocco di codice" into the
-    ///   note while the user is still choosing.
-    /// - **Cancelled**: nothing happens either. Escape has to leave `/cod` exactly as it
-    ///   was typed.
-    /// - **Chosen**: the `/prefisso` is replaced in one edit, so undo takes the whole
-    ///   thing back rather than peeling it a character at a time.
-    override func insertCompletion(
-        _ word: String,
-        forPartialWordRange charRange: NSRange,
-        movement: Int,
-        isFinal: Bool
-    ) {
-        guard case .slash = completionContext() else {
-            super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: isFinal)
-            return
-        }
-        guard isFinal, movement != NSTextMovement.cancel.rawValue else { return }
-        guard let command = editorCommands.first(where: { $0.title == word }) else { return }
-
-        switch command.action {
-        case .insert(let text, let cursorBack):
-            insertText(text, replacementRange: charRange)
-            // Counted in UTF-16, which is what an `NSRange` is measured in: `count` on a
-            // String would put the caret in the wrong place the first time a template
-            // carries an emoji.
-            let end = charRange.location + (text as NSString).length
-            setSelectedRange(NSRange(location: max(charRange.location, end - cursorBack), length: 0))
-        case .app(let appCommand):
-            // The typed `/prefisso` goes first: the command may open a panel or move to
-            // another pane, and coming back to find `/oggi` still in the note reads as
-            // the menu having failed.
-            insertText("", replacementRange: charRange)
-            onRunCommand?(appCommand)
+        case .slash:
+            // Never AppKit's list: the slash menu is drawn by `SlashMenu`. Reached only if
+            // something else asks the text view to complete - Escape does, on some
+            // configurations - and answering nil is what keeps the two from both opening.
+            return nil
         }
     }
 

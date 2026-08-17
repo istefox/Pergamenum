@@ -49,7 +49,15 @@ extension VaultBrowser {
             tagSuggestions: tagSuggestions,
             // Filtered here, once per rebuild: a command the app cannot run right now is
             // not offered, rather than offered and inert.
-            editorCommands: EditorCommand.all(canRun: commandActions.canRun),
+            editorCommands: EditorCommand.all(
+                canRun: commandActions.canRun,
+                // The user's binding and never the default: a menu that taught a shortcut
+                // the user had changed would be teaching one that does nothing.
+                caption: { command in
+                    let binding = shortcuts.binding(for: command)
+                    return binding.isValid ? binding.displayString : nil
+                }
+            ),
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
             onOpenEmbed: { name in preview(embed: name, in: note) },
