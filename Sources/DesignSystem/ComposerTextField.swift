@@ -24,23 +24,37 @@ struct ComposerTextField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.placeholderString = placeholder
         field.lineBreakMode = .byTruncatingTail
         field.cell?.sendsActionOnEndEditing = false
         if let identifier { field.setAccessibilityIdentifier(identifier) }
+        apply(to: field)
         return field
     }
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
-        if field.stringValue != text { field.stringValue = text }
-        field.font = font
-        field.textColor = color
+        apply(to: field)
 
         if focusRequest != context.coordinator.lastFocusRequest {
             context.coordinator.lastFocusRequest = focusRequest
             context.coordinator.takeFocus(field)
         }
+    }
+
+    /// Everything about the field that can change while it is on screen.
+    ///
+    /// Called from both `makeNSView` and `updateNSView`, and it exists as a method rather
+    /// than as two copies because the copies drifted: `placeholderString` was set only at
+    /// creation, so the capture panel kept saying "Titolo della nota, poi il testo" after
+    /// the user had switched to Task. The two older composers never showed it - their
+    /// placeholder never changes - and neither did any test, because `updateNSView` takes
+    /// an `NSViewRepresentableContext` a test cannot build. This one can be called
+    /// directly, which is the point.
+    func apply(to field: NSTextField) {
+        if field.stringValue != text { field.stringValue = text }
+        field.font = font
+        field.textColor = color
+        if field.placeholderString != placeholder { field.placeholderString = placeholder }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }

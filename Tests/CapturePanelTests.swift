@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Pergamenum
 
@@ -140,6 +142,38 @@ import Testing
     first.unregister()
     #expect(second.register(contested) == .registered(contested))
     second.unregister()
+}
+
+// MARK: - The field
+
+@MainActor
+@Test func theFieldsPlaceholderFollowsTheDestinationInsteadOfBeingFrozenAtBirth() {
+    // Found by looking at the panel: the destination read Task while the field still
+    // said "Titolo della nota, poi il testo". `placeholderString` was set in
+    // `makeNSView` only, which is invisible in the two older composers because their
+    // placeholder never changes - the capture panel is the first place it does.
+    let field = NSTextField(string: "")
+    let font = NSFont.systemFont(ofSize: 13)
+
+    let asNote = ComposerTextField(
+        text: .constant(""),
+        placeholder: CaptureController.Destination.note.placeholder,
+        font: font,
+        color: .textColor
+    )
+    asNote.apply(to: field)
+    #expect(field.placeholderString == "Titolo della nota, poi il testo")
+
+    // The same field, the destination changed under it: this is the update SwiftUI
+    // performs, and the assertion that was missing.
+    let asTask = ComposerTextField(
+        text: .constant(""),
+        placeholder: CaptureController.Destination.task.placeholder,
+        font: font,
+        color: .textColor
+    )
+    asTask.apply(to: field)
+    #expect(field.placeholderString == "Che cosa c'è da fare")
 }
 
 // MARK: - CaptureController
