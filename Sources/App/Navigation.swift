@@ -108,4 +108,31 @@ final class Navigation {
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false
+
+    // MARK: The outline (M8)
+
+    /// A jump the index in the sidebar has asked for.
+    ///
+    /// A request and not a call, for the same reason `pendingInsertion` is one: the
+    /// sidebar has no reference to the editor, and giving it one would break the moment
+    /// the editor is rebuilt. `id` makes two clicks on the same entry two events.
+    struct OutlineJump: Equatable, Sendable {
+        var id: Int
+        /// The heading's line, for the editor, which scrolls by character.
+        var range: NSRange
+        /// The entry's position in the index, for the reading view, which scrolls by
+        /// block. The two surfaces count differently and this ordinal is the bridge.
+        var ordinal: Int
+    }
+
+    private(set) var outlineJump: OutlineJump?
+
+    func jumpToOutlineEntry(range: NSRange, ordinal: Int) {
+        outlineJump = OutlineJump(id: (outlineJump?.id ?? 0) + 1, range: range, ordinal: ordinal)
+        pane = .notes
+    }
+
+    /// Which index entry the caret is inside, reported by the editor only when it
+    /// changes. Nil in reading mode, where there is no caret to be inside anything.
+    var currentOutlineEntry: Int?
 }

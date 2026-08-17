@@ -70,7 +70,16 @@ extension VaultBrowser {
                 navigation.isFindRequested = false
                 navigation.isReplaceRequested = false
             },
-            focusRequest: focusRequest
+            focusRequest: focusRequest,
+            scrollRequest: pendingJump,
+            onScrollApplied: { pendingJump = nil },
+            // Computed here, once per rebuild, from the same `NoteOutline` the sidebar
+            // draws: the text view needs the ranges only to say which one the caret is
+            // in, and it must be the same list or the highlight lands a row off.
+            outlineRanges: NoteOutline.entries(in: note.text).map {
+                NSRange($0.range, in: note.text)
+            },
+            onOutlineEntryChanged: { navigation.currentOutlineEntry = $0 }
         )
     }
 
@@ -120,7 +129,9 @@ extension VaultBrowser {
             onFollowLink: follow(title:),
             notePath: note.relativePath,
             vaultRoot: vault.root,
-            thumbnails: vault.thumbnails
+            thumbnails: vault.thumbnails,
+            scrollToEntry: pendingJump?.ordinal,
+            onScrollApplied: { pendingJump = nil }
         )
     }
 }
