@@ -80,7 +80,10 @@ extension VaultBrowser {
                 NSRange($0.range, in: note.text)
             },
             onOutlineEntryChanged: { navigation.currentOutlineEntry = $0 },
-            foldedEntries: navigation.foldedEntries
+            foldedEntries: navigation.foldedEntries,
+            // The same source Lettura uses, so the two surfaces cannot resolve the same
+            // `![[nota]]` to two different notes (ADR-0010 §D3).
+            transclusions: transclusionSource
         )
     }
 

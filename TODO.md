@@ -17,10 +17,10 @@ _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-009` **P2** M8 Menu comandi ed editor: six slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-009` **P2** M8 Menu comandi ed editor: seven slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
   - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
-  - Left: the editor half of transclusion (the card drawn under the source line, ADR-0010 §D3), block links `[[note#heading]]`, floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
-  - Sixth slice merged 2026-08-17: transclusion in the reading view, the index counting it, `IndexCache.schemaVersion` at 2.
+  - Left: block links `[[note#heading]]`, floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Sixth and seventh slices merged 2026-08-17: transclusion in the reading view with the index counting it (`IndexCache.schemaVersion` at 2), then the editor's card drawn under a source line that stays editable. ADR-0010 is fully shipped.
   - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
@@ -32,7 +32,7 @@ _Nothing in progress._
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes.
 - [ ] `PG-021` **P3** The fold badge is not clickable: a section is folded from the index or from Vista, never from the editor itself — `Sources/Features/Editor/FoldedHeadingFragment.swift` <!-- src:session opened:2026-08-17 -->
-  - Needs hit-testing a rect the fragment draws, which nothing in the text view tracks today.
+  - Needs hit-testing a rect the fragment draws. Half the work now exists: `CompletingTextView.onClickInMargin` and `TranscludedLineFragment.renditionFrame` do exactly this for a transclusion, and the badge needs the same pair.
 - [ ] `PG-015` **P3** SPEC amendments §5, §7.4, §8 and §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
   - Each is applied before the milestone that depends on it, never after.
 

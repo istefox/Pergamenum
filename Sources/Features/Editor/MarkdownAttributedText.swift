@@ -64,7 +64,16 @@ enum MarkdownAttributedText {
         case .linkTarget(let target):
             clickable(theme.color(.accentPrimary), url: links ? noteURL(for: target) : nil)
         case .embedTarget(let target):
-            clickable(theme.color(.accentPrimary), url: links ? embedURL(for: target) : nil)
+            // Where the click goes depends on what the target is, by the same rule the
+            // reading view uses (ADR-0010 §D2): a note opens, a file is previewed. Sending
+            // every `![[…]]` to the file preview is the editor's half of PG-020 - it
+            // answered "file non trovato nel vault" for a note that exists.
+            clickable(
+                theme.color(.accentPrimary),
+                url: links
+                    ? (Transclusion.isNoteReference(target) ? noteURL(for: target) : embedURL(for: target))
+                    : nil
+            )
         default:
             [.foregroundColor: NSColor(theme.color(colorToken(for: span)))]
         }

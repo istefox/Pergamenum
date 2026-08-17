@@ -27,6 +27,22 @@ final class CompletingTextView: NSTextView {
     var onPasteImage: ((Data) -> String?)?
     /// Called with a dropped file, returning the name to embed (SPEC §5).
     var onDropFile: ((URL) -> String?)?
+    /// Called with a click in the view's own coordinates, before the text view does
+    /// anything with it; returns true when it handled it. This is how a transcluded note
+    /// drawn under a line is opened (ADR-0010): the drawing is not text, so no character
+    /// carries a link attribute and `clickedOnLink` never fires for it.
+    var onClickInMargin: ((CGPoint) -> Bool)?
+
+    /// A click on a drawn decoration is not a click in the text.
+    ///
+    /// Handled before `super`, which would otherwise move the caret to the nearest
+    /// character - and the nearest character to a rendition is the source line above it, so
+    /// the caret would jump every time somebody meant to follow the note.
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if onClickInMargin?(point) == true { return }
+        super.mouseDown(with: event)
+    }
 
     /// Pasting a URL over a selection writes a markdown link (SPEC §5); pasting a
     /// picture writes the file into the vault and embeds it.

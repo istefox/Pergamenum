@@ -1,8 +1,9 @@
 import AppKit
 import OSLog
 
-/// Keeps folded sections out of the layout without touching a character of the note, and
-/// marks the headings that are hiding something.
+/// Everything the editor draws that is not the note's own characters: folded sections kept
+/// out of the layout, the headings that say how much they are hiding, and the notes a
+/// transclusion shows underneath its source line.
 ///
 /// The mechanism is `NSTextContentManagerDelegate.shouldEnumerateTextElement`, whose header
 /// in the macOS 26.5 SDK says returning NO makes an element "skipped from the enumeration",
@@ -22,8 +23,11 @@ import OSLog
 ///
 /// Not `@MainActor`: Swift 6 refuses both conformances ("crosses into main actor-isolated
 /// code"), so this object holds plain values and is fed from the view.
-final class FoldingDelegate: NSObject, NSTextContentStorageDelegate, NSTextLayoutManagerDelegate,
-                             @unchecked Sendable {
+/// One object because a text view has one content-storage delegate and one layout-manager
+/// delegate; two features, kept as two separate inputs so neither can quietly depend on the
+/// other's state.
+final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
+                                      NSTextLayoutManagerDelegate, @unchecked Sendable {
     /// The UTF-16 offset at which each hidden line begins. A set, because this is asked
     /// once per paragraph on every layout pass.
     nonisolated(unsafe) private var hiddenLineOffsets: Set<Int> = []
@@ -32,8 +36,17 @@ final class FoldingDelegate: NSObject, NSTextContentStorageDelegate, NSTextLayou
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
+    /// styled on the main actor and handed over as a value, because this object cannot be
+    /// `@MainActor` - Swift 6 refuses both conformances if it is.
+    nonisolated(unsafe) private var renditions: [Int: TranscludedRendition] = [:]
 
     var isFolding: Bool { !foldedHeadings.isEmpty }
+
+    func apply(renditions: [Int: TranscludedRendition]) {
+        self.renditions = renditions
+        Logger.folding.notice("transclusioni: \(renditions.count, privacy: .public) rese")
+    }
 
     func apply(hiddenLines: Set<Int>, foldedHeadings headings: [Int: Int]) {
         hiddenLineOffsets = hiddenLines
@@ -62,11 +75,18 @@ final class FoldingDelegate: NSObject, NSTextContentStorageDelegate, NSTextLayou
         in textElement: NSTextElement
     ) -> NSTextLayoutFragment {
         let standard = NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
-        guard !foldedHeadings.isEmpty, let manager = textLayoutManager.textContentManager else {
-            return standard
-        }
-        guard let hidden = foldedHeadings[offset(of: location, in: manager)] else { return standard }
+        guard let manager = textLayoutManager.textContentManager else { return standard }
+        let start = offset(of: location, in: manager)
 
+        if let rendition = renditions[start] {
+            let fragment = TranscludedLineFragment(
+                textElement: textElement, range: textElement.elementRange
+            )
+            fragment.rendition = rendition
+            return fragment
+        }
+
+        guard let hidden = foldedHeadings[start] else { return standard }
         let fragment = FoldedHeadingFragment(textElement: textElement, range: textElement.elementRange)
         fragment.hiddenLines = hidden
         fragment.badgeColor = badgeColor

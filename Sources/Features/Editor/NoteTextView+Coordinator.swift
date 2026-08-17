@@ -29,12 +29,19 @@ extension NoteTextView {
         /// The same, for the index's jumps: without it every later view update would
         /// scroll back to the last heading clicked.
         var lastScrollRequest = 0
-        /// Folding lives here rather than on the view: it is a fact about this text view's
-        /// layout, and the view struct is rebuilt on every update (M8).
-        let folding = FoldingDelegate()
+        /// What the editor draws besides the note's characters - folds and transcluded
+        /// notes. Here rather than on the view: it is a fact about this text view's layout,
+        /// and the view struct is rebuilt on every update (M8).
+        let decorations = EditorDecorationDelegate()
         /// The fold already applied, so an unchanged one does not invalidate the layout on
         /// every view update.
         private var lastFoldLayout = NoteFolding.Layout()
+        /// The transcluded notes already drawn, for the same reason as `lastFoldLayout`.
+        var lastRenditions: [Int: TranscludedRendition] = [:]
+        /// Renditions by reference, section, scan generation and width. Not private
+        /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
+        /// unbounded in practice: a note names as many targets as it names.
+        var renditionCache: [String: TranscludedRendition] = [:]
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
@@ -91,14 +98,14 @@ extension NoteTextView {
         /// the TextKit study. Skipped entirely when nothing is folded and nothing was, so
         /// an ordinary note pays nothing for this.
         func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-            guard folding.isFolding || !folded.isEmpty else { return }
+            guard decorations.isFolding || !folded.isEmpty else { return }
             let layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
             guard layout != lastFoldLayout else { return }
             lastFoldLayout = layout
 
-            folding.badgeColor = NSColor(theme.color(.textTertiary))
-            folding.badgeBackground = NSColor(theme.color(.backgroundTertiary))
-            folding.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
+            decorations.badgeColor = NSColor(theme.color(.textTertiary))
+            decorations.badgeBackground = NSColor(theme.color(.backgroundTertiary))
+            decorations.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
 
             let length = (textView.string as NSString).length
             textView.textContentStorage?.textStorage?.edited(
@@ -132,6 +139,7 @@ extension NoteTextView {
             guard !isStyling, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
+            applyTransclusions(to: textView, theme: parent.theme)
 
             guard let completing = textView as? CompletingTextView else { return }
             // The slash menu first and unconditionally: it has to close when the context
