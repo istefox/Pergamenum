@@ -41,8 +41,21 @@ private struct Frame {
     let frame: CGRect
 }
 
+/// Which way the space is bought.
+///
+/// `delegate` is what the probe used and what the SDK documents for a *displayed* paragraph
+/// that must differ from the stored one. `storage` is the shortcut this editor can take,
+/// and only because of a fact about this app: `applyStyling` already rewrites every
+/// attribute of the text storage on each keystroke, and an attribute is not the file - what
+/// is written to disk is `textView.string`. Asserted rather than assumed.
+private enum Route { case delegate, storage }
+
 @MainActor
-private func frames(spacing: CGFloat, at spacedOffset: Int?) -> (frames: [Frame], length: Int) {
+private func frames(
+    spacing: CGFloat,
+    at spacedOffset: Int?,
+    by route: Route = .delegate
+) -> (frames: [Frame], length: Int) {
     let text = "# Titolo\ncorpo prima\n![[Altra nota]]\ncorpo dopo\nultima riga"
 
     let content = NSTextContentStorage()
@@ -53,9 +66,11 @@ private func frames(spacing: CGFloat, at spacedOffset: Int?) -> (frames: [Frame]
     layout.textContainer = container
 
     let delegate = SpacingDelegate()
-    delegate.spacedOffset = spacedOffset
-    delegate.spacing = spacing
-    content.delegate = delegate
+    if route == .delegate {
+        delegate.spacedOffset = spacedOffset
+        delegate.spacing = spacing
+        content.delegate = delegate
+    }
 
     content.textStorage?.setAttributedString(
         NSAttributedString(
@@ -63,6 +78,12 @@ private func frames(spacing: CGFloat, at spacedOffset: Int?) -> (frames: [Frame]
             attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]
         )
     )
+    if route == .storage, let spacedOffset, let storage = content.textStorage {
+        let line = (storage.string as NSString).paragraphRange(for: NSRange(location: spacedOffset, length: 0))
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = spacing
+        storage.addAttribute(.paragraphStyle, value: style, range: line)
+    }
     layout.ensureLayout(for: layout.documentRange)
 
     var collected: [Frame] = []
@@ -101,6 +122,25 @@ private func frames(spacing: CGFloat, at spacedOffset: Int?) -> (frames: [Frame]
         let spacedEmbed = spaced.frames.first { $0.offset == Self.embedOffset }?.frame
         #expect(baseEmbed != nil)
         #expect(spacedEmbed?.height == (baseEmbed?.height ?? 0) + Self.reserved)
+    }
+
+    /// The same three facts, bought from the text storage instead of from the delegate.
+    ///
+    /// This is the route the editor takes (ADR-0010 §D3's slice): the paragraph style goes
+    /// where the colours and the fonts already go, and the content storage delegate stays
+    /// free for folding. It was an assumption until this test, and an assumption about an
+    /// SDK is the kind this project does not spend.
+    @Test func theSpaceCanBeBoughtFromTheTextStorageToo() {
+        let base = frames(spacing: 0, at: nil, by: .storage)
+        let spaced = frames(spacing: Self.reserved, at: Self.embedOffset, by: .storage)
+
+        #expect(base.length == spaced.length)
+        let baseEmbed = base.frames.first { $0.offset == Self.embedOffset }?.frame
+        let spacedEmbed = spaced.frames.first { $0.offset == Self.embedOffset }?.frame
+        #expect(spacedEmbed?.height == (baseEmbed?.height ?? 0) + Self.reserved)
+        for (before, after) in zip(base.frames, spaced.frames) where before.offset > Self.embedOffset {
+            #expect(after.frame.minY == before.frame.minY + Self.reserved)
+        }
     }
 
     @Test func nothingAboveTheEmbedMovesAndEverythingBelowShiftsByExactlyTheReservedHeight() {

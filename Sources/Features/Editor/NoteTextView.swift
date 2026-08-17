@@ -53,6 +53,9 @@ struct NoteTextView: NSViewRepresentable {
     /// character offset: an edit above a fold moves every offset, and a fold anchored to a
     /// number would end up somewhere else on the next keystroke.
     var foldedEntries: Set<Int> = []
+    /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
+    /// behind the editor, and then the line stays the plain link it was.
+    var transclusions: TransclusionSource?
 
     enum FindRequest { case find, replace }
 
@@ -100,10 +103,15 @@ struct NoteTextView: NSViewRepresentable {
         scrollView.drawsBackground = false
 
         context.coordinator.textView = textView
-        textView.textContentStorage?.delegate = context.coordinator.folding
-        textView.textLayoutManager?.delegate = context.coordinator.folding
+        textView.textContentStorage?.delegate = context.coordinator.decorations
+        textView.textLayoutManager?.delegate = context.coordinator.decorations
         textView.string = text
         context.coordinator.applyStyling(to: textView, theme: theme)
+        context.coordinator.applyTransclusions(to: textView, theme: theme)
+        textView.onClickInMargin = { [weak textView] point in
+            guard let textView else { return false }
+            return context.coordinator.openTransclusion(at: point, in: textView)
+        }
         return scrollView
     }
 
@@ -125,6 +133,7 @@ struct NoteTextView: NSViewRepresentable {
             ))
         }
         context.coordinator.applyStyling(to: textView, theme: theme)
+        context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyFolding(to: textView, folded: foldedEntries, theme: theme)
 
         if let insertion {

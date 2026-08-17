@@ -22,6 +22,7 @@ struct TransclusionMockup: View {
                 scene("Oltre il tetto: si taglia e si offre la nota", NoteMock(scene: .capped))
                 scene("Bersaglio che non esiste (chiude PG-020)", NoteMock(scene: .missing))
                 scene("Profondità uno: dentro una resa, un ![[…]] è un link", NoteMock(scene: .nested))
+                scene("Nell'editor: la riga sorgente resta, la nota sta sotto", EditorMock())
             }
             .padding(theme.spacing(.l))
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -34,6 +35,73 @@ struct TransclusionMockup: View {
             Text(caption).themedText(.caption, color: .textTertiary)
             content.frame(maxWidth: 620, alignment: .leading)
         }
+    }
+}
+
+// MARK: - The editor half
+
+/// The same transclusion in Modifica, where the rules are different.
+///
+/// Two things this scene decides. The source line **stays**: it is what the file says, it is
+/// selectable and editable, and keeping it is what leaves the door open for the display
+/// transform of PG-018 instead of closing it. And what is drawn under it is the target's
+/// *styled source*, not the typeset rendering of Lettura - the editor shows source with
+/// style applied everywhere, so a note that arrived typeset would be the one thing on the
+/// page that is not text.
+private struct EditorMock: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            source("# Progetto forno", .textPrimary, weight: .semibold)
+            source("", .textSecondary)
+            source("Il fornitore ha confermato la curva.", .textSecondary)
+            source("", .textSecondary)
+            source("![[Prove in laboratorio]]", .accentPrimary)
+            card
+            source("", .textSecondary)
+            source("Resta da decidere la durezza dei tamponi.", .textSecondary)
+        }
+        .padding(theme.spacing(.l))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.color(.backgroundPrimary))
+        .overlay(
+            RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
+    }
+
+    /// The space this occupies is bought with `paragraphSpacing` on the line above, measured
+    /// before it was designed: the reserved height lands inside that line's own layout
+    /// fragment, so the drawing has somewhere to go and the note gains no character.
+    private var card: some View {
+        HStack(alignment: .top, spacing: theme.spacing(.m)) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(theme.color(.accentPrimary).opacity(0.35))
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Prove in laboratorio")
+                    .themedText(.caption, color: .textTertiary)
+                source("# Prove in laboratorio", .textPrimary, weight: .semibold)
+                source("Tre serie di misure.", .textSecondary)
+                source("## Campioni", .textPrimary, weight: .semibold)
+                source("Tre campioni, 60, 70 e 80 shore.", .textSecondary)
+            }
+        }
+        .padding(.leading, theme.spacing(.s))
+        .padding(.vertical, theme.spacing(.xs))
+    }
+
+    private func source(
+        _ text: String,
+        _ color: ColorToken,
+        weight: Font.Weight = .regular
+    ) -> some View {
+        Text(text.isEmpty ? " " : text)
+            .font(theme.font(.mono).weight(weight))
+            .foregroundStyle(theme.color(color))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

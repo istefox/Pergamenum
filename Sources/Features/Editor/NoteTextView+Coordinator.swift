@@ -29,12 +29,19 @@ extension NoteTextView {
         /// The same, for the index's jumps: without it every later view update would
         /// scroll back to the last heading clicked.
         var lastScrollRequest = 0
-        /// Folding lives here rather than on the view: it is a fact about this text view's
-        /// layout, and the view struct is rebuilt on every update (M8).
-        let folding = FoldingDelegate()
+        /// What the editor draws besides the note's characters - folds and transcluded
+        /// notes. Here rather than on the view: it is a fact about this text view's layout,
+        /// and the view struct is rebuilt on every update (M8).
+        let decorations = EditorDecorationDelegate()
         /// The fold already applied, so an unchanged one does not invalidate the layout on
         /// every view update.
         private var lastFoldLayout = NoteFolding.Layout()
+        /// The transcluded notes already drawn, for the same reason as `lastFoldLayout`.
+        var lastRenditions: [Int: TranscludedRendition] = [:]
+        /// Renditions by reference, section, scan generation and width. Not private
+        /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
+        /// unbounded in practice: a note names as many targets as it names.
+        var renditionCache: [String: TranscludedRendition] = [:]
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
@@ -91,14 +98,14 @@ extension NoteTextView {
         /// the TextKit study. Skipped entirely when nothing is folded and nothing was, so
         /// an ordinary note pays nothing for this.
         func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-            guard folding.isFolding || !folded.isEmpty else { return }
+            guard decorations.isFolding || !folded.isEmpty else { return }
             let layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
             guard layout != lastFoldLayout else { return }
             lastFoldLayout = layout
 
-            folding.badgeColor = NSColor(theme.color(.textTertiary))
-            folding.badgeBackground = NSColor(theme.color(.backgroundTertiary))
-            folding.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
+            decorations.badgeColor = NSColor(theme.color(.textTertiary))
+            decorations.badgeBackground = NSColor(theme.color(.backgroundTertiary))
+            decorations.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
 
             let length = (textView.string as NSString).length
             textView.textContentStorage?.textStorage?.edited(
@@ -132,6 +139,7 @@ extension NoteTextView {
             guard !isStyling, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
+            applyTransclusions(to: textView, theme: parent.theme)
 
             guard let completing = textView as? CompletingTextView else { return }
             // The slash menu first and unconditionally: it has to close when the context
@@ -149,7 +157,7 @@ extension NoteTextView {
                   let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             else { return false }
 
-            if components.host == Self.embedHost,
+            if components.host == MarkdownAttributedText.embedHost,
                let name = components.queryItems?.first(where: { $0.name == "name" })?.value {
                 parent.onOpenEmbed?(name)
                 return true
@@ -171,96 +179,22 @@ extension NoteTextView {
             defer { isStyling = false }
 
             let text = textView.string
-            let full = NSRange(location: 0, length: (text as NSString).length)
-
             storage.beginEditing()
-            storage.setAttributes([
-                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
-                .foregroundColor: NSColor(theme.color(.textPrimary)),
-            ], range: full)
-
+            storage.setAttributes(
+                MarkdownAttributedText.base(theme: theme),
+                range: NSRange(location: 0, length: (text as NSString).length)
+            )
             for styled in MarkdownStyler.spans(in: text) {
                 let nsRange = NSRange(styled.range, in: text)
-                guard nsRange.location != NSNotFound, NSMaxRange(nsRange) <= full.length else { continue }
-                storage.addAttributes(attributes(for: styled.span, theme: theme), range: nsRange)
+                guard nsRange.location != NSNotFound,
+                      NSMaxRange(nsRange) <= (text as NSString).length
+                else { continue }
+                storage.addAttributes(
+                    MarkdownAttributedText.attributes(for: styled.span, theme: theme),
+                    range: nsRange
+                )
             }
             storage.endEditing()
         }
-
-        /// The spans that need more than a colour: a font, a background, a link.
-        ///
-        /// Everything else falls to `colorToken(for:)`, and the `default` here is safe for
-        /// the reason that switch has no default of its own: a span added later reaches it
-        /// and the compiler asks what colour it is.
-        private func attributes(for span: MarkdownStyler.Span, theme: Theme) -> [NSAttributedString.Key: Any] {
-            switch span {
-            case .heading(let level):
-                [
-                    .font: NSFont.systemFont(ofSize: max(15, 24 - CGFloat(level) * 2), weight: .semibold),
-                    .foregroundColor: NSColor(theme.color(.textPrimary)),
-                ]
-            case .bold:
-                [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)]
-            case .italic:
-                [.obliqueness: 0.2]
-            case .codeBlock:
-                // Only a background. The colour is left to whatever the grammar found
-                // inside, and to `textPrimary` where it found nothing - a fence in a
-                // language nobody wrote a grammar for still reads as code because of
-                // this, which is the whole fallback.
-                [.backgroundColor: NSColor(theme.color(.surfaceSunken))]
-            case .linkTarget(let target):
-                [
-                    .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                    .link: linkURL(for: target),
-                    .cursor: NSCursor.pointingHand,
-                ]
-            case .embedTarget(let target):
-                [
-                    .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                    .link: embedURL(for: target),
-                    .cursor: NSCursor.pointingHand,
-                ]
-            default:
-                [.foregroundColor: NSColor(theme.color(Self.colorToken(for: span)))]
-            }
-        }
-
-        /// Every span's colour, the six above included even though they never arrive here.
-        /// No `default`, on purpose: this is the one table that must stay exhaustive.
-        private static func colorToken(for span: MarkdownStyler.Span) -> ColorToken {
-            switch span {
-            case .heading, .bold, .italic, .codeBlock: .textPrimary
-            case .frontmatter, .code, .annotation: .textSecondary
-            case .linkSyntax: .textTertiary
-            case .tag, .linkTarget, .embedTarget: .accentPrimary
-            case .codeToken(let token): token.colorToken
-            case .taskMarker(let done): done ? .taskDone : .taskOpen
-            case .scheduled: .taskScheduled
-            case .due: .taskOverdue
-            }
-        }
-
-        /// Encodes the target as a query item so a title containing `/`, `?` or `#`
-        /// survives the round-trip through `URL`.
-        private func linkURL(for target: String) -> URL {
-            var components = URLComponents()
-            components.scheme = AppInfo.urlScheme
-            components.host = "note"
-            components.queryItems = [URLQueryItem(name: "title", value: target)]
-            return components.url ?? URL(string: "\(AppInfo.urlScheme)://note")!
-        }
-
-        /// The same trick for an embedded file. A different host, because the click
-        /// leads somewhere else: a file to preview rather than a note to open.
-        private func embedURL(for target: String) -> URL {
-            var components = URLComponents()
-            components.scheme = AppInfo.urlScheme
-            components.host = Self.embedHost
-            components.queryItems = [URLQueryItem(name: "name", value: target)]
-            return components.url ?? URL(string: "\(AppInfo.urlScheme)://\(Self.embedHost)")!
-        }
-
-        static let embedHost = "embed"
     }
 }
