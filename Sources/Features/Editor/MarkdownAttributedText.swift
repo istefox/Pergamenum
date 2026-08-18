@@ -56,6 +56,10 @@ enum MarkdownAttributedText {
             [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)]
         case .italic:
             [.obliqueness: 0.2]
+        case .strikethrough:
+            // A line through the whole run, markers included, which is what the styled source
+            // of SPEC §5 means: the syntax stays visible and gets styled rather than hidden.
+            [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         case .codeBlock:
             // Only a background. The colour is left to whatever the grammar found inside,
             // and to `textPrimary` where it found nothing - a fence in a language nobody
@@ -93,6 +97,9 @@ enum MarkdownAttributedText {
     static func colorToken(for span: MarkdownStyler.Span) -> ColorToken {
         switch span {
         case .heading, .bold, .italic, .codeBlock: .textPrimary
+        // Struck-through text is text the author kept and marked as gone. Dimmer than the
+        // rest, because the line already says what it is and a second signal would shout.
+        case .strikethrough: .textSecondary
         case .frontmatter, .code, .annotation: .textSecondary
         case .linkSyntax: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary

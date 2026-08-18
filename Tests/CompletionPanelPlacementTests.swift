@@ -56,7 +56,9 @@ private let panelSize = NSSize(width: 340, height: 400)
 
 @Test func thePanelSitsUnderTheCaretWhenThereIsRoom() {
     let caret = NSRect(x: 900, y: 800, width: 1, height: 20)
-    let origin = CompletionPanel.origin(forPanelOf: panelSize, under: caret, in: visible)
+    let origin = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: caret, in: visible, preferring: .below
+    )
     #expect(origin.x == 900)
     // Six points of air under the line, and the panel below it: its top edge is the
     // caret's bottom less the gap.
@@ -66,19 +68,23 @@ private let panelSize = NSSize(width: 340, height: 400)
 @Test func thePanelFlipsAboveTheLineWhenTheBottomOfTheScreenIsClose() {
     // The defect Stefano saw: the caret on the last visible line, near the bottom edge.
     let caret = NSRect(x: 900, y: 40, width: 1, height: 20)
-    let origin = CompletionPanel.origin(forPanelOf: panelSize, under: caret, in: visible)
+    let origin = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: caret, in: visible, preferring: .below
+    )
     #expect(origin.y == caret.maxY + 6)
     #expect(origin.y > caret.maxY)
 }
 
 @Test func thePanelNeverLeavesTheScreenSideways() {
-    let right = CompletionPanel.origin(
-        forPanelOf: panelSize, under: NSRect(x: 2550, y: 800, width: 1, height: 20), in: visible
+    let right = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: NSRect(x: 2550, y: 800, width: 1, height: 20),
+        in: visible, preferring: .below
     )
     #expect(right.x + panelSize.width <= visible.maxX)
 
-    let left = CompletionPanel.origin(
-        forPanelOf: panelSize, under: NSRect(x: -40, y: 800, width: 1, height: 20), in: visible
+    let left = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: NSRect(x: -40, y: 800, width: 1, height: 20),
+        in: visible, preferring: .below
     )
     #expect(left.x >= visible.minX)
 }
@@ -92,7 +98,9 @@ private let panelSize = NSSize(width: 340, height: 400)
     let tall = NSSize(width: 340, height: 900)
     for y in stride(from: 0.0, through: 1420.0, by: 20.0) {
         let caret = NSRect(x: 900, y: y, width: 1, height: 20)
-        let origin = CompletionPanel.origin(forPanelOf: tall, under: caret, in: visible)
+        let origin = PanelPlacement.origin(
+        forPanelOf: tall, besides: caret, in: visible, preferring: .below
+    )
         let panel = NSRect(origin: origin, size: tall)
         #expect(!panel.intersects(caret))
     }
@@ -102,12 +110,12 @@ private let panelSize = NSSize(width: 340, height: 400)
     // Near the bottom of the screen the room is above, near the top it is below, and the
     // number is what the panel is then built to fit - the height decides the placement,
     // not the other way round.
-    let low = CompletionPanel.roomForPanel(
+    let low = PanelPlacement.room(
         besides: NSRect(x: 900, y: 40, width: 1, height: 20), in: visible
     )
     #expect(low == visible.maxY - 60 - 6 - 8)
 
-    let high = CompletionPanel.roomForPanel(
+    let high = PanelPlacement.room(
         besides: NSRect(x: 900, y: 1400, width: 1, height: 20), in: visible
     )
     // Bound rather than written inline: an integer literal on the right of the comparison
@@ -177,4 +185,41 @@ private let panelSize = NSSize(width: 340, height: 400)
     let viewTop = window.convertToScreen(view.convert(view.bounds, to: nil)).maxY
     #expect(caret.maxY <= viewTop)
     #expect(viewTop - caret.maxY < caret.height)
+}
+
+// MARK: - Preferring the other side (M8)
+
+/// The format bar wants the mirror of what the completion panel wants: above the selection,
+/// flipping below when there is no room. Same rule, one parameter apart - which is the whole
+/// reason the placement was extracted rather than written twice.
+
+@Test func aBarPreferringAboveSitsAboveTheLine() {
+    let line = NSRect(x: 400, y: 800, width: 120, height: 20)
+    let origin = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: line, in: visible, preferring: .above
+    )
+    #expect(origin.y >= line.maxY)
+}
+
+@Test func aBarPreferringAboveFlipsBelowAtTheTopOfTheScreen() {
+    // A selection near the top of the screen has nowhere above it, and a bar clamped back
+    // inside would land on the words it is meant to be formatting.
+    let line = NSRect(x: 400, y: visible.maxY - 30, width: 120, height: 20)
+    let origin = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: line, in: visible, preferring: .above
+    )
+    #expect(origin.y + panelSize.height <= line.minY)
+}
+
+@Test func theTwoSidesAreNotTheSamePlacement() {
+    // The negative control: with `preferring` ignored, both of the tests above could pass on
+    // whichever single rule survived.
+    let line = NSRect(x: 400, y: 800, width: 120, height: 20)
+    let above = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: line, in: visible, preferring: .above
+    )
+    let below = PanelPlacement.origin(
+        forPanelOf: panelSize, besides: line, in: visible, preferring: .below
+    )
+    #expect(above.y > below.y)
 }

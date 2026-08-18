@@ -126,12 +126,12 @@ final class CompletionPanel {
         self.panel = panel
         // The height first, because it decides the placement: a panel taller than the room
         // on either side of the caret has nowhere to go that is not on top of the caret.
-        let visible = Self.visibleFrame(containing: caretRect)
-        lastMaxHeight = Self.roomForPanel(besides: caretRect, in: visible)
+        let visible = PanelPlacement.visibleFrame(containing: caretRect)
+        lastMaxHeight = PanelPlacement.room(besides: caretRect, in: visible)
         render(into: panel, maxHeight: lastMaxHeight)
-        panel.setFrameOrigin(
-            Self.origin(forPanelOf: panel.frame.size, under: caretRect, in: visible)
-        )
+        panel.setFrameOrigin(PanelPlacement.origin(
+            forPanelOf: panel.frame.size, besides: caretRect, in: visible, preferring: .below
+        ))
 
         if let parent, panel.parent == nil { parent.addChildWindow(panel, ordered: .above) }
         panel.orderFront(nil)
@@ -215,46 +215,5 @@ final class CompletionPanel {
         // which is what makes a row clickable.
         panel.ignoresMouseEvents = false
         return panel
-    }
-
-    /// The gap between the caret's line and the panel, and the margin kept from the screen.
-    /// `nonisolated` because the placement rule is pure and is checked without a screen.
-    nonisolated private static let gap: CGFloat = 6
-    nonisolated private static let margin: CGFloat = 8
-
-    nonisolated static func visibleFrame(containing caretRect: NSRect) -> NSRect {
-        let screen = NSScreen.screens.first { $0.frame.intersects(caretRect) } ?? NSScreen.main
-        return screen?.visibleFrame ?? .zero
-    }
-
-    /// How tall the panel may be: the taller of the two sides of the caret's line.
-    ///
-    /// Asked before the panel is built, because the height decides the placement rather than
-    /// following from it. Without this the list grew to its content, found room on neither
-    /// side, and had to be put somewhere - and every "somewhere" that fits on the screen is
-    /// on top of the line being typed into.
-    nonisolated static func roomForPanel(besides caretRect: NSRect, in visible: NSRect) -> CGFloat {
-        let below = caretRect.minY - visible.minY - gap - margin
-        let above = visible.maxY - caretRect.maxY - gap - margin
-        return max(below, above)
-    }
-
-    /// The placement rule, with no window in it so it can be checked without a screen.
-    ///
-    /// Screen coordinates throughout, so y grows upwards and below the caret means a smaller
-    /// y. Under the line when it fits there, above it when it does not, and **never a clamp
-    /// that crosses the line**: pulling a panel back inside the screen is what put it over
-    /// the text the person was typing. If it fits on neither side it hangs off the screen
-    /// edge instead, which is the honest failure of the two.
-    nonisolated static func origin(
-        forPanelOf size: NSSize, under caretRect: NSRect, in visible: NSRect
-    ) -> NSPoint {
-        var y = caretRect.minY - size.height - gap
-        if y < visible.minY + margin { y = caretRect.maxY + gap }
-        let x = min(
-            max(caretRect.minX, visible.minX + margin),
-            max(visible.minX + margin, visible.maxX - size.width - margin)
-        )
-        return NSPoint(x: x, y: y)
     }
 }
