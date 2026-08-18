@@ -1,11 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// An `NSTextView` that completes note titles after `[[` and tags after `#`.
+/// An `NSTextView` that completes note titles after `[[`, headings after `[[Nota#`, tags
+/// after `#`, and the command catalogue after `/`.
 ///
-/// Uses AppKit's own completion list rather than a custom popup: it already handles
-/// arrow keys, Escape, and placement near the insertion point, and matching that
-/// behaviour by hand is how a completion list ends up feeling wrong.
+/// All four are drawn in one `CompletionPanel`. The first three used AppKit's own
+/// completion list, which was the right way to start - arrow keys, Escape and scrolling
+/// came free - and turned out to place itself where it liked: near the bottom edge of the
+/// window over the caret's own line, or off the screen entirely (PG-023). This view owns
+/// the keys in exchange, in `doCommand(by:)`, and the panel places itself.
 final class CompletingTextView: NSTextView {
     var noteTitles: [String] = []
     var tagSuggestions: [String] = []
@@ -15,12 +18,18 @@ final class CompletingTextView: NSTextView {
     var editorCommands: [EditorCommand] = []
     /// Runs a command the app owns. The text view never performs one itself.
     var onRunCommand: ((ShortcutCommand) -> Void)?
-    /// The slash menu's own window. Owned here because it lives and dies with the text
-    /// view it opens over.
-    let slashMenu = SlashMenu()
-    /// Where the `/` was when the user pressed Escape, so the menu does not come back on
-    /// the next keystroke of the same word.
-    private var dismissedSlashLocation: Int?
+    /// The panel every completion is drawn in. Owned here because it lives and dies with
+    /// the text view it opens over, and configured lazily so that choosing a row by mouse
+    /// lands in the same place as choosing it by Return.
+    private(set) lazy var completionPanel: CompletionPanel = {
+        let panel = CompletionPanel()
+        panel.onChoose = { [weak self] item in self?.apply(item) }
+        return panel
+    }()
+    /// Where the trigger was when the user pressed Escape, so the panel does not come back
+    /// on the next keystroke of the same word. AppKit's list used to remember this for the
+    /// three completions it served; now nothing else will.
+    private var dismissedLocation: Int?
     /// Called with pasted text; returns true when it handled the paste itself.
     var onPasteURL: ((String) -> Bool)?
     /// Called with the PNG bytes of a pasted image; returns the name it was saved under.
@@ -36,95 +45,6 @@ final class CompletingTextView: NSTextView {
     /// carries a link attribute and `clickedOnLink` never fires for it.
     var onClickInMargin: ((CGPoint) -> Bool)?
 
-    /// A click on a drawn decoration is not a click in the text.
-    ///
-    /// Handled before `super`, which would otherwise move the caret to the nearest
-    /// character - and the nearest character to a rendition is the source line above it, so
-    /// the caret would jump every time somebody meant to follow the note.
-    override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if onClickInMargin?(point) == true { return }
-        super.mouseDown(with: event)
-    }
-
-    /// Pasting a URL over a selection writes a markdown link (SPEC §5); pasting a
-    /// picture writes the file into the vault and embeds it.
-    override func paste(_ sender: Any?) {
-        if let pasted = NSPasteboard.general.string(forType: .string),
-           onPasteURL?(pasted) == true {
-            return
-        }
-        if let onPasteImage, let png = Self.pastedImagePNG(), let name = onPasteImage(png) {
-            insertText(EditorEdits.embed(forFileNamed: name), replacementRange: selectedRange())
-            return
-        }
-        super.paste(sender)
-    }
-
-    /// PNG bytes for an image sitting on the pasteboard, whatever form it arrived in.
-    ///
-    /// A screenshot comes as TIFF and a picture copied from a browser as PNG, so both
-    /// are normalised here and the vault only ever receives one format. A file copied in
-    /// the Finder is deliberately left alone: it arrives as a URL and belongs to the drop
-    /// path, which keeps the name it already has.
-    private static func pastedImagePNG() -> Data? {
-        let pasteboard = NSPasteboard.general
-        guard pasteboard.data(forType: .fileURL) == nil else { return nil }
-        if let png = pasteboard.data(forType: .png) { return png }
-        guard let tiff = pasteboard.data(forType: .tiff),
-              let bitmap = NSBitmapImageRep(data: tiff)
-        else { return nil }
-        return bitmap.representation(using: .png, properties: [:])
-    }
-
-    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        // A note title dragged from the sidebar onto a task line links the two
-        // (SPEC §7.2, "collegamento assistito"). Checked before the file case: a
-        // sidebar row carries a string, not a URL.
-        if let title = sender.draggingPasteboard.string(forType: .string),
-           !title.contains("\n"),
-           noteTitles.contains(title),
-           linkTitle(title, at: sender.draggingLocation) {
-            return true
-        }
-
-        let urls = sender.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self], options: nil
-        ) as? [URL] ?? []
-        guard !urls.isEmpty, let onDropFile else { return super.performDragOperation(sender) }
-
-        // Each dropped file is copied into the vault and embedded by name; the app
-        // never links to a path outside the vault, which would break the day the file
-        // moves or the disk is not mounted.
-        let embeds = urls.compactMap(onDropFile).map(EditorEdits.embed(forFileNamed:))
-        guard !embeds.isEmpty else { return super.performDragOperation(sender) }
-
-        insertText(embeds.joined(separator: "\n"), replacementRange: selectedRange())
-        return true
-    }
-
-    /// Appends `[[title]]` to the task line under the drop point.
-    ///
-    /// Only a task line: dropping a note in the middle of a paragraph would rewrite
-    /// prose the user did not ask to change, and §7.2 is about tasks.
-    private func linkTitle(_ title: String, at windowPoint: NSPoint) -> Bool {
-        let point = convert(windowPoint, from: nil)
-        let index = characterIndexForInsertion(at: point)
-        let text = string as NSString
-        guard index <= text.length else { return false }
-
-        let lineRange = text.lineRange(for: NSRange(location: min(index, max(0, text.length - 1)), length: 0))
-        let line = text.substring(with: lineRange)
-        guard TaskParser.parse(line: line, sourcePath: "", lineIndex: 0) != nil else { return false }
-        guard !line.contains("[[\(title)]]") else { return true }
-
-        // Before the newline, so the link joins the task rather than starting a line.
-        let trimmed = line.hasSuffix("\n") ? String(line.dropLast()) : line
-        let replacement = trimmed + " [[\(title)]]" + (line.hasSuffix("\n") ? "\n" : "")
-        insertText(replacement, replacementRange: lineRange)
-        return true
-    }
-
     private enum Context {
         case wikilink(prefix: String)
         /// `[[Nota#pre`, where the note is already named and a heading of *that* note is
@@ -135,13 +55,25 @@ final class CompletingTextView: NSTextView {
         /// The prefix carries the `/` itself, like the tag one carries its `#`, so the
         /// range to replace is simply its length.
         case slash(prefix: String)
+
+        /// The icon the candidates are drawn with. A command brings its own, so this is
+        /// only ever asked of the three that offer plain strings.
+        var symbol: String {
+            switch self {
+            case .wikilink: "doc.text"
+            case .section: "number"
+            case .tag: "tag"
+            case .slash: "command"
+            }
+        }
     }
 
-    /// True right after the user typed `[[` or `#`, so AppKit's list opens without a
-    /// keyboard shortcut.
+    /// True where the caret is in one of the three contexts that offer candidate strings
+    /// rather than commands.
     ///
-    /// Not the slash menu, which has its own panel and is opened by `refreshSlashMenu`:
-    /// asking AppKit's list for it as well would put two lists on screen at once.
+    /// `completionContext()` is private and is the rule the whole feature turns on, so this
+    /// and `shouldOpenSlashMenu` exist to make it assertable: between them they say which
+    /// of the two shapes the panel takes, and the pair can never both be true.
     func shouldOfferCompletion() -> Bool {
         switch completionContext() {
         case .wikilink, .section, .tag: true
@@ -149,19 +81,18 @@ final class CompletingTextView: NSTextView {
         }
     }
 
-    // MARK: The slash menu (M8)
+    // MARK: The completion panel (M8)
 
-    /// Whether what is under the caret would open the slash menu.
+    /// Whether what is under the caret would open the command list.
     ///
-    /// The counterpart of `shouldOfferCompletion` for the trigger that no longer goes
-    /// through AppKit's list, and the thing the trigger's tests assert on: opening the
-    /// real panel needs a window, and the rule is what has to be right.
+    /// The counterpart of `shouldOfferCompletion`, and the thing the trigger's tests assert
+    /// on: opening the real panel needs a window, and the rule is what has to be right.
     func shouldOpenSlashMenu() -> Bool {
         guard let location = slashLocation() else { return false }
-        return location != dismissedSlashLocation
+        return location != dismissedLocation
     }
 
-    /// Escape closes the menu **and leaves the text alone**, which needs both halves said.
+    /// Escape closes the panel **and leaves the text alone**, which needs both halves said.
     ///
     /// Deleting the `/` on dismissal was the alternative and it is a trap: a person
     /// writing `/usr/local` would lose the character, retype it, and reopen the menu -
@@ -169,41 +100,70 @@ final class CompletingTextView: NSTextView {
     /// this app's own precedent, ADR-0008 §D3, where a capture dismissed by accident
     /// keeps what was typed.
     ///
-    /// So the slash stays and the dismissal is remembered instead. Without this the menu
-    /// reopened on the very next keystroke, because the context was still a slash context
+    /// So the trigger stays and the dismissal is remembered instead. Without this the panel
+    /// reopened on the very next keystroke, because the context was still the same context
     /// - Escape closed it for exactly as long as the user did not type.
-    func dismissSlashMenu() {
-        dismissedSlashLocation = slashLocation()
-        slashMenu.hide()
+    func dismissCompletion() {
+        dismissedLocation = triggerLocation()
+        completionPanel.hide()
     }
 
-    /// Where the `/` that would open the menu sits, or nil when there is none.
+    /// Where the `/` that would open the command list sits, or nil when there is none.
     private func slashLocation() -> Int? {
-        guard case .slash(let prefix) = completionContext() else { return nil }
-        return selectedRange().location - prefix.count
+        guard case .slash = completionContext() else { return nil }
+        return triggerLocation()
     }
 
-    /// Opens, updates or closes the slash menu for whatever is under the caret now.
+    /// Where what is being completed begins, whichever of the four contexts it is.
     ///
-    /// Called on every keystroke, from the same place that offers the other two
-    /// completions. Closing is as important as opening: the menu has to go the moment the
-    /// context stops being one, or it hangs over a note nobody is filtering any more.
-    func refreshSlashMenu(theme: Theme) {
-        guard case .slash(let prefix) = completionContext() else {
-            // Out of a slash context entirely: forget the dismissal too, so the next `/`
-            // opens the menu as the first one did.
-            dismissedSlashLocation = nil
-            slashMenu.hide()
+    /// The same number `rangeForUserCompletion` starts at, and deliberately taken from it:
+    /// two ways of computing where a completion starts is one way too many.
+    private func triggerLocation() -> Int? {
+        guard completionContext() != nil else { return nil }
+        return rangeForUserCompletion.location
+    }
+
+    /// Opens, updates or closes the panel for whatever is under the caret now.
+    ///
+    /// Called on every keystroke. Closing is as important as opening: the panel has to go
+    /// the moment the context stops being one, or it hangs over a note nobody is filtering
+    /// any more.
+    func refreshCompletion(theme: Theme) {
+        guard let context = completionContext() else {
+            // Out of every context: forget the dismissal too, so the next trigger opens the
+            // panel as the first one did.
+            dismissedLocation = nil
+            completionPanel.hide()
             return
         }
-        guard shouldOpenSlashMenu() else { return }
-        let query = String(prefix.dropFirst())
-        slashMenu.show(
-            EditorCommand.matching(query, in: editorCommands),
+        guard triggerLocation() != dismissedLocation else { return }
+
+        let items: [CompletionItem]
+        let query: String
+        switch context {
+        case .slash(let prefix):
+            query = String(prefix.dropFirst())
+            items = EditorCommand.matching(query, in: editorCommands).map(CompletionItem.command)
+        case .wikilink(let prefix), .section(_, let prefix), .tag(let prefix):
+            query = prefix
+            let symbol = context.symbol
+            let candidates = completions(
+                forPartialWordRange: rangeForUserCompletion, indexOfSelectedItem: nil
+            ) ?? []
+            // Nothing matched: no panel at all, which is what AppKit's list did and is right
+            // here. The candidates are the vault's own notes and tags, so typing a title
+            // that does not exist yet is the ordinary case and not worth an empty box.
+            guard !candidates.isEmpty else {
+                completionPanel.hide()
+                return
+            }
+            items = candidates.map { .text($0, symbol: symbol) }
+        }
+
+        completionPanel.show(
+            items,
             query: query,
-            // Screen coordinates already, which is what the panel wants: converting this
-            // by hand is how a popup ends up on the wrong display.
-            caretRect: firstRect(forCharacterRange: selectedRange(), actualRange: nil),
+            caretRect: caretRectOnScreen(),
             over: window,
             theme: theme
         )
@@ -216,55 +176,62 @@ final class CompletingTextView: NSTextView {
     /// the list. Anything not in this list falls through, so every other key still edits
     /// the note.
     override func doCommand(by selector: Selector) {
-        guard slashMenu.isVisible else {
+        guard completionPanel.isVisible else {
             super.doCommand(by: selector)
             return
         }
         switch selector {
         case #selector(moveUp(_:)):
-            slashMenu.moveSelection(by: -1)
+            completionPanel.moveSelection(by: -1)
         case #selector(moveDown(_:)):
-            slashMenu.moveSelection(by: 1)
+            completionPanel.moveSelection(by: 1)
         case #selector(insertNewline(_:)), #selector(insertTab(_:)):
-            runSelectedSlashCommand()
+            if let selected = completionPanel.selected { apply(selected) }
         // Escape reaches a text view as either of these depending on what else is
         // installed, so both are caught rather than the one that happened to work.
         case #selector(cancelOperation(_:)), #selector(complete(_:)):
-            dismissSlashMenu()
+            dismissCompletion()
         default:
             super.doCommand(by: selector)
         }
     }
 
-    /// Replaces the typed `/prefisso` with what the chosen command produces.
+    /// Replaces what was typed with what the chosen row produces.
     ///
-    /// One edit, so undo takes the whole thing back rather than peeling it a character at
-    /// a time. The menu closes first: a command that opens a panel or changes pane would
-    /// otherwise leave a list floating over whatever it opened.
-    private func runSelectedSlashCommand() {
-        guard let command = slashMenu.selected else { return }
+    /// The single place a choice is acted on, whether it arrived by Return, by Tab or by a
+    /// click on the row. One edit, so undo takes the whole thing back rather than peeling
+    /// it a character at a time. The panel closes first: a command that opens a panel or
+    /// changes pane would otherwise leave a list floating over whatever it opened.
+    private func apply(_ item: CompletionItem) {
         let range = rangeForUserCompletion
-        slashMenu.hide()
+        completionPanel.hide()
 
-        switch command.action {
-        case .insert(let text, let cursorBack):
-            insertText(text, replacementRange: range)
-            // Counted in UTF-16, which is what an `NSRange` is measured in: `count` on a
-            // String would put the caret in the wrong place the first time a template
-            // carries an emoji.
-            let end = range.location + (text as NSString).length
-            setSelectedRange(NSRange(location: max(range.location, end - cursorBack), length: 0))
-        case .app(let appCommand):
-            // The typed `/prefisso` goes first: the command may open a panel or move to
-            // another pane, and coming back to find `/oggi` still in the note reads as the
-            // menu having failed.
-            insertText("", replacementRange: range)
-            onRunCommand?(appCommand)
+        switch item {
+        // The bare string, which is what AppKit's list inserted: `[[Nota` is left open for
+        // the person to close, and a heading replaces only what follows the `#`.
+        case .text(let value, _):
+            insertText(value, replacementRange: range)
+        case .command(let command):
+            switch command.action {
+            case .insert(let text, let cursorBack):
+                insertText(text, replacementRange: range)
+                // Counted in UTF-16, which is what an `NSRange` is measured in: `count` on a
+                // String would put the caret in the wrong place the first time a template
+                // carries an emoji.
+                let end = range.location + (text as NSString).length
+                setSelectedRange(NSRange(location: max(range.location, end - cursorBack), length: 0))
+            case .app(let appCommand):
+                // The typed `/prefisso` goes first: the command may open a panel or move to
+                // another pane, and coming back to find `/oggi` still in the note reads as
+                // the menu having failed.
+                insertText("", replacementRange: range)
+                onRunCommand?(appCommand)
+            }
         }
     }
 
     override func resignFirstResponder() -> Bool {
-        slashMenu.hide()
+        completionPanel.hide()
         return super.resignFirstResponder()
     }
 
@@ -310,9 +277,10 @@ final class CompletingTextView: NSTextView {
             let matches = tagSuggestions.filter { $0.hasPrefix(prefix) }.prefix(12)
             return matches.isEmpty ? nil : Array(matches)
         case .slash:
-            // Never AppKit's list: the slash menu is drawn by `SlashMenu`. Reached only if
-            // something else asks the text view to complete - Escape does, on some
-            // configurations - and answering nil is what keeps the two from both opening.
+            // The command list is built from the catalogue in `refreshCompletion`, not from
+            // here. Reached only if something else asks the text view to complete - Escape
+            // does, on some configurations - and nil is what stops AppKit's own list, which
+            // this panel replaced, from appearing over it.
             return nil
         }
     }

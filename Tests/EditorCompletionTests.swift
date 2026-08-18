@@ -112,7 +112,7 @@ private func textView(_ text: String, cursor: Int) -> CompletingTextView {
     let view = textView("/us", cursor: 3)
     #expect(view.shouldOpenSlashMenu())
 
-    view.dismissSlashMenu()
+    view.dismissCompletion()
     #expect(!view.shouldOpenSlashMenu())
 
     // Typing on: still the same slash, still dismissed.
@@ -131,15 +131,17 @@ private func textView(_ text: String, cursor: Int) -> CompletingTextView {
     // The other half of the same decision: dismissing must not delete. A capture
     // dismissed by accident keeps what was typed (ADR-0008 §D3) and so does this.
     let view = textView("Percorso /usr", cursor: 13)
-    view.dismissSlashMenu()
+    view.dismissCompletion()
     #expect(view.string == "Percorso /usr")
 }
 
 @MainActor
 @Test func theTwoKindsOfCompletionNeverBothOpen() {
-    // The slash menu is a panel of ours and the other two are AppKit's list. A context
-    // that answered yes to both would put two lists on screen at once, which is the
-    // failure this pair of predicates exists to make impossible.
+    // One panel, one shape at a time: `/` offers the command catalogue and the other three
+    // offer candidate strings. A context answering yes to both would have to draw two lists
+    // in one window, which is the failure this pair of predicates exists to make impossible.
+    // It mattered more when the two kinds were two mechanisms - ours and AppKit's - and it
+    // still holds now that they are one (PG-023).
     for text in ["/", "/tab", "Testo /co"] {
         let view = textView(text, cursor: (text as NSString).length)
         #expect(view.shouldOpenSlashMenu())
