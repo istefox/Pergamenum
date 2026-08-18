@@ -82,6 +82,10 @@ extension NoteTextView {
         /// the caret does.
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            // The format bar first, and entirely inside AppKit: it is a child window this view
+            // owns, so showing it needs no SwiftUI update at all. That matters here more than
+            // anywhere - this method runs on every arrow key.
+            (textView as? CompletingTextView)?.refreshFormatBar(theme: parent.theme)
             let caret = textView.selectedRange().location
             let entry = parent.outlineRanges.lastIndex { $0.location <= caret }
             guard lastOutlineEntry != .some(entry) else { return }

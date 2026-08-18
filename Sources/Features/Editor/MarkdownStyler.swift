@@ -13,6 +13,11 @@ enum MarkdownStyler {
         case heading(level: Int)
         case bold
         case italic
+        /// `~~testo~~`. Added with the format bar (M8), and it closes a real gap rather than
+        /// adding a style: `MarkdownInlineParser` has rendered strikethrough in Lettura since
+        /// the reading view existed, and the editor left it plain - the same text looking
+        /// formatted on one surface and not on the other.
+        case strikethrough
         case code
         /// The `[[` `]]` `#` `|` punctuation inside a wikilink.
         case linkSyntax
@@ -92,7 +97,9 @@ enum MarkdownStyler {
              .linkSyntax, .linkTarget, .embedTarget, .tag,
              .taskMarker, .scheduled, .due, .annotation:
             true
-        case .heading, .bold, .italic:
+        // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
+        // and prose is exactly what a spell checker is for.
+        case .heading, .bold, .italic, .strikethrough:
             false
         }
     }
@@ -191,53 +198,58 @@ enum MarkdownStyler {
         var index = 0
 
         while index < characters.count {
-            let character = characters[index]
-
-            switch character {
-            case "*", "_":
-                if let (length, span) = emphasis(characters, at: index) {
-                    result.append(StyledRange(range: absolute(index, length), span: span))
-                    index += length
-                    continue
-                }
-            case "`":
-                if let end = characters[(index + 1)...].firstIndex(of: "`") {
-                    let length = end - index + 1
-                    result.append(StyledRange(range: absolute(index, length), span: .code))
-                    index += length
-                    continue
-                }
-            case "#":
-                // An inline tag, not a heading: it must be preceded by whitespace or
-                // start the line, or `C#` and a URL fragment would both become tags.
-                let precededByBoundary = index == 0 || characters[index - 1] == " "
-                if precededByBoundary, let length = tagLength(characters, from: index) {
-                    let value = String(characters[index..<(index + length)])
-                    result.append(StyledRange(range: absolute(index, length), span: .tag(value)))
-                    index += length
-                    continue
-                }
-            case ">", "!":
-                if let length = dateMarkerLength(characters, from: index) {
-                    result.append(StyledRange(
-                        range: absolute(index, length),
-                        span: character == ">" ? .scheduled : .due
-                    ))
-                    index += length
-                    continue
-                }
-            case "@":
-                if let length = annotationLength(characters, from: index) {
-                    result.append(StyledRange(range: absolute(index, length), span: .annotation))
-                    index += length
-                    continue
-                }
-            default:
-                break
+            guard let (length, span) = inlineSpan(in: characters, at: index) else {
+                index += 1
+                continue
             }
-            index += 1
+            result.append(StyledRange(range: absolute(index, length), span: span))
+            index += length
         }
         return result
+    }
+
+    /// What starts at `index`, if anything does.
+    ///
+    /// A table rather than a loop with the recognisers inlined in it, which is what this was
+    /// until strikethrough became the sixth: each arm answers «how long, and what», the loop
+    /// above only walks. Splitting them is what keeps either of the two readable.
+    private static func inlineSpan(
+        in characters: [Character], at index: Int
+    ) -> (Int, Span)? {
+        switch characters[index] {
+        case "*", "_":
+            return emphasis(characters, at: index)
+        case "~":
+            return strikethroughLength(characters, from: index).map { ($0, .strikethrough) }
+        case "`":
+            guard let end = characters[(index + 1)...].firstIndex(of: "`") else { return nil }
+            return (end - index + 1, .code)
+        case "#":
+            // An inline tag, not a heading: it must be preceded by whitespace or start the
+            // line, or `C#` and a URL fragment would both become tags.
+            let precededByBoundary = index == 0 || characters[index - 1] == " "
+            guard precededByBoundary, let length = tagLength(characters, from: index) else { return nil }
+            return (length, .tag(String(characters[index..<(index + length)])))
+        case ">", "!":
+            return dateMarkerLength(characters, from: index)
+                .map { ($0, characters[index] == ">" ? .scheduled : .due) }
+        case "@":
+            return annotationLength(characters, from: index).map { ($0, .annotation) }
+        default:
+            return nil
+        }
+    }
+
+    private static func strikethroughLength(_ characters: [Character], from index: Int) -> Int? {
+        guard index + 1 < characters.count, characters[index + 1] == "~" else { return nil }
+        var cursor = index + 2
+        while cursor + 1 < characters.count {
+            if characters[cursor] == "~", characters[cursor + 1] == "~" {
+                return cursor + 2 - index
+            }
+            cursor += 1
+        }
+        return nil
     }
 
     private static func emphasis(_ characters: [Character], at index: Int) -> (Int, Span)? {

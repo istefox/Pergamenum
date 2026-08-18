@@ -39,6 +39,14 @@ final class CompletingTextView: NSTextView {
     /// The headings of a note, for completing `[[Nota#`. Nil where there is no vault to
     /// look one up in, and then the section context simply offers nothing.
     var noteSections: ((String) -> [String])?
+    /// The format bar, owned here for the same reason the completion panel is: it lives and
+    /// dies with the text view it floats over (M8).
+    private(set) lazy var formatBar: FormatBarPanel = {
+        let bar = FormatBarPanel()
+        bar.onChoose = { [weak self] action in self?.applyFormat(action) }
+        return bar
+    }()
+
     /// Called with a click in the view's own coordinates, before the text view does
     /// anything with it; returns true when it handled it. This is how a transcluded note
     /// drawn under a line is opened (ADR-0010): the drawing is not text, so no character
