@@ -29,6 +29,13 @@ struct VaultBrowser: View {
     /// it must be consumed once, and read straight from `Navigation` it would be re-applied
     /// on every view update until something else changed (M8).
     @State var pendingJump: Navigation.OutlineJump?
+    /// Trova e sostituisci inside the open note (SPEC §10, M8). Here rather than on
+    /// `Navigation`, which keeps only the two menu flags: a search belongs to the note being
+    /// looked at, not to the app.
+    @State var find = FindSession()
+    /// The replacements the bar asked for, consumed once - the shape `pendingInsertion` and
+    /// `pendingJump` already have.
+    @State var pendingReplacements: [(range: NSRange, text: String)]?
 
     var body: some View {
         HSplitView {
@@ -139,6 +146,10 @@ struct VaultBrowser: View {
                 editorHeader(note)
                 if note.externalChangePending != nil { conflictBanner }
                 Divider()
+                if find.isOpen {
+                    findBar(note)
+                    Divider()
+                }
                 if navigation.isReadingMode {
                     reading(note)
                 } else {
@@ -150,20 +161,6 @@ struct VaultBrowser: View {
         } else {
             emptyState
         }
-    }
-
-    private var conflictBanner: some View {
-        HStack(spacing: theme.spacing(.s)) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(theme.color(.taskOverdue))
-            Text("La nota è cambiata su disco mentre la stavi modificando.")
-                .themedText(.caption)
-            Spacer()
-            Button("Ricarica da disco", action: vault.acceptExternalChange)
-            Button("Tieni la mia versione", action: vault.keepLocalVersion)
-        }
-        .padding(theme.spacing(.s))
-        .background(theme.color(.accentMuted))
     }
 
     /// On the controller since the Diario pane's editor offers the same list.

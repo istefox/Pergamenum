@@ -185,12 +185,22 @@ struct EditCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Button("Incolla come testo puro") { actions.run(.pastePlain) }
                 .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
-
-            Divider()
+        }
+        // **Replacing and not adding.** SwiftUI's standard group is the system Find submenu,
+        // which drives `NSTextFinder` and already binds Cmd+F, Cmd+Alt+F, Cmd+G and
+        // Cmd+Shift+G. Beside it, our own «Trova nella nota» was a second Cmd+F that never
+        // fired: AppKit's item won, so Cmd+F opened AppKit's bar and ours never appeared.
+        // Seen on screen on 2026-08-18, and the reason the find slice has its own Cmd+G -
+        // taking this submenu away takes those two keys with it.
+        CommandGroup(replacing: .textEditing) {
             Button("Trova nella nota") { actions.run(.findInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findInNote))
             Button("Sostituisci") { actions.run(.replaceInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .replaceInNote))
+            Button("Trova successivo") { actions.run(.findNext) }
+                .keyboardShortcut(shortcuts.shortcut(for: .findNext))
+            Button("Trova precedente") { actions.run(.findPrevious) }
+                .keyboardShortcut(shortcuts.shortcut(for: .findPrevious))
         }
     }
 }

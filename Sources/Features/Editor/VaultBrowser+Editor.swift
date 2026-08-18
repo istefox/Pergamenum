@@ -67,10 +67,20 @@ extension VaultBrowser {
             insertion: pendingInsertion,
             onInsertionApplied: { pendingInsertion = nil },
             findRequest: findRequest,
-            onFindApplied: {
+            onFindApplied: { selection in
+                // The flags are cleared first: `open` bumps a focus request, and leaving them
+                // set would re-open the bar on the next update and bump it again, taking the
+                // caret back out of the note on every keystroke.
+                let replacing = navigation.isReplaceRequested
                 navigation.isFindRequested = false
                 navigation.isReplaceRequested = false
+                find.open(replacing: replacing, over: selection, in: note.text)
             },
+            matches: find.matches,
+            currentMatch: find.matches.isEmpty ? nil : find.current,
+            replacements: pendingReplacements,
+            onReplacementsApplied: { pendingReplacements = nil },
+            matchJump: find.currentMatch,
             focusRequest: focusRequest,
             scrollRequest: pendingJump,
             onScrollApplied: { pendingJump = nil },
@@ -86,6 +96,29 @@ extension VaultBrowser {
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,
             onToggleFold: navigation.toggleFold
+        )
+        .modifier(FindKeeping(find: find, navigation: navigation, text: note.text))
+    }
+
+    /// The find bar and everything it can ask for (SPEC §10, M8).
+    func findBar(_ note: VaultController.OpenNote) -> some View {
+        FindBar(
+            session: find,
+            onStep: { offset in find.step(by: offset) },
+            onReplaceOne: {
+                guard let match = find.currentMatch else { return }
+                pendingReplacements = [(match, NoteFind.replacement(
+                    for: find.currentQuery, matching: match, in: note.text,
+                    template: find.replacement
+                ))]
+            },
+            // Already ordered last match first by the session, which is what keeps the ranges
+            // of the ones still to come valid as the text moves.
+            onReplaceAll: { pendingReplacements = find.replacements(in: note.text) },
+            onClose: {
+                find.close()
+                focusRequest += 1
+            }
         )
     }
 
@@ -170,5 +203,40 @@ extension VaultBrowser {
             },
             generation: vault.scanGeneration
         )
+    }
+}
+
+/// Keeps the search in step with the note and with the two keys that move it.
+///
+/// A modifier rather than five `onChange`s inline, because `editing(_:)` is already the
+/// longest function in the widest view in the app and this is a separate concern from wiring
+/// the text view.
+private struct FindKeeping: ViewModifier {
+    let find: FindSession
+    let navigation: Navigation
+    let text: String
+
+    func body(content: Content) -> some View {
+        content
+            // Recomputed when the note changes as well as when the query does: with the bar
+            // open, typing in the note moves every match after the caret.
+            .onChange(of: text) { find.update(in: text) }
+            .onChange(of: find.query) { find.update(in: text) }
+            .onChange(of: find.isRegex) { find.update(in: text) }
+            .onChange(of: find.isCaseSensitive) { find.update(in: text) }
+            // Cmd+G and Cmd+Shift+G arrive as a running total, so the same key pressed twice
+            // is two steps where a Bool set twice would be one. Consumed by taking the
+            // difference and writing back what was taken.
+            .onChange(of: navigation.findStep) { previous, current in
+                guard let current else { return }
+                guard find.isOpen else {
+                    // Cmd+G with no bar open is «cerca di nuovo»: open it on the query that
+                    // is already there rather than doing nothing at all.
+                    navigation.isFindRequested = true
+                    return
+                }
+                find.step(by: current - (previous ?? 0))
+                navigation.findStep = nil
+            }
     }
 }

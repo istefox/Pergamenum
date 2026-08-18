@@ -28,6 +28,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case pastePlain
     case findInNote
     case replaceInNote
+    /// The two the standard Find submenu carried before it was replaced (M8). They exist
+    /// because that submenu is being taken away, not because they are new: Cmd+G and
+    /// Cmd+Shift+G work today through AppKit's own find bar, and a find of ours that dropped
+    /// them would be a smaller feature wearing a bigger one's name.
+    case findNext
+    case findPrevious
 
     case insertWikilink
     case insertRelated
@@ -80,7 +86,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder:
             .file
-        case .pastePlain, .findInNote, .replaceInNote:
+        case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious:
             .edit
         case .insertWikilink, .insertRelated:
             .insert
@@ -112,6 +118,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .pastePlain: "Incolla come testo puro"
         case .findInNote: "Trova nella nota"
         case .replaceInNote: "Sostituisci"
+        case .findNext: "Trova successivo"
+        case .findPrevious: "Trova precedente"
         case .insertWikilink: "Inserisci wikilink"
         case .insertRelated: "Inserisci nota correlata"
         case .paneNotes: "Vai a Note"
@@ -163,6 +171,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .pastePlain: KeyBinding("v", [.command, .shift, .option])
         case .findInNote: KeyBinding("f", .command)
         case .replaceInNote: KeyBinding("f", [.command, .option])
+        case .findNext: KeyBinding("g", .command)
+        case .findPrevious: KeyBinding("g", [.command, .shift])
         case .insertWikilink: KeyBinding("[", [.command, .shift])
         case .insertRelated: KeyBinding("k", [.command, .shift])
         case .paneNotes: KeyBinding("1", [.command, .control])

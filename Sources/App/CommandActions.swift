@@ -116,6 +116,10 @@ final class CommandActions {
             navigation.isFindRequested = true
         case .replaceInNote:
             navigation.isReplaceRequested = true
+        case .findNext:
+            navigation.findStep = (navigation.findStep ?? 0) + 1
+        case .findPrevious:
+            navigation.findStep = (navigation.findStep ?? 0) - 1
         default:
             assertionFailure("«\(command.title)» è nella sezione Modifica e non è gestito")
         }
@@ -220,7 +224,8 @@ final class CommandActions {
         // Everything else is always available, and the menu bar agrees: pane switching,
         // find, paste, the wikilink insertion and the four rescheduling commands carry no
         // `.disabled` today. See the type's own note about the last four.
-        case .openVault, .pastePlain, .findInNote, .replaceInNote, .insertWikilink,
+        case .openVault, .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious,
+             .insertWikilink,
              .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
              .paneDiary, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek,
              .previousDay, .nextDay:

@@ -108,6 +108,10 @@ final class Navigation {
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false
+    /// Cmd+G and Cmd+Shift+G, as a running total rather than a flag: pressing the same key
+    /// twice has to be two steps, and a Bool set twice is one. The editor consumes the
+    /// difference and writes back what it consumed.
+    var findStep: Int?
 
     // MARK: The outline (M8)
 

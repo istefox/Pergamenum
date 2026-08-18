@@ -37,9 +37,26 @@ struct NoteTextView: NSViewRepresentable {
     /// applied so it is not inserted twice on the next view update (SPEC §10).
     var insertion: (text: String, cursorBack: Int)?
     var onInsertionApplied: () -> Void = {}
-    /// Raised by the Modifica menu; opens AppKit's own find bar.
+    /// Raised by the Modifica menu; opens the find bar (SPEC §10, M8). Answered with the
+    /// selection there was at that moment, which is the search's scope - captured once, the
+    /// way AppKit's own bar did it, rather than followed: a scope tracking the caret would
+    /// shrink to nothing as soon as the search moved the selection onto a match.
     var findRequest: FindRequest?
-    var onFindApplied: () -> Void = {}
+    var onFindApplied: (NSRange) -> Void = { _ in }
+    /// What the find bar found, and which one the stepper is on. Drawn as a colour on the
+    /// layout manager rather than on the text - see `NoteTextView+Matches`.
+    var matches: [NSRange] = []
+    var currentMatch: Int?
+    /// Replacements to perform, and then report as performed. The one-shot shape `insertion`
+    /// already has. **Ordered last match first** by whoever builds them, so that applying one
+    /// does not move the ranges of those still to come.
+    var replacements: [(range: NSRange, text: String)]?
+    var onReplacementsApplied: () -> Void = {}
+    /// The match the stepper moved onto, to be brought into view. Its own input rather than
+    /// the index's `scrollRequest`: that one carries an `ordinal` the reading view counts
+    /// blocks by, and a find match has no position in the index to report. Borrowing the type
+    /// would mean filling that field with a number that means nothing.
+    var matchJump: NSRange?
     /// Bumped when the cursor should move into the editor, which is what makes a note
     /// created in the composer open ready to be typed into.
     var focusRequest = 0
@@ -84,10 +101,6 @@ struct NoteTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
-        // Trova e Sostituisci of SPEC §10: AppKit's find bar already does incremental
-        // search, replace-all and the scope of the current text view.
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
         textView.linkTextAttributes = [:]
         textView.onPasteURL = { [weak textView] pasted in
             guard let textView, let selectionRange = textView.selectedRanges.first as? NSRange,
@@ -113,6 +126,9 @@ struct NoteTextView: NSViewRepresentable {
         textView.string = text
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
+        context.coordinator.applyMatches(
+            to: textView, matches: matches, current: currentMatch, theme: theme
+        )
         return scrollView
     }
 
@@ -191,6 +207,12 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyFolding(to: textView, folded: foldedEntries, theme: theme)
+        // After the styling, always: `applyStyling` rewrites every attribute in the storage
+        // and invalidates the layout with them, so a highlight painted before it would be
+        // gone by the time anything was drawn.
+        context.coordinator.applyMatches(
+            to: textView, matches: matches, current: currentMatch, theme: theme
+        )
         context.coordinator.growToFitTheText(textView)
 
         if let insertion {
@@ -207,14 +229,24 @@ struct NoteTextView: NSViewRepresentable {
             context.coordinator.takeFocus()
         }
 
-        if let findRequest {
-            textView.window?.makeFirstResponder(textView)
-            textView.performTextFinderAction(
-                NSMenuItem(title: "", action: nil, keyEquivalent: "").withFinderTag(
-                    findRequest == .find ? .showFindInterface : .showReplaceInterface
-                )
-            )
-            onFindApplied()
+        if findRequest != nil {
+            // The selection as it is *now*, before anything else in this pass moves it. This
+            // is the whole of the scope: `FindSession.open` decides whether it is wide enough
+            // to be one.
+            onFindApplied(textView.selectedRange())
+        }
+
+        if let replacements {
+            context.coordinator.apply(replacements, to: textView)
+            onReplacementsApplied()
+        }
+
+        // Consumed by location, so stepping onto a different match scrolls and every other
+        // view update does not - the same guard `lastFocusRequest` and `lastScrollRequest`
+        // are. Cleared when the bar closes, so reopening on the same match scrolls again.
+        if matchJump?.location != context.coordinator.lastMatchLocation {
+            context.coordinator.lastMatchLocation = matchJump?.location
+            if let matchJump { context.coordinator.scroll(textView, to: matchJump, takingFocus: false) }
         }
 
         if let scrollRequest, scrollRequest.id != context.coordinator.lastScrollRequest {
@@ -226,13 +258,4 @@ struct NoteTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-}
-
-private extension NSMenuItem {
-    /// `performTextFinderAction` reads the sender's tag, so the action has to arrive
-    /// wearing one.
-    func withFinderTag(_ action: NSTextFinder.Action) -> NSMenuItem {
-        tag = action.rawValue
-        return self
-    }
 }

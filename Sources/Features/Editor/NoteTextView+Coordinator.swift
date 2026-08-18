@@ -21,6 +21,9 @@ extension NoteTextView {
         /// The same, for the index's jumps: without it every later view update would
         /// scroll back to the last heading clicked.
         var lastScrollRequest = 0
+        /// And for the find bar's, which is a location rather than a counter: the stepper
+        /// moves between matches and it is arriving at a *different* one that scrolls.
+        var lastMatchLocation: Int?
         /// What the editor draws besides the note's characters - folds and transcluded
         /// notes. Here rather than on the view: it is a fact about this text view's layout,
         /// and the view struct is rebuilt on every update (M8).
@@ -46,17 +49,29 @@ extension NoteTextView {
             self.parent = parent
         }
 
-        /// Takes the caret to a line the index pointed at.
+        /// Takes the caret to a line the index pointed at, or to a match the find bar
+        /// stepped onto.
         ///
         /// The caret and not only the scroller: arriving at a section and typing should
         /// write there, and a view that scrolled without moving the insertion point would
         /// send the next keystroke back where it came from.
-        func scroll(_ textView: NSTextView, to range: NSRange) {
+        ///
+        /// **`takingFocus` is why this has a parameter.** For the index it must be true, for
+        /// the reason above. For the find bar it must be false, and the cost of getting that
+        /// wrong is not subtle: the first letter typed into the find field changes the query,
+        /// the query finds a match, the match scrolls, the scroll takes first responder, and
+        /// the second letter is typed into the note. Found on screen on 2026-08-18, one
+        /// keystroke into the first use.
+        ///
+        /// The selection still moves in both cases. It is what «Sostituisci» acts on, and it
+        /// is what leaves the caret at the match when Esc closes the bar.
+        func scroll(_ textView: NSTextView, to range: NSRange, takingFocus: Bool = true) {
             let length = (textView.string as NSString).length
             guard range.location <= length else { return }
             let clamped = NSRange(location: range.location, length: min(range.length, length - range.location))
             textView.setSelectedRange(NSRange(location: clamped.location, length: 0))
             textView.scrollRangeToVisible(clamped)
+            guard takingFocus else { return }
             textView.window?.makeFirstResponder(textView)
         }
 
