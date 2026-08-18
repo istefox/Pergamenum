@@ -1,13 +1,14 @@
 <!-- project-tasks: prefix=PG lastId=26 -->
 # PROJECT TASKS
 
-Updated: 2026-08-18 · Open: 15 (P1: 0) · In progress: 0
+Updated: 2026-08-18 · Open: 14 (P1: 0) · In progress: 0
 
 ## Open Issues
 
 - [ ] `PG-004` **P2** `.pergamenum/cache.db` syncs in iCloud and will produce conflict copies; moving it out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
   - Harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
 - [ ] `PG-005` **P2** `NoteFileOperations` does not go through `VaultSession.write`, so the journal covers only part of a link rewrite and neither connector can offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 -->
+  - `PG-019` (dragging a section in the outline to move it) is the same class of work — a real text rewrite outside `VaultSession.write` — and belongs here rather than under the editor's own milestone.
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
@@ -17,16 +18,6 @@ _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-009` **P2** M8 Menu comandi ed editor: eight slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
-  - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
-  - Ninth slice (PR #57): one panel draws every completion. `SlashMenu` became `CompletionPanel`, and titles, sections and tags left AppKit's list - which placed itself over the caret's own line near the bottom of a window (PG-023).
-  - Eleventh slice: spell check with a language setting, and the Editor tab of SPEC §12 that had never been built. Off by default, «Automatica» or one of `NSSpellChecker.availableLanguages`, and the underline is kept off markdown syntax through `textView(_:shouldSetSpellingState:range:)` over the ranges `MarkdownStyler` already classifies - a checker that flags every wikilink and tag is one nobody keeps on.
-  - One rule for an empty panel: a closed catalogue explains itself, an open-ended candidate set disappears (`Context.noMatch`). `:` moved sides - it opens all 96 rows on a bare `:`, so the panel was already up and vanished mid-word while the command list in the same panel stayed and explained itself. The footer stopped naming «scegli» and «inserisci» over a list with no rows, which `/zzz` had been doing all along.
-  - Twelfth slice: find and replace with regular expressions, mockup-first. `NSTextFinder` cannot match by pattern (`NSTextFinderMatchingType` has four values and no fifth), so the bar is ours: `NoteFind` does the searching, `FindSession` holds the count and the stepper, and the matches are painted as rendering attributes on the layout manager rather than into the note. Two things were found only on screen - the standard SwiftUI Find submenu was winning Cmd+F so our bar never opened, and it was carrying Cmd+G, which had to become a command of ours rather than be lost.
-  - Left: floating format bar and the index's drag-to-move (PG-019). **Emoji on `:` reuses the panel** rather than building a second popup, which was half the reason to generalise it now.
-  - Eighth slice: `[[Nota#` completes that note's headings, in document order, offering exactly the strings `Transclusion.excerpt` can find.
-  - Sixth and seventh slices merged 2026-08-17: transclusion in the reading view with the index counting it (`IndexCache.schemaVersion` at 2), then the editor's card drawn under a source line that stays editable. ADR-0010 is fully shipped.
-  - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
@@ -35,7 +26,7 @@ _Nothing in progress._
 - [ ] `PG-013` **P3** M12 La settimana: week and month views, event notes, task grouping and sorting <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
-  - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes.
+  - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
@@ -62,6 +53,7 @@ _Nothing in progress._
 
 ## Done
 
+- [x] `PG-009` M8 Menu comandi ed editor complete, thirteen slices (PR #62, `7d19baa`): slash menu, code fence highlighting, the note's index, heading folding, transclusion in both surfaces, one `CompletionPanel` for every trigger (PG-023), spell check, emoji completion, find/replace with regex, and the floating format bar last — bold/italic/strikethrough/code plus wikilink/link over a selection, its `PanelPlacement` shared with `CompletionPanel` rather than duplicated. Two AppKit defects only found on screen: `NSPanel.hasShadow` ringed the capsule because its native shadow is computed from the window's own rectangular backing store, and a `.clear`-background `Button` was clickable only on its own glyph without an explicit `contentShape`. Left over: `PG-019`, filed under `PG-005` (2026-08-18)
 - [x] `PG-023` One panel draws every completion (PR #57, `6625362`): titles, sections, tags and commands all on `CompletionPanel`, which sits under the caret, flips above the line when there is no room, and never crosses the line being typed into — a clamp that held it inside the screen was the first attempt and put it on top of the text (2026-08-18)
 - [x] `PG-025` Typing at the end of a note brings the caret into view: the note grows taller on that very keystroke, so the scroll has to come after the growth and not before (`b1b2dfa`, 2026-08-18)
 - [x] `PG-024` The editor's text view now grows to what styling makes it draw — 1431 points needed against the 1244 given, so the last 187 were outside the scroll view's reach and the note looked like it stopped at its final heading. Three mechanisms lie: `sizeToFit()` does nothing, `layoutSubtreeIfNeeded()` works in a hand-built test and not in the app, `setFrameSize` works and empties the diary by re-entering SwiftUI's update pass. `layoutViewport()` leaves the resizing to AppKit (`b1b2dfa`, pre-existing on main, 2026-08-18)

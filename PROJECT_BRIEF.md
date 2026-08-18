@@ -87,6 +87,23 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-18: **M8 completo, `PG-009` chiuso.** Tredici slice, l'ultima è la barra di
+  formattazione: `InlineFormat` (`Sources/Core`, solo Foundation) avvolge e disfa una
+  selezione in grassetto, corsivo, barrato o codice riconoscendo entrambe le forme che
+  può prendere attorno a marcatori già presenti, più wikilink e link. La barra è un
+  `NSPanel` accanto alla selezione che non ruba mai il first responder, sullo stesso
+  schema di `CompletionPanel` - da cui `PanelPlacement` è stata estratta perché le due
+  regole «sopra, capovolgi sotto se non c'è spazio» restassero una sola.
+  Due difetti AppKit trovati solo sullo schermo, non dalla suite: `NSPanel.hasShadow`
+  calcola l'ombra nativa dal canale alfa del proprio backing store, e per un contenuto
+  più stretto della sua `NSHostingView` rettangolare - una `Capsule` - quel calcolo
+  disegnava un riquadro attorno alla pillola, trovato guardando lo screenshot pixel per
+  pixel; risolto spegnendo l'ombra nativa e lasciando disegnare solo quella di SwiftUI.
+  E un `Button` con sfondo `.clear` è cliccabile solo sui pixel opachi della sua
+  etichetta senza un `.contentShape` esplicito. Resta `PG-019` (trascinare una sezione
+  nell'indice), assegnato a `PG-005` perché è una riscrittura di testo attraverso
+  `VaultSession.write`, non lavoro sull'editor.
+
 - 2026-08-17: **M7 completo, la cattura è globale.** ADR-0008. `VaultAPI.capture` con le
   quattro destinazioni sta in `Sources/Connector/`, quindi il pannello, `perg capture` e
   la rotta `pergamenum://capture` sono tre facciate della stessa porta (PR #40). Sopra ci
