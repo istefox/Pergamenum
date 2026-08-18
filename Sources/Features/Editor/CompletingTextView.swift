@@ -45,29 +45,6 @@ final class CompletingTextView: NSTextView {
     /// carries a link attribute and `clickedOnLink` never fires for it.
     var onClickInMargin: ((CGPoint) -> Bool)?
 
-    private enum Context {
-        case wikilink(prefix: String)
-        /// `[[Nota#pre`, where the note is already named and a heading of *that* note is
-        /// being typed. Kept apart from `.wikilink` because the candidates come from a
-        /// different place and only the part after the `#` is replaced.
-        case section(note: String, prefix: String)
-        case tag(prefix: String)
-        /// The prefix carries the `/` itself, like the tag one carries its `#`, so the
-        /// range to replace is simply its length.
-        case slash(prefix: String)
-
-        /// The icon the candidates are drawn with. A command brings its own, so this is
-        /// only ever asked of the three that offer plain strings.
-        var symbol: String {
-            switch self {
-            case .wikilink: "doc.text"
-            case .section: "number"
-            case .tag: "tag"
-            case .slash: "command"
-            }
-        }
-    }
-
     /// True where the caret is in one of the three contexts that offer candidate strings
     /// rather than commands.
     ///
@@ -77,11 +54,24 @@ final class CompletingTextView: NSTextView {
     func shouldOfferCompletion() -> Bool {
         switch completionContext() {
         case .wikilink, .section, .tag: true
-        case .slash, nil: false
+        case .slash, .emoji, nil: false
         }
     }
 
     // MARK: The completion panel (M8)
+
+    /// Whether what is under the caret is the emoji trigger.
+    ///
+    /// The third of the three predicates, and it exists for the same reason as the other two:
+    /// `completionContext()` is private, and without a way to ask the rule directly a test can
+    /// only watch the panel - which stays shut both when the rule says no and when the query
+    /// simply matches nothing. That is not a test of the rule, and it was written that way
+    /// once: removing "at the start of a line or after a space" left it green, because `30`
+    /// in `14:30` matches no emoji either way.
+    func shouldOfferEmoji() -> Bool {
+        if case .emoji = completionContext() { return true }
+        return false
+    }
 
     /// Whether what is under the caret would open the command list.
     ///
@@ -144,6 +134,16 @@ final class CompletingTextView: NSTextView {
         case .slash(let prefix):
             query = String(prefix.dropFirst())
             items = EditorCommand.matching(query, in: editorCommands).map(CompletionItem.command)
+        case .emoji(let prefix):
+            query = String(prefix.dropFirst())
+            let matches = EmojiCatalogue.matching(query)
+            // Nothing matched: no panel, as for the candidate lists. A `:` in ordinary prose
+            // that happens to sit after a space would otherwise raise a box saying so.
+            guard !matches.isEmpty else {
+                completionPanel.hide()
+                return
+            }
+            items = matches.map { .emoji(glyph: $0.glyph, name: $0.name) }
         case .wikilink(let prefix), .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
@@ -211,6 +211,10 @@ final class CompletingTextView: NSTextView {
         // the person to close, and a heading replaces only what follows the `#`.
         case .text(let value, _):
             insertText(value, replacementRange: range)
+        // The glyph alone. The `:` and the name were how it was reached, not what was meant,
+        // and nothing shortcode-shaped is left in the file for Obsidian to read differently.
+        case .emoji(let glyph, _):
+            insertText(glyph, replacementRange: range)
         case .command(let command):
             switch command.action {
             case .insert(let text, let cursorBack):
@@ -247,6 +251,8 @@ final class CompletingTextView: NSTextView {
         case .section(_, let prefix): prefix.count
         case .tag(let prefix): prefix.count
         case .slash(let prefix): prefix.count
+        // The `:` goes too, as the tag's `#` does: what is written is the glyph alone.
+        case .emoji(let prefix): prefix.count
         }
         return NSRange(location: cursor - length, length: length)
     }
@@ -276,6 +282,9 @@ final class CompletingTextView: NSTextView {
         case .tag(let prefix):
             let matches = tagSuggestions.filter { $0.hasPrefix(prefix) }.prefix(12)
             return matches.isEmpty ? nil : Array(matches)
+        case .emoji:
+            // Same as `.slash`: built from a catalogue in `refreshCompletion`, never here.
+            return nil
         case .slash:
             // The command list is built from the catalogue in `refreshCompletion`, not from
             // here. Reached only if something else asks the text view to complete - Escape
@@ -283,84 +292,5 @@ final class CompletingTextView: NSTextView {
             // this panel replaced, from appearing over it.
             return nil
         }
-    }
-
-    /// The headings of `note` that match what has been typed after the `#`.
-    ///
-    /// The same fuzzy scoring the note titles get, and deliberately not the word-start rule
-    /// the slash menu uses: there the candidates are a fixed command catalogue and the
-    /// reordering on every keystroke was the defect, here they are the headings of one note.
-    ///
-    /// **Ties break in document order**, not by length. A note's sections have an order the
-    /// person wrote and reads them in - the one the index draws - and sorting the shortest
-    /// first offered a `###` from the bottom of the note before the section above it. Seen
-    /// on screen on 2026-08-17; the length rule read as arbitrary the moment it was used.
-    private func sections(of note: String, matching prefix: String) -> [String]? {
-        guard let candidates = noteSections?(note), !candidates.isEmpty else { return nil }
-        var scored: [(section: String, score: Int, order: Int)] = []
-        for (order, section) in candidates.enumerated() {
-            if prefix.isEmpty {
-                scored.append((section, 0, order))
-            } else if let score = FuzzyMatch.score(query: prefix, candidate: section) {
-                scored.append((section, score, order))
-            }
-        }
-        scored.sort { left, right in
-            left.score == right.score ? left.order < right.order : left.score > right.score
-        }
-        let matches = scored.prefix(12).map(\.section)
-        return matches.isEmpty ? nil : Array(matches)
-    }
-
-    /// Looks backwards from the cursor for a `[[` or `#` trigger on the current line.
-    private func completionContext() -> Context? {
-        let cursor = selectedRange().location
-        guard cursor > 0 else { return nil }
-
-        let text = string as NSString
-        guard cursor <= text.length else { return nil }
-
-        let lineRange = text.lineRange(for: NSRange(location: cursor, length: 0))
-        let beforeCursor = text.substring(with: NSRange(
-            location: lineRange.location, length: cursor - lineRange.location
-        ))
-
-        if let open = beforeCursor.range(of: "[[", options: .backwards) {
-            let prefix = String(beforeCursor[open.upperBound...])
-            // A closed link is not a completion context any more.
-            if !prefix.contains("]]") {
-                // A `#` inside an open wikilink names a section of the note before it. The
-                // first `#` wins, as it does in `WikilinkParser`; a `|` means the display
-                // text is being typed, and that is not a heading.
-                if let hash = prefix.firstIndex(of: "#"), !prefix.contains("|") {
-                    return .section(
-                        note: String(prefix[prefix.startIndex..<hash]),
-                        prefix: String(prefix[prefix.index(after: hash)...])
-                    )
-                }
-                return .wikilink(prefix: prefix)
-            }
-        }
-        if let hash = beforeCursor.range(of: "#", options: .backwards) {
-            let prefix = String(beforeCursor[hash.lowerBound...])
-            let atLineStart = hash.lowerBound == beforeCursor.startIndex
-            // `.last`, not `index(before:)`: a line that begins with `#` has nothing before it.
-            let afterSpace = beforeCursor.dropLast(prefix.count).last == " "
-            // `# ` opens a heading, not a tag, and a space ends the tag.
-            if atLineStart || afterSpace, !prefix.contains(" ") { return .tag(prefix: prefix) }
-        }
-        // Last, so the two triggers that existed first keep behaving exactly as they did.
-        if let slash = beforeCursor.range(of: "/", options: .backwards) {
-            let prefix = String(beforeCursor[slash.lowerBound...])
-            let atLineStart = slash.lowerBound == beforeCursor.startIndex
-            let afterSpace = beforeCursor.dropLast(prefix.count).last == " "
-            // The strictness is the whole design. `/` is ordinary in prose and in dates
-            // and in URLs, so it opens a menu only where a person would not otherwise be
-            // typing one: at the start of a line or after a space. That rules out
-            // `24/08/2026` (a digit before it), `http://x` (a slash before it) and `e/o`
-            // (a letter before it) without naming any of them, and a space ends the menu.
-            if atLineStart || afterSpace, !prefix.contains(" ") { return .slash(prefix: prefix) }
-        }
-        return nil
     }
 }

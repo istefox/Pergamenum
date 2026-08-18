@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=23 -->
+<!-- project-tasks: prefix=PG lastId=26 -->
 # PROJECT TASKS
 
-Updated: 2026-08-17 · Open: 15 (P1: 0) · In progress: 0
+Updated: 2026-08-18 · Open: 15 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -11,11 +11,6 @@ Updated: 2026-08-17 · Open: 15 (P1: 0) · In progress: 0
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
-- [ ] `PG-023` **P2** AppKit's completion list places itself badly near the bottom of the window: it covers the caret's line or falls out of sight, so a completion started on the last lines of a note cannot be read — `Sources/Features/Editor/CompletingTextView.swift` <!-- src:session opened:2026-08-17 -->
-  - Seen on screen on 2026-08-17 while completing `![[Nota#`. **Not a regression**: the same happens for `[[` title completion, which has been there since M1, and for tags.
-  - The slash menu does not have it because it does not use AppKit's list: `SlashMenu.place(_:under:)` flips above the line with a 6 pt gap when the screen has no room below. The fix is to bring titles, tags and sections onto that panel, which means generalising it away from `EditorCommand` and giving it the arrow/Return/Escape handling AppKit was providing for free.
-  - The cheap alternative, scrolling to make room before opening the list, does not help when the window's bottom edge is near the screen's.
-
 ## In Progress
 
 _Nothing in progress._
@@ -24,7 +19,8 @@ _Nothing in progress._
 
 - [ ] `PG-009` **P2** M8 Menu comandi ed editor: eight slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
   - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
-  - Left: floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019).
+  - Ninth slice (PR #57): one panel draws every completion. `SlashMenu` became `CompletionPanel`, and titles, sections and tags left AppKit's list - which placed itself over the caret's own line near the bottom of a window (PG-023).
+  - Left: floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019). **Emoji on `:` reuses the panel** rather than building a second popup, which was half the reason to generalise it now.
   - Eighth slice: `[[Nota#` completes that note's headings, in document order, offering exactly the strings `Transclusion.excerpt` can find.
   - Sixth and seventh slices merged 2026-08-17: transclusion in the reading view with the index counting it (`IndexCache.schemaVersion` at 2), then the editor's card drawn under a source line that stays editable. ADR-0010 is fully shipped.
   - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.
@@ -37,6 +33,11 @@ _Nothing in progress._
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes.
+- [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
+  - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
+  - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
+  - The runner's temporary directory is inside its container and is unreadable from outside, sandbox off or not. `XCTAttachment` plus `-resultBundlePath`, then `xcrun xcresulttool export attachments`, is how a screenshot actually gets looked at.
+
 - [ ] `PG-015` **P3** SPEC amendments §5, §7.4, §8 and §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
   - Each is applied before the milestone that depends on it, never after.
 
@@ -58,6 +59,9 @@ _Nothing in progress._
 
 ## Done
 
+- [x] `PG-023` One panel draws every completion (PR #57, `6625362`): titles, sections, tags and commands all on `CompletionPanel`, which sits under the caret, flips above the line when there is no room, and never crosses the line being typed into — a clamp that held it inside the screen was the first attempt and put it on top of the text (2026-08-18)
+- [x] `PG-025` Typing at the end of a note brings the caret into view: the note grows taller on that very keystroke, so the scroll has to come after the growth and not before (`b1b2dfa`, 2026-08-18)
+- [x] `PG-024` The editor's text view now grows to what styling makes it draw — 1431 points needed against the 1244 given, so the last 187 were outside the scroll view's reach and the note looked like it stopped at its final heading. Three mechanisms lie: `sizeToFit()` does nothing, `layoutSubtreeIfNeeded()` works in a hand-built test and not in the app, `setFrameSize` works and empties the diary by re-entering SwiftUI's update pass. `layoutViewport()` leaves the resizing to AppKit (`b1b2dfa`, pre-existing on main, 2026-08-18)
 - [x] `PG-021` The fold badge opens its own section: the click hit test the transclusion slice built (`onClickInMargin` plus a rectangle the fragment reports) turned out to be exactly what the badge was waiting for (2026-08-17)
 - [x] `PG-017` ADR-0010 written and accepted the same day: transclusion is a view of another note, both surfaces draw it, depth one, and a transcluded note counts as a link — the editor half of §D3 is what is left, and it lives in PG-009 (2026-08-17)
 - [x] `PG-020` `![[nota]]` no longer claims a file is missing: a note embed is a note, drawn where it stands, and the message names whichever of the two was actually looked for — closed by the transclusion slice rather than patched (2026-08-17)

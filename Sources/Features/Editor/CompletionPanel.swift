@@ -11,11 +11,15 @@ import SwiftUI
 enum CompletionItem: Identifiable, Equatable {
     case command(EditorCommand)
     case text(String, symbol: String)
+    /// The one row that draws a glyph instead of an SF Symbol, because what it is offering
+    /// *is* the glyph. SPEC §11.2's single stated exception.
+    case emoji(glyph: String, name: String)
 
     var id: String {
         switch self {
         case .command(let command): "cmd:\(command.id)"
         case .text(let value, _): "txt:\(value)"
+        case .emoji(let glyph, _): "emo:\(glyph)"
         }
     }
 
@@ -23,6 +27,7 @@ enum CompletionItem: Identifiable, Equatable {
         switch self {
         case .command(let command): command.title
         case .text(let value, _): value
+        case .emoji(_, let name): name
         }
     }
 
@@ -30,6 +35,9 @@ enum CompletionItem: Identifiable, Equatable {
         switch self {
         case .command(let command): command.symbol
         case .text(_, let symbol): symbol
+        // Never drawn - `CompletionPanelView` reaches for the glyph on this case - and
+        // answered rather than trapped, so a future row that asks is not a crash.
+        case .emoji: "face.smiling"
         }
     }
 
@@ -37,7 +45,7 @@ enum CompletionItem: Identifiable, Equatable {
     var shortcutCaption: String? {
         switch self {
         case .command(let command): command.shortcutCaption
-        case .text: nil
+        case .text, .emoji: nil
         }
     }
 

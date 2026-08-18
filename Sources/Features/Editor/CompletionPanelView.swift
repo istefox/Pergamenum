@@ -63,10 +63,19 @@ struct CompletionPanelView: View {
             // the panel covers the note it is being used to write, and the list scrolls
             // anyway. The room beside the caret caps it again, lower, when there is less.
             .frame(maxHeight: 320)
+            // `onAppear`, not `onChange`, and that is the whole fix: `CompletionPanel.render`
+            // builds a brand-new `NSHostingView` on every arrow key, so this view never
+            // *changes* selection - each instance is born with one. `onChange` therefore
+            // never fired, the list never scrolled, and the highlight walked off the bottom
+            // edge while the rows stood still. Seen on screen on 2026-08-18.
+            //
+            // No anchor: SwiftUI then scrolls the least it can to bring the row into view,
+            // which is right in both directions. `.bottom` was the previous value and would
+            // jerk the list on the way back up.
+            .onAppear { proxy.scrollTo(selectedIndex) }
             .onChange(of: selectedIndex) { _, index in
-                // Arrowing past the visible edge has to bring the row into view, or the
-                // highlight walks off the bottom and the list looks stuck.
-                proxy.scrollTo(index, anchor: .bottom)
+                // Kept for the day the hosting view outlives a keystroke; harmless until then.
+                proxy.scrollTo(index)
             }
         }
     }
@@ -93,9 +102,17 @@ struct CompletionPanelView: View {
 
     private func row(_ item: CompletionItem, isSelected: Bool) -> some View {
         HStack(spacing: theme.spacing(.s)) {
-            Image(systemName: item.symbol)
-                .frame(width: 16)
-                .foregroundStyle(theme.color(isSelected ? .textPrimary : .textSecondary))
+            if case .emoji(let glyph, _) = item {
+                // The glyph itself, which is the whole point of this row: choosing an emoji
+                // by its name alone is choosing blind. SPEC §11.2 keeps emoji out of the
+                // app's chrome and names this the exception - a picker showing what it is
+                // about to insert is showing content.
+                Text(glyph).frame(width: 16)
+            } else {
+                Image(systemName: item.symbol)
+                    .frame(width: 16)
+                    .foregroundStyle(theme.color(isSelected ? .textPrimary : .textSecondary))
+            }
             Text(item.title)
                 .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
                 .lineLimit(1)
@@ -140,14 +157,40 @@ struct CompletionPanelView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The keys, and - for a catalogue - the fact that typing narrows it.
+    ///
+    /// A search row at the top said the same thing and was tried first. It duplicated the
+    /// query two centimetres from where the person was already reading it, in the note beside
+    /// the caret: `:pac` on one line and `pac` on the next. What was actually missing shows
+    /// only in the empty state, where `:` alone opens ninety-six rows with nothing to say that
+    /// typing filters them - and a row that appears only when empty makes the panel jump by
+    /// its own height on the first keystroke. The footer is already here, already teaches the
+    /// keys, and never moves.
     private var footer: some View {
         HStack(spacing: theme.spacing(.s)) {
             Text("↑↓ scegli").themedText(.caption, color: .textTertiary)
             Text("↩ inserisci").themedText(.caption, color: .textTertiary)
+            if showsFilterHint {
+                Text("scrivi per filtrare").themedText(.caption, color: .textTertiary)
+            }
             Spacer()
             Text("esc").themedText(.caption, color: .textTertiary)
         }
         .padding(.horizontal, theme.spacing(.s))
+    }
+
+    /// The emoji list, and only it.
+    ///
+    /// The slash menu is also a catalogue narrowed by typing and would read the same, but its
+    /// look was approved without this line (SPEC §11.1) and `SlashMenuMockup` draws a panel of
+    /// its own - so adding it here would leave the shipped panel and the approved mockup
+    /// quietly different. It goes there through a mockup or not at all. After `[[` or `#`
+    /// there is nothing to explain: the query is the note's own text, beside the caret.
+    private var showsFilterHint: Bool {
+        items.contains { item in
+            if case .emoji = item { return true }
+            return false
+        }
     }
 
     /// A panel shorter than this is not a list any more. A caret with almost no room on
