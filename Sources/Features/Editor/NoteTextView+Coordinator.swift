@@ -133,6 +133,14 @@ extension NoteTextView {
             applyStyling(to: textView, theme: parent.theme)
             applyTransclusions(to: textView, theme: parent.theme)
 
+            // Typing has to keep the caret on screen, and under TextKit 2 it does not do so
+            // by itself once the note has just grown taller: the two `apply` passes above
+            // change the height on this very keystroke, and the scroll view is still showing
+            // what fitted before. Only on a real edit - never when a note is merely being
+            // opened or restyled - so the index's jumps and the user's own scrolling are
+            // left alone.
+            growToFitTheText(textView, revealingCaret: true)
+
             guard let completing = textView as? CompletingTextView else { return }
             // Unconditionally, and once for all four triggers: the panel has to close when
             // the context stops being one, not only open when it starts.
@@ -189,6 +197,51 @@ extension NoteTextView {
                 )
             }
             storage.endEditing()
+        }
+
+        /// Makes the text view as tall as what it now has to draw, and optionally brings the
+        /// caret back into view.
+        ///
+        /// Styling changes heights - a heading carries paragraph spacing, a transcluded line
+        /// reserves room under itself - and a vertically resizable `NSTextView` under TextKit 2
+        /// does **not** notice on its own. Measured on a note of forty lines with a heading
+        /// near the end: the layout needed 1431 points and the view stayed at the 1244 it was
+        /// before the attributes went on, so the last 187 points of the note were outside the
+        /// scroll view's reach. On screen that is a note that stops at its final heading, a
+        /// click low in the pane landing lines above where it was aimed, and text typed at the
+        /// end going into the file without ever appearing.
+        ///
+        /// Three other ways were tried and each is worth knowing about:
+        ///
+        /// - `sizeToFit()` does nothing at all here.
+        /// - `layoutSubtreeIfNeeded()` works on a text view built by hand in a test and does
+        ///   **not** work in the running app - the worst of the four, because it makes the
+        ///   unit suite green over a defect that is still on screen.
+        /// - `setFrameSize` works and costs too much: changing the frame re-enters SwiftUI's
+        ///   update pass, `updateNSView` runs again while the binding still holds the text as
+        ///   it was one keystroke ago, and its "only touch the text when the model diverges"
+        ///   guard writes that old value back. It cost the diary everything typed into it.
+        ///   `DiaryUITests` caught that; the unit suite stayed green. Deferring it by a run
+        ///   loop turn did not help.
+        ///
+        /// Asking the viewport layout controller to run leaves the resizing to AppKit, which
+        /// is what makes it safe: nothing here sets a frame, so nothing here re-enters SwiftUI.
+        ///
+        /// `ensureLayout` over the whole document is what makes `usageBoundsForTextContainer`
+        /// mean anything - TextKit 2 lays out lazily, so without it the bounds describe only
+        /// the part that happens to have been drawn. It is the same bargain `applyStyling`
+        /// takes: notes are small, and the alternative is a note whose end cannot be reached.
+        func growToFitTheText(_ textView: NSTextView, revealingCaret: Bool = false) {
+            guard let layout = textView.textLayoutManager else { return }
+            layout.ensureLayout(for: layout.documentRange)
+            let needed = layout.usageBoundsForTextContainer.height
+                + textView.textContainerInset.height * 2
+            if abs(textView.frame.height - needed) > 0.5 {
+                layout.textViewportLayoutController.layoutViewport()
+            }
+            // After the resize, so the scroll is not clamped to the height the note had a
+            // moment ago and left short of the end.
+            if revealingCaret { textView.scrollRangeToVisible(textView.selectedRange()) }
         }
     }
 }

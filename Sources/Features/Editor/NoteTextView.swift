@@ -161,6 +161,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyFolding(to: textView, folded: foldedEntries, theme: theme)
+        context.coordinator.growToFitTheText(textView)
 
         if let insertion {
             // After the text sync above, so the insertion is not overwritten by the
