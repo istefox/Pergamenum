@@ -88,4 +88,7 @@ extension VaultController {
 
     /// Every folder in the vault, for the "Sposta in…" menu.
     var folders: [String] { session?.folders ?? [] }
+
+    /// The notes under `Templates/`, for the composer's template menu.
+    var templates: [NoteRecord] { session?.templates ?? [] }
 }

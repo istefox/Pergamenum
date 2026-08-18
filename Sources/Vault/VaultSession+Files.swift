@@ -43,4 +43,15 @@ extension VaultSession {
         }
         return result.sorted()
     }
+
+    /// The notes under `Templates/`, title-sorted, for the composer's own menu
+    /// (ADR-0011 D5).
+    ///
+    /// Read off the index rather than the disk, so this costs a filter and is current
+    /// the moment a template is created like any other note.
+    var templates: [NoteRecord] {
+        index.allNotes
+            .filter { NoteTemplate.isTemplate($0.relativePath) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
 }
