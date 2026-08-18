@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=28 -->
 # PROJECT TASKS
 
-Updated: 2026-08-18 · Open: 16 (P1: 0) · In progress: 0
+Updated: 2026-08-18 · Open: 15 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -18,9 +18,6 @@ _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
-  - Cronologia done in two slices: the `NoteHistory` store and its write hook (ADR-0011 D2-D4), then the restore sheet, its inspector section and `⌘⇧H` (mockup approved 2026-08-18).
-  - Left: the templates half, ADR-0011 D5-D7 — a `Templates/` folder, the «da template…» choice in the composer, and the `{{date}}`/`{{title}}` placeholders. Needs its own mockup first (SPEC §11.1).
 - [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
   - Bumps `IndexCache.schemaVersion` to **3** for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2). It was 2 until ADR-0010 §D7 spent that number in M8.
@@ -67,6 +64,7 @@ _Nothing in progress._
 - [x] `PG-024` The editor's text view now grows to what styling makes it draw — 1431 points needed against the 1244 given, so the last 187 were outside the scroll view's reach and the note looked like it stopped at its final heading. Three mechanisms lie: `sizeToFit()` does nothing, `layoutSubtreeIfNeeded()` works in a hand-built test and not in the app, `setFrameSize` works and empties the diary by re-entering SwiftUI's update pass. `layoutViewport()` leaves the resizing to AppKit (`b1b2dfa`, pre-existing on main, 2026-08-18)
 - [x] `PG-021` The fold badge opens its own section: the click hit test the transclusion slice built (`onClickInMargin` plus a rectangle the fragment reports) turned out to be exactly what the badge was waiting for (2026-08-17)
 - [x] `PG-017` ADR-0010 written and accepted the same day: transclusion is a view of another note, both surfaces draw it, depth one, and a transcluded note counts as a link — the editor half of §D3 is what is left, and it lives in PG-009 (2026-08-17)
+- [x] `PG-010` M9 complete: ADR-0011 implemented end to end in three slices — the `NoteHistory` store and its write hook, the restore sheet with its inspector section and `⌘⇧H`, and templates as notes under `Templates/` with `{{date}}`/`{{title}}` (2026-08-18)
 - [x] `PG-020` `![[nota]]` no longer claims a file is missing: a note embed is a note, drawn where it stands, and the message names whichever of the two was actually looked for — closed by the transclusion slice rather than patched (2026-08-17)
 - [x] `PG-022` M8's first five slices merged: the slash menu and its panel, code fence highlighting, the note's index, and heading folding — every one mockup-first and verified by hand (2026-08-17)
 - [x] `PG-001` ADR-0009 accepted after five corrections from Stefano: `has()` defined, `render: board` without `group` is a parse error, the zero and multi `status-*` cases on the board decided, and the borrowed 150 ms replaced by a real measurement — M11 is unblocked (2026-08-17)
