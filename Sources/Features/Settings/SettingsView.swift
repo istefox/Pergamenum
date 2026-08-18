@@ -19,7 +19,8 @@ struct SettingsView: View {
             general.tabItem { Label("Generali", systemImage: "gearshape") }
             ShortcutSettings().tabItem { Label("Scorciatoie", systemImage: "keyboard") }
             DesignSystemSettings().tabItem { Label("Design system", systemImage: "paintpalette") }
-            canvasTab.tabItem { Label("Canvas", systemImage: "rectangle.3.group") }
+            EditorSettings().tabItem { Label("Editor", systemImage: "text.cursor") }
+            CanvasSettings().tabItem { Label("Canvas", systemImage: "rectangle.3.group") }
             TaskSettings().tabItem { Label("Attività", systemImage: "checklist") }
             TimelineSettings().tabItem { Label("Giornata", systemImage: "clock") }
             conventions.tabItem { Label("Convenzioni", systemImage: "checkmark.seal") }
@@ -65,38 +66,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    // MARK: Canvas
-
-    private var canvasTab: some View {
-        Form {
-            Toggle("Mostra la griglia", isOn: Binding(
-                get: { vault.settings.boardShowsGrid },
-                set: { value in vault.updateSettings { $0.boardShowsGrid = value } }
-            ))
-            Toggle("Aggancia alla griglia", isOn: Binding(
-                get: { vault.settings.boardSnapsToGrid },
-                set: { value in vault.updateSettings { $0.boardSnapsToGrid = value } }
-            ))
-            Text("Le guide di allineamento con le altre card restano attive comunque: hanno la precedenza sulla griglia.")
-                .themedText(.caption, color: .textTertiary)
-
-            Section("Import") {
-                Picker("File trascinati", selection: Binding(
-                    get: { vault.settings.copyDroppedFiles },
-                    set: { value in vault.updateSettings { $0.copyDroppedFiles = value } }
-                )) {
-                    Text("Copia nella cartella note").tag(true)
-                    Text("Riferimento dove sono").tag(false)
-                }
-                .pickerStyle(.radioGroup)
-                Text("Un riferimento fuori dalla cartella note si rompe il giorno in cui il file viene spostato o il volume non è montato.")
-                    .themedText(.caption, color: .textTertiary)
-            }
-        }
-        .formStyle(.grouped)
-        .disabled(vault.root == nil)
     }
 
     // MARK: Convenzioni

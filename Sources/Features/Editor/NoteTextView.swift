@@ -13,6 +13,9 @@ struct NoteTextView: NSViewRepresentable {
     let noteTitles: [String]
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
+    /// Whether misspellings are underlined, and in which language (M8, SPEC §12). Off by
+    /// default so a text view built without a vault behind it behaves as it always did.
+    var spellCheck: SpellCheck = .off
     /// The slash menu's catalogue, already filtered to what can run (M8). Passed in
     /// rather than built here: whether a command can run is a fact about the app, and
     /// the editor is not the place that knows it.
@@ -70,12 +73,14 @@ struct NoteTextView: NSViewRepresentable {
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
         // Smart substitutions would rewrite `- [ ]`, `>2026-08-15` and `--` into
         // characters the task and frontmatter parsers do not accept, silently making
-        // a conformant note non-conformant as the user types.
-        textView.isContinuousSpellCheckingEnabled = false
+        // a conformant note non-conformant as the user types. Autocorrection is one of
+        // them and stays off whatever the spell-check setting says: underlining a word is
+        // an opinion, replacing it is an edit.
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        apply(spellCheck, to: textView)
         textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
@@ -109,6 +114,28 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         return scrollView
+    }
+
+    /// Turns the spell checker on or off, and tells it which language to read in.
+    ///
+    /// The language is a property of `NSSpellChecker.shared` and not of the text view, so it
+    /// is set here rather than on the view: there is one checker per process, and the three
+    /// panes that draw this view all read the same vault.
+    ///
+    /// Grammar checking follows the same switch instead of getting one of its own. It is the
+    /// same underline in the same places, and a second toggle for it would be a setting
+    /// nobody could describe.
+    private func apply(_ spellCheck: SpellCheck, to textView: NSTextView) {
+        textView.isContinuousSpellCheckingEnabled = spellCheck.isEnabled
+        textView.isGrammarCheckingEnabled = spellCheck.isEnabled
+        guard spellCheck.isEnabled else { return }
+        let checker = NSSpellChecker.shared
+        if let language = spellCheck.fixedLanguage {
+            checker.automaticallyIdentifiesLanguages = false
+            checker.setLanguage(language)
+        } else {
+            checker.automaticallyIdentifiesLanguages = true
+        }
     }
 
     /// The closures the text view calls back through.
@@ -147,6 +174,9 @@ struct NoteTextView: NSViewRepresentable {
         textView.noteTitles = noteTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
+        // Re-applied on every update rather than only at build time: turning the checker on
+        // in Impostazioni has to reach the note already open, not the next one.
+        apply(spellCheck, to: textView)
 
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.

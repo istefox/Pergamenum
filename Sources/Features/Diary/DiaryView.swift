@@ -100,6 +100,7 @@ struct DiaryView: View {
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
             tagSuggestions: vault.tagSuggestions,
+            spellCheck: vault.settings.spellCheck,
             onFollowLink: follow,
             onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
             onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
