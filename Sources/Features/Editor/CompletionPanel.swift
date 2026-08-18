@@ -74,12 +74,24 @@ enum CompletionItem: Identifiable, Equatable {
 /// `CompletingTextView.doCommand(by:)` rather than here.
 @MainActor
 final class CompletionPanel {
+    /// Everything the panel draws, which is one value because the three parts are computed
+    /// together and consumed together: a list, what was typed to get it, and what to say
+    /// when it came back empty. `noMatch` cannot be derived from the other two - an empty
+    /// list carries no clue about which trigger produced it - and nil there means this
+    /// trigger never shows an empty panel at all.
+    struct Content: Equatable {
+        var items: [CompletionItem]
+        var query: String
+        var noMatch: String?
+    }
+
     private var panel: NSPanel?
-    private(set) var items: [CompletionItem] = []
-    private(set) var selectedIndex = 0
     /// What the last `show` was given, so an arrow key can rebuild the list without the
     /// caller having to hand it all back.
-    private var query = ""
+    private(set) var content = Content(items: [], query: "", noMatch: nil)
+    private(set) var selectedIndex = 0
+    var items: [CompletionItem] { content.items }
+    var noMatch: String? { content.noMatch }
     private var theme: Theme?
     /// Called when a row is clicked. The panel never acts on a choice itself: what an item
     /// means is the text view's business, and there is one place that decides it.
@@ -98,8 +110,7 @@ final class CompletionPanel {
     /// `CompletingTextView.caretRectOnScreen()` hands over - converting it here by hand is
     /// how a popup ends up on the wrong display.
     func show(
-        _ items: [CompletionItem],
-        query: String,
+        _ content: Content,
         caretRect: NSRect,
         over parent: NSWindow?,
         theme: Theme
@@ -107,9 +118,8 @@ final class CompletionPanel {
         // The selection follows the list rather than surviving it: after typing another
         // letter the third entry is a different command, and keeping the index would
         // silently move the choice under the user's hands.
-        if items.map(\.id) != self.items.map(\.id) { selectedIndex = 0 }
-        self.items = items
-        self.query = query
+        if content.items.map(\.id) != items.map(\.id) { selectedIndex = 0 }
+        self.content = content
         self.theme = theme
 
         let panel = panel ?? makePanel()
@@ -130,7 +140,7 @@ final class CompletionPanel {
     func hide() {
         panel?.parent?.removeChildWindow(panel!)
         panel?.orderOut(nil)
-        items = []
+        content = Content(items: [], query: "", noMatch: nil)
         selectedIndex = 0
     }
 
@@ -154,8 +164,9 @@ final class CompletionPanel {
         guard let theme else { return }
         panel.contentView = NSHostingView(
             rootView: CompletionPanelView(
-                items: items,
-                query: query,
+                items: content.items,
+                query: content.query,
+                noMatch: content.noMatch,
                 selectedIndex: selectedIndex,
                 maxHeight: maxHeight,
                 onChoose: { [weak self] item in self?.onChoose?(item) }

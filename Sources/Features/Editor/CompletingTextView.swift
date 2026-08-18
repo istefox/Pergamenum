@@ -136,33 +136,27 @@ final class CompletingTextView: NSTextView {
             items = EditorCommand.matching(query, in: editorCommands).map(CompletionItem.command)
         case .emoji(let prefix):
             query = String(prefix.dropFirst())
-            let matches = EmojiCatalogue.matching(query)
-            // Nothing matched: no panel, as for the candidate lists. A `:` in ordinary prose
-            // that happens to sit after a space would otherwise raise a box saying so.
-            guard !matches.isEmpty else {
-                completionPanel.hide()
-                return
-            }
-            items = matches.map { .emoji(glyph: $0.glyph, name: $0.name) }
+            items = EmojiCatalogue.matching(query).map { .emoji(glyph: $0.glyph, name: $0.name) }
         case .wikilink(let prefix), .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
-            let candidates = completions(
+            items = (completions(
                 forPartialWordRange: rangeForUserCompletion, indexOfSelectedItem: nil
-            ) ?? []
-            // Nothing matched: no panel at all, which is what AppKit's list did and is right
-            // here. The candidates are the vault's own notes and tags, so typing a title
-            // that does not exist yet is the ordinary case and not worth an empty box.
-            guard !candidates.isEmpty else {
-                completionPanel.hide()
-                return
-            }
-            items = candidates.map { .text($0, symbol: symbol) }
+            ) ?? []).map { .text($0, symbol: symbol) }
+        }
+
+        // Nothing matched, and the trigger has nothing to say about it: the panel goes. One
+        // rule for all five rather than a guard inside two of the cases, which is where the
+        // `:` list came to vanish mid-word while the command list stayed and explained itself
+        // - the same list, two answers to the same question. `Context.noMatch` is where the
+        // difference is decided and why.
+        guard !items.isEmpty || context.noMatch != nil else {
+            completionPanel.hide()
+            return
         }
 
         completionPanel.show(
-            items,
-            query: query,
+            CompletionPanel.Content(items: items, query: query, noMatch: context.noMatch),
             caretRect: caretRectOnScreen(),
             over: window,
             theme: theme

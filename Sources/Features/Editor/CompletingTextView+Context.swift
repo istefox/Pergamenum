@@ -32,6 +32,27 @@ extension CompletingTextView {
             case .emoji: "face.smiling"
             }
         }
+
+        /// What an empty result means for this trigger, or nil when it means nothing worth
+        /// saying and the panel should simply go.
+        ///
+        /// **A closed catalogue explains itself; an open-ended candidate set disappears.**
+        /// There either is a command called `tab` or there is not, and an empty box is
+        /// indistinguishable from a broken one - the confusion ADR-0009 §D1 refuses for a view
+        /// that matches nothing, and worth refusing here too. The vault's notes and tags are
+        /// the other kind: typing the name of a note that does not exist yet is how a note gets
+        /// named, not a dead end.
+        ///
+        /// The whole leading phrase and not the noun on its own, which is about Italian rather
+        /// than about style: «Nessun comando» and «Nessuna emoji» agree differently, and a view
+        /// handed `"tabella"` by some later trigger would compose «Nessun tabella».
+        var noMatch: String? {
+            switch self {
+            case .slash: "Nessun comando"
+            case .emoji: "Nessuna emoji"
+            case .wikilink, .section, .tag: nil
+            }
+        }
     }
 
     /// The headings of `note` that match what has been typed after the `#`.
