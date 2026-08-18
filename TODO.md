@@ -19,6 +19,8 @@ _Nothing in progress._
 ## Backlog / To Add
 
 - [ ] `PG-010` **P3** M9 Template e cronologia: templates as real notes, local version snapshots <!-- src:session opened:2026-08-16 -->
+  - Cronologia done in two slices: the `NoteHistory` store and its write hook (ADR-0011 D2-D4), then the restore sheet, its inspector section and `⌘⇧H` (mockup approved 2026-08-18).
+  - Left: the templates half, ADR-0011 D5-D7 — a `Templates/` folder, the «da template…» choice in the composer, and the `{{date}}`/`{{title}}` placeholders. Needs its own mockup first (SPEC §11.1).
 - [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
   - Bumps `IndexCache.schemaVersion` to **3** for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2). It was 2 until ADR-0010 §D7 spent that number in M8.

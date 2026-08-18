@@ -208,7 +208,7 @@ final class CommandActions {
             vault.root != nil
         case .save:
             vault.openNote?.hasUnsavedChanges == true
-        case .copyLink, .revealInFinder, .insertRelated, .readingMode:
+        case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory:
             vault.openNote != nil
         case .foldSection:
             // Reading mode has no caret, so it has no current section either.
@@ -242,6 +242,7 @@ final class CommandActions {
         .globalSearch: \.isShowingGlobalSearch,
         .quickSwitcher: \.isShowingQuickSwitcher,
         .insertRelated: \.isAddingRelatedLink,
+        .noteHistory: \.isShowingHistory,
     ]
 
     // MARK: The three that need more than a line
