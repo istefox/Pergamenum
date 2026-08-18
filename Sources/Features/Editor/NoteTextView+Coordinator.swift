@@ -15,14 +15,6 @@ extension NoteTextView {
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
-        /// The same guard for the completion list.
-        ///
-        /// `complete(nil)` puts the first candidate into the text as it opens the list,
-        /// and that edit calls `textDidChange` straight back. The context is still a
-        /// completion one - `#area-training` is a tag prefix like `#a` was - so the
-        /// list was offered again, and again, until the stack ran out and the app
-        /// died. Typing a `#` at the start of any line was enough.
-        private var isCompleting = false
         /// The focus request already honoured, so the cursor is not stolen back on
         /// every subsequent update.
         var lastFocusRequest = 0
@@ -142,14 +134,16 @@ extension NoteTextView {
             applyTransclusions(to: textView, theme: parent.theme)
 
             guard let completing = textView as? CompletingTextView else { return }
-            // The slash menu first and unconditionally: it has to close when the context
-            // stops being one, not only open when it starts.
-            completing.refreshSlashMenu(theme: parent.theme)
-
-            guard !isCompleting, completing.shouldOfferCompletion() else { return }
-            isCompleting = true
-            defer { isCompleting = false }
-            completing.complete(nil)
+            // Unconditionally, and once for all four triggers: the panel has to close when
+            // the context stops being one, not only open when it starts.
+            //
+            // It cannot recur, and that is worth saying because the call it replaced could.
+            // AppKit's `complete(nil)` put the first candidate into the text as it opened
+            // the list, that edit called `textDidChange` straight back, the context was
+            // still a completion one - `#area-training` is a tag prefix like `#a` was - and
+            // the app died on a stack overflow from typing `#` at the start of a line. The
+            // panel writes nothing until a row is chosen, so there is no edit to come back.
+            completing.refreshCompletion(theme: parent.theme)
         }
 
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
