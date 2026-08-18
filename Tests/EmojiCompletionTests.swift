@@ -51,9 +51,17 @@ private func emojiPanel(_ text: String, cursor: Int) -> CompletingTextView {
 }
 
 @MainActor
-@Test func aColonMatchingNothingOpensNothing() {
+@Test func aColonMatchingNothingSaysSoRatherThanGoing() {
+    // Was `aColonMatchingNothingOpensNothing`, and asserted the opposite. The emoji slice
+    // hid the panel here reasoning about a `:` in prose - a case `punctuationTrigger`
+    // already rules out, since it fires only at a line start or after a space. What was
+    // actually happening: `:` alone opens all ninety-six rows, so the panel was already up
+    // and vanished mid-word, while the command list in the same panel stayed and explained
+    // itself. Both catalogues are closed; both now say so.
     let view = emojiPanel("Nota :zqx", cursor: 9)
-    #expect(!view.completionPanel.isVisible)
+    #expect(view.completionPanel.isVisible)
+    #expect(view.completionPanel.items.isEmpty)
+    #expect(view.completionPanel.noMatch == "Nessuna emoji")
 }
 
 @MainActor

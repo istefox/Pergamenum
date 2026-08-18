@@ -16,6 +16,10 @@ struct CompletionPanelView: View {
 
     let items: [CompletionItem]
     let query: String
+    /// How this trigger names an empty result. Only ever nil where the panel would not have
+    /// been shown empty in the first place, so the fallback below is unreachable in the app
+    /// and there purely so the type does not have to be forced open.
+    let noMatch: String?
     let selectedIndex: Int
     /// The tallest the whole panel may be, which is the room beside the caret's line rather
     /// than a taste about lists. Below it the panel would have to be drawn over the text
@@ -142,13 +146,13 @@ struct CompletionPanelView: View {
     /// An empty list is indistinguishable from a broken one, which is the confusion
     /// ADR-0009 §D1 refuses for a view that matches nothing. Worth refusing twice.
     ///
-    /// Reached for commands only. A `[[` or `#` that matches nothing hides the panel
-    /// instead, which is what AppKit's list did and the right answer there: the candidates
-    /// are the vault's own notes and tags, so "no match" while typing a title that does
-    /// not exist yet is the ordinary case, not a dead end worth a box.
+    /// Reached for the two closed catalogues, commands and emoji, and for neither of the
+    /// open-ended lists: `CompletingTextView.Context.noMatch` is where that is decided and
+    /// says why. The sentence arrives already agreeing with its own noun, which is why this
+    /// composes a phrase rather than inserting a word.
     private var nothingMatched: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("Nessun comando per «\(query)»").themedText(.body, color: .textSecondary)
+            Text("\(noMatch ?? "Nessun risultato") per «\(query)»").themedText(.body, color: .textSecondary)
             Text("Esc chiude e lascia il testo com'era")
                 .themedText(.caption, color: .textTertiary)
         }
@@ -166,10 +170,18 @@ struct CompletionPanelView: View {
     /// typing filters them - and a row that appears only when empty makes the panel jump by
     /// its own height on the first keystroke. The footer is already here, already teaches the
     /// keys, and never moves.
+    ///
+    /// Over an empty list only «esc» is left. The other two name a row to move to and a row to
+    /// insert, and there is no row - a legend for keys that do nothing, on the one panel whose
+    /// whole purpose at that moment is to say plainly that it has nothing. Seen on screen on
+    /// 2026-08-18, on `/zzz` as much as on `:zqx`: it predates this change and was simply
+    /// rarer before.
     private var footer: some View {
         HStack(spacing: theme.spacing(.s)) {
-            Text("↑↓ scegli").themedText(.caption, color: .textTertiary)
-            Text("↩ inserisci").themedText(.caption, color: .textTertiary)
+            if showsRowKeys {
+                Text("↑↓ scegli").themedText(.caption, color: .textTertiary)
+                Text("↩ inserisci").themedText(.caption, color: .textTertiary)
+            }
             if showsFilterHint {
                 Text("scrivi per filtrare").themedText(.caption, color: .textTertiary)
             }
@@ -178,6 +190,11 @@ struct CompletionPanelView: View {
         }
         .padding(.horizontal, theme.spacing(.s))
     }
+
+    /// Whether the two keys that act on a row are worth naming, which is whether there is a
+    /// row. Internal rather than private so a test can hold the rule: what the footer draws
+    /// from it was checked on screen.
+    var showsRowKeys: Bool { !items.isEmpty }
 
     /// The emoji list, and only it.
     ///
