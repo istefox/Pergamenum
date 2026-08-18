@@ -384,7 +384,11 @@ La GUI è progettata **con Claude in fase di design** (mockup, componenti e toke
 
 - Riferimento dichiarato: **Craft**. Stile minimal: molta aria, tipografia curata, gerarchia data da peso e spazio più che da linee e riquadri, angoli arrotondati, ombre leggere, icone SF Symbols, animazioni brevi e sobrie.
 - **Tema chiaro e tema scuro completi dal giorno 1**, entrambi di prima classe: nessun colore hardcoded nelle viste.
-- Nessuna emoji nell'interfaccia.
+- Nessuna emoji nell'interfaccia. La regola riguarda il **cromo** dell'app — menu, barra
+  strumenti, barra laterale, messaggi, etichette: Pergamenum non si decora. Un selettore che
+  mostra il glifo che si sta per inserire mostra **contenuto**, non interfaccia, ed è l'unica
+  eccezione: il completamento emoji su `:` (§5) disegna le emoji che offre, perché sceglierne
+  una dal solo nome è sceglierla alla cieca. L'emoji finisce nella nota, non nell'app.
 
 ### 11.3 Sistema temi a design token
 
