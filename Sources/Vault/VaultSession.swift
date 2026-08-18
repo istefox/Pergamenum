@@ -31,6 +31,9 @@ final class VaultSession {
     /// and the watcher and the recents list both want the spelling the user gave.
     let root: URL
     let store: NoteStore
+    /// Every note write's own history, always on (ADR-0011 D2) - unlike `journal`
+    /// below, which a connector opts into for its own reason.
+    @ObservationIgnored let history: NoteHistory
 
     private(set) var settings: VaultSettings = .default
     private(set) var vocabulary: Vocabulary = .empty
@@ -56,6 +59,7 @@ final class VaultSession {
     init(root: URL, bundledVocabulary: URL? = nil) {
         self.root = root
         self.store = NoteStore(root: root)
+        self.history = NoteHistory(root: root)
         self.bundledVocabulary = bundledVocabulary
         loadSettings()
         loadVocabulary()
@@ -160,6 +164,12 @@ final class VaultSession {
             // The write happened; the net did not. Say so rather than pretending the
             // change can be undone.
             if let problem { recordProblem(problem) }
+        }
+
+        // Unconditional and scoped to notes (ADR-0011 D2): every `.md` write gets a
+        // browsable version, app or connector alike, not only a connector's.
+        if relativePath.hasSuffix(".md") {
+            history.record(text, for: relativePath)
         }
         return WriteResult(path: relativePath, text: text)
     }
