@@ -20,7 +20,8 @@ _Nothing in progress._
 - [ ] `PG-009` **P2** M8 Menu comandi ed editor: eight slices merged 2026-08-17, the rest still open <!-- src:session opened:2026-08-16 -->
   - Done: slash menu and its own panel (#44, #45), code fence highlighting with seven local grammars (#47), the note's index with click-to-scroll (#48), heading folding with a count badge (#49).
   - Ninth slice (PR #57): one panel draws every completion. `SlashMenu` became `CompletionPanel`, and titles, sections and tags left AppKit's list - which placed itself over the caret's own line near the bottom of a window (PG-023).
-  - Left: floating format bar, emoji on `:`, spell check, regex in find, and the index's drag-to-move (PG-019). **Emoji on `:` reuses the panel** rather than building a second popup, which was half the reason to generalise it now.
+  - Eleventh slice: spell check with a language setting, and the Editor tab of SPEC §12 that had never been built. Off by default, «Automatica» or one of `NSSpellChecker.availableLanguages`, and the underline is kept off markdown syntax through `textView(_:shouldSetSpellingState:range:)` over the ranges `MarkdownStyler` already classifies - a checker that flags every wikilink and tag is one nobody keeps on.
+  - Left: floating format bar, regex in find, and the index's drag-to-move (PG-019). **Emoji on `:` reuses the panel** rather than building a second popup, which was half the reason to generalise it now.
   - Eighth slice: `[[Nota#` completes that note's headings, in document order, offering exactly the strings `Transclusion.excerpt` can find.
   - Sixth and seventh slices merged 2026-08-17: transclusion in the reading view with the index counting it (`IndexCache.schemaVersion` at 2), then the editor's card drawn under a source line that stays editable. ADR-0010 is fully shipped.
   - Find and replace was already there: only regex is missing, and `NSTextFinder` does not offer it.

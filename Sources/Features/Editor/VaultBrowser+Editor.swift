@@ -47,6 +47,7 @@ extension VaultBrowser {
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
             tagSuggestions: tagSuggestions,
+            spellCheck: vault.settings.spellCheck,
             // Filtered here, once per rebuild: a command the app cannot run right now is
             // not offered, rather than offered and inert.
             editorCommands: EditorCommand.all(

@@ -76,6 +76,46 @@ enum MarkdownStyler {
         return result
     }
 
+    /// Whether a span is syntax rather than prose, and so must not be spell-checked (M8).
+    ///
+    /// A spell checker reads a note's *source*, where `[[Curva di compressione]]` is a file
+    /// name, `#project-pergamenum` is a namespaced tag, `>2026-08-15` is a date and a `sh`
+    /// fence is a program. Underlining all of it is what makes a checker on a markdown editor
+    /// something the user turns off again within a minute, so the editor tells AppKit to skip
+    /// these ranges.
+    ///
+    /// Headings, bold and italic are deliberately absent: they wrap real words, and those are
+    /// exactly the words worth checking.
+    static func suppressesSpellCheck(_ span: Span) -> Bool {
+        switch span {
+        case .frontmatter, .code, .codeBlock, .codeToken,
+             .linkSyntax, .linkTarget, .embedTarget, .tag,
+             .taskMarker, .scheduled, .due, .annotation:
+            true
+        case .heading, .bold, .italic:
+            false
+        }
+    }
+
+    /// Sorts and merges ranges, joining the ones that overlap or touch.
+    ///
+    /// `spans(in:)` returns overlapping ranges by design - a wikilink inside a heading is two
+    /// of them - and the spell-check delegate is asked about a range on every word AppKit
+    /// checks. Merging once, when the note is styled, turns each of those questions into a
+    /// walk over a handful of ranges instead of over every span in the note.
+    static func merged(_ ranges: [NSRange]) -> [NSRange] {
+        var merged: [NSRange] = []
+        for range in ranges.sorted(by: { $0.location < $1.location }) {
+            guard let last = merged.last, range.location <= NSMaxRange(last) else {
+                merged.append(range)
+                continue
+            }
+            let end = max(NSMaxRange(last), NSMaxRange(range))
+            merged[merged.count - 1] = NSRange(location: last.location, length: end - last.location)
+        }
+        return merged
+    }
+
     /// The `---`-delimited block, only when it opens on the very first line.
     private static func frontmatterRange(in text: String) -> Range<String.Index>? {
         guard text.hasPrefix("---") else { return nil }

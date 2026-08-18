@@ -37,6 +37,10 @@ extension NoteTextView {
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
+        /// The ranges the spell checker must leave alone: markdown syntax, not prose (M8).
+        /// Filled by `applyStyling`, which already knows what every range of the note is,
+        /// so recognising them costs no second parse.
+        private(set) var unspellableRanges: [NSRange] = []
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -181,6 +185,7 @@ extension NoteTextView {
             defer { isStyling = false }
 
             let text = textView.string
+            var unspellable: [NSRange] = []
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -195,8 +200,25 @@ extension NoteTextView {
                     MarkdownAttributedText.attributes(for: styled.span, theme: theme),
                     range: nsRange
                 )
+                if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
             }
             storage.endEditing()
+            unspellableRanges = MarkdownStyler.merged(unspellable)
+        }
+
+        /// Keeps the spelling underline off markdown syntax (M8).
+        ///
+        /// AppKit asks before it marks anything, which is the only place this can be done:
+        /// the checker works on the string, and the string is the source, so it has no way
+        /// of knowing that `#project-pergamenum` is a tag and not a misspelling of anything.
+        /// Returning zero means "no indicator here" and leaves the rest of the note checked.
+        func textView(
+            _ textView: NSTextView,
+            shouldSetSpellingState value: Int,
+            range affectedCharRange: NSRange
+        ) -> Int {
+            let isSyntax = unspellableRanges.contains { NSIntersectionRange($0, affectedCharRange).length > 0 }
+            return isSyntax ? 0 : value
         }
 
         /// Makes the text view as tall as what it now has to draw, and optionally brings the

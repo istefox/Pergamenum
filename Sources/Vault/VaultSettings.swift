@@ -1,5 +1,53 @@
 import Foundation
 
+/// Whether the editor checks spelling, and in which language (M8).
+///
+/// A property of the notes folder rather than of the user: a vault written in Italian
+/// stays Italian when it is opened on another Mac, which is the same reasoning that puts
+/// the daily folder here and the theme in `UserDefaults`.
+enum SpellCheck: Hashable, Sendable, Codable {
+    case off
+    /// `NSSpellChecker` identifies the language of each passage on its own. The default
+    /// once the checker is turned on, because a note that quotes an English paragraph is
+    /// the ordinary case in this vault and a fixed language would underline all of it.
+    case automatic
+    /// One identifier from `NSSpellChecker.availableLanguages`, such as `it_IT`.
+    case language(String)
+
+    var isEnabled: Bool { self != .off }
+
+    /// The language to hand `NSSpellChecker`, or nil when it should identify one itself.
+    var fixedLanguage: String? {
+        if case let .language(identifier) = self { return identifier }
+        return nil
+    }
+
+    private static let offKeyword = "off"
+    private static let automaticKeyword = "auto"
+
+    /// Encoded as a bare string - `"off"`, `"auto"`, `"it_IT"` - so `settings.json` stays
+    /// something a person can edit (principle 1). Anything else read back means `.off`
+    /// rather than a throw: one unrecognised word must not cost the whole file, which is
+    /// the contract `VaultSettings.init(from:)` keeps for every other key.
+    init(from decoder: any Decoder) throws {
+        let keyword = try decoder.singleValueContainer().decode(String.self)
+        switch keyword {
+        case SpellCheck.offKeyword, "": self = .off
+        case SpellCheck.automaticKeyword: self = .automatic
+        default: self = .language(keyword)
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .off: try container.encode(SpellCheck.offKeyword)
+        case .automatic: try container.encode(SpellCheck.automaticKeyword)
+        case let .language(identifier): try container.encode(identifier)
+        }
+    }
+}
+
 /// The per-vault settings stored in `.pergamenum/settings.json`.
 ///
 /// They live in the vault rather than in `UserDefaults` because they describe the
@@ -33,6 +81,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// shared with the day view: the two panes are about different parts of a day, and
     /// a single number would make one of them wrong.
     var diaryHours: HourWindow
+    /// Whether the editor underlines misspellings, and in which language (M8).
+    var spellCheck: SpellCheck
 
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
@@ -47,7 +97,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
         boardSnapsToGrid: false,
         blockMinutes: TimeBlock.defaultDuration,
         dayHours: .dayDefault,
-        diaryHours: .diaryDefault
+        diaryHours: .diaryDefault,
+        // Off, so that updating the app does not fill a vault of markdown with red
+        // underlines nobody asked for. It is found in Impostazioni, not on first launch.
+        spellCheck: .off
     )
 
     /// The durations the settings offer, in minutes.
@@ -83,6 +136,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.dayHours).clamped
         diaryHours = (try container.decodeIfPresent(HourWindow.self, forKey: .diaryHours)
             ?? fallback.diaryHours).clamped
+        spellCheck = try container.decodeIfPresent(SpellCheck.self, forKey: .spellCheck)
+            ?? fallback.spellCheck
     }
 
     init(
@@ -94,7 +149,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         boardSnapsToGrid: Bool,
         blockMinutes: Int = TimeBlock.defaultDuration,
         dayHours: HourWindow = .dayDefault,
-        diaryHours: HourWindow = .diaryDefault
+        diaryHours: HourWindow = .diaryDefault,
+        spellCheck: SpellCheck = .off
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -105,6 +161,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.blockMinutes = blockMinutes
         self.dayHours = dayHours
         self.diaryHours = diaryHours
+        self.spellCheck = spellCheck
     }
 }
 
