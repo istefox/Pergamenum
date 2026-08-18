@@ -87,6 +87,26 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-18: **M9 completo, `PG-010` chiuso.** ADR-0011 realizzato in tre slice.
+  `NoteHistory` (`Sources/Vault`, solo Foundation) scrive uno snapshot del testo intero a
+  ogni scrittura di nota, agganciato senza condizioni a `VaultSession.write` e limitato ai
+  percorsi `.md`: app e connettori allo stesso modo, non solo i connettori come fa
+  `WriteJournal`, che nella sua stessa intestazione dichiara di non essere una cronologia.
+  Uno snapshot per file sotto `.pergamenum/history/<percorso>/`, diradati tenendo tutto
+  nelle ultime 24 ore e uno per giorno di calendario prima, senza scadenza. Il foglio di
+  restore raggruppa per giorno - così la regola di diradamento si legge senza spiegarla -
+  e ripristinando **salva prima il buffer**, perché la cronologia registra il testo
+  *scritto* e delle modifiche mai salvate non esisterebbe alcuno snapshot: senza quel
+  salvataggio il ripristino distruggerebbe lavoro senza ritorno.
+  I template sono note sotto `Templates/`, una posizione e non un tag, perché il namespace
+  di SPEC §4.4 appartiene a `harness-system` ed è chiuso. Il frontmatter del modello viene
+  scartato, mai copiato. Un `{{...}}` sconosciuto resta visibile invece di essere svuotato
+  in silenzio.
+  Due cose trovate controllando invece che deducendo: ⌥⌘H è «Nascondi altre» di macOS,
+  quindi la scorciatoia disegnata nel mockup non era registrabile e il comando lega ⌘⇧H;
+  e un test che ricava «due giorni fa» da `Date()` meno un numero fisso di secondi
+  scavalca la mezzanotte per un'ora ogni ventiquattro, cosa che ha fatto diventare rossa
+  la suite alle 23:00.
 - 2026-08-18: **M8 completo, `PG-009` chiuso.** Tredici slice, l'ultima è la barra di
   formattazione: `InlineFormat` (`Sources/Core`, solo Foundation) avvolge e disfa una
   selezione in grassetto, corsivo, barrato o codice riconoscendo entrambe le forme che
