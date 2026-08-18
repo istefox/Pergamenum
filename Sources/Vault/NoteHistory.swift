@@ -73,6 +73,20 @@ struct NoteHistory {
             .sorted { $0.date > $1.date }
     }
 
+    /// The date of every snapshot, newest first, without reading a single one's text.
+    ///
+    /// One directory listing where `snapshots(for:)` is one listing plus a file read per
+    /// entry. The inspector shows how many versions a note has and when the last one
+    /// was, on every pass of its body; doing that through the full read would open every
+    /// version of the note to display two numbers.
+    func snapshotDates(for relativePath: String) -> [Date] {
+        let noteDir = noteDirectory(for: relativePath)
+        guard let names = try? FileManager.default.contentsOfDirectory(
+            atPath: noteDir.path(percentEncoded: false)
+        ) else { return [] }
+        return names.compactMap(Self.date(from:)).sorted(by: >)
+    }
+
     // MARK: Thinning
 
     /// Keeps every snapshot from the last 24 hours, and at most one per calendar day

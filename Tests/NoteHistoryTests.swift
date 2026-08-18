@@ -150,3 +150,146 @@ import Testing
 
     #expect(session.history.snapshots(for: "Board.canvas").isEmpty)
 }
+
+// MARK: - Il raggruppamento per giorno (M9, il foglio di restore)
+
+/// A gregorian calendar pinned to Rome, so a grouping rule about "today" and
+/// "yesterday" is not decided by where the machine running the test happens to be.
+private func romanCalendar() -> Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/Rome") ?? .gmt
+    return calendar
+}
+
+@Test func todayAndYesterdayBecomeTwoGroupsNewestFirst() throws {
+    let calendar = romanCalendar()
+    let now = try #require(calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 18, hour: 18, minute: 42)
+    ))
+    let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: now))
+    let snapshots = [
+        NoteHistory.Snapshot(date: now, text: "tre\n"),
+        NoteHistory.Snapshot(date: now.addingTimeInterval(-3_600), text: "due\n"),
+        NoteHistory.Snapshot(date: yesterday, text: "uno\n"),
+    ]
+
+    let groups = HistoryGrouping.groups(for: snapshots, now: now, calendar: calendar)
+
+    #expect(groups.map(\.title) == ["Oggi", "Ieri"])
+    #expect(groups.first?.entries.map(\.snapshot.text) == ["tre\n", "due\n"])
+    #expect(groups.last?.entries.map(\.snapshot.text) == ["uno\n"])
+}
+
+@Test func anOlderDayIsTitledByItsWeekdayAndDateInItalian() throws {
+    let calendar = romanCalendar()
+    let now = try #require(calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 18, hour: 18, minute: 42)
+    ))
+    // Three days back, so neither the "Oggi" nor the "Ieri" arm can claim it.
+    let saturday = try #require(calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 15, hour: 9, minute: 30)
+    ))
+
+    let groups = HistoryGrouping.groups(
+        for: [NoteHistory.Snapshot(date: saturday, text: "x\n")],
+        now: now,
+        calendar: calendar,
+        locale: Locale(identifier: "it_IT")
+    )
+
+    #expect(groups.map(\.title) == ["sabato 15 agosto"])
+}
+
+@Test func anEmptyHistoryGroupsIntoNothingRatherThanOneEmptyDay() throws {
+    let calendar = romanCalendar()
+    let now = try #require(calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 18, hour: 18, minute: 42)
+    ))
+
+    #expect(HistoryGrouping.groups(for: [], now: now, calendar: calendar).isEmpty)
+}
+
+@Test func twoSavesInTheSameSecondStayTwoSelectableRows() throws {
+    // The reason `HistoryEntry` is keyed on position and not on the date: both of these
+    // parse back to the same second, and selecting by date would merge them into one.
+    let calendar = romanCalendar()
+    let now = try #require(calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 18, hour: 18, minute: 42)
+    ))
+    let snapshots = [
+        NoteHistory.Snapshot(date: now, text: "seconda\n"),
+        NoteHistory.Snapshot(date: now, text: "prima\n"),
+    ]
+
+    let groups = HistoryGrouping.groups(for: snapshots, now: now, calendar: calendar)
+
+    #expect(groups.count == 1)
+    #expect(groups.first?.entries.map(\.id) == [0, 1])
+}
+
+// MARK: - Il ripristino
+
+/// A conformant note to restore versions of. Local to this file: `VaultTests`' own
+/// sample is private to that file, and a second copy here is cheaper than widening it.
+private let restorableNote = """
+---
+date: 2026-08-18
+tags:
+  - type-note
+---
+
+Prima versione.
+"""
+
+@MainActor
+@Test func restoringWritesTheOldTextAndTheEditorFollowsIt() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(restorableNote, to: "Uno.md")
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+    controller.openNote(at: "Uno.md")
+    let original = try #require(controller.openNote?.text)
+
+    controller.updateOpenNoteText(original + "\n\nSeconda versione.")
+    controller.saveOpenNote()
+
+    let versions = try #require(controller.session).history.snapshots(for: "Uno.md")
+    let oldest = try #require(versions.last)
+    controller.restoreVersion(oldest.text)
+
+    #expect(controller.openNote?.text == oldest.text)
+    #expect(controller.openNote?.hasUnsavedChanges == false)
+    let onDisk = try #require(controller.session).read("Uno.md")
+    #expect(onDisk.text == oldest.text)
+}
+
+@MainActor
+@Test func restoringOverUnsavedEditsKeepsThemAsTheirOwnVersion() async throws {
+    // The negative control for the save-first rule in `restoreVersion`. Without that
+    // first save the buffer's text is in no snapshot at all, so restoring would discard
+    // it with nothing to go back to - and this test is what fails if someone later
+    // decides the extra write is redundant.
+    let vault = try TemporaryVault()
+    try vault.write(restorableNote, to: "Uno.md")
+    let controller = VaultController(recents: .volatile())
+    await controller.open(vault.root)
+    controller.openNote(at: "Uno.md")
+    let original = try #require(controller.openNote?.text)
+
+    controller.updateOpenNoteText(original + "\n\nSalvata.")
+    controller.saveOpenNote()
+
+    // Typed but never saved: this is the text that has no snapshot yet.
+    let unsaved = original + "\n\nMai salvata, e da non perdere."
+    controller.updateOpenNoteText(unsaved)
+    #expect(controller.openNote?.hasUnsavedChanges == true)
+
+    let session = try #require(controller.session)
+    let before = session.history.snapshots(for: "Uno.md")
+    controller.restoreVersion(original)
+
+    let after = session.history.snapshots(for: "Uno.md")
+    #expect(controller.openNote?.text == original)
+    #expect(after.contains { $0.text == unsaved }, "il buffer non salvato non è finito nella cronologia")
+    #expect(after.count > before.count)
+}

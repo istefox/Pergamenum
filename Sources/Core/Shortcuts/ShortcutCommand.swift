@@ -24,6 +24,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case openVault
     case copyLink
     case revealInFinder
+    case noteHistory
 
     case pastePlain
     case findInNote
@@ -84,7 +85,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var section: Section {
         switch self {
         case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
-             .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder:
+             .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory:
             .file
         case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious:
             .edit
@@ -115,6 +116,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .openVault: "Apri cartella note"
         case .copyLink: "Copia link Pergamenum"
         case .revealInFinder: "Rivela nel Finder"
+        case .noteHistory: "Cronologia…"
         case .pastePlain: "Incolla come testo puro"
         case .findInNote: "Trova nella nota"
         case .replaceInNote: "Sostituisci"
@@ -168,6 +170,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .openVault: KeyBinding("o", [.command, .shift])
         case .copyLink: KeyBinding("l", [.command, .shift])
         case .revealInFinder: KeyBinding("r", [.command, .shift])
+        // Not ⌥⌘H, which the mockup drew: that is the system's own "Nascondi altre",
+        // so the app would either lose the key or shadow a command every Mac has.
+        // Checked rather than assumed, the same way ⌃Space was for `globalCapture`.
+        case .noteHistory: KeyBinding("h", [.command, .shift])
         case .pastePlain: KeyBinding("v", [.command, .shift, .option])
         case .findInNote: KeyBinding("f", .command)
         case .replaceInNote: KeyBinding("f", [.command, .option])

@@ -52,6 +52,9 @@ final class VaultController {
     /// commands: `onKeyPress` only fires when the view holds focus, so Cmd+O did
     /// nothing while the cursor was in the editor, which is exactly when it is wanted.
     var isShowingQuickSwitcher = false
+    /// Set by the "Cronologia…" command and by the inspector's own button, both of
+    /// which open the same sheet over the open note (ADR-0011, M9).
+    var isShowingHistory = false
 
     /// Hashes the app itself wrote, keyed by path. A watcher event whose file hashes
     /// to the recorded value is the app's own write coming back and is ignored.
@@ -224,6 +227,32 @@ final class VaultController {
             note.savedText = note.text
             note.externalChangePending = nil
             openNote = note
+        } catch {
+            recordProblem("\(note.relativePath): \(error)")
+        }
+    }
+
+    /// Writes a past version back over the open note (ADR-0011, M9).
+    ///
+    /// **Saves the buffer first, and that is the point rather than tidiness.**
+    /// `NoteHistory` records the text being *written*, so the note's current text is in
+    /// the list only because an earlier write put it there; unsaved edits are in no
+    /// snapshot at all. Restoring straight over them would discard work with nothing to
+    /// go back to, which is precisely what ADR-0001 §D3.4 refuses to do. Saving first
+    /// puts the buffer in the history, and the restore's own write adds itself on the
+    /// way past - so the sheet's promise that restoring keeps the current version is
+    /// literally true, in the one case where it would otherwise be a lie.
+    func restoreVersion(_ text: String) {
+        guard let session, openNote != nil else { return }
+        saveOpenNote()
+        // Re-read: the save above replaced `openNote` wholesale.
+        guard var note = openNote else { return }
+        do {
+            let result = try session.write(text, to: note.relativePath)
+            note.text = result.text
+            note.savedText = result.text
+            note.externalChangePending = nil
+            replaceOpenNote(note)
         } catch {
             recordProblem("\(note.relativePath): \(error)")
         }

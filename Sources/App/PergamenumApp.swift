@@ -309,6 +309,9 @@ struct VaultCommands: Commands {
             Button("Salva") { actions.run(.save) }
                 .keyboardShortcut(shortcuts.shortcut(for: .save))
                 .disabled(!actions.canRun(.save))
+            Button("Cronologia…") { actions.run(.noteHistory) }
+                .keyboardShortcut(shortcuts.shortcut(for: .noteHistory))
+                .disabled(!actions.canRun(.noteHistory))
             Divider()
             Button("Apri cartella note…") { actions.run(.openVault) }
                 .keyboardShortcut(shortcuts.shortcut(for: .openVault))

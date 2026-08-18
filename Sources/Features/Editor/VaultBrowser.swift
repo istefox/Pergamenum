@@ -78,6 +78,7 @@ struct VaultBrowser: View {
         )) {
             RelatedLinkSheet()
         }
+        .modifier(HistorySheetPresentation())
     }
 
     /// The commands worth a click, in the place macOS puts them.
@@ -192,6 +193,7 @@ struct VaultBrowser: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     conformance(note)
+                    history(note)
                     backlinks(note)
                     LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
                     unresolved
