@@ -77,8 +77,13 @@ import Testing
     let vault = try TemporaryVault()
     let history = NoteHistory(root: vault.root)
     let now = Date()
-    let threeDaysAgo = now.addingTimeInterval(-259_200)
-    let twoDaysAgo = now.addingTimeInterval(-172_800)
+    // Pinned like its two siblings rather than measured from whatever time it is: a
+    // fixed number of seconds back lands on a wall-clock hour that moves, and a daylight
+    // saving transition inside the window would shift which calendar day a snapshot
+    // belongs to. That is precisely the class of flake that reddened this suite once.
+    let nine = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: now)!
+    let threeDaysAgo = nine.addingTimeInterval(-259_200)
+    let twoDaysAgo = nine.addingTimeInterval(-172_800)
 
     // Written in the order real writes happen, oldest first, then a write near real
     // `now` to actually trigger the comparison thinning depends on (see the same-day
@@ -98,7 +103,13 @@ import Testing
     let vault = try TemporaryVault()
     let history = NoteHistory(root: vault.root)
     let now = Date()
-    let old1 = now.addingTimeInterval(-172_800)
+    // Pinned to nine in the morning, as the same-day test above is, and for a reason
+    // that cost a red suite: derived straight from `Date()`, `old1` was `now` minus 48
+    // hours and `old2` an hour later, so between 23:00 and midnight the pair landed on
+    // two different calendar days and thinning correctly kept both. The rule was right;
+    // the test only described it for 23 hours out of every 24.
+    let old1 = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: now)!
+        .addingTimeInterval(-172_800)
     let old2 = old1.addingTimeInterval(3_600)
 
     history.record("vecchia 1\n", for: "N.md", at: old1)

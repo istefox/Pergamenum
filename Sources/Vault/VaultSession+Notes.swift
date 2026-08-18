@@ -39,7 +39,8 @@ extension VaultSession {
         in folder: String = "",
         date: CalendarDate,
         category: NoteCategory = .note,
-        topics: [Tag] = []
+        topics: [Tag] = [],
+        body: String = ""
     ) throws -> WriteResult {
         let violations = category == .daily
             ? NoteName.validateDaily(title)
@@ -54,7 +55,13 @@ extension VaultSession {
         frontmatter.date = date
         frontmatter.tags = TagRules.initialTags(for: category, topics: topics)
 
-        return try write(FrontmatterSerializer.render(frontmatter) + "\n", to: relativePath)
+        // `render` already ends in `---\n`, so the added newline is the blank line every
+        // note has had between its frontmatter and its text. With `body` empty - which is
+        // every caller that does not pass a template - the bytes are exactly what this
+        // wrote before templates existed, and a test pins that rather than trusting it.
+        return try write(
+            FrontmatterSerializer.render(frontmatter) + "\n" + body, to: relativePath
+        )
     }
 
     // MARK: Daily notes

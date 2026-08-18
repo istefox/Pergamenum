@@ -18,11 +18,12 @@ extension VaultController {
         in folder: String = "",
         date: CalendarDate,
         category: NoteCategory = .note,
-        topics: [Tag] = []
+        topics: [Tag] = [],
+        body: String = ""
     ) throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try session.createNote(
-            title: title, in: folder, date: date, category: category, topics: topics
+            title: title, in: folder, date: date, category: category, topics: topics, body: body
         ).path
         openNote(at: relativePath)
         return relativePath

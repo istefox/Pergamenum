@@ -20,6 +20,8 @@ struct NewNoteComposer: View {
     @State private var title = ""
     @State private var folder = ""
     @State private var topic = ""
+    /// The chosen template's relative path, empty for none (ADR-0011 D6).
+    @State private var template = ""
     @State private var error: String?
     /// Bumped to put the caret in the title, including after the folder menu took it.
     @State private var focusRequest = 0
@@ -79,10 +81,15 @@ struct NewNoteComposer: View {
 
             HStack(spacing: theme.spacing(.s)) {
                 folderPicker
+                templatePicker
                 TextField("topic-… (facoltativo)", text: $topic)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
                     .onSubmit(create)
+            }
+
+            if !templateBody.isEmpty {
+                templatePreview
             }
         }
     }
@@ -100,6 +107,62 @@ struct NewNoteComposer: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityIdentifier("new-note-folder")
+    }
+
+    /// Always rendered, including on a vault with no `Templates/` folder at all - which
+    /// is every vault until someone makes one. A control that hides itself is invisible
+    /// to the person who has never made a template and therefore does not know they can;
+    /// so when there is nothing to list, the menu's one item is the sentence that says
+    /// how to make one. Decided by looking at the three candidates side by side in
+    /// `TemplateMockup`, approved 2026-08-18.
+    private var templatePicker: some View {
+        Menu {
+            if vault.templates.isEmpty {
+                Text("Una nota in \(NoteTemplate.folder)/ diventa un modello")
+            } else {
+                Button("(nessuno)") { template = "" }
+                ForEach(vault.templates, id: \.relativePath) { candidate in
+                    Button(candidate.title) { template = candidate.relativePath }
+                }
+            }
+        } label: {
+            Label(templateTitle, systemImage: "doc.text")
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityIdentifier("new-note-template")
+    }
+
+    private var templateTitle: String {
+        guard let record = vault.templates.first(where: { $0.relativePath == template })
+        else { return "Template" }
+        return record.title
+    }
+
+    /// What the note will actually start with, substituted exactly as the write will do
+    /// it - the same `NoteTemplate.substituting` call, not an approximation of it, so
+    /// «Crea» is pressed knowing the result rather than guessing at it.
+    private var templateBody: String {
+        guard !template.isEmpty, let text = try? vault.session?.read(template).text
+        else { return "" }
+        return NoteTemplate.substituting(
+            title: trimmedTitle.isEmpty ? "{{title}}" : trimmedTitle,
+            date: .today,
+            in: NoteTemplate.body(of: text)
+        )
+    }
+
+    private var templatePreview: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+            Text("DAL TEMPLATE").themedText(.caption, color: .textTertiary)
+            Text(templateBody)
+                .themedText(.body, color: .textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(theme.spacing(.s))
+        .background(theme.color(.surfaceSunken))
+        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
     }
 
     private var footer: some View {
@@ -136,7 +199,8 @@ struct NewNoteComposer: View {
                 title: trimmedTitle,
                 in: folder.trimmingCharacters(in: .whitespaces),
                 date: .today,
-                topics: topics
+                topics: topics,
+                body: templateBody
             )
             onCreated(path)
         } catch {

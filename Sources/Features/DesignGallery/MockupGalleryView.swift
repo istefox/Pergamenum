@@ -13,9 +13,22 @@ struct MockupGalleryView: View {
     @Environment(\.theme) private var theme
     @State private var screen: Screen = .capture
 
+    /// The width a mockup may actually paint in.
+    ///
+    /// The gallery sheet is 780 points wide (`DesignSystemSettings`), and a vertical
+    /// `ScrollView` does not scroll sideways: anything wider is centred and clipped at
+    /// **both** edges at once, which reads as broken formatting rather than as overflow.
+    /// It cost a review round on the template mockup, whose three 260-point cells came
+    /// to 908 points and lost 64 from each side - every line then started exactly at the
+    /// sheet's border, whatever its own indentation was.
+    ///
+    /// 780 less the 24-point padding a mockup puts on each side, less a margin for the
+    /// scroller. A row of cells is sized from this, never guessed.
+    static let contentWidth: CGFloat = 720
+
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, find, format,
-             history, editor, workspace, today, tasks
+             history, template, editor, workspace, today, tasks
 
         var id: String { rawValue }
 
@@ -30,6 +43,7 @@ struct MockupGalleryView: View {
             case .find: "Trova"
             case .format: "Formato"
             case .history: "Cronologia"
+            case .template: "Template"
             case .editor: "Editor"
             case .workspace: "Workspace"
             case .today: "Oggi"
@@ -50,6 +64,7 @@ struct MockupGalleryView: View {
             case .find: "M8, realizzato"
             case .format: "M8, realizzato"
             case .history: "M9, realizzato"
+            case .template: "M9, da approvare"
             case .editor: "M1, realizzato"
             case .workspace: "M2 e M3, realizzato"
             case .today: "M5, realizzato"
@@ -70,13 +85,17 @@ struct MockupGalleryView: View {
 
     private var picker: some View {
         VStack(spacing: theme.spacing(.xs)) {
+            // A menu rather than a segmented control: fourteen screens in a
+            // 780-point sheet truncated their own labels, and a tab nobody can read
+            // is a mockup nobody can open.
             Picker("", selection: $screen) {
                 ForEach(Screen.allCases) { item in
                     Text(item.title).tag(item)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .labelsHidden()
+            .fixedSize()
             Text(screen.milestone).themedText(.caption, color: .textTertiary)
         }
         .padding(theme.spacing(.m))
@@ -94,6 +113,7 @@ struct MockupGalleryView: View {
         case .find: FindBarMockup()
         case .format: FormatBarMockup()
         case .history: HistoryMockup()
+        case .template: TemplateMockup()
         case .editor: EditorMockup()
         case .workspace: WorkspaceMockup()
         case .today: TodayMockup()

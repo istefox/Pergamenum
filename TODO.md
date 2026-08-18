@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=26 -->
+<!-- project-tasks: prefix=PG lastId=28 -->
 # PROJECT TASKS
 
-Updated: 2026-08-18 · Open: 14 (P1: 0) · In progress: 0
+Updated: 2026-08-18 · Open: 16 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -29,6 +29,12 @@ _Nothing in progress._
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
+- [ ] `PG-027` **P3** The note index keeps describing a note the composer is covering — `Sources/Features/Editor/NoteListPane+Footer.swift` <!-- src:session opened:2026-08-18 -->
+  - `editor` shows the composer whenever `newNote != nil` and only then falls back to `openNote`, but `openNote(at:)` never clears `newNote`. Click a note in the list with the composer up and it opens underneath: the INDICE pane reads it and shows headings for something not on screen. Found while verifying templates, where clicking into `Templates/` to read the model is the natural move.
+  - The pane's own comment already states the rule it breaks: «l'indice compare solo quando una nota è aperta, altrimenti non c'è niente da indicizzare». One condition short of true.
+- [ ] `PG-028` **P3** A new note's typed title does not survive leaving the composer — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-18 -->
+  - `beginNewNote()` builds an empty `NoteDraft` every time and the composer seeds its `@State` from it on appear, so Escape, «Annulla» or the × throw the typed title away. Deliberate, and fine while there was no reason to step out mid-composition.
+  - Templates give that reason: you want to read the model before choosing it. Decide whether a draft should outlive its dismissal, which is a design question and not a repair — hence its own item rather than a fix folded into the templates slice.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.

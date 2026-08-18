@@ -23,6 +23,12 @@ import SwiftUI
 struct HistoryMockup: View {
     @Environment(\.theme) private var theme
 
+    /// Sized from `MockupGalleryView.contentWidth` rather than guessed: at the 230 this
+    /// first shipped with, the three cells came to 818 points against the sheet's 780
+    /// and were quietly clipped at both edges. Nobody caught it until the template
+    /// mockup made the same mistake by a wider margin.
+    private static let tripleWidth: CGFloat = 208
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: theme.spacing(.l)) {
@@ -38,7 +44,7 @@ struct HistoryMockup: View {
                 edgeCases
             }
             .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
         }
         .background(theme.color(.backgroundPrimary))
     }
@@ -80,7 +86,7 @@ struct HistoryMockup: View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text(title).themedText(.caption, color: .textSecondary)
             content
-                .frame(width: 230)
+                .frame(width: Self.tripleWidth)
                 .padding(theme.spacing(.s))
                 .background(theme.color(.backgroundSecondary))
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
