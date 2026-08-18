@@ -17,6 +17,12 @@ struct ComposerTextField: NSViewRepresentable {
     var focusRequest = 0
     var identifier: String?
     var onSubmit: () -> Void = {}
+    /// Shift+Return, which the find bar reads as «la corrispondenza precedente». Defaults to
+    /// `onSubmit`, so a field that has no backwards meaning behaves as it always did.
+    var onSubmitBackwards: (() -> Void)?
+    /// Escape. Nil where the field has nothing to cancel, and then the key falls through to
+    /// whoever else wants it rather than being quietly eaten.
+    var onCancel: (() -> Void)?
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField(string: text)
@@ -74,9 +80,28 @@ struct ComposerTextField: NSViewRepresentable {
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
-            parent.onSubmit()
-            return true
+            switch selector {
+            case #selector(NSResponder.insertNewline(_:)):
+                // Shift+Return arrives as `insertNewline` with the modifier still on the
+                // event, not as a selector of its own: AppKit maps both to the same command
+                // and only the event knows which was pressed.
+                let isBackwards = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
+                if isBackwards, let onSubmitBackwards = parent.onSubmitBackwards {
+                    onSubmitBackwards()
+                } else {
+                    parent.onSubmit()
+                }
+                return true
+            // Escape reaches a field as either of these depending on what else is installed,
+            // so both are caught rather than the one that happened to work - the same pair
+            // `CompletingTextView.doCommand(by:)` catches for the completion panel.
+            case #selector(NSResponder.cancelOperation(_:)), #selector(NSResponder.complete(_:)):
+                guard let onCancel = parent.onCancel else { return false }
+                onCancel()
+                return true
+            default:
+                return false
+            }
         }
 
         /// First responder with the caret at the end, retried once because a field
