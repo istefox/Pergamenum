@@ -9,11 +9,14 @@ import SwiftUI
 extension NoteListPane {
     /// The index and the status strip, in that order, each with its own rule.
     ///
-    /// The index appears only when a note is open - there is nothing to index otherwise -
-    /// and says so when the note has no headings rather than showing an empty box.
+    /// The index appears only when a note is open *and on screen* - there is nothing to
+    /// index otherwise - and says so when the note has no headings rather than showing an
+    /// empty box. The second half of that condition was missing until PG-027: with the
+    /// composer covering the editor, the index listed the headings of a note nobody could
+    /// see.
     @ViewBuilder
     var footer: some View {
-        if let note = vault.openNote {
+        if let note = vault.openNote, vault.isOpenNoteVisible {
             Divider()
             OutlinePane(
                 entries: NoteOutline.entries(in: note.text),

@@ -33,8 +33,15 @@ final class VaultController {
     /// The note being created, while it is still only a name being typed.
     ///
     /// Held here rather than in the browser because the New Note command is in the menu
-    /// bar and has to work from any pane. Nil means nothing is being created.
-    var newNote: NoteDraft?
+    /// bar and has to work from any pane. Nil means there is no draft at all.
+    ///
+    /// **Unlike `taskDraft`, non-nil does not mean the composer is on screen**: stepping
+    /// out of the composer to read a note parks the draft here, and `isComposingNote`
+    /// says whether it is being shown (PG-027, PG-028). The two used to be one property,
+    /// which is how a note came to open underneath the composer.
+    var noteDraft: NoteDraft?
+    /// Whether the new-note composer occupies the editor column.
+    var isComposingNote = false
     /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
     /// watches it so the panel can be opened from the menu as well as the spacebar.
     var isShowingQuickLook = false
@@ -138,6 +145,9 @@ final class VaultController {
         session = nil
         thumbnails = nil
         openNote = nil
+        // A draft names a folder in the vault being closed, and the composer would
+        // otherwise still be sitting in the editor column of a vault that is gone.
+        endNewNote()
     }
 
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the
@@ -186,6 +196,10 @@ final class VaultController {
                 externalChangePending: nil
             )
             session.updateIndex(record, at: relativePath)
+            // The composer covers the editor column, so a note opened while it is up
+            // would open underneath it (PG-027). Inside the `do`, after the read: a note
+            // that could not be read is no reason to take the composer away.
+            isComposingNote = false
         } catch {
             recordProblem("\(relativePath): \(error)")
         }
@@ -195,19 +209,14 @@ final class VaultController {
         openNote?.text = text
     }
 
-    /// A note that does not exist yet: the name being typed, and where it will go.
+    /// A note that does not exist yet: the name being typed, where it will go, and the
+    /// template it starts from.
     struct NoteDraft: Equatable, Sendable {
         var folder = ""
         var title = ""
         var topic = ""
-    }
-
-    /// Starts a new note in a folder, empty meaning the vault root.
-    ///
-    /// The naming used to happen in a sheet floating over the window; it now happens in
-    /// the editor pane itself, so a new note is composed where it will be edited.
-    func beginNewNote(in folder: String = "") {
-        newNote = NoteDraft(folder: folder)
+        /// The chosen template's relative path, empty for none (ADR-0011 D6).
+        var template = ""
     }
 
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).

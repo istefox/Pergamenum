@@ -133,14 +133,14 @@ struct VaultBrowser: View {
 
     @ViewBuilder
     private var editor: some View {
-        if let draft = vault.newNote {
+        if vault.isComposingNote {
             NewNoteComposer(
-                draft: draft,
+                draft: vault.noteDraft ?? .init(),
                 onCreated: { _ in
-                    vault.newNote = nil
+                    vault.endNewNote()
                     focusRequest += 1
                 },
-                onCancel: { vault.newNote = nil }
+                onCancel: { vault.endNewNote() }
             )
         } else if let note = vault.openNote {
             VStack(spacing: 0) {
@@ -189,7 +189,10 @@ struct VaultBrowser: View {
 
     @ViewBuilder
     private var inspector: some View {
-        if let note = vault.openNote {
+        // `isOpenNoteVisible` and not just `openNote`: backlinks, conformance and the
+        // history of a note the composer is covering describe something nobody is
+        // looking at (PG-027).
+        if let note = vault.openNote, vault.isOpenNoteVisible {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     conformance(note)

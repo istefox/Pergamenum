@@ -11,7 +11,8 @@ struct NewNoteComposer: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
-    /// The draft as the controller holds it: the folder arrives from "Nuova nota qui".
+    /// The draft as the controller holds it: the folder arrives from "Nuova nota qui",
+    /// and everything else from a draft parked by stepping out of a previous composer.
     let draft: VaultController.NoteDraft
     /// Called with the path of the note just created, so the editor can take focus.
     let onCreated: (String) -> Void
@@ -29,6 +30,11 @@ struct NewNoteComposer: View {
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
     private var canCreate: Bool { !trimmedTitle.isEmpty }
 
+    /// What has been typed so far, in the shape the controller parks (PG-028).
+    private var typed: VaultController.NoteDraft {
+        .init(folder: folder, title: trimmedTitle, topic: topic, template: template)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             header
@@ -43,8 +49,15 @@ struct NewNoteComposer: View {
             title = draft.title
             folder = draft.folder
             topic = draft.topic
+            template = draft.template
             focusRequest += 1
         }
+        // Whatever took the composer off the screen without dismissing it - a note
+        // clicked in the list, the quick switcher, a backlink - was a step out and not a
+        // change of mind, so what was typed is kept for the next Cmd+N (PG-028). The
+        // controller ignores this when the draft is already gone, which is what
+        // «Annulla» and «Crea» leave behind.
+        .onDisappear { vault.parkNewNote(typed) }
         // Escape gets out of a composer that has taken over the pane, the same as it
         // dismissed the sheet this replaces.
         .onExitCommand(perform: onCancel)
