@@ -87,6 +87,45 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-19: **M10 (`PG-011`) a tre slice su quattro**, ADR-0012, tre PR mergiate: #68 le
+  tab, #69 lo split view, #70 il tag browser con le preferite e la rinomina dei tag. Una
+  tab possiede il buffer e tutto ciò che descrive il guardare quella nota - pieghe, voce
+  dell'indice, modalità lettura, sessione di ricerca - stato che prima stava su
+  `Navigation`, cioè sulla finestra, e che con due note aperte non era più un dettaglio ma
+  una perdita di dati. `openNote` continua a leggersi uguale negli 82 punti che lo usano:
+  è una facciata sulla colonna col fuoco, ed è la cosa da guardare con sospetto in
+  revisione, perché una facciata che risolve contro la colonna sbagliata è un difetto che
+  nessun compilatore vede. Le due colonne **non sono un `HSplitView`**: `NSSplitView`
+  tiene la larghezza che il pannello aveva già e dà al nuovo quello che avanza, qualunque
+  cosa dicano i frame dei figli, quindi `EditorColumns` divide una frazione della
+  larghezza, metà quando la colonna nasce, con il divisore trascinabile. **La finestra
+  aveva due nozioni di fuoco senza un contratto fra loro** - `focusedColumnIndex` e il
+  first responder di AppKit - ed è ciò che ha prodotto tre correzioni in fila, ognuna sul
+  sintomo visibile. Ora la regola è scritta in `EditorColumnView` e vale nei due versi: un
+  click nel testo porta il modello sulla colonna, uno spostamento del modello porta la
+  tastiera nell'editor di quella colonna. Le preferite stanno in
+  `.pergamenum/starred.json`, **nel vault**, perché quali note contano è un fatto del
+  vault e viaggia con esso su iCloud Drive; i tag appuntati stanno in `UserDefaults` sotto
+  la chiave del percorso, come le tab aperte, perché sono una scorciatoia di questa
+  scrivania. Il pannello Tag è il settimo di `Navigation.Pane`, su ⌃⌘7, verificato libero
+  contro `com.apple.symbolichotkeys` **prima** di legarlo, che è la lezione di M9. La
+  rinomina di un tag su tutto il vault è la prima scrittura multi-nota di questa app che
+  passa dal journal invece di aggirarlo: N scritture singole attraverso
+  `VaultSession.write`, il diff mostrato prima di toccare qualunque file, e un
+  annullamento di gruppo che rifiuta una nota cambiata nel frattempo. `TagRename` riscrive
+  solo le righe dei tag, mai riserializzando il frontmatter, e il confronto è per token
+  intero, così `topic-gomma` lascia stare `topic-gomma-metallo`. Il journal è armato per
+  la durata dell'operazione e disarmato dopo: restringe ADR-0007 §D6 invece di
+  contraddirlo. **Tredici difetti trovati guardando lo schermo e nessuno da un test**,
+  tutti della stessa famiglia: un gesto `count: 2` su un antenato trattiene il click che
+  serve al bottone figlio; un `NSTextView` si mangia il click che l'`onTapGesture` della
+  colonna aspettava; un click destro su un `Button` SwiftUI fa scattare anche la sua
+  azione; righe fuori da una `List` partono quattordici punti più a sinistra di quelle
+  dentro. Per liste, binding di selezione, gesti, first responder e layout, la verifica a
+  schermo viene prima di dire che funziona. Resta lo slice 4: gli operatori di ricerca di
+  D8, il Quick Open esteso e le menzioni non linkate di D9, che è il terzo dei tre
+  elementi visivi per cui l'ADR chiede un mockup prima.
+
 - 2026-08-18: **M9 completo, `PG-010` chiuso.** ADR-0011 realizzato in tre slice.
   `NoteHistory` (`Sources/Vault`, solo Foundation) scrive uno snapshot del testo intero a
   ogni scrittura di nota, agganciato senza condizioni a `VaultSession.write` e limitato ai
