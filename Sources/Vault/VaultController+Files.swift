@@ -99,4 +99,24 @@ extension VaultController {
     func isStarred(_ relativePath: String) -> Bool { session?.isStarred(relativePath) ?? false }
 
     func toggleStar(_ relativePath: String) { session?.toggleStar(relativePath) }
+
+    // MARK: I tag appuntati
+    //
+    // Not on `VaultSession`, unlike the stars: a pin is this machine's shortcut into its own
+    // browser, so it lives in `UserDefaults` keyed by the vault's path, where the open tabs
+    // live (ADR-0012 D10). A connector has no browser and would have nothing to do with it.
+
+    func isPinned(_ tag: Tag) -> Bool { pinnedTags.contains(tag) }
+
+    /// Pins a tag at the end of the list, or unpins it. Order is the order they were pinned:
+    /// alphabetical would move a row under the pointer the moment a new pin arrives.
+    func togglePin(_ tag: Tag) {
+        guard let root else { return }
+        if let index = pinnedTags.firstIndex(of: tag) {
+            pinnedTags.remove(at: index)
+        } else {
+            pinnedTags.append(tag)
+        }
+        pinnedTagsStore.remember(pinnedTags, for: root)
+    }
 }

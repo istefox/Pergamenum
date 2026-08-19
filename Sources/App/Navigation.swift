@@ -17,6 +17,7 @@ final class Navigation {
         case diary
         case tasks
         case conformance
+        case tags
 
         var id: String { rawValue }
 
@@ -28,6 +29,7 @@ final class Navigation {
             case .diary: "Diario"
             case .tasks: "Attività"
             case .conformance: "Conformità"
+            case .tags: "Tag"
             }
         }
 
@@ -39,6 +41,7 @@ final class Navigation {
             case .diary: "book.closed"
             case .tasks: "checklist"
             case .conformance: "checkmark.seal"
+            case .tags: "tag"
             }
         }
 
@@ -61,6 +64,7 @@ final class Navigation {
             case .diary: .paneDiary
             case .tasks: .paneTasks
             case .conformance: .paneConformance
+            case .tags: .paneTags
             }
         }
     }

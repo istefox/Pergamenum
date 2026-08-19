@@ -111,10 +111,26 @@ final class VaultController {
     /// Where the open tabs are remembered, per vault (ADR-0012 D10). Injected against the
     /// same mistake as `recents`, and not private so its two methods can live with the tabs.
     let openTabs: OpenTabsStore
+    /// Where the pinned tags are remembered, per vault. Injected for the same reason, and read
+    /// through the three doors in `VaultController+Files`.
+    let pinnedTagsStore: PinnedTagsStore
 
-    init(recents: RecentVaults = RecentVaults(), openTabs: OpenTabsStore = OpenTabsStore()) {
+    /// The pinned tags of the open vault, kept here so a view watching the controller redraws
+    /// when one is added. The store is the record; this is what the browser reads.
+    ///
+    /// Not `private(set)`: the one door onto it, `togglePin`, is in `VaultController+Files.swift`
+    /// and cannot write through a private setter from another file. Same documented trade as
+    /// `columns` and `replaceOpenNote`.
+    var pinnedTags: [Tag] = []
+
+    init(
+        recents: RecentVaults = RecentVaults(),
+        openTabs: OpenTabsStore = OpenTabsStore(),
+        pinnedTags: PinnedTagsStore = PinnedTagsStore()
+    ) {
         self.recents = recents
         self.openTabs = openTabs
+        self.pinnedTagsStore = pinnedTags
     }
 
     // MARK: Opening
@@ -139,6 +155,7 @@ final class VaultController {
         await rescan()
         startWatching(url)
         restoreTabs()
+        pinnedTags = pinnedTagsStore.tags(for: url)
 
         if let route = routeState.pending {
             routeState.pending = nil

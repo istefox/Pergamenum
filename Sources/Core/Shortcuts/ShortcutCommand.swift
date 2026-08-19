@@ -53,6 +53,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneTasks
     case paneConformance
     case paneDiary
+    case paneTags
     case readingMode
     case runConformanceCheck
     case foldSection
@@ -102,7 +103,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
             .edit
         case .insertWikilink, .insertRelated:
             .insert
-        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
+        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
              .paneDiary, .readingMode, .runConformanceCheck, .foldSection, .unfoldAll:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
@@ -144,6 +145,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneTasks: "Vai ad Attività"
         case .paneConformance: "Vai a Conformità"
         case .paneDiary: "Vai a Diario"
+        case .paneTags: "Vai a Tag"
         case .readingMode: "Modalità lettura"
         case .runConformanceCheck: "Verifica conformità"
         case .foldSection: "Ripiega la sezione"
@@ -210,6 +212,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneTasks: KeyBinding("4", [.command, .control])
         case .paneConformance: KeyBinding("5", [.command, .control])
         case .paneDiary: KeyBinding("6", [.command, .control])
+        // Checked against the system's own before it was bound, which is the M9 lesson:
+        // `com.apple.symbolichotkeys` defines nothing on Ctrl+Cmd+7.
+        case .paneTags: KeyBinding("7", [.command, .control])
         case .readingMode: KeyBinding("m", [.command, .shift])
         case .runConformanceCheck: KeyBinding("l", [.command, .control])
         // The keys Xcode uses for the same thing. ⌘← and ⌘→ are already the

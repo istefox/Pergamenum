@@ -157,7 +157,8 @@ final class CommandActions {
 
     private func runView(_ command: ShortcutCommand) {
         switch command {
-        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary:
+        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
+             .paneTags:
             if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
                 navigation.pane = pane
             }
@@ -260,7 +261,7 @@ final class CommandActions {
         case .openVault, .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious,
              .insertWikilink,
              .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
-             .paneDiary, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek,
+             .paneDiary, .paneTags, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek,
              .previousDay, .nextDay:
             true
         }
