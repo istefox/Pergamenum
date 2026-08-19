@@ -23,6 +23,14 @@ struct ViewCommands: Commands {
             // Left as a `Toggle` rather than routed through `actions.run`: the checkmark
             // beside it is the state, and a button would lose it. The binding is the
             // action here, so there is no second copy to drift.
+            // No shortcut and no entry in the remappable catalogue (ADR-0012 D4): not every
+            // command has one - «Cattura rapida» has none either - and a pair of rows in the
+            // settings pane for splitting an editor buys nothing.
+            Button("Dividi l'editor") { vault.splitEditor() }
+                .disabled(vault.root == nil || vault.columns.count > 1)
+            Button("Chiudi la colonna") { vault.closeColumn(vault.focusedColumnIndex) }
+                .disabled(vault.columns.count < 2)
+            Divider()
             Toggle("Modalità lettura", isOn: Bindable(vault).isReadingMode)
                 .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
                 .disabled(!actions.canRun(.readingMode))

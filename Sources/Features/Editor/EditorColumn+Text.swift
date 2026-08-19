@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// The editor pane's own parts: its header, the reading view, and what a click on an
-/// embedded file does.
+/// The text of one column: the editor, the find bar, the reading view, and what a click on
+/// an embedded file does.
 ///
-/// In a file of its own so `VaultBrowser` stays inside SwiftLint's type body length. It
-/// is already the widest view in the app, holding three panes and their sheets.
-extension VaultBrowser {
+/// In a file of its own so `EditorColumnView` stays inside SwiftLint's type body length. It
+/// extended `VaultBrowser` until the split view (ADR-0012 D4) moved the editor's state down a
+/// level, into the column it describes.
+extension EditorColumnView {
     /// Writes a pasted picture into the vault beside the note, returning the name the
     /// embed should carry.
     ///
@@ -35,30 +36,24 @@ extension VaultBrowser {
 
     /// The editor itself, with everything the text view needs wired to it.
     ///
-    /// Here rather than inline in `VaultBrowser.body` for the reason this file exists at
+    /// Here rather than inline in the column's `body` for the reason this file exists at
     /// all: the browser is the widest view in the app, and M8 gave the text view two more
     /// inputs.
     func editing(_ note: VaultController.OpenNote) -> some View {
         NoteTextView(
             text: Binding(
-                get: { vault.openNote?.text ?? "" },
-                set: { vault.updateOpenNoteText($0) }
+                // This column's note, and not the facade: the facade answers for whichever
+                // column has the focus, so both halves would show the same text.
+                get: { tab?.note.text ?? "" },
+                // The focus first, inside the setter: a keystroke in the column that does not
+                // have it would otherwise be typed into the other column's note.
+                set: { text in focused { vault.updateOpenNoteText(text) } }
             ),
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
-            // Filtered here, once per rebuild: a command the app cannot run right now is
-            // not offered, rather than offered and inert.
-            editorCommands: EditorCommand.all(
-                canRun: commandActions.canRun,
-                // The user's binding and never the default: a menu that taught a shortcut
-                // the user had changed would be teaching one that does nothing.
-                caption: { command in
-                    let binding = shortcuts.binding(for: command)
-                    return binding.isValid ? binding.displayString : nil
-                }
-            ),
+            editorCommands: slashCommands,
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
             onOpenEmbed: { name in preview(embed: name, in: note) },
@@ -90,14 +85,37 @@ extension VaultBrowser {
             outlineRanges: NoteOutline.entries(in: note.text).map {
                 NSRange($0.range, in: note.text)
             },
-            onOutlineEntryChanged: { vault.currentOutlineEntry = $0 },
-            foldedEntries: vault.foldedEntries,
+            onOutlineEntryChanged: { entry in focused { vault.currentOutlineEntry = entry } },
+            foldedEntries: tab?.foldedEntries ?? [],
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,
-            onToggleFold: vault.toggleFold
+            onToggleFold: { entry in focused { vault.toggleFold(entry) } },
+            // Clicking into the text is how a person says which half they are working in, and
+            // the column's own tap gesture never sees that click: the text view takes it.
+            onTakeFocus: { vault.focusColumn(columnIndex) }
         )
-        .modifier(FindKeeping(find: find, navigation: navigation, text: note.text))
+        .modifier(FindKeeping(
+            find: find,
+            navigation: navigation,
+            text: note.text,
+            isFocused: isFocused
+        ))
+    }
+
+    /// The slash menu's catalogue, filtered to what can run right now.
+    ///
+    /// Built once per rebuild: a command the app cannot perform is not offered, rather than
+    /// offered and inert. The caption is the user's own binding and never the default - a menu
+    /// teaching a shortcut that has been remapped is teaching one that does nothing.
+    var slashCommands: [EditorCommand] {
+        EditorCommand.all(
+            canRun: commandActions.canRun,
+            caption: { command in
+                let binding = shortcuts.binding(for: command)
+                return binding.isValid ? binding.displayString : nil
+            }
+        )
     }
 
     /// The find bar and everything it can ask for (SPEC §10, M8).
@@ -122,7 +140,15 @@ extension VaultBrowser {
         )
     }
 
+    /// Cmd+F and Cmd+Alt+F, for this column only.
+    ///
+    /// **The guard is the whole point.** The request is a flag on `Navigation`, which is the
+    /// window; without asking whose it is, both columns' text views consume it and the one
+    /// that clears the flag first decides where the bar opened - on screen, always the right
+    /// hand column, whichever half the caret was in. Same rule as `pendingInsertion` and the
+    /// index jump, which the column already checks the focus for.
     var findRequest: NoteTextView.FindRequest? {
+        guard isFocused else { return nil }
         if navigation.isReplaceRequested { return .replace }
         if navigation.isFindRequested { return .find }
         return nil
@@ -184,6 +210,9 @@ private struct FindKeeping: ViewModifier {
     let find: FindSession
     let navigation: Navigation
     let text: String
+    /// Cmd+G is the window's key and this column's search: the one without the focus has to
+    /// let it pass, or it steps its own matches and clears the counter the other was reading.
+    let isFocused: Bool
 
     func body(content: Content) -> some View {
         content
@@ -197,7 +226,7 @@ private struct FindKeeping: ViewModifier {
             // is two steps where a Bool set twice would be one. Consumed by taking the
             // difference and writing back what was taken.
             .onChange(of: navigation.findStep) { previous, current in
-                guard let current else { return }
+                guard isFocused, let current else { return }
                 guard find.isOpen else {
                     // Cmd+G with no bar open is «cerca di nuovo»: open it on the query that
                     // is already there rather than doing nothing at all.

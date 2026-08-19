@@ -6,7 +6,7 @@ import SwiftUI
 /// the linter allows. It is the natural piece to move: it is one self-contained strip with
 /// two buttons and no state, and it is the only part of that view that is about the file
 /// rather than about the editor.
-extension VaultBrowser {
+extension EditorColumnView {
     var conflictBanner: some View {
         HStack(spacing: theme.spacing(.s)) {
             Image(systemName: "exclamationmark.triangle.fill")

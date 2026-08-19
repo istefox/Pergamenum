@@ -30,11 +30,13 @@ final class VaultController {
 
     /// Every note open in the editor, by column, and which column has focus (ADR-0012 D2).
     ///
-    /// `private(set)` for the same reason `openNote` was: everything outside this file reads
-    /// the tabs and changes them only through the doors below, so a view cannot quietly swap
-    /// the buffer. One column until the split-view slice.
-    private(set) var columns: [EditorColumn] = [EditorColumn()]
-    private(set) var focusedColumnIndex = 0
+    /// **Written only by the doors in `VaultController+Tabs.swift`**, which is where they all
+    /// live and is the whole of the convention: a view calls `show`, `focusTab`, `closeTab`,
+    /// and never assigns here. `private(set)` said the same thing to the compiler until the
+    /// doors outgrew this file; it is documented now rather than enforced, the trade
+    /// `replaceOpenNote` has always made.
+    var columns: [EditorColumn] = [EditorColumn()]
+    var focusedColumnIndex = 0
 
     /// The tab the person is looking at.
     var focusedTab: NoteTab? {
@@ -199,134 +201,6 @@ final class VaultController {
         }
     }
 
-    // MARK: The doors onto the tabs
-    //
-    // `columns` is `private(set)`, so these four are the only way anything changes. They
-    // are internal rather than private because the extensions that need them are in other
-    // files - the same trade `replaceOpenNote` has always made, documented rather than
-    // enforced by the compiler.
-
-    /// Shows a note in the column's preview tab, opening one if there is none.
-    ///
-    /// **This is the single click, and it deliberately does not touch a stable tab.** Before
-    /// tabs it replaced the one open note, which was the only thing it could do; doing that
-    /// now would mean browsing the list destroys whatever the person had in front of them. So
-    /// one tab per column is the preview, every single click lands there, and a double click
-    /// makes it stable (`makeStable`).
-    ///
-    /// A reused tab keeps its identity and loses everything that described the note it was
-    /// showing - folds, index entry, reading mode. That reset used to be an `onChange` in
-    /// `VaultBrowser` watching the open note's path, which is the same rule written where it
-    /// could not survive a second tab.
-    func show(_ note: OpenNote) {
-        guard columns.indices.contains(focusedColumnIndex) else { return }
-        if let index = columns[focusedColumnIndex].tabs.firstIndex(where: \.isPreview) {
-            let tab = columns[focusedColumnIndex].tabs[index]
-            columns[focusedColumnIndex].tabs[index] = tab.showing(note)
-            columns[focusedColumnIndex].activeID = tab.id
-            rememberTabs()
-        } else {
-            var tab = NoteTab(note: note)
-            tab.isPreview = true
-            let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
-            let at = after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count
-            columns[focusedColumnIndex].tabs.insert(tab, at: at)
-            columns[focusedColumnIndex].activeID = tab.id
-        }
-        rememberTabs()
-    }
-
-    /// Turns a preview tab into one that stays: the double click on a row or on the tab.
-    func makeStable(_ id: NoteTab.ID) {
-        guard columns.indices.contains(focusedColumnIndex),
-              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
-        else { return }
-        columns[focusedColumnIndex].tabs[index].isPreview = false
-        rememberTabs()
-    }
-
-    /// Opens a note in a tab of its own, after the focused one, and focuses it.
-    func openTab(showing note: OpenNote) {
-        guard columns.indices.contains(focusedColumnIndex) else { return }
-        let tab = NoteTab(note: note)
-        let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
-        columns[focusedColumnIndex].tabs.insert(tab, at: after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count)
-        columns[focusedColumnIndex].activeID = tab.id
-        rememberTabs()
-    }
-
-    /// Brings a tab to the front of its column. Unknown ids are ignored rather than
-    /// clearing the selection, which would blank the editor on a stale click.
-    func focusTab(_ id: NoteTab.ID) {
-        guard columns.indices.contains(focusedColumnIndex),
-              columns[focusedColumnIndex].tabs.contains(where: { $0.id == id })
-        else { return }
-        columns[focusedColumnIndex].activeID = id
-        isComposingNote = false
-        rememberTabs()
-    }
-
-    /// Closes one tab by id, whether or not it is the focused one.
-    ///
-    /// Closing the focused tab moves focus to the one before it, which is where the eye
-    /// already is; closing any other leaves focus alone. Unsaved changes are not this
-    /// method's business - ADR-0012 D3's dialog asks before it gets here.
-    func closeTab(_ id: NoteTab.ID) {
-        guard columns.indices.contains(focusedColumnIndex),
-              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
-        else { return }
-        let wasFocused = columns[focusedColumnIndex].activeID == id
-        closedTabPaths.append(columns[focusedColumnIndex].tabs[index].note.relativePath)
-        columns[focusedColumnIndex].tabs.remove(at: index)
-        guard wasFocused else { return }
-        let neighbour = columns[focusedColumnIndex].tabs.indices.contains(index - 1) ? index - 1 : 0
-        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.indices.contains(neighbour)
-            ? columns[focusedColumnIndex].tabs[neighbour].id
-            : nil
-        rememberTabs()
-    }
-
-    /// Changes the focused tab in place, leaving its identity and view state alone.
-    func updateFocusedTab(_ change: (inout NoteTab) -> Void) {
-        guard let id = focusedTab?.id else { return }
-        updateTab(id, change)
-    }
-
-    /// Changes any tab of the focused column by id, focused or not.
-    ///
-    /// A rename reaches a tab nobody is looking at, which is exactly the case the
-    /// one-open-note version of this app could not have.
-    func updateTab(_ id: NoteTab.ID, _ change: (inout NoteTab) -> Void) {
-        guard columns.indices.contains(focusedColumnIndex),
-              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
-        else { return }
-        change(&columns[focusedColumnIndex].tabs[index])
-    }
-
-    /// Closes the note in the editor, for when the file it shows is no longer there.
-    func closeOpenNote() {
-        guard columns.indices.contains(focusedColumnIndex), let tab = focusedTab else { return }
-        columns[focusedColumnIndex].tabs.removeAll { $0.id == tab.id }
-        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.last?.id
-    }
-
-    /// Replaces the open note wholesale, keeping the tab and everything it knows.
-    ///
-    /// The one door for code outside this file: `openNote` reads the focused tab and cannot
-    /// be assigned, so a view cannot quietly swap the buffer under the editor.
-    func replaceOpenNote(_ note: OpenNote) {
-        updateFocusedTab { $0.note = note }
-    }
-
-    /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
-    @discardableResult
-    func openDailyNote(for date: CalendarDate) throws -> String {
-        guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
-        let relativePath = try session.dailyNote(for: date)
-        openNote(at: relativePath)
-        return relativePath
-    }
-
     /// Records a problem for the UI to show without interrupting what the user is
     /// doing. Used where the failure is recoverable by retrying.
     func recordProblem(_ message: String) {
@@ -373,13 +247,6 @@ final class VaultController {
 
     // MARK: Vault-private files
     //
-    // Settings, vocabulary and the cache all live on the session now (ADR-0007 §D3).
-    // What stays here is the door the menus and the settings window already knock on.
-
-    /// Applies a settings change and writes `settings.json` back.
-    func updateSettings(_ change: (inout VaultSettings) -> Void) {
-        session?.updateSettings(change)
-    }
 
     /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
     /// (SPEC §12, Avanzate › svuota cache).
@@ -390,11 +257,5 @@ final class VaultController {
         await session.clearCache()
         scanGeneration += 1
         taskGeneration += 1
-    }
-
-    /// Re-imports the closed vocabularies from the harness-system checkout and writes
-    /// the replica back into the vault.
-    func importConventions(from repository: URL) {
-        session?.importConventions(from: repository)
     }
 }

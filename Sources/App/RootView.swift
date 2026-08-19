@@ -29,6 +29,12 @@ struct RootView: View {
 
     var body: some View {
         content
+            // One colour across the whole strip, and opaque. The toolbar is translucent by
+            // default, so the backgrounds of the three panes underneath show through it and
+            // the seams of the split - the divider between the two editor columns, and the
+            // one before the inspector - climb into the title bar as hard vertical edges.
+            .toolbarBackground(theme.color(.backgroundSecondary), for: .windowToolbar)
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
             // A `pergamenum://canvas` link has to bring the Workspace forward before
             // anything can act on it: the view that consumes the route only exists
             // while that pane is shown, so from any other pane the link did nothing at

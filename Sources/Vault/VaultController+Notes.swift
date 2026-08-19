@@ -67,6 +67,17 @@ extension VaultController {
         return created
     }
 
+    // MARK: The daily note
+
+    /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
+    @discardableResult
+    func openDailyNote(for date: CalendarDate) throws -> String {
+        guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
+        let relativePath = try session.dailyNote(for: date)
+        openNote(at: relativePath)
+        return relativePath
+    }
+
     // MARK: The new-note draft
 
     /// A note that does not exist yet: the name being typed, where it will go, and the

@@ -14,15 +14,20 @@ struct NoteTabBar: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
+    /// Which column this bar belongs to (ADR-0012 D4). The bar of the column without the
+    /// focus is dimmed rather than absent: it still says what is open over there.
+    let columnIndex: Int
     /// Asked before a tab with unsaved changes is closed (ADR-0012 D3). The dialog belongs to
-    /// the pane, which can show one; this view only says which tab was aimed at.
+    /// the column, which can show one; this view only says which tab was aimed at.
     let onCloseRequested: (NoteTab) -> Void
+
+    private var isFocused: Bool { vault.focusedColumnIndex == columnIndex }
 
     var body: some View {
         VStack(spacing: 0) {
             strip
             Divider()
-            if let note = vault.openNote {
+            if let note = tabs.first(where: { $0.id == activeID })?.note {
                 Text(note.relativePath)
                     .themedText(.caption, color: .textTertiary)
                     .lineLimit(1)
@@ -42,11 +47,13 @@ struct NoteTabBar: View {
                 HStack(spacing: theme.spacing(.xs)) {
                     ForEach(tabs) { tab in
                         NoteTabChip(
+                            // Only the focused column's active tab wears the accent. Two tabs
+                            // marked active in one window is two answers to "where am I".
                             tab: tab,
-                            isActive: tab.id == vault.focusedTab?.id,
-                            onSelect: { vault.focusTab(tab.id) },
-                            onMakeStable: { vault.makeStable(tab.id) },
-                            onClose: { onCloseRequested(tab) }
+                            isActive: isFocused && tab.id == activeID,
+                            onSelect: { focus { vault.focusTab(tab.id) } },
+                            onMakeStable: { focus { vault.makeStable(tab.id) } },
+                            onClose: { focus { onCloseRequested(tab) } }
                         )
                     }
                 }
@@ -54,42 +61,70 @@ struct NoteTabBar: View {
             }
             .scrollIndicators(.never)
 
-            Button { vault.beginNewTab() } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.color(.textTertiary))
-            .help("Nuova tab")
-            .accessibilityLabel("Nuova tab")
-            .accessibilityIdentifier("new-tab")
-
-            if vault.openNote != nil {
+            // No «+» on the bar, deliberately. It opened the quick switcher, which is a third
+            // search field beside the filter above the list and the global search, for a note
+            // either of those already opens. Cmd+T still does it from the keyboard.
+            if activeID != nil {
                 // The two the header carried, unchanged in behaviour and moved in place.
-                Picker("", selection: Bindable(vault).isReadingMode) {
-                    Text("Modifica").tag(false)
-                    Text("Lettura").tag(true)
+                //
+                // **Glyphs and not words, because of the split.** Spelled out, these three
+                // controls took some 230 points of a column that is 585 wide when the editor
+                // is divided, and two tabs were all that fitted beside them. The words survive
+                // as the accessibility label of each `Label`, which is also what the UI tests
+                // click on.
+                Picker("", selection: Binding(
+                    get: { tabs.first { $0.id == activeID }?.isReadingMode ?? false },
+                    set: { reading in focus { vault.isReadingMode = reading } }
+                )) {
+                    Label("Modifica", systemImage: "pencil").tag(false)
+                    Label("Lettura", systemImage: "book").tag(true)
                 }
                 .pickerStyle(.segmented)
+                .labelStyle(.iconOnly)
                 .labelsHidden()
                 .fixedSize()
+                .help("Modifica o lettura")
 
-                if vault.openNote?.hasUnsavedChanges == true {
-                    Button("Salva", action: vault.saveOpenNote)
+                if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
+                    Button { focus { vault.saveOpenNote() } } label: {
+                        Label("Salva", systemImage: "arrow.down.doc")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.color(.textSecondary))
+                    .help("Salva la nota")
                 } else {
                     Label("Salvato", systemImage: "checkmark.circle")
+                        .labelStyle(.iconOnly)
                         .themedText(.caption, color: .textSecondary)
+                        .help("Salvato")
                 }
             }
         }
         .padding(.horizontal, theme.spacing(.xs))
         .padding(.vertical, theme.spacing(.xs))
-        .background(theme.color(.backgroundSecondary))
+        // Lit when this column has the focus, sunken when it does not: the index in the sidebar,
+        // the inspector and every menu command answer for the focused column, so which one it is
+        // has to be legible without clicking to find out.
+        //
+        // `surfaceSunken` and not `backgroundPrimary`, which is what this was: against
+        // `backgroundSecondary` that is #1A1917 against #222120 in the dark theme, eight points
+        // per channel, which is nothing on a screen. The accent on the active tab was carrying
+        // the whole signal alone.
+        .background(theme.color(isFocused ? .backgroundSecondary : .surfaceSunken))
     }
 
-    private var tabs: [NoteTab] {
-        vault.columns.indices.contains(vault.focusedColumnIndex)
-            ? vault.columns[vault.focusedColumnIndex].tabs
-            : []
+    private var column: EditorColumn? {
+        vault.columns.indices.contains(columnIndex) ? vault.columns[columnIndex] : nil
+    }
+
+    private var tabs: [NoteTab] { column?.tabs ?? [] }
+    private var activeID: NoteTab.ID? { column?.activeID }
+
+    /// Anything done on this bar is done in this column, so the click takes the focus first.
+    private func focus(_ change: () -> Void) {
+        vault.focusColumn(columnIndex)
+        change()
     }
 }
 
@@ -104,7 +139,35 @@ private struct NoteTabChip: View {
     let onMakeStable: () -> Void
     let onClose: () -> Void
 
+    /// **The padding lives inside the two halves, not on the chip.** The tab's gestures cannot
+    /// sit on the chip: a `count: 2` gesture on an ancestor holds a click while it waits to see
+    /// whether a second one arrives, and the × underneath it needed two or three clicks before
+    /// one got through. Moving them onto the title alone fixed that and shrank the target to the
+    /// width of the word - clicking beside «Delta» did nothing. So the chip is now two areas
+    /// that each carry their own padding: everything up to the button selects the tab, the
+    /// button closes it, and the whole rectangle is live.
     var body: some View {
+        HStack(spacing: 0) {
+            title
+                .padding(.leading, theme.spacing(.s))
+                .padding(.trailing, theme.spacing(.xs))
+                .padding(.vertical, theme.spacing(.xs))
+                .frame(minWidth: 64, alignment: .leading)
+                .contentShape(Rectangle())
+                // Declared before the single tap: SwiftUI resolves the higher count first, and
+                // the other order swallows the double click entirely.
+                .onTapGesture(count: 2, perform: onMakeStable)
+                .onTapGesture(perform: onSelect)
+            closeButton
+                .padding(.trailing, theme.spacing(.s))
+                .padding(.vertical, theme.spacing(.xs))
+        }
+        .background(background)
+        .onHover { isHovering = $0 }
+        .accessibilityIdentifier("note-tab")
+    }
+
+    private var title: some View {
         HStack(spacing: theme.spacing(.xs)) {
             if tab.note.hasUnsavedChanges {
                 Circle()
@@ -132,26 +195,7 @@ private struct NoteTabChip: View {
                 // sitting in a 168-point slot, so short titles floated far apart with nothing
                 // between them and the bar read as scattered words rather than as tabs.
                 .frame(maxWidth: 160, alignment: .leading)
-            closeButton
         }
-        .padding(.horizontal, theme.spacing(.s))
-        .padding(.vertical, theme.spacing(.xs))
-        .frame(minWidth: 72, alignment: .leading)
-        .background(background)
-        // The whole chip is the target, not only the glyphs on it: a `.clear` background
-        // leaves a SwiftUI button clickable on its own drawing alone.
-        .contentShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-        // Declared before the single tap: SwiftUI resolves the higher count first, and the
-        // other order swallows the double click entirely.
-        //
-        // Safe here and *not* on a row of the note list, where the same pair broke the click
-        // that opens a note: inside a `List` the single tap belongs to the selection, and a
-        // count-2 gesture waiting to see whether a second click arrives holds it up long
-        // enough to lose it. Found by clicking, on 2026-08-19; no unit test reaches this.
-        .onTapGesture(count: 2, perform: onMakeStable)
-        .onTapGesture(perform: onSelect)
-        .onHover { isHovering = $0 }
-        .accessibilityIdentifier("note-tab")
     }
 
     /// The close button, shown on the active tab and under the pointer, so a row of tabs

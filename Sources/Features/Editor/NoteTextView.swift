@@ -80,6 +80,9 @@ struct NoteTextView: NSViewRepresentable {
     /// index's chevron makes, so a section opened from the editor and one opened from the
     /// sidebar are one gesture with two doors.
     var onToggleFold: ((Int) -> Void)?
+    /// Called when the editor takes the keyboard. The split view uses it to move the focus
+    /// to the column that was clicked into (ADR-0012 D4).
+    var onTakeFocus: (() -> Void)?
 
     enum FindRequest { case find, replace }
 
@@ -175,6 +178,7 @@ struct NoteTextView: NSViewRepresentable {
         textView.onDropFile = { url in coordinator.parent.onDropFile?(url) }
         textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
+        textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
         // Two decorations, asked in turn: whoever claims the click keeps it. They cannot
         // both claim one - a folded heading's line is not a transclusion's line.
         textView.onClickInMargin = { [weak textView] point in

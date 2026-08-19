@@ -95,42 +95,179 @@ private extension Array {
     }
 }
 
-/// Remembering the arrangement, and finding it again (ADR-0012 D10).
+/// The doors onto the tabs and the columns.
+///
+/// `columns` is stored on the class and written **only from here**. They moved out of
+/// `VaultController.swift` when the split view took that file past SwiftLint's 400 lines, and
+/// having every one of them in one file is what keeps the rule legible now that the compiler
+/// no longer states it.
 extension VaultController {
-    /// Writes the arrangement down, so the next launch finds it (ADR-0012 D10).
+    // MARK: The doors onto the tabs
+    //
+    // `columns` is `private(set)`, so these four are the only way anything changes. They
+    // are internal rather than private because the extensions that need them are in other
+    // files - the same trade `replaceOpenNote` has always made, documented rather than
+    // enforced by the compiler.
+
+    /// Shows a note in the column's preview tab, opening one if there is none.
     ///
-    /// Called by every door that changes which tabs exist or which is in front. Not by
-    /// `updateTab`: typing does not rearrange anything, and the buffer is not what is kept.
+    /// **This is the single click, and it deliberately does not touch a stable tab.** Before
+    /// tabs it replaced the one open note, which was the only thing it could do; doing that
+    /// now would mean browsing the list destroys whatever the person had in front of them. So
+    /// one tab per column is the preview, every single click lands there, and a double click
+    /// makes it stable (`makeStable`).
     ///
-    /// Internal rather than private only because the doors are in the other file, which is
-    /// where the stored `columns` has to be.
-    func rememberTabs() {
-        guard let root else { return }
-        openTabs.remember(
-            OpenTabsStore.Session(
-                entries: tabs.map { .init(path: $0.note.relativePath, isPreview: $0.isPreview) },
-                activePath: focusedTab?.note.relativePath
-            ),
-            for: root
-        )
+    /// A reused tab keeps its identity and loses everything that described the note it was
+    /// showing - folds, index entry, reading mode. That reset used to be an `onChange` in
+    /// `VaultBrowser` watching the open note's path, which is the same rule written where it
+    /// could not survive a second tab.
+    func show(_ note: OpenNote) {
+        guard columns.indices.contains(focusedColumnIndex) else { return }
+        if let index = columns[focusedColumnIndex].tabs.firstIndex(where: \.isPreview) {
+            let tab = columns[focusedColumnIndex].tabs[index]
+            columns[focusedColumnIndex].tabs[index] = tab.showing(note)
+            columns[focusedColumnIndex].activeID = tab.id
+            rememberTabs()
+        } else {
+            var tab = NoteTab(note: note)
+            tab.isPreview = true
+            let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
+            let at = after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count
+            columns[focusedColumnIndex].tabs.insert(tab, at: at)
+            columns[focusedColumnIndex].activeID = tab.id
+        }
+        rememberTabs()
     }
 
-    /// Reopens what was open when this vault was last closed.
+    /// Turns a preview tab into one that stays: the double click on a row or on the tab.
+    func makeStable(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        columns[focusedColumnIndex].tabs[index].isPreview = false
+        rememberTabs()
+    }
+
+    // MARK: The columns (ADR-0012 D4)
+
+    /// Gives a column the focus. An index that does not exist is ignored rather than trusted:
+    /// a stale click on a column that has just been closed should do nothing, not trap.
     ///
-    /// A note that is no longer there is skipped rather than reported: it was deleted between
-    /// two launches, which is not a failure, and a dialog about it at every start would be.
-    func restoreTabs() {
-        guard let root, tabs.isEmpty else { return }
-        let session = openTabs.session(for: root)
-        for entry in session.entries {
-            guard let note = readForEditing(entry.path) else { continue }
-            openTab(showing: note)
-            if entry.isPreview, let id = focusedTab?.id { updateTab(id) { $0.isPreview = true } }
-        }
-        if let active = session.activePath,
-           let tab = tabs.first(where: { $0.note.relativePath == active }) {
-            focusTab(tab.id)
-        }
+    /// Everything downstream reads the focused column - the facade, the index in the sidebar,
+    /// the inspector, every menu command - so this one line is what makes two columns behave
+    /// like one editor that happens to be in two places.
+    func focusColumn(_ index: Int) {
+        guard columns.indices.contains(index), index != focusedColumnIndex else { return }
+        focusedColumnIndex = index
+        isComposingNote = false
+        rememberTabs()
+    }
+
+    /// Splits the editor in two, with the focused note in a tab of its own on the right.
+    ///
+    /// Two columns and never three (D4). Splitting while a note is open puts that note on the
+    /// right rather than an empty column: you split *because* you are reading something, and a
+    /// blank half asks you to go and find it again.
+    func splitEditor() {
+        guard columns.count == 1 else { return }
+        let note = focusedTab?.note
+        addColumn()
+        focusedColumnIndex = columns.count - 1
+        if let note { openTab(showing: note) }
+        rememberTabs()
+    }
+
+    /// Adds an empty column without moving the focus. The session restore needs this on its
+    /// own; everything else goes through `splitEditor`.
+    func addColumn() {
+        guard columns.count == 1 else { return }
+        columns.append(EditorColumn())
+    }
+
+    /// Closes a column and hands the focus to the one left.
+    ///
+    /// Never the last one: an editor with no columns is a window with nothing in it, and the
+    /// no-tabs state already says "nessuna nota aperta" without needing a second way to reach
+    /// it. The tabs it held are not offered back by Cmd+Shift+T - closing a column is closing
+    /// a place, not a note.
+    func closeColumn(_ index: Int) {
+        guard columns.count > 1, columns.indices.contains(index) else { return }
+        columns.remove(at: index)
+        focusedColumnIndex = 0
+        rememberTabs()
+    }
+
+    /// Opens a note in a tab of its own, after the focused one, and focuses it.
+    func openTab(showing note: OpenNote) {
+        guard columns.indices.contains(focusedColumnIndex) else { return }
+        let tab = NoteTab(note: note)
+        let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
+        columns[focusedColumnIndex].tabs.insert(tab, at: after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count)
+        columns[focusedColumnIndex].activeID = tab.id
+        rememberTabs()
+    }
+
+    /// Brings a tab to the front of its column. Unknown ids are ignored rather than
+    /// clearing the selection, which would blank the editor on a stale click.
+    func focusTab(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              columns[focusedColumnIndex].tabs.contains(where: { $0.id == id })
+        else { return }
+        columns[focusedColumnIndex].activeID = id
+        isComposingNote = false
+        rememberTabs()
+    }
+
+    /// Closes one tab by id, whether or not it is the focused one.
+    ///
+    /// Closing the focused tab moves focus to the one before it, which is where the eye
+    /// already is; closing any other leaves focus alone. Unsaved changes are not this
+    /// method's business - ADR-0012 D3's dialog asks before it gets here.
+    func closeTab(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        let wasFocused = columns[focusedColumnIndex].activeID == id
+        closedTabPaths.append(columns[focusedColumnIndex].tabs[index].note.relativePath)
+        columns[focusedColumnIndex].tabs.remove(at: index)
+        guard wasFocused else { return }
+        let neighbour = columns[focusedColumnIndex].tabs.indices.contains(index - 1) ? index - 1 : 0
+        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.indices.contains(neighbour)
+            ? columns[focusedColumnIndex].tabs[neighbour].id
+            : nil
+        rememberTabs()
+    }
+
+    /// Changes the focused tab in place, leaving its identity and view state alone.
+    func updateFocusedTab(_ change: (inout NoteTab) -> Void) {
+        guard let id = focusedTab?.id else { return }
+        updateTab(id, change)
+    }
+
+    /// Changes any tab of the focused column by id, focused or not.
+    ///
+    /// A rename reaches a tab nobody is looking at, which is exactly the case the
+    /// one-open-note version of this app could not have.
+    func updateTab(_ id: NoteTab.ID, _ change: (inout NoteTab) -> Void) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        change(&columns[focusedColumnIndex].tabs[index])
+    }
+
+    /// Closes the note in the editor, for when the file it shows is no longer there.
+    func closeOpenNote() {
+        guard columns.indices.contains(focusedColumnIndex), let tab = focusedTab else { return }
+        columns[focusedColumnIndex].tabs.removeAll { $0.id == tab.id }
+        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.last?.id
+    }
+
+    /// Replaces the open note wholesale, keeping the tab and everything it knows.
+    ///
+    /// The one door for code outside this file: `openNote` reads the focused tab and cannot
+    /// be assigned, so a view cannot quietly swap the buffer under the editor.
+    func replaceOpenNote(_ note: OpenNote) {
+        updateFocusedTab { $0.note = note }
     }
 }
 
