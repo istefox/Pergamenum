@@ -39,7 +39,7 @@ struct NoteTabBar: View {
     private var strip: some View {
         HStack(spacing: theme.spacing(.xs)) {
             ScrollView(.horizontal) {
-                HStack(spacing: 2) {
+                HStack(spacing: theme.spacing(.xs)) {
                     ForEach(tabs) { tab in
                         NoteTabChip(
                             tab: tab,
@@ -106,20 +106,37 @@ private struct NoteTabChip: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
+            if tab.note.hasUnsavedChanges {
+                Circle()
+                    .fill(theme.color(.accentPrimary))
+                    .frame(width: 8, height: 8)
+                    .help("Modifiche non salvate")
+                    .accessibilityLabel("\(tab.note.title), modifiche non salvate")
+            }
             Text(tab.note.title)
-                .themedText(.caption, color: isActive ? .textPrimary : .textSecondary)
+                // `.body` and not `.caption`: 11 points is a label under something, and this
+                // is the name of what you are reading. Safari and Xcode both title a tab at
+                // the body size, and at 11 the row read as a caption strip.
+                .themedText(.body, color: isActive ? .textPrimary : .textSecondary)
+                // Weight as well as fill: in the light theme `accentMuted` and `surfaceSunken`
+                // sit at almost the same luminance, so the colour alone carries the active tab
+                // in the dark theme and barely in the other. Weight reads in both.
+                .fontWeight(isActive ? .semibold : .regular)
                 // Italic says "this one is on its way out": the next single click in the list
                 // reuses this tab. VS Code's convention, and the only cue that distinguishes
                 // a preview from a tab that will still be here in ten minutes.
                 .italic(tab.isPreview)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Spacer(minLength: 0)
-            trailingMark
+                // The title is what decides the width, up to a cap: a fixed 168 left «test»
+                // sitting in a 168-point slot, so short titles floated far apart with nothing
+                // between them and the bar read as scattered words rather than as tabs.
+                .frame(maxWidth: 160, alignment: .leading)
+            closeButton
         }
-        .padding(.horizontal, theme.spacing(.xs))
+        .padding(.horizontal, theme.spacing(.s))
         .padding(.vertical, theme.spacing(.xs))
-        .frame(minWidth: 96, idealWidth: 168, maxWidth: 168, alignment: .leading)
+        .frame(minWidth: 72, alignment: .leading)
         .background(background)
         // The whole chip is the target, not only the glyphs on it: a `.clear` background
         // leaves a SwiftUI button clickable on its own drawing alone.
@@ -137,45 +154,36 @@ private struct NoteTabChip: View {
         .accessibilityIdentifier("note-tab")
     }
 
-    /// One mark, in one place, saying two things (which is the point rather than economy).
+    /// The close button, shown on the active tab and under the pointer, so a row of tabs
+    /// reads as titles rather than as a row of crosses.
     ///
-    /// Unsaved changes show as a filled dot where the close button goes; the pointer turns it
-    /// into the close button. Xcode and VS Code both do this, and both do it because a dot
-    /// beside the title is six points of decoration in the one corner nobody looks at, while
-    /// the close corner is the one the hand is already heading for.
-    @ViewBuilder
-    private var trailingMark: some View {
-        if tab.note.hasUnsavedChanges, !isHovering {
-            Circle()
-                .fill(theme.color(.accentPrimary))
-                .frame(width: 8, height: 8)
-                .help("Modifiche non salvate")
-                .accessibilityLabel("\(tab.note.title), modifiche non salvate")
-        } else {
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .themedText(.caption, color: .textTertiary)
-            }
-            .buttonStyle(.plain)
-            // Shown on the active tab and under the pointer, so a row of tabs reads as
-            // titles rather than as a row of crosses.
-            .opacity(isActive || isHovering ? 1 : 0)
-            .help("Chiudi la tab")
-            .accessibilityLabel("Chiudi \(tab.note.title)")
+    /// **The unsaved dot used to live here, in the close button's place, and that was wrong
+    /// in a way only using it showed.** It was hidden while the pointer was on the tab - which
+    /// is precisely when someone is looking at that tab to check. A mark that disappears when
+    /// examined is not a mark. It sits before the title now, where nothing takes its place.
+    private var closeButton: some View {
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .themedText(.caption, color: .textTertiary)
         }
+        .buttonStyle(.plain)
+        .opacity(isActive || isHovering ? 1 : 0)
+        .help("Chiudi la tab")
+        .accessibilityLabel("Chiudi \(tab.note.title)")
     }
 
-    /// The active tab is filled with the muted accent, not with a neutral raised surface.
+    /// Every tab has a shape; the active one has the accent.
     ///
-    /// The grey read as "a tab" rather than as "*this* tab": at a glance, with two of them
-    /// open, it did not answer the question the bar exists to answer. `accentMuted` is the
-    /// token meant for a selected surface and is defined in both themes, so this stays a
-    /// token decision rather than a colour picked here (design system rule).
-    @ViewBuilder
+    /// The inactive ones were transparent, which left the bar as words floating at intervals
+    /// with no telling where one tab ended and the next began - the gaps between short titles
+    /// read as separation between groups rather than between tabs. `surfaceSunken` gives them
+    /// an edge without competing with the active one, which keeps `accentMuted`: the grey
+    /// alone said "a tab", not "*this* tab".
+    ///
+    /// Both are tokens, in both themes, because a view that picks a colour does not pass
+    /// review (design system rule).
     private var background: some View {
-        if isActive {
-            RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
-                .fill(theme.color(.accentMuted))
-        }
+        RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+            .fill(theme.color(isActive ? .accentMuted : .surfaceSunken))
     }
 }

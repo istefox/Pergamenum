@@ -25,7 +25,10 @@ extension VaultController {
         let relativePath = try session.createNote(
             title: title, in: folder, date: date, category: category, topics: topics, body: body
         ).path
-        openNote(at: relativePath)
+        // A tab of its own, and never the preview: making a note is as deliberate an act as
+        // «Apri in una nuova tab», and landing it in the preview tab would mean the next
+        // click in the list overwrites the note you just decided to write.
+        openNoteInNewTab(at: relativePath)
         return relativePath
     }
 
@@ -65,6 +68,16 @@ extension VaultController {
     }
 
     // MARK: The new-note draft
+
+    /// A note that does not exist yet: the name being typed, where it will go, and the
+    /// template it starts from.
+    struct NoteDraft: Equatable, Sendable {
+        var folder = ""
+        var title = ""
+        var topic = ""
+        /// The chosen template's relative path, empty for none (ADR-0011 D6).
+        var template = ""
+    }
 
     /// Starts a new note in a folder, nil meaning "wherever the last one was going".
     ///

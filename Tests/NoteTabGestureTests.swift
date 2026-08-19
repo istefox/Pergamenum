@@ -37,7 +37,7 @@ Altro testo.
 private func controller(_ vault: borrowing TemporaryVault) async throws -> VaultController {
     try vault.write(first, to: "Nexion.md")
     try vault.write(second, to: "Progetti/Sospensione.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     return controller
 }
@@ -235,5 +235,112 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     #expect(controller.tabs.contains { $0.note.relativePath == "Nexion.md" } == false)
     // And Cmd+Shift+T does not offer back a note that is in the trash.
     #expect(controller.closedTabPaths.contains("Nexion.md") == false)
+    controller.close()
+}
+
+// MARK: The arrangement survives a relaunch (ADR-0012 D10)
+
+@MainActor
+@Test func theOpenTabsComeBackWithTheirOrderAndTheirFocus() async throws {
+    let vault = try TemporaryVault()
+    // One store across two controllers is what a relaunch is: the same Mac, the same vault,
+    // a different process.
+    let store = OpenTabsStore.volatile()
+    try vault.write(first, to: "Nexion.md")
+    try vault.write(second, to: "Progetti/Sospensione.md")
+
+    let before = VaultController(recents: .volatile(), openTabs: store)
+    await before.open(vault.root)
+    before.openNoteInNewTab(at: "Nexion.md")
+    before.openNoteInNewTab(at: "Progetti/Sospensione.md")
+    let firstTab = try #require(before.tabs.first?.id)
+    before.focusTab(firstTab)
+    before.close()
+
+    let after = VaultController(recents: .volatile(), openTabs: store)
+    await after.open(vault.root)
+
+    #expect(after.tabs.map(\.note.relativePath) == ["Nexion.md", "Progetti/Sospensione.md"])
+    #expect(after.openNote?.relativePath == "Nexion.md")
+    after.close()
+}
+
+@MainActor
+@Test func aNoteDeletedBetweenTwoLaunchesIsSkipped() async throws {
+    let vault = try TemporaryVault()
+    let store = OpenTabsStore.volatile()
+    try vault.write(first, to: "Nexion.md")
+    try vault.write(second, to: "Progetti/Sospensione.md")
+
+    let before = VaultController(recents: .volatile(), openTabs: store)
+    await before.open(vault.root)
+    before.openNoteInNewTab(at: "Nexion.md")
+    before.openNoteInNewTab(at: "Progetti/Sospensione.md")
+    before.close()
+    try FileManager.default.removeItem(at: vault.root.appending(path: "Nexion.md"))
+
+    let after = VaultController(recents: .volatile(), openTabs: store)
+    await after.open(vault.root)
+
+    // Skipped, not reported: a note deleted between two launches is not a failure, and a
+    // dialog about it at every start would be.
+    #expect(after.tabs.map(\.note.relativePath) == ["Progetti/Sospensione.md"])
+    after.close()
+}
+
+@MainActor
+@Test func aPreviewTabIsStillAPreviewAfterARelaunch() async throws {
+    let vault = try TemporaryVault()
+    let store = OpenTabsStore.volatile()
+    try vault.write(first, to: "Nexion.md")
+
+    let before = VaultController(recents: .volatile(), openTabs: store)
+    await before.open(vault.root)
+    before.openNote(at: "Nexion.md")
+    #expect(before.focusedTab?.isPreview == true)
+    before.close()
+
+    let after = VaultController(recents: .volatile(), openTabs: store)
+    await after.open(vault.root)
+
+    #expect(after.focusedTab?.isPreview == true)
+    after.close()
+}
+
+@MainActor
+@Test func twoVaultsRememberTheirOwnTabs() async throws {
+    let one = try TemporaryVault()
+    let other = try TemporaryVault()
+    let store = OpenTabsStore.volatile()
+    try one.write(first, to: "Nexion.md")
+    try other.write(second, to: "Altra.md")
+
+    let controller = VaultController(recents: .volatile(), openTabs: store)
+    await controller.open(one.root)
+    controller.openNoteInNewTab(at: "Nexion.md")
+    controller.close()
+    await controller.open(other.root)
+    controller.openNoteInNewTab(at: "Altra.md")
+    controller.close()
+
+    await controller.open(one.root)
+    #expect(controller.tabs.map(\.note.relativePath) == ["Nexion.md"])
+    controller.close()
+}
+
+@MainActor
+@Test func aNewNoteOpensInATabOfItsOwn() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    #expect(controller.focusedTab?.isPreview == true)
+
+    _ = try controller.createNote(title: "Curva di trasmissibilità", date: .today)
+
+    #expect(controller.tabs.count == 2)
+    #expect(controller.focusedTab?.isPreview == false)
+    #expect(controller.openNote?.title == "Curva di trasmissibilità")
+    // And the note that was in the preview is still there rather than replaced.
+    #expect(controller.tabs.first?.note.relativePath == "Nexion.md")
     controller.close()
 }
