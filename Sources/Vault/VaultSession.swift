@@ -34,6 +34,20 @@ final class VaultSession {
     /// Every note write's own history, always on (ADR-0011 D2) - unlike `journal`
     /// below, which a connector opts into for its own reason.
     @ObservationIgnored let history: NoteHistory
+    /// Where the starred paths are read from and written back to (ADR-0012 D6).
+    @ObservationIgnored let starredStore: StarredStore
+
+    /// The starred notes, as relative paths.
+    ///
+    /// Held here rather than read from disk on every draw: the note list asks whether a path is
+    /// starred once per row.
+    ///
+    /// **Not `private(set)`, and the convention is the enforcement.** Every door onto this set is
+    /// in `VaultSession+Starred.swift`, which is another file and so cannot write through a
+    /// private setter - the same trade `VaultController.columns` makes for its own doors,
+    /// documented here rather than checked by the compiler. Writing it from anywhere else means
+    /// the file on disk and this set stop agreeing.
+    var starred: Set<String> = []
 
     private(set) var settings: VaultSettings = .default
     private(set) var vocabulary: Vocabulary = .empty
@@ -60,9 +74,11 @@ final class VaultSession {
         self.root = root
         self.store = NoteStore(root: root)
         self.history = NoteHistory(root: root)
+        self.starredStore = StarredStore(root: root)
         self.bundledVocabulary = bundledVocabulary
         loadSettings()
         loadVocabulary()
+        starred = starredStore.load()
     }
 
     // MARK: Reading and writing

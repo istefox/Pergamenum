@@ -29,6 +29,9 @@ struct NoteListPane: View {
     /// Folders or flat list. A preference rather than view state: whichever one
     /// someone works in, they work in it every day.
     @AppStorage("noteListShowsFolders") private var showsFolders = true
+    /// Whether the starred section is open. A preference and not view state, for the same
+    /// reason `showsFolders` is one: it is answered once and lived with.
+    @AppStorage("noteListShowsStarred") private var showsStarred = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,8 +93,68 @@ struct NoteListPane: View {
 
     // MARK: Folders
 
+    // MARK: Le preferite (ADR-0012 D6)
+
+    /// The starred notes, above the rest, and **nothing at all when there are none**: a heading
+    /// over an empty space is a heading in the way, and for weeks after this ships that is the
+    /// normal state of the section.
+    ///
+    /// **A `Section` inside each list rather than a stack above them**, which is the second
+    /// attempt: rows of my own started fourteen points to the left of the notes underneath,
+    /// because a `List` insets its rows and nothing outside one can ask by how much. Inside, the
+    /// alignment is not a number to guess.
+    ///
+    /// The rows carry no `.tag`, so the list's selection - which is bound to the open note -
+    /// cannot land on them: a note starred *and* visible in the tree would otherwise be two rows
+    /// claiming to be the same selected thing. They are buttons, and being the open note is
+    /// drawn rather than selected.
+    @ViewBuilder
+    private var starredSection: some View {
+        let notes = vault.starredNotes
+        if !notes.isEmpty {
+            Section {
+                if showsStarred {
+                    ForEach(notes, id: \.relativePath) { note in
+                        starredRow(note)
+                    }
+                }
+            } header: {
+                Button { showsStarred.toggle() } label: {
+                    HStack(spacing: theme.spacing(.xs)) {
+                        Image(systemName: showsStarred ? "chevron.down" : "chevron.right")
+                            .themedText(.caption, color: .textTertiary)
+                        Text("PREFERITE").themedText(.caption, color: .textTertiary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func starredRow(_ note: NoteRecord) -> some View {
+        let isOpen = note.relativePath == vault.openNote?.relativePath && vault.isOpenNoteVisible
+        return Button { vault.openNote(at: note.relativePath) } label: {
+            HStack(spacing: theme.spacing(.xs)) {
+                Image(systemName: "star.fill").themedText(.caption, color: .accentPrimary)
+                Text(note.title)
+                    .themedText(.body, color: isOpen ? .accentPrimary : .textPrimary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting)
+        }
+        .accessibilityIdentifier("starred-note")
+    }
+
     private var folderTree: some View {
         List(selection: selectedPath) {
+            starredSection
             ForEach(tree) { node in
                 NoteTreeRow(
                     node: node,
@@ -115,6 +178,7 @@ struct NoteListPane: View {
     /// flat list than as a tree opened around it.
     private var flatList: some View {
         List(selection: selectedPath) {
+            starredSection
             ForEach(filteredNotes, id: \.relativePath) { note in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(note.title)
@@ -293,87 +357,5 @@ private struct NoteTreeRow: View {
         } else {
             expanded.insert(node.id)
         }
-    }
-}
-
-/// The note context menu of SPEC §10: rename with link updating (W-08), move, delete.
-///
-/// One type used by both lists, so the tree and the flat list cannot drift apart.
-private struct NoteRowMenu: View {
-    @Environment(VaultController.self) var vault
-    let note: NoteRecord
-    @Binding var renaming: NoteRecord?
-    @Binding var deleting: NoteRecord?
-
-    var body: some View {
-        Button("Apri") { vault.openNote(at: note.relativePath) }
-        Button("Apri in una nuova tab") { vault.openNoteInNewTab(at: note.relativePath) }
-        Button("Rinomina…") { renaming = note }
-        Menu("Sposta in") {
-            Button("(radice)") { vault.moveNote(at: note.relativePath, toFolder: "") }
-            ForEach(vault.folders, id: \.self) { folder in
-                Button(folder) { vault.moveNote(at: note.relativePath, toFolder: folder) }
-                    .disabled(folder == note.folder)
-            }
-        }
-        Divider()
-        Button("Rivela nel Finder") {
-            guard let root = vault.root else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([
-                root.appending(path: note.relativePath, directoryHint: .notDirectory),
-            ])
-        }
-        Divider()
-        Button("Elimina…", role: .destructive) { deleting = note }
-    }
-}
-
-/// Renaming a note, with the title being typed held here and nowhere else.
-private struct RenameNoteSheet: View {
-    @Environment(\.theme) var theme
-    let note: NoteRecord
-    let onConfirm: (String) -> Void
-    let onCancel: () -> Void
-
-    @State private var title: String
-
-    init(note: NoteRecord, onConfirm: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
-        self.note = note
-        self.onConfirm = onConfirm
-        self.onCancel = onCancel
-        _title = State(initialValue: note.title)
-    }
-
-    private var violations: [NoteName.Violation] { NoteName.validate(title) }
-    private var canRename: Bool { violations.isEmpty && title != note.title }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rinomina nota").themedText(.title)
-            Text("I wikilink che puntano a «\(note.title)» vengono riscritti (W-08).")
-                .themedText(.caption, color: .textSecondary)
-
-            TextField("Titolo", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { if canRename { onConfirm(title) } }
-
-            ForEach(ConformanceText.lines(NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )), id: \.self) { line in
-                Text(line).themedText(.caption, color: .taskOverdue)
-            }
-
-            HStack {
-                Spacer()
-                Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("Rinomina") { onConfirm(title) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canRename)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 460)
-        .background(theme.color(.surfaceCard))
     }
 }

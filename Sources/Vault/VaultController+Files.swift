@@ -86,4 +86,17 @@ extension VaultController {
 
     /// The notes under `Templates/`, for the composer's template menu.
     var templates: [NoteRecord] { session?.templates ?? [] }
+
+    // MARK: Preferite (ADR-0012 D6)
+    //
+    // Three lines onto `VaultSession+Starred`, where the set and the file live. The rename and
+    // the move above already carry the star with the note, because they go through the session
+    // too - a facade that owned the set would have to remember to, and would eventually not.
+
+    /// The starred notes, title-sorted, for the section at the top of the sidebar.
+    var starredNotes: [NoteRecord] { session?.starredNotes ?? [] }
+
+    func isStarred(_ relativePath: String) -> Bool { session?.isStarred(relativePath) ?? false }
+
+    func toggleStar(_ relativePath: String) { session?.toggleStar(relativePath) }
 }
