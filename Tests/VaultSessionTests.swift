@@ -205,6 +205,43 @@ private func openSession(_ root: URL) async -> VaultSession {
 }
 
 @MainActor
+@Test func aSessionAnswersTheOperatorsANoteCannotAnswerAboutItself() async throws {
+    let vault = try TemporaryVault()
+    let front = "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n"
+    try vault.write(front + "Cita [[Beta]].\n", to: "Alfa.md")
+    try vault.write(front + "Nessun link.\n", to: "Beta.md")
+    try vault.write(front + "Sola.\n", to: "Gamma.md")
+    let session = await openSession(vault.root)
+
+    // `is:starred` reads the store of D6, `linked:` and `orphan:` the link graph. None
+    // of the three is in the file the search reads, which is why they are applied
+    // before it is opened rather than inside the match.
+    session.setStar(true, for: "Beta.md")
+    #expect(session.search(SearchQuery("is:starred")).map(\.path) == ["Beta.md"])
+    #expect(session.search(SearchQuery("linked:Beta")).map(\.path) == ["Alfa.md"])
+    #expect(session.search(SearchQuery("orphan:")).map(\.path) == ["Gamma.md"])
+    // They narrow together with everything else.
+    #expect(session.search(SearchQuery("is:starred orphan:")).isEmpty)
+    #expect(session.search(SearchQuery("orphan: sola")).map(\.path) == ["Gamma.md"])
+}
+
+@MainActor
+@Test func aSessionSearchesByRegularExpression() async throws {
+    let vault = try TemporaryVault()
+    let front = "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n"
+    try vault.write(front + "# Titolo\n\n## Sezione\n\nCorpo.\n", to: "Alfa.md")
+    try vault.write(front + "Solo prosa.\n", to: "Beta.md")
+    let session = await openSession(vault.root)
+
+    let hits = session.search(SearchQuery("regex:^##\\s"))
+    #expect(hits.map(\.path) == ["Alfa.md"])
+    // The excerpt is the line the pattern hit, as it is for a word.
+    #expect(hits.first?.excerpt == "## Sezione")
+    // A pattern that does not compile returns nothing rather than everything.
+    #expect(session.search(SearchQuery("regex:[aperta")).isEmpty)
+}
+
+@MainActor
 @Test func aSessionKnowsItsOwnWriteFromSomebodyElsesEdit() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nUno.\n", to: "N.md")

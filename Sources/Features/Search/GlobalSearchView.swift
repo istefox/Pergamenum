@@ -12,6 +12,10 @@ struct GlobalSearchView: View {
     @State private var raw = ""
     @State private var results: [Hit] = []
     @State private var isSearching = false
+    /// The `regex:` patterns of the current query that do not compile. Shown rather than
+    /// swallowed: an empty result list reads as "nothing found", and the difference
+    /// between that and "your pattern is broken" is the whole value of the message.
+    @State private var invalidPatterns: [String] = []
 
     private struct Hit: Identifiable {
         var id: String { path }
@@ -48,7 +52,9 @@ struct GlobalSearchView: View {
 
     @ViewBuilder
     private var content: some View {
-        if raw.trimmingCharacters(in: .whitespaces).isEmpty {
+        if !invalidPatterns.isEmpty {
+            placeholder("Espressione regolare non valida: \(invalidPatterns.joined(separator: ", "))")
+        } else if raw.trimmingCharacters(in: .whitespaces).isEmpty {
             placeholder("Scrivi per cercare nel testo, nei titoli e nei tag.")
         } else if results.isEmpty, !isSearching {
             placeholder("Nessun risultato.")
@@ -73,11 +79,16 @@ struct GlobalSearchView: View {
         }
     }
 
+    /// Two lines rather than one: the operators no longer fit on a single row of this
+    /// sheet, and a legend that truncates teaches nothing.
     private var legend: some View {
-        Text("tag:type-note · path:\"01 Progetti\" · task:open · \"frase esatta\"")
-            .themedText(.caption, color: .textTertiary)
-            .padding(theme.spacing(.s))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 2) {
+            Text("tag:type-note · path:\"01 Progetti\" · task:open · \"frase esatta\" · -escludi · regex:^##")
+            Text("modified:>2026-08-01 · modified:2026-08-01..2026-08-19 · is:starred · linked:Nota · orphan:")
+        }
+        .themedText(.caption, color: .textTertiary)
+        .padding(theme.spacing(.s))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -88,6 +99,7 @@ struct GlobalSearchView: View {
 
     private func search() async {
         let query = SearchQuery(raw)
+        invalidPatterns = query.invalidPatterns
         guard !query.isEmpty else {
             results = []
             return
