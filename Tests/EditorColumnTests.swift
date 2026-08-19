@@ -238,3 +238,66 @@ private func controller(
     #expect(session.columns.isEmpty)
     #expect(session.focusedColumn == 0)
 }
+
+@MainActor
+@Test func typingInASplitColumnStopsItsTabFromBeingRecycled() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.splitEditor()
+    // Back in the left column, on a preview tab, and write in it.
+    controller.focusColumn(0)
+    controller.openNote(at: "Progetti/Sospensione.md")
+    #expect(controller.focusedTab?.isPreview == true)
+    controller.updateOpenNoteText("Scritto a sinistra.\n")
+
+    // The next note opened in this column goes beside it, not over it.
+    controller.openNote(at: "Nexion.md")
+
+    #expect(controller.columns[0].tabs.count == 2)
+    #expect(controller.columns[0].tabs.contains { $0.note.relativePath == "Progetti/Sospensione.md" })
+    controller.close()
+}
+
+// MARK: The focus contract (ADR-0012 D4)
+
+@MainActor
+@Test func aNoteOpensInTheColumnThatHasTheFocus() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.splitEditor()
+    #expect(controller.focusedColumnIndex == 1)
+
+    // The focus moves back to the left, and that is the only thing that decides where the
+    // next note lands. On screen this is the click in the text; here it is the one line the
+    // click ends up calling.
+    controller.focusColumn(0)
+    controller.openNote(at: "Progetti/Sospensione.md")
+
+    #expect(controller.columns[0].tabs.count == 1)
+    #expect(controller.columns[0].active?.note.relativePath == "Progetti/Sospensione.md")
+    #expect(controller.columns[1].tabs.count == 1)
+    #expect(controller.columns[1].active?.note.relativePath == "Nexion.md")
+    controller.close()
+}
+
+@MainActor
+@Test func aTabOfTheOtherColumnCannotBeBroughtToTheFront() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.splitEditor()
+    let mine = try #require(controller.columns[1].activeID)
+    controller.focusColumn(0)
+    controller.openNote(at: "Progetti/Sospensione.md")
+    let hers = try #require(controller.columns[0].activeID)
+
+    // The id belongs to the right hand column; the focused one is the left. Ignored rather
+    // than reached across: every door on a tab answers for the focused column only.
+    controller.focusTab(mine)
+
+    #expect(controller.focusedColumnIndex == 0)
+    #expect(controller.columns[0].activeID == hers)
+    controller.close()
+}

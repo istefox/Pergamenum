@@ -47,6 +47,21 @@ final class CompletingTextView: NSTextView {
         return bar
     }()
 
+    /// Called when this text view takes the keyboard, so the column it belongs to can take
+    /// the focus with it (ADR-0012 D4).
+    ///
+    /// **A click on the text is not a click SwiftUI sees.** The column carries a tap gesture
+    /// for exactly this, and an `NSTextView` swallows the mouse before it gets there - so
+    /// clicking into the right hand note left the focus on the left, and Cmd+F, the note list
+    /// and the inspector all went on answering for the other half.
+    var onTakeFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { onTakeFocus?() }
+        return became
+    }
+
     /// Called with a click in the view's own coordinates, before the text view does
     /// anything with it; returns true when it handled it. This is how a transcluded note
     /// drawn under a line is opened (ADR-0010): the drawing is not text, so no character

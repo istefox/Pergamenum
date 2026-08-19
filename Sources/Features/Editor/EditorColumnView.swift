@@ -84,6 +84,19 @@ struct EditorColumnView: View {
             guard isFocused else { return }
             pendingJump = jump
         }
+        // **The second half of the focus contract (ADR-0012 D4).** A click in the text moves the
+        // model onto this column, through `CompletingTextView.becomeFirstResponder`; this is the
+        // other direction - the model moving onto this column takes the keyboard with it. Without
+        // it, clicking a tab on the right left the caret in the note on the left, and the first
+        // key pressed came back through *that* column's binding, which focuses as it writes: the
+        // focus snapped back on its own and the letter landed in the other note.
+        //
+        // It converges. `focusColumn` is a no-op when the index does not change, and
+        // `makeFirstResponder` on the view that already is one does not send `become` again.
+        .onChange(of: vault.focusedColumnIndex) { _, now in
+            guard now == columnIndex else { return }
+            focusRequest += 1
+        }
         // The composer has just handed the editor back after creating a note, so the caret
         // belongs in it. The bump used to live on `VaultBrowser`, which owned the one focus
         // request there was; it belongs to the column that is about to show the new note.

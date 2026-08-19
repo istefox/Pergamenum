@@ -105,17 +105,8 @@ struct VaultBrowser: View {
                 onCancel: { vault.endNewNote() }
             )
         } else {
-            // One column, or two after «Dividi l'editor» (ADR-0012 D4). `HSplitView` because
-            // the divider is the user's to move, like the two it already sits between.
-            HSplitView {
-                ForEach(Array(vault.columns.enumerated()), id: \.element.id) { index, _ in
-                    EditorColumnView(columnIndex: index)
-                        // `maxWidth: .infinity` on both, so a split divides the space instead
-                        // of leaving the first column the width it had and squeezing the new
-                        // one into what was left.
-                        .frame(minWidth: 280, maxWidth: .infinity)
-                }
-            }
+            // One column, or two after «Dividi l'editor» (ADR-0012 D4).
+            EditorColumns()
         }
     }
 
