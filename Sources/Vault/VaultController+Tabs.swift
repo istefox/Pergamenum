@@ -278,6 +278,7 @@ extension VaultController {
 /// why they share `readForEditing` instead of each doing the read themselves.
 extension VaultController {
     func openNote(at relativePath: String) {
+        rememberRecent(relativePath)
         // Already open somewhere in this column: go to that tab rather than loading a second
         // copy of the same note. Found on screen on 2026-08-19, with the note in two tabs at
         // once. Re-reading it would be worse than untidy - the tab that has it may hold
@@ -307,6 +308,9 @@ extension VaultController {
     /// and a rename now has to reach a note sitting in a tab nobody is looking at, or that
     /// tab keeps a path with no file behind it.
     func movedNote(from oldPath: String, to newPath: String) {
+        // The recent list is paths, so a rename has to be followed here too - the same
+        // follow-up `VaultSession.moveStar` performs for the star.
+        if let index = recentNotePaths.firstIndex(of: oldPath) { recentNotePaths[index] = newPath }
         guard columns.indices.contains(focusedColumnIndex) else { return }
         guard tabs.contains(where: { $0.note.relativePath == oldPath }),
               let note = readForEditing(newPath)
@@ -321,9 +325,24 @@ extension VaultController {
         for tab in tabs where tab.note.relativePath == relativePath {
             closeTab(tab.id)
         }
-        // A trashed note is not one to offer back with Cmd+Shift+T.
+        // A trashed note is not one to offer back with Cmd+Shift+T, nor one to list among
+        // the recent ones: both would be a row that opens nothing.
         closedTabPaths.removeAll { $0 == relativePath }
+        recentNotePaths.removeAll { $0 == relativePath }
     }
+
+    /// Puts a note at the top of RECENTI, at most ten deep.
+    ///
+    /// Called where a note is *asked for* rather than in `readForEditing`, which the tab
+    /// restore and every re-read after an external change also go through: those are the
+    /// app catching up, not somebody going somewhere.
+    func rememberRecent(_ relativePath: String) {
+        recentNotePaths.removeAll { $0 == relativePath }
+        recentNotePaths.insert(relativePath, at: 0)
+        recentNotePaths = Array(recentNotePaths.prefix(Self.recentNoteLimit))
+    }
+
+    static let recentNoteLimit = 10
 
     /// The tabs of the focused column, or none.
     var tabs: [NoteTab] {
@@ -333,6 +352,7 @@ extension VaultController {
     /// Opens a note beside the ones already open instead of over the focused one
     /// (ADR-0012 D2). Cmd+T and a Cmd+click in the list are the gestures that reach it.
     func openNoteInNewTab(at relativePath: String) {
+        rememberRecent(relativePath)
         guard let note = readForEditing(relativePath) else { return }
         openTab(showing: note)
         isComposingNote = false

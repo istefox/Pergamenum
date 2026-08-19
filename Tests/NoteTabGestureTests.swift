@@ -344,3 +344,53 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     #expect(controller.tabs.first?.note.relativePath == "Nexion.md")
     controller.close()
 }
+
+// MARK: The recent notes (ADR-0012, slice 4)
+
+@MainActor
+@Test func opensAreRememberedNewestFirstWithNoRepeats() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+
+    controller.openNote(at: "Nexion.md")
+    controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
+    controller.openNote(at: "Nexion.md")
+
+    // Going back to a note moves it to the top rather than listing it twice: the quick
+    // switcher offers each row as a place to go, and the same place twice is one wasted row.
+    #expect(controller.recentNotePaths == ["Nexion.md", "Progetti/Sospensione.md"])
+    controller.close()
+}
+
+@MainActor
+@Test func theRecentListStopsAtTen() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    for number in 1...12 {
+        try vault.write("---\ndate: 2026-08-19\ntags:\n  - type-note\n---\n\n\(number).\n",
+                        to: "Nota \(number).md")
+        controller.openNote(at: "Nota \(number).md")
+    }
+
+    #expect(controller.recentNotePaths.count == VaultController.recentNoteLimit)
+    #expect(controller.recentNotePaths.first == "Nota 12.md")
+    #expect(!controller.recentNotePaths.contains("Nota 1.md"))
+    controller.close()
+}
+
+@MainActor
+@Test func theRecentListFollowsARenameAndDropsATrashedNote() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
+
+    controller.movedNote(from: "Nexion.md", to: "Archivio/Nexion.md")
+    #expect(controller.recentNotePaths.contains("Archivio/Nexion.md"))
+    #expect(!controller.recentNotePaths.contains("Nexion.md"))
+
+    // A row pointing at a note in the trash opens nothing, which is worse than no row.
+    controller.trashedNote(at: "Progetti/Sospensione.md")
+    #expect(!controller.recentNotePaths.contains("Progetti/Sospensione.md"))
+    controller.close()
+}

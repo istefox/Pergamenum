@@ -32,6 +32,19 @@ extension VaultController {
         return relativePath
     }
 
+    /// A note's text, for a caller that has to look inside one it is not editing - the
+    /// quick switcher listing the headings of the note you are about to jump into.
+    ///
+    /// The open buffer wins over the file: a heading typed a minute ago and not yet saved
+    /// is a heading, and offering the note without it would send the caret to the wrong
+    /// line of the version on disk.
+    func noteText(at relativePath: String) -> String? {
+        if let tab = tabs.first(where: { $0.note.relativePath == relativePath }) {
+            return tab.note.text
+        }
+        return (try? session?.read(relativePath))?.text
+    }
+
     /// Copies a dropped file into the folder of the note being edited and returns its
     /// name for the embed (SPEC §5).
     func importFileIntoVault(_ source: URL, near notePath: String) -> String? {
