@@ -68,11 +68,32 @@ final class CommandActions {
         }
         switch command.section {
         case .file: runFile(command)
+        case .tab: runTab(command)
         case .edit: runEdit(command)
         case .insert: runInsert(command)
         case .view: runView(command)
         case .task: runTask(command)
         case .calendar: runCalendar(command)
+        }
+    }
+
+    /// The tabs of the Note pane (ADR-0012 D5). Their own method rather than three more
+    /// arms of `runFile`: they are one family, and the File menu already separates them
+    /// with a divider.
+    private func runTab(_ command: ShortcutCommand) {
+        switch command {
+        case .newTab:
+            // The Note pane first, for the same reason «Nuova nota» does it: a tab opened
+            // from the Attività pane would open out of sight.
+            navigation.pane = .notes
+            vault.beginNewTab()
+        case .closeTab:
+            vault.closeFocusedTab()
+        case .reopenTab:
+            navigation.pane = .notes
+            vault.reopenClosedTab()
+        default:
+            break
         }
     }
 
@@ -141,7 +162,7 @@ final class CommandActions {
                 navigation.pane = pane
             }
         case .readingMode:
-            navigation.isReadingMode.toggle()
+            vault.isReadingMode.toggle()
         case .runConformanceCheck:
             // Brings the pane forward as well as asking for the check: the view that runs
             // the linter only exists while that pane is shown, so from anywhere else the
@@ -152,9 +173,9 @@ final class CommandActions {
             // The section the caret is in, which the editor reports as it moves. Without a
             // caret there is no "this section", and the command is disabled rather than
             // guessing at the first one.
-            if let entry = navigation.currentOutlineEntry { navigation.toggleFold(entry) }
+            if let entry = vault.currentOutlineEntry { vault.toggleFold(entry) }
         case .unfoldAll:
-            navigation.foldedEntries = []
+            vault.foldedEntries = []
         default:
             assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
         }
@@ -196,6 +217,16 @@ final class CommandActions {
 
     // MARK: Whether it can run
 
+    /// What each tab command needs to be worth offering.
+    private func canRunTab(_ command: ShortcutCommand) -> Bool {
+        switch command {
+        case .newTab: vault.root != nil
+        case .closeTab: vault.focusedTab != nil
+        case .reopenTab: !vault.closedTabPaths.isEmpty
+        default: false
+        }
+    }
+
     /// The same condition the menu bar puts in `.disabled`, inverted.
     ///
     /// The slash menu needs this as a value rather than as a view modifier: it decides
@@ -208,13 +239,15 @@ final class CommandActions {
             vault.root != nil
         case .save:
             vault.openNote?.hasUnsavedChanges == true
+        case .newTab, .closeTab, .reopenTab:
+            canRunTab(command)
         case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory:
             vault.openNote != nil
         case .foldSection:
             // Reading mode has no caret, so it has no current section either.
-            navigation.currentOutlineEntry != nil && !navigation.isReadingMode
+            vault.currentOutlineEntry != nil && !vault.isReadingMode
         case .unfoldAll:
-            !navigation.foldedEntries.isEmpty
+            !vault.foldedEntries.isEmpty
         case .taskToggle:
             vault.selectedTask != nil
         case .newEvent:

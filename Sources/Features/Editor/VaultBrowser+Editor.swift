@@ -90,12 +90,12 @@ extension VaultBrowser {
             outlineRanges: NoteOutline.entries(in: note.text).map {
                 NSRange($0.range, in: note.text)
             },
-            onOutlineEntryChanged: { navigation.currentOutlineEntry = $0 },
-            foldedEntries: navigation.foldedEntries,
+            onOutlineEntryChanged: { vault.currentOutlineEntry = $0 },
+            foldedEntries: vault.foldedEntries,
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,
-            onToggleFold: navigation.toggleFold
+            onToggleFold: vault.toggleFold
         )
         .modifier(FindKeeping(find: find, navigation: navigation, text: note.text))
     }
@@ -127,37 +127,6 @@ extension VaultBrowser {
         if navigation.isFindRequested { return .find }
         return nil
     }
-
-    func editorHeader(_ note: VaultController.OpenNote) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(note.title).themedText(.heading)
-                Text(note.relativePath).themedText(.caption, color: .textTertiary)
-            }
-            Spacer()
-            // Modifica / Lettura, the toggle SPEC §10 puts on Cmd+Shift+E. Reading
-            // mode renders the note; the editor keeps showing the source with style
-            // applied, which is what §7.1 asks for and what §14 keeps a live preview
-            // out of.
-            Picker("", selection: Bindable(navigation).isReadingMode) {
-                Text("Modifica").tag(false)
-                Text("Lettura").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            if note.hasUnsavedChanges {
-                // No shortcut of its own: File > Salva already carries one, and the
-                // user may have moved it.
-                Button("Salva", action: vault.saveOpenNote)
-            } else {
-                Label("Salvato", systemImage: "checkmark.circle")
-                    .themedText(.caption, color: .textSecondary)
-            }
-        }
-        .padding(theme.spacing(.s))
-    }
-
     /// An external edit arrived while this note had unsaved changes. Neither side is
     /// discarded without the user choosing (ADR-0001 §D3.4).
 

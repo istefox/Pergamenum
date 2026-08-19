@@ -307,6 +307,7 @@ private struct NoteRowMenu: View {
 
     var body: some View {
         Button("Apri") { vault.openNote(at: note.relativePath) }
+        Button("Apri in una nuova tab") { vault.openNoteInNewTab(at: note.relativePath) }
         Button("Rinomina…") { renaming = note }
         Menu("Sposta in") {
             Button("(radice)") { vault.moveNote(at: note.relativePath, toFolder: "") }

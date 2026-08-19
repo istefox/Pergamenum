@@ -28,7 +28,7 @@ struct MockupGalleryView: View {
 
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, find, format,
-             history, template, editor, workspace, today, tasks
+             history, template, tabs, editor, workspace, today, tasks
 
         var id: String { rawValue }
 
@@ -44,6 +44,7 @@ struct MockupGalleryView: View {
             case .format: "Formato"
             case .history: "Cronologia"
             case .template: "Template"
+            case .tabs: "Tab"
             case .editor: "Editor"
             case .workspace: "Workspace"
             case .today: "Oggi"
@@ -65,6 +66,7 @@ struct MockupGalleryView: View {
             case .format: "M8, realizzato"
             case .history: "M9, realizzato"
             case .template: "M9, da approvare"
+            case .tabs: "M10, da approvare"
             case .editor: "M1, realizzato"
             case .workspace: "M2 e M3, realizzato"
             case .today: "M5, realizzato"
@@ -114,6 +116,7 @@ struct MockupGalleryView: View {
         case .format: FormatBarMockup()
         case .history: HistoryMockup()
         case .template: TemplateMockup()
+        case .tabs: TabBarMockup()
         case .editor: EditorMockup()
         case .workspace: WorkspaceMockup()
         case .today: TodayMockup()

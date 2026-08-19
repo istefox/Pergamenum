@@ -139,3 +139,19 @@ extension VaultController {
         }
     }
 }
+
+/// Everything the routes hold between arriving and being acted on (SPEC §9). One value
+/// rather than four properties on the controller, so this extension owns its own state
+/// instead of reaching into it.
+extension VaultController {
+    struct RouteState {
+        /// A route that arrived before the vault was open, replayed once it is.
+        var pending: PergamenumRoute?
+        /// A canvas the Workspace should open when it next appears.
+        var pendingCanvas: (path: String, nodeID: String?)?
+        /// A query the quick switcher should start from.
+        var pendingSearch: String?
+        /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
+        var noteIDs: [String: String] = [:]
+    }
+}
