@@ -36,6 +36,8 @@ struct VaultBrowser: View {
     /// The replacements the bar asked for, consumed once - the shape `pendingInsertion` and
     /// `pendingJump` already have.
     @State var pendingReplacements: [(range: NSRange, text: String)]?
+    /// The tab whose close button was pressed while it had unsaved changes.
+    @State var closing: NoteTab?
 
     var body: some View {
         HSplitView {
@@ -55,20 +57,15 @@ struct VaultBrowser: View {
         .onChange(of: navigation.outlineJump) { _, jump in
             pendingJump = jump
         }
-        // Folds are held by their position in the index, so they belong to the note they
-        // were made in. Carried over, the third fold of one note would silently become the
-        // third fold of the next one.
-        .onChange(of: vault.openNote?.relativePath) { _, _ in
-            navigation.foldedEntries = []
-            navigation.currentOutlineEntry = nil
-        }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: Binding(
             get: { vault.isShowingQuickSwitcher },
             set: { vault.isShowingQuickSwitcher = $0 }
         )) {
             QuickSwitcher { path in
-                vault.openNote(at: path)
+                // `openChosenNote` and not `openNote`: Cmd+T opened this switcher asking
+                // for a tab of its own, and only the controller knows that (ADR-0012 D5).
+                vault.openChosenNote(at: path)
                 vault.isShowingQuickSwitcher = false
             }
         }
@@ -114,7 +111,7 @@ struct VaultBrowser: View {
             .help("Salva la nota")
             .disabled(vault.openNote?.hasUnsavedChanges != true)
 
-            Toggle(isOn: Bindable(navigation).isReadingMode) {
+            Toggle(isOn: Bindable(vault).isReadingMode) {
                 Label("Modalità lettura", systemImage: "book")
             }
             .help("Modalità lettura")
@@ -142,25 +139,30 @@ struct VaultBrowser: View {
                 },
                 onCancel: { vault.endNewNote() }
             )
-        } else if let note = vault.openNote {
+        } else {
             VStack(spacing: 0) {
-                editorHeader(note)
-                if note.externalChangePending != nil { conflictBanner }
-                Divider()
-                if find.isOpen {
-                    findBar(note)
+                // Outside the `if`: the bar is there with one note open and with none, so
+                // nothing moves when a second arrives (ADR-0012 D1, mockup of 2026-08-19).
+                NoteTabBar(onCloseRequested: requestClose)
+                if let note = vault.openNote {
+                    if note.externalChangePending != nil { conflictBanner }
                     Divider()
-                }
-                if navigation.isReadingMode {
-                    reading(note)
+                    if find.isOpen {
+                        findBar(note)
+                        Divider()
+                    }
+                    if vault.isReadingMode {
+                        reading(note)
+                    } else {
+                        editing(note)
+                    }
                 } else {
-                    editing(note)
+                    emptyState
                 }
             }
             .background(theme.color(.backgroundPrimary))
             .quickLook(urls: previewURLs, isPresented: $isPreviewingEmbed)
-        } else {
-            emptyState
+            .modifier(UnsavedTabDialog(closing: $closing, browser: self))
         }
     }
 
@@ -171,18 +173,6 @@ struct VaultBrowser: View {
         let matches = vault.index.resolve(title: title)
         guard let first = matches.first else { return }
         vault.openNote(at: first)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: theme.spacing(.s)) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 32))
-                .foregroundStyle(theme.color(.textTertiary))
-            Text("Nessuna nota aperta").themedText(.body, color: .textSecondary)
-            Text("Cmd+O per il quick switcher").themedText(.caption, color: .textTertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.color(.backgroundPrimary))
     }
 
     // MARK: Inspector

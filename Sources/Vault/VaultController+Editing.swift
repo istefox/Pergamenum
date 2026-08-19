@@ -1,0 +1,83 @@
+import Foundation
+
+/// What the editor does to the note it is showing: saving it, restoring a past version over
+/// it, and settling an external change that arrived underneath it.
+///
+/// Split out of `VaultController.swift` when tabs pushed that file past SwiftLint's 400 lines.
+/// Every one of these reaches the buffer through `replaceOpenNote` or `updateFocusedTab`, the
+/// doors that stayed behind with the stored `columns` - so the rule that a view cannot swap
+/// the buffer under the editor survives the move.
+extension VaultController {
+    /// Writes the open note.
+    func saveOpenNote() {
+        guard let session, var note = openNote, note.hasUnsavedChanges else { return }
+        do {
+            try session.write(note.text, to: note.relativePath)
+            note.savedText = note.text
+            note.externalChangePending = nil
+            replaceOpenNote(note)
+        } catch {
+            recordProblem("\(note.relativePath): \(error)")
+        }
+    }
+
+    /// Writes a past version back over the open note (ADR-0011, M9).
+    ///
+    /// **Saves the buffer first, and that is the point rather than tidiness.**
+    /// `NoteHistory` records the text being *written*, so the note's current text is in
+    /// the list only because an earlier write put it there; unsaved edits are in no
+    /// snapshot at all. Restoring straight over them would discard work with nothing to
+    /// go back to, which is precisely what ADR-0001 §D3.4 refuses to do. Saving first
+    /// puts the buffer in the history, and the restore's own write adds itself on the
+    /// way past - so the sheet's promise that restoring keeps the current version is
+    /// literally true, in the one case where it would otherwise be a lie.
+    func restoreVersion(_ text: String) {
+        guard let session, openNote != nil else { return }
+        saveOpenNote()
+        // Re-read: the save above replaced `openNote` wholesale.
+        guard var note = openNote else { return }
+        do {
+            let result = try session.write(text, to: note.relativePath)
+            note.text = result.text
+            note.savedText = result.text
+            note.externalChangePending = nil
+            replaceOpenNote(note)
+        } catch {
+            recordProblem("\(note.relativePath): \(error)")
+        }
+    }
+
+    /// Puts the editor back in step after a write the session made underneath it.
+    ///
+    /// This is the fourth of the four things every write in this app used to do by
+    /// hand, and the only one that is the facade's business: the session writes the
+    /// file, records the hash and updates the index, and then this decides whether the
+    /// editor should notice.
+    ///
+    /// A buffer with unsaved changes is left alone. It is the user's work, and
+    /// ADR-0001 §D3.4 says to ask rather than to merge; the watcher will raise the
+    /// question when the write comes back round.
+    func syncOpenNote(with result: VaultSession.WriteResult) {
+        guard var note = openNote,
+              note.relativePath == result.path,
+              !note.hasUnsavedChanges
+        else { return }
+        note.text = result.text
+        note.savedText = result.text
+        replaceOpenNote(note)
+    }
+
+    /// Resolves an external change the user chose to accept, replacing the buffer.
+    func acceptExternalChange() {
+        guard var note = openNote, let incoming = note.externalChangePending else { return }
+        note.text = incoming
+        note.savedText = incoming
+        note.externalChangePending = nil
+        replaceOpenNote(note)
+    }
+
+    /// Keeps the in-app version and clears the prompt. The next save overwrites disk.
+    func keepLocalVersion() {
+        updateFocusedTab { $0.note.externalChangePending = nil }
+    }
+}

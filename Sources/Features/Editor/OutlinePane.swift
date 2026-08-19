@@ -10,7 +10,7 @@ import SwiftUI
 /// what appears there cannot disagree about what the sections are.
 struct OutlinePane: View {
     @Environment(\.theme) private var theme
-    @Environment(Navigation.self) private var navigation
+    @Environment(VaultController.self) private var vault
 
     let entries: [NoteOutline.Entry]
     /// Called with the entry's line and its position in the index. Two numbers because
@@ -47,7 +47,7 @@ struct OutlinePane: View {
     }
 
     private func row(_ entry: NoteOutline.Entry, at index: Int) -> some View {
-        let isCurrent = navigation.currentOutlineEntry == index
+        let isCurrent = vault.currentOutlineEntry == index
         return HStack(spacing: 0) {
             chevron(for: entry, at: index)
             button(entry, at: index, isCurrent: isCurrent)
@@ -61,15 +61,15 @@ struct OutlinePane: View {
     private func chevron(for entry: NoteOutline.Entry, at index: Int) -> some View {
         if case .heading = entry.kind, foldable.contains(index) {
             Button {
-                navigation.toggleFold(index)
+                vault.toggleFold(index)
             } label: {
-                Image(systemName: navigation.foldedEntries.contains(index) ? "chevron.right" : "chevron.down")
+                Image(systemName: vault.foldedEntries.contains(index) ? "chevron.right" : "chevron.down")
                     .themedText(.caption, color: .textTertiary)
                     .frame(width: 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(navigation.foldedEntries.contains(index) ? "Espandi la sezione" : "Ripiega la sezione")
+            .help(vault.foldedEntries.contains(index) ? "Espandi la sezione" : "Ripiega la sezione")
         } else {
             Color.clear.frame(width: 12)
         }

@@ -23,7 +23,7 @@ struct ViewCommands: Commands {
             // Left as a `Toggle` rather than routed through `actions.run`: the checkmark
             // beside it is the state, and a button would lose it. The binding is the
             // action here, so there is no second copy to drift.
-            Toggle("Modalità lettura", isOn: Bindable(navigation).isReadingMode)
+            Toggle("Modalità lettura", isOn: Bindable(vault).isReadingMode)
                 .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
                 .disabled(!actions.canRun(.readingMode))
             Divider()

@@ -28,8 +28,27 @@ final class VaultController {
     /// parse, a vocabulary that could not be loaded.
     var problems: [String] { session?.problems ?? [] }
 
+    /// Every note open in the editor, by column, and which column has focus (ADR-0012 D2).
+    ///
+    /// `private(set)` for the same reason `openNote` was: everything outside this file reads
+    /// the tabs and changes them only through the doors below, so a view cannot quietly swap
+    /// the buffer under the editor. One column until the split-view slice.
+    private(set) var columns: [EditorColumn] = [EditorColumn()]
+    private(set) var focusedColumnIndex = 0
+
+    /// The tab the person is looking at.
+    var focusedTab: NoteTab? {
+        guard columns.indices.contains(focusedColumnIndex) else { return nil }
+        return columns[focusedColumnIndex].active
+    }
+
     /// The note currently open in the editor.
-    private(set) var openNote: OpenNote?
+    ///
+    /// **A facade over the focused tab, and deliberately still called this** (ADR-0012 D2):
+    /// eighty-two places across the app read it, and every one of them means "the note the
+    /// person is looking at", which is exactly what it still returns. The type changed shape
+    /// underneath; its published surface did not.
+    var openNote: OpenNote? { focusedTab?.note }
     /// The note being created, while it is still only a name being typed.
     ///
     /// Held here rather than in the browser because the New Note command is in the menu
@@ -42,6 +61,13 @@ final class VaultController {
     var noteDraft: NoteDraft?
     /// Whether the new-note composer occupies the editor column.
     var isComposingNote = false
+    /// Notes whose tab was closed, newest last, for «riapri l'ultima tab chiusa».
+    /// Paths and not buffers: a closed tab was saved or explicitly discarded (ADR-0012 D3),
+    /// so there is nothing left to keep that the file does not already have.
+    var closedTabPaths: [String] = []
+    /// Set by Cmd+T, read by the quick switcher: the note chosen next opens beside the
+    /// others rather than over the focused one.
+    var opensNextNoteInNewTab = false
     /// Set by the Anteprima rapida command (SPEC §10, Vista menu). The Workspace
     /// watches it so the panel can be opened from the menu as well as the spacebar.
     var isShowingQuickLook = false
@@ -74,19 +100,7 @@ final class VaultController {
     var store: NoteStore? { session?.store }
 
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
-    /// (SPEC §9). One value rather than four properties, so the routing extension owns
-    /// its own state instead of reaching into the controller's.
-    struct RouteState {
-        /// A route that arrived before the vault was open, replayed once it is.
-        var pending: PergamenumRoute?
-        /// A canvas the Workspace should open when it next appears.
-        var pendingCanvas: (path: String, nodeID: String?)?
-        /// A query the quick switcher should start from.
-        var pendingSearch: String?
-        /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
-        var noteIDs: [String: String] = [:]
-    }
-
+    /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()
 
     /// Where opened vaults are remembered. Injected so a test never writes into the
@@ -95,20 +109,6 @@ final class VaultController {
 
     init(recents: RecentVaults = RecentVaults()) {
         self.recents = recents
-    }
-
-    struct OpenNote: Equatable, Sendable {
-        var relativePath: String
-        var title: String
-        /// The text as the editor has it, which may differ from disk while editing.
-        var text: String
-        /// The text as last read from or written to disk.
-        var savedText: String
-        /// An external change arrived while this note had unsaved edits. The editor
-        /// must ask rather than merging or discarding either side (ADR-0001 §D3.4).
-        var externalChangePending: String?
-
-        var hasUnsavedChanges: Bool { text != savedText }
     }
 
     // MARK: Opening
@@ -144,7 +144,8 @@ final class VaultController {
         watcher = nil
         session = nil
         thumbnails = nil
-        openNote = nil
+        columns = [EditorColumn()]
+        focusedColumnIndex = 0
         // A draft names a folder in the vault being closed, and the composer would
         // otherwise still be sitting in the editor column of a vault that is gone.
         endNewNote()
@@ -184,29 +185,126 @@ final class VaultController {
 
     // MARK: Notes
 
-    func openNote(at relativePath: String) {
-        guard let session else { return }
-        do {
-            let (record, text) = try session.read(relativePath)
-            openNote = OpenNote(
-                relativePath: relativePath,
-                title: record.title,
-                text: text,
-                savedText: text,
-                externalChangePending: nil
-            )
-            session.updateIndex(record, at: relativePath)
-            // The composer covers the editor column, so a note opened while it is up
-            // would open underneath it (PG-027). Inside the `do`, after the read: a note
-            // that could not be read is no reason to take the composer away.
-            isComposingNote = false
-        } catch {
-            recordProblem("\(relativePath): \(error)")
+    func updateOpenNoteText(_ text: String) {
+        // Typing in a preview tab makes it stay, without being asked: having written in a
+        // note is a stronger statement of intent than any double click.
+        updateFocusedTab {
+            $0.note.text = text
+            $0.isPreview = false
         }
     }
 
-    func updateOpenNoteText(_ text: String) {
-        openNote?.text = text
+    // MARK: The doors onto the tabs
+    //
+    // `columns` is `private(set)`, so these four are the only way anything changes. They
+    // are internal rather than private because the extensions that need them are in other
+    // files - the same trade `replaceOpenNote` has always made, documented rather than
+    // enforced by the compiler.
+
+    /// Shows a note in the column's preview tab, opening one if there is none.
+    ///
+    /// **This is the single click, and it deliberately does not touch a stable tab.** Before
+    /// tabs it replaced the one open note, which was the only thing it could do; doing that
+    /// now would mean browsing the list destroys whatever the person had in front of them. So
+    /// one tab per column is the preview, every single click lands there, and a double click
+    /// makes it stable (`makeStable`).
+    ///
+    /// A reused tab keeps its identity and loses everything that described the note it was
+    /// showing - folds, index entry, reading mode. That reset used to be an `onChange` in
+    /// `VaultBrowser` watching the open note's path, which is the same rule written where it
+    /// could not survive a second tab.
+    func show(_ note: OpenNote) {
+        guard columns.indices.contains(focusedColumnIndex) else { return }
+        if let index = columns[focusedColumnIndex].tabs.firstIndex(where: \.isPreview) {
+            let tab = columns[focusedColumnIndex].tabs[index]
+            columns[focusedColumnIndex].tabs[index] = tab.showing(note)
+            columns[focusedColumnIndex].activeID = tab.id
+        } else {
+            var tab = NoteTab(note: note)
+            tab.isPreview = true
+            let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
+            let at = after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count
+            columns[focusedColumnIndex].tabs.insert(tab, at: at)
+            columns[focusedColumnIndex].activeID = tab.id
+        }
+    }
+
+    /// Turns a preview tab into one that stays: the double click on a row or on the tab.
+    func makeStable(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        columns[focusedColumnIndex].tabs[index].isPreview = false
+    }
+
+    /// Opens a note in a tab of its own, after the focused one, and focuses it.
+    func openTab(showing note: OpenNote) {
+        guard columns.indices.contains(focusedColumnIndex) else { return }
+        let tab = NoteTab(note: note)
+        let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
+        columns[focusedColumnIndex].tabs.insert(tab, at: after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count)
+        columns[focusedColumnIndex].activeID = tab.id
+    }
+
+    /// Brings a tab to the front of its column. Unknown ids are ignored rather than
+    /// clearing the selection, which would blank the editor on a stale click.
+    func focusTab(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              columns[focusedColumnIndex].tabs.contains(where: { $0.id == id })
+        else { return }
+        columns[focusedColumnIndex].activeID = id
+        isComposingNote = false
+    }
+
+    /// Closes one tab by id, whether or not it is the focused one.
+    ///
+    /// Closing the focused tab moves focus to the one before it, which is where the eye
+    /// already is; closing any other leaves focus alone. Unsaved changes are not this
+    /// method's business - ADR-0012 D3's dialog asks before it gets here.
+    func closeTab(_ id: NoteTab.ID) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        let wasFocused = columns[focusedColumnIndex].activeID == id
+        closedTabPaths.append(columns[focusedColumnIndex].tabs[index].note.relativePath)
+        columns[focusedColumnIndex].tabs.remove(at: index)
+        guard wasFocused else { return }
+        let neighbour = columns[focusedColumnIndex].tabs.indices.contains(index - 1) ? index - 1 : 0
+        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.indices.contains(neighbour)
+            ? columns[focusedColumnIndex].tabs[neighbour].id
+            : nil
+    }
+
+    /// Changes the focused tab in place, leaving its identity and view state alone.
+    func updateFocusedTab(_ change: (inout NoteTab) -> Void) {
+        guard let id = focusedTab?.id else { return }
+        updateTab(id, change)
+    }
+
+    /// Changes any tab of the focused column by id, focused or not.
+    ///
+    /// A rename reaches a tab nobody is looking at, which is exactly the case the
+    /// one-open-note version of this app could not have.
+    func updateTab(_ id: NoteTab.ID, _ change: (inout NoteTab) -> Void) {
+        guard columns.indices.contains(focusedColumnIndex),
+              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        change(&columns[focusedColumnIndex].tabs[index])
+    }
+
+    /// Closes the note in the editor, for when the file it shows is no longer there.
+    func closeOpenNote() {
+        guard columns.indices.contains(focusedColumnIndex), let tab = focusedTab else { return }
+        columns[focusedColumnIndex].tabs.removeAll { $0.id == tab.id }
+        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.last?.id
+    }
+
+    /// Replaces the open note wholesale, keeping the tab and everything it knows.
+    ///
+    /// The one door for code outside this file: `openNote` reads the focused tab and cannot
+    /// be assigned, so a view cannot quietly swap the buffer under the editor.
+    func replaceOpenNote(_ note: OpenNote) {
+        updateFocusedTab { $0.note = note }
     }
 
     /// A note that does not exist yet: the name being typed, where it will go, and the
@@ -226,92 +324,6 @@ final class VaultController {
         let relativePath = try session.dailyNote(for: date)
         openNote(at: relativePath)
         return relativePath
-    }
-
-    /// Writes the open note.
-    func saveOpenNote() {
-        guard let session, var note = openNote, note.hasUnsavedChanges else { return }
-        do {
-            try session.write(note.text, to: note.relativePath)
-            note.savedText = note.text
-            note.externalChangePending = nil
-            openNote = note
-        } catch {
-            recordProblem("\(note.relativePath): \(error)")
-        }
-    }
-
-    /// Writes a past version back over the open note (ADR-0011, M9).
-    ///
-    /// **Saves the buffer first, and that is the point rather than tidiness.**
-    /// `NoteHistory` records the text being *written*, so the note's current text is in
-    /// the list only because an earlier write put it there; unsaved edits are in no
-    /// snapshot at all. Restoring straight over them would discard work with nothing to
-    /// go back to, which is precisely what ADR-0001 §D3.4 refuses to do. Saving first
-    /// puts the buffer in the history, and the restore's own write adds itself on the
-    /// way past - so the sheet's promise that restoring keeps the current version is
-    /// literally true, in the one case where it would otherwise be a lie.
-    func restoreVersion(_ text: String) {
-        guard let session, openNote != nil else { return }
-        saveOpenNote()
-        // Re-read: the save above replaced `openNote` wholesale.
-        guard var note = openNote else { return }
-        do {
-            let result = try session.write(text, to: note.relativePath)
-            note.text = result.text
-            note.savedText = result.text
-            note.externalChangePending = nil
-            replaceOpenNote(note)
-        } catch {
-            recordProblem("\(note.relativePath): \(error)")
-        }
-    }
-
-    /// Closes the note in the editor, for when the file it shows is no longer there.
-    func closeOpenNote() {
-        openNote = nil
-    }
-
-    /// Replaces the open note wholesale.
-    ///
-    /// The one door for code outside this file: `openNote` stays read-only everywhere
-    /// else, so a view cannot quietly swap the buffer under the editor.
-    func replaceOpenNote(_ note: OpenNote) {
-        openNote = note
-    }
-
-    /// Puts the editor back in step after a write the session made underneath it.
-    ///
-    /// This is the fourth of the four things every write in this app used to do by
-    /// hand, and the only one that is the facade's business: the session writes the
-    /// file, records the hash and updates the index, and then this decides whether the
-    /// editor should notice.
-    ///
-    /// A buffer with unsaved changes is left alone. It is the user's work, and
-    /// ADR-0001 §D3.4 says to ask rather than to merge; the watcher will raise the
-    /// question when the write comes back round.
-    func syncOpenNote(with result: VaultSession.WriteResult) {
-        guard var note = openNote,
-              note.relativePath == result.path,
-              !note.hasUnsavedChanges
-        else { return }
-        note.text = result.text
-        note.savedText = result.text
-        replaceOpenNote(note)
-    }
-
-    /// Resolves an external change the user chose to accept, replacing the buffer.
-    func acceptExternalChange() {
-        guard var note = openNote, let incoming = note.externalChangePending else { return }
-        note.text = incoming
-        note.savedText = incoming
-        note.externalChangePending = nil
-        openNote = note
-    }
-
-    /// Keeps the in-app version and clears the prompt. The next save overwrites disk.
-    func keepLocalVersion() {
-        openNote?.externalChangePending = nil
     }
 
     /// Records a problem for the UI to show without interrupting what the user is

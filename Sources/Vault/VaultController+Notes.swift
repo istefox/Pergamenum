@@ -57,7 +57,10 @@ extension VaultController {
         let created = session.addStructuralLink(
             from: sourcePath, to: targetTitle, reason: reason, reverseReason: reverseReason
         )
-        if created, openNote?.relativePath == sourcePath { openNote(at: sourcePath) }
+        // `reloadFocusedNote` and not `openNote(at:)`: this is a re-read of a note that is
+        // already open, and opening it now means focusing its tab, which would leave the
+        // editor showing the text from before the link was written.
+        if created, openNote?.relativePath == sourcePath { reloadFocusedNote() }
         return created
     }
 

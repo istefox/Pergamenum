@@ -22,8 +22,6 @@ extension VaultController {
     @discardableResult
     func renameNote(at relativePath: String, to newTitle: String) -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
-        let wasOpen = openNote?.relativePath == relativePath
-
         do {
             let outcome = try session.renameNote(at: relativePath, to: newTitle)
             for failure in outcome.failures {
@@ -31,7 +29,7 @@ extension VaultController {
             }
             Task {
                 await rescan()
-                if wasOpen { openNote(at: outcome.newPath) }
+                movedNote(from: relativePath, to: outcome.newPath)
             }
             return true
         } catch {
@@ -43,13 +41,11 @@ extension VaultController {
     @discardableResult
     func moveNote(at relativePath: String, toFolder folder: String) -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
-        let wasOpen = openNote?.relativePath == relativePath
-
         do {
             let outcome = try session.moveNote(at: relativePath, toFolder: folder)
             Task {
                 await rescan()
-                if wasOpen { openNote(at: outcome.newPath) }
+                movedNote(from: relativePath, to: outcome.newPath)
             }
             return true
         } catch {
@@ -64,7 +60,6 @@ extension VaultController {
     @discardableResult
     func trashNote(at relativePath: String) -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
-        let wasOpen = openNote?.relativePath == relativePath
 
         do {
             let dangling = try session.trashNote(at: relativePath)
@@ -77,7 +72,7 @@ extension VaultController {
                 )
                 recordProblem("\(dangling.count) note linkavano «\(title)»: ora il link non risolve")
             }
-            if wasOpen { closeOpenNote() }
+            trashedNote(at: relativePath)
             Task { await rescan() }
             return true
         } catch {

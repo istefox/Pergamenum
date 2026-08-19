@@ -67,14 +67,6 @@ final class Navigation {
 
     var pane: Pane = .notes
 
-    /// Whether the Note pane shows the note rendered rather than as source.
-    ///
-    /// Here rather than in `VaultBrowser` because SPEC §10 puts the switch in the
-    /// Vista menu, on Cmd+Shift+E, and a menu that cannot reach the state it names
-    /// is a menu that does nothing - which is what the shortcut hung on the picker
-    /// did, silently.
-    var isReadingMode = false
-
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,
@@ -136,21 +128,8 @@ final class Navigation {
         pane = .notes
     }
 
-    /// Which index entry the caret is inside, reported by the editor only when it
-    /// changes. Nil in reading mode, where there is no caret to be inside anything.
-    var currentOutlineEntry: Int?
-
-    /// The index entries whose sections are folded, by ordinal.
-    ///
-    /// Window state and not note state: it is cleared when the note changes, and writing it
-    /// into the file would mean extending a frontmatter schema SPEC §4.3 closes.
-    var foldedEntries: Set<Int> = []
-
-    func toggleFold(_ entry: Int) {
-        if foldedEntries.contains(entry) {
-            foldedEntries.remove(entry)
-        } else {
-            foldedEntries.insert(entry)
-        }
-    }
+    // Reading mode, the current index entry and the folds used to be stored here. They
+    // are note state, not window state, and moved onto `NoteTab` when a window stopped
+    // showing exactly one note (ADR-0012 D2). `VaultController` still exposes all three,
+    // so the menus that reach them did not change.
 }

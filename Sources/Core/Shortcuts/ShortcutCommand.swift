@@ -26,6 +26,14 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case revealInFinder
     case noteHistory
 
+    /// The tabs of the Note pane (ADR-0012 D5). Cmd+1…Cmd+9 chooses one and is
+    /// deliberately *not* here: a positional key is not a command, it is nine of them, and
+    /// nine rows in the settings list to remap "the third tab" is a worse pane for a
+    /// binding no application lets you change anyway.
+    case newTab
+    case closeTab
+    case reopenTab
+
     case pastePlain
     case findInNote
     case replaceInNote
@@ -66,13 +74,14 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// Which menu the command lives in, so the settings pane can group the list the
     /// same way the menu bar does.
     enum Section: String, CaseIterable, Identifiable, Sendable {
-        case file, edit, insert, view, task, calendar
+        case file, tab, edit, insert, view, task, calendar
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .file: "File"
+            case .tab: "Tab"
             case .edit: "Modifica"
             case .insert: "Inserisci"
             case .view: "Vista"
@@ -87,6 +96,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory:
             .file
+        case .newTab, .closeTab, .reopenTab:
+            .tab
         case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious:
             .edit
         case .insertWikilink, .insertRelated:
@@ -107,6 +118,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .newNote: "Nuova nota"
         case .dailyNote: "Nota di oggi"
+        case .newTab: "Nuova tab"
+        case .closeTab: "Chiudi tab"
+        case .reopenTab: "Riapri l'ultima tab chiusa"
         case .quickTask: "Nuovo task rapido"
         case .globalCapture: "Cattura rapida (da qualsiasi app)"
         case .quickLook: "Anteprima rapida"
@@ -155,7 +169,16 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var defaultBinding: KeyBinding {
         switch self {
         case .newNote: KeyBinding("n", .command)
-        case .dailyNote: KeyBinding("t", .command)
+        // Cmd+T is the tab key in every application that has tabs, so «Nota di oggi»
+        // gives it up rather than making Cmd+T mean something else here (ADR-0012 D5).
+        // Cmd+Shift+T is not free either: it is «riapri l'ultima tab chiusa», by the same
+        // convention. Cmd+Shift+D was checked and is unused, by this app and by the system.
+        case .dailyNote: KeyBinding("d", [.command, .shift])
+        case .newTab: KeyBinding("t", .command)
+        // Cmd+W closes the tab and Cmd+Shift+W the window, as in Safari, Xcode and the
+        // Finder. The window command is AppKit's own and is rebound in the menu, not here.
+        case .closeTab: KeyBinding("w", .command)
+        case .reopenTab: KeyBinding("t", [.command, .shift])
         case .quickTask: KeyBinding("n", [.command, .shift])
         // Not ⌃Space, which was the first choice and is Craft's: Craft holds it
         // without asking for exclusivity, so Pergamenum's exclusive registration
@@ -194,10 +217,13 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .foldSection: KeyBinding("left", [.command, .option])
         case .unfoldAll: KeyBinding("right", [.command, .option])
         case .taskToggle: KeyBinding("return", .command)
-        case .taskToday: KeyBinding("0", .command)
-        case .taskTomorrow: KeyBinding("1", .command)
-        case .taskPlusTwo: KeyBinding("2", .command)
-        case .taskNextWeek: KeyBinding("3", .command)
+        // Opt+Cmd+digit, not Cmd+digit: Cmd+1…Cmd+9 chooses a tab now (ADR-0012 D5), and
+        // choosing a tab is a gesture of every minute against scheduling a task for the week
+        // after next. Four defaults moved at once, which is the whole cost of that decision.
+        case .taskToday: KeyBinding("0", [.command, .option])
+        case .taskTomorrow: KeyBinding("1", [.command, .option])
+        case .taskPlusTwo: KeyBinding("2", [.command, .option])
+        case .taskNextWeek: KeyBinding("3", [.command, .option])
         case .previousDay: KeyBinding("left", .command)
         case .nextDay: KeyBinding("right", .command)
         case .newEvent: KeyBinding("e", .command)

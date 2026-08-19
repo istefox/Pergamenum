@@ -291,6 +291,23 @@ struct VaultCommands: Commands {
             Button("Nuovo task rapido") { actions.run(.quickTask) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickTask))
                 .disabled(!actions.canRun(.quickTask))
+            Divider()
+            Button("Nuova tab") { actions.run(.newTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newTab))
+                .disabled(!actions.canRun(.newTab))
+            Button("Chiudi tab") { actions.run(.closeTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .closeTab))
+                .disabled(!actions.canRun(.closeTab))
+            Button("Riapri l'ultima tab chiusa") { actions.run(.reopenTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .reopenTab))
+                .disabled(!actions.canRun(.reopenTab))
+            // Cmd+1…Cmd+9, positional and therefore not in the remappable catalogue
+            // (ADR-0012 D5). Nine is the last tab, whatever its position, as in Safari.
+            ForEach(1...9, id: \.self) { number in
+                Button("Vai alla tab \(number)") { vault.selectTab(number) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+            }
+            Divider()
             // No `.keyboardShortcut`: this one is registered with the system and fires
             // whether or not Pergamenum is in front (ADR-0008 §D1). A menu equivalent
             // here as well, because a hot key the system refused leaves the command
