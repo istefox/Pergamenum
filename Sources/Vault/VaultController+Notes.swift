@@ -103,6 +103,16 @@ extension VaultController {
         noteDraft = draft.title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : draft
     }
 
+    /// Steps out of the composer and puts the open note back in front, keeping the draft.
+    ///
+    /// What `openNote(at:)` does on the way past, for the one case it cannot serve:
+    /// clicking, in the list, the very note the composer is covering. Re-reading it would
+    /// discard unsaved edits for no reason, and the click means "show it again", not
+    /// "open it again".
+    func leaveComposer() {
+        isComposingNote = false
+    }
+
     /// Closes the composer and throws the draft away: «Annulla», Escape, the ×, and the
     /// note having been created. One method because it is one behaviour - a second name
     /// for it would suggest the two differ.

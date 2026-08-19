@@ -143,6 +143,26 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 }
 
 @MainActor
+@Test func clickingTheCoveredNoteStepsOutWithoutReadingItAgain() async throws {
+    // The list's selection binding reads nil while composing, so clicking the note the
+    // composer covers is a change and reaches the setter - which must step out rather
+    // than re-open, since re-reading would discard whatever is unsaved in that note.
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.updateOpenNoteText("Testo non salvato.\n")
+    controller.beginNewNote()
+
+    controller.leaveComposer()
+
+    #expect(controller.isComposingNote == false)
+    #expect(controller.isOpenNoteVisible)
+    #expect(controller.openNote?.text == "Testo non salvato.\n")
+    #expect(controller.noteDraft != nil)
+    controller.close()
+}
+
+@MainActor
 @Test func aFailedReadLeavesTheComposerAlone() async throws {
     // Closing the composer for a note that could not be read would take the draft off the
     // screen and put nothing in its place.

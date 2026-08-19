@@ -147,11 +147,21 @@ struct NoteListPane: View {
     /// Reads the open note's path and opens whatever the list selects. Selection is
     /// derived from the controller rather than duplicated in view state, so opening a
     /// note from a backlink or the quick switcher also moves the highlight.
+    ///
+    /// **Nothing is selected while the composer is up**, and that is not cosmetic: the
+    /// setter of a selection binding runs on a *change*, so with the covered note still
+    /// reading as selected, clicking it was no change at all and the composer stayed put -
+    /// on the one note the click most obviously means "show me that again". Reading nil
+    /// makes the click a change, and leaves the list agreeing with the index and the
+    /// inspector, which say nothing while the composer covers a note.
     private var selectedPath: Binding<String?> {
         Binding(
-            get: { vault.openNote?.relativePath },
+            get: { vault.isOpenNoteVisible ? vault.openNote?.relativePath : nil },
             set: { path in
-                guard let path, path != vault.openNote?.relativePath else { return }
+                guard let path else { return }
+                // Already open underneath: step out of the composer rather than read the
+                // note again, which would throw away whatever is unsaved in it.
+                guard path != vault.openNote?.relativePath else { return vault.leaveComposer() }
                 vault.openNote(at: path)
             }
         )
