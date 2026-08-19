@@ -163,13 +163,13 @@ import Testing
     let controller = VaultController(recents: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.newNote == nil)
+    #expect(controller.noteDraft == nil)
     controller.beginNewNote(in: "01 Progetti")
-    #expect(controller.newNote?.folder == "01 Progetti")
-    #expect(controller.newNote?.title.isEmpty == true)
+    #expect(controller.noteDraft?.folder == "01 Progetti")
+    #expect(controller.noteDraft?.title.isEmpty == true)
 
     controller.beginNewNote()
-    #expect(controller.newNote?.folder.isEmpty == true)
+    #expect(controller.noteDraft?.folder.isEmpty == true)
     controller.close()
 }
 

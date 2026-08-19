@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=28 -->
+<!-- project-tasks: prefix=PG lastId=29 -->
 # PROJECT TASKS
 
-Updated: 2026-08-18 · Open: 15 (P1: 0) · In progress: 0
+Updated: 2026-08-19 · Open: 14 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -26,12 +26,8 @@ _Nothing in progress._
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
-- [ ] `PG-027` **P3** The note index keeps describing a note the composer is covering — `Sources/Features/Editor/NoteListPane+Footer.swift` <!-- src:session opened:2026-08-18 -->
-  - `editor` shows the composer whenever `newNote != nil` and only then falls back to `openNote`, but `openNote(at:)` never clears `newNote`. Click a note in the list with the composer up and it opens underneath: the INDICE pane reads it and shows headings for something not on screen. Found while verifying templates, where clicking into `Templates/` to read the model is the natural move.
-  - The pane's own comment already states the rule it breaks: «l'indice compare solo quando una nota è aperta, altrimenti non c'è niente da indicizzare». One condition short of true.
-- [ ] `PG-028` **P3** A new note's typed title does not survive leaving the composer — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-18 -->
-  - `beginNewNote()` builds an empty `NoteDraft` every time and the composer seeds its `@State` from it on appear, so Escape, «Annulla» or the × throw the typed title away. Deliberate, and fine while there was no reason to step out mid-composition.
-  - Templates give that reason: you want to read the model before choosing it. Decide whether a draft should outlive its dismissal, which is a design question and not a repair — hence its own item rather than a fix folded into the templates slice.
+- [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
+  - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
@@ -58,6 +54,8 @@ _Nothing in progress._
 
 ## Done
 
+- [x] `PG-027` The index and the inspector stop describing a note the composer is covering (`5abbae4`): `newNote` meant both "a draft exists" and "the composer is on screen", so opening a note left it underneath. Split into `noteDraft` and `isComposingNote`, with `isOpenNoteVisible` the one rule both panes read. The on-screen check then found the half no unit test could reach — the list's selection is derived from `openNote`, and SwiftUI runs a selection binding's setter only on a change, so clicking the covered note was no change at all (`d8a67b6`) (2026-08-19)
+- [x] `PG-028` A typed title survives stepping out of the composer (`5abbae4`): navigating away parks the title, the folder, the topic and the template for the next `Cmd+N`, while «Annulla», Escape, the × and «Crea» all discard through `endNewNote()`. The guard in `parkNewNote` is what makes the order of SwiftUI's `onDisappear` against the button's own action stop mattering. Only a draft with a title is parked, which is the same threshold the parking uses and is what kept `aNewNoteStartsInTheFolderItWasAskedFor` true (2026-08-19)
 - [x] `PG-009` M8 Menu comandi ed editor complete, thirteen slices (PR #62, `7d19baa`): slash menu, code fence highlighting, the note's index, heading folding, transclusion in both surfaces, one `CompletionPanel` for every trigger (PG-023), spell check, emoji completion, find/replace with regex, and the floating format bar last — bold/italic/strikethrough/code plus wikilink/link over a selection, its `PanelPlacement` shared with `CompletionPanel` rather than duplicated. Two AppKit defects only found on screen: `NSPanel.hasShadow` ringed the capsule because its native shadow is computed from the window's own rectangular backing store, and a `.clear`-background `Button` was clickable only on its own glyph without an explicit `contentShape`. Left over: `PG-019`, filed under `PG-005` (2026-08-18)
 - [x] `PG-023` One panel draws every completion (PR #57, `6625362`): titles, sections, tags and commands all on `CompletionPanel`, which sits under the caret, flips above the line when there is no room, and never crosses the line being typed into — a clamp that held it inside the screen was the first attempt and put it on top of the text (2026-08-18)
 - [x] `PG-025` Typing at the end of a note brings the caret into view: the note grows taller on that very keystroke, so the scroll has to come after the growth and not before (`b1b2dfa`, 2026-08-18)
