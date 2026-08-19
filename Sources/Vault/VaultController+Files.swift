@@ -119,4 +119,24 @@ extension VaultController {
         }
         pinnedTagsStore.remember(pinnedTags, for: root)
     }
+
+    // MARK: La rinomina di un tag (ADR-0012 D7)
+    //
+    // Three lines onto `VaultSession+TagRename`, where the writes and the journal are. The
+    // sheet asks for the preview, then for the rename, and keeps the ids so it can offer to put
+    // it back - which is the whole of the undo, since the session refuses any note that moved on.
+
+    func tagRenamePreview(_ old: Tag, to new: Tag) -> [VaultSession.TagRenameChange] {
+        session?.tagRenamePreview(old, to: new) ?? []
+    }
+
+    @discardableResult
+    func renameTag(_ old: Tag, to new: Tag) -> VaultSession.TagRenameOutcome {
+        session?.renameTag(old, to: new) ?? .init()
+    }
+
+    @discardableResult
+    func undoTagRename(_ ids: [String]) -> VaultSession.TagRenameOutcome {
+        session?.undoTagRename(ids) ?? .init()
+    }
 }

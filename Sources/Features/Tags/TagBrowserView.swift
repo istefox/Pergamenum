@@ -23,6 +23,27 @@ struct TagBrowserView: View {
     /// Which namespaces are open. All of them at first: a browser that opens closed asks for a
     /// click before it says anything.
     @State private var openNamespaces: Set<TagNamespace> = Set(TagNamespace.allCases)
+    /// The tag the rename sheet is about (ADR-0012 D7). Wrapped, because `sheet(item:)` wants
+    /// an `Identifiable` and `Tag` is a schema type from `Sources/Core` - a view's need for an
+    /// id is not a reason to widen it.
+    /// What the last rename did, kept only so it can be put back. Cleared by the undo, by the
+    /// next rename, and by nothing else: an offer to undo that outlives the intention behind it
+    /// is a button waiting to surprise somebody.
+    @State private var lastRename: FinishedRename?
+
+    @State private var renaming: RenamingTag?
+
+    private struct RenamingTag: Identifiable {
+        let id = UUID()
+        let tag: Tag
+    }
+
+    private struct FinishedRename: Equatable {
+        let old: Tag
+        let new: Tag
+        let journalIDs: [String]
+        let failures: [String]
+    }
 
     var body: some View {
         HSplitView {
@@ -32,6 +53,28 @@ struct TagBrowserView: View {
                 .frame(minWidth: 320)
         }
         .background(theme.color(.backgroundPrimary))
+        .safeAreaInset(edge: .bottom) { renameBanner }
+        .sheet(item: $renaming) { subject in
+            TagRenameSheet(old: subject.tag) { new in
+                perform(renameOf: subject.tag, to: new)
+            } onCancel: {
+                renaming = nil
+            }
+        }
+    }
+
+    /// What the rename left behind, and the only way back. Shown until it is used or replaced.
+    @ViewBuilder
+    private var renameBanner: some View {
+        if let done = lastRename {
+            let count = done.journalIDs.count
+            TagRenameBanner(
+                summary: "«\(done.old)» è diventato «\(done.new)» in \(count) note",
+                failures: done.failures,
+                onUndo: undoLastRename,
+                onDismiss: { lastRename = nil }
+            )
+        }
     }
 
     // MARK: I tag
@@ -135,6 +178,8 @@ struct TagBrowserView: View {
             Button(vault.isPinned(tag) ? "Togli dagli appuntati" : "Appunta in cima") {
                 vault.togglePin(tag)
             }
+            Divider()
+            Button("Rinomina in tutto il vault…") { renaming = RenamingTag(tag: tag) }
         }
         .accessibilityIdentifier("tag-row")
     }
@@ -240,10 +285,76 @@ struct TagBrowserView: View {
         }
     }
 
+    /// Performs the rename and keeps what it takes to put it back.
+    ///
+    /// The chosen tags are rewritten as well: a filter still naming the old spelling would show
+    /// no notes at all, which reads as "the rename lost them".
+    private func perform(renameOf old: Tag, to new: Tag) {
+        renaming = nil
+        let outcome = vault.renameTag(old, to: new)
+        guard !outcome.journalIDs.isEmpty || !outcome.failures.isEmpty else { return }
+        if chosen.remove(old) != nil { chosen.insert(new) }
+        if vault.isPinned(old) {
+            vault.togglePin(old)
+            vault.togglePin(new)
+        }
+        lastRename = FinishedRename(
+            old: old, new: new, journalIDs: outcome.journalIDs, failures: outcome.failures
+        )
+    }
+
+    private func undoLastRename() {
+        guard let done = lastRename else { return }
+        let outcome = vault.undoTagRename(done.journalIDs)
+        lastRename = nil
+        if chosen.remove(done.new) != nil { chosen.insert(done.old) }
+        if vault.isPinned(done.new) {
+            vault.togglePin(done.new)
+            vault.togglePin(done.old)
+        }
+        // A note that had moved on keeps its own text and is named here rather than swallowed.
+        if !outcome.failures.isEmpty {
+            vault.recordProblem(outcome.failures.joined(separator: "; "))
+        }
+    }
+
     /// Opens the note where notes are read. The editor lives in the Note pane and this is a
     /// browser: leaving the person on a list they have just used is leaving them a click short.
     private func open(_ note: NoteRecord) {
         vault.openNote(at: note.relativePath)
         navigation.pane = .notes
+    }
+}
+
+/// The bar under the browser after a rename: what happened, and the way back.
+///
+/// A view of its own because the browser is already at the length SwiftLint warns about, and
+/// because this is the whole of D7's group undo as a person meets it.
+private struct TagRenameBanner: View {
+    @Environment(\.theme) private var theme
+    let summary: String
+    let failures: [String]
+    let onUndo: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: theme.spacing(.s)) {
+            Text(summary).themedText(.caption, color: .textSecondary)
+            if !failures.isEmpty {
+                Text("\(failures.count) non scritte")
+                    .themedText(.caption, color: .taskOverdue)
+                    .help(failures.joined(separator: "\n"))
+            }
+            Spacer()
+            Button("Annulla la rinomina", action: onUndo)
+                .accessibilityIdentifier("undo-tag-rename")
+            Button("Chiudi", action: onDismiss)
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .textTertiary)
+        }
+        .padding(.horizontal, theme.spacing(.m))
+        .padding(.vertical, theme.spacing(.s))
+        .background(theme.color(.backgroundSecondary))
+        .overlay(alignment: .top) { Divider() }
     }
 }
