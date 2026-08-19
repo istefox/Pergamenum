@@ -20,11 +20,24 @@ struct OpenTabsStore {
         var isPreview: Bool
     }
 
-    struct Session: Codable, Equatable, Sendable {
+    /// One column of the editor: its tabs and the one that was in front.
+    struct Column: Codable, Equatable, Sendable {
         var entries: [Entry] = []
         /// The path that was in front, rather than an index: a note deleted while the app was
         /// closed shifts every index and would silently focus a different note.
         var activePath: String?
+    }
+
+    /// The whole desk: one column, or two after a split (ADR-0012 D4).
+    ///
+    /// **This shape replaced a flat list of entries, and the old blob no longer decodes.** A
+    /// version written before the split reads back as an empty session, which costs the tab
+    /// arrangement once and nothing else - the notes are on disk and none of this is content.
+    /// A migration for a `UserDefaults` blob that describes where windows were is more machinery
+    /// than the thing is worth.
+    struct Session: Codable, Equatable, Sendable {
+        var columns: [Column] = []
+        var focusedColumn = 0
     }
 
     private let defaults: UserDefaults

@@ -2,11 +2,11 @@ import SwiftUI
 
 /// Closing a tab that has unsaved edits (ADR-0012 D3).
 ///
-/// In a file of its own for the reason `VaultBrowser+Editor` and `+Footer` exist: the tab bar
-/// took `VaultBrowser` past the length SwiftLint warns at. The question itself is small and the
-/// reason for it is not - with one note open, explicit saving was safe because the buffer was in
-/// front of you; with six tabs the third one closes with work in it nobody has looked at since.
-extension VaultBrowser {
+/// In a file of its own for the reason `EditorColumn+Text` exists: the tab bar took the view
+/// past the length SwiftLint warns at. The question itself is small and the reason for it is
+/// not - with one note open, explicit saving was safe because the buffer was in front of you;
+/// with six tabs the third one closes with work in it nobody has looked at since.
+extension EditorColumnView {
     /// What a column with no tabs shows. Here rather than in `VaultBrowser` because it is
     /// now the empty *tab set*, not the pane's own empty state.
     var emptyState: some View {
@@ -26,7 +26,7 @@ extension VaultBrowser {
         if tab.note.hasUnsavedChanges {
             closing = tab
         } else {
-            vault.closeTab(tab.id)
+            focused { vault.closeTab(tab.id) }
         }
     }
 
@@ -35,22 +35,24 @@ extension VaultBrowser {
     func closeAfterSaving() {
         guard let tab = closing else { return }
         closing = nil
-        vault.focusTab(tab.id)
-        vault.saveOpenNote()
-        vault.closeTab(tab.id)
+        focused {
+            vault.focusTab(tab.id)
+            vault.saveOpenNote()
+            vault.closeTab(tab.id)
+        }
     }
 
     func closeDiscarding() {
         guard let tab = closing else { return }
         closing = nil
-        vault.closeTab(tab.id)
+        focused { vault.closeTab(tab.id) }
     }
 }
 
 /// The dialog, as a modifier so the pane's `body` stays about the pane.
 struct UnsavedTabDialog: ViewModifier {
     @Binding var closing: NoteTab?
-    let browser: VaultBrowser
+    let column: EditorColumnView
 
     func body(content: Content) -> some View {
         content.confirmationDialog(
@@ -61,8 +63,8 @@ struct UnsavedTabDialog: ViewModifier {
             // Three buttons and a title, the way macOS asks a document this question. Annulla
             // is the safe one in the literal sense: it changes nothing, so the tab stays and
             // so does the work.
-            Button("Salva") { browser.closeAfterSaving() }
-            Button("Non salvare", role: .destructive) { browser.closeDiscarding() }
+            Button("Salva") { column.closeAfterSaving() }
+            Button("Non salvare", role: .destructive) { column.closeDiscarding() }
             Button("Annulla", role: .cancel) { closing = nil }
         } message: {
             Text("Chiudendo la tab senza salvare, le modifiche vanno perse.")

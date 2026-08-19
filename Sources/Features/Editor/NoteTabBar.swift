@@ -14,15 +14,20 @@ struct NoteTabBar: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
+    /// Which column this bar belongs to (ADR-0012 D4). The bar of the column without the
+    /// focus is dimmed rather than absent: it still says what is open over there.
+    let columnIndex: Int
     /// Asked before a tab with unsaved changes is closed (ADR-0012 D3). The dialog belongs to
-    /// the pane, which can show one; this view only says which tab was aimed at.
+    /// the column, which can show one; this view only says which tab was aimed at.
     let onCloseRequested: (NoteTab) -> Void
+
+    private var isFocused: Bool { vault.focusedColumnIndex == columnIndex }
 
     var body: some View {
         VStack(spacing: 0) {
             strip
             Divider()
-            if let note = vault.openNote {
+            if let note = tabs.first(where: { $0.id == activeID })?.note {
                 Text(note.relativePath)
                     .themedText(.caption, color: .textTertiary)
                     .lineLimit(1)
@@ -42,11 +47,13 @@ struct NoteTabBar: View {
                 HStack(spacing: theme.spacing(.xs)) {
                     ForEach(tabs) { tab in
                         NoteTabChip(
+                            // Only the focused column's active tab wears the accent. Two tabs
+                            // marked active in one window is two answers to "where am I".
                             tab: tab,
-                            isActive: tab.id == vault.focusedTab?.id,
-                            onSelect: { vault.focusTab(tab.id) },
-                            onMakeStable: { vault.makeStable(tab.id) },
-                            onClose: { onCloseRequested(tab) }
+                            isActive: isFocused && tab.id == activeID,
+                            onSelect: { focus { vault.focusTab(tab.id) } },
+                            onMakeStable: { focus { vault.makeStable(tab.id) } },
+                            onClose: { focus { onCloseRequested(tab) } }
                         )
                     }
                 }
@@ -54,7 +61,7 @@ struct NoteTabBar: View {
             }
             .scrollIndicators(.never)
 
-            Button { vault.beginNewTab() } label: {
+            Button { focus { vault.beginNewTab() } } label: {
                 Image(systemName: "plus")
             }
             .buttonStyle(.plain)
@@ -63,9 +70,12 @@ struct NoteTabBar: View {
             .accessibilityLabel("Nuova tab")
             .accessibilityIdentifier("new-tab")
 
-            if vault.openNote != nil {
+            if activeID != nil {
                 // The two the header carried, unchanged in behaviour and moved in place.
-                Picker("", selection: Bindable(vault).isReadingMode) {
+                Picker("", selection: Binding(
+                    get: { tabs.first { $0.id == activeID }?.isReadingMode ?? false },
+                    set: { reading in focus { vault.isReadingMode = reading } }
+                )) {
                     Text("Modifica").tag(false)
                     Text("Lettura").tag(true)
                 }
@@ -73,8 +83,8 @@ struct NoteTabBar: View {
                 .labelsHidden()
                 .fixedSize()
 
-                if vault.openNote?.hasUnsavedChanges == true {
-                    Button("Salva", action: vault.saveOpenNote)
+                if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
+                    Button("Salva") { focus { vault.saveOpenNote() } }
                 } else {
                     Label("Salvato", systemImage: "checkmark.circle")
                         .themedText(.caption, color: .textSecondary)
@@ -83,13 +93,23 @@ struct NoteTabBar: View {
         }
         .padding(.horizontal, theme.spacing(.xs))
         .padding(.vertical, theme.spacing(.xs))
-        .background(theme.color(.backgroundSecondary))
+        // Lit when this column has the focus, dark when it does not: the index in the sidebar,
+        // the inspector and every menu command answer for the focused column, so which one it
+        // is has to be legible without clicking to find out.
+        .background(theme.color(isFocused ? .backgroundSecondary : .backgroundPrimary))
     }
 
-    private var tabs: [NoteTab] {
-        vault.columns.indices.contains(vault.focusedColumnIndex)
-            ? vault.columns[vault.focusedColumnIndex].tabs
-            : []
+    private var column: EditorColumn? {
+        vault.columns.indices.contains(columnIndex) ? vault.columns[columnIndex] : nil
+    }
+
+    private var tabs: [NoteTab] { column?.tabs ?? [] }
+    private var activeID: NoteTab.ID? { column?.activeID }
+
+    /// Anything done on this bar is done in this column, so the click takes the focus first.
+    private func focus(_ change: () -> Void) {
+        vault.focusColumn(columnIndex)
+        change()
     }
 }
 

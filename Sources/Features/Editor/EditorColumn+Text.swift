@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// The editor pane's own parts: its header, the reading view, and what a click on an
-/// embedded file does.
+/// The text of one column: the editor, the find bar, the reading view, and what a click on
+/// an embedded file does.
 ///
-/// In a file of its own so `VaultBrowser` stays inside SwiftLint's type body length. It
-/// is already the widest view in the app, holding three panes and their sheets.
-extension VaultBrowser {
+/// In a file of its own so `EditorColumnView` stays inside SwiftLint's type body length. It
+/// extended `VaultBrowser` until the split view (ADR-0012 D4) moved the editor's state down a
+/// level, into the column it describes.
+extension EditorColumnView {
     /// Writes a pasted picture into the vault beside the note, returning the name the
     /// embed should carry.
     ///
@@ -35,14 +36,18 @@ extension VaultBrowser {
 
     /// The editor itself, with everything the text view needs wired to it.
     ///
-    /// Here rather than inline in `VaultBrowser.body` for the reason this file exists at
+    /// Here rather than inline in the column's `body` for the reason this file exists at
     /// all: the browser is the widest view in the app, and M8 gave the text view two more
     /// inputs.
     func editing(_ note: VaultController.OpenNote) -> some View {
         NoteTextView(
             text: Binding(
-                get: { vault.openNote?.text ?? "" },
-                set: { vault.updateOpenNoteText($0) }
+                // This column's note, and not the facade: the facade answers for whichever
+                // column has the focus, so both halves would show the same text.
+                get: { tab?.note.text ?? "" },
+                // The focus first, inside the setter: a keystroke in the column that does not
+                // have it would otherwise be typed into the other column's note.
+                set: { text in focused { vault.updateOpenNoteText(text) } }
             ),
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
@@ -90,12 +95,12 @@ extension VaultBrowser {
             outlineRanges: NoteOutline.entries(in: note.text).map {
                 NSRange($0.range, in: note.text)
             },
-            onOutlineEntryChanged: { vault.currentOutlineEntry = $0 },
-            foldedEntries: vault.foldedEntries,
+            onOutlineEntryChanged: { entry in focused { vault.currentOutlineEntry = entry } },
+            foldedEntries: tab?.foldedEntries ?? [],
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,
-            onToggleFold: vault.toggleFold
+            onToggleFold: { entry in focused { vault.toggleFold(entry) } }
         )
         .modifier(FindKeeping(find: find, navigation: navigation, text: note.text))
     }

@@ -11,33 +11,7 @@ struct VaultBrowser: View {
     @Environment(CommandActions.self) var commandActions
     /// Read for the key combinations the slash menu shows beside each app command.
     @Environment(ShortcutStore.self) var shortcuts
-    /// Held here rather than read straight from `Navigation`, because the insertion has
-    /// to be consumed once: read directly it would be re-applied on every view update
-    /// until something else changed it.
-    @State var pendingInsertion: (text: String, cursorBack: Int)?
     @State private var isShowingInspector = true
-    /// Bumped after a note is created, so the editor that replaces the composer opens
-    /// with the cursor already in it.
-    @State var focusRequest = 0
-    /// The embedded file a click asked to see, and the panel that shows it. Empty until
-    /// there is one: the Quick Look host takes first responder whenever it has a file,
-    /// and taking it before the user has asked for anything would be taking it for
-    /// nothing.
-    @State var previewURLs: [URL] = []
-    @State var isPreviewingEmbed = false
-    /// The jump the index asked for, held here for the same reason `pendingInsertion` is:
-    /// it must be consumed once, and read straight from `Navigation` it would be re-applied
-    /// on every view update until something else changed (M8).
-    @State var pendingJump: Navigation.OutlineJump?
-    /// Trova e sostituisci inside the open note (SPEC §10, M8). Here rather than on
-    /// `Navigation`, which keeps only the two menu flags: a search belongs to the note being
-    /// looked at, not to the app.
-    @State var find = FindSession()
-    /// The replacements the bar asked for, consumed once - the shape `pendingInsertion` and
-    /// `pendingJump` already have.
-    @State var pendingReplacements: [(range: NSRange, text: String)]?
-    /// The tab whose close button was pressed while it had unsaved changes.
-    @State var closing: NoteTab?
 
     var body: some View {
         HSplitView {
@@ -51,12 +25,6 @@ struct VaultBrowser: View {
             }
         }
         .toolbar { toolbar }
-        .onChange(of: navigation.pendingInsertion) { _, _ in
-            pendingInsertion = navigation.consumeInsertion()
-        }
-        .onChange(of: navigation.outlineJump) { _, jump in
-            pendingJump = jump
-        }
         .background(theme.color(.backgroundPrimary))
         .sheet(isPresented: Binding(
             get: { vault.isShowingQuickSwitcher },
@@ -133,46 +101,22 @@ struct VaultBrowser: View {
         if vault.isComposingNote {
             NewNoteComposer(
                 draft: vault.noteDraft ?? .init(),
-                onCreated: { _ in
-                    vault.endNewNote()
-                    focusRequest += 1
-                },
+                onCreated: { _ in vault.endNewNote() },
                 onCancel: { vault.endNewNote() }
             )
         } else {
-            VStack(spacing: 0) {
-                // Outside the `if`: the bar is there with one note open and with none, so
-                // nothing moves when a second arrives (ADR-0012 D1, mockup of 2026-08-19).
-                NoteTabBar(onCloseRequested: requestClose)
-                if let note = vault.openNote {
-                    if note.externalChangePending != nil { conflictBanner }
-                    Divider()
-                    if find.isOpen {
-                        findBar(note)
-                        Divider()
-                    }
-                    if vault.isReadingMode {
-                        reading(note)
-                    } else {
-                        editing(note)
-                    }
-                } else {
-                    emptyState
+            // One column, or two after «Dividi l'editor» (ADR-0012 D4). `HSplitView` because
+            // the divider is the user's to move, like the two it already sits between.
+            HSplitView {
+                ForEach(Array(vault.columns.enumerated()), id: \.element.id) { index, _ in
+                    EditorColumnView(columnIndex: index)
+                        // `maxWidth: .infinity` on both, so a split divides the space instead
+                        // of leaving the first column the width it had and squeezing the new
+                        // one into what was left.
+                        .frame(minWidth: 280, maxWidth: .infinity)
                 }
             }
-            .background(theme.color(.backgroundPrimary))
-            .quickLook(urls: previewURLs, isPresented: $isPreviewingEmbed)
-            .modifier(UnsavedTabDialog(closing: $closing, browser: self))
         }
-    }
-
-    /// On the controller since the Diario pane's editor offers the same list.
-    var tagSuggestions: [String] { vault.tagSuggestions }
-
-    func follow(title: String) {
-        let matches = vault.index.resolve(title: title)
-        guard let first = matches.first else { return }
-        vault.openNote(at: first)
     }
 
     // MARK: Inspector

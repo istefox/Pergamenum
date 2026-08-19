@@ -140,6 +140,12 @@ struct PergamenumApp: App {
                 .environment(shortcuts)
                 .environment(commandActions)
                 .themed(by: themeEngine)
+                // The window keeps its name for Mission Control and the Finestra menu; the
+                // toolbar does not show it. macOS draws the title between the leading and the
+                // trailing toolbar groups, which with a split editor puts the word
+                // «Pergamenum» exactly on the seam between the two columns - and the note you
+                // are looking at is named on its tab, one row below, where it belongs.
+                .toolbar(removing: .title)
                 .onAppear { appDelegate.vault = vault }
                 // Not in `init`: window work and `NSApp` must not happen while the app
                 // is still coming up, and neither the theme nor the vault the panel
