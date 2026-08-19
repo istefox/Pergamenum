@@ -41,7 +41,7 @@ Altro testo.
 private func controller(_ vault: borrowing TemporaryVault) async throws -> VaultController {
     try vault.write(first, to: "Nexion.md")
     try vault.write(second, to: "Progetti/Sospensione.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     return controller
 }

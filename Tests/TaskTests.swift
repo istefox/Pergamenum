@@ -250,7 +250,7 @@ tags:
     let vault = try TaskVault()
     try vault.write(taskNote, to: "Note.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let day = CalendarDate(iso: "2026-08-11")!
 
@@ -272,7 +272,7 @@ tags:
     let vault = try TaskVault()
     try vault.write(taskNote, to: "Note.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     // SPEC §7.2: the wikilink is the link, navigable in both directions.
     #expect(controller.index.tasks(linkingTo: "Curva di trasmissibilità").count == 1)
@@ -286,7 +286,7 @@ tags:
     let vault = try TaskVault()
     try vault.write(taskNote, to: "Note.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
@@ -305,7 +305,7 @@ tags:
     let vault = try TaskVault()
     try vault.write(taskNote, to: "Note.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
@@ -321,7 +321,7 @@ tags:
     let vault = try TaskVault()
     try vault.write(taskNote, to: "Note.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     var task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
@@ -337,7 +337,7 @@ tags:
 @MainActor
 @Test func quickCaptureAppendsToTheInbox() async throws {
     let vault = try TaskVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.captureTask("Richiamare Rossi"))
@@ -358,7 +358,7 @@ tags:
 @MainActor
 @Test func quickCaptureIgnoresEmptyInput() async throws {
     let vault = try TaskVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     #expect(!controller.captureTask("   "))
     controller.close()
@@ -447,7 +447,7 @@ tags:
     - [x] Fatta !2026-08-13 @done(2026-08-11)
     - [ ] Senza scadenza
     """, to: "Scadenze.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let day = CalendarDate(iso: "2026-08-11")!
@@ -475,7 +475,7 @@ tags:
     - [ ] Aperta >2026-08-11
     - [x] Chiusa >2026-08-11 @done(2026-08-11)
     """, to: "Giornata.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let day = CalendarDate(iso: "2026-08-11")!

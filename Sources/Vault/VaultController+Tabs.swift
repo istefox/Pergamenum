@@ -95,6 +95,45 @@ private extension Array {
     }
 }
 
+/// Remembering the arrangement, and finding it again (ADR-0012 D10).
+extension VaultController {
+    /// Writes the arrangement down, so the next launch finds it (ADR-0012 D10).
+    ///
+    /// Called by every door that changes which tabs exist or which is in front. Not by
+    /// `updateTab`: typing does not rearrange anything, and the buffer is not what is kept.
+    ///
+    /// Internal rather than private only because the doors are in the other file, which is
+    /// where the stored `columns` has to be.
+    func rememberTabs() {
+        guard let root else { return }
+        openTabs.remember(
+            OpenTabsStore.Session(
+                entries: tabs.map { .init(path: $0.note.relativePath, isPreview: $0.isPreview) },
+                activePath: focusedTab?.note.relativePath
+            ),
+            for: root
+        )
+    }
+
+    /// Reopens what was open when this vault was last closed.
+    ///
+    /// A note that is no longer there is skipped rather than reported: it was deleted between
+    /// two launches, which is not a failure, and a dialog about it at every start would be.
+    func restoreTabs() {
+        guard let root, tabs.isEmpty else { return }
+        let session = openTabs.session(for: root)
+        for entry in session.entries {
+            guard let note = readForEditing(entry.path) else { continue }
+            openTab(showing: note)
+            if entry.isPreview, let id = focusedTab?.id { updateTab(id) { $0.isPreview = true } }
+        }
+        if let active = session.activePath,
+           let tab = tabs.first(where: { $0.note.relativePath == active }) {
+            focusTab(tab.id)
+        }
+    }
+}
+
 /// Reading a note into a tab.
 ///
 /// Beside the tabs rather than in `VaultController.swift`, because that is what opening a note
@@ -165,8 +204,9 @@ extension VaultController {
     /// Reads a note for the editor and puts the index back in step, or reports why not.
     ///
     /// Split out of `openNote(at:)` so opening in place and opening in a new tab cannot
-    /// drift: they differ in where the note lands and in nothing else.
-    private func readForEditing(_ relativePath: String) -> OpenNote? {
+    /// drift: they differ in where the note lands and in nothing else. Internal because the
+    /// session restore in `VaultController.swift` reads through it too.
+    func readForEditing(_ relativePath: String) -> OpenNote? {
         guard let session else { return nil }
         do {
             let (record, text) = try session.read(relativePath)

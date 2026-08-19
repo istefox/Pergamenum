@@ -73,7 +73,7 @@ import Testing
     let vault = try ComposerVault()
     try vault.write(hostNote, to: "01 Progetti/Nexion.md")
 
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let draft = VaultController.TaskDraft(
@@ -103,7 +103,7 @@ import Testing
 @MainActor
 @Test func aReminderComposedInTheAppIsOnTheLineTheSchedulerReads() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let before = controller.taskGeneration
@@ -124,7 +124,7 @@ import Testing
 @MainActor
 @Test func aTaskComposedIntoANoteThatIsNotThereIsRefused() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let draft = VaultController.TaskDraft(
@@ -142,7 +142,7 @@ import Testing
 @MainActor
 @Test func theLastCaptureIsReadableOnceSoTheViewFollowsTheTask() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.consumeLastCapture() == nil)
@@ -160,7 +160,7 @@ import Testing
 @Test func aNewNoteStartsInTheFolderItWasAskedFor() async throws {
     let vault = try ComposerVault()
     try vault.write(hostNote, to: "01 Progetti/Nexion.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     #expect(controller.noteDraft == nil)
@@ -222,7 +222,7 @@ import Testing
 @MainActor
 @Test func aTaskWithAnHourCanAlsoBecomeABlockOnItsDay() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     var draft = VaultController.TaskDraft(text: "Collaudo linea 2")
@@ -251,7 +251,7 @@ import Testing
 @MainActor
 @Test func withoutTheCheckboxNoBlockIsMade() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     var draft = VaultController.TaskDraft(text: "Solo il task")
@@ -268,7 +268,7 @@ import Testing
 @MainActor
 @Test func aSecondBlockOnTheSameDayIsPlacedAfterTheFirst() async throws {
     let vault = try ComposerVault()
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
     let day = CalendarDate(iso: "2026-08-20")!

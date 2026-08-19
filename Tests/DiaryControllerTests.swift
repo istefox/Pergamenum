@@ -6,7 +6,7 @@ import Testing
 /// it, and the days it leaves alone.
 @MainActor
 private func makeDiary(_ vault: borrowing DayVault) async throws -> (DiaryController, VaultController) {
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let diary = DiaryController(vault: controller)
     diary.show(testDay)

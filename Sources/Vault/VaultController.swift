@@ -32,7 +32,7 @@ final class VaultController {
     ///
     /// `private(set)` for the same reason `openNote` was: everything outside this file reads
     /// the tabs and changes them only through the doors below, so a view cannot quietly swap
-    /// the buffer under the editor. One column until the split-view slice.
+    /// the buffer. One column until the split-view slice.
     private(set) var columns: [EditorColumn] = [EditorColumn()]
     private(set) var focusedColumnIndex = 0
 
@@ -103,12 +103,16 @@ final class VaultController {
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()
 
-    /// Where opened vaults are remembered. Injected so a test never writes into the
-    /// list the app reads at launch.
+    /// Where opened vaults are remembered, injected so a test never writes into the list
+    /// the app reads at launch.
     private let recents: RecentVaults
+    /// Where the open tabs are remembered, per vault (ADR-0012 D10). Injected against the
+    /// same mistake as `recents`, and not private so its two methods can live with the tabs.
+    let openTabs: OpenTabsStore
 
-    init(recents: RecentVaults = RecentVaults()) {
+    init(recents: RecentVaults = RecentVaults(), openTabs: OpenTabsStore = OpenTabsStore()) {
         self.recents = recents
+        self.openTabs = openTabs
     }
 
     // MARK: Opening
@@ -132,6 +136,7 @@ final class VaultController {
         recents.remember(url)
         await rescan()
         startWatching(url)
+        restoreTabs()
 
         if let route = routeState.pending {
             routeState.pending = nil
@@ -219,6 +224,7 @@ final class VaultController {
             let tab = columns[focusedColumnIndex].tabs[index]
             columns[focusedColumnIndex].tabs[index] = tab.showing(note)
             columns[focusedColumnIndex].activeID = tab.id
+            rememberTabs()
         } else {
             var tab = NoteTab(note: note)
             tab.isPreview = true
@@ -227,6 +233,7 @@ final class VaultController {
             columns[focusedColumnIndex].tabs.insert(tab, at: at)
             columns[focusedColumnIndex].activeID = tab.id
         }
+        rememberTabs()
     }
 
     /// Turns a preview tab into one that stays: the double click on a row or on the tab.
@@ -235,6 +242,7 @@ final class VaultController {
               let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
         else { return }
         columns[focusedColumnIndex].tabs[index].isPreview = false
+        rememberTabs()
     }
 
     /// Opens a note in a tab of its own, after the focused one, and focuses it.
@@ -244,6 +252,7 @@ final class VaultController {
         let after = columns[focusedColumnIndex].tabs.firstIndex { $0.id == focusedTab?.id }
         columns[focusedColumnIndex].tabs.insert(tab, at: after.map { $0 + 1 } ?? columns[focusedColumnIndex].tabs.count)
         columns[focusedColumnIndex].activeID = tab.id
+        rememberTabs()
     }
 
     /// Brings a tab to the front of its column. Unknown ids are ignored rather than
@@ -254,6 +263,7 @@ final class VaultController {
         else { return }
         columns[focusedColumnIndex].activeID = id
         isComposingNote = false
+        rememberTabs()
     }
 
     /// Closes one tab by id, whether or not it is the focused one.
@@ -273,6 +283,7 @@ final class VaultController {
         columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.indices.contains(neighbour)
             ? columns[focusedColumnIndex].tabs[neighbour].id
             : nil
+        rememberTabs()
     }
 
     /// Changes the focused tab in place, leaving its identity and view state alone.
@@ -305,16 +316,6 @@ final class VaultController {
     /// be assigned, so a view cannot quietly swap the buffer under the editor.
     func replaceOpenNote(_ note: OpenNote) {
         updateFocusedTab { $0.note = note }
-    }
-
-    /// A note that does not exist yet: the name being typed, where it will go, and the
-    /// template it starts from.
-    struct NoteDraft: Equatable, Sendable {
-        var folder = ""
-        var title = ""
-        var topic = ""
-        /// The chosen template's relative path, empty for none (ADR-0011 D6).
-        var template = ""
     }
 
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).

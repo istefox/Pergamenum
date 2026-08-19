@@ -119,7 +119,7 @@ func makeController(
     store: StubCalendarStore,
     openingTheDailyNote: Bool = true
 ) async throws -> (DayController, VaultController) {
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     if openingTheDailyNote { controller.openNote(at: "Calendar/20260811.md") }
 

@@ -256,7 +256,7 @@ Prima versione.
 @Test func restoringWritesTheOldTextAndTheEditorFollowsIt() async throws {
     let vault = try TemporaryVault()
     try vault.write(restorableNote, to: "Uno.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     controller.openNote(at: "Uno.md")
     let original = try #require(controller.openNote?.text)
@@ -282,7 +282,7 @@ Prima versione.
     // decides the extra write is redundant.
     let vault = try TemporaryVault()
     try vault.write(restorableNote, to: "Uno.md")
-    let controller = VaultController(recents: .volatile())
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     controller.openNote(at: "Uno.md")
     let original = try #require(controller.openNote?.text)
