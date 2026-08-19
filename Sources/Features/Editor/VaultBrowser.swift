@@ -120,6 +120,7 @@ struct VaultBrowser: View {
         if let note = vault.openNote, vault.isOpenNoteVisible {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+                    star(note)
                     conformance(note)
                     history(note)
                     backlinks(note)
@@ -133,6 +134,26 @@ struct VaultBrowser: View {
         } else {
             Color.clear.background(theme.color(.backgroundSecondary))
         }
+    }
+
+    /// The star, at the top of the inspector because it is about the note as a whole rather
+    /// than about anything inside it (ADR-0012 D6). The sidebar's context menu does the same
+    /// thing for a note nobody has open.
+    private func star(_ note: VaultController.OpenNote) -> some View {
+        let isStarred = vault.isStarred(note.relativePath)
+        return Button { vault.toggleStar(note.relativePath) } label: {
+            HStack(spacing: theme.spacing(.xs)) {
+                Image(systemName: isStarred ? "star.fill" : "star")
+                    .themedText(.body, color: isStarred ? .accentPrimary : .textTertiary)
+                Text(isStarred ? "Preferita" : "Aggiungi alle preferite")
+                    .themedText(.caption, color: .textSecondary)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isStarred ? "Togli dalle preferite" : "Aggiungi alle preferite")
+        .accessibilityIdentifier("star-note")
     }
 
     private func conformance(_ note: VaultController.OpenNote) -> some View {

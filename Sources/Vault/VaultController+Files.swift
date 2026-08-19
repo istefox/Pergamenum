@@ -86,4 +86,57 @@ extension VaultController {
 
     /// The notes under `Templates/`, for the composer's template menu.
     var templates: [NoteRecord] { session?.templates ?? [] }
+
+    // MARK: Preferite (ADR-0012 D6)
+    //
+    // Three lines onto `VaultSession+Starred`, where the set and the file live. The rename and
+    // the move above already carry the star with the note, because they go through the session
+    // too - a facade that owned the set would have to remember to, and would eventually not.
+
+    /// The starred notes, title-sorted, for the section at the top of the sidebar.
+    var starredNotes: [NoteRecord] { session?.starredNotes ?? [] }
+
+    func isStarred(_ relativePath: String) -> Bool { session?.isStarred(relativePath) ?? false }
+
+    func toggleStar(_ relativePath: String) { session?.toggleStar(relativePath) }
+
+    // MARK: I tag appuntati
+    //
+    // Not on `VaultSession`, unlike the stars: a pin is this machine's shortcut into its own
+    // browser, so it lives in `UserDefaults` keyed by the vault's path, where the open tabs
+    // live (ADR-0012 D10). A connector has no browser and would have nothing to do with it.
+
+    func isPinned(_ tag: Tag) -> Bool { pinnedTags.contains(tag) }
+
+    /// Pins a tag at the end of the list, or unpins it. Order is the order they were pinned:
+    /// alphabetical would move a row under the pointer the moment a new pin arrives.
+    func togglePin(_ tag: Tag) {
+        guard let root else { return }
+        if let index = pinnedTags.firstIndex(of: tag) {
+            pinnedTags.remove(at: index)
+        } else {
+            pinnedTags.append(tag)
+        }
+        pinnedTagsStore.remember(pinnedTags, for: root)
+    }
+
+    // MARK: La rinomina di un tag (ADR-0012 D7)
+    //
+    // Three lines onto `VaultSession+TagRename`, where the writes and the journal are. The
+    // sheet asks for the preview, then for the rename, and keeps the ids so it can offer to put
+    // it back - which is the whole of the undo, since the session refuses any note that moved on.
+
+    func tagRenamePreview(_ old: Tag, to new: Tag) -> [VaultSession.TagRenameChange] {
+        session?.tagRenamePreview(old, to: new) ?? []
+    }
+
+    @discardableResult
+    func renameTag(_ old: Tag, to new: Tag) -> VaultSession.TagRenameOutcome {
+        session?.renameTag(old, to: new) ?? .init()
+    }
+
+    @discardableResult
+    func undoTagRename(_ ids: [String]) -> VaultSession.TagRenameOutcome {
+        session?.undoTagRename(ids) ?? .init()
+    }
 }

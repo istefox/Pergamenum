@@ -122,6 +122,7 @@ struct RootView: View {
         case .diary: diaryPane
         case .tasks: tasksPane
         case .conformance: conformancePane
+        case .tags: tagsPane
         }
     }
 
@@ -131,6 +132,15 @@ struct RootView: View {
             needsVault("Il diario tiene la giornata: il testo libero e le ore che sono state usate.")
         } else {
             DiaryView()
+        }
+    }
+
+    @ViewBuilder
+    private var tagsPane: some View {
+        if vault.root == nil {
+            needsVault("Il pannello Tag raggruppa i tag per namespace e restringe le note a quelli scelti.")
+        } else {
+            TagBrowserView()
         }
     }
 

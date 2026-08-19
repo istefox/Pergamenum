@@ -238,6 +238,19 @@ struct IndexSnapshot: Sendable {
             .sorted { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 > $1.1 }
     }
 
+    /// The notes carrying **every** one of these tags, title-sorted (ADR-0012, slice 3).
+    ///
+    /// Here rather than in the tag browser, which is where it was first written: a filter over
+    /// the index belongs beside the index, and a view is not a place a test can reach. An empty
+    /// set answers nothing at all rather than everything - the browser with no tag chosen is
+    /// asking a question, not selecting the vault.
+    func notes(carryingAll tags: Set<Tag>) -> [NoteRecord] {
+        guard !tags.isEmpty else { return [] }
+        return notes.values
+            .filter { tags.isSubset(of: Set($0.frontmatter.tags)) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
     /// Titles matching a fuzzy query, best first, for the quick switcher.
     func search(_ query: String, limit: Int = 20) -> [NoteRecord] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)

@@ -173,6 +173,9 @@ enum VaultLayout {
     static let themesDirectory = "themes"
     static let thumbnailsDirectory = "thumbnails"
     static let cacheFile = "cache.db"
+    /// The starred notes of ADR-0012 D6. In the vault because starring describes the notes and
+    /// travels with them; the open tabs describe this machine and stay in `UserDefaults`.
+    static let starredFile = "starred.json"
 
     /// Directory names never scanned for notes.
     ///

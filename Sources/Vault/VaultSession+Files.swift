@@ -12,20 +12,27 @@ extension VaultSession {
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
     func renameNote(at relativePath: String, to newTitle: String) throws -> NoteFileOperations.Outcome {
-        try operations.rename(
+        let outcome = try operations.rename(
             relativePath, to: newTitle, knownPaths: index.allNotes.map(\.relativePath)
         )
+        // The star is a path, so it moves with the file or it points at nothing (ADR-0012 D6).
+        moveStar(from: relativePath, to: outcome.newPath)
+        return outcome
     }
 
     func moveNote(at relativePath: String, toFolder folder: String) throws -> NoteFileOperations.Outcome {
-        try operations.move(relativePath, toFolder: folder)
+        let outcome = try operations.move(relativePath, toFolder: folder)
+        moveStar(from: relativePath, to: outcome.newPath)
+        return outcome
     }
 
     /// Moves a note to the Finder's trash and returns the notes now linking to nothing.
     ///
     /// The caller confirms first: this does the deleting, it does not ask.
     func trashNote(at relativePath: String) throws -> [String] {
-        try operations.trash(relativePath, knownPaths: index.allNotes.map(\.relativePath))
+        let orphaned = try operations.trash(relativePath, knownPaths: index.allNotes.map(\.relativePath))
+        forgetStar(relativePath)
+        return orphaned
     }
 
     /// Every folder in the vault, for the "Sposta in…" menu.
