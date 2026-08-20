@@ -309,3 +309,15 @@ struct IndexSnapshot: Sendable {
             .map(\.0)
     }
 }
+
+/// The corpus a view is evaluated over (ADR-0009 §D4).
+///
+/// Two members and no more: the query grammar is closed, so what it can ask about the
+/// vault as a whole is closed with it. Keeping the protocol in `Core/Query` and the
+/// conformance here is what lets the engine be tested against ten notes in memory
+/// without an index, a cache file or a vault on disk.
+extension IndexSnapshot: ViewCorpus {
+    var records: [NoteRecord] { allNotes }
+
+    func paths(forTitle title: String) -> [String] { resolve(title: title) }
+}
