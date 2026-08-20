@@ -160,6 +160,30 @@ The write goes through the vocabulary check of §4.4 like any other tag write. D
 card into a column whose tag is not in the vocabulary is refused with the reason, not
 written and then flagged by the linter afterwards.
 
+*Amended 2026-08-20, while implementing it.* Two sentences of this section were written
+against a §4.4 that says something else, and `perg lint` said so on the first note the
+example would have produced:
+
+- **The vocabulary table is not the whole of §4.4.** SPEC §4.4 also carries T-05, *massimo
+  un `status-*`*, and tag.md 5.1, which forbids `status-*` on a note outright except
+  `status-inbox`. A vocabulary-only check would let a gesture write a tag the app's own
+  linter refuses, into a note nobody is looking at. The guard is therefore the whole tag
+  linter, and it is **differential**: the violations the note already has are compared with
+  the ones it would have, and the drop is refused only when it *introduces* one. A note
+  that was already non-conformant stays draggable - the drag did not put it in that state,
+  and refusing would leave the person no way out of it from the board that showed the
+  problem, which is this section's own argument for not refusing a multi-status card.
+- **The drop is not about `status-*` in particular.** It rewrites the tag matching the
+  glob in `group:`, whatever namespace that is. A board of client work by `project-*` is
+  then an ordinary conformant thing, and a board by `status-*` refuses its own drops until
+  the harness says a note may carry a status - which is principle 5 working: the convention
+  is upstream, and the app does not talk itself into an exception.
+
+The paragraph below is untouched by this. Its premise was wrong - §4.4 *does* say a note
+carries at most one status - but its argument survives the correction: the gesture names
+its source, so the drop replaces the tag of the column the card came from and leaves the
+others alone. Deleting a tag the person did not touch is not something a drag may do.
+
 **A note does not necessarily carry exactly one `status-*` tag, and what the board does with
 the other two cases is decided here rather than by whoever writes the drag handler.** Nothing
 in SPEC §4.4 says a note has one status, so both cases are ordinary, not malformed.

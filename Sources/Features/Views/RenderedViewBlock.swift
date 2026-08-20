@@ -110,10 +110,10 @@ struct RenderedViewBlock: View {
                 result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails
             )
         case .calendar: ViewCalendarRenderer(block: block, result: result)
-        // Read-only until the writing half arrives. §D5 already describes a read-only board
-        // for a grouping that is not a tag namespace, so this is a state the design has, not
-        // one invented for a half-finished slice.
-        case .board: ViewBoardRenderer(result: result)
+        // The one renderer that writes (§D5), and only when the grouping is a tag namespace:
+        // it decides that for itself.
+        case .board:
+            ViewBoardRenderer(block: block, result: result, queries: queries) { reloads += 1 }
         }
     }
 

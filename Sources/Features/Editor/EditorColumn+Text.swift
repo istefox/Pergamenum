@@ -184,7 +184,12 @@ extension EditorColumnView {
                     try? vault.session?.read(record.relativePath).text
                 }
             },
-            generation: vault.scanGeneration
+            generation: vault.scanGeneration,
+            // The one write a view makes (§D5). Offered here, where there is a vault and a
+            // person looking at it; a note card on the canvas passes no source and its board
+            // never invites the drag.
+            move: { path, old, new in vault.moveOnBoard(path, from: old, to: new) },
+            undo: { id in vault.undoJournalledWrites([id]).failures.isEmpty }
         )
     }
 

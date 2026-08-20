@@ -13,6 +13,16 @@ import SwiftUI
 struct ViewQuerySource {
     var evaluate: @MainActor (ViewBlock) -> ViewResult
     var generation: Int = 0
+    /// How a card dropped between two columns of a board is written (§D5): the note, the tag of
+    /// the column it came from, the tag of the one it landed in. Either may be nil, which is a
+    /// drag out of or into *Senza stato*.
+    ///
+    /// Nil where the surface cannot write, and then the board does not offer the gesture at
+    /// all - §D5 is explicit that a renderer which quietly did nothing on drop would be worse
+    /// than one that never invited the drag.
+    var move: (@MainActor (String, Tag?, Tag?) -> VaultSession.BoardDropOutcome)?
+    /// Puts one journalled write back, by its id.
+    var undo: (@MainActor (String) -> Bool)?
 }
 
 /// Turning a `ViewValue` into the string a cell shows.

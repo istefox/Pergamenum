@@ -136,7 +136,14 @@ extension VaultController {
     }
 
     @discardableResult
-    func undoTagRename(_ ids: [String]) -> VaultSession.TagRenameOutcome {
-        session?.undoTagRename(ids) ?? .init()
+    func undoJournalledWrites(_ ids: [String]) -> VaultSession.TagRenameOutcome {
+        session?.undoJournalledWrites(ids) ?? .init()
+    }
+
+    /// A card dropped between two columns of a board (ADR-0009 §D5). The rescan the write
+    /// triggers is the watcher's, as for every other write the app makes.
+    @discardableResult
+    func moveOnBoard(_ path: String, from old: Tag?, to new: Tag?) -> VaultSession.BoardDropOutcome {
+        session?.moveOnBoard(path, from: old, to: new) ?? .init(path: path)
     }
 }

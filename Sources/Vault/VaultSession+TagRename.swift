@@ -24,7 +24,8 @@ extension VaultSession {
     }
 
     /// What a performed rename left behind: what changed, the journal ids that can put it back,
-    /// and the notes that refused to be written.
+    /// and the notes that refused to be written. Named for its first caller; `undoJournalledWrites`
+    /// hands the same shape back to a board's drop.
     struct TagRenameOutcome: Sendable, Equatable {
         var changed: [String] = []
         var journalIDs: [String] = []
@@ -92,14 +93,18 @@ extension VaultSession {
         return outcome
     }
 
-    /// Puts a whole group back, refusing any note that has moved on since.
+    /// Puts a whole group of journalled writes back, refusing any note that has moved on since.
+    ///
+    /// Named for what it does rather than for the rename, because it is not only the rename's
+    /// any more: a board's drop (ADR-0009 §D5) is one journalled write and comes back through
+    /// this same function with a single id.
     ///
     /// The guarantee `WriteJournal` gives per file, applied to a group: a note edited after the
     /// rename keeps its edit and is named in the refusals, rather than being quietly overwritten
     /// with a version that predates work the journal knows nothing about. Newest first, so a
     /// note written twice in the group ends on its oldest text.
     @discardableResult
-    func undoTagRename(_ ids: [String]) -> TagRenameOutcome {
+    func undoJournalledWrites(_ ids: [String]) -> TagRenameOutcome {
         let journal = WriteJournal(root: root)
         var outcome = TagRenameOutcome()
         for id in ids.reversed() {
