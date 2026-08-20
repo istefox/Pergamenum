@@ -408,8 +408,11 @@ None of these are silent. Each must be applied to
   with `WriteJournal`; why the store is disposable and how that stays true.
 - **ADR-0011 — Static export instead of publishing.** What is emitted, what is not, and
   why the app never uploads.
-- **ADR-0012 — Rollover as a setting.** The reopening of SPEC §7.3, with the argument
-  above recorded rather than assumed.
+- **ADR-0013 — Rollover as a setting.** The reopening of SPEC §7.3, with the argument
+  above recorded rather than assumed. *Written 2026-08-20*, and numbered 13 rather than 12:
+  the numbers 10, 11 and 12 went to transclusion, templates and tabs as those milestones
+  arrived. It carries the reserved-folder and event-note decisions of M12 as well, because
+  those are the milestone's other two questions that are not implementation.
 
 ## 8. Risks
 
