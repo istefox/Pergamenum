@@ -118,6 +118,46 @@ struct IndexSnapshot: Sendable {
         .sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
     }
 
+    /// The notes in the link neighbourhood of a title, in **both** directions: the ones
+    /// that link to it and the ones it links to (ADR-0012 D8, `linked:`).
+    ///
+    /// Both directions because the question `linked:` answers is "what is next to this
+    /// note in the graph", and an edge is not directional to the person following it. The
+    /// note itself is never in its own neighbourhood.
+    func neighbourhood(ofTitle title: String) -> Set<String> {
+        let own = Set(resolve(title: title))
+        var paths = Set(backlinks(toTitle: title).map(\.relativePath))
+        for path in own {
+            guard let record = notes[path] else { continue }
+            for target in record.linkTargets {
+                paths.formUnion(resolve(title: target))
+            }
+            for related in record.frontmatter.related {
+                for link in WikilinkParser.links(in: related) {
+                    paths.formUnion(resolve(title: link.target))
+                }
+            }
+        }
+        return paths.subtracting(own)
+    }
+
+    /// Notes with no link in and no link out (ADR-0012 D8, `orphan:`).
+    ///
+    /// A note carrying a wikilink is not an orphan even when the target does not exist:
+    /// it is a note that reaches out and misses, which is what `unresolvedLinks()` is
+    /// for. Isolation is about having no edges at all.
+    var orphans: Set<String> {
+        var paths: Set<String> = []
+        for record in notes.values {
+            guard record.linkTargets.isEmpty,
+                  backlinkIndex[record.title.lowercased()] == nil,
+                  record.frontmatter.related.allSatisfy({ WikilinkParser.links(in: $0).isEmpty })
+            else { continue }
+            paths.insert(record.relativePath)
+        }
+        return paths
+    }
+
     // MARK: Tasks
 
     /// Every task in the vault, in note order.

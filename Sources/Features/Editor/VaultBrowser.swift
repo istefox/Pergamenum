@@ -30,11 +30,9 @@ struct VaultBrowser: View {
             get: { vault.isShowingQuickSwitcher },
             set: { vault.isShowingQuickSwitcher = $0 }
         )) {
-            QuickSwitcher { path in
-                // `openChosenNote` and not `openNote`: Cmd+T opened this switcher asking
-                // for a tab of its own, and only the controller knows that (ADR-0012 D5).
-                vault.openChosenNote(at: path)
+            QuickSwitcher(mode: .navigate) { choice in
                 vault.isShowingQuickSwitcher = false
+                open(choice)
             }
         }
         .sheet(isPresented: Binding(
@@ -44,6 +42,33 @@ struct VaultBrowser: View {
             RelatedLinkSheet()
         }
         .modifier(HistorySheetPresentation())
+    }
+
+    /// Acts on what the quick switcher was asked for.
+    ///
+    /// Here and not in the switcher, which is a picker shared with the task view: only this
+    /// screen has the editor a heading jump lands in, and only the controller knows whether
+    /// Cmd+T asked for a tab of its own (ADR-0012 D5), which is why `openChosenNote` and not
+    /// `openNote`.
+    private func open(_ choice: QuickSwitcher.Choice) {
+        switch choice {
+        case .note(let path):
+            vault.openChosenNote(at: path)
+        case .dailyNote:
+            do { try vault.openDailyNote(for: .today) } catch {
+                vault.recordProblem(ConformanceText.creationFailure(error))
+            }
+        case .createNote(let title):
+            do { try vault.createNote(title: title, date: .today) } catch {
+                vault.recordProblem(ConformanceText.creationFailure(error))
+            }
+        case .heading(let path, let range, let ordinal):
+            vault.openChosenNote(at: path)
+            // One turn later, so the column has the note before the jump reaches it. Sent in
+            // the same pass, the jump arrives at a text view still showing the note you came
+            // from and puts the caret on whatever is at that offset.
+            Task { @MainActor in navigation.jumpToOutlineEntry(range: range, ordinal: ordinal) }
+        }
     }
 
     /// The commands worth a click, in the place macOS puts them.
@@ -124,6 +149,10 @@ struct VaultBrowser: View {
                     conformance(note)
                     history(note)
                     backlinks(note)
+                    // Under the backlinks, chosen from the mockup: the two answer the same
+                    // question a step apart - who points here, and who talks about this
+                    // without pointing.
+                    UnlinkedMentionsSection(notePath: note.relativePath)
                     LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
                     unresolved
                 }
@@ -273,58 +302,6 @@ enum ConformanceText {
             "\($0) è in Note correlate ma non in related"
         })
         return lines
-    }
-}
-
-/// Fuzzy note finder (Cmd+O), matching titles and aliases.
-struct QuickSwitcher: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
-    @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-    @State private var selection: String?
-    let onOpen: (String) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TextField("Vai alla nota…", text: $query)
-                .textFieldStyle(.plain)
-                .font(theme.font(.title))
-                .padding(theme.spacing(.m))
-                .onSubmit { open(selection ?? results.first?.relativePath) }
-                // `pergamenum://search?q=` parks its query on the controller and this
-                // is what picks it up. Without it the route opened the switcher with an
-                // empty field: the link worked, visibly, and did the wrong thing.
-                .task {
-                    if let pending = vault.consumePendingSearch() { query = pending }
-                }
-
-            Divider()
-
-            List(results, id: \.relativePath, selection: $selection) { note in
-                HStack {
-                    Text(note.title).themedText(.body)
-                    Spacer()
-                    Text(note.folder).themedText(.caption, color: .textTertiary)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { open(note.relativePath) }
-                .tag(note.relativePath)
-            }
-            .scrollContentBackground(.hidden)
-        }
-        .frame(width: 560, height: 380)
-        .background(theme.color(.surfaceCard))
-        .onExitCommand { dismiss() }
-    }
-
-    private var results: [NoteRecord] {
-        vault.index.search(query, limit: 30)
-    }
-
-    private func open(_ path: String?) {
-        guard let path else { return }
-        onOpen(path)
     }
 }
 

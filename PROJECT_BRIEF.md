@@ -87,6 +87,41 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-20: **M10 completo, `PG-011` chiuso.** Lo slice 4 chiude ADR-0012 con D8 e D9.
+  Gli operatori si dividono in due famiglie e la divisione è la decisione: `-termine`,
+  `regex:` e `modified:` li decide la nota da sé e stanno in `SearchQuery`; `is:starred`,
+  `linked:` e `orphan:` no, perché la stella vive nel file di D6 accanto al vault e gli
+  altri due nel grafo dei link, quindi restringono in `VaultSession.search` **prima** che
+  un file venga aperto. Il match si sposta in `SearchQuery+Matching` perché una `regex:`
+  va compilata, e compilarla una volta per nota su tutto il vault è la differenza fra una
+  ricerca e una pausa: `Matcher` tiene i pattern compilati per la durata di una ricerca,
+  `SearchQuery` resta un valore senza durata. `linked:` legge **entrambe le direzioni**,
+  perché un arco non è orientato per chi lo percorre, e la sola metà entrante non
+  sarebbe che un altro modo di scrivere il pannello dei backlink; `orphan:` vuol dire
+  nessun link né in entrata né in uscita, e una nota che porta un wikilink irrisolto non
+  è isolata, è una nota che tende la mano e manca, che è ciò per cui esiste il pannello
+  dei link non risolti. Una `regex:` che non compila fa combaciare **niente** e il foglio
+  lo dice: combaciare tutto sembrerebbe una risposta. Nessun `created:`, che sarebbe una
+  decisione di schema (ADR-0009 §D2). Il Quick Open smette di aprire qualcosa e
+  restituisce una `Choice`: i chiamanti sono due e fanno domande diverse, il pannello
+  Note chiede dove andare e `TasksView` chiede a quale nota collegare un task, e a quella
+  seconda domanda una sezione o una nota ancora da scrivere non è una risposta. Con il
+  campo vuoto offre la nota di oggi, i recenti e le preferite; `Nota#sez` porta a una
+  sezione e `#sez` da solo dentro la nota aperta; un nome che nessuna nota ha diventa
+  «crea la nota». I recenti stanno in memoria e non su disco: le tab le ripristina già
+  D10, e una seconda lista di percorsi persistita sarebbe una seconda cosa che ogni
+  rinomina deve tenere allineata. Il salto a una sezione parte **un giro di run loop
+  dopo** l'apertura della nota, perché mandato nello stesso passaggio arriva a una vista
+  che mostra ancora la nota di prima. Le menzioni non linkate si calcolano su richiesta e
+  mai all'apertura di una nota, e non finiscono in cache: `IndexCache` ha il numero di
+  schema speso da M11. È per questo che la sezione ha un bottone, e a riposo dice soltanto
+  cosa farà. `UnlinkedMentions` sta in `Core` ed è più stretta di «contiene il titolo»,
+  ogni restrizione perché la versione larga produce una lista che nessuno legge: parole
+  intere, mai dentro un `[[…]]`, solo nel corpo così gli alias del frontmatter non vengono
+  riportati come prosa, accenti ripiegati. Una nota raggiunta **tramite alias** è una
+  menzione: un alias serve la ricerca e mai il bersaglio di un link (F-07), quindi non
+  esiste il backlink che la toglierebbe dalla lista, ed è esattamente il caso per cui la
+  funzione esiste.
 - 2026-08-19: **M10 (`PG-011`) a tre slice su quattro**, ADR-0012, tre PR mergiate: #68 le
   tab, #69 lo split view, #70 il tag browser con le preferite e la rinomina dei tag. Una
   tab possiede il buffer e tutto ciò che descrive il guardare quella nota - pieghe, voce
@@ -122,9 +157,7 @@ Binding order, each yielding a usable app (SPEC §13):
   colonna aspettava; un click destro su un `Button` SwiftUI fa scattare anche la sua
   azione; righe fuori da una `List` partono quattordici punti più a sinistra di quelle
   dentro. Per liste, binding di selezione, gesti, first responder e layout, la verifica a
-  schermo viene prima di dire che funziona. Resta lo slice 4: gli operatori di ricerca di
-  D8, il Quick Open esteso e le menzioni non linkate di D9, che è il terzo dei tre
-  elementi visivi per cui l'ADR chiede un mockup prima.
+  schermo viene prima di dire che funziona.
 
 - 2026-08-18: **M9 completo, `PG-010` chiuso.** ADR-0011 realizzato in tre slice.
   `NoteHistory` (`Sources/Vault`, solo Foundation) scrive uno snapshot del testo intero a

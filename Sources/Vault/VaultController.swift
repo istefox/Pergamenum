@@ -67,6 +67,13 @@ final class VaultController {
     /// Paths and not buffers: a closed tab was saved or explicitly discarded (ADR-0012 D3),
     /// so there is nothing left to keep that the file does not already have.
     var closedTabPaths: [String] = []
+    /// Notes opened in this window, newest first, for the quick switcher's RECENTI
+    /// (ADR-0012, slice 4).
+    ///
+    /// In memory and not on disk, unlike the open tabs of D10: the tabs are restored at
+    /// launch and already say what this machine was working on, and a second persisted
+    /// list of paths would be a second thing every rename has to keep in step with.
+    var recentNotePaths: [String] = []
     /// Set by Cmd+T, read by the quick switcher: the note chosen next opens beside the
     /// others rather than over the focused one.
     var opensNextNoteInNewTab = false

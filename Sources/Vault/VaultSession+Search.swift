@@ -19,33 +19,75 @@ extension VaultSession {
     func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
         guard !query.isEmpty else { return [] }
 
+        // One matcher for the whole loop: it compiles the query's `regex:` patterns, and
+        // compiling them once per note is the difference between a search and a pause.
+        let matcher = SearchQuery.Matcher(query)
         var results: [SearchResult] = []
-        for record in index.allNotes {
+        for record in candidates(for: query) {
             guard let (_, text) = try? read(record.relativePath) else { continue }
-            guard query.matches(record: record, text: text) else { continue }
+            guard matcher.matches(record: record, text: text) else { continue }
 
             results.append(SearchResult(
                 path: record.relativePath,
                 title: record.title,
-                excerpt: Self.excerpt(for: query, in: text)
+                excerpt: matcher.excerpt(in: text)
             ))
             if results.count >= limit { break }
         }
         return results
     }
 
-    /// The first line containing a searched word or phrase.
-    static func excerpt(for query: SearchQuery, in text: String) -> String {
-        let needles = query.phrases + query.words
-        guard !needles.isEmpty else { return "" }
+    /// The notes worth reading for a query.
+    ///
+    /// `is:starred`, `linked:` and `orphan:` are the three operators no note can answer
+    /// about itself (ADR-0012 D8): the star lives in the store beside the vault and the
+    /// other two in the link graph. Narrowing here rather than inside the loop means the
+    /// files those operators exclude are never opened at all.
+    private func candidates(for query: SearchQuery) -> [NoteRecord] {
+        guard query.needsVaultContext else { return index.allNotes }
 
-        for line in text.components(separatedBy: "\n") {
-            let folded = SearchQuery.fold(line)
-            if needles.contains(where: { folded.contains(SearchQuery.fold($0)) }) {
-                return line.trimmingCharacters(in: .whitespaces)
-            }
+        var allowed: Set<String>?
+        func narrow(to paths: Set<String>) {
+            allowed = allowed.map { $0.intersection(paths) } ?? paths
         }
-        return ""
+
+        if query.starredOnly { narrow(to: starred) }
+        if query.orphansOnly { narrow(to: index.orphans) }
+        for title in query.linkedTo { narrow(to: index.neighbourhood(ofTitle: title)) }
+
+        guard let allowed else { return index.allNotes }
+        return index.allNotes.filter { allowed.contains($0.relativePath) }
+    }
+
+    // MARK: Unlinked mentions
+
+    /// The notes that name this one without linking to it (ADR-0012 D9).
+    ///
+    /// **Computed when asked and never cached.** This is a full-vault text scan - the same
+    /// read loop `search` runs - so putting it on every note opening would charge that cost to
+    /// the gesture people make most. The result is not written to `IndexCache` either: its
+    /// schema version is spent by M11 (ADR-0009 §D2) and this milestone must not touch it.
+    ///
+    /// Aliases count as names, and a note that reaches this one *through* an alias is still an
+    /// unlinked mention: an alias serves search and never the link target (F-07), so no
+    /// backlink exists to remove it from the list.
+    func unlinkedMentions(for relativePath: String, limit: Int = 50) -> [SearchResult] {
+        guard let subject = index.note(at: relativePath) else { return [] }
+        let names = [subject.title] + subject.frontmatter.aliases
+        let alreadyLinking = Set(index.backlinks(toTitle: subject.title).map(\.relativePath))
+
+        var results: [SearchResult] = []
+        for record in index.allNotes {
+            guard record.relativePath != relativePath,
+                  !alreadyLinking.contains(record.relativePath),
+                  let (_, text) = try? read(record.relativePath),
+                  let line = UnlinkedMentions.firstMentionLine(of: names, in: text)
+            else { continue }
+
+            results.append(SearchResult(path: record.relativePath, title: record.title, excerpt: line))
+            if results.count >= limit { break }
+        }
+        return results
     }
 
     // MARK: Conformance

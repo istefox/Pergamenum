@@ -245,6 +245,51 @@ private func makeRecord(
 }
 
 @MainActor
+@Test func readsTheNeighbourhoodOfATitleInBothDirections() throws {
+    let index = try populatedIndex()
+    // Beta is linked from Alfa and Gamma and links to Alfa: `linked:Beta` is the whole
+    // neighbourhood, not one side of it (ADR-0012 D8).
+    #expect(index.neighbourhood(ofTitle: "Beta").sorted() == ["A.md", "sub/C.md"])
+    // Alfa links to Beta and is linked from it; Gamma is two steps away and stays out.
+    #expect(index.neighbourhood(ofTitle: "Alfa").sorted() == ["B.md"])
+}
+
+@MainActor
+@Test func aTitleIsNeverInItsOwnNeighbourhood() {
+    var index = IndexSnapshot()
+    index.replaceAll(with: .init(records: [
+        makeRecord(path: "A.md", title: "Alfa", links: ["Alfa"]),
+    ], failures: []), duration: .zero)
+    #expect(index.neighbourhood(ofTitle: "Alfa").isEmpty)
+}
+
+@MainActor
+@Test func countsAStructuralLinkAsANeighbour() {
+    var index = IndexSnapshot()
+    index.replaceAll(with: .init(records: [
+        makeRecord(path: "A.md", title: "Alfa", related: ["\"[[Beta]]\""]),
+        makeRecord(path: "B.md", title: "Beta"),
+    ], failures: []), duration: .zero)
+    #expect(index.neighbourhood(ofTitle: "Alfa") == ["B.md"])
+    #expect(index.neighbourhood(ofTitle: "Beta") == ["A.md"])
+}
+
+@MainActor
+@Test func listsTheNotesWithNoLinkInAndNoLinkOut() {
+    var index = IndexSnapshot()
+    index.replaceAll(with: .init(records: [
+        makeRecord(path: "A.md", title: "Alfa", links: ["Mancante"]),
+        makeRecord(path: "B.md", title: "Beta"),
+        makeRecord(path: "C.md", title: "Gamma", related: ["\"[[Beta]]\""]),
+        makeRecord(path: "D.md", title: "Delta"),
+    ], failures: []), duration: .zero)
+
+    // Alfa reaches out and misses, which is not isolation - that is what the unresolved
+    // links panel is for. Beta is cited by Gamma, Gamma cites it. Only Delta is alone.
+    #expect(index.orphans == ["D.md"])
+}
+
+@MainActor
 @Test func searchesTitlesAndAliases() throws {
     let index = try populatedIndex()
     #expect(index.search("gam").first?.title == "Gamma")

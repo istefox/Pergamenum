@@ -10,4 +10,9 @@ extension VaultController {
     func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
         session?.search(query, limit: limit) ?? []
     }
+
+    /// The notes that name one without linking to it (ADR-0012 D9), on request only.
+    func unlinkedMentions(for relativePath: String) -> [SearchResult] {
+        session?.unlinkedMentions(for: relativePath) ?? []
+    }
 }

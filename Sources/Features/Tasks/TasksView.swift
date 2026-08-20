@@ -20,7 +20,10 @@ struct TasksView: View {
         .background(theme.color(.backgroundPrimary))
         .toolbar { toolbar }
         .sheet(item: $linking) { task in
-            QuickSwitcher { path in
+            QuickSwitcher(mode: .pick) { choice in
+                // Only `.note` reaches here: `.pick` offers nothing else, because a heading
+                // or a note that has still to be written is not something a task can link to.
+                guard case .note(let path) = choice else { return }
                 // The wikilink is the link (SPEC §7.2): no extra syntax, and it is
                 // written into the task's own line in its own note.
                 let title = NoteName.title(fromFileName: (path as NSString).lastPathComponent)
