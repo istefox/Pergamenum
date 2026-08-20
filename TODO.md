@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=29 -->
 # PROJECT TASKS
 
-Updated: 2026-08-19 · Open: 14 (P1: 0) · In progress: 0
+Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -18,7 +18,8 @@ _Nothing in progress._
 
 ## Backlog / To Add
 
-- [ ] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 -->
+- [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+  - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
 - [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
   - Bumps `IndexCache.schemaVersion` to **3** for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2). It was 2 until ADR-0010 §D7 spent that number in M8.
   - Unblocked: ADR-0009 accepted 2026-08-17.
