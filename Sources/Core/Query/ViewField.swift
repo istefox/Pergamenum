@@ -36,6 +36,25 @@ enum ViewField: String, CaseIterable, Sendable, Comparable {
     /// also the order an error message reads them back.
     static var names: [String] { allCases.map(\.rawValue) }
 
+    /// Whether this field's value is a day, which is what a calendar can place a row on.
+    var isDated: Bool { [.date, .modified, .deadlineNext, .scheduledNext].contains(self) }
+
+    /// What a column header calls this field, in the interface's language.
+    ///
+    /// In `Core` beside the field itself rather than in the renderer: `perg view run`
+    /// prints a header too, and two spellings of the same column is the pair that drifts.
+    /// A table rather than a switch, for the reason `derivations` gives.
+    var label: String { Self.labels[self] ?? rawValue }
+
+    private static let labels: [ViewField: String] = [
+        .title: "titolo", .path: "percorso", .folder: "cartella", .tags: "tag",
+        .date: "data", .aliases: "alias", .related: "correlate", .modified: "modificata",
+        .size: "dimensione", .links: "link", .linkedFrom: "linkata da",
+        .embedTargets: "allegati", .tasksOpen: "task aperti", .tasksDone: "task fatti",
+        .tasksTotal: "task", .deadlineNext: "scadenza", .scheduledNext: "pianificata",
+        .unresolved: "link non risolti",
+    ]
+
     static func < (lhs: ViewField, rhs: ViewField) -> Bool { lhs.rawValue < rhs.rawValue }
 
     /// The sentence for a field that does not exist. Named here rather than at the

@@ -61,6 +61,15 @@ struct ViewBlock: Equatable, Sendable {
         case list
     }
 
+    /// The field a `render: calendar` places its rows on.
+    ///
+    /// The first date-valued column the block names, falling back to `date`. Decided this way
+    /// with the mockups rather than by adding an eighth key: §D3 holds the grammar at seven,
+    /// and `columns` is already how a block says which fields it cares about.
+    var calendarField: ViewField {
+        columns.first(where: \.isDated) ?? .date
+    }
+
     /// The fence's info string. `MarkdownBlockParser` already hands reading mode a
     /// `.code(language:lines:)`, so this is the whole of what makes a code block a view.
     static let language = "pergamenum-view"
