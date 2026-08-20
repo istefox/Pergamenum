@@ -87,7 +87,44 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
-- 2026-08-20: **M10 completo, `PG-011` chiuso.** Lo slice 4 chiude ADR-0012 con D8 e D9.
+- 2026-08-20: **M11 completo, `PG-012` chiuso.** ADR-0009 in sei slice: il motore, il bump
+  di schema, i mockup, i renderer in lettura, la board che scrive, il connettore. Una
+  vista è un blocco `pergamenum-view` dentro una nota ordinaria, quindi vive nel vault, si
+  versiona con tutto il resto e Obsidian la mostra come un blocco di codice inerte, che è
+  il comportamento giusto per un lettore che non sa eseguirla. **Si disegna solo in
+  Lettura**: in Modifica il fence resta sorgente, il che tiene i bersagli di un drop fuori
+  da un `NSTextView` e la macchineria di ADR-0010 fuori dal doverla rifare per contenuto
+  trascinabile. Il motore sta in `Core/Query` e lo compilano entrambi i connettori:
+  `ViewBlock` legge le sette chiavi una per riga, `ViewFilter` è la grammatica chiusa
+  senza scappatoie, `ViewField` è la tabella di §D2. Un blocco che non si legge è **un
+  errore che nomina la riga**, mai una lista vuota, perché una lista vuota è
+  indistinguibile da un vault che ha perso le note. Tre decisioni che l'ADR lasciava
+  aperte: `from` accetta solo `path()` uniti da `or`, perché è uno scope e D7 ci fa
+  passare il watcher; un tag senza wildcard è esatto e un percorso senza wildcard è un
+  prefisso, o `tag("status-a")` si prenderebbe `status-aperto` di nascosto;
+  `deadline.next` è la più vicina fra le scadenze **aperte** e senza orologio, o la stessa
+  domanda avrebbe due risposte in due giorni. `text()` senza un lettore non trova niente,
+  mai tutto. Il bump di schema è **speso**: `embedTargets` porta gli allegati di una nota,
+  che `linkTargets` lascia fuori apposta, ed è l'unico che il milestone poteva fare. La
+  board è l'unico renderer che scrive, e lì lo SPEC ha corretto l'ADR: §D5 diceva «il
+  controllo di vocabolario di §4.4» sulla premessa che niente dicesse che una nota ha un
+  solo stato, mentre §4.4 dice T-05 e tag.md 5.1 vieta `status-*` sulle note del tutto -
+  `perg lint` lo ha detto sulla prima nota che l'esempio dell'ADR produceva. Il guardrail
+  è quindi **tutto il linter dei tag e differenziale**: si confrontano le violazioni di
+  prima con quelle di dopo e si rifiuta solo ciò che ne introduce, così una nota già non
+  conforme resta trascinabile e la board che mostra il problema non è l'unico posto da cui
+  non si può rimediare. Il drop riscrive il tag che corrisponde al glob di `group:`,
+  qualunque namespace sia. **Un difetto trovato solo a schermo**: la card tornava indietro
+  mentre il file era già cambiato, la forma peggiore che un bug possa prendere, perché
+  `write` aggiorna l'indice sul posto ma una vista si rivaluta su `scanGeneration`, che
+  conta le scansioni, e la scrittura dell'app apposta non è una scansione (ADR-0001 §D3).
+  Il connettore chiude D4: `perg view list|run`, `list_views` e `run_view`, con
+  `ViewValueText` e `effectiveColumns` scesi in `Core` perché una cella stampata in un
+  pipe e una disegnata in una tabella devono uscire dalla stessa funzione. Le cinque viste
+  che il milestone spedisce sono **template scritti su richiesta** da un bottone in
+  Impostazioni, mai all'apertura di un vault e mai sovrascritti; *Clienti attivi* è
+  raggruppata per `project-*` e non per `status-*`, e la nota stessa dice perché. -
+  2026-08-20: **M10 completo, `PG-011` chiuso.** Lo slice 4 chiude ADR-0012 con D8 e D9.
   Gli operatori si dividono in due famiglie e la divisione è la decisione: `-termine`,
   `regex:` e `modified:` li decide la nota da sé e stanno in `SearchQuery`; `is:starred`,
   `linked:` e `orphan:` no, perché la stella vive nel file di D6 accanto al vault e gli
@@ -96,28 +133,28 @@ Binding order, each yielding a usable app (SPEC §13):
   va compilata, e compilarla una volta per nota su tutto il vault è la differenza fra una
   ricerca e una pausa: `Matcher` tiene i pattern compilati per la durata di una ricerca,
   `SearchQuery` resta un valore senza durata. `linked:` legge **entrambe le direzioni**,
-  perché un arco non è orientato per chi lo percorre, e la sola metà entrante non
-  sarebbe che un altro modo di scrivere il pannello dei backlink; `orphan:` vuol dire
-  nessun link né in entrata né in uscita, e una nota che porta un wikilink irrisolto non
-  è isolata, è una nota che tende la mano e manca, che è ciò per cui esiste il pannello
-  dei link non risolti. Una `regex:` che non compila fa combaciare **niente** e il foglio
-  lo dice: combaciare tutto sembrerebbe una risposta. Nessun `created:`, che sarebbe una
-  decisione di schema (ADR-0009 §D2). Il Quick Open smette di aprire qualcosa e
-  restituisce una `Choice`: i chiamanti sono due e fanno domande diverse, il pannello
-  Note chiede dove andare e `TasksView` chiede a quale nota collegare un task, e a quella
-  seconda domanda una sezione o una nota ancora da scrivere non è una risposta. Con il
-  campo vuoto offre la nota di oggi, i recenti e le preferite; `Nota#sez` porta a una
-  sezione e `#sez` da solo dentro la nota aperta; un nome che nessuna nota ha diventa
-  «crea la nota». I recenti stanno in memoria e non su disco: le tab le ripristina già
-  D10, e una seconda lista di percorsi persistita sarebbe una seconda cosa che ogni
-  rinomina deve tenere allineata. Il salto a una sezione parte **un giro di run loop
-  dopo** l'apertura della nota, perché mandato nello stesso passaggio arriva a una vista
-  che mostra ancora la nota di prima. Le menzioni non linkate si calcolano su richiesta e
-  mai all'apertura di una nota, e non finiscono in cache: `IndexCache` ha il numero di
-  schema speso da M11. È per questo che la sezione ha un bottone, e a riposo dice soltanto
-  cosa farà. `UnlinkedMentions` sta in `Core` ed è più stretta di «contiene il titolo»,
-  ogni restrizione perché la versione larga produce una lista che nessuno legge: parole
-  intere, mai dentro un `[[…]]`, solo nel corpo così gli alias del frontmatter non vengono
+  perché un arco non è orientato per chi lo percorre, e la sola metà entrante non sarebbe
+  che un altro modo di scrivere il pannello dei backlink; `orphan:` vuol dire nessun link
+  né in entrata né in uscita, e una nota che porta un wikilink irrisolto non è isolata, è
+  una nota che tende la mano e manca, che è ciò per cui esiste il pannello dei link non
+  risolti. Una `regex:` che non compila fa combaciare **niente** e il foglio lo dice:
+  combaciare tutto sembrerebbe una risposta. Nessun `created:`, che sarebbe una decisione
+  di schema (ADR-0009 §D2). Il Quick Open smette di aprire qualcosa e restituisce una
+  `Choice`: i chiamanti sono due e fanno domande diverse, il pannello Note chiede dove
+  andare e `TasksView` chiede a quale nota collegare un task, e a quella seconda domanda
+  una sezione o una nota ancora da scrivere non è una risposta. Con il campo vuoto offre
+  la nota di oggi, i recenti e le preferite; `Nota#sez` porta a una sezione e `#sez` da
+  solo dentro la nota aperta; un nome che nessuna nota ha diventa «crea la nota». I
+  recenti stanno in memoria e non su disco: le tab le ripristina già D10, e una seconda
+  lista di percorsi persistita sarebbe una seconda cosa che ogni rinomina deve tenere
+  allineata. Il salto a una sezione parte **un giro di run loop dopo** l'apertura della
+  nota, perché mandato nello stesso passaggio arriva a una vista che mostra ancora la nota
+  di prima. Le menzioni non linkate si calcolano su richiesta e mai all'apertura di una
+  nota, e non finiscono in cache: `IndexCache` ha il numero di schema speso da M11. È per
+  questo che la sezione ha un bottone, e a riposo dice soltanto cosa farà.
+  `UnlinkedMentions` sta in `Core` ed è più stretta di «contiene il titolo», ogni
+  restrizione perché la versione larga produce una lista che nessuno legge: parole intere,
+  mai dentro un `[[…]]`, solo nel corpo così gli alias del frontmatter non vengono
   riportati come prosa, accenti ripiegati. Una nota raggiunta **tramite alias** è una
   menzione: un alias serve la ricerca e mai il bersaglio di un link (F-07), quindi non
   esiste il backlink che la toglierebbe dalla lista, ed è esattamente il caso per cui la

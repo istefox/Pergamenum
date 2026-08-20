@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=29 -->
+<!-- project-tasks: prefix=PG lastId=30 -->
 # PROJECT TASKS
 
 Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 0
@@ -20,13 +20,15 @@ _Nothing in progress._
 
 - [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
-- [ ] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 -->
-  - Bumps `IndexCache.schemaVersion` to **3** for `embedTargets`, once, and that is the only schema change the milestone may make (ADR-0009 §D2). It was 2 until ADR-0010 §D7 spent that number in M8.
-  - Unblocked: ADR-0009 accepted 2026-08-17.
+- [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+  - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
+  - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
 - [ ] `PG-013` **P3** M12 La settimana: week and month views, event notes, task grouping and sorting <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
+- [ ] `PG-030` **P2** A board grouped by `status-*` draws its columns and refuses every drop, because tag.md 5.1 forbids `status-*` on a note except `status-inbox` — `docs/adr/0009-views-are-queries-over-the-index.md` <!-- src:session opened:2026-08-20 -->
+  - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->

@@ -102,6 +102,10 @@ point of the table:
   `![[file.pdf]]` and `![[foto.png]]` are invisible to the index. The gallery renderer
   needs them, so **M11 bumps the schema and adds them** - and it is the only schema
   change the milestone is permitted, stated in advance rather than at the end.
+  *Spent 2026-08-20*: `IndexCache.schemaVersion` is 3 and `StoredRecord.embedTargets`
+  carries the file embeds of a note's whole-line embeds, both spellings, remote targets
+  and fenced code left out. The milestone's allowance is gone, which is what stating it
+  in advance was for.
   *Amended 2026-08-17 by ADR-0010 §D7*: this said "bumps the schema to 2", and the 2 is now
   M8's - a transcluded note counts as a link, which changes what `linkTargets` means in every
   cached row. M11's bump is therefore to **3**. The rule this paragraph exists for is
@@ -242,8 +246,8 @@ measurement taken on that vault at that size.
   in files the user wrote, so removing one breaks their views. Adding is cheap, removing
   is not, and `IndexCache.schemaVersion` no longer describes the only compatibility that
   matters.
-- **M11 includes one schema bump**, to 3 since ADR-0010 took the 2, adding `embedTargets`
-  for the gallery. Every
+- **M11 included one schema bump**, to 3 since ADR-0010 took the 2, adding `embedTargets`
+  for the gallery - taken on 2026-08-20 and not available again. Every
   cached row is discarded on first launch after it and rebuilt. Measured on the current
   vault on 2026-08-17: 22 ms cold against 11 ms warm, on 2 notes - the cost of the bump is
   one extra cold scan, and the number that matters is the ratio, not the milliseconds. D7
