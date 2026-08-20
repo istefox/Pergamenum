@@ -51,6 +51,13 @@ enum ColorToken: String, TokenKey {
     case codeNumber = "color.code.number"
     case codeType = "color.code.type"
 
+    // The Italian calendar's red days (M12). Three and not one: a Saturday coloured
+    // like Christmas says nothing, and telling the two apart is the whole reason the
+    // colour was asked for.
+    case calendarPrefestive = "color.calendar.prefestive"
+    case calendarFestive = "color.calendar.festive"
+    case calendarHoliday = "color.calendar.holiday"
+
     case stickyYellow = "color.sticky.yellow"
     case stickyGreen = "color.sticky.green"
     case stickyBlue = "color.sticky.blue"

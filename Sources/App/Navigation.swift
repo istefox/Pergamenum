@@ -18,6 +18,14 @@ final class Navigation {
         case tasks
         case conformance
         case tags
+        /// The starred notes of ADR-0012 §D6. A place and not a filter: a row that only
+        /// scrolled the note list to a section left the sidebar lit on «Note» and read
+        /// like a click that had gone nowhere.
+        case starred
+        /// The saved views of ADR-0009, listed. A pane and not a section of the note
+        /// list: a view is a question about the whole vault, and the note it is written
+        /// in is where it lives rather than what it is about.
+        case views
 
         var id: String { rawValue }
 
@@ -30,6 +38,8 @@ final class Navigation {
             case .tasks: "Attività"
             case .conformance: "Conformità"
             case .tags: "Tag"
+            case .starred: "Preferite"
+            case .views: "Viste"
             }
         }
 
@@ -42,6 +52,8 @@ final class Navigation {
             case .tasks: "checklist"
             case .conformance: "checkmark.seal"
             case .tags: "tag"
+            case .starred: "star"
+            case .views: "tablecells"
             }
         }
 
@@ -65,11 +77,21 @@ final class Navigation {
             case .tasks: .paneTasks
             case .conformance: .paneConformance
             case .tags: .paneTags
+            case .starred: .paneStarred
+            case .views: .paneViews
             }
         }
     }
 
     var pane: Pane = .notes
+
+    /// Whether the Note pane shows its inspector - backlinks, linked tasks, and the
+    /// unlinked mentions of ADR-0012 D9.
+    ///
+    /// Here rather than as `@State` in `VaultBrowser`, where it started: a `@State` is
+    /// reachable by the toolbar button beside it and by nothing else, so the panel that
+    /// holds three of the app's answers had no key and no menu entry.
+    var isShowingInspector = true
 
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
@@ -130,6 +152,16 @@ final class Navigation {
     func jumpToOutlineEntry(range: NSRange, ordinal: Int) {
         outlineJump = OutlineJump(id: (outlineJump?.id ?? 0) + 1, range: range, ordinal: ordinal)
         pane = .notes
+    }
+
+    /// The same jump, asked for by something that is not the outline: a task row in the
+    /// week, which knows the line it wants and not the heading above it.
+    ///
+    /// A second name rather than a second mechanism. The editor has one way of being
+    /// told where to go, and a view that invented another would be a second place for
+    /// the caret to land wrong.
+    func jumpToLine(range: NSRange, ordinal: Int) {
+        jumpToOutlineEntry(range: range, ordinal: ordinal)
     }
 
     // Reading mode, the current index entry and the folds used to be stored here. They

@@ -25,6 +25,13 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case copyLink
     case revealInFinder
     case noteHistory
+    /// The star of ADR-0012 D6, on the note that is open. It could only be set from the
+    /// note list's context menu, so the note you were reading was the one note you could
+    /// not star.
+    case toggleStar
+    /// Writes a template into the note already open (ADR-0011 D5): until now a template
+    /// could only start a new note.
+    case applyTemplate
 
     /// The tabs of the Note pane (ADR-0012 D5). Cmd+1…Cmd+9 chooses one and is
     /// deliberately *not* here: a positional key is not a command, it is nine of them, and
@@ -54,7 +61,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneConformance
     case paneDiary
     case paneTags
+    case paneViews
+    case paneStarred
     case readingMode
+    /// Backlinks, «task collegati» and the unlinked mentions of ADR-0012 D9 all live in
+    /// the inspector, which had a toolbar button and nothing else.
+    case toggleInspector
     case runConformanceCheck
     case foldSection
     case unfoldAll
@@ -95,7 +107,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var section: Section {
         switch self {
         case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
-             .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory:
+             .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory,
+             .toggleStar, .applyTemplate:
             .file
         case .newTab, .closeTab, .reopenTab:
             .tab
@@ -104,7 +117,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .insertWikilink, .insertRelated:
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
-             .paneDiary, .readingMode, .runConformanceCheck, .foldSection, .unfoldAll:
+             .paneDiary, .paneViews, .paneStarred, .readingMode, .toggleInspector,
+             .runConformanceCheck, .foldSection, .unfoldAll:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
             .task
@@ -132,6 +146,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .copyLink: "Copia link Pergamenum"
         case .revealInFinder: "Rivela nel Finder"
         case .noteHistory: "Cronologia…"
+        case .toggleStar: "Preferita"
+        case .applyTemplate: "Applica un template…"
         case .pastePlain: "Incolla come testo puro"
         case .findInNote: "Trova nella nota"
         case .replaceInNote: "Sostituisci"
@@ -146,7 +162,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneConformance: "Vai a Conformità"
         case .paneDiary: "Vai a Diario"
         case .paneTags: "Vai a Tag"
+        case .paneViews: "Vai a Viste"
+        case .paneStarred: "Vai a Preferite"
         case .readingMode: "Modalità lettura"
+        case .toggleInspector: "Ispettore"
         case .runConformanceCheck: "Verifica conformità"
         case .foldSection: "Ripiega la sezione"
         case .unfoldAll: "Espandi tutto"
@@ -199,6 +218,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // so the app would either lose the key or shadow a command every Mac has.
         // Checked rather than assumed, the same way ⌃Space was for `globalCapture`.
         case .noteHistory: KeyBinding("h", [.command, .shift])
+        // All three checked against `com.apple.symbolichotkeys` before being bound, as
+        // the Tag pane's key was: the system holds Opt+Cmd+D, Shift+Cmd+- and a family of
+        // Ctrl+arrow combinations on this Mac, and none of these three.
+        case .toggleStar: KeyBinding("s", [.command, .shift])
+        case .applyTemplate: KeyBinding("t", [.command, .control])
         case .pastePlain: KeyBinding("v", [.command, .shift, .option])
         case .findInNote: KeyBinding("f", .command)
         case .replaceInNote: KeyBinding("f", [.command, .option])
@@ -215,7 +239,14 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // Checked against the system's own before it was bound, which is the M9 lesson:
         // `com.apple.symbolichotkeys` defines nothing on Ctrl+Cmd+7.
         case .paneTags: KeyBinding("7", [.command, .control])
+        // Eighth pane, eighth digit. The pane list is numbered in the order the panes
+        // were built, not in the order the sidebar draws them: the raw values here are
+        // the keys of the overrides file, so renumbering would move a binding somebody
+        // had changed.
+        case .paneViews: KeyBinding("8", [.command, .control])
+        case .paneStarred: KeyBinding("9", [.command, .control])
         case .readingMode: KeyBinding("m", [.command, .shift])
+        case .toggleInspector: KeyBinding("i", [.command, .option])
         case .runConformanceCheck: KeyBinding("l", [.command, .control])
         // The keys Xcode uses for the same thing. ⌘← and ⌘→ are already the
         // Calendario menu's day navigation, so the option key is what keeps them apart.

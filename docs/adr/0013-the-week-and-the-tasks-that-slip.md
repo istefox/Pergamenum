@@ -122,6 +122,32 @@ remembered for the view it was set on: *Oggi* wants a flat list by hour and *Tut
 grouping by note, and one shared setting would make every switch between them a re-setting. This
 is SPEC §7.4 growing, not changing: the five views stay the five views.
 
+**D7. The red days are computed, and there are three shades of red.** (2026-08-20, added
+while the week was being verified on screen.)
+
+Saturday, Sunday and a holiday are three different things on an Italian calendar and the
+grid says which: `color.calendar.prefestive`, `color.calendar.festive`,
+`color.calendar.holiday`, on the weekday and the number rather than on the background - a
+red panel on two columns of seven moves the weight of the grid to the weekend, which is
+not where the week's work is.
+
+**Nothing is downloaded.** "Import the Italian holidays every year" cannot mean a network
+call: principle 2 has no exception, and there is nothing to fetch. Eleven of the twelve
+national holidays are fixed dates and the twelfth follows Easter, which is the Gregorian
+computus - integer arithmetic, correct for any year, with no table to maintain and no
+year in which somebody forgot to update it. `ItalianHolidays` is in `Core`, pure, and
+tested against published dates including the two extremes Easter can take (22 March, 25
+April).
+
+A holiday outranks the weekday it falls on: Ferragosto 2026 is a Saturday and is drawn as
+a holiday, Ognissanti 2026 is a Sunday and is drawn as a holiday. The anchored day and
+today keep the accent over both, because they say where you are.
+
+The one day no algorithm knows is the local patron saint, so it is a setting -
+`VaultSettings.patronSaint`, a month, a day and a name, empty by default. Guessing it from
+anything the app knows about its user would put a wrong red day in the calendar every
+year, and a vault outside Italy wants it empty.
+
 ## Consequences
 
 - **SPEC §7.3 changes, and this ADR is the record.** The sentence rejecting rollover gains the
@@ -140,6 +166,10 @@ is SPEC §7.4 growing, not changing: the five views stay the five views.
 - **A drag is the second gesture in this app that writes**, after the board's drop. Both go
   through the same guard for the same reason, and the second one is where that guard stops being
   a one-off and starts being the pattern a third gesture will be measured against.
+- **A red day is the first thing in this app that is true of a date rather than of the
+  vault.** Everything the calendar drew until now came from a file: a note, a task, a
+  block. A Sunday comes from the year, and the three surfaces that draw dates - the week,
+  the month, the mini calendar - now ask one function instead of each knowing the rule.
 - **Rollover has a bound and the bound is a number somebody has to choose.** How many days back
   it looks is a setting with a default, and a default of "all of them" would turn a quiet week
   into a list nobody reads. It ships at a small number and moves if it is wrong.

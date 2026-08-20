@@ -97,6 +97,9 @@ final class VaultController {
     /// Set by the "Cronologia…" command and by the inspector's own button, both of
     /// which open the same sheet over the open note (ADR-0011, M9).
     var isShowingHistory = false
+    /// The template chooser for the note already open (ADR-0011 D5). Its own flag rather
+    /// than the composer's: that one starts a note, this one writes into one.
+    var isChoosingTemplate = false
 
     /// Hashes the app itself wrote, keyed by path. A watcher event whose file hashes
     /// to the recorded value is the app's own write coming back and is ignored.

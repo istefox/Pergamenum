@@ -82,7 +82,7 @@ struct MiniCalendar: View {
             let isChosen = date == day
             let isToday = date == .today
             Text("\(date.day)")
-                .themedText(.caption, color: date.month == month.month ? .textPrimary : .textTertiary)
+                .themedText(.caption, color: numberColor(date, isChosen: isChosen))
                 .frame(maxWidth: .infinity, minHeight: cellHeight)
                 .background(isChosen ? theme.color(.accentPrimary) : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
@@ -113,6 +113,7 @@ struct MiniCalendar: View {
                     }
                 }
                 .contentShape(Rectangle())
+                .help(ItalianHolidays.name(of: date, patron: vault.settings.patronSaint) ?? "")
                 .onTapGesture { onSelect(date) }
                 .contextMenu {
                     Button("Vai a questo giorno") { onSelect(date) }
@@ -123,6 +124,16 @@ struct MiniCalendar: View {
         } else {
             Color.clear.frame(maxWidth: .infinity, minHeight: cellHeight)
         }
+    }
+
+    /// A Saturday, a Sunday and a holiday in their three shades of red, and a day of
+    /// another month grey before anything else - a date picker's first job is to say
+    /// which month you are in. The chosen day sits on the accent and takes the colour
+    /// that reads on it.
+    private func numberColor(_ date: CalendarDate, isChosen: Bool) -> ColorToken {
+        if isChosen { return .onAccent }
+        guard date.month == month.month else { return .textTertiary }
+        return ItalianHolidays.kind(of: date, patron: vault.settings.patronSaint).token ?? .textPrimary
     }
 
     /// Whether the vault already holds the note for a day.

@@ -44,6 +44,11 @@
       "overdue": { "$value": "#B3261E" },
       "cancelled": { "$value": "#9C968B" }
     },
+    "calendar": {
+      "prefestive": { "$value": "#C98B84" },
+      "festive": { "$value": "#B3261E" },
+      "holiday": { "$value": "#D62828" }
+    },
     "code": {
       "keyword": { "$value": "#7E4B7A" },
       "string": { "$value": "#4B7A4F" },

@@ -19,10 +19,13 @@ struct DayToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            Button { controller.move(by: -1) } label: {
-                Label("Giorno precedente", systemImage: "chevron.left")
+            // One unit of whatever scale is showing: a day, a week, a month. The
+            // tooltip says which, because a chevron that means three different things
+            // has to say the one it means now.
+            Button { controller.moveSpan(by: -1) } label: {
+                Label(controller.scale.previousTitle, systemImage: "chevron.left")
             }
-            .help("Giorno precedente")
+            .help(controller.scale.previousTitle)
 
             Button { controller.show(.today) } label: {
                 Label("Oggi", systemImage: "smallcircle.filled.circle")
@@ -30,15 +33,29 @@ struct DayToolbar: ToolbarContent {
             .help("Torna a oggi")
             .disabled(day == .today)
 
-            Button { controller.move(by: 1) } label: {
-                Label("Giorno successivo", systemImage: "chevron.right")
+            Button { controller.moveSpan(by: 1) } label: {
+                Label(controller.scale.nextTitle, systemImage: "chevron.right")
             }
-            .help("Giorno successivo")
+            .help(controller.scale.nextTitle)
 
             Button { controller.isChoosingDate = true } label: {
                 Label("Vai a data", systemImage: "calendar")
             }
             .help("Vai a una data")
+        }
+
+        ToolbarItem(placement: .principal) {
+            // Three scales of one thing, not three views: whichever is chosen, the day
+            // underneath does not move (ADR-0013 §D4).
+            Picker("Scala", selection: $controller.scale) {
+                ForEach(DayScale.allCases) { scale in
+                    Label(scale.title, systemImage: scale.symbol).tag(scale)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Giorno, settimana o mese")
+            .accessibilityIdentifier("day-scale")
         }
 
         ToolbarItemGroup(placement: .primaryAction) {

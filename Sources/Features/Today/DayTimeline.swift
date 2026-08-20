@@ -85,24 +85,23 @@ struct DayTimeline: View {
             subtitle: block.isPublished ? "pubblicato" : "solo nella nota",
             start: block.startMinutes, duration: block.durationMinutes,
             token: .stickyBlue, isEvent: false
-        ))
-            .overlay(alignment: .topTrailing) {
-                // Always in the hierarchy, only its opacity follows the pointer. Built
-                // by `if hoveredBlock == block.id` it left on mouse-down - the rebuild
-                // took the button away between press and release - so the click landed
-                // on nothing and the block stayed, on the timeline and in the note.
-                Button {
-                    controller.remove(block)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(theme.color(.textSecondary))
-                }
-                .buttonStyle(.plain)
-                .padding(2)
-                .opacity(hoveredBlock == block.id ? 1 : 0.35)
-                .help("Elimina il blocco")
-                .accessibilityIdentifier("timeline-remove-block")
+        ), accessory: {
+            // Always in the hierarchy, only its opacity follows the pointer. Built
+            // by `if hoveredBlock == block.id` it left on mouse-down - the rebuild
+            // took the button away between press and release - so the click landed
+            // on nothing and the block stayed, on the timeline and in the note.
+            Button {
+                controller.remove(block)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(theme.color(.textSecondary))
             }
+            .buttonStyle(.plain)
+            .padding(2)
+            .opacity(hoveredBlock == block.id ? 1 : 0.35)
+            .help("Elimina il blocco")
+            .accessibilityIdentifier("timeline-remove-block")
+        })
             .onHover { hoveredBlock = $0 ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock) }
             .contextMenu {
                 Button(block.isPublished ? "Già pubblicato" : "Pubblica sul Calendario") {
@@ -187,7 +186,18 @@ struct DayTimeline: View {
         var isEvent: Bool
     }
 
-    private func entry(_ entry: Entry) -> some View {
+    /// One entry, placed on the grid.
+    ///
+    /// **The accessory is a parameter and not something the caller overlays afterwards**,
+    /// and that is the whole point of this signature. `.offset` moves what is drawn and
+    /// leaves the layout frame where it was, so an overlay applied *after* it aligns to
+    /// the un-moved rectangle: the delete button of a block at 09:00 was drawn at the top
+    /// of the timeline, an hour and a half of empty grid away from the block it belonged
+    /// to. Inside, it is placed on the entry before the entry moves.
+    private func entry(
+        _ entry: Entry,
+        @ViewBuilder accessory: () -> some View = { EmptyView() }
+    ) -> some View {
         let offset = CGFloat(entry.start - firstHour * 60) / 60 * hourHeight
         let height = max(18, CGFloat(entry.duration) / 60 * hourHeight)
 
@@ -209,6 +219,7 @@ struct DayTimeline: View {
                 .fill(theme.color(entry.isEvent ? .accentPrimary : .taskScheduled))
                 .frame(width: 2)
         }
+        .overlay(alignment: .topTrailing) { accessory() }
         .offset(x: 52, y: offset)
     }
 

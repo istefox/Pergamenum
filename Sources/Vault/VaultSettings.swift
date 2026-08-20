@@ -83,6 +83,11 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var diaryHours: HourWindow
     /// Whether the editor underlines misspellings, and in which language (M8).
     var spellCheck: SpellCheck
+    /// The local patron saint's day, which the calendar draws as a holiday.
+    ///
+    /// Empty until somebody fills it in: the national holidays are computed
+    /// (`ItalianHolidays`), and this is the one day no algorithm knows.
+    var patronSaint: PatronSaint?
 
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
@@ -100,7 +105,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         diaryHours: .diaryDefault,
         // Off, so that updating the app does not fill a vault of markdown with red
         // underlines nobody asked for. It is found in Impostazioni, not on first launch.
-        spellCheck: .off
+        spellCheck: .off,
+        patronSaint: nil
     )
 
     /// The durations the settings offer, in minutes.
@@ -138,6 +144,14 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.diaryHours).clamped
         spellCheck = try container.decodeIfPresent(SpellCheck.self, forKey: .spellCheck)
             ?? fallback.spellCheck
+        // Rejected rather than clamped when the date does not exist: a patron on the
+        // 31st of February is a typo, and inventing the 28th for it would hide it.
+        let saint = try container.decodeIfPresent(PatronSaint.self, forKey: .patronSaint)
+        patronSaint = saint.flatMap { candidate in
+            CalendarDate(year: 2000, month: candidate.month, day: candidate.day) == nil
+                ? nil
+                : candidate
+        }
     }
 
     init(
@@ -150,7 +164,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         blockMinutes: Int = TimeBlock.defaultDuration,
         dayHours: HourWindow = .dayDefault,
         diaryHours: HourWindow = .diaryDefault,
-        spellCheck: SpellCheck = .off
+        spellCheck: SpellCheck = .off,
+        patronSaint: PatronSaint? = nil
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -162,6 +177,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.dayHours = dayHours
         self.diaryHours = diaryHours
         self.spellCheck = spellCheck
+        self.patronSaint = patronSaint
     }
 }
 

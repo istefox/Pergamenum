@@ -12,6 +12,11 @@ struct TodayView: View {
     /// The note column's width, handed to the month so it tracks the divider.
     @State private var columnWidth: CGFloat = 0
 
+    /// The scale the view was left on, remembered like the tabs and the panels are.
+    /// The anchor is not: a day view that opened on last Tuesday would be a day view
+    /// that has to be told it is today.
+    @AppStorage("todayScale") private var storedScale = DayScale.day.rawValue
+
     @State private var draftTitle = ""
     @State private var draftStartHour = 9
     @State private var draftDurationMinutes = 60
@@ -19,15 +24,10 @@ struct TodayView: View {
     private var day: CalendarDate { controller.day }
 
     var body: some View {
-        // A split rather than two fixed columns: how much of the day is note and how
-        // much is timeline is the user's call, and it changes with what they are doing.
-        HSplitView {
-            noteColumn
-                .frame(minWidth: 420)
-            DayTimeline(controller: controller, calendar: calendar, window: vault.settings.dayHours)
-                .frame(minWidth: 220, idealWidth: 300, maxWidth: 520)
-        }
+        scale
         .background(theme.color(.backgroundPrimary))
+        .onAppear { controller.scale = DayScale(rawValue: storedScale) ?? .day }
+        .onChange(of: controller.scale) { _, newScale in storedScale = newScale.rawValue }
         .toolbar { DayToolbar(controller: controller, calendar: calendar, vault: vault) }
         .task(id: day) { await controller.load() }
         // Reloads when EventKit says the store moved, or when the app comes back to
@@ -65,7 +65,29 @@ struct TodayView: View {
         }
     }
 
+    /// One of three scales of the same day (ADR-0013 §D4), all anchored on
+    /// `controller.day`.
+    @ViewBuilder
+    private var scale: some View {
+        switch controller.scale {
+        case .day: daySplit
+        case .week: WeekView(controller: controller)
+        case .month: MonthView(controller: controller)
+        }
+    }
+
     // MARK: Note column
+
+    /// A split rather than two fixed columns: how much of the day is note and how much
+    /// is timeline is the user's call, and it changes with what they are doing.
+    private var daySplit: some View {
+        HSplitView {
+            noteColumn
+                .frame(minWidth: 420)
+            DayTimeline(controller: controller, calendar: calendar, window: vault.settings.dayHours)
+                .frame(minWidth: 220, idealWidth: 300, maxWidth: 520)
+        }
+    }
 
     private var noteColumn: some View {
         ScrollView {
@@ -103,13 +125,23 @@ struct TodayView: View {
             // The date as it is written in Italian. The compact `20260813` is the file
             // name (naming.md 4.6) and belongs where the file is named, not here.
             Text(day.italianForm).themedText(.title)
-            Text(weekday).themedText(.body, color: .textSecondary)
+            Text(weekday).themedText(.body, color: dayKind.token ?? .textSecondary)
+            // The name of the holiday, where the two grids only have room for a colour.
+            if let holiday = ItalianHolidays.name(of: day, patron: vault.settings.patronSaint) {
+                Text(holiday).themedText(.body, color: .calendarHoliday)
+            }
             Spacer()
         }
     }
 
     /// `giovedì`, beside the date rather than repeating it.
     private var weekday: String { DateEntry.weekdayName(of: day) }
+
+    /// Whether the day is ordinary, a Saturday, a Sunday or a holiday - the same rule
+    /// the week and the month colour their numbers by.
+    private var dayKind: ItalianHolidays.DayKind {
+        ItalianHolidays.kind(of: day, patron: vault.settings.patronSaint)
+    }
 
     @ViewBuilder
     private var noteBody: some View {

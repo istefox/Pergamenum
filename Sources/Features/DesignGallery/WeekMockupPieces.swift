@@ -4,32 +4,9 @@ import SwiftUI
 // `TagBrowserMockupPieces` gives: the scenes say what is being asked, the pieces say what it
 // looks like.
 
-/// What a day can hold (ADR-0013 §D4). Four kinds and no fifth, each recognisable without a
-/// legend: the colour is the one the rest of the app already uses for that thing.
-enum WeekEntryKind {
-    case event
-    case block
-    case task
-    case deadline
-
-    var symbol: String {
-        switch self {
-        case .event: "calendar"
-        case .block: "rectangle.fill"
-        case .task: "square"
-        case .deadline: "exclamationmark.circle"
-        }
-    }
-
-    var token: ColorToken {
-        switch self {
-        case .event: .accentPrimary
-        case .block: .taskScheduled
-        case .task: .taskOpen
-        case .deadline: .taskOverdue
-        }
-    }
-}
+// `WeekEntryKind`, which this file declared while the week was only drawn, now lives in
+// `WeekPlan.swift`: the built week fills the same four kinds, and two copies of that
+// vocabulary would be a mockup that stops describing the thing it was approved for.
 
 /// One line in a day of the week. The hour is a prefix rather than a position: a list ordered by
 /// time says the same thing a grid does about *when*, and says it in a ninety-point column.
