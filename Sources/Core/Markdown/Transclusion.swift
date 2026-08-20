@@ -129,6 +129,37 @@ enum Transclusion {
         return text.index(text.endIndex, offsetBy: -document.body.count)
     }
 
+    /// The files a note embeds, in document order, duplicates removed (ADR-0009 §D2).
+    ///
+    /// The exact complement of `NoteStore.linkTargets`, which counts a transcluded note
+    /// and leaves a file out. Here it is the other half: `![[foto.png]]` and
+    /// `![didascalia](foto.png)` yes, `![[nota]]` no. Both spellings, because a vault is
+    /// not written by one program.
+    ///
+    /// A whole line and nothing else, which is what this app has always called an embed
+    /// (`Attachment.embed(inLine:)` says why). A picture named in the middle of a sentence
+    /// is an illustration in a sentence, and the gallery renderer M11 adds this for shows
+    /// the documents a note carries, not every file name it mentions.
+    ///
+    /// Remote targets never appear: `target(ofLine:)` drops them, the app makes no network
+    /// call, and there is nothing on disk to draw a thumbnail of.
+    static func embeddedFiles(in text: String) -> [String] {
+        let fences = CodeFence.regions(in: text)
+        var seen = Set<String>()
+        var ordered: [String] = []
+
+        var lineStart = bodyStart(of: text)
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            defer { lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
+
+            guard !fences.contains(where: { $0.range.overlaps(lineStart..<lineEnd) }) else { continue }
+            guard case .file(let target, _)? = target(ofLine: String(text[lineStart..<lineEnd])) else { continue }
+            if seen.insert(target).inserted { ordered.append(target) }
+        }
+        return ordered
+    }
+
     /// Splits `nota#sezione`. The first `#` wins, as it does in `WikilinkParser`: a
     /// heading may contain one, a note title may not carry it unescaped either way.
     private static func split(_ target: String) -> (reference: String, section: String?) {

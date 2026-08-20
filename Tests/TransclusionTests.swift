@@ -185,6 +185,36 @@ un fonometro
     #expect(!targets.contains("foto.png"))
 }
 
+/// The complement of the test above, and the field M11 spent its schema bump on
+/// (ADR-0009 §D2): what `linkTargets` leaves out is exactly what `embeddedFiles` takes.
+@Test func embeddedFilesTakesTheHalfLinkTargetsLeaves() {
+    let text = """
+    ---
+    date: 2026-08-20
+    ---
+
+    ![[Curva di trasmissibilità]]
+
+    ![[foto.png]]
+
+    ![didascalia](allegati/scheda.pdf)
+
+    ![[foto.png]]
+
+    Una riga con ![[inline.png]] dentro una frase.
+
+    ![](https://example.com/remota.png)
+
+    ```
+    ![[dentro-il-codice.png]]
+    ```
+    """
+    // In order, once each. The transcluded note is a link and stays out; the inline one
+    // is an illustration in a sentence; the remote one is not a file in the vault; the
+    // fenced one is code.
+    #expect(Transclusion.embeddedFiles(in: text) == ["foto.png", "allegati/scheda.pdf"])
+}
+
 @Test func aTranscludedSectionCountsAsALinkToItsNoteOnce() {
     // Two references to the same note, one of them to a section: one link, and the
     // backlink panel says the note is named once rather than twice.

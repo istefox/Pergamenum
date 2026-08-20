@@ -20,6 +20,7 @@ private func record(
     aliases: [String] = [],
     related: [String] = [],
     links: [String] = [],
+    embeds: [String] = [],
     tasks: String = "",
     size: Int = 100,
     modified: String = "2026-08-11"
@@ -40,6 +41,7 @@ private func record(
         title: title,
         frontmatter: frontmatter,
         linkTargets: links,
+        embedTargets: embeds,
         tasks: TaskParser.tasks(in: tasks, sourcePath: relativePath),
         modifiedAt: Calendar.current.date(from: components) ?? .distantPast,
         byteSize: size,
@@ -63,7 +65,10 @@ private let vault = Corpus(records: [
         related: ["[[Vibrofer]]"], links: ["Vibrofer", "Nota che non esiste"],
         tasks: "- [ ] Disegno >2026-08-25 !2026-08-30", modified: "2026-08-19"
     ),
-    record("Letture", path: "Letture/Letture.md", tags: ["type-note"], size: 20),
+    record(
+        "Letture", path: "Letture/Letture.md", tags: ["type-note"],
+        embeds: ["allegati/paper.pdf", "copertine/paper.png"], size: 20
+    ),
 ])
 
 private func evaluate(_ source: String, over corpus: Corpus = vault, body: String? = nil) throws -> ViewResult {
@@ -161,6 +166,7 @@ private func evaluate(_ source: String, over corpus: Corpus = vault, body: Strin
     #expect(row.values[.size] == .number(100))
     #expect(row.values[.links] == .list(["Vibrofer", "Nota che non esiste"]))
     #expect(row.values[.linkedFrom] == .list(["Vibrofer"]))
+    #expect(row.values[.embedTargets] == .list([]))
     #expect(row.values[.tasksOpen] == .number(1))
     #expect(row.values[.tasksDone] == .number(0))
     #expect(row.values[.tasksTotal] == .number(1))
@@ -175,6 +181,13 @@ private func evaluate(_ source: String, over corpus: Corpus = vault, body: Strin
     let note = record("X")
     for field in ViewField.allCases { _ = field.value(of: note) }
     #expect(ViewField.allCases.count == ViewField.names.count)
+}
+
+/// The gallery's field, all the way from the note to the row (ADR-0009 §D2).
+@Test func embedTargetsReachesARow() throws {
+    let result = try evaluate("render: gallery\nwhere: has(embedTargets)\ncolumns: [embedTargets]")
+    #expect(result.rows.map(\.title) == ["Letture"])
+    #expect(result.rows.first?.values[.embedTargets] == .list(["allegati/paper.pdf", "copertine/paper.png"]))
 }
 
 @Test func onlyTheColumnsAskedForAreResolved() throws {

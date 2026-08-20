@@ -7,11 +7,11 @@ import Foundation
 /// index, so a view stays answerable from a vault scan alone and principle 3 keeps
 /// holding after this feature exists.
 ///
-/// Two names a reasonable person will try are deliberately absent, and
-/// `ViewField.absentFieldReason` is why they get a sentence instead of "campo
-/// sconosciuto": `created`, because the index stores `modifiedAt` and only that, and
-/// `embedTargets`, because `NoteStore.linkTargets` filters embeds out on purpose. The
-/// second arrives with the one schema bump M11 is allowed.
+/// One name a reasonable person will try is deliberately absent, and
+/// `ViewField.absentFieldReason` is why it gets a sentence instead of "campo
+/// sconosciuto": `created`, because the index stores `modifiedAt` and only that. The
+/// other one, `embedTargets`, was absent until M11 spent its single permitted schema
+/// bump on it.
 enum ViewField: String, CaseIterable, Sendable, Comparable {
     case title
     case path
@@ -24,6 +24,7 @@ enum ViewField: String, CaseIterable, Sendable, Comparable {
     case size
     case links
     case linkedFrom
+    case embedTargets
     case tasksOpen = "tasks.open"
     case tasksDone = "tasks.done"
     case tasksTotal = "tasks.total"
@@ -38,15 +39,13 @@ enum ViewField: String, CaseIterable, Sendable, Comparable {
     static func < (lhs: ViewField, rhs: ViewField) -> Bool { lhs.rawValue < rhs.rawValue }
 
     /// The sentence for a field that does not exist. Named here rather than at the
-    /// parser's call site because the reason belongs to the field, and because the two
-    /// deliberate absences deserve better than the generic answer.
+    /// parser's call site because the reason belongs to the field, and because a
+    /// deliberate absence deserves better than the generic answer.
     static func absentFieldReason(_ name: String) -> String {
         switch name {
         case "created":
             "«created» non esiste: l'indice conserva solo la data di modifica, e aggiungerne una "
                 + "di creazione è una decisione di schema (ADR-0009 §D2)"
-        case "embedTargets":
-            "«embedTargets» non esiste ancora: arriva con l'unico bump di schema di M11 (ADR-0009 §D2)"
         default:
             "campo sconosciuto «\(name)». Disponibili: \(names.joined(separator: ", "))"
         }
@@ -135,7 +134,7 @@ extension ViewField {
 
     /// The whole of §D2's table, written as a table.
     ///
-    /// A seventeen-way `switch` scores 17 on SwiftLint's cyclomatic complexity, and
+    /// An eighteen-way `switch` scores 18 on SwiftLint's cyclomatic complexity, and
     /// `CommandActions.run` records why this codebase restructures rather than writes its
     /// first `swiftlint:disable`. The trade is the same one made there: a dictionary
     /// cannot be exhaustive at compile time, so `everyFieldHasADerivation` asks all of
@@ -153,6 +152,7 @@ extension ViewField {
         .size: { record, _ in .number(record.byteSize) },
         .links: { record, _ in .list(record.linkTargets) },
         .linkedFrom: { record, graph in .list(graph.incoming[record.relativePath] ?? []) },
+        .embedTargets: { record, _ in .list(record.embedTargets) },
         .tasksOpen: { record, _ in .number(record.tasks.count { $0.state.isOpen }) },
         .tasksDone: { record, _ in .number(record.tasks.count { $0.state == .done }) },
         .tasksTotal: { record, _ in .number(record.tasks.count) },

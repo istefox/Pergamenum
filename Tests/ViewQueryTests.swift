@@ -114,18 +114,17 @@ import Testing
     #expect(error?.reason.contains("«where»") == true)
 }
 
-// MARK: - The two fields that do not exist
+// MARK: - The field that does not exist, and the one that just started to
 
 @Test func createdIsRefusedWithTheReasonRatherThanAsUnknown() {
     let error = #expect(throws: ViewBlockError.self) { try ViewBlock.parse("render: table\nsort: created desc") }
     #expect(error?.reason.contains("data di modifica") == true)
 }
 
-@Test func embedTargetsSaysItIsNotHereYet() {
-    let error = #expect(throws: ViewBlockError.self) {
-        try ViewBlock.parse("render: gallery\ncolumns: [embedTargets]")
-    }
-    #expect(error?.reason.contains("bump di schema") == true)
+/// The one schema change M11 was allowed, and it has been spent: the gallery's field
+/// parses like any other.
+@Test func embedTargetsIsAFieldNow() throws {
+    #expect(try ViewBlock.parse("render: gallery\ncolumns: [embedTargets]").columns == [.embedTargets])
 }
 
 @Test func hasNamesOnlyTheClosedList() {
