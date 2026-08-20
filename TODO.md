@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=30 -->
+<!-- project-tasks: prefix=PG lastId=31 -->
 # PROJECT TASKS
 
-Updated: 2026-08-20 · Open: 12 (P1: 0) · In progress: 1
+Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 1
 
 ## Open Issues
 
@@ -14,8 +14,10 @@ Updated: 2026-08-20 · Open: 12 (P1: 0) · In progress: 1
 
 ## In Progress
 
-- [ ] `PG-013` **P3** M12 La settimana — slice 1 done: ADR-0013 and the SPEC amendments it authorises <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-013` **P3** M12 La settimana — three slices of six done (`553aca0`, `cfc46e3`) <!-- src:session opened:2026-08-16 -->
   - Six slices: the ADR, the mockups, the week and month views, the drag that writes, the view controls and the rollover setting, the event notes and the weekly-review template.
+  - Done 2026-08-20: **D4**, week and month as scales of `DayController.day` rather than panes of their own, with a row that jumps to the task, event or deadline it draws; **D7**, the twelve national holidays computed from the year and three shades of red, with the patron saint as a setting because it is the one red day no algorithm knows. The sidebar became three sections and gained the Viste and Preferite panes, and three commands that had no menu entry got one.
+  - Left: **D5** the drag that rewrites `>date` through the journalled write, **D6** the per-view grouping, sorting and density, **D1** the rollover setting, **D2/D3** the event note born `type-note` + `status-inbox` beside the daily note, and the weekly-review template. All of them exist as approved mockups only, in `Sources/Features/DesignGallery/TaskControlsMockup.swift`.
 
 ## Backlog / To Add
 
@@ -31,6 +33,8 @@ Updated: 2026-08-20 · Open: 12 (P1: 0) · In progress: 1
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
+- [ ] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 — `UITests/DesignAndReadingUITests.swift` <!-- src:session opened:2026-08-20 -->
+  - `NoteImageUITests` reaches the same two controls. The words survive only as accessibility labels, so the tests may well still pass; nobody has run them since the change. The UI suite is deliberately outside `.claude/test-cmd` (CLAUDE.md says why), so this needs a run by hand, with every stale instance killed first — see `PG-026`.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
