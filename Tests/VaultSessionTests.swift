@@ -242,6 +242,33 @@ private func openSession(_ root: URL) async -> VaultSession {
 }
 
 @MainActor
+@Test func aSessionFindsTheNotesThatNameOneWithoutLinkingIt() async throws {
+    let vault = try TemporaryVault()
+    let front = "---\ndate: 2026-08-11\ntags:\n  - type-note\naliases:\n  - Curva\n---\n\n"
+    try vault.write(front + "La mia curva.\n", to: "Curva di trasmissibilità.md")
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nVedi [[Curva di trasmissibilità]].\n",
+                    to: "Linkante.md")
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nRifare la curva di trasmissibilità.\n",
+                    to: "Menzionante.md")
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nParla della Curva a modo suo.\n",
+                    to: "PerAlias.md")
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nCurvatura del profilo.\n",
+                    to: "Estranea.md")
+    let session = await openSession(vault.root)
+
+    let mentions = session.unlinkedMentions(for: "Curva di trasmissibilità.md")
+
+    // The note that links is already a backlink; the note that only shares a prefix is not a
+    // mention; the note that uses the alias is one, because an alias never resolves a link
+    // and so never produces the backlink that would remove it from here (F-07).
+    #expect(mentions.map(\.path).sorted() == ["Menzionante.md", "PerAlias.md"])
+    #expect(mentions.first(where: { $0.path == "Menzionante.md" })?.excerpt
+        == "Rifare la curva di trasmissibilità.")
+    // The note never mentions itself, whatever its own body says.
+    #expect(!mentions.contains { $0.path == "Curva di trasmissibilità.md" })
+}
+
+@MainActor
 @Test func aSessionKnowsItsOwnWriteFromSomebodyElsesEdit() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nUno.\n", to: "N.md")

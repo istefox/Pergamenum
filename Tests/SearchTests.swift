@@ -287,3 +287,57 @@ isolatore attenua o amplifica. Trasmissibilità sotto radice di due.
     #expect(!SearchQuery("modified:>2026-08-01").isEmpty)
     #expect(!SearchQuery("-pompa").isEmpty)
 }
+
+// MARK: - Unlinked mentions (ADR-0012 D9)
+
+private let mentioning = """
+---
+date: 2026-08-11
+tags:
+  - type-note
+aliases:
+  - Curva di trasmissibilità
+---
+
+Rifare il calcolo con la curva di trasmissibilità reale.
+"""
+
+@Test func findsTheLineThatNamesANote() {
+    let line = UnlinkedMentions.firstMentionLine(of: ["Curva di trasmissibilità"], in: mentioning)
+    #expect(line == "Rifare il calcolo con la curva di trasmissibilità reale.")
+}
+
+@Test func ignoresTheFrontmatter() {
+    // The alias block names the note too, and reporting it would mean listing a note's own
+    // bookkeeping as prose about it.
+    let text = "---\ndate: 2026-08-11\ntags:\n  - type-note\naliases:\n  - Curva\n---\n\nAltro.\n"
+    #expect(UnlinkedMentions.firstMentionLine(of: ["Curva"], in: text) == nil)
+}
+
+@Test func doesNotCountAnOccurrenceInsideAWikilink() {
+    // That is the opposite of an unlinked mention, and the note is already a backlink.
+    let text = "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nVedi [[Curva di trasmissibilità]].\n"
+    #expect(UnlinkedMentions.firstMentionLine(of: ["Curva di trasmissibilità"], in: text) == nil)
+}
+
+@Test func requiresAWholeWord() {
+    #expect(!UnlinkedMentions.mentions(["Curva"], in: "La curvatura del profilo."))
+    #expect(UnlinkedMentions.mentions(["Curva"], in: "La curva, misurata."))
+    #expect(UnlinkedMentions.mentions(["Curva"], in: "Curva."))
+}
+
+@Test func foldsAccentsAndCaseLikeTheSearchDoes() {
+    #expect(UnlinkedMentions.mentions(["Trasmissibilità"], in: "La trasmissibilita misurata."))
+    #expect(UnlinkedMentions.mentions(["trasmissibilita"], in: "TRASMISSIBILITÀ sotto radice."))
+}
+
+@Test func findsAMentionOverlappingAFailedOne() {
+    // The scan steps one character on after a match that lost on its boundaries, not one
+    // match on: skipping the whole occurrence would step over the good one inside it.
+    #expect(UnlinkedMentions.mentions(["ala"], in: "balala ala."))
+}
+
+@Test func aNameThatIsOnlyWhitespaceMatchesNothing() {
+    #expect(!UnlinkedMentions.mentions(["   "], in: "Qualsiasi riga."))
+    #expect(!UnlinkedMentions.mentions([""], in: "Qualsiasi riga."))
+}

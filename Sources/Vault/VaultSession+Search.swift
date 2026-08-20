@@ -59,6 +59,37 @@ extension VaultSession {
         return index.allNotes.filter { allowed.contains($0.relativePath) }
     }
 
+    // MARK: Unlinked mentions
+
+    /// The notes that name this one without linking to it (ADR-0012 D9).
+    ///
+    /// **Computed when asked and never cached.** This is a full-vault text scan - the same
+    /// read loop `search` runs - so putting it on every note opening would charge that cost to
+    /// the gesture people make most. The result is not written to `IndexCache` either: its
+    /// schema version is spent by M11 (ADR-0009 §D2) and this milestone must not touch it.
+    ///
+    /// Aliases count as names, and a note that reaches this one *through* an alias is still an
+    /// unlinked mention: an alias serves search and never the link target (F-07), so no
+    /// backlink exists to remove it from the list.
+    func unlinkedMentions(for relativePath: String, limit: Int = 50) -> [SearchResult] {
+        guard let subject = index.note(at: relativePath) else { return [] }
+        let names = [subject.title] + subject.frontmatter.aliases
+        let alreadyLinking = Set(index.backlinks(toTitle: subject.title).map(\.relativePath))
+
+        var results: [SearchResult] = []
+        for record in index.allNotes {
+            guard record.relativePath != relativePath,
+                  !alreadyLinking.contains(record.relativePath),
+                  let (_, text) = try? read(record.relativePath),
+                  let line = UnlinkedMentions.firstMentionLine(of: names, in: text)
+            else { continue }
+
+            results.append(SearchResult(path: record.relativePath, title: record.title, excerpt: line))
+            if results.count >= limit { break }
+        }
+        return results
+    }
+
     // MARK: Conformance
 
     /// Validates any note in the vault by path, for the vault-wide conformance view.

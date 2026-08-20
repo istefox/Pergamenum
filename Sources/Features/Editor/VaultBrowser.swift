@@ -149,6 +149,10 @@ struct VaultBrowser: View {
                     conformance(note)
                     history(note)
                     backlinks(note)
+                    // Under the backlinks, chosen from the mockup: the two answer the same
+                    // question a step apart - who points here, and who talks about this
+                    // without pointing.
+                    UnlinkedMentionsSection(notePath: note.relativePath)
                     LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
                     unresolved
                 }
