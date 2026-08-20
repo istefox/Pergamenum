@@ -32,6 +32,24 @@ Corpo.
 - [ ] Alfa >2026-08-20
 """
 
+VIEW_NOTE = """---
+date: 2026-08-20
+tags:
+  - type-note
+---
+
+```pergamenum-view
+where: tag("type-note")
+render: table
+columns: [title, tags]
+```
+
+```pergamenum-view
+sort: created desc
+render: table
+```
+"""
+
 failures = []
 
 
@@ -194,6 +212,40 @@ def writing(binary, vault):
         server.close()
 
 
+def views(binary, vault):
+    """ADR-0009 D4: a view answers a model with the rows the window draws."""
+    print("viste")
+    server = Server(binary, vault, allow_write=False)
+    view_note = os.path.join(vault, "Viste.md")
+    try:
+        with open(view_note, "w", encoding="utf-8") as handle:
+            handle.write(VIEW_NOTE)
+
+        listed = server.payload("list_views")
+        check(len(listed) == 2, "list_views trova i due blocchi della nota")
+        check(listed[0]["render"] == "table", "il primo si disegna come tabella")
+        # A block that does not parse is listed with its reason, never dropped: a listing
+        # that hid it would be the empty result D1 refuses, told through another channel.
+        check(listed[1]["error"] is not None, "il blocco rotto è elencato con il motivo")
+        check("riga" in listed[1]["error"], "il motivo nomina la riga")
+
+        run = server.payload("run_view", {"path": "Viste.md", "ordinal": 0})
+        # Two, not one: a view is a note, so a view filtering on `type-note` and carrying it
+        # appears in its own results. ADR-0009 predicted this would look like a bug.
+        check(run["total"] == 2, "run_view conta le note che rispondono, la vista compresa")
+        rows = run["groups"][0]["rows"]
+        check(rows[0]["title"] == "Nota", "e la nomina")
+        check(rows[0]["values"]["tags"] == "type-note", "le celle sono quelle che l'app disegna")
+
+        broken = server.payload("run_view", {"path": "Viste.md", "ordinal": 1})
+        check(broken.get("isError") is True, "eseguire il blocco rotto è un errore")
+
+        ambiguous = server.payload("run_view", {"path": "Viste.md"})
+        check(ambiguous.get("isError") is True, "senza ordinal su due viste non indovina")
+    finally:
+        server.close()
+
+
 def resources(binary, vault):
     print("risorse")
     server = Server(binary, vault, allow_write=False)
@@ -216,7 +268,7 @@ def resources(binary, vault):
 binary = find_binary()
 print("binario: %s\n" % binary)
 
-for stage in (read_only, writing, resources):
+for stage in (read_only, writing, views, resources):
     vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
     try:
         with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

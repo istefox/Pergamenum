@@ -140,6 +140,12 @@ extension VaultController {
         session?.undoJournalledWrites(ids) ?? .init()
     }
 
+    /// Writes the shipped views into `Templates/`, skipping any that are already there.
+    @discardableResult
+    func installSampleViews() -> VaultSession.SampleViewsOutcome {
+        session?.installSampleViews() ?? .init()
+    }
+
     /// A card dropped between two columns of a board (ADR-0009 §D5). The rescan the write
     /// triggers is the watcher's, as for every other write the app makes.
     @discardableResult

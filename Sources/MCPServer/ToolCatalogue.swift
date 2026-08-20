@@ -137,6 +137,37 @@ enum ToolCatalogue {
             annotations: .init(readOnlyHint: true)
         ),
         Tool(
+            name: "list_views",
+            description: """
+                Le viste salvate nel vault: blocchi «pergamenum-view» dentro note ordinarie \
+                (ADR-0009). Per ognuna dice in quale nota sta, in che posizione, come si \
+                disegna e - se il blocco non si legge - perché. Legge ogni nota, quindi \
+                chiedila quando serve, non a ogni giro.
+                """,
+            inputSchema: ["type": "object", "properties": [:]],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
+            name: "run_view",
+            description: """
+                Esegue una vista e restituisce le righe che trova, con gli stessi campi e le \
+                stesse celle che l'app disegna. «total» è quante note hanno risposto, prima \
+                del limit del blocco.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "path": ["type": "string", "description": "la nota che contiene il blocco"],
+                    "ordinal": [
+                        "type": "integer",
+                        "description": "quale blocco, da 0; obbligatorio se la nota ne ha più d'uno",
+                    ],
+                ],
+                "required": ["path"],
+            ],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
             name: "vault_stats",
             description: "Quante note, quanti task, quanti link non risolti, quanto è durata la scansione.",
             inputSchema: ["type": "object", "properties": [:]],

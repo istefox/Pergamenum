@@ -45,7 +45,7 @@ struct ViewTableRenderer: View {
         // for four of the five renderers would make the same block mean different things.
         if result.groups.count > 1 {
             GridRow {
-                Text(group.label ?? "Senza valore")
+                Text(group.label ?? block.group?.absentLabel ?? "Senza valore")
                     .themedText(.caption, color: .textSecondary)
                     .padding(.top, theme.spacing(.s))
                     .gridCellColumns(columns.count)
@@ -110,7 +110,7 @@ struct ViewListRenderer: View {
             ForEach(result.groups.indices, id: \.self) { index in
                 let group = result.groups[index]
                 if result.groups.count > 1 {
-                    Text(group.label ?? "Senza valore")
+                    Text(group.label ?? block.group?.absentLabel ?? "Senza valore")
                         .themedText(.caption, color: .textSecondary)
                         .padding(.top, theme.spacing(.xs))
                 }

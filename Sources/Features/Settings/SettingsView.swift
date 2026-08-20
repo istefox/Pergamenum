@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Environment(EventKitStore.self) private var calendar
     @Environment(ReminderScheduler.self) private var reminders
     @State private var testProblem: String?
+    @State private var sampleViews: String?
 
     var body: some View {
         TabView {
@@ -32,6 +33,15 @@ struct SettingsView: View {
         .frame(width: 620, height: 560)
     }
 
+    private func installSamples() {
+        let outcome = vault.installSampleViews()
+        var parts: [String] = []
+        if !outcome.created.isEmpty { parts.append("\(outcome.created.count) scritte") }
+        if !outcome.alreadyThere.isEmpty { parts.append("\(outcome.alreadyThere.count) c'erano già") }
+        parts.append(contentsOf: outcome.failures)
+        sampleViews = parts.joined(separator: ", ")
+    }
+
     // MARK: Generali
 
     private var general: some View {
@@ -48,6 +58,22 @@ struct SettingsView: View {
                     .textSelection(.enabled)
             }
             Button("Apri un'altra cartella…") { VaultOpenPanel.chooseVault(into: vault) }
+
+            LabeledContent("Viste di esempio") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Button("Scrivi in Templates/") { installSamples() }
+                        .disabled(vault.root == nil)
+                        .accessibilityIdentifier("install-sample-views")
+                    if let sampleViews {
+                        Text(sampleViews).themedText(.caption, color: .textTertiary)
+                    }
+                }
+            }
+            // Said before it is pressed rather than after: five files appearing in a vault is
+            // something to agree to, not to find out about.
+            Text("Cinque viste pronte, una per renderer. Sono note ordinarie in Templates/, "
+                + "scritte solo ora e mai sovrascritte se ci sono già.")
+                .themedText(.caption, color: .textTertiary)
 
             Picker("Tema", selection: $engine.selection) {
                 Text("Sistema").tag(ThemeEngine.Selection.followSystem)

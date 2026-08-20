@@ -51,6 +51,23 @@ struct ViewBlock: Equatable, Sendable {
             if case .tag = self { return true }
             return false
         }
+
+        /// What the group of rows this grouping does not name is called - the board's first
+        /// column, and the last line of a table or a calendar.
+        ///
+        /// Derived from the grouping rather than fixed at *Senza stato*, which the mockup drew
+        /// because it drew a status board: on a board of `project-*` that word would be about a
+        /// tag family the block never mentioned. The namespace is spelled the way the tag
+        /// browser spells it, which is the way SPEC §4.4 writes it.
+        var absentLabel: String {
+            switch self {
+            case .tag(let glob):
+                let namespace = glob.prefix { $0 != "-" && $0 != "*" }
+                return namespace.isEmpty ? "Senza tag" : "Senza \(namespace)"
+            case .field(let field):
+                return "Senza \(field.label)"
+            }
+        }
     }
 
     enum Renderer: String, Equatable, Sendable, CaseIterable {
@@ -242,6 +259,27 @@ extension ViewBlock {
             guard case .code(let language, let lines) = block, language == Self.language else { return nil }
             return Result { try parse(lines.joined(separator: "\n")) }
                 .mapError { $0 as? ViewBlockError ?? ViewBlockError(line: 1, reason: "\($0)") }
+        }
+    }
+}
+
+extension ViewBlock {
+    /// The columns a renderer draws when the block names none.
+    ///
+    /// Not every renderer wants the same ones, and a block that says `render: gallery` and
+    /// nothing else should still draw something rather than nothing: `columns` is optional in
+    /// §D1, so a default is part of the design and not a shortcut.
+    ///
+    /// In `Core` beside the grammar rather than beside the renderers, for the reason §D4 gives:
+    /// `perg view run` fills the same cells, and a default that differed between the window and
+    /// the shell would make the same block mean two things.
+    var effectiveColumns: [ViewField] {
+        guard columns.isEmpty else { return columns }
+        switch render {
+        case .table: return [.title, .tags, .modified]
+        case .list: return [.title, .tags, .modified]
+        case .board: return [.title, .tags]
+        case .gallery, .calendar: return [.title]
         }
     }
 }

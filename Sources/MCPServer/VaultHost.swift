@@ -102,6 +102,12 @@ final class VaultHost {
             return reply(try VaultAPI.lint(session, at: try arguments.required("path")))
         case "lint_vault":
             return reply(try VaultAPI.lint(session, at: nil))
+        case "list_views":
+            return reply(VaultAPI.views(session))
+        case "run_view":
+            return reply(try VaultAPI.runView(
+                session, at: try arguments.required("path"), ordinal: arguments.int("ordinal")
+            ))
         case "vault_stats":
             return reply(VaultAPI.stats(session))
         case "journal_log":

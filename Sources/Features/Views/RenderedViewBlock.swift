@@ -154,20 +154,3 @@ extension ViewBlock.Renderer {
         }
     }
 }
-
-extension ViewBlock {
-    /// The columns a renderer draws when the block names none.
-    ///
-    /// Not every renderer wants the same ones, and a block that says `render: gallery` and
-    /// nothing else should still draw something rather than nothing: `columns` is optional in
-    /// §D1, so a default is part of the design and not a shortcut.
-    var effectiveColumns: [ViewField] {
-        guard columns.isEmpty else { return columns }
-        switch render {
-        case .table: return [.title, .tags, .modified]
-        case .list: return [.title, .tags, .modified]
-        case .board: return [.title, .tags]
-        case .gallery, .calendar: return [.title]
-        }
-    }
-}

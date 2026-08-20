@@ -67,7 +67,8 @@ struct ViewBoardRenderer: View {
                     if let label = group.label {
                         ViewTagChip(text: label)
                     } else {
-                        Text("Senza stato").themedText(.caption, color: .textTertiary)
+                        Text(block.group?.absentLabel ?? "Senza valore")
+                            .themedText(.caption, color: .textTertiary)
                     }
                     Spacer()
                     Text("\(group.rows.count)").themedText(.caption, color: .textTertiary)
@@ -141,7 +142,7 @@ struct ViewBoardRenderer: View {
         }
         guard outcome.didWrite else { return false }
         lastDrop = Drop(
-            summary: "\(parsed.column ?? "senza stato") → \(destination ?? "senza stato")",
+            summary: "\(parsed.column ?? "—") → \(destination ?? "—")",
             journalID: outcome.journalID,
             isRefusal: false
         )
