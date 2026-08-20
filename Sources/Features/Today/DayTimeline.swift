@@ -28,8 +28,6 @@ struct DayTimeline: View {
     private var firstHour: Int { hours.first }
     private var lastHour: Int { hours.last }
 
-    @State private var hoveredBlock: String?
-
     private var blocks: [TimeBlock] { controller.blocks }
     private var events: [CalendarEvent] { controller.events }
 
@@ -38,14 +36,21 @@ struct DayTimeline: View {
             ZStack(alignment: .topLeading) {
                 hourLines
                 ForEach(timedEvents) { event in
-                    entry(Entry(
-                        title: event.title, subtitle: event.calendarTitle,
-                        start: minutes(from: event.start), duration: duration(of: event),
-                        token: .accentMuted, isEvent: true
-                    ))
+                    TimelineEntryBox(
+                        entry: TimelineEntry(
+                            title: event.title, subtitle: event.calendarTitle,
+                            start: minutes(from: event.start), duration: duration(of: event),
+                            token: .accentMuted, isEvent: true
+                        ),
+                        firstHour: firstHour,
+                        hourHeight: hourHeight
+                    )
                 }
                 ForEach(blocks) { block in
-                    blockEntry(block)
+                    TimelineBlockBox(
+                        block: block, controller: controller, calendar: calendar,
+                        firstHour: firstHour, hourHeight: hourHeight
+                    )
                 }
             }
             .padding(.vertical, theme.spacing(.s))
@@ -59,61 +64,37 @@ struct DayTimeline: View {
         }
     }
 
+    /// The hours, and the hour a dragged task lands on (ADR-0013 §D5).
+    ///
+    /// The row is the target rather than the line: a one-point rule is not something a
+    /// mouse can be asked to hit, and the hour a task is dropped *in* is the hour whose
+    /// band it was let go over.
     private var hourLines: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(firstHour...lastHour, id: \.self) { hour in
-                HStack(alignment: .top, spacing: theme.spacing(.s)) {
-                    Text(String(format: "%02d:00", hour))
-                        .themedText(.caption, color: .textTertiary)
-                        .frame(width: 44, alignment: .trailing)
-                    Rectangle()
-                        .fill(theme.color(.borderSubtle))
-                        .frame(height: 1)
-                }
-                .frame(height: hourHeight, alignment: .top)
+                TaskDropTarget(
+                    cornerRadius: theme.radius(.control),
+                    onDrop: { payload in
+                        controller.drop(payload, on: controller.day, at: TaskTime(hour: hour, minute: 0))
+                    },
+                    content: {
+                        HStack(alignment: .top, spacing: theme.spacing(.s)) {
+                            Text(String(format: "%02d:00", hour))
+                                .themedText(.caption, color: .textTertiary)
+                                .frame(width: 44, alignment: .trailing)
+                            Rectangle()
+                                .fill(theme.color(.borderSubtle))
+                                .frame(height: 1)
+                        }
+                        .frame(height: hourHeight, alignment: .top)
+                        // Without this the band is `.clear` above its one-point rule, and
+                        // a drop anywhere but on the rule itself finds nothing to land on.
+                        .contentShape(Rectangle())
+                    }
+                )
+                .accessibilityIdentifier("timeline-hour-\(hour)")
             }
         }
-    }
-
-    /// A block, with the delete the context menu used to hide.
-    ///
-    /// A menu you have to know is there is not a way to undo a click; the button
-    /// appears on hover, and the menu keeps its entry for the keyboard.
-    private func blockEntry(_ block: TimeBlock) -> some View {
-        entry(Entry(
-            title: block.title,
-            subtitle: block.isPublished ? "pubblicato" : "solo nella nota",
-            start: block.startMinutes, duration: block.durationMinutes,
-            token: .stickyBlue, isEvent: false
-        ), accessory: {
-            // Always in the hierarchy, only its opacity follows the pointer. Built
-            // by `if hoveredBlock == block.id` it left on mouse-down - the rebuild
-            // took the button away between press and release - so the click landed
-            // on nothing and the block stayed, on the timeline and in the note.
-            Button {
-                controller.remove(block)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.color(.textSecondary))
-            }
-            .buttonStyle(.plain)
-            .padding(2)
-            .opacity(hoveredBlock == block.id ? 1 : 0.35)
-            .help("Elimina il blocco")
-            .accessibilityIdentifier("timeline-remove-block")
-        })
-            .onHover { hoveredBlock = $0 ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock) }
-            .contextMenu {
-                Button(block.isPublished ? "Già pubblicato" : "Pubblica sul Calendario") {
-                    controller.publish(block, toCalendarTitled: calendar.writeCalendarTitle)
-                }
-                .disabled(block.isPublished || !calendar.eventAccess.isGranted)
-                Button("Elimina il blocco") { controller.remove(block) }
-            }
-            // `.contain` before the identifier, or the hover delete inside disappears
-            // from XCUI along with everything else the entry draws.
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("timeline-block")
     }
 
     /// Events with no hour of their own, above the grid.
@@ -175,17 +156,6 @@ struct DayTimeline: View {
         .background(theme.color(.backgroundSecondary))
     }
 
-    /// What the timeline draws in a slot, whichever side it came from.
-    private struct Entry {
-        var title: String
-        var subtitle: String
-        var start: Int
-        var duration: Int
-        var token: ColorToken
-        /// From the calendar rather than from the note, which is drawn differently.
-        var isEvent: Bool
-    }
-
     /// One entry, placed on the grid.
     ///
     /// **The accessory is a parameter and not something the caller overlays afterwards**,
@@ -194,35 +164,6 @@ struct DayTimeline: View {
     /// the un-moved rectangle: the delete button of a block at 09:00 was drawn at the top
     /// of the timeline, an hour and a half of empty grid away from the block it belonged
     /// to. Inside, it is placed on the entry before the entry moves.
-    private func entry(
-        _ entry: Entry,
-        @ViewBuilder accessory: () -> some View = { EmptyView() }
-    ) -> some View {
-        let offset = CGFloat(entry.start - firstHour * 60) / 60 * hourHeight
-        let height = max(18, CGFloat(entry.duration) / 60 * hourHeight)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(entry.title).themedText(.caption).lineLimit(1)
-            if height > 30 {
-                Text(entry.subtitle).themedText(.caption, color: .textTertiary).lineLimit(1)
-            }
-        }
-        .padding(.horizontal, theme.spacing(.xs))
-        .padding(.vertical, 2)
-        .frame(width: 236, height: height, alignment: .topLeading)
-        .background(theme.color(entry.token))
-        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-        .overlay(alignment: .leading) {
-            // Events from the calendar and blocks from the note are distinguishable at
-            // a glance: only one of them is something this app owns.
-            Rectangle()
-                .fill(theme.color(entry.isEvent ? .accentPrimary : .taskScheduled))
-                .frame(width: 2)
-        }
-        .overlay(alignment: .topTrailing) { accessory() }
-        .offset(x: 52, y: offset)
-    }
-
     private func minutes(from date: Date) -> Int {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         return (components.hour ?? 0) * 60 + (components.minute ?? 0)

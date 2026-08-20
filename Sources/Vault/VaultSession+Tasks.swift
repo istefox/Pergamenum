@@ -6,6 +6,11 @@ extension VaultSession {
     enum TaskChange: Sendable {
         case state(TaskItem.State)
         case schedule(CalendarDate?)
+        /// A day *and* the hour on it, which only a gesture that pointed at an hour can
+        /// mean. Separate from `schedule` because `TaskParser` already draws the line:
+        /// "domani" said by a reschedule command is a day and not a time, and carrying
+        /// an hour onto it would invent one.
+        case scheduleAt(CalendarDate, TaskTime)
         case link(String)
     }
 
@@ -82,6 +87,8 @@ extension VaultSession {
                 TaskParser.line(for: task, settingState: state, today: .today)
             case .schedule(let date):
                 TaskParser.line(for: task, scheduledOn: date)
+            case .scheduleAt(let date, let time):
+                TaskParser.line(for: task, scheduledOn: date, at: time)
             case .link(let target):
                 TaskParser.line(for: task, addingLinkTo: target)
             }

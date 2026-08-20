@@ -46,7 +46,7 @@ struct WeekView: View {
     private func dayColumn(_ column: DayColumn) -> some View {
         let split = WeekPlan.split(column.entries, limit: entryLimit)
         let isAnchor = column.day == controller.day
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+        let body = VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             header(column, isAnchor: isAnchor)
             ForEach(split.shown) { entry in
                 WeekEntryRow(entry: entry) { reveal(entry, on: column.day) }
@@ -66,6 +66,15 @@ struct WeekView: View {
         .onTapGesture { controller.show(column.day) }
         .contextMenu { menu(for: column) }
         .accessibilityIdentifier("week-column-\(column.day.compactForm)")
+
+        // The whole column takes the drop, as the whole column already takes the click:
+        // a week is planned by putting a task on a day, and aiming at a row inside the
+        // day would be aiming at what is already there (ADR-0013 §D5).
+        return TaskDropTarget(
+            cornerRadius: theme.radius(.control),
+            onDrop: { controller.drop($0, on: column.day) },
+            content: { body }
+        )
     }
 
     /// The day, and whether it has a daily note - a dot rather than a row, because the

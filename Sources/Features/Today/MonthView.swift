@@ -58,7 +58,7 @@ struct MonthView: View {
         let split = WeekPlan.split(column.entries, limit: Self.entryLimit)
         let isAnchor = column.day == controller.day
         let isOtherMonth = column.day.month != controller.day.month
-        return VStack(alignment: .leading, spacing: 1) {
+        let body = VStack(alignment: .leading, spacing: 1) {
             header(column, isOtherMonth: isOtherMonth)
             ForEach(split.shown) { entry in
                 MonthEntryRow(entry: entry) { reveal(entry, on: column.day) }
@@ -78,6 +78,12 @@ struct MonthView: View {
         .onTapGesture { controller.show(column.day) }
         .contextMenu { menu(for: column) }
         .accessibilityIdentifier("month-cell-\(column.day.compactForm)")
+
+        return TaskDropTarget(
+            cornerRadius: theme.radius(.control),
+            onDrop: { controller.drop($0, on: column.day) },
+            content: { body }
+        )
     }
 
     /// The number carries the red; the holiday's name is the tooltip. A cell sixty

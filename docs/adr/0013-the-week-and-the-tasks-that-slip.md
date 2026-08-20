@@ -115,6 +115,19 @@ the reason.
 No dry-run diff, for the reason §D5 gives: a drag that asked for confirmation would not be a
 drag.
 
+**A block, once made, moves and stretches - and does not drag its task with it.** (2026-08-21,
+added while the drop was being verified on screen.) The gesture §D5 describes leaves a block
+behind, and a block that could only be deleted and made again is a plan nobody edits. Dragging it
+moves it to another hour, pulling its bottom edge changes how long it lasts, and both are
+ordinary edits of the day's own note through `setTimeBlocks` - no journal, exactly as deleting
+one has none, because the journal is for a gesture that rewrites *another* file (ADR-0007 §D6).
+
+The task stays where it was. A block carries `sourceTaskID`, so following it back and rewriting
+`>2026-08-20 15:00` to the new hour is one lookup away, and it is the same silent second write
+§D1 refuses in this ADR: a file changing with no gesture behind it. **The block is the plan for
+the day, the `>` marker is the schedule.** Dragging the task onto an hour again is how both
+move, which is the gesture §D5 already gives.
+
 **D6. The task views get controls, and the controls are per view.**
 
 Grouping (by note, project, schedule, deadline), sorting, and a compact/expanded density, each

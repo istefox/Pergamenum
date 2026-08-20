@@ -25,6 +25,9 @@ struct TodayView: View {
 
     var body: some View {
         scale
+        .safeAreaInset(edge: .top) {
+            if let drop = controller.lastDrop { dropBanner(drop) }
+        }
         .background(theme.color(.backgroundPrimary))
         .onAppear { controller.scale = DayScale(rawValue: storedScale) ?? .day }
         .onChange(of: controller.scale) { _, newScale in storedScale = newScale.rawValue }
@@ -63,6 +66,34 @@ struct TodayView: View {
                 controller.createReminder(title: draftTitle)
             }
         }
+    }
+
+    /// What the last drag wrote, and the way back (ADR-0013 §D5).
+    ///
+    /// At the top of the view rather than inside one scale, because the same drag is
+    /// made in the week, in the month and on the timeline, and three banners saying the
+    /// same thing in three places would be three things to dismiss.
+    private func dropBanner(_ drop: DayController.Drop) -> some View {
+        HStack(spacing: theme.spacing(.xs)) {
+            Image(systemName: drop.isRefusal ? "exclamationmark.triangle" : "checkmark")
+                .themedText(.caption, color: drop.isRefusal ? .taskOverdue : .textTertiary)
+            Text(drop.summary)
+                .themedText(.caption, color: drop.isRefusal ? .taskOverdue : .textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if drop.journalID != nil {
+                Button("Annulla") { controller.undoLastDrop() }
+                    .accessibilityIdentifier("undo-task-drop")
+            }
+            Button("Chiudi") { controller.lastDrop = nil }
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .textTertiary)
+        }
+        .padding(.horizontal, theme.spacing(.m))
+        .padding(.vertical, theme.spacing(.xs))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.color(.backgroundSecondary))
+        .accessibilityIdentifier("task-drop-banner")
     }
 
     /// One of three scales of the same day (ADR-0013 §D4), all anchored on

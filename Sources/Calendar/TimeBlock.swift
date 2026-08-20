@@ -54,6 +54,44 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
     func overlaps(_ other: TimeBlock) -> Bool {
         day == other.day && startMinutes < other.endMinutes && other.startMinutes < endMinutes
     }
+
+    /// The same block at another hour, or nil when the day has no room left for it.
+    ///
+    /// `others` is the day without this block in it: a block always overlaps itself, and
+    /// asking `freeStart` to avoid the place it is leaving would push every move down by
+    /// its own length.
+    ///
+    /// Placed with `freeStart` rather than dropped exactly where the pointer let go,
+    /// which is the rule every other way of making a block already follows: two blocks
+    /// at the same time say nothing about what the day looks like.
+    static func moved(_ block: TimeBlock, toStart start: Int, among others: [TimeBlock]) -> TimeBlock? {
+        let wanted = min(max(0, snap(start)), 24 * 60 - block.durationMinutes)
+        guard wanted >= 0,
+              let free = freeStart(from: wanted, in: others, duration: block.durationMinutes),
+              free + block.durationMinutes <= 24 * 60
+        else { return nil }
+
+        var moved = block
+        moved.startMinutes = free
+        return moved
+    }
+
+    /// The same block, longer or shorter. Never under a quarter of an hour, never past
+    /// midnight, and never through the block underneath: the bottom edge stops where the
+    /// next one starts, because an overlap pulled open by hand is the same overlap
+    /// `moved` refuses to create.
+    static func resized(_ block: TimeBlock, toDuration duration: Int, among others: [TimeBlock]) -> TimeBlock {
+        let next = others
+            .filter { $0.startMinutes >= block.endMinutes || $0.startMinutes > block.startMinutes }
+            .map(\.startMinutes)
+            .filter { $0 > block.startMinutes }
+            .min()
+        let ceiling = min(next ?? 24 * 60, 24 * 60) - block.startMinutes
+
+        var resized = block
+        resized.durationMinutes = min(max(15, snap(duration)), max(15, ceiling))
+        return resized
+    }
 }
 
 /// Reads and writes the `## Timeline` section of a daily note.

@@ -48,8 +48,23 @@ final class DayController {
         }
     }
 
+    /// What the last drop did, until it is dismissed. The banner the week and the day
+    /// draw from it is the way back: a write nobody was asked to confirm has to say what
+    /// it did and offer to undo it (ADR-0013 §D5, the shape ADR-0009 §D5 gave the board).
+    var lastDrop: Drop?
+
+    /// What a drag left behind.
+    struct Drop: Equatable, Sendable {
+        var summary: String
+        var journalID: String?
+        var isRefusal: Bool
+    }
+
     private let store: any CalendarStore
-    private let vault: VaultController
+    /// Not private: the drop of ADR-0013 §D5 lives in `DayController+TaskDrop.swift`,
+    /// and a `private` here is file-scoped, which would have kept it in this file for
+    /// no reason but the keyword.
+    let vault: VaultController
 
     init(store: any CalendarStore, vault: VaultController) {
         self.store = store
@@ -156,6 +171,36 @@ final class DayController {
         )
         write(blocks + [block])
         return block
+    }
+
+    /// Moves a block to another hour of the same day (SPEC §8.3).
+    ///
+    /// **The task the block came from does not move with it.** A block carries
+    /// `sourceTaskID`, so rewriting its `>2026-08-20 15:00` to the new hour is one
+    /// lookup away - and it would be a second write, in a second file, with no gesture
+    /// behind it, which is the thing ADR-0013 §D1 refuses in the same breath as
+    /// rollover. The block is the plan for the day; the `>` marker is the schedule.
+    /// Dragging the task onto the hour again is how both move.
+    @discardableResult
+    func move(_ block: TimeBlock, toStart start: Int) -> Bool {
+        let others = blocks.filter { $0.id != block.id }
+        guard let moved = TimeBlock.moved(block, toStart: start, among: others) else {
+            report("blocco tempo: nessuno spazio libero il \(day.compactForm)")
+            return false
+        }
+        guard moved.startMinutes != block.startMinutes else { return false }
+        write(others + [moved])
+        return true
+    }
+
+    /// Changes how long a block lasts, keeping the hour it starts at.
+    @discardableResult
+    func resize(_ block: TimeBlock, toDuration duration: Int) -> Bool {
+        let others = blocks.filter { $0.id != block.id }
+        let resized = TimeBlock.resized(block, toDuration: duration, among: others)
+        guard resized.durationMinutes != block.durationMinutes else { return false }
+        write(others + [resized])
+        return true
     }
 
     func remove(_ block: TimeBlock) {

@@ -57,8 +57,15 @@ struct DayReferences: View {
         }
     }
 
+    /// Draggable onto an hour of the timeline beside it (ADR-0013 §D5), which is the
+    /// only reason this list and that grid are on screen together.
+    ///
+    /// Every row here is a task with a `>` marker - the list is built from
+    /// `tasks(for: .today, on:)` - so there is no kind to refuse, unlike the week's
+    /// rows. The deadlines below have their own list and stay where they are: a drag
+    /// rewrites `>`, and they are on the day because of `!`.
     private func taskRow(_ task: TaskItem) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
+        let row = HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
             Image(systemName: task.state == .done ? "checkmark.square" : "square")
                 .foregroundStyle(theme.color(task.isOverdue(on: day) ? .taskOverdue : .taskOpen))
                 .onTapGesture { vault.toggle(task) }
@@ -75,15 +82,20 @@ struct DayReferences: View {
             }
             .buttonStyle(.plain)
             Spacer()
-            blockButton(for: task)
         }
+        return row
+            .draggable(TaskDragPayload(path: task.sourcePath, lineIndex: task.lineIndex).text)
+            .contextMenu { blockMenuItem(for: task) }
     }
 
-    /// The verb the button used to be - "Blocca" - read as blocking the task itself.
-    private func blockButton(for task: TaskItem) -> some View {
+    /// What «Inserisci Blocco Tempo» was, in the menu instead of on the row.
+    ///
+    /// The button took a third of the row's width from the thing the row is about, and
+    /// since §D5 the ordinary way to block out a task is to drag it onto the hour you
+    /// mean. It stays here because a gesture is not an affordance: a drag is invisible
+    /// until somebody tries it, and this is the entry that says the feature exists.
+    private func blockMenuItem(for task: TaskItem) -> some View {
         Button("Inserisci Blocco Tempo") { controller.addBlock(from: task) }
-            .buttonStyle(.plain)
-            .themedText(.caption, color: .accentPrimary)
             .help("Mette il task sulla timeline del giorno, \(vault.settings.blockMinutes) minuti")
             .accessibilityIdentifier("insert-time-block")
     }

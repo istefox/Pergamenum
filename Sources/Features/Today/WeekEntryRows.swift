@@ -16,7 +16,18 @@ struct WeekEntryRow: View {
     /// behind it, so it has none.
     var onOpen: (() -> Void)?
 
+    @ViewBuilder
     var body: some View {
+        // Draggable only when the row is a task line with a `>` marker to rewrite
+        // (§D5, and `dragPayload` carries the argument for the two it refuses).
+        if let payload = entry.dragPayload {
+            row.draggable(payload.text)
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             Image(systemName: entry.kind.symbol)
                 .font(.system(size: 7))
@@ -47,7 +58,16 @@ struct MonthEntryRow: View {
     let entry: WeekEntry
     var onOpen: (() -> Void)?
 
+    @ViewBuilder
     var body: some View {
+        if let payload = entry.dragPayload {
+            row.draggable(payload.text)
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         Text(entry.title)
             .themedText(.caption, color: entry.kind.token)
             .lineLimit(1)
