@@ -11,7 +11,6 @@ struct VaultBrowser: View {
     @Environment(CommandActions.self) var commandActions
     /// Read for the key combinations the slash menu shows beside each app command.
     @Environment(ShortcutStore.self) var shortcuts
-    @State private var isShowingInspector = true
 
     var body: some View {
         HSplitView {
@@ -19,7 +18,7 @@ struct VaultBrowser: View {
                 .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
             editor
                 .frame(minWidth: 360)
-            if isShowingInspector {
+            if navigation.isShowingInspector {
                 inspector
                     .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
             }
@@ -40,6 +39,12 @@ struct VaultBrowser: View {
             set: { vault.isAddingRelatedLink = $0 }
         )) {
             RelatedLinkSheet()
+        }
+        .sheet(isPresented: Binding(
+            get: { vault.isChoosingTemplate },
+            set: { vault.isChoosingTemplate = $0 }
+        )) {
+            TemplateSheet()
         }
         .modifier(HistorySheetPresentation())
     }
@@ -111,7 +116,7 @@ struct VaultBrowser: View {
             .disabled(vault.openNote == nil)
 
             Button {
-                isShowingInspector.toggle()
+                navigation.isShowingInspector.toggle()
             } label: {
                 Label("Ispettore", systemImage: "sidebar.right")
             }
