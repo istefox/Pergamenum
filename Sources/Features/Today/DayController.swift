@@ -71,13 +71,29 @@ final class DayController {
         self.vault = vault
     }
 
+    /// Whether the last day change was one scrolled past rather than one gone to
+    /// (ADR-0015 §D3).
+    ///
+    /// Read by the window's history, which sees *that* the day moved and never *how*: five
+    /// presses of the week chevron must leave one history entry, and a jump to a date must
+    /// leave one too. Only the caller knows which of the two happened, so the caller says.
+    ///
+    /// **A description of the last change and not a flag held during it.** The observer runs
+    /// on the view update after the change, not inside it, so anything set and cleared around
+    /// `show` would already be false by the time it was read - the same timing that decided
+    /// ADR-0015 §D4. This is simply true until the next `show` that is not a scroll, which is
+    /// exactly as long as it means anything.
+    private(set) var lastDayMoveWasDrift = false
+
     func show(_ newDay: CalendarDate) {
         day = newDay
+        lastDayMoveWasDrift = false
         reload()
     }
 
     func move(by days: Int) {
         show(day.adding(days: days))
+        lastDayMoveWasDrift = true
     }
 
     /// Moves by one unit of the scale being shown: a day, a week, a month.
@@ -86,6 +102,7 @@ final class DayController {
     /// week that paged a day at a time would be a week with a day view's navigator.
     func moveSpan(by steps: Int) {
         show(scale.anchor(day, movedBy: steps))
+        lastDayMoveWasDrift = true
     }
 
     /// Reads everything the day view shows, including the reminder fetch that has no

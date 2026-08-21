@@ -77,6 +77,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case taskPlusTwo
     case taskNextWeek
 
+    /// The window's history (ADR-0015). Appended at the end rather than placed beside the
+    /// pane commands they sit with in the menu: these rawValues are the keys of the overrides
+    /// file, so a new case may be added anywhere but an existing one must not move.
+    case goBack
+    case goForward
+
     case previousDay
     case nextDay
     case newEvent
@@ -118,7 +124,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .readingMode, .toggleInspector,
-             .runConformanceCheck, .foldSection, .unfoldAll:
+             .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
             .task
@@ -155,6 +161,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .findPrevious: "Trova precedente"
         case .insertWikilink: "Inserisci wikilink"
         case .insertRelated: "Inserisci nota correlata"
+        case .goBack: "Indietro"
+        case .goForward: "Avanti"
         case .paneNotes: "Vai a Note"
         case .paneWorkspace: "Vai a Workspace"
         case .paneToday: "Vai a Oggi"
@@ -230,6 +238,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .findPrevious: KeyBinding("g", [.command, .shift])
         case .insertWikilink: KeyBinding("[", [.command, .shift])
         case .insertRelated: KeyBinding("k", [.command, .shift])
+        // The system-wide keys for this, and both free here: `Cmd+Shift+[` is «Inserisci
+        // wikilink» and nothing binds the unshifted brackets (ADR-0015 §D5).
+        case .goBack: KeyBinding("[", .command)
+        case .goForward: KeyBinding("]", .command)
         case .paneNotes: KeyBinding("1", [.command, .control])
         case .paneWorkspace: KeyBinding("2", [.command, .control])
         case .paneToday: KeyBinding("3", [.command, .control])

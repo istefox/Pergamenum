@@ -18,6 +18,8 @@ struct RootView: View {
     /// The day pane's controller, because three sidebar rows are three scales of it
     /// (ADR-0013 §D4) rather than three panes.
     @Environment(DayController.self) private var day
+    /// The places the window has been (ADR-0015).
+    @Environment(NavigationHistory.self) private var history
 
     /// Optional, which is the shape a macOS sidebar `List` expects: with a
     /// non-optional binding SwiftUI writes the focused row back over the initial
@@ -45,6 +47,13 @@ struct RootView: View {
 
     private var isTodaysNoteOpen: Bool {
         day.day == .today && vault.openNote?.relativePath == vault.dailyNotePath(for: .today)
+    }
+
+    /// Where the window is, and how to get back there (ADR-0015). Built per draw from the same
+    /// three controllers `currentItem` reads, so the sidebar's highlight and the history can
+    /// never disagree about which place is showing.
+    private var place: WindowPlace {
+        WindowPlace(navigation: navigation, vault: vault, day: day)
     }
 
     /// What a row does when it is chosen. Two of them are not destinations, and land on
@@ -117,6 +126,9 @@ struct RootView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.color(.backgroundSecondary))
+                // On the detail and not on a pane: the two arrows belong to every pane, and
+                // declared here they arrive before each pane's own leading group (ADR-0015 §D5).
+                .windowHistory(history, place: place)
         }
         .sheet(isPresented: Binding(
             get: { vault.isShowingGlobalSearch },

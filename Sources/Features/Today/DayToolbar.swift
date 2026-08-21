@@ -18,7 +18,13 @@ struct DayToolbar: ToolbarContent {
     private var day: CalendarDate { controller.day }
 
     var body: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
+        // In the centre and not at the leading edge, which is where they were until the
+        // window grew a history (ADR-0015 §D5): «indietro» and «avanti» are
+        // `chevron.backward` and `chevron.forward`, the same two glyphs these are, and four
+        // identical chevrons in one strip - two meaning «a week», two meaning «a place» - is
+        // a toolbar that has to be learned rather than read. Beside the scale picker they sit
+        // next to the control that says whether a chevron is worth a day, a week or a month.
+        ToolbarItemGroup(placement: .principal) {
             // One unit of whatever scale is showing: a day, a week, a month. The
             // tooltip says which, because a chevron that means three different things
             // has to say the one it means now.
@@ -26,6 +32,7 @@ struct DayToolbar: ToolbarContent {
                 Label(controller.scale.previousTitle, systemImage: "chevron.left")
             }
             .help(controller.scale.previousTitle)
+            .accessibilityIdentifier("day-previous")
 
             Button { controller.show(.today) } label: {
                 Label("Oggi", systemImage: "smallcircle.filled.circle")
@@ -37,14 +44,13 @@ struct DayToolbar: ToolbarContent {
                 Label(controller.scale.nextTitle, systemImage: "chevron.right")
             }
             .help(controller.scale.nextTitle)
+            .accessibilityIdentifier("day-next")
 
             Button { controller.isChoosingDate = true } label: {
                 Label("Vai a data", systemImage: "calendar")
             }
             .help("Vai a una data")
-        }
 
-        ToolbarItem(placement: .principal) {
             // Three scales of one thing, not three views: whichever is chosen, the day
             // underneath does not move (ADR-0013 §D4).
             Picker("Scala", selection: $controller.scale) {
