@@ -35,9 +35,14 @@ handoff; the spec wins on any conflict.
    canvas, pdf, eml, svg). If Pergamenum disappeared, the data stays usable.
 2. **Fully offline.** No network call in any feature. No server, no account, no
    telemetry.
-3. **Rebuildable index.** The SQLite cache in `.pergamenum/cache.db` (links,
-   backlinks, tasks, thumbnails) regenerates entirely from a vault scan. It is never
-   the source of truth; deleting it loses nothing.
+3. **Rebuildable index.** The SQLite cache (links, backlinks, tasks, thumbnails)
+   regenerates entirely from a vault scan. It is never the source of truth; deleting
+   it loses nothing. Since ADR-0017 (`PG-004`) it lives with the rest of a vault's
+   derived state in `~/Library/Application Support/it.stefer.pergamenum/vaults/<id>/`,
+   not inside `.pergamenum/` - "delete `.pergamenum/` to reset the app" is no longer
+   true, and the unit suite must always pass a temporary state base
+   (`VaultState.processDefaultBase()` is test-aware; `VaultSession.init` still takes
+   `stateBase` with no default) rather than resolving the real directory.
 4. **Obsidian compatibility.** The existing "Labs" vault opens without conversion.
    `.canvas` files follow JSON Canvas 1.0 and round-trip with Obsidian. Extra
    properties use prefixed keys and are preserved, not interpreted.

@@ -5,9 +5,11 @@ Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
 
 ## Open Issues
 
-- [ ] `PG-004` **P2** `.pergamenum/` syncs in iCloud with no exclusion anywhere in the codebase, and will produce conflict copies; deciding what moves out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
+- [ ] `PG-004` **P2** `.pergamenum/` syncs in iCloud with no exclusion anywhere in the codebase, and will produce conflict copies; deciding what moves out of the vault needs an ADR — `Sources/Vault/VaultState.swift` <!-- src:manual opened:2026-08-16 -->
   - `cache.db` is harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
   - Widened 2026-08-21, folding in `PG-003`: `.pergamenum/history/` (`NoteHistory`, ADR-0011) and `.pergamenum/ai-journal/` (`WriteJournal`, ADR-0007/0016) carry the identical exposure - verified this session that no `NSURLIsExcludedFromBackupKey` or equivalent exists anywhere; `VaultLayout.isExcludedDirectory` only hides dot-directories from the note scanner and says nothing about iCloud sync or Time Machine. One ADR should decide what moves out of the vault or gets excluded, for all three disposable stores, not three separate decisions.
+  - ADR-0017 written and accepted (PR #82), implementation slicing on `feature/pg-004-state-outside-vault`: **slice 1 done** (`VaultState`, the vault id in `settings.json`, `cache.db` and `thumbnails/` moved to Application Support by delete-and-rebuild, D4's backup exclusion, the test-isolation seam for both the unit suite and the UI suite). Verified by hand on the live iCloud vault (`~/Library/Mobile Documents/com~apple~CloudDocs/Vaults/Pergamena/`): `.pergamenum/` now holds only `settings.json` and `vocabolari.json`, the state directory carries `cache.db` and `vault.json`, `tmutil isexcluded` confirms D4. Slices 2 (`history/`, `ai-journal/`, the conflict-copy report) and 3 (connector parity, the prose sweep) still open.
+  - Found by hand, not by the ADR or the plan: `VaultController.open(_:)` had no test-isolation seam of its own and was writing into the real `~/Library/Application Support/it.stefer.pergamenum/` from every one of the fourteen unit-test files that build a `VaultController`, and separately from every UI test (the app process a UI test launches carries no `XCTestConfigurationFilePath`, so the unit-test env-var check alone missed it). Both fixed - see `VaultState.processDefaultBase()` and the `-stateBase` launch argument.
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
@@ -61,6 +63,7 @@ Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
   - Each is applied before the milestone that depends on it, never after.
   - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
   - **§17 Viste is overdue by this entry's own rule**: M11 shipped the query language, the renderers and the board's write, and the SPEC still does not describe any of it. ADR-0009 carries the design, so nothing is undocumented, but the spec is no longer the place to read what the app does.
+  - ADR-0017 §D5 files a fourth amendment here rather than blocking `PG-004`: the tree at §85 ("cache, thumbnail, impostazioni, vocabolari" under `.pergamenum/`), §6.5 ("cache in `.pergamenum/thumbnails/`") and §12 ("Indice in `.pergamenum/cache.db`") are all false once cache.db and thumbnails/ move to Application Support, and doubly so once history/ and ai-journal/ follow in slice 2.
 
 ## Blocked / Decisions Needed
 
