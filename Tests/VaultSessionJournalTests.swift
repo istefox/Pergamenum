@@ -16,7 +16,7 @@ private func note(_ body: String = "Corpo.") -> String {
 private func armedSession(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note(), to: "Uno.md")
     try vault.write(note(), to: "Due.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     // The app arms none of this (ADR-0007 §D6); a test that wants to read the journal has to
     // arm it exactly as a connector does.

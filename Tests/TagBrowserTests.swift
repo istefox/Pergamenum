@@ -27,7 +27,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     try vault.write(note(tags: ["type-note", "topic-gomma"]), to: "Curva.md")
     try vault.write(note(tags: ["type-note", "client-nexion"]), to: "Offerta.md")
     try vault.write(note(tags: ["type-note", "topic-gomma-metallo"]), to: "Metallo.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }

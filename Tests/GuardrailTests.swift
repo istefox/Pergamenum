@@ -52,7 +52,7 @@ import Testing
 @Test func aDryRunComputesTheWriteAndDoesNotPerformIt() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Alfa\n", to: "T.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let onDiskBefore = try String(contentsOf: vault.root.appending(path: "T.md"), encoding: .utf8)
@@ -76,7 +76,7 @@ import Testing
 @MainActor
 @Test func aDryRunOfANewNoteCreatesNoFile() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     session.isDryRun = true
 
@@ -94,7 +94,7 @@ import Testing
 @Test func aJournalledWriteKeepsWhatItReplaced() async throws {
     let vault = try TemporaryVault()
     try vault.write("prima\n", to: "N.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     session.journal = WriteJournal(root: vault.root)
     session.journalCommand = "prova"
@@ -114,7 +114,7 @@ import Testing
 @MainActor
 @Test func aJournalMarksACreationAsHavingNoTextBefore() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     session.journal = WriteJournal(root: vault.root)
 
@@ -131,7 +131,7 @@ import Testing
 @Test func aDryRunIsNotJournalled() async throws {
     let vault = try TemporaryVault()
     try vault.write("prima\n", to: "N.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     session.journal = WriteJournal(root: vault.root)
     session.isDryRun = true

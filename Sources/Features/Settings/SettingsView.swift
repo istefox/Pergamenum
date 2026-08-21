@@ -262,7 +262,7 @@ struct SettingsView: View {
                 .disabled(vault.root == nil)
             Button("Svuota cache e ricostruisci") { Task { await vault.clearCache() } }
                 .disabled(vault.root == nil)
-            Text("La cache sta in .pergamenum/cache.db e non è mai la fonte di verità: una riga il cui file è cambiato viene scartata.")
+            Text("La cache vive fuori dal vault e non è mai la fonte di verità: una riga il cui file è cambiato viene scartata.")
                 .themedText(.caption, color: .textTertiary)
 
             if !vault.index.failures.isEmpty {

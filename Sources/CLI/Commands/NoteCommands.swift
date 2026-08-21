@@ -4,7 +4,7 @@ import Foundation
 enum NoteCommands {
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
 
         switch arguments.word(1) {
         case "list": return list(session, arguments)

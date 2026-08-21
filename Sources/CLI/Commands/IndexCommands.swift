@@ -14,7 +14,7 @@ enum IndexCommands {
 
     @MainActor
     private static func stats(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         let stats = VaultAPI.stats(session)
 
         if arguments.has("json") {

@@ -231,7 +231,7 @@ import Testing
 @Test func theExistingNoteDestinationRefusesUntilANoteIsChosen() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-17\ntags:\n  - type-note\n---\n\nCorpo.\n", to: "Nota.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let controller = CaptureController()
@@ -253,7 +253,7 @@ import Testing
 @MainActor
 @Test func aCaptureWritesThroughTheConnectorsDoorAndNotAroundIt() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let controller = CaptureController()
@@ -272,7 +272,7 @@ import Testing
 @MainActor
 @Test func theDatesReachTheTaskLineInTheFormTheParserReadsBack() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let controller = CaptureController()

@@ -8,7 +8,7 @@ import Foundation
 enum SearchCommands {
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         let hits = try VaultAPI.search(
             session, arguments.rest(from: 1), limit: arguments["limit"].flatMap(Int.init)
         )

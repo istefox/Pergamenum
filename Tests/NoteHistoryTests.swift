@@ -141,7 +141,7 @@ import Testing
 @MainActor
 @Test func savingANoteThroughTheSessionRecordsAHistorySnapshot() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     try session.write("contenuto\n", to: "N.md")
@@ -154,7 +154,7 @@ import Testing
     // The scope guard (ADR-0011 D2): a canvas write goes through the same
     // `VaultSession.write`, and must not gain a history directory of its own.
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     try session.write("{\"nodes\":[],\"edges\":[]}", to: "Board.canvas")

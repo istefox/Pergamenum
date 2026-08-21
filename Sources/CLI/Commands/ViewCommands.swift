@@ -17,7 +17,7 @@ enum ViewCommands {
 
     @MainActor
     private static func list(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         let views = VaultAPI.views(session)
 
         if arguments.has("json") {
@@ -33,7 +33,7 @@ enum ViewCommands {
 
     @MainActor
     private static func runOne(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         guard let path = arguments.word(2) else {
             throw CommandError("«perg view run» vuole il percorso di una nota", code: .usage)
         }

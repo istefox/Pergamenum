@@ -98,7 +98,7 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
     // change could otherwise alter every note the app has ever created rather than only
     // the templated ones.
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let result = try session.createNote(title: "Semplice", date: sampleDate)
@@ -110,7 +110,7 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
 @Test func creatingFromATemplateKeepsItsBodyAndNotItsFrontmatter() async throws {
     let vault = try TemporaryVault()
     try vault.write(templateWithFrontmatter, to: "Templates/Riunione.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let body = NoteTemplate.substituting(
@@ -144,7 +144,7 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
     try vault.write(templateWithFrontmatter, to: "Templates/Riunione.md")
     try vault.write(templateWithFrontmatter, to: "Templates/Verbale.md")
     try vault.write(templateWithFrontmatter, to: "01 Progetti/Ordinaria.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     // Title-sorted, and the ordinary note is absent - the negative control, since the

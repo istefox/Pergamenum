@@ -9,7 +9,7 @@ enum Writing {
     /// Opens a session and arms it for a write.
     @MainActor
     static func session(_ arguments: Arguments, command: String) async throws -> VaultSession {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         VaultAPI.arm(session, command: command, dryRun: arguments.has("dry-run"))
         return session
     }

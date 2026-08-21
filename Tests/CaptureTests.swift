@@ -24,7 +24,7 @@ Corpo, con un [[Link che non esiste]].
 @MainActor
 private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note, to: "Nota.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }

@@ -20,7 +20,7 @@ private let board = """
 
 @MainActor
 private func armedSession(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     // The app arms none of this (ADR-0007 §D6); a test that wants to read the journal has to
     // arm it exactly as a connector does.

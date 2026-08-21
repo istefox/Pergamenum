@@ -26,7 +26,7 @@ Corpo, con un [[Link che non esiste]].
 @MainActor
 private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note, to: "Nota.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }
@@ -86,7 +86,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
         "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Chiamare Rossi\n- [ ] Chiamare Bianchi\n",
         to: "Chiamate.md"
     )
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     // Completing the wrong task is silent, and whoever asked would find out much later.

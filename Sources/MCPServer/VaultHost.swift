@@ -22,9 +22,9 @@ final class VaultHost {
         self.allowsWriting = allowsWriting
     }
 
-    static func open(at root: URL, allowsWriting: Bool) async -> VaultHost {
+    static func open(at root: URL, allowsWriting: Bool) async throws -> VaultHost {
         VaultHost(
-            session: await VaultResolution.session(at: root), allowsWriting: allowsWriting
+            session: try await VaultResolution.session(at: root), allowsWriting: allowsWriting
         )
     }
 

@@ -42,8 +42,14 @@ enum VaultResolution {
     /// (SPEC §4.6, principle 5); a vault that has never been opened gets an empty
     /// vocabulary and says so, rather than being judged against tables it does not have.
     @MainActor
-    static func session(at root: URL) async -> VaultSession {
-        let session = VaultSession(root: root, bundledVocabulary: nil)
+    static func session(at root: URL) async throws -> VaultSession {
+        let stateBase: URL
+        do {
+            stateBase = try VaultState.applicationSupportBase()
+        } catch {
+            throw ConnectorError("Application Support non raggiungibile: \(error.localizedDescription)")
+        }
+        let session = VaultSession(root: root, stateBase: stateBase, bundledVocabulary: nil)
         await session.rescan()
         return session
     }

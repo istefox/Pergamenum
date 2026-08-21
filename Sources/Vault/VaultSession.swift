@@ -36,6 +36,9 @@ final class VaultSession {
     @ObservationIgnored let history: NoteHistory
     /// Where the starred paths are read from and written back to (ADR-0012 D6).
     @ObservationIgnored let starredStore: StarredStore
+    /// Where this vault's derived, per-machine state lives, resolved once at open
+    /// (ADR-0017). `cacheURL` and `VaultController`'s `ThumbnailStore` both read it.
+    @ObservationIgnored let state: VaultState
 
     /// The starred notes, as relative paths.
     ///
@@ -70,13 +73,32 @@ final class VaultSession {
     /// crash or a silently wrong tag check.
     private let bundledVocabulary: URL?
 
-    init(root: URL, bundledVocabulary: URL? = nil) {
+    /// `stateBase` has no default, and that is the point: `.claude/test-cmd` runs the
+    /// unit suite at the end of every turn, and a resolver that defaulted to the real
+    /// Application Support directory would have the suite writing into
+    /// `~/Library/Application Support/it.stefer.pergamenum/` the first time a test
+    /// forgot to override it - the same failure `RecentVaults.volatile()` exists to
+    /// prevent, now with files instead of defaults. `VaultController` and
+    /// `VaultResolution` pass `try VaultState.applicationSupportBase()`; the tests
+    /// pass a temporary one (ADR-0017).
+    init(root: URL, stateBase: URL, bundledVocabulary: URL? = nil) {
         self.root = root
         self.store = NoteStore(root: root)
+        self.bundledVocabulary = bundledVocabulary
+
+        // Settings first, because the vault id lives in them and `state` needs it
+        // resolved before anything that reads from it is built.
+        let loaded = Self.readSettings(in: root)
+        let identity = Self.resolveIdentity(settings: loaded.settings, root: root)
+        self.settings = identity.settings
+        self.problems = loaded.problems + identity.problems
+        self.state = VaultState(id: identity.id, base: stateBase)
+
         self.history = NoteHistory(root: root)
         self.starredStore = StarredStore(root: root)
-        self.bundledVocabulary = bundledVocabulary
-        loadSettings()
+
+        problems.append(contentsOf: state.migrateIfNeeded(from: privateDirectory, root: root))
+
         loadVocabulary()
         starred = starredStore.load()
     }
@@ -240,8 +262,8 @@ final class VaultSession {
         if !problem.isEmpty { problems.append("cache: \(problem)") }
     }
 
-    /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
-    /// (SPEC §12, Avanzate › svuota cache).
+    /// Empties the cache (ADR-0017: beside the vault, not inside `.pergamenum/`) and
+    /// rebuilds the index from the vault (SPEC §12, Avanzate › svuota cache).
     func clearCache() async {
         IndexCache(url: cacheURL).clear()
         await rescan()
@@ -254,24 +276,7 @@ final class VaultSession {
     }
 
     private var cacheURL: URL {
-        privateDirectory.appending(path: VaultLayout.cacheFile)
-    }
-
-    private func loadSettings() {
-        let url = privateDirectory.appending(path: VaultLayout.settingsFile)
-        guard let data = try? Data(contentsOf: url) else {
-            settings = .default
-            return
-        }
-        do {
-            settings = try JSONDecoder().decode(VaultSettings.self, from: data)
-        } catch {
-            // Defaults rather than a failure to open: a damaged settings file must not
-            // make the vault unreachable. It is not overwritten either, so the user
-            // can repair it by hand.
-            settings = .default
-            problems.append("\(VaultLayout.settingsFile): \(error.localizedDescription); using defaults")
-        }
+        state.cacheFile
     }
 
     /// Applies a settings change and writes `settings.json` back.

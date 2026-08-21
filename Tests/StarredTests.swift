@@ -25,7 +25,7 @@ Testo.
 private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note, to: "Nexion.md")
     try vault.write(note, to: "Progetti/Sospensione.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }
@@ -80,7 +80,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     session.toggleStar("Nexion.md")
 
     // A second session over the same root is what the next launch is.
-    let reopened = VaultSession(root: vault.root)
+    let reopened = VaultSession(root: vault.root, stateBase: vault.stateBase)
     #expect(reopened.isStarred("Nexion.md"))
     #expect(!reopened.isStarred("Progetti/Sospensione.md"))
 }
@@ -142,7 +142,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 
     // What a vault edited outside the app leaves behind: a path with no file under it.
     session.starredStore.save(["Sparita.md", "Nexion.md"])
-    let reopened = VaultSession(root: vault.root)
+    let reopened = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await reopened.rescan()
 
     #expect(reopened.starredNotes.map(\.relativePath) == ["Nexion.md"])
