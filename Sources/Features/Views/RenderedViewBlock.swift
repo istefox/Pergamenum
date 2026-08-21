@@ -59,6 +59,10 @@ struct RenderedViewBlock: View {
         // The id is what §D7 turns into a re-evaluation: the source itself, the scan
         // generation, and the refresh. Not a timer, and not every redraw.
         .task(id: "\(source)|\(queries?.generation ?? -1)|\(reloads)") { evaluate() }
+        // A block carrying a relative bound means a different set of notes tomorrow, with no
+        // file having changed (ADR-0014 §D4). Bumping the same counter the refresh button
+        // uses, because it is the same act.
+        .onDayChange { reloads += 1 }
     }
 
     private func evaluate() {

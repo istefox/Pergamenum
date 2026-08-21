@@ -149,7 +149,7 @@ import Testing
 }
 
 @Test func parsesDateComparisons() throws {
-    let day = CalendarDate(iso: "2026-08-01")!
+    let day = ViewDateBound.day(CalendarDate(iso: "2026-08-01")!)
     #expect(try ViewFilter.parse("date >= 2026-08-01", line: 1) == .comparison(.date, .atLeast, day))
     #expect(try ViewFilter.parse("modified<2026-08-01", line: 1) == .comparison(.modified, .lessThan, day))
     #expect(try ViewFilter.parse("date == 2026-08-01", line: 1) == .comparison(.date, .equalTo, day))
