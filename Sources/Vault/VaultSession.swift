@@ -141,6 +141,13 @@ final class VaultSession {
     /// What the journal records as the cause. Set by the caller before it writes.
     @ObservationIgnored var journalCommand = ""
 
+    /// The gesture currently open, if one is (ADR-0016 §D1).
+    ///
+    /// Every write made while this is set carries it, which is what lets `undo` reverse a
+    /// rename as one thing instead of as a burst of unrelated writes. Opened and closed only by
+    /// `transaction(_:_:)` in `VaultSession+Journal`; nothing else assigns it.
+    @ObservationIgnored var currentOperation: String?
+
     /// When true, writes are computed and not performed.
     ///
     /// The alternative was a `preview` variant of every write, which is two code paths
@@ -175,7 +182,8 @@ final class VaultSession {
                 hashBefore: existing?.record.contentHash,
                 hashAfter: hash,
                 textBefore: existing?.text,
-                command: journalCommand
+                command: journalCommand,
+                operation: currentOperation
             ))
             // The write happened; the net did not. Say so rather than pretending the
             // change can be undone.
