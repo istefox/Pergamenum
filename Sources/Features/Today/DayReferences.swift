@@ -39,6 +39,14 @@ struct DayReferences: View {
                     taskRow(task)
                 }
 
+                if !rolledOver.isEmpty {
+                    Divider()
+                    Text("RIMANDATI").themedText(.caption, color: .textTertiary)
+                    ForEach(rolledOver) { task in
+                        rolledOverRow(task)
+                    }
+                }
+
                 if !controller.reminders.isEmpty {
                     Divider()
                     Text("PROMEMORIA").themedText(.caption, color: .textTertiary)
@@ -86,6 +94,44 @@ struct DayReferences: View {
         return row
             .draggable(TaskDragPayload(path: task.sourcePath, lineIndex: task.lineIndex).text)
             .contextMenu { blockMenuItem(for: task) }
+    }
+
+    // MARK: Rimandati
+
+    /// The unfinished tasks of the days before this one, when the setting is on
+    /// (ADR-0013 §D1). Empty by default, and empty on any day that is not today: the
+    /// rollover answers "what did I not get to", which is a question about now.
+    private var rolledOver: [TaskItem] {
+        guard vault.settings.rollover, day == .today else { return [] }
+        return vault.index.rolledOverTasks(on: day, daysBack: vault.settings.rolloverDays)
+    }
+
+    /// A rolled-over row, which is an ordinary row plus the one thing that makes it
+    /// honest: the day the task still belongs to.
+    ///
+    /// Without that marker this would be the silent move §7.3 refuses, drawn instead of
+    /// written - the file says Monday and the screen would say today. With it, the row
+    /// says where the task is, and «Porta a oggi» is the gesture that moves it.
+    private func rolledOverRow(_ task: TaskItem) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
+            Image(systemName: "square")
+                .foregroundStyle(theme.color(.taskOverdue))
+                .onTapGesture { vault.toggle(task) }
+            Text(task.text).themedText(.body)
+            if let scheduled = task.scheduled {
+                Text(RolloverMarker.text(for: scheduled))
+                    .themedText(.caption, color: .taskOverdue)
+            }
+            Spacer()
+            Button("Porta a oggi") { vault.apply(.schedule(.today), to: task) }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.color(.accentPrimary))
+                .help("Riscrive «>data» nella nota di origine")
+        }
+        .accessibilityIdentifier("rolled-over-row")
+        // Draggable like every other scheduled task: the drop of §D5 rewrites the same
+        // marker this row is about, so refusing the drag here would be arbitrary.
+        .draggable(TaskDragPayload(path: task.sourcePath, lineIndex: task.lineIndex).text)
     }
 
     /// What «Inserisci Blocco Tempo» was, in the menu instead of on the row.

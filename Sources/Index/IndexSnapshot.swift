@@ -242,6 +242,37 @@ struct IndexSnapshot: Sendable {
         }
     }
 
+    /// The unfinished tasks of the days before this one, most recent first (ADR-0013 §D1).
+    ///
+    /// **Nothing here is rewritten and nothing is stored.** A rolled-over task is a task whose
+    /// `>date` still says Monday, computed on Thursday; the marker the row draws says which day
+    /// it belongs to, and that marker is the whole difference between surfacing a task and the
+    /// silent move SPEC §7.3 refuses.
+    ///
+    /// What `tasks(for: .today, on:)` already shows is excluded, and that exclusion is the
+    /// reason this is a separate list rather than a wider filter: a task late by its `!` date is
+    /// already on the day, and drawing it twice under two headings would make one list read as
+    /// two problems.
+    ///
+    /// - Parameter daysBack: how far back to look, from `VaultSettings.rolloverDays`. A window
+    ///   and not "everything before today", because a quiet fortnight would otherwise open on a
+    ///   list nobody reads - which is the failure mode that makes rollover unpopular elsewhere.
+    func rolledOverTasks(on day: CalendarDate, daysBack: Int) -> [TaskItem] {
+        guard daysBack > 0 else { return [] }
+        return allTasks
+            .filter(\.state.isOpen)
+            .filter { task in
+                guard let scheduled = task.scheduled, scheduled < day else { return false }
+                guard daysBetween(scheduled, day) <= daysBack else { return false }
+                // Already on the day under its own heading: a deadline that has passed is what
+                // `.today` calls overdue, and this list is about the `>` marker, not the `!`.
+                return !task.isOverdue(on: day)
+            }
+            // Most recent first: yesterday's is the one likely to be moved, and the oldest is
+            // the one likely to be reconsidered.
+            .sorted { ($0.scheduled ?? day, $0.id) > ($1.scheduled ?? day, $1.id) }
+    }
+
     /// Open tasks carrying a `!` date on or after a day, soonest first.
     ///
     /// The day view's bell shows these: a deadline is the one date that matters before
@@ -267,8 +298,18 @@ struct IndexSnapshot: Sendable {
     }
 
     /// Open task counts per view, for the sidebar badges.
-    func taskCounts(on day: CalendarDate) -> [TaskView: Int] {
-        Dictionary(uniqueKeysWithValues: TaskView.allCases.map { ($0, tasks(for: $0, on: day).count) })
+    ///
+    /// - Parameter rolloverDays: the window `.today` also surfaces (ADR-0013 §D1), or 0 when the
+    ///   setting is off. It is a parameter because the badge has to agree with the list: with
+    ///   rollover on and nothing scheduled for today, *Oggi* draws seven rows and a badge
+    ///   counting only what belongs to the day would leave them next to a blank number.
+    func taskCounts(on day: CalendarDate, rolloverDays: Int = 0) -> [TaskView: Int] {
+        let rolled = rolloverDays > 0
+            ? rolledOverTasks(on: day, daysBack: rolloverDays).count
+            : 0
+        return Dictionary(uniqueKeysWithValues: TaskView.allCases.map { view in
+            (view, tasks(for: view, on: day).count + (view == .today ? rolled : 0))
+        })
     }
 
     /// Whole days from one date to another, both at midnight.

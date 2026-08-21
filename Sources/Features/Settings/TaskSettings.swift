@@ -30,6 +30,30 @@ struct TaskSettings: View {
                     + "e per i blocchi creati da un task con orario."
             )
                 .themedText(.caption, color: .textTertiary)
+
+            Toggle("Mostra i task rimandati", isOn: Binding(
+                get: { vault.settings.rollover },
+                set: { value in vault.updateSettings { $0.rollover = value } }
+            ))
+            .accessibilityIdentifier("settings-rollover")
+            Text(
+                "La giornata e la vista Oggi mostrano anche i task pianificati e non finiti "
+                    + "dei giorni prima, sotto «Rimandati», con scritto a quale giorno "
+                    + "appartengono. Mostra, non sposta: il file non cambia finché non usi "
+                    + "«Porta a oggi»."
+            )
+                .themedText(.caption, color: .textTertiary)
+
+            Picker("Quanti giorni indietro", selection: Binding(
+                get: { vault.settings.rolloverDays },
+                set: { value in vault.updateSettings { $0.rolloverDays = value } }
+            )) {
+                ForEach(VaultSettings.rolloverWindows, id: \.self) { days in
+                    Text(days == 1 ? "1 giorno" : "\(days) giorni").tag(days)
+                }
+            }
+            .accessibilityIdentifier("settings-rollover-days")
+            .disabled(!vault.settings.rollover)
         }
         .formStyle(.grouped)
         .disabled(vault.root == nil)
