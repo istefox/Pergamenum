@@ -14,7 +14,8 @@ final class SectionToolbarsUITests: XCTestCase {
         try makeVault()
 
         app = XCUIApplication()
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                               "-disableCalendar", "YES"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
     }

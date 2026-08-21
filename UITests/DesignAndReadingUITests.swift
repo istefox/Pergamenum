@@ -25,7 +25,8 @@ final class DesignAndReadingUITests: XCTestCase {
         // and its `UserDefaults(suiteName:)` is a private copy in its own container.
 
         app = XCUIApplication()
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                               "-disableCalendar", "YES"]
         app.launch()
     }
 

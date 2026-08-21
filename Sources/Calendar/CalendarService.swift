@@ -134,6 +134,22 @@ enum CalendarAccess: Equatable, Sendable {
 final class EventKitStore: CalendarStore {
     private let store = EKEventStore()
 
+    /// Whether this launch keeps EventKit out entirely: `-disableCalendar YES`.
+    ///
+    /// **For the UI suite, and it closes a real leak rather than buying a convenience.** Those
+    /// tests give themselves a throwaway vault, but the calendar they read is the one on the
+    /// machine - so `testEachSectionDrawsItsOwnHours`, which sets a window of 09:00-14:00 and
+    /// checks that nothing is drawn past it, passed or failed on whether the person running it
+    /// had an appointment that afternoon. It failed on 2026-08-21 against a real event at
+    /// 16:30, and had been failing the same way before any of that day's work: the grid widens
+    /// itself to reach an event outside the window, by design, so the assertion was measuring
+    /// somebody's diary.
+    ///
+    /// A launch argument rather than a compile-time flag, because the app the UI suite drives
+    /// has to be the app that ships; a build with the calendar compiled out would not be the
+    /// thing under test.
+    private let isIsolated = UserDefaults.standard.bool(forKey: "disableCalendar")
+
     private(set) var eventAccess: CalendarAccess = .notDetermined
     private(set) var reminderAccess: CalendarAccess = .notDetermined
     /// The calendar Pergamenum writes time blocks to, by title (SPEC §8.3).
@@ -282,6 +298,7 @@ final class EventKitStore: CalendarStore {
     }
 
     private func fetch(from start: Date, to end: Date) -> [CalendarEvent] {
+        guard !isIsolated else { return [] }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         return store.events(matching: predicate)
             .map { event in
@@ -338,6 +355,7 @@ final class EventKitStore: CalendarStore {
     }
 
     func refreshReminders(on day: CalendarDate) async {
+        guard !isIsolated else { return }
         guard reminderAccess.isGranted, let range = Self.dayRange(day) else { return }
         // No lower bound, and that is the fix for a bug this app was creating for
         // itself. A reminder whose due date carries no time - which is what
