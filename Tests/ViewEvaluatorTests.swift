@@ -71,10 +71,13 @@ private let vault = Corpus(records: [
     ),
 ])
 
-private func evaluate(_ source: String, over corpus: Corpus = vault, body: String? = nil) throws -> ViewResult {
+private func evaluate(
+    _ source: String, over corpus: Corpus = vault, body: String? = nil,
+    today: CalendarDate = .today
+) throws -> ViewResult {
     let block = try ViewBlock.parse(source)
-    guard let body else { return ViewEvaluator.evaluate(block, over: corpus) }
-    return ViewEvaluator.evaluate(block, over: corpus) { _ in body }
+    guard let body else { return ViewEvaluator.evaluate(block, over: corpus, today: today) }
+    return ViewEvaluator.evaluate(block, over: corpus, today: today) { _ in body }
 }
 
 // MARK: - Scope and filter
@@ -251,4 +254,42 @@ private func evaluate(_ source: String, over corpus: Corpus = vault, body: Strin
     #expect(result.groups.count == 1)
     #expect(result.groups[0].label == nil)
     #expect(result.groups[0].rows.count == 4)
+}
+
+// MARK: - I limiti relativi (ADR-0014)
+
+@Test func aRelativeBoundIsResolvedAgainstTheDayItIsGiven() throws {
+    // The corpus is modified between 2026-08-02 and 2026-08-19. Asked on a Friday whose week
+    // began on the 17th, the two notes touched on the 18th and the 19th answer and the two
+    // touched earlier do not.
+    let friday = CalendarDate(iso: "2026-08-21")!
+
+    let thisWeek = try evaluate("""
+    where: modified >= week-start
+    sort: title
+    render: list
+    """, today: friday)
+    #expect(thisWeek.rows.map(\.title) == ["Presse", "Vibrofer"])
+
+    // Widened to a fortnight, everything modified since the 7th comes in.
+    let fortnight = try evaluate("""
+    where: modified >= today-14
+    render: list
+    """, today: friday)
+    #expect(fortnight.total == 3)
+}
+
+@Test func theSameBlockAnswersDifferentlyOnADifferentDay() throws {
+    // The point of the whole ADR, and the consequence it warns will look like a bug: no file
+    // changed between these two calls, and the answer moved.
+    let source = """
+    where: modified >= week-start
+    render: list
+    """
+
+    let friday = try evaluate(source, today: CalendarDate(iso: "2026-08-21")!)
+    let weekLater = try evaluate(source, today: CalendarDate(iso: "2026-08-28")!)
+
+    #expect(friday.total == 2)
+    #expect(weekLater.total == 0)
 }

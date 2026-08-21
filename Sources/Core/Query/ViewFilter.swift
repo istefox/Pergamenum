@@ -30,8 +30,12 @@ indirect enum ViewFilter: Equatable, Sendable {
     case has(ViewField)
     /// `text("frequenza")`: the one term that reads the file (§D3, cost in §D7).
     case text(String)
-    /// `date >= 2026-08-01`, `modified < 2026-08-19`.
-    case comparison(ViewField, Comparison, CalendarDate)
+    /// `date >= 2026-08-01`, `modified < 2026-08-19`, `modified >= week-start`.
+    ///
+    /// The bound may be relative (ADR-0014), which is why it is a `ViewDateBound` and not a
+    /// `CalendarDate`: what day it means is not known until somebody says which day the view
+    /// is being read on, and this type is parsed long before that.
+    case comparison(ViewField, Comparison, ViewDateBound)
 
     enum Comparison: String, Equatable, Sendable {
         case greaterThan = ">"
@@ -187,11 +191,16 @@ extension ViewFilter {
                     reason: "solo date e modified si confrontano con \(symbol.rawValue), non «\(name)»"
                 )
             }
-            guard case .word(let raw) = current, let day = CalendarDate(iso: raw) else {
-                throw ViewBlockError(line: line, reason: "dopo \(symbol.rawValue) serve una data YYYY-MM-DD")
+            guard case .word(let raw) = current, let bound = ViewDateBound.parse(raw) else {
+                throw ViewBlockError(
+                    line: line,
+                    reason: "dopo \(symbol.rawValue) serve una data YYYY-MM-DD, "
+                        + "«\(ViewDateBound.todayKeyword)», «\(ViewDateBound.todayKeyword)-N» "
+                        + "o «\(ViewDateBound.weekStartKeyword)»"
+                )
             }
             index += 1
-            return .comparison(field, symbol, day)
+            return .comparison(field, symbol, bound)
         }
 
         mutating func expectEnd() throws {

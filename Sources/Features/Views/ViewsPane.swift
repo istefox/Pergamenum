@@ -39,6 +39,9 @@ struct ViewsPane: View {
         }
         .background(theme.color(.backgroundPrimary))
         .task(id: vault.scanGeneration) { scan() }
+        // The counts beside each row are answers, and an answer to «modified >= week-start»
+        // is a different one on Monday (ADR-0014 §D4).
+        .onDayChange { scan() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("views-pane")
     }
@@ -235,10 +238,21 @@ enum ViewFilterText {
         case .task(let state): "task \(stateName(state))"
         case .has(let field): "con \(field.rawValue)"
         case .text(let needle): "testo «\(needle)»"
-        case .comparison(let field, let comparison, let date):
-            "\(field.rawValue) \(comparison.rawValue) \(date.italianForm)"
+        case .comparison(let field, let comparison, let bound):
+            // The bound as it was written, not as it resolves today: this line explains the
+            // block to somebody reading it, and «modified >= 17/08/2026» would describe an
+            // answer rather than the question the block asks.
+            "\(field.rawValue) \(comparison.rawValue) \(boundText(bound))"
         case .all, .and, .or, .not: describe(filter)
         }
+    }
+
+    /// A written-out day in the Italian form the interface uses everywhere else; a relative
+    /// bound in the words the block carries, because translating «week-start» to a date would
+    /// hide the only interesting thing about it.
+    private static func boundText(_ bound: ViewDateBound) -> String {
+        if case .day(let day) = bound { return day.italianForm }
+        return bound.text
     }
 
     private static func stateName(_ state: TaskItem.State) -> String {
