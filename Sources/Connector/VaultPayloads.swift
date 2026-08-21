@@ -179,6 +179,31 @@ extension VaultAPI {
         let note: String?
     }
 
+    /// What a rename or a move left behind (ADR-0016).
+    ///
+    /// No `diff`: many files can change - the note itself and every board or note that
+    /// pointed at it - and a single-file diff would not say which. `applied` false is a
+    /// dry run, exactly as `WriteSummary`'s own field means; `rewrittenPaths` and
+    /// `failures` are `NoteFileOperations.Outcome` read straight through, `failures`
+    /// never swallowed (§D4).
+    struct FileMoveSummary: Encodable {
+        let newPath: String
+        let applied: Bool
+        let rewrittenPaths: [String]
+        let failures: [String]
+    }
+
+    /// What trashing a note left behind (ADR-0016).
+    ///
+    /// `orphaned` is the dangling-link report `trashNote` already computes: the notes
+    /// that now point at nothing. `applied` false is a dry run - the file is still
+    /// there, and `orphaned` describes what trashing it *would* leave broken.
+    struct TrashSummary: Encodable {
+        let path: String
+        let applied: Bool
+        let orphaned: [String]
+    }
+
     /// What undoing a whole gesture left behind (ADR-0016 §D5).
     ///
     /// No `failures` field: `undo(_:id:)` is all-or-nothing for an operation id, so a refusal is

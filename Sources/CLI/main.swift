@@ -36,6 +36,9 @@ func noteGroup(_ arguments: Arguments) async throws -> ExitCode {
     switch arguments.word(1) {
     case "new": return try await WriteCommands.noteNew(arguments)
     case "append": return try await WriteCommands.noteAppend(arguments)
+    case "rename": return try await WriteCommands.noteRename(arguments)
+    case "move": return try await WriteCommands.noteMove(arguments)
+    case "trash": return try await WriteCommands.noteTrash(arguments)
     default: return try await NoteCommands.run(arguments)
     }
 }

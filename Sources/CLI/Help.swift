@@ -26,6 +26,9 @@ enum Help {
 
       note new <titolo>                 [--folder <cartella>] [--topic <tag>] [--date <data>]
       note append <percorso> <testo>    aggiunge in fondo, dopo una riga vuota
+      note rename <percorso> <titolo>   rinomina, riscrivendo i link e le board che puntano
+      note move <percorso> <cartella>   sposta; cartella vuota per portarla alla radice
+      note trash <percorso>             al cestino; segnala chi resta senza link
 
     CATTURA
       capture <testo>      [--dest note|task|today|note:PERCORSO]  (note)
@@ -90,8 +93,8 @@ enum Help {
       2  il comando era chiaro e non si è potuto eseguire
 
     Ogni scrittura è registrata in .pergamenum/ai-journal/ con il testo che aveva
-    sostituito. Rinominare, spostare ed eliminare non ci sono ancora: riscrivono i link
-    in molte note in una volta, e finché il journal non li copre per intero è meglio
-    farlo dall'app.
+    sostituito. Rinominare, spostare ed eliminare aprono un'unica operazione: «journal
+    undo» accetta anche il suo id, e rimette a posto tutto quel che ha toccato oppure
+    rifiuta l'intera operazione se nel frattempo qualcosa è cambiato.
     """
 }

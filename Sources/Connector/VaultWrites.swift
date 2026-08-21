@@ -94,6 +94,64 @@ extension VaultAPI {
         return summarise(result, session: session)
     }
 
+    // MARK: Renaming, moving, trashing (ADR-0016)
+
+    @MainActor
+    static func renameNote(
+        _ session: VaultSession, at path: String, to newTitle: String
+    ) throws -> FileMoveSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        guard !newTitle.isEmpty else {
+            throw ConnectorError("serve il nuovo titolo", usage: true)
+        }
+        do {
+            let outcome = try session.renameNote(at: path, to: newTitle)
+            return FileMoveSummary(
+                newPath: outcome.newPath,
+                applied: !session.isDryRun,
+                rewrittenPaths: outcome.rewrittenPaths,
+                failures: outcome.failures
+            )
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
+    @MainActor
+    static func moveNote(
+        _ session: VaultSession, at path: String, toFolder folder: String
+    ) throws -> FileMoveSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        do {
+            let outcome = try session.moveNote(at: path, toFolder: folder)
+            return FileMoveSummary(
+                newPath: outcome.newPath,
+                applied: !session.isDryRun,
+                rewrittenPaths: outcome.rewrittenPaths,
+                failures: outcome.failures
+            )
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
+    @MainActor
+    static func trashNote(_ session: VaultSession, at path: String) throws -> TrashSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        do {
+            let orphaned = try session.trashNote(at: path)
+            return TrashSummary(path: path, applied: !session.isDryRun, orphaned: orphaned)
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
     // MARK: Tasks
 
     @MainActor

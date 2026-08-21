@@ -35,6 +35,42 @@ enum Writing {
         Output.line("prova: niente è stato scritto. Togli --dry-run per applicare.")
     }
 
+    /// Reports a rename or a move: the destination, and every note or board rewritten to
+    /// point at it - a fact, not a diff, since more than one file can change.
+    static func report(_ summary: VaultAPI.FileMoveSummary, arguments: Arguments) {
+        if arguments.has("json") {
+            Output.json(summary)
+            return
+        }
+        guard summary.applied else {
+            Output.line("diventerebbe  \(summary.newPath)")
+            for path in summary.rewrittenPaths { Output.line("riscriverebbe  \(path)") }
+            Output.line("")
+            Output.line("prova: niente è stato scritto. Togli --dry-run per applicare.")
+            return
+        }
+        Output.line("spostato  \(summary.newPath)")
+        for path in summary.rewrittenPaths { Output.line("riscritto  \(path)") }
+        for failure in summary.failures { Output.error(failure) }
+    }
+
+    /// Reports trashing a note: whether it went, and who is left pointing at nothing.
+    static func report(_ summary: VaultAPI.TrashSummary, arguments: Arguments) {
+        if arguments.has("json") {
+            Output.json(summary)
+            return
+        }
+        guard summary.applied else {
+            Output.line("finirebbe nel cestino  \(summary.path)")
+            for path in summary.orphaned { Output.line("resterebbe senza link  \(path)") }
+            Output.line("")
+            Output.line("prova: niente è stato scritto. Togli --dry-run per applicare.")
+            return
+        }
+        Output.line("nel cestino  \(summary.path)")
+        for path in summary.orphaned { Output.line("senza link  \(path)") }
+    }
+
     /// Reports undoing a whole gesture: every path it put back, or - since `undo` refuses the
     /// group rather than returning it half done (ADR-0016 §D5) - nothing at all, the refusal
     /// itself having already reached the person as a thrown `ConnectorError`.

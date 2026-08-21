@@ -164,10 +164,8 @@ The protocol layer has no unit tests and cannot have them without linking the MC
 into the app; `scripts/mcp-smoke.py` drives a real server over stdio instead, and is the
 thing to run after touching `Sources/MCPServer`.
 
-Not in either connector, on purpose: EventKit (TCC would attribute a command-line tool's
-calendar access to the terminal that launched it), and `note rename|move|trash`, which
-rewrite links across many notes outside `VaultSession.write` and so are not covered by
-the journal.
+Not in either connector, on purpose: EventKit, because TCC would attribute a command-line
+tool's calendar access to the terminal that launched it.
 
 ## Versioning
 
