@@ -87,6 +87,35 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-21: **M12 completo, `PG-013` chiuso.** ADR-0013 in sei slice: l'ADR con
+  l'emendamento allo SPEC, i mockup, le scale, il drag che scrive, i controlli delle viste,
+  il rollover, le note evento e la revisione settimanale. **Giorno, settimana e mese sono
+  tre scale della stessa vista** ancorate allo stesso giorno, non tre pannelli: la sidebar
+  nomina posti nel vault, e una seconda voce di calendario avrebbe fatto sembrare il giorno
+  e la settimana due fonti di verità sulle stesse quattro cose. La griglia disegna quattro
+  sorgenti e non una quinta, e la daily note è l'intestazione della colonna: un giorno non
+  è una nota che ha una settimana, è un giorno che ha una nota. **I giorni rossi sono
+  calcolati**, non scaricati: undici feste su dodici sono date fisse e la dodicesima segue
+  la Pasqua, che è aritmetica intera corretta per qualsiasi anno; il santo patrono è
+  l'unico giorno che nessun algoritmo conosce ed è quindi un'impostazione, vuota per
+  default. **Un drag scrive una cosa sola**, `>data` nel file di origine, con il journal
+  armato per la durata del gesto e la guardia di conformità differenziale di ADR-0009 §D5 -
+  nessun dry-run, perché un drag che chiede conferma non è un drag. Il blocco che ne nasce
+  si muove e si allunga e **non si trascina dietro il suo task**: il blocco è il piano della
+  giornata, il marcatore `>` è la pianificazione. **Il rollover è un emendamento stretto a
+  SPEC §7.3**, spento per default, con un limite di giorni, e mostra senza spostare: il file
+  continua a dire lunedì e il marcatore sulla riga dice a che giorno il task appartiene -
+  senza quel marcatore sarebbe lo spostamento silenzioso che §7.3 rifiuta, disegnato invece
+  che scritto. La regola NotePlan resta il comportamento predefinito. **I controlli delle
+  viste attività sono ricordati per vista**, perché Oggi vuole una lista piatta per ora e
+  Tutti vuole il raggruppamento per nota. **La nota di un evento è sorella della daily
+  note**, `Calendar/YYYYMMDD-<slug>.md`, non una cartella riservata nuova, e nasce nella
+  forma di una cattura, `type-note` + `status-inbox`: un foglio di dialogo che chiede il
+  `topic-*` prima di creare la nota la renderebbe conforme alla nascita e inutilizzata. La
+  revisione settimanale è un template con quattro blocchi vista, e **nessuno dice «questa
+  settimana»**: la grammatica confronta `modified` solo con una data scritta per esteso, e
+  una settimana letterale scadrebbe il lunedì dopo in silenzio (`PG-032`). 1205 test
+  unitari, SwiftLint 50, entrambi i connettori compilano.
 - 2026-08-20: **M11 completo, `PG-012` chiuso.** ADR-0009 in sei slice: il motore, il bump
   di schema, i mockup, i renderer in lettura, la board che scrive, il connettore. Una
   vista è un blocco `pergamenum-view` dentro una nota ordinaria, quindi vive nel vault, si

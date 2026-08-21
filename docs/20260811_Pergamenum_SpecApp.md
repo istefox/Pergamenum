@@ -292,7 +292,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 
 ### 7.3 Comportamenti
 
-- **Nessun rollover automatico** (modello NotePlan): i task non completati restano evidenziati; ripianificazione rapida Cmd+0 oggi, Cmd+1 domani, Cmd+2 +2 giorni, Cmd+3 settimana prossima.
+- **Nessun rollover automatico** (modello NotePlan): i task non completati restano evidenziati; ripianificazione rapida Opt+Cmd+0 oggi, Opt+Cmd+1 domani, Opt+Cmd+2 +2 giorni, Opt+Cmd+3 settimana prossima.
+- *Corretto 2026-08-21 (M12).* Le quattro scorciatoie erano scritte `Cmd+0…3` e sono cambiate con ADR-0012 §D5, quando `Cmd+1…9` è passato alla scelta della scheda: scegliere una scheda è un gesto di ogni minuto contro il pianificare un task per la settimana dopo. Restano modificabili in Impostazioni, quindi ciò che la riga «Porta a oggi» mostra lo legge dallo `ShortcutStore` e non da qui.
 - *Emendato 2026-08-20 (ADR-0013 §D1, M12).* Il rollover torna disponibile **come impostazione, spenta per default**, e **mostra senza spostare**: con l'impostazione attiva la vista giorno elenca i task pianificati e non finiti dei giorni precedenti, entro un limite di giorni configurabile, ciascuno con un marcatore che dice a quale giorno appartiene. Nessun file viene riscritto: spostarne uno resta un tasto che riscrive `>data` nella nota di origine, come già fanno i pannelli. Il formato non cambia e Obsidian non vede niente di nuovo. La regola NotePlan resta il comportamento predefinito, ed è ciò che tiene stretto l'emendamento.
 - Pianificare = **link, non copia**: il task vive in una sola posizione, la daily note lo mostra per riferimento con origine cliccabile.
 - Completare un task da qualsiasi vista aggiorna il file markdown di origine.

@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=31 -->
+<!-- project-tasks: prefix=PG lastId=32 -->
 # PROJECT TASKS
 
-Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 1
+Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -14,15 +14,16 @@ Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 1
 
 ## In Progress
 
-- [ ] `PG-013` **P3** M12 La settimana — three slices of six done (`553aca0`, `cfc46e3`) <!-- src:session opened:2026-08-16 -->
-  - Six slices: the ADR, the mockups, the week and month views, the drag that writes, the view controls and the rollover setting, the event notes and the weekly-review template.
-  - Done 2026-08-20: **D4**, week and month as scales of `DayController.day` rather than panes of their own, with a row that jumps to the task, event or deadline it draws; **D7**, the twelve national holidays computed from the year and three shades of red, with the patron saint as a setting because it is the one red day no algorithm knows. The sidebar became three sections and gained the Viste and Preferite panes, and three commands that had no menu entry got one.
-  - Left: **D5** the drag that rewrites `>date` through the journalled write, **D6** the per-view grouping, sorting and density, **D1** the rollover setting, **D2/D3** the event note born `type-note` + `status-inbox` beside the daily note, and the weekly-review template. All of them exist as approved mockups only, in `Sources/Features/DesignGallery/TaskControlsMockup.swift`.
+*Nothing in progress.*
 
 ## Backlog / To Add
 
 - [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
+- [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
+  - Closed in six slices: the ADR and the SPEC amendment (`d923bda`), the mockups (`f14f21d`), the week, the month, the red days and the sidebar (`553aca0`, `cfc46e3`), the drag and the editable block (`5da6838`), the per-view controls (`c272388`), the rollover (`86c6dab`), the event notes and the weekly review (`3e530c8`).
+  - **The rollover amendment is spent and it is narrow.** SPEC §7.3 keeps the NotePlan rule as the default; the setting is off, bounded to a number of days, and shows without moving. Reopening it further needs its own reason.
+  - The weekly review ships as a template with four view blocks and **none of them says «this week»**: the block grammar compares `modified` against a written-out date only, so a literal week goes stale the following Monday in silence. A relative date literal in the grammar is a decision for its own ADR - see `PG-032`.
 - [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
   - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
@@ -33,6 +34,8 @@ Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 1
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
+- [ ] `PG-032` **P3** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 -->
+  - `comparison` accepts `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1). The weekly review of M12 works around it by ordering on `modified`, and says so in its own prose. A literal such as `oggi-7` would fix it and is a grammar change, so it needs an ADR: the grammar is closed on purpose, and `text()` already showed what an escape hatch costs.
 - [ ] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 — `UITests/DesignAndReadingUITests.swift` <!-- src:session opened:2026-08-20 -->
   - `NoteImageUITests` reaches the same two controls. The words survive only as accessibility labels, so the tests may well still pass; nobody has run them since the change. The UI suite is deliberately outside `.claude/test-cmd` (CLAUDE.md says why), so this needs a run by hand, with every stale instance killed first — see `PG-026`.
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
