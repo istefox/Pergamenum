@@ -7,6 +7,7 @@ import SwiftUI
 /// one type was past what SwiftLint allows and past what is readable.
 struct DayTimeline: View {
     @Environment(\.theme) private var theme
+    @Environment(VaultController.self) private var vault
 
     let controller: DayController
     let calendar: EventKitStore
@@ -43,8 +44,10 @@ struct DayTimeline: View {
                             token: .accentMuted, isEvent: true
                         ),
                         firstHour: firstHour,
-                        hourHeight: hourHeight
+                        hourHeight: hourHeight,
+                        accessory: { eventNoteMark(event) }
                     )
+                    .contextMenu { eventNoteMenuItem(event) }
                 }
                 ForEach(blocks) { block in
                     TimelineBlockBox(
@@ -62,6 +65,54 @@ struct DayTimeline: View {
                 allDayStrip
             }
         }
+    }
+
+    // MARK: La nota dell'evento (ADR-0013 §D2)
+
+    /// «Nota per questo evento» when there is none, and the way to it when there is.
+    ///
+    /// In the context menu and not on the box, for the reason the block's own menu item
+    /// carries: an event at 30 minutes is 18 points tall on this grid, and a button in there
+    /// would take the room the title needs. The mark below is what says the note exists.
+    @ViewBuilder
+    private func eventNoteMenuItem(_ event: CalendarEvent) -> some View {
+        if vault.hasEventNote(for: event.title, on: controller.day) {
+            Button("Apri la nota dell'evento") { openEventNote(event) }
+                .accessibilityIdentifier("open-event-note")
+        } else {
+            Button("Nota per questo evento") { openEventNote(event) }
+                .accessibilityIdentifier("create-event-note")
+        }
+    }
+
+    /// A small mark on the box of an event that has a note, so the ones that do are visible
+    /// without opening five context menus to find out.
+    @ViewBuilder
+    private func eventNoteMark(_ event: CalendarEvent) -> some View {
+        if vault.hasEventNote(for: event.title, on: controller.day) {
+            Image(systemName: "doc.text")
+                .themedText(.caption, color: .accentPrimary)
+                .padding(.horizontal, theme.spacing(.xs))
+                .padding(.vertical, 2)
+        }
+    }
+
+    /// Creates the note when it is missing and opens it either way.
+    ///
+    /// The hour and the attendees are stamped from the event, so the note says what the
+    /// meeting was before anybody types a word into it (§D3).
+    private func openEventNote(_ event: CalendarEvent) {
+        // Nil for an all-day event, which has no hour to stamp: `minutes(from:)` would give
+        // midnight, and «00:00–00:00 · Ferragosto» is worse than saying it lasts all day.
+        let start = event.isAllDay ? nil : time(at: minutes(from: event.start))
+        let end = event.isAllDay ? nil : time(at: minutes(from: event.end))
+        vault.openEventNote(
+            for: event.title,
+            on: controller.day,
+            start: start,
+            end: end,
+            attendees: event.attendees
+        )
     }
 
     /// The hours, and the hour a dragged task lands on (ADR-0013 §D5).
@@ -114,12 +165,16 @@ struct DayTimeline: View {
                             .themedText(.caption, color: .textPrimary)
                             .lineLimit(1)
                         Spacer(minLength: 0)
+                        eventNoteMark(event)
                     }
                     .padding(.horizontal, theme.spacing(.xs))
                     .padding(.vertical, 3)
                     .background(theme.color(.accentMuted))
                     .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                     .help(event.calendarTitle)
+                    // The strip gets the same menu as a box: a holiday or a conference is as
+                    // much something to take notes about as a meeting with an hour on it.
+                    .contextMenu { eventNoteMenuItem(event) }
                 }
             }
             .padding(.horizontal, theme.spacing(.s))
@@ -164,6 +219,10 @@ struct DayTimeline: View {
     /// the un-moved rectangle: the delete button of a block at 09:00 was drawn at the top
     /// of the timeline, an hour and a half of empty grid away from the block it belonged
     /// to. Inside, it is placed on the entry before the entry moves.
+    private func time(at minutes: Int) -> TaskTime {
+        TaskTime(hour: minutes / 60, minute: minutes % 60)
+    }
+
     private func minutes(from date: Date) -> Int {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         return (components.hour ?? 0) * 60 + (components.minute ?? 0)

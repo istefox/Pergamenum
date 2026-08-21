@@ -112,6 +112,14 @@ func canonicalisesTheCounterparty(_ testCase: (raw: String, expected: String)) {
     #expect(ImportNaming.kebabCase("una due tre quattro cinque sei sette otto")
         == "una-due-tre-quattro-cinque-sei")
     #expect(ImportNaming.kebabCase("").isEmpty)
+
+    // An elision the cap cut in half leaves a letter that meant something only as part of the
+    // word that went with it. Found in an event note called «…-gran-premio-d».
+    #expect(ImportNaming.kebabCase("F1: Qualifiche Sprint (Gran Premio d'Olanda)")
+        == "f1-qualifiche-sprint-gran-premio")
+    // Only when the text was truncated: a subject that really ends in one letter keeps it.
+    #expect(ImportNaming.kebabCase("Piano B") == "piano-b")
+    #expect(ImportNaming.kebabCase("L'offerta") == "l-offerta")
 }
 
 /// A pasted screenshot has no name of its own, so the app gives it one. Same shape as

@@ -62,3 +62,40 @@ extension VaultController {
         return placed.block
     }
 }
+
+/// The note an event gets from the timeline (ADR-0013 §D2).
+///
+/// Here rather than in `DayController` for the reason ADR-0007 §D3 gives: the write belongs to
+/// the vault and the day view is one of its callers, not its owner.
+extension VaultController {
+    /// Where an event's note lives, whether or not it exists yet.
+    func eventNotePath(for eventTitle: String, on day: CalendarDate) -> String? {
+        session?.eventNotePath(for: eventTitle, on: day)
+    }
+
+    /// Whether that note is already there, which is what turns the offer into a link: a second
+    /// click on "Nota per questo evento" would otherwise be a second note.
+    func hasEventNote(for eventTitle: String, on day: CalendarDate) -> Bool {
+        guard let path = eventNotePath(for: eventTitle, on: day) else { return false }
+        return index.note(at: path) != nil
+    }
+
+    /// Creates the note if it is missing and opens it either way.
+    @discardableResult
+    func openEventNote(
+        for eventTitle: String,
+        on day: CalendarDate,
+        start: TaskTime? = nil,
+        end: TaskTime? = nil,
+        attendees: [String] = []
+    ) -> String? {
+        guard let session else { return nil }
+        guard let created = session.eventNote(
+            for: eventTitle, on: day, start: start, end: end, attendees: attendees
+        ) else { return nil }
+        // The day's note gained a line, and it may be the one the editor is showing.
+        if let write = created.dailyNote { syncOpenNote(with: write) }
+        openNote(at: created.path)
+        return created.path
+    }
+}
