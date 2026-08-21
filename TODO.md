@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=32 -->
+<!-- project-tasks: prefix=PG lastId=33 -->
 # PROJECT TASKS
 
 Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
@@ -20,6 +20,8 @@ Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
 
 - [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
+- [x] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 <!-- src:session opened:2026-08-20 closed:2026-08-21 -->
+  - Closed by running them: `DesignAndReadingUITests` and `NoteImageUITests` both pass. The words survive as accessibility labels, so the change to icons cost the tests nothing. What the same run *did* find is `PG-033`.
 - [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
   - Closed in six slices: the ADR and the SPEC amendment (`d923bda`), the mockups (`f14f21d`), the week, the month, the red days and the sidebar (`553aca0`, `cfc46e3`), the drag and the editable block (`5da6838`), the per-view controls (`c272388`), the rollover (`86c6dab`), the event notes and the weekly review (`3e530c8`).
   - **The rollover amendment is spent and it is narrow.** SPEC §7.3 keeps the NotePlan rule as the default; the setting is off, bounded to a number of days, and shows without moving. Reopening it further needs its own reason.
@@ -36,8 +38,10 @@ Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
 - [ ] `PG-032` **P3** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 -->
   - `comparison` accepts `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1). The weekly review of M12 works around it by ordering on `modified`, and says so in its own prose. A literal such as `oggi-7` would fix it and is a grammar change, so it needs an ADR: the grammar is closed on purpose, and `text()` already showed what an escape hatch costs.
-- [ ] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 — `UITests/DesignAndReadingUITests.swift` <!-- src:session opened:2026-08-20 -->
-  - `NoteImageUITests` reaches the same two controls. The words survive only as accessibility labels, so the tests may well still pass; nobody has run them since the change. The UI suite is deliberately outside `.claude/test-cmd` (CLAUDE.md says why), so this needs a run by hand, with every stale instance killed first — see `PG-026`.
+- [ ] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 -->
+  - Found by the run `PG-031` asked for: 67 tests, 3 failures, all three failing identically at `5da6838` and so red since before M12's last slices. Two were a stale placeholder, one was the suite reading the machine's real calendar; all three are fixed in `dec6ba3`.
+  - **The point is not the three tests, it is that nobody knew.** The suite is outside `.claude/test-cmd` for a load-bearing reason - with it in there, every turn ended by terminating the app the person at the keyboard was using - so the cost of that decision is a suite whose state is unknown between deliberate runs. Options worth weighing: a second `test-cmd` run only on request, a pre-push hook, or a written rule that the suite runs before every merge to `main`. None of them is free and the choice needs a reason, not a habit.
+  - A full run also needs ~12 minutes of nobody touching the keyboard, and leaves several app instances alive that must be killed before the next one (`PG-026`).
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
