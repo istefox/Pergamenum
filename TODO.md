@@ -1,12 +1,13 @@
 <!-- project-tasks: prefix=PG lastId=34 -->
 # PROJECT TASKS
 
-Updated: 2026-08-21 · Open: 10 (P1: 0) · In progress: 0
+Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
 
 ## Open Issues
 
-- [ ] `PG-004` **P2** `.pergamenum/cache.db` syncs in iCloud and will produce conflict copies; moving it out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
-  - Harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
+- [ ] `PG-004` **P2** `.pergamenum/` syncs in iCloud with no exclusion anywhere in the codebase, and will produce conflict copies; deciding what moves out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
+  - `cache.db` is harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
+  - Widened 2026-08-21, folding in `PG-003`: `.pergamenum/history/` (`NoteHistory`, ADR-0011) and `.pergamenum/ai-journal/` (`WriteJournal`, ADR-0007/0016) carry the identical exposure - verified this session that no `NSURLIsExcludedFromBackupKey` or equivalent exists anywhere; `VaultLayout.isExcludedDirectory` only hides dot-directories from the note scanner and says nothing about iCloud sync or Time Machine. One ADR should decide what moves out of the vault or gets excluded, for all three disposable stores, not three separate decisions.
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
@@ -65,7 +66,6 @@ Updated: 2026-08-21 · Open: 10 (P1: 0) · In progress: 0
 
 - [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Approved 2026-08-20 with M12's slicing, knowing the SPEC rejects rollover by name. ADR-0013 §D1 carries the argument and the three narrowings that keep it an amendment rather than a reversal; §7.3 is amended in place. The number is 13, not the 12 the roadmap predicted: 10, 11 and 12 went to transclusion, templates and tabs.
-- [ ] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
 
@@ -80,6 +80,8 @@ Updated: 2026-08-21 · Open: 10 (P1: 0) · In progress: 0
 
 ## Done
 
+- [x] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
+  - Folded into `PG-004` rather than resolved on its own: `.pergamenum/history/` carries the exact same iCloud-conflict exposure already tracked there for `cache.db`, so one ADR should decide the scope of all of `.pergamenum/`, not each store separately.
 - [x] `PG-005` **P2** `NoteFileOperations` did not go through `VaultSession.write`, so the journal covered only part of a link rewrite and neither connector could offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 closed:2026-08-21 -->
   - Closed by ADR-0016 (`docs/adr/0016-the-journal-records-a-gesture.md`), five commits on `feature/m13-vault-entire`, not yet merged to `main`: the journal gains a gesture vocabulary (`operation`, `kind`, `pathBefore`, all optional so no migration is written); `transaction`/`moveFile`/`trashFile`/`writeFile` in `VaultSession+Journal.swift`; `NoteFileOperations` splits into a pure plan and a performing half, mirroring `tagRenamePreview`/`renameTag`, so every existing `NoteFileOperationTests` assertion kept its subject; `undo(operation:)` and `undoJournalledWrites` both pre-flight the whole group and refuse all-or-nothing rather than reversing what they can; both connectors get the three verbs, `dryRun` defaulting to true on MCP.
   - `PG-019` (dragging a section in the outline) stays open on purpose: the plan flagged it as a different class of work - a new UI gesture, not a fix - and it gets its own ADR and mockup rather than being designed inside this one.
