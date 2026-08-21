@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=33 -->
 # PROJECT TASKS
 
-Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
+Updated: 2026-08-21 · Open: 12 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -38,7 +38,10 @@ Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
 - [ ] `PG-032` **P3** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 -->
   - `comparison` accepts `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1). The weekly review of M12 works around it by ordering on `modified`, and says so in its own prose. A literal such as `oggi-7` would fix it and is a grammar change, so it needs an ADR: the grammar is closed on purpose, and `text()` already showed what an escape hatch costs.
-- [ ] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 -->
+- [x] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+  - Closed with `scripts/uitests.sh` plus a written rule in `CLAUDE.md`: the suite runs before every merge to `main`. A merge is the one moment rare enough to afford twelve minutes and important enough to deserve them.
+  - **Refused: a pre-push hook and a fast subset.** Neither is possible, and the reason is the same one that keeps the suite out of `test-cmd`: XCUITest takes the machine, so even a single UI test closes the app in front of whoever is working. The constraint is not the twelve minutes.
+  - Considered and deferred: a nightly `launchd` run, which would remove the discipline from the equation but does not run if the Mac sleeps, and a report nobody reads is noise. Worth revisiting if the merge rule turns out not to hold.
   - Found by the run `PG-031` asked for: 67 tests, 3 failures, all three failing identically at `5da6838` and so red since before M12's last slices. Two were a stale placeholder, one was the suite reading the machine's real calendar; all three are fixed in `dec6ba3`.
   - **The point is not the three tests, it is that nobody knew.** The suite is outside `.claude/test-cmd` for a load-bearing reason - with it in there, every turn ended by terminating the app the person at the keyboard was using - so the cost of that decision is a suite whose state is unknown between deliberate runs. Options worth weighing: a second `test-cmd` run only on request, a pre-push hook, or a written rule that the suite runs before every merge to `main`. None of them is free and the choice needs a reason, not a habit.
   - A full run also needs ~12 minutes of nobody touching the keyboard, and leaves several app instances alive that must be killed before the next one (`PG-026`).

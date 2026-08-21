@@ -111,6 +111,7 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme pergamenum-mcp -destination
 scripts/release.sh                                                                              # signed, notarized, numbered build
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
+scripts/uitests.sh                                                                              # the UI suite, run the way it has to be - before every merge to main
 ```
 
 ## AI connector
@@ -211,6 +212,30 @@ move the previous copy aside rather than deleting it.
   holding the global hot key exclusively - so the next launch was refused. Two hours went
   into hunting an external culprit for something the assistant was doing itself. The UI
   tests still exist and are run deliberately, by hand.
+- **The UI suite runs before every merge to `main`, through `scripts/uitests.sh`.** That
+  rule is the price of the one above, and it was bought on 2026-08-21: three of the
+  sixty-seven UI tests had been red since before the milestone about to be merged, and
+  nothing had said so, because a suite outside `test-cmd` is a suite whose state is
+  unknown between deliberate runs (`PG-033`). A merge is the one moment that is rare
+  enough to afford twelve minutes and important enough to deserve them.
+  The script is not a convenience wrapper: it kills stale instances first, refuses to run
+  while a copy out of `/Applications` is open, prints the seconds beside each failure so a
+  launch timeout is not mistaken for a defect, and cleans up after itself. Run it with no
+  arguments for the whole bundle; an argument **replaces** the selection rather than
+  adding to it, because two `-only-testing` flags are a union and would silently run
+  everything.
+- **A UI test that reads the machine's calendar is a test about somebody's diary.** The
+  suite passes `-disableCalendar YES`, which keeps `EventKitStore` out of EventKit
+  entirely. Every one of the thirteen files passes it, not only the one that needed it:
+  `TimelineHoursUITests` checked that nothing was drawn past a 14:00 window, and the grid
+  widens itself to reach an event outside that window by design, so the assertion failed
+  on the afternoon there was a real meeting at 16:30. A new UI-test file wants the flag
+  too.
+- **A UI test must not find a control by the words on it.** Prose grows: the quick
+  switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
+  to headings, and two tests spent days looking for a field that no longer answered to
+  that name while the feature worked perfectly. Use `accessibilityIdentifier`, which is
+  the part of a view that is a contract.
 - **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
   the app are usually still running on a vault inside
   `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not
