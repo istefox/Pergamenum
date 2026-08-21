@@ -292,7 +292,9 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 
 ### 7.3 Comportamenti
 
-- **Nessun rollover automatico** (modello NotePlan): i task non completati restano evidenziati; ripianificazione rapida Cmd+0 oggi, Cmd+1 domani, Cmd+2 +2 giorni, Cmd+3 settimana prossima.
+- **Nessun rollover automatico** (modello NotePlan): i task non completati restano evidenziati; ripianificazione rapida Opt+Cmd+0 oggi, Opt+Cmd+1 domani, Opt+Cmd+2 +2 giorni, Opt+Cmd+3 settimana prossima.
+- *Corretto 2026-08-21 (M12).* Le quattro scorciatoie erano scritte `Cmd+0…3` e sono cambiate con ADR-0012 §D5, quando `Cmd+1…9` è passato alla scelta della scheda: scegliere una scheda è un gesto di ogni minuto contro il pianificare un task per la settimana dopo. Restano modificabili in Impostazioni, quindi ciò che la riga «Porta a oggi» mostra lo legge dallo `ShortcutStore` e non da qui.
+- *Emendato 2026-08-20 (ADR-0013 §D1, M12).* Il rollover torna disponibile **come impostazione, spenta per default**, e **mostra senza spostare**: con l'impostazione attiva la vista giorno elenca i task pianificati e non finiti dei giorni precedenti, entro un limite di giorni configurabile, ciascuno con un marcatore che dice a quale giorno appartiene. Nessun file viene riscritto: spostarne uno resta un tasto che riscrive `>data` nella nota di origine, come già fanno i pannelli. Il formato non cambia e Obsidian non vede niente di nuovo. La regola NotePlan resta il comportamento predefinito, ed è ciò che tiene stretto l'emendamento.
 - Pianificare = **link, non copia**: il task vive in una sola posizione, la daily note lo mostra per riferimento con origine cliccabile.
 - Completare un task da qualsiasi vista aggiorna il file markdown di origine.
 
@@ -306,6 +308,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 | Per progetto | Aggregazione per tag `#project-*`, con progresso |
 | Tutti | Ogni task aperto del vault, raggruppato per nota di origine |
 
+*Emendato 2026-08-20 (ADR-0013 §D6, M12).* Le cinque viste restano cinque e guadagnano dei controlli: raggruppamento (per nota, progetto, pianificazione, scadenza), ordinamento, e densità compatta o estesa. Ogni controllo è ricordato **per la vista su cui è stato impostato**: Oggi vuole una lista piatta per ora e Tutti vuole il raggruppamento per nota, e un'impostazione sola per tutte renderebbe ogni passaggio da una all'altra una re-impostazione.
+
 ---
 
 ## 8. Calendario e integrazione Apple
@@ -315,6 +319,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 - Nome file `YYYYMMDD.md` (naming.md 4.6), cartella configurabile (default `Calendar/`). Frontmatter auto-generato conforme (§4.3).
 - `Cmd+T` apre oggi; frecce giorno precedente/successivo; mini-calendario mensile come date picker. Template configurabile.
 - Struttura vista giorno: (1) area riferimenti: task `>data` e backlink alla data; (2) corpo della nota; (3) timeline oraria laterale.
+- *Emendato 2026-08-20 (ADR-0013 §D4 e §D2, M12).* **Giorno, settimana e mese sono tre scale della stessa vista**, scelte dalla barra strumenti e ancorate allo stesso giorno: muoversi nella settimana e tornare al giorno porta sul giorno che la settimana teneva evidenziato. La griglia della settimana disegna quattro sorgenti e non una quinta - eventi EventKit, task pianificati, scadenze, time block - e la daily note è l'intestazione della colonna, non una sorgente: un giorno non è una nota che ha una settimana, è un giorno che ha una nota.
+- *Emendato 2026-08-20 (ADR-0013 §D2 e §D3, M12).* **Note evento**: da un evento della timeline si crea `YYYYMMDD-<slug>.md` **nella stessa cartella delle daily note**, accanto a `YYYYMMDD.md`. Non è una cartella riservata nuova. La nota nasce nella forma di una cattura, `type-note` + `status-inbox`, con l'ora e i partecipanti stampati nel corpo e un wikilink dalla daily note del giorno; il backlink risponde già alla domanda «di che giorno era questa riunione» senza indicizzare niente di nuovo.
 
 ### 8.2 EventKit
 
@@ -326,7 +332,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 
 ### 8.3 Timeblocking
 
-- Timeline verticale del giorno (06:00–22:00 default). Drag di un task → blocco da 30 min, bordi trascinabili. Blocchi interni o pubblicati come eventi (toggle per blocco).
+- Timeline verticale del giorno (06:00–22:00 default). Drag di un task → blocco da 30 min, bordi trascinabili.
+- *Emendato 2026-08-20 (ADR-0013 §D5, M12).* Lo stesso gesto vale sulla griglia della settimana: un task lasciato su un giorno riscrive `>data` nella nota di origine, lasciato su un'ora scrive anche l'ora e crea il blocco. Una scrittura sola, per un file solo, attraverso `VaultSession.write`, registrata nel journal per la durata del gesto e annullabile - la forma che ADR-0009 §D5 ha fissato per il drop della board, guardrail di conformità differenziale compreso. Nessun diff da confermare: un trascinamento che chiede conferma non è un trascinamento. Blocchi interni o pubblicati come eventi (toggle per blocco).
 
 ---
 

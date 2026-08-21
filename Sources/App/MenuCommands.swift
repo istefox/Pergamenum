@@ -34,6 +34,10 @@ struct ViewCommands: Commands {
             Toggle("Modalità lettura", isOn: Bindable(vault).isReadingMode)
                 .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
                 .disabled(!actions.canRun(.readingMode))
+            // The inspector had a toolbar button and nothing else, so backlinks, linked
+            // tasks and the unlinked mentions were three answers with no key between them.
+            Button("Ispettore") { actions.run(.toggleInspector) }
+                .keyboardShortcut(shortcuts.shortcut(for: .toggleInspector))
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere
@@ -53,6 +57,13 @@ struct ViewCommands: Commands {
             Button("Verifica conformità") { actions.run(.runConformanceCheck) }
                 .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
                 .disabled(!actions.canRun(.runConformanceCheck))
+            Divider()
+            Button("Preferita") { actions.run(.toggleStar) }
+                .keyboardShortcut(shortcuts.shortcut(for: .toggleStar))
+                .disabled(!actions.canRun(.toggleStar))
+            Button("Applica un template…") { actions.run(.applyTemplate) }
+                .keyboardShortcut(shortcuts.shortcut(for: .applyTemplate))
+                .disabled(!actions.canRun(.applyTemplate))
             Divider()
             Button("Anteprima rapida") { actions.run(.quickLook) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))

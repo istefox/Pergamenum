@@ -17,6 +17,31 @@ struct CalendarEvent: Identifiable, Equatable, Sendable {
     var calendarTitle: String
     /// Whether the app may edit it. A subscribed or delegated calendar is read-only.
     var isEditable: Bool
+    /// Who is invited, by name, in the order EventKit gives them (ADR-0013 §D3).
+    ///
+    /// Names and not addresses: the event note stamps these into a line a person reads, and
+    /// a list of mail addresses is a list nobody reads. Defaulted, so the many places
+    /// building an event for a test need not say "nobody" to mean it.
+    var attendees: [String] = []
+}
+
+extension CalendarEvent {
+    /// Who is invited, by name (ADR-0013 §D3).
+    ///
+    /// `name` is nil for an invitee EventKit knows only by address; the URL carries
+    /// `mailto:someone@example.com`, and the local part is a better thing to write into a note
+    /// a person reads than the whole address.
+    ///
+    /// Outside `EventKitStore` rather than inside its fetch, because that class is at the size
+    /// SwiftLint stops at and this is about an event rather than about the store.
+    static func attendeeNames(of event: EKEvent) -> [String] {
+        (event.attendees ?? []).compactMap { participant in
+            participant.name
+                ?? participant.url.absoluteString
+                    .replacingOccurrences(of: "mailto:", with: "")
+                    .split(separator: "@").first.map(String.init)
+        }
+    }
 }
 
 extension [CalendarEvent] {
@@ -54,6 +79,14 @@ protocol CalendarStore: AnyObject {
 
     func requestAccess() async
     func events(on day: CalendarDate) -> [CalendarEvent]
+    /// Events across a span of days, keyed by the day each one is drawn on.
+    ///
+    /// On the protocol rather than left to the caller because the week reads seven days
+    /// and the month up to forty-two, and forty-two EventKit predicates on the main
+    /// actor every time somebody pages a month is a stutter you can see. The default
+    /// implementation loops `events(on:)`, so a store that has nothing better to offer
+    /// - a stub, in particular - needs no code at all.
+    func events(from first: CalendarDate, through last: CalendarDate) -> [CalendarDate: [CalendarEvent]]
     func reminders(dueOn day: CalendarDate) -> [CalendarReminder]
     /// Performs the fetch `reminders(dueOn:)` reads from. Part of the protocol because
     /// a caller cannot know a day's reminders without it, and one that forgot to call
@@ -68,6 +101,19 @@ protocol CalendarStore: AnyObject {
     func createReminder(title: String, due: CalendarDate?, listTitle: String?) throws -> CalendarReminder
     /// Titles of the calendars that can be written to.
     var writableCalendarTitles: [String] { get }
+}
+
+extension CalendarStore {
+    func events(from first: CalendarDate, through last: CalendarDate) -> [CalendarDate: [CalendarEvent]] {
+        var days: [CalendarDate: [CalendarEvent]] = [:]
+        var cursor = first
+        while cursor <= last {
+            let found = events(on: cursor)
+            if !found.isEmpty { days[cursor] = found }
+            cursor = cursor.adding(days: 1)
+        }
+        return days
+    }
 }
 
 enum CalendarAccess: Equatable, Sendable {
@@ -87,6 +133,22 @@ enum CalendarAccess: Equatable, Sendable {
 @Observable
 final class EventKitStore: CalendarStore {
     private let store = EKEventStore()
+
+    /// Whether this launch keeps EventKit out entirely: `-disableCalendar YES`.
+    ///
+    /// **For the UI suite, and it closes a real leak rather than buying a convenience.** Those
+    /// tests give themselves a throwaway vault, but the calendar they read is the one on the
+    /// machine - so `testEachSectionDrawsItsOwnHours`, which sets a window of 09:00-14:00 and
+    /// checks that nothing is drawn past it, passed or failed on whether the person running it
+    /// had an appointment that afternoon. It failed on 2026-08-21 against a real event at
+    /// 16:30, and had been failing the same way before any of that day's work: the grid widens
+    /// itself to reach an event outside the window, by design, so the assertion was measuring
+    /// somebody's diary.
+    ///
+    /// A launch argument rather than a compile-time flag, because the app the UI suite drives
+    /// has to be the app that ships; a build with the calendar compiled out would not be the
+    /// thing under test.
+    private let isIsolated = UserDefaults.standard.bool(forKey: "disableCalendar")
 
     private(set) var eventAccess: CalendarAccess = .notDetermined
     private(set) var reminderAccess: CalendarAccess = .notDetermined
@@ -223,10 +285,21 @@ final class EventKitStore: CalendarStore {
     func events(on day: CalendarDate) -> [CalendarEvent] {
         guard eventAccess.isGranted else { return [] }
         guard let range = Self.dayRange(day) else { return [] }
+        return fetch(from: range.start, to: range.end)
+    }
 
-        let predicate = store.predicateForEvents(
-            withStart: range.start, end: range.end, calendars: nil
-        )
+    /// The whole span in one predicate, rather than the seven or forty-two the default
+    /// implementation would run.
+    func events(from first: CalendarDate, through last: CalendarDate) -> [CalendarDate: [CalendarEvent]] {
+        guard eventAccess.isGranted, first <= last else { return [:] }
+        guard let start = Self.dayRange(first)?.start, let end = Self.dayRange(last)?.end
+        else { return [:] }
+        return Self.bucketed(fetch(from: start, to: end), from: first, through: last)
+    }
+
+    private func fetch(from start: Date, to end: Date) -> [CalendarEvent] {
+        guard !isIsolated else { return [] }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         return store.events(matching: predicate)
             .map { event in
                 CalendarEvent(
@@ -236,10 +309,38 @@ final class EventKitStore: CalendarStore {
                     end: event.endDate,
                     isAllDay: event.isAllDay,
                     calendarTitle: event.calendar.title,
-                    isEditable: event.calendar.allowsContentModifications
+                    isEditable: event.calendar.allowsContentModifications,
+                    attendees: CalendarEvent.attendeeNames(of: event)
                 )
             }
             .sorted { $0.start < $1.start }
+    }
+
+    /// Which days each event belongs to, which is what the per-day fetch answers
+    /// implicitly: a predicate for one day matches everything overlapping it, so an
+    /// event running Tuesday to Thursday appears on all three. The one predicate has to
+    /// say the same thing, or the range fetch would be a different week from the day
+    /// fetch it replaces.
+    ///
+    /// `nonisolated` and pure, so the part that can be wrong without a permission
+    /// dialog is the part a test can hold.
+    nonisolated static func bucketed(
+        _ events: [CalendarEvent], from first: CalendarDate, through last: CalendarDate
+    ) -> [CalendarDate: [CalendarEvent]] {
+        var days: [CalendarDate: [CalendarEvent]] = [:]
+        for event in events {
+            // The end is exclusive: an event ending at midnight belongs to the day
+            // before, not to the one that has not started yet.
+            let ends = event.end > event.start
+                ? CalendarDate(event.end.addingTimeInterval(-1))
+                : CalendarDate(event.end)
+            var cursor = max(CalendarDate(event.start), first)
+            while cursor <= min(ends, last) {
+                days[cursor, default: []].append(event)
+                cursor = cursor.adding(days: 1)
+            }
+        }
+        return days
     }
 
     /// Reminders due on a day.
@@ -254,6 +355,7 @@ final class EventKitStore: CalendarStore {
     }
 
     func refreshReminders(on day: CalendarDate) async {
+        guard !isIsolated else { return }
         guard reminderAccess.isGranted, let range = Self.dayRange(day) else { return }
         // No lower bound, and that is the fix for a bug this app was creating for
         // itself. A reminder whose due date carries no time - which is what

@@ -15,8 +15,8 @@ final class TimeBlockUITests: XCTestCase {
         vault = URL(filePath: NSTemporaryDirectory()).appending(path: "TimeBlockUITest-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
 
-        // One task planned for today: "Inserisci Blocco Tempo" sits on a task row, so
-        // without it there is nothing to block out.
+        // One task planned for today: the block is inserted from that row's context
+        // menu, so without it there is nothing to block out.
         try """
         ---
         date: 2026-08-13
@@ -31,7 +31,8 @@ final class TimeBlockUITests: XCTestCase {
         )
 
         app = XCUIApplication()
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                               "-disableCalendar", "YES"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         app.staticTexts["Oggi"].firstMatch.click()
@@ -42,13 +43,30 @@ final class TimeBlockUITests: XCTestCase {
         try? FileManager.default.removeItem(at: vault)
     }
 
+    /// «Inserisci Blocco Tempo» is a context-menu entry on the task's row, not a button
+    /// beside it: since ADR-0013 §D5 the ordinary way to block a task out is to drag it
+    /// onto the hour you mean, and the button was taking a third of the row from the
+    /// task it was about. The entry stays because a drag is invisible until somebody
+    /// tries it.
+    private func insertTimeBlockFromMenu(
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let row = app.staticTexts["Task di oggi"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la riga del task", file: file, line: line)
+        row.rightClick()
+
+        let insert = app.menuItems["Inserisci Blocco Tempo"].firstMatch
+        XCTAssertTrue(
+            insert.waitForExistence(timeout: 5),
+            "manca «Inserisci Blocco Tempo» nel menu della riga", file: file, line: line
+        )
+        insert.click()
+    }
+
     /// "Blocca" read as blocking the task. The button says what it does, and what it
     /// makes can be undone from the note column as well as from the timeline.
     func testATimeBlockIsInsertedAndCanBeDeleted() throws {
-        let insert = app.buttons["insert-time-block"].firstMatch
-        XCTAssertTrue(insert.waitForExistence(timeout: 5), "manca «Inserisci Blocco Tempo»")
-        XCTAssertEqual(insert.label, "Inserisci Blocco Tempo", "il pulsante ha ancora il vecchio nome")
-        insert.click()
+        insertTimeBlockFromMenu()
 
         let blocks = app.descendants(matching: .any).matching(identifier: "blocks-card").firstMatch
         XCTAssertTrue(blocks.waitForExistence(timeout: 5), "il blocco non compare nella colonna della nota")
@@ -76,9 +94,7 @@ final class TimeBlockUITests: XCTestCase {
     /// The other way out: the x on the box itself, which is the one a person reaches
     /// for, since it sits on the thing they want gone.
     func testABlockIsDeletedFromTheTimelineToo() throws {
-        let insert = app.buttons["insert-time-block"].firstMatch
-        XCTAssertTrue(insert.waitForExistence(timeout: 5), "manca «Inserisci Blocco Tempo»")
-        insert.click()
+        insertTimeBlockFromMenu()
 
         XCTAssertTrue(timelineBlock.waitForExistence(timeout: 5), "il blocco non compare sulla timeline")
         XCTAssertTrue(waitForDailyNote { $0.contains("## Timeline") }, "il blocco non è nella nota")

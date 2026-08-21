@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=30 -->
+<!-- project-tasks: prefix=PG lastId=33 -->
 # PROJECT TASKS
 
-Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 0
+Updated: 2026-08-21 · Open: 13 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -14,16 +14,21 @@ Updated: 2026-08-20 · Open: 13 (P1: 0) · In progress: 0
 
 ## In Progress
 
-_Nothing in progress._
+*Nothing in progress.*
 
 ## Backlog / To Add
 
 - [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
+- [x] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 <!-- src:session opened:2026-08-20 closed:2026-08-21 -->
+  - Closed by running them: `DesignAndReadingUITests` and `NoteImageUITests` both pass. The words survive as accessibility labels, so the change to icons cost the tests nothing. What the same run *did* find is `PG-033`.
+- [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
+  - Closed in six slices: the ADR and the SPEC amendment (`d923bda`), the mockups (`f14f21d`), the week, the month, the red days and the sidebar (`553aca0`, `cfc46e3`), the drag and the editable block (`5da6838`), the per-view controls (`c272388`), the rollover (`86c6dab`), the event notes and the weekly review (`3e530c8`).
+  - **The rollover amendment is spent and it is narrow.** SPEC §7.3 keeps the NotePlan rule as the default; the setting is off, bounded to a number of days, and shows without moving. Reopening it further needs its own reason.
+  - The weekly review ships as a template with four view blocks and **none of them says «this week»**: the block grammar compares `modified` against a written-out date only, so a literal week goes stale the following Monday in silence. A relative date literal in the grammar is a decision for its own ADR - see `PG-032`.
 - [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
   - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
-- [ ] `PG-013` **P3** M12 La settimana: week and month views, event notes, task grouping and sorting <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
@@ -31,17 +36,26 @@ _Nothing in progress._
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
+- [ ] `PG-032` **P3** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 -->
+  - `comparison` accepts `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1). The weekly review of M12 works around it by ordering on `modified`, and says so in its own prose. A literal such as `oggi-7` would fix it and is a grammar change, so it needs an ADR: the grammar is closed on purpose, and `text()` already showed what an escape hatch costs.
+- [ ] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 -->
+  - Found by the run `PG-031` asked for: 67 tests, 3 failures, all three failing identically at `5da6838` and so red since before M12's last slices. Two were a stale placeholder, one was the suite reading the machine's real calendar; all three are fixed in `dec6ba3`.
+  - **The point is not the three tests, it is that nobody knew.** The suite is outside `.claude/test-cmd` for a load-bearing reason - with it in there, every turn ended by terminating the app the person at the keyboard was using - so the cost of that decision is a suite whose state is unknown between deliberate runs. Options worth weighing: a second `test-cmd` run only on request, a pre-push hook, or a written rule that the suite runs before every merge to `main`. None of them is free and the choice needs a reason, not a habit.
+  - A full run also needs ~12 minutes of nobody touching the keyboard, and leaves several app instances alive that must be killed before the next one (`PG-026`).
 - [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
   - The runner's temporary directory is inside its container and is unreadable from outside, sandbox off or not. `XCTAttachment` plus `-resultBundlePath`, then `xcrun xcresulttool export attachments`, is how a screenshot actually gets looked at.
 
-- [ ] `PG-015` **P3** SPEC amendments §5, §7.4, §8 and §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-015` **P3** SPEC amendments §5, §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
   - Each is applied before the milestone that depends on it, never after.
+  - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
+  - **§17 Viste is overdue by this entry's own rule**: M11 shipped the query language, the renderers and the board's write, and the SPEC still does not describe any of it. ADR-0009 carries the design, so nothing is undocumented, but the spec is no longer the place to read what the app does.
 
 ## Blocked / Decisions Needed
 
-- [ ] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0012 would record it <!-- src:session opened:2026-08-16 -->
+- [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+  - Approved 2026-08-20 with M12's slicing, knowing the SPEC rejects rollover by name. ADR-0013 §D1 carries the argument and the three narrowings that keep it an amendment rather than a reversal; §7.3 is amended in place. The number is 13, not the 12 the roadmap predicted: 10, 11 and 12 went to transclusion, templates and tabs.
 - [ ] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 -->
 - [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
@@ -52,7 +66,7 @@ _Nothing in progress._
 - **Modules**: `Core` (pure, no SwiftUI, compiled by all three binaries) · `Vault` `Index` (files and the rebuildable cache) · `Connector` (the one vault API behind `perg` and `pergamenum-mcp`) · `Features` `DesignSystem` `App` `Calendar` (app only)
 - **Build & test**: `tuist generate --no-open` after editing `Project.swift` or after any git op that adds or removes a file · test-cmd: `xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -only-testing:PergamenumTests test` — the Stop hook runs it every turn, so the UI suite is deliberately not in it (see CLAUDE.md)
 - **Design notes**: `docs/20260817_TextKit2_live_editing.md` — what TextKit 2 allows, measured against the installed SDK, and the two mechanisms for making the display differ from the file
-- **Key ADRs**: 0001 architecture · 0002 naming and shortcuts · 0003 composers · 0004 hours on task dates · 0005 the diary pane · 0006 timeline hours as a setting · 0007 the AI connector · 0008 the global capture panel · 0009 views are queries
+- **Key ADRs**: 0001 architecture · 0002 naming and shortcuts · 0003 composers · 0004 hours on task dates · 0005 the diary pane · 0006 timeline hours as a setting · 0007 the AI connector · 0008 the global capture panel · 0009 views are queries · 0013 the week and the tasks that slip
 - **Invariants**: no network call in any feature · every piece of content is a readable file · the index is rebuildable and never the source of truth · frontmatter is exactly `date`, `tags`, `related`, `aliases` · tags are flat and namespaced, no `/` · no colour or font in a view without a token · never commit to `main`, never force-push · a new connector capability goes in `Sources/Connector/`, never in one front end · the repo has no CI, so "green" always means a local `xcodebuild test`
 
 ## Done

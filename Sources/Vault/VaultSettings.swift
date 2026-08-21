@@ -83,6 +83,27 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var diaryHours: HourWindow
     /// Whether the editor underlines misspellings, and in which language (M8).
     var spellCheck: SpellCheck
+    /// Whether the day surfaces the unfinished tasks of the days before it (ADR-0013 §D1).
+    ///
+    /// **Off by default, and it shows rather than moves.** SPEC §7.3 rejects rollover outright
+    /// and the amendment is narrow on purpose: a rolled-over task is a task whose `>date` still
+    /// says Monday, drawn on Thursday with Monday written beside it. Nothing is rewritten, no
+    /// second date is stored, and deleting `.pergamenum/` changes nothing about it.
+    ///
+    /// Per-vault rather than per-user, on the same reasoning as `blockMinutes`: whether a
+    /// vault's unfinished tasks should follow you is a fact about how that vault is kept.
+    var rollover: Bool
+    /// How many days back the rollover looks.
+    ///
+    /// A number somebody has to choose, and a default of "all of them" would turn a quiet week
+    /// into a list nobody reads. A week, because that is the unit the rest of M12 is about.
+    var rolloverDays: Int
+
+    /// The local patron saint's day, which the calendar draws as a holiday.
+    ///
+    /// Empty until somebody fills it in: the national holidays are computed
+    /// (`ItalianHolidays`), and this is the one day no algorithm knows.
+    var patronSaint: PatronSaint?
 
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
@@ -100,8 +121,16 @@ struct VaultSettings: Codable, Equatable, Sendable {
         diaryHours: .diaryDefault,
         // Off, so that updating the app does not fill a vault of markdown with red
         // underlines nobody asked for. It is found in Impostazioni, not on first launch.
-        spellCheck: .off
+        spellCheck: .off,
+        rollover: false,
+        rolloverDays: VaultSettings.defaultRolloverDays,
+        patronSaint: nil
     )
+
+    /// A week back, which is the unit M12 is about.
+    static let defaultRolloverDays = 7
+    /// What the setting offers, in days.
+    static let rolloverWindows = [1, 2, 3, 7, 14, 30]
 
     /// The durations the settings offer, in minutes.
     static let blockDurations = [15, 30, 45, 60, 90, 120]
@@ -138,6 +167,20 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.diaryHours).clamped
         spellCheck = try container.decodeIfPresent(SpellCheck.self, forKey: .spellCheck)
             ?? fallback.spellCheck
+        rollover = try container.decodeIfPresent(Bool.self, forKey: .rollover) ?? fallback.rollover
+        // Clamped like `blockMinutes`, and for the same reason: this file is meant to be edited
+        // by hand, and a 0 there would make the setting look on and show nothing.
+        let days = try container.decodeIfPresent(Int.self, forKey: .rolloverDays)
+            ?? fallback.rolloverDays
+        rolloverDays = min(max(days, 1), 60)
+        // Rejected rather than clamped when the date does not exist: a patron on the
+        // 31st of February is a typo, and inventing the 28th for it would hide it.
+        let saint = try container.decodeIfPresent(PatronSaint.self, forKey: .patronSaint)
+        patronSaint = saint.flatMap { candidate in
+            CalendarDate(year: 2000, month: candidate.month, day: candidate.day) == nil
+                ? nil
+                : candidate
+        }
     }
 
     init(
@@ -150,7 +193,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
         blockMinutes: Int = TimeBlock.defaultDuration,
         dayHours: HourWindow = .dayDefault,
         diaryHours: HourWindow = .diaryDefault,
-        spellCheck: SpellCheck = .off
+        spellCheck: SpellCheck = .off,
+        rollover: Bool = false,
+        rolloverDays: Int = VaultSettings.defaultRolloverDays,
+        patronSaint: PatronSaint? = nil
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -162,6 +208,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.dayHours = dayHours
         self.diaryHours = diaryHours
         self.spellCheck = spellCheck
+        self.rollover = rollover
+        self.rolloverDays = rolloverDays
+        self.patronSaint = patronSaint
     }
 }
 

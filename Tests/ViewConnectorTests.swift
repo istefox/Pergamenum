@@ -113,16 +113,25 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
         == ViewValueText.text(ViewField.tags.value(of: record), of: .tags))
 }
 
-// MARK: - Le cinque viste che il milestone spedisce
+// MARK: - Le viste che i milestone spediscono
 
 /// A shipped example that does not parse would teach the wrong thing, so every one of them is
 /// run through the parser here rather than proof-read.
 @Test func everySampleViewParses() throws {
     for sample in SampleViews.all {
         let blocks = ViewBlock.blocks(in: NoteDocument.parse(sample.text).body)
-        #expect(blocks.count == 1)
-        _ = try blocks[0].get()
+        // One block each, except the weekly review of ADR-0013, which is four questions in one
+        // note: four notes to open on a Friday afternoon is a ritual nobody keeps.
+        #expect(!blocks.isEmpty)
+        for block in blocks { _ = try block.get() }
     }
+
+    // Pinned, so a block dropped from the weekly review by a careless edit is a failure here
+    // rather than a heading with nothing under it in somebody's vault.
+    let total = SampleViews.all.reduce(0) { running, sample in
+        running + ViewBlock.blocks(in: NoteDocument.parse(sample.text).body).count
+    }
+    #expect(total == 9)
 }
 
 /// They are notes, so the linter judges them like any other. One that shipped non-conformant

@@ -34,7 +34,8 @@ final class NoteImageUITests: XCTestCase {
         )
 
         app = XCUIApplication()
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                               "-disableCalendar", "YES"]
         app.launch()
     }
 

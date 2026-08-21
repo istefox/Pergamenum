@@ -70,16 +70,26 @@ enum ImportNaming {
     }
 
     /// Lowercase words joined by single hyphens, accents folded, punctuation dropped.
+    ///
+    /// An apostrophe separates words like any other punctuation, so «Gran Premio d'Olanda»
+    /// counts as four. When the cap then falls immediately after the elision, the result ends
+    /// in a bare `-d`: a letter that meant something only as part of the word the cut removed.
+    /// It is dropped, and **only when the text was actually truncated** - a subject genuinely
+    /// ending in one letter, «Piano B», keeps it.
+    ///
+    /// Found on screen, in an event note named `20260821-f1-qualifiche-sprint-gran-premio-d`.
     static func kebabCase(_ raw: String, maximumWords: Int = 6) -> String {
         let folded = raw.folding(
             options: [.diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")
         ).lowercased()
 
-        let words = folded
+        let all = folded
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map(String.init)
             .filter { !$0.isEmpty }
-            .prefix(maximumWords)
+
+        var words = Array(all.prefix(maximumWords))
+        if all.count > maximumWords, words.last?.count == 1 { words.removeLast() }
 
         return words.joined(separator: "-")
     }

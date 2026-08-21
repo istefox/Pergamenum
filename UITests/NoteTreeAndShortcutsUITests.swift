@@ -28,7 +28,8 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
     /// `UserDefaults(suiteName:)` is a private copy in its own container.
     private func launch(shortcuts: String? = nil) {
         app = XCUIApplication()
-        var arguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        var arguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                         "-disableCalendar", "YES"]
         if let shortcuts {
             arguments += ["-shortcutOverrides", shortcuts]
         }
@@ -76,7 +77,7 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         // being edited is selected inside a folder nobody can see.
         XCTAssertFalse(app.staticTexts["Trasmissibilità"].exists)
         app.typeKey("o", modifierFlags: .command)
-        let field = app.textFields["Vai alla nota…"]
+        let field = app.textFields["quick-switcher-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "il quick switcher non si è aperto")
         field.typeText("Trasmissibilità\r")
 
@@ -95,16 +96,16 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         launch(shortcuts: "{quickSwitcher = {key = j; modifiers = 1;};}")
 
         app.typeKey("j", modifierFlags: .command)
-        XCTAssertTrue(app.textFields["Vai alla nota…"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.textFields["quick-switcher-field"].waitForExistence(timeout: 5),
                       "la scorciatoia riassegnata non ha aperto il quick switcher")
         app.typeKey(.escape, modifierFlags: [])
 
         // And the default is gone rather than still working alongside it: a menu that
         // answers to both keys is a menu that never read the new binding.
-        XCTAssertTrue(app.textFields["Vai alla nota…"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["quick-switcher-field"].waitForNonExistence(timeout: 5))
         app.typeKey("o", modifierFlags: .command)
         Thread.sleep(forTimeInterval: 1)
-        XCTAssertFalse(app.textFields["Vai alla nota…"].exists,
+        XCTAssertFalse(app.textFields["quick-switcher-field"].exists,
                        "Cmd+O apre ancora il quick switcher: la scorciatoia vecchia è rimasta")
     }
 

@@ -156,11 +156,18 @@ private var catalogue: [EditorCommand] { EditorCommand.all(canRun: { _ in true }
 @Test func aCommandThatCannotRunIsNotOffered() {
     // The filter is the reason `canRun` exists as a value rather than as a view
     // modifier: a menu that lists what it cannot do teaches people to stop trusting it.
-    let none = EditorCommand.all(canRun: { _ in false })
-    #expect(none.count == EditorCommand.editorEntries.count)
+    let today = CalendarDate(iso: "2026-08-20")!
+    let none = EditorCommand.all(canRun: { _ in false }, today: today)
+
     // The editor half never depends on the app's state: writing `## ` works with no
-    // vault open, and hiding it would be wrong.
-    #expect(none.map(\.id) == EditorCommand.editorEntries.map(\.id))
+    // vault open, and hiding it would be wrong. Nothing that *runs* a command survives.
+    #expect(none.allSatisfy { entry in
+        if case .insert = entry.action { return true }
+        return false
+    })
+    let expected = EditorCommand.editorEntries.map(\.id)
+        + EditorCommand.taskSyntaxEntries(today: today).map(\.id)
+    #expect(none.map(\.id) == expected)
 }
 
 // MARK: -
@@ -171,4 +178,86 @@ private func insertion(of id: String) -> (text: String, back: Int)? {
           case .insert(let text, let back) = command.action
     else { return nil }
     return (text, back)
+}
+
+// MARK: - Le viste nel menu «/» (M11, aggiunte in M12)
+
+@Test func theSlashMenuOffersOneEntryPerRenderer() {
+    let views = EditorCommand.viewEntries
+    #expect(views.count == ViewBlock.Renderer.allCases.count)
+    #expect(views.map(\.title).contains("Vista tabella"))
+    #expect(views.map(\.title).contains("Vista board"))
+}
+
+@Test func aViewSkeletonParsesAndTheCaretLandsInTheTag() throws {
+    for entry in EditorCommand.viewEntries {
+        guard case .insert(let text, let cursorBack) = entry.action else {
+            Issue.record("«\(entry.title)» non scrive markdown")
+            continue
+        }
+        // What the menu writes has to be a block the app can then run: a skeleton that
+        // needs fixing before it parses is a menu entry that produces an error message.
+        let body = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .dropFirst()
+            .prefix { $0 != "```" }
+            .joined(separator: "\n")
+        _ = try ViewBlock.parse(body)
+
+        // The caret sits between the quotes of `tag("")`, ready for the tag.
+        let caret = text.index(text.endIndex, offsetBy: -cursorBack)
+        #expect(text[..<caret].hasSuffix("tag(\""))
+    }
+}
+
+@Test func aBoardSkeletonCarriesTheGroupItCannotParseWithout() throws {
+    let board = try #require(EditorCommand.viewEntries.first { $0.title == "Vista board" })
+    guard case .insert(let text, _) = board.action else { return }
+    #expect(text.contains("group: tag(\"status-*\")"))
+}
+
+// MARK: - I quattro buchi chiusi in M12
+
+@Test func theTaskSyntaxCanBeWrittenFromTheMenu() throws {
+    let day = CalendarDate(iso: "2026-08-20")!
+    let entries = EditorCommand.taskSyntaxEntries(today: day)
+
+    #expect(entries.count == 4)
+    let texts = entries.compactMap { entry -> String? in
+        guard case .insert(let text, _) = entry.action else { return nil }
+        return text
+    }
+    #expect(texts.contains(">2026-08-20"))
+    #expect(texts.contains("!2026-08-20"))
+    #expect(texts.contains("@remind(2026-08-20 09:00)"))
+    #expect(texts.contains("@repeat(0/3)"))
+
+    // And what it writes is what the parser reads back: a menu that produced syntax the
+    // task parser ignores would schedule nothing and say nothing.
+    let task = try #require(TaskParser.parse(
+        line: "- [ ] Chiamare il fornitore >2026-08-20 !2026-08-20 @repeat(0/3)",
+        sourcePath: "x.md", lineIndex: 0
+    ))
+    #expect(task.scheduled == day)
+    #expect(task.due == day)
+    #expect(task.recurrence != nil)
+}
+
+@Test func theDateInTheMenuIsBuiltEachTimeAndNotAtLaunch() {
+    // A `static let` catalogue would freeze today's date at launch and start writing
+    // yesterday's after midnight, on the machine of anybody who leaves the app open.
+    let yesterday = EditorCommand.taskSyntaxEntries(today: CalendarDate(iso: "2026-08-19")!)
+    let today = EditorCommand.taskSyntaxEntries(today: CalendarDate(iso: "2026-08-20")!)
+    #expect(yesterday.first?.action != today.first?.action)
+}
+
+@Test func theThreeCommandsThatHadNoKeyNowHaveOne() {
+    // Each was reachable only by a control on screen: the star from a context menu on
+    // some *other* note, the inspector from one toolbar button, a template only while
+    // creating a note.
+    for command in [ShortcutCommand.toggleStar, .toggleInspector, .applyTemplate] {
+        #expect(!command.defaultBinding.key.isEmpty, "«\(command.title)» non ha una combinazione")
+        // In the catalogue means in the slash menu too: `appEntries` maps all of it.
+        #expect(EditorCommand.appEntries.contains { $0.id == "app.\(command.rawValue)" })
+    }
 }

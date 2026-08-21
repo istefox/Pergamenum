@@ -120,12 +120,30 @@ final class CommandActions {
             vault.saveOpenNote()
         case .openVault:
             VaultOpenPanel.chooseVault(into: vault)
+        case .copyLink, .revealInFinder, .toggleStar:
+            runOnOpenNote(command)
+        default:
+            assertionFailure("«\(command.title)» è nella sezione File e non è gestito")
+        }
+    }
+
+    /// The three that act on the note in front of you.
+    ///
+    /// One arm of `runFile` between them rather than three: they share a precondition and
+    /// a subject, and three arms was what took that switch past the complexity the linter
+    /// reports.
+    private func runOnOpenNote(_ command: ShortcutCommand) {
+        switch command {
         case .copyLink:
             copyLinkToOpenNote()
         case .revealInFinder:
             revealOpenNote()
+        case .toggleStar:
+            // The open note, which is the one the star could not reach: the note list's
+            // context menu has always been able to star any *other* note.
+            if let path = vault.openNote?.relativePath { vault.toggleStar(path) }
         default:
-            assertionFailure("«\(command.title)» è nella sezione File e non è gestito")
+            assertionFailure("«\(command.title)» non agisce sulla nota aperta")
         }
     }
 
@@ -158,12 +176,14 @@ final class CommandActions {
     private func runView(_ command: ShortcutCommand) {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
-             .paneTags:
+             .paneTags, .paneViews, .paneStarred:
             if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
                 navigation.pane = pane
             }
         case .readingMode:
             vault.isReadingMode.toggle()
+        case .toggleInspector:
+            navigation.isShowingInspector.toggle()
         case .runConformanceCheck:
             // Brings the pane forward as well as asking for the check: the view that runs
             // the linter only exists while that pane is shown, so from anywhere else the
@@ -201,10 +221,13 @@ final class CommandActions {
 
     private func runCalendar(_ command: ShortcutCommand) {
         switch command {
+        // One unit of the scale being shown, like the two chevrons beside them: in the
+        // week these move a week, or the shortcut and the toolbar would be two
+        // different navigations wearing one name.
         case .previousDay:
-            day.move(by: -1)
+            day.moveSpan(by: -1)
         case .nextDay:
-            day.move(by: 1)
+            day.moveSpan(by: 1)
         case .newEvent:
             navigation.pane = .today
             day.isCreatingEvent = true
@@ -242,8 +265,9 @@ final class CommandActions {
             vault.openNote?.hasUnsavedChanges == true
         case .newTab, .closeTab, .reopenTab:
             canRunTab(command)
-        case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory:
-            vault.openNote != nil
+        case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory,
+             .toggleStar, .applyTemplate:
+            canRunOnOpenNote(command)
         case .foldSection:
             // Reading mode has no caret, so it has no current section either.
             vault.currentOutlineEntry != nil && !vault.isReadingMode
@@ -261,10 +285,22 @@ final class CommandActions {
         case .openVault, .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious,
              .insertWikilink,
              .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
-             .paneDiary, .paneTags, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek,
-             .previousDay, .nextDay:
+             .paneDiary, .paneTags, .paneViews, .paneStarred, .toggleInspector,
+             .taskToday, .taskTomorrow,
+             .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay:
             true
         }
+    }
+
+    /// Everything that needs a note in front of it, and the one of them that needs
+    /// something else as well.
+    ///
+    /// A template to write and a note to write it into: «Applica un template…» is offered
+    /// greyed rather than hidden when the vault has no `Templates/` folder yet, because
+    /// the command is how somebody finds out the folder is a thing.
+    private func canRunOnOpenNote(_ command: ShortcutCommand) -> Bool {
+        guard vault.openNote != nil else { return false }
+        return command == .applyTemplate ? !vault.templates.isEmpty : true
     }
 
     /// Four commands do exactly one thing: set a `Bool` on the controller that some view
@@ -277,6 +313,7 @@ final class CommandActions {
         .quickSwitcher: \.isShowingQuickSwitcher,
         .insertRelated: \.isAddingRelatedLink,
         .noteHistory: \.isShowingHistory,
+        .applyTemplate: \.isChoosingTemplate,
     ]
 
     // MARK: The three that need more than a line

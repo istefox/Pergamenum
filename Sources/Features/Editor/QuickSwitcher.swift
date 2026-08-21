@@ -59,6 +59,11 @@ struct QuickSwitcher: View {
         TextField(mode == .navigate ? "Vai alla nota, o a una sezione con #…" : "Vai alla nota…",
                   text: $query)
             .textFieldStyle(.plain)
+            // Named, because the UI suite used to find this field by its placeholder and the
+            // placeholder is prose: it grew «, o a una sezione con #…» when Quick Open learned
+            // to jump to headings, and two tests went looking for a field that no longer
+            // answered to that name. An identifier is the part of a view that is a contract.
+            .accessibilityIdentifier("quick-switcher-field")
             .font(theme.font(.title))
             .padding(theme.spacing(.m))
             .onSubmit { choose(selection) }

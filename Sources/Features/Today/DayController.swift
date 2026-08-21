@@ -13,9 +13,20 @@ import Observation
 final class DayController {
     private(set) var day: CalendarDate = .today
     private(set) var blocks: [TimeBlock] = []
+    /// The days the week and the month draw, empty at the day scale (ADR-0013 §D4).
+    private(set) var columns: [DayColumn] = []
     private(set) var events: [CalendarEvent] = []
     private(set) var reminders: [CalendarReminder] = []
     private(set) var problems: [String] = []
+
+    /// Which of the three scales the day view is showing. All three are anchored on
+    /// `day`, so switching back to the day lands on the day the week had highlighted.
+    var scale: DayScale = .day {
+        didSet {
+            guard oldValue != scale else { return }
+            reload()
+        }
+    }
 
     /// Raised by the Calendario menu; the day view shows the matching sheet.
     var isChoosingDate = false
@@ -27,10 +38,33 @@ final class DayController {
     /// `showsDueTasks` lists what falls due next; `showsCompleted` keeps finished tasks
     /// in the day's list instead of dropping them the moment they are ticked.
     var showsDueTasks = false
-    var showsCompleted = false
+    /// The week and the month keep their columns rather than recomputing them on every
+    /// draw, so this filter has to say when it moved: the day view rereads the index
+    /// each time it is laid out, and the two scales do not.
+    var showsCompleted = false {
+        didSet {
+            guard oldValue != showsCompleted, scale != .day else { return }
+            reload()
+        }
+    }
+
+    /// What the last drop did, until it is dismissed. The banner the week and the day
+    /// draw from it is the way back: a write nobody was asked to confirm has to say what
+    /// it did and offer to undo it (ADR-0013 §D5, the shape ADR-0009 §D5 gave the board).
+    var lastDrop: Drop?
+
+    /// What a drag left behind.
+    struct Drop: Equatable, Sendable {
+        var summary: String
+        var journalID: String?
+        var isRefusal: Bool
+    }
 
     private let store: any CalendarStore
-    private let vault: VaultController
+    /// Not private: the drop of ADR-0013 §D5 lives in `DayController+TaskDrop.swift`,
+    /// and a `private` here is file-scoped, which would have kept it in this file for
+    /// no reason but the keyword.
+    let vault: VaultController
 
     init(store: any CalendarStore, vault: VaultController) {
         self.store = store
@@ -46,6 +80,14 @@ final class DayController {
         show(day.adding(days: days))
     }
 
+    /// Moves by one unit of the scale being shown: a day, a week, a month.
+    ///
+    /// What the toolbar's two chevrons and the Calendario menu's `Cmd+←` both call. A
+    /// week that paged a day at a time would be a week with a day view's navigator.
+    func moveSpan(by steps: Int) {
+        show(scale.anchor(day, movedBy: steps))
+    }
+
     /// Reads everything the day view shows, including the reminder fetch that has no
     /// synchronous form.
     func load() async {
@@ -57,6 +99,38 @@ final class DayController {
         events = store.events(on: day)
         reminders = store.reminders(dueOn: day)
         blocks = vault.timeBlocks(on: day)
+        columns = scale == .day ? [] : span()
+    }
+
+    /// The seven or thirty-five days the week and the month draw, each with its four
+    /// sources in the one order (ADR-0013 §D4).
+    ///
+    /// The events come in one fetch for the whole span rather than one per day, and the
+    /// blocks are read only from the days that have a note to read them from: a month
+    /// otherwise opens forty-two files to find nothing in most of them.
+    private func span() -> [DayColumn] {
+        let days = scale == .week
+            ? WeekPlan.week(containing: day)
+            : WeekPlan.monthWeeks(of: day).flatMap { $0 }
+        guard let first = days.first, let last = days.last else { return [] }
+
+        let eventsByDay = store.events(from: first, through: last)
+        let tasks = vault.index.allTasks.filter { showsCompleted || $0.state.isOpen }
+        let notePaths = Set(vault.index.allNotes.map(\.relativePath))
+
+        return days.map { date in
+            let hasNote = notePaths.contains(vault.dailyNotePath(for: date))
+            return DayColumn(
+                day: date,
+                entries: WeekPlan.entries(
+                    on: date,
+                    events: eventsByDay[date] ?? [],
+                    blocks: hasNote ? vault.timeBlocks(on: date) : [],
+                    tasks: tasks
+                ),
+                hasNote: hasNote
+            )
+        }
     }
 
     /// Opens the daily note for the day shown, creating it from the template when it
@@ -97,6 +171,36 @@ final class DayController {
         )
         write(blocks + [block])
         return block
+    }
+
+    /// Moves a block to another hour of the same day (SPEC §8.3).
+    ///
+    /// **The task the block came from does not move with it.** A block carries
+    /// `sourceTaskID`, so rewriting its `>2026-08-20 15:00` to the new hour is one
+    /// lookup away - and it would be a second write, in a second file, with no gesture
+    /// behind it, which is the thing ADR-0013 §D1 refuses in the same breath as
+    /// rollover. The block is the plan for the day; the `>` marker is the schedule.
+    /// Dragging the task onto the hour again is how both move.
+    @discardableResult
+    func move(_ block: TimeBlock, toStart start: Int) -> Bool {
+        let others = blocks.filter { $0.id != block.id }
+        guard let moved = TimeBlock.moved(block, toStart: start, among: others) else {
+            report("blocco tempo: nessuno spazio libero il \(day.compactForm)")
+            return false
+        }
+        guard moved.startMinutes != block.startMinutes else { return false }
+        write(others + [moved])
+        return true
+    }
+
+    /// Changes how long a block lasts, keeping the hour it starts at.
+    @discardableResult
+    func resize(_ block: TimeBlock, toDuration duration: Int) -> Bool {
+        let others = blocks.filter { $0.id != block.id }
+        let resized = TimeBlock.resized(block, toDuration: duration, among: others)
+        guard resized.durationMinutes != block.durationMinutes else { return false }
+        write(others + [resized])
+        return true
     }
 
     func remove(_ block: TimeBlock) {

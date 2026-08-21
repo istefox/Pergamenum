@@ -91,7 +91,91 @@ struct EditorCommand: Identifiable, Sendable, Equatable, RankableEntry {
             id: "tag", title: "Tag", keywords: ["etichetta", "hashtag"],
             symbol: "number", action: .insert("#", cursorBack: 0)
         ),
-    ]
+    ] + viewEntries
+
+    /// The five saved views (ADR-0009), one entry each.
+    ///
+    /// Five and not one because `render:` is the only key of the grammar with no default:
+    /// the choice has to be made anyway, and making it from the menu is the difference
+    /// between choosing and remembering how the word is spelled. The fuzzy filter does the
+    /// rest - `/vista` offers all five, `/board` offers the one.
+    ///
+    /// Added by M11 to a catalogue M8 declared closed, which is what its own note says
+    /// happens: the list is the feature, and a view nobody can write from here is a
+    /// feature you have to have read the ADR to use.
+    static let viewEntries: [EditorCommand] = ViewBlock.Renderer.allCases.map { render in
+        EditorCommand(
+            id: "view.\(render.rawValue)",
+            title: "Vista \(ViewCatalogue.rendererName(render))",
+            keywords: ["view", "query", "vista", render.rawValue],
+            symbol: viewSymbol(render),
+            action: viewAction(render)
+        )
+    }
+
+    /// The task syntax of SPEC §7.1, written for you.
+    ///
+    /// Built per call rather than as a `static let`, and that is the whole reason this is
+    /// a function: the date is today's, and a catalogue computed once at launch would
+    /// start writing yesterday's date some time after midnight - on the machine of
+    /// somebody who leaves the app open, which is everybody.
+    ///
+    /// The date is written out rather than left as a bare `>`: the marker alone still
+    /// needs the format looked up, and a wrong one parses as text and silently fails to
+    /// schedule anything. Today's is the one guess that is always meaningful, and moving
+    /// it is a matter of typing over four characters.
+    static func taskSyntaxEntries(today: CalendarDate) -> [EditorCommand] {
+        [
+            EditorCommand(
+                id: "task.scheduled", title: "Pianifica per un giorno",
+                keywords: ["data", "quando", "pianifica", ">"],
+                symbol: "calendar", action: .insert(">\(today.description)", cursorBack: 0)
+            ),
+            EditorCommand(
+                id: "task.due", title: "Scadenza",
+                keywords: ["deadline", "entro", "!"],
+                symbol: "exclamationmark.circle", action: .insert("!\(today.description)", cursorBack: 0)
+            ),
+            EditorCommand(
+                id: "task.reminder", title: "Promemoria",
+                keywords: ["remind", "notifica", "avviso", "@"],
+                symbol: "bell",
+                // The caret lands on the hour, which is the part that is never today's
+                // default and always has to be typed.
+                action: .insert("@remind(\(today.description) 09:00)", cursorBack: 6)
+            ),
+            EditorCommand(
+                id: "task.repeat", title: "Ripeti",
+                keywords: ["repeat", "ricorrenza", "ogni"],
+                symbol: "repeat", action: .insert("@repeat(0/3)", cursorBack: 2)
+            ),
+        ]
+    }
+
+    /// The skeleton a view starts from, with the caret between the quotes of the tag.
+    ///
+    /// A `where:` is written in rather than left out: an empty filter is legal and means
+    /// the whole vault, which on a real vault draws a table of every note and reads like
+    /// the feature is broken. A board carries its `group:` because without one the block
+    /// does not parse, and a menu that writes an invalid block is worse than no menu.
+    private static func viewAction(_ render: ViewBlock.Renderer) -> Action {
+        let head = "```\(ViewBlock.language)\nwhere: tag(\""
+        let grouping = render == .board ? "group: tag(\"status-*\")\n" : "sort: title\n"
+        let tail = "\")\n\(grouping)render: \(render.rawValue)\n```\n"
+        // Counted from the text rather than written as a number: a skeleton edited later
+        // would leave a literal offset pointing at the wrong character.
+        return .insert(head + tail, cursorBack: tail.count)
+    }
+
+    private static func viewSymbol(_ render: ViewBlock.Renderer) -> String {
+        switch render {
+        case .table: "tablecells"
+        case .list: "list.bullet.rectangle"
+        case .gallery: "square.grid.2x2"
+        case .calendar: "calendar"
+        case .board: "rectangle.split.3x1"
+        }
+    }
 
     /// The same table the Inserisci menu writes. One copy, so the two cannot drift into
     /// producing different markdown for the same command.
@@ -129,9 +213,10 @@ struct EditorCommand: Identifiable, Sendable, Equatable, RankableEntry {
     /// middle of a sentence, and that is where the writing entries belong.
     static func all(
         canRun: (ShortcutCommand) -> Bool,
-        caption: (ShortcutCommand) -> String? = { _ in nil }
+        caption: (ShortcutCommand) -> String? = { _ in nil },
+        today: CalendarDate = .today
     ) -> [EditorCommand] {
-        editorEntries + appEntries.compactMap { entry in
+        editorEntries + taskSyntaxEntries(today: today) + appEntries.compactMap { entry in
             guard case .app(let command) = entry.action else { return entry }
             guard canRun(command) else { return nil }
             var entry = entry

@@ -34,7 +34,8 @@ final class WorkspaceBoardUITests: XCTestCase {
         app = XCUIApplication()
         // NSUserDefaults reads the argument domain, so the app reopens this vault at
         // launch without any test-only code inside the app itself.
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")"]
+        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
+                               "-disableCalendar", "YES"]
         app.launch()
         try openWorkspace()
     }

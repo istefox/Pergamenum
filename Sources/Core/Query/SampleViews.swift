@@ -1,6 +1,7 @@
 import Foundation
 
-/// The views M11 ships with, as templates (ADR-0009, ADR-0011 §D5).
+/// The views M11 ships with and the weekly review M12 adds, as templates (ADR-0009,
+/// ADR-0011 §D5, ADR-0013).
 ///
 /// **Templates rather than notes written into the vault.** A template is an ordinary note in a
 /// reserved folder, so these open, edit, index and search like anything else, and nothing is
@@ -18,7 +19,7 @@ enum SampleViews {
         var relativePath: String { "\(NoteTemplate.folder)/\(name).md" }
     }
 
-    static let all: [Sample] = [clients, projects, readings, orphans, deadlines]
+    static let all: [Sample] = [clients, projects, readings, orphans, deadlines, weeklyReview]
 
     private static func sample(_ name: String, _ prose: String, _ block: String) -> Sample {
         Sample(
@@ -115,6 +116,82 @@ enum SampleViews {
         sort: deadline.next
         render: calendar
         columns: [title, deadline.next]
+        """
+    )
+
+    /// The weekly review the roadmap asks for: a template plus a view, in one note (ADR-0013).
+    ///
+    /// Written by hand rather than through `sample()` because it is four blocks and not one -
+    /// a review is four questions, and four notes to open on a Friday afternoon is a ritual
+    /// nobody keeps.
+    ///
+    /// **None of the four asks for "this week", and the note says why.** The block grammar
+    /// compares `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1), so a
+    /// literal week would be a week that went stale the following Monday, silently. Ordering by
+    /// `modified` answers the same question without a date in it, and adding a relative literal
+    /// to the grammar is a decision for its own ADR rather than something to slip into a
+    /// template.
+    private static let weeklyReview = Sample(
+        name: "Revisione settimanale",
+        text: """
+        ---
+        date: 2026-08-21
+        tags:
+          - topic-revisione
+          - type-note
+        ---
+
+        Da usare come template il venerdì: `Cmd+N`, poi «Revisione settimanale».
+
+        Nessuno dei quattro blocchi dice «questa settimana», ed è voluto: il linguaggio
+        delle viste confronta `modified` con una data scritta per esteso, quindi una
+        settimana letterale sarebbe scaduta il lunedì dopo senza dirlo. L'ordine per
+        `modified` risponde alla stessa domanda senza avere una data dentro.
+
+        ## Cosa si è mosso
+
+        ```pergamenum-view
+        sort: modified desc
+        limit: 15
+        render: table
+        columns: [title, modified, tasks.open]
+        ```
+
+        ## Cosa è rimasto aperto
+
+        ```pergamenum-view
+        where: task(open)
+        sort: tasks.open desc
+        render: table
+        columns: [title, tasks.open, deadline.next]
+        ```
+
+        ## Cosa non è pianificato
+
+        Task aperti in note che non hanno nessun `>data`: è la lista da cui si pesca
+        quando si programma la settimana dopo, trascinando sui giorni.
+
+        ```pergamenum-view
+        where: task(open) and not has(scheduled.next)
+        sort: title
+        render: list
+        columns: [title, tasks.open]
+        ```
+
+        ## Quali progetti si sono mossi
+
+        ```pergamenum-view
+        where: tag("project-*")
+        sort: modified desc
+        render: table
+        columns: [title, tags, modified]
+        ```
+
+        ## Note della settimana
+
+        - Cosa ha funzionato:
+        - Cosa è slittato, e perché:
+        - Cosa decido per la settimana prossima:
         """
     )
 }

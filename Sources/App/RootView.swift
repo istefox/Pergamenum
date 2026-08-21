@@ -15,17 +15,58 @@ struct RootView: View {
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
     @Environment(ShortcutStore.self) private var shortcuts
+    /// The day pane's controller, because three sidebar rows are three scales of it
+    /// (ADR-0013 §D4) rather than three panes.
+    @Environment(DayController.self) private var day
 
     /// Optional, which is the shape a macOS sidebar `List` expects: with a
     /// non-optional binding SwiftUI writes the focused row back over the initial
     /// value, so the window opened on an arbitrary pane.
-    private var selectedPane: Binding<Navigation.Pane?> {
+    private var selectedItem: Binding<SidebarItem?> {
         Binding(
-            get: { navigation.pane },
-            set: { if let new = $0 { navigation.pane = new } }
+            get: { currentItem },
+            set: { if let new = $0 { choose(new) } }
         )
     }
     private var pane: Navigation.Pane { navigation.pane }
+
+    /// The row the sidebar lights, derived from where the window actually is rather
+    /// than stored beside it: with two copies of "which row is chosen" the toolbar's
+    /// scale picker would move the week without moving the row.
+    private var currentItem: SidebarItem {
+        guard pane == .today else { return .pane(pane) }
+        if day.scale != .day { return .scale(day.scale) }
+        // Today, at the day scale, with today's note in the column: that *is* what the
+        // «Nota di oggi» row goes to, so it is the row that should be lit. Move a day or
+        // close the note and the highlight walks back to «Oggi» on its own, because the
+        // selection is derived from the state and not stored beside it.
+        return isTodaysNoteOpen ? .dailyNote : .pane(.today)
+    }
+
+    private var isTodaysNoteOpen: Bool {
+        day.day == .today && vault.openNote?.relativePath == vault.dailyNotePath(for: .today)
+    }
+
+    /// What a row does when it is chosen. Two of them are not destinations, and land on
+    /// the Note pane, which is where what they open ends up.
+    private func choose(_ item: SidebarItem) {
+        switch item {
+        case .pane(let chosen):
+            navigation.pane = chosen
+            if chosen == .today { day.scale = .day }
+        case .scale(let scale):
+            navigation.pane = .today
+            day.scale = scale
+        case .dailyNote:
+            // The note of the day, shown where a day is shown: the Oggi pane, on today,
+            // at the day scale, with the note in its own column. Opening it into the Note
+            // pane instead is what made this row feel like a click that bounced.
+            navigation.pane = .today
+            day.show(.today)
+            day.scale = .day
+            day.openDailyNote()
+        }
+    }
 
     var body: some View {
         content
@@ -100,17 +141,35 @@ struct RootView: View {
     /// Explicit `ForEach` plus `.tag`, rather than the data-driven `List` initialiser:
     /// with `Identifiable` rows the latter binds the selection to the element's `id`,
     /// which silently ignored the initial value.
+    ///
+    /// Three sections rather than one list (M12): eleven rows in a row read as a list of
+    /// commands, and the headings say what kind of thing each row is before they say
+    /// which one.
     private var sidebar: some View {
-        List(selection: selectedPane) {
-            ForEach(Navigation.Pane.allCases) { item in
-                Label(item.title, systemImage: item.symbol)
-                    .tag(item)
+        List(selection: selectedItem) {
+            ForEach(SidebarItem.Group.allCases) { group in
+                Section(group.title) {
+                    ForEach(group.items) { item in
+                        row(item)
+                    }
+                }
             }
         }
         .scrollContentBackground(.hidden)
         .background(theme.color(.backgroundSecondary))
         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
         .safeAreaInset(edge: .bottom) { themePicker }
+    }
+
+    /// `.badge` before `.tag`, and the order is the whole thing: applied after it,
+    /// `.badge` drops the tag, the `List` falls back to the `ForEach`'s implicit id -
+    /// a `String` - and no row can ever equal a `SidebarItem` selection. The sidebar
+    /// then lights nothing and swallows every click, which is how it shipped for the
+    /// twenty minutes the starred count sat on the wrong side of the tag.
+    private func row(_ item: SidebarItem) -> some View {
+        Label(item.title, systemImage: item.symbol)
+            .badge(item == .pane(.starred) ? vault.starredNotes.count : 0)
+            .tag(item)
     }
 
     @ViewBuilder
@@ -123,6 +182,26 @@ struct RootView: View {
         case .tasks: tasksPane
         case .conformance: conformancePane
         case .tags: tagsPane
+        case .views: viewsPane
+        case .starred: starredPane
+        }
+    }
+
+    @ViewBuilder
+    private var starredPane: some View {
+        if vault.root == nil {
+            needsVault("Le preferite sono le note con la stella, tenute in .pergamenum/starred.json.")
+        } else {
+            StarredPane()
+        }
+    }
+
+    @ViewBuilder
+    private var viewsPane: some View {
+        if vault.root == nil {
+            needsVault("Una vista è una query salvata dentro una nota, disegnata come tabella, board o calendario.")
+        } else {
+            ViewsPane()
         }
     }
 
