@@ -202,7 +202,10 @@ final class VaultHost {
                 on: arguments.string("day")
             ))
         case "undo_write":
-            return reply(try VaultAPI.undo(session, id: try arguments.required("id")))
+            switch try VaultAPI.undo(session, id: try arguments.required("id")) {
+            case .single(let summary): return reply(summary)
+            case .operation(let summary): return reply(summary)
+            }
         default:
             return nil
         }

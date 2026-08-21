@@ -178,6 +178,136 @@ extension VaultSession {
         ))
     }
 
+    // MARK: Undo of a gesture (ADR-0016 §D5)
+
+    /// Puts every write of one gesture back, all of it or none of it.
+    ///
+    /// Reads every entry the gesture wrote and checks each one **before touching any of
+    /// them**: the file is still there, its hash still matches what the journal wrote, and a
+    /// removal's path is still free. If any member fails that check, the whole undo is refused
+    /// and nothing moves - half a rename put back is the exact state D1 exists to prevent, and
+    /// it is why this is a decision distinct from D4's "a failed gesture is not rolled back".
+    ///
+    /// Newest first once every check has passed: a rename writes the move and then the link
+    /// texts, so reversing it has to put the texts back before the file moves back.
+    @discardableResult
+    func undo(operation id: String) -> TagRenameOutcome {
+        let members = WriteJournal(root: root).entries(operation: id)
+        guard !members.isEmpty else {
+            return TagRenameOutcome(failures: ["\(id): non è un'operazione nel journal"])
+        }
+
+        let failures = preflightUndo(members)
+        guard failures.isEmpty else { return TagRenameOutcome(failures: failures) }
+
+        let (changed, runtimeFailures) = performUndo(members)
+        return TagRenameOutcome(changed: changed, failures: runtimeFailures)
+    }
+
+    /// Checks that every entry can be reversed, without reversing any of them.
+    ///
+    /// Shared between `undo(operation:)` above and `undoJournalledWrites(_:)` in
+    /// `VaultSession+TagRename.swift`, which took the same guard on one entry at a time before
+    /// this plan and now takes it on the whole group it was given - the shared function is what
+    /// stops the two from drifting onto different guards for the same three kinds.
+    func preflightUndo(_ entries: [WriteJournal.Entry]) -> [String] {
+        entries.compactMap(preflightUndo(_:))
+    }
+
+    /// One entry's half of the guard above, split by kind into the three functions below so
+    /// each stays plainly readable on its own rather than one switch doing all three at once.
+    private func preflightUndo(_ entry: WriteJournal.Entry) -> String? {
+        switch entry.kind {
+        case .textReplacement: preflightTextReplacement(entry)
+        case .move: preflightMove(entry)
+        case .removal: preflightRemoval(entry)
+        }
+    }
+
+    private func preflightTextReplacement(_ entry: WriteJournal.Entry) -> String? {
+        guard exists(entry.path) else { return "\(entry.path): non c'è più" }
+        guard currentHash(at: entry.path) == entry.hashAfter else {
+            return "\(entry.path): è cambiato dopo quella scrittura, non lo tocco"
+        }
+        guard entry.textBefore != nil else { return "\(entry.path): quella scrittura ha creato il file" }
+        return nil
+    }
+
+    private func preflightMove(_ entry: WriteJournal.Entry) -> String? {
+        guard exists(entry.path) else { return "\(entry.path): non c'è più" }
+        guard currentHash(at: entry.path) == entry.hashAfter else {
+            return "\(entry.path): è cambiato dopo lo spostamento, non lo tocco"
+        }
+        guard let pathBefore = entry.pathBefore, !exists(pathBefore) else {
+            return "\(entry.pathBefore ?? entry.path): occupato, non lo sovrascrivo"
+        }
+        return nil
+    }
+
+    /// The guard that protects a file restored by hand from the Finder: undoing a trash onto a
+    /// path something else now occupies would silently overwrite it.
+    private func preflightRemoval(_ entry: WriteJournal.Entry) -> String? {
+        guard !exists(entry.path) else { return "\(entry.path): è tornato al suo posto, non lo sovrascrivo" }
+        guard entry.textBefore != nil else {
+            return "\(entry.path): il journal non ha il testo da ripristinare"
+        }
+        return nil
+    }
+
+    /// Reverses every entry `preflightUndo` has already cleared, newest first.
+    ///
+    /// The individual writes can still fail here - the disk between the check and the write is
+    /// the same narrow window D4 already accepts for a gesture going forward - so a failure is
+    /// reported rather than assumed impossible.
+    func performUndo(_ entries: [WriteJournal.Entry]) -> (changed: [String], failures: [String]) {
+        var changed: [String] = []
+        var failures: [String] = []
+        for entry in entries.reversed() {
+            do {
+                switch entry.kind {
+                case .textReplacement:
+                    guard let textBefore = entry.textBefore else {
+                        failures.append("\(entry.path): il journal non ha il testo da ripristinare")
+                        continue
+                    }
+                    // A board went through `writeFile`, never through `write`, when a rename or a
+                    // move originally repointed it: reversing it through `write` would read the
+                    // JSON back as a note and leave a bogus record in the index.
+                    if entry.path.hasSuffix(".\(CanvasStore.fileExtension)") {
+                        try writeFile(textBefore, to: entry.path)
+                    } else {
+                        try write(textBefore, to: entry.path)
+                    }
+                    changed.append(entry.path)
+                case .removal:
+                    guard let textBefore = entry.textBefore else {
+                        failures.append("\(entry.path): il journal non ha il testo da ripristinare")
+                        continue
+                    }
+                    try write(textBefore, to: entry.path)
+                    changed.append(entry.path)
+                case .move:
+                    guard let pathBefore = entry.pathBefore else {
+                        failures.append("\(entry.path): il journal non sa da dove veniva")
+                        continue
+                    }
+                    try moveFile(from: entry.path, to: pathBefore)
+                    changed.append(pathBefore)
+                }
+            } catch {
+                failures.append("\(entry.path): \(error.localizedDescription)")
+            }
+        }
+        return (changed, failures)
+    }
+
+    /// The file's current hash, or nil when there is none to read - comparable to
+    /// `entry.hashBefore`/`hashAfter` regardless of kind, since both are `NoteStore.hash` over
+    /// raw bytes.
+    private func currentHash(at relativePath: String) -> String? {
+        (try? Data(contentsOf: store.url(for: relativePath))).map(NoteStore.hash)
+    }
+
     // MARK: Support
 
     /// Appends to the journal when one is armed, and says so when it could not.

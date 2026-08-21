@@ -110,3 +110,73 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(entry.kind == .removal)
     #expect(entry.operation != nil, "la rimozione non è passata dentro una transazione")
 }
+
+// MARK: - Undo of a gesture (ADR-0016 §D5, slice 4)
+
+@MainActor
+@Test func undoOfARenamePutsTheFileTheLinkAndTheBoardBack() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
+    try vault.write(board, to: "Labs.canvas")
+    let session = try await armedSession(vault)
+
+    _ = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let operationID = try #require(WriteJournal(root: vault.root).entries().first?.operation)
+
+    let undone = session.undo(operation: operationID)
+
+    #expect(undone.failures.isEmpty)
+    #expect(session.exists("Vecchio titolo.md"))
+    #expect(!session.exists("Nuovo titolo.md"))
+    let altra = try String(contentsOf: vault.root.appending(path: "Altra.md"), encoding: .utf8)
+    #expect(altra.contains("[[Vecchio titolo]]"))
+    let canvas = try String(contentsOf: vault.root.appending(path: "Labs.canvas"), encoding: .utf8)
+    #expect(canvas.contains("Vecchio titolo.md"))
+    #expect(!canvas.contains("Nuovo titolo.md"))
+}
+
+@MainActor
+@Test func aLinkedNoteEditedAfterARenameRefusesTheWholeUndo() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
+    let session = try await armedSession(vault)
+
+    let outcome = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let operationID = try #require(WriteJournal(root: vault.root).entries().first?.operation)
+
+    // Somebody edits the rewritten link afterwards.
+    try session.write(note("Vedi [[Nuovo titolo]]. Aggiunta a mano."), to: "Altra.md")
+
+    let undone = session.undo(operation: operationID)
+
+    #expect(undone.changed.isEmpty)
+    #expect(undone.failures.contains { $0.contains("Altra.md") })
+    // Nothing moved: the rename stands exactly where it left things.
+    #expect(session.exists(outcome.newPath))
+    #expect(!session.exists("Vecchio titolo.md"))
+    #expect(try session.read("Altra.md").text.contains("Aggiunta a mano."))
+}
+
+@MainActor
+@Test func undoOfATrashRefusesWhenSomethingNowOccupiesThePath() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Sparita.md")
+    let session = try await armedSession(vault)
+
+    _ = try session.trashNote(at: "Sparita.md")
+    let operationID = try #require(
+        WriteJournal(root: vault.root).entries().last { $0.kind == .removal }?.operation
+    )
+
+    // Restored by hand from the Finder, or simply a new note created at the same path: either
+    // way, something is there now that the journal knows nothing about.
+    try session.write(note("Nota nuova, non quella di prima."), to: "Sparita.md")
+
+    let undone = session.undo(operation: operationID)
+
+    #expect(undone.changed.isEmpty)
+    #expect(undone.failures.contains { $0.contains("Sparita.md") })
+    #expect(try session.read("Sparita.md").text.contains("Nota nuova, non quella di prima."))
+}

@@ -35,6 +35,19 @@ enum Writing {
         Output.line("prova: niente è stato scritto. Togli --dry-run per applicare.")
     }
 
+    /// Reports undoing a whole gesture: every path it put back, or - since `undo` refuses the
+    /// group rather than returning it half done (ADR-0016 §D5) - nothing at all, the refusal
+    /// itself having already reached the person as a thrown `ConnectorError`.
+    static func report(_ summary: VaultAPI.OperationUndoSummary, arguments: Arguments) {
+        if arguments.has("json") {
+            Output.json(summary)
+            return
+        }
+        for path in summary.changed {
+            Output.line("ripristinato  \(path)")
+        }
+    }
+
     /// Everything a writing command has to say once it is done, problems included.
     @MainActor
     static func finish(_ session: VaultSession) -> ExitCode {

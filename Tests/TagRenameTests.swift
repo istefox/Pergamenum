@@ -145,7 +145,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 }
 
 @MainActor
-@Test func aNoteEditedAfterTheRenameIsRefusedAndTheOthersStillComeBack() async throws {
+@Test func aNoteEditedAfterTheRenameMakesTheWholeUndoRefuse() async throws {
     let vault = try TemporaryVault()
     let session = try await session(vault)
     let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
@@ -155,9 +155,12 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 
     let undone = session.undoJournalledWrites(outcome.journalIDs)
 
-    #expect(undone.changed == ["Uno.md"])
-    #expect(undone.failures.count == 1)
-    #expect(undone.failures.first?.contains("Due.md") == true)
+    // All-or-nothing (ADR-0016 §D5): one note that moved on refuses the whole group rather than
+    // restoring eleven of twelve and reporting the twelfth.
+    #expect(undone.changed.isEmpty)
+    #expect(undone.failures.contains { $0.contains("Due.md") })
+    // Uno.md is not touched either, even though nothing changed under it.
+    #expect(try session.read("Uno.md").text.contains("topic-fune"))
     // The later edit survives: undoing onto it would destroy work the journal knows nothing of.
     #expect(try session.read("Due.md").text.contains("Riscritta a mano."))
 }
