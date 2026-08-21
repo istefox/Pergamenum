@@ -23,6 +23,9 @@ struct MarkdownBlocksView: View {
     var transclusions: TransclusionSource?
     /// False inside a transcluded note: depth one, so the second level is a link.
     var expandsTransclusions = true
+    /// How a `pergamenum-view` fence gets its rows (ADR-0009). Nil where there is no vault
+    /// behind the view, and then the block says so rather than drawing an empty result.
+    var queries: ViewQuerySource?
 
     /// A scheme of this view's own, distinct from the app's `pergamenum://` router:
     /// a wikilink is followed inside the window, and routing it through the URL
@@ -60,7 +63,20 @@ struct MarkdownBlocksView: View {
             quoteView(lines)
 
         case .code(let language, let lines):
-            codeView(language: language, lines: lines)
+            // A view is a fenced block that something runs (ADR-0009 §D1). Only here, in
+            // Lettura: in Modifica the fence stays source, which is also what Obsidian shows
+            // a reader that cannot run it.
+            if language == ViewBlock.language {
+                RenderedViewBlock(
+                    source: lines.joined(separator: "\n"),
+                    notePath: notePath,
+                    vaultRoot: vaultRoot,
+                    thumbnails: thumbnails,
+                    queries: queries
+                )
+            } else {
+                codeView(language: language, lines: lines)
+            }
 
         case .rule:
             Rectangle()

@@ -22,6 +22,8 @@ struct MarkdownReadingView: View {
     /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no
     /// vault behind the view, and then a transclusion says so instead of drawing.
     var transclusions: TransclusionSource?
+    /// How a `pergamenum-view` fence gets its rows (ADR-0009).
+    var queries: ViewQuerySource?
     /// Whether this view takes the keyboard when it appears.
     ///
     /// True in reading mode, where there is nothing else to type into. False when the
@@ -71,7 +73,8 @@ struct MarkdownReadingView: View {
                 notePath: notePath,
                 vaultRoot: vaultRoot,
                 thumbnails: thumbnails,
-                transclusions: transclusions
+                transclusions: transclusions,
+                queries: queries
             )
             .padding(theme.spacing(.l))
             .frame(maxWidth: 760, alignment: .leading)

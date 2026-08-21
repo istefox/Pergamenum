@@ -102,6 +102,10 @@ point of the table:
   `![[file.pdf]]` and `![[foto.png]]` are invisible to the index. The gallery renderer
   needs them, so **M11 bumps the schema and adds them** - and it is the only schema
   change the milestone is permitted, stated in advance rather than at the end.
+  *Spent 2026-08-20*: `IndexCache.schemaVersion` is 3 and `StoredRecord.embedTargets`
+  carries the file embeds of a note's whole-line embeds, both spellings, remote targets
+  and fenced code left out. The milestone's allowance is gone, which is what stating it
+  in advance was for.
   *Amended 2026-08-17 by ADR-0010 §D7*: this said "bumps the schema to 2", and the 2 is now
   M8's - a transcluded note counts as a link, which changes what `linkTargets` means in every
   cached row. M11's bump is therefore to **3**. The rule this paragraph exists for is
@@ -159,6 +163,30 @@ does not offer the gesture.
 The write goes through the vocabulary check of §4.4 like any other tag write. Dropping a
 card into a column whose tag is not in the vocabulary is refused with the reason, not
 written and then flagged by the linter afterwards.
+
+*Amended 2026-08-20, while implementing it.* Two sentences of this section were written
+against a §4.4 that says something else, and `perg lint` said so on the first note the
+example would have produced:
+
+- **The vocabulary table is not the whole of §4.4.** SPEC §4.4 also carries T-05, *massimo
+  un `status-*`*, and tag.md 5.1, which forbids `status-*` on a note outright except
+  `status-inbox`. A vocabulary-only check would let a gesture write a tag the app's own
+  linter refuses, into a note nobody is looking at. The guard is therefore the whole tag
+  linter, and it is **differential**: the violations the note already has are compared with
+  the ones it would have, and the drop is refused only when it *introduces* one. A note
+  that was already non-conformant stays draggable - the drag did not put it in that state,
+  and refusing would leave the person no way out of it from the board that showed the
+  problem, which is this section's own argument for not refusing a multi-status card.
+- **The drop is not about `status-*` in particular.** It rewrites the tag matching the
+  glob in `group:`, whatever namespace that is. A board of client work by `project-*` is
+  then an ordinary conformant thing, and a board by `status-*` refuses its own drops until
+  the harness says a note may carry a status - which is principle 5 working: the convention
+  is upstream, and the app does not talk itself into an exception.
+
+The paragraph below is untouched by this. Its premise was wrong - §4.4 *does* say a note
+carries at most one status - but its argument survives the correction: the gesture names
+its source, so the drop replaces the tag of the column the card came from and leaves the
+others alone. Deleting a tag the person did not touch is not something a drag may do.
 
 **A note does not necessarily carry exactly one `status-*` tag, and what the board does with
 the other two cases is decided here rather than by whoever writes the drag handler.** Nothing
@@ -218,8 +246,8 @@ measurement taken on that vault at that size.
   in files the user wrote, so removing one breaks their views. Adding is cheap, removing
   is not, and `IndexCache.schemaVersion` no longer describes the only compatibility that
   matters.
-- **M11 includes one schema bump**, to 3 since ADR-0010 took the 2, adding `embedTargets`
-  for the gallery. Every
+- **M11 included one schema bump**, to 3 since ADR-0010 took the 2, adding `embedTargets`
+  for the gallery - taken on 2026-08-20 and not available again. Every
   cached row is discarded on first launch after it and rebuilt. Measured on the current
   vault on 2026-08-17: 22 ms cold against 11 ms warm, on 2 notes - the cost of the bump is
   one extra cold scan, and the number that matters is the ratio, not the milliseconds. D7

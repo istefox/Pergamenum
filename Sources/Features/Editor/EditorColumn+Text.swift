@@ -165,8 +165,31 @@ extension EditorColumnView {
             vaultRoot: vault.root,
             thumbnails: vault.thumbnails,
             transclusions: transclusionSource,
+            queries: viewQuerySource,
             scrollToEntry: pendingJump?.ordinal,
             onScrollApplied: { pendingJump = nil }
+        )
+    }
+
+    /// Where a `pergamenum-view` block gets its rows (ADR-0009 §D4).
+    ///
+    /// The index answers everything but `text()`, which reads the files - the same work the
+    /// global search does, and the reason §D7 states the cost as a rule rather than a number.
+    /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
+    /// not when a key is pressed.
+    var viewQuerySource: ViewQuerySource {
+        ViewQuerySource(
+            evaluate: { block in
+                ViewEvaluator.evaluate(block, over: vault.index) { record in
+                    try? vault.session?.read(record.relativePath).text
+                }
+            },
+            generation: vault.scanGeneration,
+            // The one write a view makes (§D5). Offered here, where there is a vault and a
+            // person looking at it; a note card on the canvas passes no source and its board
+            // never invites the drag.
+            move: { path, old, new in vault.moveOnBoard(path, from: old, to: new) },
+            undo: { id in vault.undoJournalledWrites([id]).failures.isEmpty }
         )
     }
 

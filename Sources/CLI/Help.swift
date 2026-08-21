@@ -57,6 +57,12 @@ enum Help {
       lint [percorso]      le regole di SPEC §4.7, le stesse del pannello Conformità
                            esce 2 se qualcosa non è conforme
 
+    VISTE
+      view list            i blocchi pergamenum-view del vault, con la loro posizione
+                           nella nota; legge ogni nota, quindi non è gratis
+      view run <percorso> [--ordinal n]
+                           esegue quella vista e stampa le righe che trova
+
     INDICE
       index stats          quante note, quanti task, quanto ha impiegato la scansione
 

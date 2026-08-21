@@ -195,3 +195,94 @@ extension VaultAPI {
         }
     }
 }
+
+// MARK: - Le viste (ADR-0009)
+
+extension VaultAPI {
+    /// A view as it appears in a listing: where it is, how it draws, and - when the block does
+    /// not parse - why it will not run.
+    ///
+    /// A broken view is listed rather than skipped. §D1 refuses an empty result for a block
+    /// that does not parse, and a listing that dropped it would be the same failure told
+    /// through a different channel: the person would not know it was there.
+    struct ViewSummary: Encodable {
+        let path: String
+        let title: String
+        /// Which block in that note, counting from zero. `run_view` takes it back.
+        let ordinal: Int
+        let render: String?
+        /// The fields it draws, in order: the block's own when it names them, the renderer's
+        /// default when it does not. The effective ones rather than the declared ones, because
+        /// `ViewRun.Row.values` is keyed by these and a caller reading a column name that never
+        /// appears in a row has been told two different things.
+        let columns: [String]
+        let error: String?
+
+        init(record: NoteRecord, ordinal: Int, block: Result<ViewBlock, ViewBlockError>) {
+            path = record.relativePath
+            title = record.title
+            self.ordinal = ordinal
+            switch block {
+            case .success(let parsed):
+                render = parsed.render.rawValue
+                columns = parsed.effectiveColumns.map(\.rawValue)
+                error = nil
+            case .failure(let failure):
+                render = nil
+                columns = []
+                error = failure.description
+            }
+        }
+    }
+
+    /// A view, evaluated.
+    ///
+    /// `total` is what matched, `groups` what is being handed back after `limit` - the two
+    /// differ exactly when the block limits itself, and a caller that could not tell would
+    /// think the vault held twenty notes when it holds two hundred.
+    struct ViewRun: Encodable {
+        let view: ViewSummary
+        let total: Int
+        let groups: [Group]
+        /// What the unnamed group is called, so a caller printing the rows uses the word the
+        /// window uses rather than one of its own.
+        let absentLabel: String
+
+        struct Group: Encodable {
+            /// Null for the rows the grouping does not name - the board's *Senza stato*.
+            let label: String?
+            let rows: [Row]
+        }
+
+        struct Row: Encodable {
+            let path: String
+            let title: String
+            /// Field name to the text a cell would show. A field with no value is left out
+            /// rather than sent as an empty string, and `view.columns` keeps the order a
+            /// dictionary cannot.
+            let values: [String: String]
+        }
+
+        init(view: ViewSummary, block: ViewBlock, result: ViewResult) {
+            self.view = view
+            total = result.total
+            absentLabel = block.group?.absentLabel ?? "Senza valore"
+            let fields = block.effectiveColumns
+            groups = result.groups.map { group in
+                Group(
+                    label: group.label,
+                    rows: group.rows.map { row in
+                        var values: [String: String] = [:]
+                        for field in fields {
+                            let value = row.values[field] ?? field.value(of: row.record)
+                            if let text = ViewValueText.text(value, of: field) {
+                                values[field.rawValue] = text
+                            }
+                        }
+                        return Row(path: row.path, title: row.title, values: values)
+                    }
+                )
+            }
+        }
+    }
+}

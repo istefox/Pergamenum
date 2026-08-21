@@ -305,7 +305,7 @@ struct TagBrowserView: View {
 
     private func undoLastRename() {
         guard let done = lastRename else { return }
-        let outcome = vault.undoTagRename(done.journalIDs)
+        let outcome = vault.undoJournalledWrites(done.journalIDs)
         lastRename = nil
         if chosen.remove(done.new) != nil { chosen.insert(done.old) }
         if vault.isPinned(done.new) {

@@ -59,6 +59,19 @@ Corpo con [[Altra nota]].
     #expect(record.contentHash == scanned.records[0].contentHash)
 }
 
+/// Schema 3 (ADR-0009 §D2): the one field M11 was allowed to add, and a cache that
+/// cannot carry it would make the gallery re-read the vault on every launch.
+@Test func aCachedRecordCarriesItsEmbeddedFiles() throws {
+    let vault = try CacheVault()
+    try vault.write(note + "\n\n![[foto.png]]\n", to: "Nota.md")
+    let cache = IndexCache(url: vault.cacheURL)
+    #expect(cache.save(VaultScanner(root: vault.root).scan().records))
+
+    let record = try #require(cache.load()["Nota.md"]?.record.record)
+    #expect(record.embedTargets == ["foto.png"])
+    #expect(record.linkTargets == ["Altra nota"])
+}
+
 @Test func aCachedTaskKeepsItsDatesAndItsProject() throws {
     let vault = try CacheVault()
     try vault.write(note, to: "Nota.md")

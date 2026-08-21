@@ -136,7 +136,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let before = try session.read("Due.md").text
     let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
 
-    let undone = session.undoTagRename(outcome.journalIDs)
+    let undone = session.undoJournalledWrites(outcome.journalIDs)
 
     #expect(undone.changed.count == 2)
     #expect(undone.failures.isEmpty)
@@ -153,7 +153,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     // Somebody, or something, writes over one of them afterwards.
     try session.write(note(tags: ["type-note", "topic-fune"], body: "Riscritta a mano."), to: "Due.md")
 
-    let undone = session.undoTagRename(outcome.journalIDs)
+    let undone = session.undoJournalledWrites(outcome.journalIDs)
 
     #expect(undone.changed == ["Uno.md"])
     #expect(undone.failures.count == 1)

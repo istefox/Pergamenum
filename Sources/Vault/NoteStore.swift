@@ -12,6 +12,13 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
     var frontmatter: Frontmatter
     /// Wikilink targets found in the body, in source order, duplicates removed.
     var linkTargets: [String]
+    /// Files the body embeds on a line of their own, in source order, duplicates removed
+    /// (ADR-0009 §D2). The half `linkTargets` leaves out, and what the gallery renderer
+    /// of M11 draws.
+    ///
+    /// Defaulted so that the many places building a record for a test need not say
+    /// "no embeds" to mean it; the one place that reads a note from disk always fills it.
+    var embedTargets: [String] = []
     /// Tasks found in the body, with their line numbers (SPEC §7.1).
     var tasks: [TaskItem]
     var modifiedAt: Date
@@ -85,6 +92,7 @@ struct NoteStore: Sendable {
                 title: NoteName.title(fromFileName: fileURL.lastPathComponent),
                 frontmatter: NoteDocument.parse(text).frontmatter,
                 linkTargets: Self.linkTargets(in: text),
+                embedTargets: Transclusion.embeddedFiles(in: text),
                 tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
                 modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
                 byteSize: data.count,
