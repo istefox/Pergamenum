@@ -192,6 +192,22 @@ struct IndexSnapshot: Sendable {
             case .all: "Tutti"
             }
         }
+
+        /// How the view opens before anybody touches its controls (ADR-0013 §D6).
+        ///
+        /// Each one reproduces what that view already did, which is why they differ: the
+        /// controls are a way to change the list, not a reason to arrive at a different one.
+        /// The single exception is *Oggi*, which the ADR asks for flat and in hour order -
+        /// what slipped is still red, because that is the row's colour and not a heading.
+        var defaultListOptions: TaskListOptions {
+            switch self {
+            case .inbox: TaskListOptions(grouping: .none, sorting: .text)
+            case .today: TaskListOptions(grouping: .none, sorting: .schedule)
+            case .upcoming: TaskListOptions(grouping: .schedule, sorting: .schedule)
+            case .byProject: TaskListOptions(grouping: .project, sorting: .deadline)
+            case .all: TaskListOptions(grouping: .note, sorting: .text)
+            }
+        }
     }
 
     /// Tasks for one view on a given day.

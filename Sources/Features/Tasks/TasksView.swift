@@ -8,6 +8,12 @@ struct TasksView: View {
     @State private var selectedTaskID: String?
     /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
     @State private var linking: TaskItem?
+    /// Every view's controls in one JSON map (ADR-0013 §D6).
+    ///
+    /// One key rather than five: `@AppStorage` takes a literal key, so a property per view
+    /// would need a sixth the day a sixth view exists - and §7.4's five are closed precisely
+    /// so that nothing else has to know how many there are.
+    @AppStorage("taskListOptions") private var storedOptions = ""
 
     private var today: CalendarDate { .today }
 
@@ -153,60 +159,72 @@ struct TasksView: View {
     // MARK: List
 
     private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-                ForEach(groups, id: \.title) { group in
-                    VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-                        Text(group.title).themedText(.heading)
-                        ForEach(group.tasks) { task in
-                            row(task)
+        let arranged = groups
+        return VStack(alignment: .leading, spacing: 0) {
+            TaskListControls(title: view.title, options: optionsBinding)
+                .padding(.horizontal, theme.spacing(.l))
+                .padding(.top, theme.spacing(.s))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+                    ForEach(arranged) { group in
+                        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
+                            // An ungrouped list has one group with no title, and no heading
+                            // is drawn for it: a single "Oggi" above the day's own view says
+                            // nothing the sidebar has not already said.
+                            if !group.title.isEmpty {
+                                Text(group.title).themedText(.heading)
+                            }
+                            ForEach(group.tasks) { task in
+                                row(task)
+                            }
                         }
                     }
+                    if arranged.isEmpty {
+                        Text("Nessun task in questa vista")
+                            .themedText(.body, color: .textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, theme.spacing(.xl))
+                    }
                 }
-                if groups.isEmpty {
-                    Text("Nessun task in questa vista")
-                        .themedText(.body, color: .textTertiary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, theme.spacing(.xl))
-                }
+                .padding(theme.spacing(.l))
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private struct Group {
-        var title: String
-        var tasks: [TaskItem]
+    /// The controls of the view showing, read back from the one stored map and written
+    /// straight into it. A binding rather than `@State` mirrored onto storage: two copies of
+    /// a preference is how one of them ends up stale after a view switch.
+    private var optionsBinding: Binding<TaskListOptions> {
+        Binding(
+            get: { options },
+            set: { newValue in
+                var map = TaskListOptions.map(fromJSON: storedOptions)
+                map[view.rawValue] = newValue
+                storedOptions = TaskListOptions.json(of: map)
+            }
+        )
     }
 
-    /// Groups the current view's tasks the way that view reads best: overdue first in
-    /// Oggi, by day in Prossimi, by project in Per progetto, by source note otherwise.
-    private var groups: [Group] {
-        let tasks = vault.index.tasks(for: view, on: today)
-        guard !tasks.isEmpty else { return [] }
+    private var options: TaskListOptions {
+        TaskListOptions.map(fromJSON: storedOptions)[view.rawValue] ?? view.defaultListOptions
+    }
 
-        switch view {
-        case .today:
-            let late = tasks.filter { $0.isOverdue(on: today) }
-            let due = tasks.filter { !$0.isOverdue(on: today) }
-            return [Group(title: "In ritardo", tasks: late), Group(title: "Oggi", tasks: due)]
-                .filter { !$0.tasks.isEmpty }
-        case .upcoming:
-            return Dictionary(grouping: tasks) { $0.scheduled?.description ?? "—" }
-                .sorted { $0.key < $1.key }
-                .map { Group(title: $0.key, tasks: $0.value) }
-        case .byProject:
-            return Dictionary(grouping: tasks) { $0.project?.description ?? "senza progetto" }
-                .sorted { $0.key < $1.key }
-                .map { Group(title: $0.key, tasks: $0.value) }
-        case .inbox:
-            return [Group(title: "Inbox", tasks: tasks)]
-        case .all:
-            return Dictionary(grouping: tasks) { NoteName.title(fromFileName: ($0.sourcePath as NSString).lastPathComponent) }
-                .sorted { $0.key < $1.key }
-                .map { Group(title: $0.key, tasks: $0.value) }
-        }
+    /// The current view's tasks, arranged the way its controls ask (ADR-0013 §D6).
+    ///
+    /// The arrangement itself is in `TaskArrangement`, outside SwiftUI, because a sort that is
+    /// not stable and a group that swallows the tasks with nothing to group by are defects a
+    /// test can hold and a screenshot cannot.
+    private var groups: [TaskGroup] {
+        TaskArrangement.groups(
+            vault.index.tasks(for: view, on: today),
+            options: options,
+            // Only *Tutti* floats its starred notes, which is where the roadmap asks for them:
+            // in a view already grouped by day or by project, a star would fight the grouping
+            // the user chose rather than help it.
+            priorityPaths: view == .all ? Set(vault.starredNotes.map(\.relativePath)) : []
+        )
     }
 
     private func row(_ task: TaskItem) -> some View {
@@ -220,29 +238,10 @@ struct TasksView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(task.text)
                         .themedText(.body, color: task.state == .done ? .taskDone : .textPrimary)
-                    HStack(spacing: theme.spacing(.xs)) {
-                        Button {
-                            vault.openNote(at: task.sourcePath)
-                        } label: {
-                            Text("↗ \(NoteName.title(fromFileName: (task.sourcePath as NSString).lastPathComponent))")
-                                .themedText(.caption, color: .textTertiary)
-                        }
-                        .buttonStyle(.plain)
-
-                        // SPEC §7.2: each wikilink is clickable and opens its target.
-                        ForEach(task.links, id: \.self) { link in
-                            Button {
-                                open(link: link)
-                            } label: {
-                                Text(link).themedText(.caption, color: .accentPrimary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if let project = task.project {
-                            Text(project.description).themedText(.caption, color: .textTertiary)
-                        }
-                    }
+                    // The second line is what the compact density drops (ADR-0013 §D6): the
+                    // task itself and its marker are what a list is read for, and the note it
+                    // came from is what it is worked from.
+                    if options.density == .expanded { details(task) }
                 }
 
                 Spacer()
@@ -271,6 +270,35 @@ struct TasksView: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("task-row")
         .contextMenu { contextMenu(task) }
+    }
+
+    /// The row's second line: where the task is written, what it links to, and its project.
+    /// Its own function so `row` stays inside the length SwiftLint asks for, which is the same
+    /// reason the controls are their own view.
+    private func details(_ task: TaskItem) -> some View {
+        HStack(spacing: theme.spacing(.xs)) {
+            Button {
+                vault.openNote(at: task.sourcePath)
+            } label: {
+                Text("↗ \(TaskArrangement.noteTitle(of: task))")
+                    .themedText(.caption, color: .textTertiary)
+            }
+            .buttonStyle(.plain)
+
+            // SPEC §7.2: each wikilink is clickable and opens its target.
+            ForEach(task.links, id: \.self) { link in
+                Button {
+                    open(link: link)
+                } label: {
+                    Text(link).themedText(.caption, color: .accentPrimary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let project = task.project {
+                Text(project.description).themedText(.caption, color: .textTertiary)
+            }
+        }
     }
 
     @ViewBuilder
