@@ -89,6 +89,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession.swift",
     "Sources/Vault/VaultSession+Diary.swift",
     "Sources/Vault/VaultSession+Files.swift",
+    "Sources/Vault/VaultSession+Journal.swift",
     "Sources/Vault/VaultSession+Notes.swift",
     "Sources/Vault/VaultSession+Search.swift",
     "Sources/Vault/VaultSession+Starred.swift",
