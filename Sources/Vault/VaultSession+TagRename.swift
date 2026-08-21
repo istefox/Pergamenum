@@ -93,44 +93,36 @@ extension VaultSession {
         return outcome
     }
 
-    /// Puts a whole group of journalled writes back, refusing any note that has moved on since.
+    /// Puts a whole group of journalled writes back, all of it or none of it (ADR-0016 §D5).
     ///
     /// Named for what it does rather than for the rename, because it is not only the rename's
     /// any more: a board's drop (ADR-0009 §D5) is one journalled write and comes back through
     /// this same function with a single id.
     ///
-    /// The guarantee `WriteJournal` gives per file, applied to a group: a note edited after the
-    /// rename keeps its edit and is named in the refusals, rather than being quietly overwritten
-    /// with a version that predates work the journal knows nothing about. Newest first, so a
-    /// note written twice in the group ends on its oldest text.
+    /// **Refuses the whole group rather than the notes that moved on**, since this plan's second
+    /// decision: two undo semantics in one app is the drift this codebase keeps refusing, so a
+    /// note edited after the rename now keeps the rest of the group from coming back too, named
+    /// among the refusals rather than left as the one exception the rest silently succeeded
+    /// around. `preflightUndo`/`performUndo` on `VaultSession+Journal` are the shared guard and
+    /// the shared reversal, so this and `undo(operation:)` cannot drift onto two different rules
+    /// for the same three kinds.
     @discardableResult
     func undoJournalledWrites(_ ids: [String]) -> TagRenameOutcome {
         let journal = WriteJournal(root: root)
-        var outcome = TagRenameOutcome()
-        for id in ids.reversed() {
-            guard let entry = journal.entry(id: id) else {
-                outcome.failures.append("\(id): non è nel journal")
-                continue
-            }
-            guard let current = try? read(entry.path) else {
-                outcome.failures.append("\(entry.path): non c'è più")
-                continue
-            }
-            guard current.record.contentHash == entry.hashAfter else {
-                outcome.failures.append("\(entry.path): è cambiato dopo la rinomina, non lo tocco")
-                continue
-            }
-            guard let textBefore = entry.textBefore else {
-                outcome.failures.append("\(entry.path): quella scrittura ha creato il file")
-                continue
-            }
-            do {
-                try write(textBefore, to: entry.path)
-                outcome.changed.append(entry.path)
-            } catch {
-                outcome.failures.append("\(entry.path): \(error.localizedDescription)")
+        var entries: [WriteJournal.Entry] = []
+        var missing: [String] = []
+        for id in ids {
+            if let entry = journal.entry(id: id) {
+                entries.append(entry)
+            } else {
+                missing.append("\(id): non è nel journal")
             }
         }
-        return outcome
+
+        let failures = missing + preflightUndo(entries)
+        guard failures.isEmpty else { return TagRenameOutcome(failures: failures) }
+
+        let (changed, runtimeFailures) = performUndo(entries)
+        return TagRenameOutcome(changed: changed, failures: runtimeFailures)
     }
 }

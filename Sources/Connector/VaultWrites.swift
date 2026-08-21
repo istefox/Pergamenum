@@ -94,6 +94,64 @@ extension VaultAPI {
         return summarise(result, session: session)
     }
 
+    // MARK: Renaming, moving, trashing (ADR-0016)
+
+    @MainActor
+    static func renameNote(
+        _ session: VaultSession, at path: String, to newTitle: String
+    ) throws -> FileMoveSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        guard !newTitle.isEmpty else {
+            throw ConnectorError("serve il nuovo titolo", usage: true)
+        }
+        do {
+            let outcome = try session.renameNote(at: path, to: newTitle)
+            return FileMoveSummary(
+                newPath: outcome.newPath,
+                applied: !session.isDryRun,
+                rewrittenPaths: outcome.rewrittenPaths,
+                failures: outcome.failures
+            )
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
+    @MainActor
+    static func moveNote(
+        _ session: VaultSession, at path: String, toFolder folder: String
+    ) throws -> FileMoveSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        do {
+            let outcome = try session.moveNote(at: path, toFolder: folder)
+            return FileMoveSummary(
+                newPath: outcome.newPath,
+                applied: !session.isDryRun,
+                rewrittenPaths: outcome.rewrittenPaths,
+                failures: outcome.failures
+            )
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
+    @MainActor
+    static func trashNote(_ session: VaultSession, at path: String) throws -> TrashSummary {
+        guard !path.isEmpty else {
+            throw ConnectorError("serve il percorso della nota", usage: true)
+        }
+        do {
+            let orphaned = try session.trashNote(at: path)
+            return TrashSummary(path: path, applied: !session.isDryRun, orphaned: orphaned)
+        } catch let refusal as NoteFileOperations.OperationError {
+            throw ConnectorError("\(refusal)")
+        }
+    }
+
     // MARK: Tasks
 
     @MainActor
@@ -181,14 +239,26 @@ extension VaultAPI {
 
     // MARK: The journal
 
-    /// Puts a file back the way a journalled write found it.
+    /// Puts a file, or a whole gesture, back the way a journalled write found it - one word,
+    /// two behaviours, because the person typing an id is asking the same question either way
+    /// (ADR-0016 §D5).
     ///
-    /// Refuses when the file has moved on since. Undoing onto somebody else's later edit
-    /// is worse than declining to undo at all: it would silently destroy work this
-    /// journal knows nothing about.
+    /// An id that names an operation in the journal is a gesture: refuses the whole thing,
+    /// naming every reason, if any single member has moved on since. An id that does not is
+    /// a single entry, and this is the exact behaviour `undo` had before ADR-0016 - refuses
+    /// when the file has moved on since, because undoing onto somebody else's later edit is
+    /// worse than declining to undo at all.
     @MainActor
-    static func undo(_ session: VaultSession, id: String) throws -> WriteSummary {
+    static func undo(_ session: VaultSession, id: String) throws -> UndoOutcome {
         let journal = WriteJournal(root: session.root)
+        guard journal.entries(operation: id).isEmpty else {
+            let outcome = session.undo(operation: id)
+            guard outcome.failures.isEmpty else {
+                throw ConnectorError(outcome.failures.joined(separator: "\n"))
+            }
+            return .operation(OperationUndoSummary(operation: id, changed: outcome.changed))
+        }
+
         guard let entry = journal.entry(id: id) else {
             throw ConnectorError("nessuna scrittura con id \(id)")
         }
@@ -212,7 +282,7 @@ extension VaultAPI {
             )
         }
 
-        return summarise(try session.write(textBefore, to: entry.path), session: session)
+        return .single(summarise(try session.write(textBefore, to: entry.path), session: session))
     }
 
     /// The journal read straight off disk: no session, because listing what was written

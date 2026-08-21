@@ -149,6 +149,16 @@ final class VaultHost {
             return reply(try VaultAPI.appendToNote(
                 session, at: try arguments.required("path"), text: try arguments.required("text")
             ))
+        case "rename_note":
+            return reply(try VaultAPI.renameNote(
+                session, at: try arguments.required("path"), to: try arguments.required("title")
+            ))
+        case "move_note":
+            return reply(try VaultAPI.moveNote(
+                session, at: try arguments.required("path"), toFolder: arguments.string("folder") ?? ""
+            ))
+        case "trash_note":
+            return reply(try VaultAPI.trashNote(session, at: try arguments.required("path")))
         case "capture":
             // "note" when the model says nothing, the same default `perg capture` uses.
             // The URL route's default is "today" and lives at its own call site, so the
@@ -202,7 +212,10 @@ final class VaultHost {
                 on: arguments.string("day")
             ))
         case "undo_write":
-            return reply(try VaultAPI.undo(session, id: try arguments.required("id")))
+            switch try VaultAPI.undo(session, id: try arguments.required("id")) {
+            case .single(let summary): return reply(summary)
+            case .operation(let summary): return reply(summary)
+            }
         default:
             return nil
         }

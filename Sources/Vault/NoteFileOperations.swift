@@ -64,6 +64,152 @@ struct NoteFileOperations {
         }
     }
 
+    // MARK: - Computing what would change (ADR-0016 §D6)
+    //
+    // `rename`, `move` and `trash` above write directly and stay exactly as they were, for the
+    // callers - this file's own tests included - that have no journal to go through. What
+    // follows computes the same arithmetic without touching disk, the split
+    // `VaultSession+TagRename` already makes between `tagRenamePreview` and `renameTag`: one
+    // function decides what would change, a second one - on `VaultSession+Files` - performs
+    // exactly that inside a transaction. A dry run is then honest by construction, not by a flag
+    // every method has to remember to check.
+
+    /// One file's text before and after a rename or a move that has not happened, so the plan and
+    /// the performance read the same triple.
+    struct FileChange: Equatable, Sendable {
+        let path: String
+        let before: String
+        let after: String
+    }
+
+    /// What a rename would change: its destination, the notes that would be rewritten, the
+    /// boards that would be repointed, and anything unreadable along the way.
+    struct RenamePlan: Equatable, Sendable {
+        var newPath: String
+        var noteChanges: [FileChange] = []
+        var boardChanges: [FileChange] = []
+        var failures: [String] = []
+    }
+
+    /// What a move would change: its destination and the boards that would be repointed. No
+    /// note text: a wikilink names a note by title, not by path (wikilink.md W-01).
+    struct MovePlan: Equatable, Sendable {
+        var newPath: String
+        var boardChanges: [FileChange] = []
+        var failures: [String] = []
+    }
+
+    /// What a rename would do, read from where the note still is - not from where `rename`
+    /// would leave it, since nothing has moved yet when this runs.
+    func renamePlan(
+        _ relativePath: String,
+        to newTitle: String,
+        knownPaths: [String]
+    ) throws -> RenamePlan {
+        let violations = NoteName.validate(newTitle)
+        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+
+        let oldTitle = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
+        let folder = (relativePath as NSString).deletingLastPathComponent
+        let fileName = NoteName.fileName(for: newTitle)
+        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+
+        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
+        guard newPath == relativePath || !exists(newPath) else {
+            throw OperationError.alreadyExists(newPath)
+        }
+
+        var plan = RenamePlan(newPath: newPath)
+        for path in knownPaths {
+            // The note itself is still at `relativePath`: only the performer, moving it first,
+            // earns the right to read it back from `newPath`.
+            let readPath = path == relativePath ? relativePath : path
+            let writePath = path == relativePath ? newPath : path
+            guard let (_, text) = try? store.read(readPath) else {
+                plan.failures.append("\(path): non leggibile")
+                continue
+            }
+            guard let updated = NoteRename.rewritingLinks(in: text, from: oldTitle, to: newTitle)
+            else { continue }
+            plan.noteChanges.append(FileChange(path: writePath, before: text, after: updated))
+        }
+
+        let boards = repointBoardsPlan(from: relativePath, to: newPath)
+        plan.boardChanges = boards.changes
+        plan.failures.append(contentsOf: boards.failures)
+        return plan
+    }
+
+    /// What a move would do. Mirrors `move`'s own no-op and validation order, since a caller
+    /// asking to move a note into the folder it is already in gets back its own path rather
+    /// than a plan nobody needs to perform.
+    func movePlan(_ relativePath: String, toFolder folder: String) throws -> MovePlan {
+        let fileName = (relativePath as NSString).lastPathComponent
+        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+        guard newPath != relativePath else { return MovePlan(newPath: relativePath) }
+        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
+        guard !exists(newPath) else { throw OperationError.alreadyExists(newPath) }
+
+        var plan = MovePlan(newPath: newPath)
+        let boards = repointBoardsPlan(from: relativePath, to: newPath)
+        plan.boardChanges = boards.changes
+        plan.failures = boards.failures
+        return plan
+    }
+
+    /// Notes that would be left pointing at nothing if `relativePath` went to the trash. Read
+    /// rather than written: `trash`'s own version computes the same thing after moving the file,
+    /// which changes nothing here since neither reads `relativePath` itself.
+    func danglingLinks(for relativePath: String, knownPaths: [String]) -> [String] {
+        let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
+        let needle = title.lowercased()
+        return knownPaths.filter { path in
+            guard path != relativePath, let (_, text) = try? store.read(path) else { return false }
+            return WikilinkParser.links(in: text).contains { $0.target.lowercased() == needle }
+        }
+    }
+
+    /// What repointing every board's cards would change, read rather than written - `repointBoards`
+    /// performs exactly this once a caller has decided to.
+    private func repointBoardsPlan(
+        from oldPath: String, to newPath: String
+    ) -> (changes: [FileChange], failures: [String]) {
+        guard oldPath != newPath else { return ([], []) }
+        var changes: [FileChange] = []
+        var failures: [String] = []
+        for boardPath in boardPaths() {
+            let url = store.url(for: boardPath)
+            guard let data = try? Data(contentsOf: url),
+                  var document = try? CanvasDocument(data: data)
+            else { continue }
+
+            var changed = false
+            for index in document.nodes.indices {
+                guard case .file(let path, let subpath) = document.nodes[index].kind, path == oldPath
+                else { continue }
+                document.nodes[index].kind = .file(path: newPath, subpath: subpath)
+                changed = true
+            }
+            guard changed else { continue }
+
+            guard let before = String(bytes: data, encoding: .utf8) else {
+                failures.append("\(boardPath): non leggibile come testo")
+                continue
+            }
+            do {
+                let encoded = try document.encoded()
+                guard let after = String(bytes: encoded, encoding: .utf8) else {
+                    failures.append("\(boardPath): non codificabile come testo")
+                    continue
+                }
+                changes.append(FileChange(path: boardPath, before: before, after: after))
+            } catch {
+                failures.append("\(boardPath): \(error)")
+            }
+        }
+        return (changes, failures)
+    }
+
     /// Renames a note and rewrites every link that pointed at its old title.
     ///
     /// The file is moved first and the links after: the move is one operation that

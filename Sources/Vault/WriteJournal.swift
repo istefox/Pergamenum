@@ -13,6 +13,22 @@ import Foundation
 struct WriteJournal {
     let directory: URL
 
+    /// What happened to one file (ADR-0016 §D2).
+    ///
+    /// «The text before» describes a replacement and describes neither a file that moved nor
+    /// one that is gone, which is the whole reason the journal could not record a rename. A
+    /// rename is **not** a fourth case: it is a move plus a set of replacements sharing one
+    /// operation id, because a kind says what happened to a file and an operation says what
+    /// the person did.
+    enum Kind: String, Codable, Sendable {
+        /// The file's text was replaced. What the journal has always recorded.
+        case textReplacement
+        /// The file went from one path to another and its bytes did not change.
+        case move
+        /// The file went to the Finder's trash.
+        case removal
+    }
+
     /// What one write replaced.
     struct Entry: Codable, Equatable, Sendable {
         /// Short, sortable and unique enough for a person to type: the timestamp to the
@@ -28,6 +44,57 @@ struct WriteJournal {
         let textBefore: String?
         /// The command that did it, for reading the log later.
         let command: String
+
+        // MARK: The gesture (ADR-0016)
+        //
+        // All three are optional, and that is what makes «no migration is written» true rather
+        // than aspirational: Swift's synthesised `Codable` does not default a missing key, so a
+        // non-optional field here would fail to decode every line already on disk. An entry
+        // without them describes a single write that was its own whole gesture, which is exactly
+        // what every entry written before ADR-0016 was.
+
+        /// The gesture this write belongs to, when it belongs to one.
+        ///
+        /// `undo` given this id reverses every entry carrying it, newest first. Nil for a write
+        /// that stands alone, where the entry's own id is the unit.
+        var operation: String?
+        /// What happened to the file. Nil means `.textReplacement`, which is what `kind` reads.
+        var storedKind: Kind?
+        /// Where a moved file came from. Nil for anything that did not move.
+        var pathBefore: String?
+
+        var kind: Kind { storedKind ?? .textReplacement }
+
+        /// `storedKind` is the stored spelling and `kind` is the read one; the key on disk stays
+        /// `kind`, so a line written by this version reads as `"kind": "move"` rather than as
+        /// something named after an implementation detail.
+        enum CodingKeys: String, CodingKey {
+            case id, timestamp, path, hashBefore, hashAfter, textBefore, command
+            case operation
+            case storedKind = "kind"
+            case pathBefore
+        }
+
+        /// Written out rather than synthesised so the three ADR-0016 fields carry defaults: the
+        /// synthesised memberwise initialiser would demand them at every existing call site,
+        /// and `= nil` on the properties themselves is what SwiftLint's
+        /// `redundant_optional_initialization` refuses.
+        init(
+            id: String, timestamp: Date, path: String,
+            hashBefore: String?, hashAfter: String, textBefore: String?, command: String,
+            operation: String? = nil, kind: Kind? = nil, pathBefore: String? = nil
+        ) {
+            self.id = id
+            self.timestamp = timestamp
+            self.path = path
+            self.hashBefore = hashBefore
+            self.hashAfter = hashAfter
+            self.textBefore = textBefore
+            self.command = command
+            self.operation = operation
+            self.storedKind = kind
+            self.pathBefore = pathBefore
+        }
     }
 
     init(root: URL) {
@@ -78,6 +145,15 @@ struct WriteJournal {
 
     func entry(id: String) -> Entry? {
         entries().last { $0.id == id }
+    }
+
+    /// Every entry of one gesture, oldest first (ADR-0016 §D1).
+    ///
+    /// Oldest first because that is the order they happened in, and `undo` walks it backwards:
+    /// a rename moves the file and then rewrites the links, so reversing it has to put the texts
+    /// back before it moves the file back.
+    func entries(operation: String) -> [Entry] {
+        entries().filter { $0.operation == operation }
     }
 
     static func makeID(at date: Date) -> String {

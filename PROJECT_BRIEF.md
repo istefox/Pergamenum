@@ -87,6 +87,32 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-21 (sera): **ADR-0016 in cinque slice, `PG-005` chiuso.** Sul branch
+  `feature/m13-vault-entire`, non ancora in `main`, non ancora aperta una PR. **Il journal
+  impara a descrivere un gesto**: `WriteJournal.Entry` guadagna `operation`, `kind` e
+  `pathBefore`, tutti opzionali - è ciò che rende vero «nessuna migrazione è scritta», perché
+  il `Codable` sintetizzato di Swift non dà un default a una chiave assente. Una rinomina
+  **non è un quarto caso**: è uno spostamento più un gruppo di riscritture che condividono
+  un id di operazione, perché il `kind` dice cos'è successo al file e l'operazione dice cosa
+  ha fatto la persona. **`NoteFileOperations` si divide in un piano e un'esecuzione**, lo
+  stesso taglio che `tagRenamePreview`/`renameTag` avevano già fatto: ogni asserzione di
+  `NoteFileOperationTests` ha mantenuto il suo soggetto, nessuna è stata toccata. `isDryRun`
+  copre lo spostamento e la rimozione allo stesso modo della scrittura di testo, o non li
+  copre affatto - una prova a vuoto che sposta davvero il file sarebbe peggio di nessuna
+  prova. **L'undo di un gesto è tutto o niente** (decisione approvata in fase di piano): un
+  membro del gruppo che è cambiato dopo rifiuta l'intero gruppo nominando ogni fallimento,
+  invece di ripristinare undici note su dodici e riportare la dodicesima - un cambio di
+  comportamento su una funzione già in uso, `undoJournalledWrites`. **I connettori
+  offrono `note rename|move|trash`**: `perg note rename|move|trash` sulla CLI,
+  `rename_note`/`move_note`/`trash_note` sull'MCP con `dryRun` a `true` di default come ogni
+  altro strumento di scrittura. Verificato end-to-end su un vault di prova (non `~/Labs`, non
+  `vault-m12`): rename con link riscritto e scheda board ripuntata, move, trash, e l'undo per
+  id di operazione dal journal. 1249 test unitari verdi, SwiftLint 50, entrambi i connettori
+  compilano, `scripts/mcp-smoke.py` pulito. **Rimandato apposta**: `PG-019` (il drag di una
+  sezione nell'indice) resta aperto - è un gesto UI nuovo, non una correzione, e per
+  convenzione del progetto vuole un mockup approvato prima del codice; ADR-0016 gli lascia
+  comunque pronte la transazione e `moveFile`.
+
 - 2026-08-21 (pomeriggio): **due ADR dopo M12, `PG-032` e `PG-034` chiusi** (PR #77 e #78).
   **Una vista può chiedere di questa settimana** (ADR-0014): `today`, `today-N` e
   `week-start` sono accettati esattamente dove una data ISO già lo era, e il giorno è un

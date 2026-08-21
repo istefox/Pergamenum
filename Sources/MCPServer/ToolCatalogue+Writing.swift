@@ -44,6 +44,59 @@ extension ToolCatalogue {
             annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
         ),
         Tool(
+            name: "rename_note",
+            description: """
+                Rinomina una nota e riscrive ogni link e ogni card di board che punta al \
+                vecchio titolo. dryRun è true se omesso: torna cosa cambierebbe senza \
+                scrivere niente.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "path": ["type": "string"],
+                    "title": ["type": "string", "description": "il nuovo titolo"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["path", "title"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
+            name: "move_note",
+            description: """
+                Sposta una nota in un'altra cartella e ripunta le card di board che la \
+                mostrano. Nessun link da riscrivere: un wikilink nomina una nota per \
+                titolo, non per percorso. dryRun è true se omesso.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "path": ["type": "string"],
+                    "folder": ["type": "string", "description": "cartella di destinazione, la radice se omessa"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["path"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
+            name: "trash_note",
+            description: """
+                Manda una nota al cestino di Finder e segnala chi resta con un link a \
+                nulla. Il journal registra il testo intero: «undo_write» la rimette al \
+                suo posto finché il cestino non è stato svuotato. dryRun è true se omesso.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "path": ["type": "string"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["path"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false)
+        ),
+        Tool(
             name: "add_task",
             description: """
                 Aggiunge un task. Senza «note» finisce nell'inbox, che viene creato se \

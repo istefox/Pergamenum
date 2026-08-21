@@ -37,8 +37,10 @@ enum JournalCommands {
             throw CommandError("uso: perg journal undo <id>", code: .usage)
         }
         let session = try await Writing.session(arguments, command: "journal undo \(id)")
-        let summary = try VaultAPI.undo(session, id: id)
-        Writing.report(summary, arguments: arguments)
+        switch try VaultAPI.undo(session, id: id) {
+        case .single(let summary): Writing.report(summary, arguments: arguments)
+        case .operation(let summary): Writing.report(summary, arguments: arguments)
+        }
         return Writing.finish(session)
     }
 }

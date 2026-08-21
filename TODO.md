@@ -1,14 +1,12 @@
 <!-- project-tasks: prefix=PG lastId=34 -->
 # PROJECT TASKS
 
-Updated: 2026-08-21 · Open: 11 (P1: 0) · In progress: 0
+Updated: 2026-08-21 · Open: 10 (P1: 0) · In progress: 0
 
 ## Open Issues
 
 - [ ] `PG-004` **P2** `.pergamenum/cache.db` syncs in iCloud and will produce conflict copies; moving it out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
   - Harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
-- [ ] `PG-005` **P2** `NoteFileOperations` does not go through `VaultSession.write`, so the journal covers only part of a link rewrite and neither connector can offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 -->
-  - `PG-019` (dragging a section in the outline to move it) is the same class of work — a real text rewrite outside `VaultSession.write` — and belongs here rather than under the editor's own milestone.
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
@@ -30,8 +28,9 @@ Updated: 2026-08-21 · Open: 11 (P1: 0) · In progress: 0
   - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
   - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
 - [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
+  - `note rename|move|trash` is done, closed as `PG-005`. What is left: prompts in the vault, static export, import, AppIntents.
 - [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
-  - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belongs with `PG-005`, not with the editor's own milestone.
+  - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belonged with `PG-005`, now closed - ADR-0016 leaves the transaction and `moveFile` ready to use, so a future ADR for this drag does not need to redesign that part, only the gesture and its mockup.
 - [ ] `PG-030` **P2** A board grouped by `status-*` draws its columns and refuses every drop, because tag.md 5.1 forbids `status-*` on a note except `status-inbox` — `docs/adr/0009-views-are-queries-over-the-index.md` <!-- src:session opened:2026-08-20 -->
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
@@ -81,6 +80,9 @@ Updated: 2026-08-21 · Open: 11 (P1: 0) · In progress: 0
 
 ## Done
 
+- [x] `PG-005` **P2** `NoteFileOperations` did not go through `VaultSession.write`, so the journal covered only part of a link rewrite and neither connector could offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 closed:2026-08-21 -->
+  - Closed by ADR-0016 (`docs/adr/0016-the-journal-records-a-gesture.md`), five commits on `feature/m13-vault-entire`, not yet merged to `main`: the journal gains a gesture vocabulary (`operation`, `kind`, `pathBefore`, all optional so no migration is written); `transaction`/`moveFile`/`trashFile`/`writeFile` in `VaultSession+Journal.swift`; `NoteFileOperations` splits into a pure plan and a performing half, mirroring `tagRenamePreview`/`renameTag`, so every existing `NoteFileOperationTests` assertion kept its subject; `undo(operation:)` and `undoJournalledWrites` both pre-flight the whole group and refuse all-or-nothing rather than reversing what they can; both connectors get the three verbs, `dryRun` defaulting to true on MCP.
+  - `PG-019` (dragging a section in the outline) stays open on purpose: the plan flagged it as a different class of work - a new UI gesture, not a fix - and it gets its own ADR and mockup rather than being designed inside this one.
 - [x] `PG-027` The index and the inspector stop describing a note the composer is covering (`5abbae4`): `newNote` meant both "a draft exists" and "the composer is on screen", so opening a note left it underneath. Split into `noteDraft` and `isComposingNote`, with `isOpenNoteVisible` the one rule both panes read. The on-screen check then found the half no unit test could reach — the list's selection is derived from `openNote`, and SwiftUI runs a selection binding's setter only on a change, so clicking the covered note was no change at all (`d8a67b6`) (2026-08-19)
 - [x] `PG-028` A typed title survives stepping out of the composer (`5abbae4`): navigating away parks the title, the folder, the topic and the template for the next `Cmd+N`, while «Annulla», Escape, the × and «Crea» all discard through `endNewNote()`. The guard in `parkNewNote` is what makes the order of SwiftUI's `onDisappear` against the button's own action stop mattering. Only a draft with a title is parked, which is the same threshold the parking uses and is what kept `aNewNoteStartsInTheFolderItWasAskedFor` true (2026-08-19)
 - [x] `PG-009` M8 Menu comandi ed editor complete, thirteen slices (PR #62, `7d19baa`): slash menu, code fence highlighting, the note's index, heading folding, transclusion in both surfaces, one `CompletionPanel` for every trigger (PG-023), spell check, emoji completion, find/replace with regex, and the floating format bar last — bold/italic/strikethrough/code plus wikilink/link over a selection, its `PanelPlacement` shared with `CompletionPanel` rather than duplicated. Two AppKit defects only found on screen: `NSPanel.hasShadow` ringed the capsule because its native shadow is computed from the window's own rectangular backing store, and a `.clear`-background `Button` was clickable only on its own glyph without an explicit `contentShape`. Left over: `PG-019`, filed under `PG-005` (2026-08-18)

@@ -99,6 +99,13 @@ failure that would otherwise be unrecoverable:
   when the file's current hash is not the one it wrote - undoing onto somebody's later
   edit is worse than declining to undo at all.
 
+**Amendment (ADR-0016).** This ADR originally excluded `note rename|move|trash` from
+both connectors, because they rewrote links across many notes through `NoteFileOperations`
+directly, outside `VaultSession.write`, and the journal above had no way to describe a
+move or a removal. ADR-0016 gives the journal that vocabulary and routes all three
+through it as one journalled gesture, so the exclusion no longer holds and both
+connectors carry the three verbs.
+
 The journal lives under `.pergamenum/` with the rest of the disposable state. Losing it
 loses nothing that the vault does not still hold.
 

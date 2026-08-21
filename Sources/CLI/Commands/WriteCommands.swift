@@ -1,13 +1,8 @@
 import Foundation
 
-/// The commands that change a file: `note new`, `note append`, and the task and block
-/// writes. Every one of them accepts `--dry-run` and every one of them is journalled.
-///
-/// `note rename`, `move` and `trash` are deliberately not here yet. They rewrite links
-/// across many notes through `NoteFileOperations`, which does not go through
-/// `VaultSession.write` - so neither the journal nor the diff would see the whole of
-/// what they did, and a guardrail that covers part of a change is worse than one that
-/// admits it is absent.
+/// The commands that change a file: `note new`, `note append`, `note rename|move|trash`,
+/// and the task and block writes. Every one of them accepts `--dry-run` and every one of
+/// them is journalled.
 enum WriteCommands {
     // MARK: note new / append
 
@@ -30,6 +25,35 @@ enum WriteCommands {
         let path = try NoteCommands.requirePath(arguments, "note append <percorso> <testo>")
         let session = try await Writing.session(arguments, command: "note append")
         let summary = try VaultAPI.appendToNote(session, at: path, text: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    // MARK: note rename / move / trash (ADR-0016)
+
+    @MainActor
+    static func noteRename(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try NoteCommands.requirePath(arguments, "note rename <percorso> <nuovo-titolo>")
+        let session = try await Writing.session(arguments, command: "note rename")
+        let summary = try VaultAPI.renameNote(session, at: path, to: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func noteMove(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try NoteCommands.requirePath(arguments, "note move <percorso> <cartella>")
+        let session = try await Writing.session(arguments, command: "note move")
+        let summary = try VaultAPI.moveNote(session, at: path, toFolder: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func noteTrash(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try NoteCommands.requirePath(arguments, "note trash <percorso>")
+        let session = try await Writing.session(arguments, command: "note trash")
+        let summary = try VaultAPI.trashNote(session, at: path)
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }

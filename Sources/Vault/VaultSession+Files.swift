@@ -2,8 +2,10 @@ import Foundation
 
 /// Renaming, moving and deleting a note, links and boards included.
 ///
-/// The rules are `NoteFileOperations`; what this adds is the vault they act on and the
-/// list of paths they need to rewrite links in. Here rather than on the facade because
+/// The rules that decide *what* changes are `NoteFileOperations`'s `renamePlan`/`movePlan`/
+/// `danglingLinks`; what performs it is here, inside `transaction`, so every write a rename or a
+/// move makes carries one gesture id and `isDryRun` stops all of them at once rather than being a
+/// flag each rule has to remember (ADR-0016 §D6). Here rather than on the facade because
 /// `perg note rename` has to update backlinks exactly as the sidebar does (ADR-0007
 /// §D3): a rename that leaves the links behind breaks wikilink.md W-08 whichever
 /// process performed it.
@@ -12,17 +14,63 @@ extension VaultSession {
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
     func renameNote(at relativePath: String, to newTitle: String) throws -> NoteFileOperations.Outcome {
-        let outcome = try operations.rename(
+        let plan = try operations.renamePlan(
             relativePath, to: newTitle, knownPaths: index.allNotes.map(\.relativePath)
         )
+        var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
+
+        try transaction("note rename") {
+            if plan.newPath != relativePath {
+                try moveFile(from: relativePath, to: plan.newPath)
+            }
+            for change in plan.noteChanges {
+                do {
+                    try write(change.after, to: change.path)
+                    outcome.rewrittenPaths.append(change.path)
+                } catch {
+                    outcome.failures.append("\(change.path): \(error)")
+                }
+            }
+            for change in plan.boardChanges {
+                do {
+                    try writeFile(change.after, to: change.path)
+                    outcome.rewrittenPaths.append(change.path)
+                } catch {
+                    outcome.failures.append("\(change.path): \(error)")
+                }
+            }
+        }
+
         // The star is a path, so it moves with the file or it points at nothing (ADR-0012 D6).
-        moveStar(from: relativePath, to: outcome.newPath)
+        // Skipped on a dry run: nothing on disk moved, and moving the star for real would be the
+        // one part of a rehearsal that was not a rehearsal.
+        if !isDryRun {
+            moveStar(from: relativePath, to: outcome.newPath)
+        }
         return outcome
     }
 
     func moveNote(at relativePath: String, toFolder folder: String) throws -> NoteFileOperations.Outcome {
-        let outcome = try operations.move(relativePath, toFolder: folder)
-        moveStar(from: relativePath, to: outcome.newPath)
+        let plan = try operations.movePlan(relativePath, toFolder: folder)
+        var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
+
+        try transaction("note move") {
+            if plan.newPath != relativePath {
+                try moveFile(from: relativePath, to: plan.newPath)
+            }
+            for change in plan.boardChanges {
+                do {
+                    try writeFile(change.after, to: change.path)
+                    outcome.rewrittenPaths.append(change.path)
+                } catch {
+                    outcome.failures.append("\(change.path): \(error)")
+                }
+            }
+        }
+
+        if !isDryRun {
+            moveStar(from: relativePath, to: outcome.newPath)
+        }
         return outcome
     }
 
@@ -30,8 +78,14 @@ extension VaultSession {
     ///
     /// The caller confirms first: this does the deleting, it does not ask.
     func trashNote(at relativePath: String) throws -> [String] {
-        let orphaned = try operations.trash(relativePath, knownPaths: index.allNotes.map(\.relativePath))
-        forgetStar(relativePath)
+        let knownPaths = index.allNotes.map(\.relativePath)
+        try transaction("note trash") {
+            try trashFile(at: relativePath)
+        }
+        let orphaned = operations.danglingLinks(for: relativePath, knownPaths: knownPaths)
+        if !isDryRun {
+            forgetStar(relativePath)
+        }
         return orphaned
     }
 
