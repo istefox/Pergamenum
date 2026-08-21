@@ -87,6 +87,31 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-21 (pomeriggio): **due ADR dopo M12, `PG-032` e `PG-034` chiusi** (PR #77 e #78).
+  **Una vista può chiedere di questa settimana** (ADR-0014): `today`, `today-N` e
+  `week-start` sono accettati esattamente dove una data ISO già lo era, e il giorno è un
+  **parametro** di `ViewEvaluator.evaluate`, mai letto dall'orologio lì dentro - che è ciò
+  che permette a un test di fissare il proprio venerdì invece di fallire un giorno all'anno.
+  `week-start` è il lunedì e non sette giorni indietro, perché letto di venerdì `today-7`
+  pesca dentro il venerdì scorso e mette il lavoro chiuso della settimana passata dentro la
+  revisione di questa. Un limite in avanti resta rifiutato finché `deadline.next` non è
+  confrontabile: `+` non sta nell'alfabeto del lexer, e allargarlo vuole una domanda che lo
+  giustifichi. Il pannello Viste descrive un filtro **con le parole del blocco**, non con la
+  data in cui si risolve oggi: `modified >= week-start`, mai `modified >= 17/08/2026`.
+  **La finestra sa dove è stata** (ADR-0015): `Cmd+[` e `Cmd+]`, due frecce in testa alla
+  toolbar e due voci nel menu Vista. Un luogo è **derivato** dallo stato che la finestra già
+  tiene, come lo è la riga accesa della sidebar, e registrato da **un solo osservatore**
+  invece che dagli undici metodi che spostano la finestra: undici punti da tenere giusti
+  sono uno da dimenticare, e una cronologia con un buco è indistinguibile da una
+  cronologia. Scorrere un giorno alla volta è **deriva** e sostituisce l'ultima voce, o
+  «indietro» diventerebbe «annulla i miei ultimi cinque tasti». Due meccanismi sono valori e
+  non flag, per la stessa ragione: l'osservatore gira all'aggiornamento della vista
+  *successivo* al cambiamento, quindi qualsiasi cosa messa e tolta attorno al cambiamento è
+  già falsa quando viene letta. **Il Workspace resta un posto solo, non uno per canvas**, ed
+  è un limite scritto e non una svista: la sua cartella sta su un controller `@State` dentro
+  la vista, che la finestra non può leggere. 1228 test unitari, 70 UI verdi eseguiti
+  sull'albero finito in `main`, SwiftLint 50, entrambi i connettori compilano.
+
 - 2026-08-21: **M12 completo, `PG-013` chiuso.** ADR-0013 in sei slice: l'ADR con
   l'emendamento allo SPEC, i mockup, le scale, il drag che scrive, i controlli delle viste,
   il rollover, le note evento e la revisione settimanale. **Giorno, settimana e mese sono
@@ -112,10 +137,11 @@ Binding order, each yielding a usable app (SPEC §13):
   note**, `Calendar/YYYYMMDD-<slug>.md`, non una cartella riservata nuova, e nasce nella
   forma di una cattura, `type-note` + `status-inbox`: un foglio di dialogo che chiede il
   `topic-*` prima di creare la nota la renderebbe conforme alla nascita e inutilizzata. La
-  revisione settimanale è un template con quattro blocchi vista, e **nessuno dice «questa
-  settimana»**: la grammatica confronta `modified` solo con una data scritta per esteso, e
-  una settimana letterale scadrebbe il lunedì dopo in silenzio (`PG-032`). 1205 test
-  unitari, SwiftLint 50, entrambi i connettori compilano.
+  revisione settimanale è un template con quattro blocchi vista, e alla consegna **nessuno
+  diceva «questa settimana»**: la grammatica confrontava `modified` solo con una data
+  scritta per esteso, e una settimana letterale scadeva il lunedì dopo in silenzio. Chiuso
+  lo stesso giorno da `PG-032`, qui sotto. 1205 test unitari, SwiftLint 50, entrambi i
+  connettori compilano.
 - 2026-08-20: **M11 completo, `PG-012` chiuso.** ADR-0009 in sei slice: il motore, il bump
   di schema, i mockup, i renderer in lettura, la board che scrive, il connettore. Una
   vista è un blocco `pergamenum-view` dentro una nota ordinaria, quindi vive nel vault, si
