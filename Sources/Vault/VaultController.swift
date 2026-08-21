@@ -154,7 +154,11 @@ final class VaultController {
         // Resolved once, ahead of the session: `VaultSession` and `ThumbnailStore`
         // both need it, and a failure here means neither can be built - there is no
         // silent fallback location to write derived state into instead (ADR-0017).
-        guard let stateBase = try? VaultState.applicationSupportBase() else {
+        // `processDefaultBase()`, not `applicationSupportBase()` directly: this is the
+        // one call every one of the fourteen test files that build a `VaultController`
+        // and call `open(_:)` goes through, and it must never be the real directory
+        // from a test run.
+        guard let stateBase = try? VaultState.processDefaultBase() else {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
             return
         }

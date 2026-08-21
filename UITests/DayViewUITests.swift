@@ -5,6 +5,7 @@ import XCTest
 /// and resized.
 final class DayViewUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -43,8 +44,12 @@ final class DayViewUITests: XCTestCase {
         )
 
         app = XCUIApplication()
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES"]
+                               "-disableCalendar", "YES",
+                               "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         app.staticTexts["Oggi"].firstMatch.click()
@@ -53,6 +58,7 @@ final class DayViewUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     /// In the machine's own zone, because `CalendarDate.today` is: formatted in GMT

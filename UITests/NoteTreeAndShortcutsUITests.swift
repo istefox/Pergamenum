@@ -7,6 +7,7 @@ import XCTest
 /// reaches the menu bar, would pass every unit test in the suite.
 final class NoteTreeAndShortcutsUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -17,6 +18,7 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     /// Launches the app on the fixture vault.
@@ -28,8 +30,12 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
     /// `UserDefaults(suiteName:)` is a private copy in its own container.
     private func launch(shortcuts: String? = nil) {
         app = XCUIApplication()
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         var arguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                         "-disableCalendar", "YES"]
+                         "-disableCalendar", "YES",
+                         "-stateBase", stateBase.path(percentEncoded: false)]
         if let shortcuts {
             arguments += ["-shortcutOverrides", shortcuts]
         }

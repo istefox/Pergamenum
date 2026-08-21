@@ -14,6 +14,7 @@ import XCTest
 /// merely looks right.
 final class WorkspaceBoardUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var boardFile: URL!
     private var app: XCUIApplication!
 
@@ -34,8 +35,12 @@ final class WorkspaceBoardUITests: XCTestCase {
         app = XCUIApplication()
         // NSUserDefaults reads the argument domain, so the app reopens this vault at
         // launch without any test-only code inside the app itself.
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES"]
+                               "-disableCalendar", "YES",
+                               "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         try openWorkspace()
     }
@@ -43,6 +48,7 @@ final class WorkspaceBoardUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     // MARK: 1. A corner grip can be grabbed and resizes the card

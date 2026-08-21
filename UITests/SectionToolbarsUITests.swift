@@ -7,6 +7,7 @@ import XCTest
 /// visible or it is nothing, which is what makes this a UI test and not a unit one.
 final class SectionToolbarsUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -14,8 +15,12 @@ final class SectionToolbarsUITests: XCTestCase {
         try makeVault()
 
         app = XCUIApplication()
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES"]
+                               "-disableCalendar", "YES",
+                               "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
     }
@@ -23,6 +28,7 @@ final class SectionToolbarsUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     /// Clicks a pane in the sidebar and waits for it to be showing.
