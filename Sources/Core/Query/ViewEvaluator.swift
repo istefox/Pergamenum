@@ -51,12 +51,17 @@ enum ViewEvaluator {
     /// the precedent for who opens files. The default reads nothing, so a `text()` term
     /// with no reader matches **nothing**: quietly matching everything is the failure
     /// that makes a result look like an answer.
+    /// - Parameter today: the day a relative bound resolves against (ADR-0014 §D3). Handed in
+    ///   rather than read from the clock down in the filter, so a test can fix it: a test that
+    ///   cannot is a test that fails one day a year. The default keeps every existing caller
+    ///   unchanged, and every existing caller wants the machine's today.
     static func evaluate(
         _ block: ViewBlock,
         over corpus: some ViewCorpus,
+        today: CalendarDate = .today,
         body: (NoteRecord) -> String? = { _ in nil }
     ) -> ViewResult {
-        let context = Context(corpus: corpus)
+        let context = Context(corpus: corpus, today: today)
         var rows: [ViewResult.Row] = []
 
         for record in corpus.records where context.isInScope(record, of: block) {
@@ -150,10 +155,14 @@ enum ViewEvaluator {
     /// the same answer.
     private struct Context {
         let graph: ViewGraph
+        /// The day a relative bound means. Carried here rather than reached for, which is the
+        /// whole of ADR-0014 §D3.
+        let today: CalendarDate
         private let byPath: [String: NoteRecord]
         private let resolve: @Sendable (String) -> [String]
 
-        init(corpus: some ViewCorpus) {
+        init(corpus: some ViewCorpus, today: CalendarDate) {
+            self.today = today
             var graph = ViewGraph()
             var byPath: [String: NoteRecord] = [:]
             for record in corpus.records { byPath[record.relativePath] = record }
@@ -206,7 +215,7 @@ enum ViewEvaluator {
             case .text(let needle): body().map { SearchQuery.fold($0).contains(SearchQuery.fold(needle)) } ?? false
             case .comparison(let field, let comparison, let bound):
                 if case .day(let day) = field.value(of: record, in: graph) {
-                    comparison.admits(day, against: bound)
+                    comparison.admits(day, against: bound.resolved(on: today))
                 } else {
                     false
                 }

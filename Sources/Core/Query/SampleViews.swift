@@ -125,12 +125,11 @@ enum SampleViews {
     /// a review is four questions, and four notes to open on a Friday afternoon is a ritual
     /// nobody keeps.
     ///
-    /// **None of the four asks for "this week", and the note says why.** The block grammar
-    /// compares `date` and `modified` against an ISO date and nothing else (ADR-0009 §D1), so a
-    /// literal week would be a week that went stale the following Monday, silently. Ordering by
-    /// `modified` answers the same question without a date in it, and adding a relative literal
-    /// to the grammar is a decision for its own ADR rather than something to slip into a
-    /// template.
+    /// **It asks about the week now, which it could not when it shipped.** The first version
+    /// ordered by `modified` and explained in prose why the question was out of reach, because
+    /// the grammar compared dates against a written-out ISO string and a literal week goes
+    /// stale the following Monday in silence. ADR-0014 added `week-start`, and the apology came
+    /// out with the workaround.
     private static let weeklyReview = Sample(
         name: "Revisione settimanale",
         text: """
@@ -143,16 +142,16 @@ enum SampleViews {
 
         Da usare come template il venerdì: `Cmd+N`, poi «Revisione settimanale».
 
-        Nessuno dei quattro blocchi dice «questa settimana», ed è voluto: il linguaggio
-        delle viste confronta `modified` con una data scritta per esteso, quindi una
-        settimana letterale sarebbe scaduta il lunedì dopo senza dirlo. L'ordine per
-        `modified` risponde alla stessa domanda senza avere una data dentro.
+        «Questa settimana» è `week-start`, cioè il lunedì di questa settimana, e non
+        `today-7`: letto di venerdì, sette giorni indietro pescano dentro il venerdì
+        scorso e mettono il lavoro chiuso della settimana passata dentro la revisione di
+        questa (ADR-0014).
 
-        ## Cosa si è mosso
+        ## Cosa si è mosso questa settimana
 
         ```pergamenum-view
+        where: modified >= week-start
         sort: modified desc
-        limit: 15
         render: table
         columns: [title, modified, tasks.open]
         ```
@@ -178,10 +177,10 @@ enum SampleViews {
         columns: [title, tasks.open]
         ```
 
-        ## Quali progetti si sono mossi
+        ## Quali progetti si sono mossi questa settimana
 
         ```pergamenum-view
-        where: tag("project-*")
+        where: tag("project-*") and modified >= week-start
         sort: modified desc
         render: table
         columns: [title, tags, modified]
