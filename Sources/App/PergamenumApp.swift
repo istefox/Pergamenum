@@ -33,6 +33,10 @@ struct PergamenumApp: App {
     /// and needs it: a `@State` property with an inline default is not readable from the
     /// initialiser that would use it.
     @State private var navigation: Navigation
+    /// The places the window has been (ADR-0015). Built in `init` for the same reason
+    /// `navigation` is: `CommandActions` is assembled there and «Indietro» is one of its
+    /// commands. One history because there is one `Window`, and it does not outlive it (§D6).
+    @State private var history: NavigationHistory
     /// The keyboard shortcuts in force. Held at app level because the menu bar is
     /// built here and the settings window that edits them is a separate scene.
     @State private var shortcuts = ShortcutStore()
@@ -72,11 +76,13 @@ struct PergamenumApp: App {
         let hotkey = GlobalHotkey()
         let navigation = Navigation()
         let day = DayController(store: calendar, vault: vault)
+        let history = NavigationHistory()
 
         _themeEngine = State(initialValue: engine)
         _vault = State(initialValue: vault)
         _calendar = State(initialValue: calendar)
         _navigation = State(initialValue: navigation)
+        _history = State(initialValue: history)
         _capture = State(initialValue: capture)
         _hotkey = State(initialValue: hotkey)
         _day = State(initialValue: day)
@@ -107,7 +113,8 @@ struct PergamenumApp: App {
             vault: vault,
             day: day,
             calendar: calendar,
-            capturePanel: panel
+            capturePanel: panel,
+            history: history
         )
     }
 
@@ -134,6 +141,7 @@ struct PergamenumApp: App {
                 .environment(vault)
                 .environment(calendar)
                 .environment(navigation)
+                .environment(history)
                 .environment(reminders)
                 .environment(day)
                 .environment(diary)
@@ -373,28 +381,6 @@ struct VaultCommands: Commands {
             Button("Rivela nel Finder") { actions.run(.revealInFinder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .revealInFinder))
                 .disabled(!actions.canRun(.revealInFinder))
-        }
-    }
-}
-
-/// The Vista > Tema section of the menu bar (SPEC §10). Lives here rather than in
-/// the gallery because the menu belongs to the app, not to a feature.
-struct ThemeCommands: Commands {
-    @Bindable var engine: ThemeEngine
-
-    var body: some Commands {
-        CommandGroup(after: .toolbar) {
-            Menu("Tema") {
-                Picker("Tema", selection: $engine.selection) {
-                    Text("Sistema").tag(ThemeEngine.Selection.followSystem)
-                    Text("Chiaro").tag(ThemeEngine.Selection.light)
-                    Text("Scuro").tag(ThemeEngine.Selection.dark)
-                    ForEach(engine.selectableThemes.filter { !$0.id.hasPrefix("pergamenum-") }) { theme in
-                        Text(theme.name).tag(ThemeEngine.Selection.named(theme.id))
-                    }
-                }
-                .pickerStyle(.inline)
-            }
         }
     }
 }

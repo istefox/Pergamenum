@@ -27,19 +27,30 @@ final class CommandActions {
     let day: DayController
     let calendar: EventKitStore
     let capturePanel: CapturePanel
+    /// The places the window has been (ADR-0015), so «Indietro» is the same command from the
+    /// menu, the key and the toolbar rather than three of them.
+    let history: NavigationHistory
 
     init(
         navigation: Navigation,
         vault: VaultController,
         day: DayController,
         calendar: EventKitStore,
-        capturePanel: CapturePanel
+        capturePanel: CapturePanel,
+        history: NavigationHistory
     ) {
         self.navigation = navigation
         self.vault = vault
         self.day = day
         self.calendar = calendar
         self.capturePanel = capturePanel
+        self.history = history
+    }
+
+    /// The same value `RootView` derives, built from the same three controllers: this is what
+    /// makes the menu entry and the toolbar button the one command they look like.
+    private var place: WindowPlace {
+        WindowPlace(navigation: navigation, vault: vault, day: day)
     }
 
     // MARK: Running
@@ -197,6 +208,8 @@ final class CommandActions {
             if let entry = vault.currentOutlineEntry { vault.toggleFold(entry) }
         case .unfoldAll:
             vault.foldedEntries = []
+        case .goBack, .goForward:
+            walkHistory(command)
         default:
             assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
         }
@@ -268,11 +281,10 @@ final class CommandActions {
         case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory,
              .toggleStar, .applyTemplate:
             canRunOnOpenNote(command)
-        case .foldSection:
-            // Reading mode has no caret, so it has no current section either.
-            vault.currentOutlineEntry != nil && !vault.isReadingMode
-        case .unfoldAll:
-            !vault.foldedEntries.isEmpty
+        case .foldSection, .unfoldAll:
+            canRunFolding(command)
+        case .goBack, .goForward:
+            command == .goBack ? history.canGoBack : history.canGoForward
         case .taskToggle:
             vault.selectedTask != nil
         case .newEvent:
@@ -298,6 +310,27 @@ final class CommandActions {
     /// A template to write and a note to write it into: «Applica un template…» is offered
     /// greyed rather than hidden when the vault has no `Templates/` folder yet, because
     /// the command is how somebody finds out the folder is a thing.
+    /// Folding, split out for the reason `canRunTab` was: this switch sits at the complexity
+    /// the linter reports, and this codebase restructures rather than writing its first
+    /// `swiftlint:disable`. The two conditions are the ones the Vista menu already had.
+    private func canRunFolding(_ command: ShortcutCommand) -> Bool {
+        switch command {
+        // Reading mode has no caret, so it has no current section either.
+        case .foldSection: vault.currentOutlineEntry != nil && !vault.isReadingMode
+        case .unfoldAll: !vault.foldedEntries.isEmpty
+        default: false
+        }
+    }
+
+    /// One step through the window's history, in either direction (ADR-0015).
+    ///
+    /// Nothing happens when the walk finds nowhere left to reach: every entry it passed named
+    /// a note that is gone, and it dropped them on the way.
+    private func walkHistory(_ command: ShortcutCommand) {
+        let walk = command == .goBack ? history.goBack : history.goForward
+        if let destination = walk(place.isReachable) { place.apply(destination) }
+    }
+
     private func canRunOnOpenNote(_ command: ShortcutCommand) -> Bool {
         guard vault.openNote != nil else { return false }
         return command == .applyTemplate ? !vault.templates.isEmpty : true

@@ -25,7 +25,8 @@ private func actions() -> CommandActions {
             session: { vault.session },
             theme: { ThemeEngine().current },
             shortcutCaption: { nil }
-        )
+        ),
+        history: NavigationHistory()
     )
 }
 
@@ -50,6 +51,16 @@ private func actions() -> CommandActions {
     // `save` is stricter than the others and always was: an open note with nothing
     // changed does not enable it either.
     #expect(!actions.canRun(.save))
+}
+
+@MainActor
+@Test func withNothingVisitedYetBothArrowsAreRefused() {
+    let actions = actions()
+    // The wiring, not the history: `NavigationHistoryTests` owns the rules. What this asserts
+    // is that the menu asks the history at all - an «Indietro» that is always enabled and does
+    // nothing is the same broken promise as an entry pointing at a note that is gone.
+    #expect(!actions.canRun(.goBack))
+    #expect(!actions.canRun(.goForward))
 }
 
 @MainActor
