@@ -30,7 +30,7 @@ extension VaultAPI {
     static func arm(_ session: VaultSession, command: String, dryRun: Bool) {
         session.isDryRun = dryRun
         session.journalCommand = command
-        session.journal = dryRun ? nil : WriteJournal(root: session.root)
+        session.journal = dryRun ? nil : session.journalOnDisk
     }
 
     /// Describes a write, as a diff when it was a rehearsal and as a bare fact when it
@@ -250,7 +250,7 @@ extension VaultAPI {
     /// worse than declining to undo at all.
     @MainActor
     static func undo(_ session: VaultSession, id: String) throws -> UndoOutcome {
-        let journal = WriteJournal(root: session.root)
+        let journal = session.journalOnDisk
         guard journal.entries(operation: id).isEmpty else {
             let outcome = session.undo(operation: id)
             guard outcome.failures.isEmpty else {
@@ -287,7 +287,17 @@ extension VaultAPI {
 
     /// The journal read straight off disk: no session, because listing what was written
     /// does not need the vault scanned to answer.
-    static func journalLog(at root: URL, limit: Int?) -> [JournalRow] {
-        WriteJournal(root: root).entries().suffix(limit ?? 20).map(JournalRow.init)
+    ///
+    /// `base` and `throws` are new with ADR-0017: the journal moved beside the vault,
+    /// so finding it needs the state directory `VaultState.resolve(root:base:)` reads
+    /// out of `settings.json`, and a vault this process has never opened has no id to
+    /// resolve. Reported rather than minting one from a read-only log command, which is
+    /// as far as this call site goes for now - wiring `base` in from the two callers'
+    /// own `VaultState.applicationSupportBase()` is slice 3.
+    static func journalLog(at root: URL, base: URL, limit: Int?) throws -> [JournalRow] {
+        guard let state = VaultState.resolve(root: root, base: base) else {
+            throw ConnectorError("vault mai aperto: nessun journal da leggere")
+        }
+        return WriteJournal(directory: state.journal).entries().suffix(limit ?? 20).map(JournalRow.init)
     }
 }

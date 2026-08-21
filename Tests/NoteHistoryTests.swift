@@ -7,7 +7,7 @@ import Testing
 
 @Test func recordingWritesASnapshotThatSnapshotsReadsBack() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
 
     history.record("prima versione\n", for: "N.md")
 
@@ -18,7 +18,7 @@ import Testing
 
 @Test func snapshotsComeBackNewestFirst() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     let now = Date()
 
     history.record("vecchia\n", for: "N.md", at: now.addingTimeInterval(-10))
@@ -30,7 +30,7 @@ import Testing
 
 @Test func aNoteWithNoHistoryReturnsAnEmptyListNotAnError() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
 
     #expect(history.snapshots(for: "Mai salvata.md").isEmpty)
 }
@@ -39,7 +39,7 @@ import Testing
 
 @Test func twoSnapshotsWithinADayBothSurviveThinning() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     let now = Date()
 
     history.record("uno\n", for: "N.md", at: now.addingTimeInterval(-60))
@@ -54,7 +54,7 @@ import Testing
     // with nothing written since sit exactly as they are - a later write is what makes
     // the comparison happen at all, so this test supplies one.
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     let now = Date()
     // Both well past the 24h cutoff, both on the same calendar day.
     let morning = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: now)!
@@ -75,7 +75,7 @@ import Testing
 
 @Test func twoSnapshotsOlderThanADayOnDifferentDaysBothSurvive() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     let now = Date()
     // Pinned like its two siblings rather than measured from whatever time it is: a
     // fixed number of seconds back lands on a wall-clock hour that moves, and a daylight
@@ -101,7 +101,7 @@ import Testing
     // The boundary itself: one snapshot inside the 24h window and two on the same
     // older day - only the older pair collapses.
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     let now = Date()
     // Pinned to nine in the morning, as the same-day test above is, and for a reason
     // that cost a red suite: derived straight from `Date()`, `old1` was `now` minus 48
@@ -121,11 +121,11 @@ import Testing
 
 @Test func aStrayUnparseableFileIsSkippedByBothReadingAndThinning() throws {
     let vault = try TemporaryVault()
-    let history = NoteHistory(root: vault.root)
+    let history = NoteHistory(directory: vault.root.appending(path: "history"))
     history.record("buona\n", for: "N.md")
 
     let noteDir = vault.root
-        .appending(path: ".pergamenum/history/N.md", directoryHint: .isDirectory)
+        .appending(path: "history/N.md", directoryHint: .isDirectory)
     try Data("non è un timestamp\n".utf8)
         .write(to: noteDir.appending(path: "non-parseable.md"))
 

@@ -24,7 +24,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     await session.rescan()
     // The app arms none of this (ADR-0007 §D6); a test that wants to read the journal has to
     // arm it exactly as a connector does.
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     return session
 }
 
@@ -51,11 +51,11 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(canvas.contains("Nuovo titolo.md"))
 
     // Move + link rewrite + board rewrite: three writes, one gesture.
-    let entries = WriteJournal(root: vault.root).entries()
+    let entries = session.journalOnDisk.entries()
     #expect(entries.count == 3)
     let ids = Set(entries.compactMap(\.operation))
     #expect(ids.count == 1, "la rinomina non ha condiviso un solo id di gesto")
-    #expect(WriteJournal(root: vault.root).entries(operation: ids.first ?? "").count == 3)
+    #expect(session.journalOnDisk.entries(operation: ids.first ?? "").count == 3)
 }
 
 // MARK: - The dry run (ADR-0016 §D6)
@@ -88,7 +88,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(session.exists("Da eliminare.md"))
 
     #expect(
-        WriteJournal(root: vault.root).entries().isEmpty,
+        session.journalOnDisk.entries().isEmpty,
         "una prova a vuoto ha scritto nel journal"
     )
 }
@@ -106,7 +106,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     #expect(dangling == ["Rimasta.md"])
     #expect(!session.exists("Sparita.md"))
-    let entry = try #require(WriteJournal(root: vault.root).entries().last)
+    let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.kind == .removal)
     #expect(entry.operation != nil, "la rimozione non è passata dentro una transazione")
 }
@@ -122,7 +122,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
 
     _ = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
-    let operationID = try #require(WriteJournal(root: vault.root).entries().first?.operation)
+    let operationID = try #require(session.journalOnDisk.entries().first?.operation)
 
     let undone = session.undo(operation: operationID)
 
@@ -144,7 +144,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
 
     let outcome = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
-    let operationID = try #require(WriteJournal(root: vault.root).entries().first?.operation)
+    let operationID = try #require(session.journalOnDisk.entries().first?.operation)
 
     // Somebody edits the rewritten link afterwards.
     try session.write(note("Vedi [[Nuovo titolo]]. Aggiunta a mano."), to: "Altra.md")
@@ -167,7 +167,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     _ = try session.trashNote(at: "Sparita.md")
     let operationID = try #require(
-        WriteJournal(root: vault.root).entries().last { $0.kind == .removal }?.operation
+        session.journalOnDisk.entries().last { $0.kind == .removal }?.operation
     )
 
     // Restored by hand from the Finder, or simply a new note created at the same path: either

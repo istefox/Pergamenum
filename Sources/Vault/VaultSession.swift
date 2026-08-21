@@ -94,7 +94,7 @@ final class VaultSession {
         self.problems = loaded.problems + identity.problems
         self.state = VaultState(id: identity.id, base: stateBase)
 
-        self.history = NoteHistory(root: root)
+        self.history = NoteHistory(directory: state.history)
         self.starredStore = StarredStore(root: root)
 
         problems.append(contentsOf: state.migrateIfNeeded(from: privateDirectory, root: root))
@@ -277,6 +277,16 @@ final class VaultSession {
 
     private var cacheURL: URL {
         state.cacheFile
+    }
+
+    /// A fresh `WriteJournal` resolved against this vault's state directory, for every
+    /// call site that used to rebuild `WriteJournal(root: root)` by hand (ADR-0017).
+    /// `WriteJournal` itself carries no cached state worth reusing across calls - it
+    /// reads and appends straight from disk - so a computed property that builds a new
+    /// value each time is exactly as cheap as the type it wraps, and it is the one
+    /// place `state.journal` has to be spelled out.
+    var journalOnDisk: WriteJournal {
+        WriteJournal(directory: state.journal)
     }
 
     /// Applies a settings change and writes `settings.json` back.

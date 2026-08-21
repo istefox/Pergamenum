@@ -100,6 +100,8 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+Watching.swift",
     "Sources/Vault/VaultSettings.swift",
     "Sources/Vault/VaultState.swift",
+    "Sources/Vault/VaultState+Migration.swift",
+    "Sources/Vault/VaultState+DirectoryMove.swift",
     "Sources/Vault/WriteJournal.swift",
 ]
 

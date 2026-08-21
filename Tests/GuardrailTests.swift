@@ -96,12 +96,12 @@ import Testing
     try vault.write("prima\n", to: "N.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     session.journalCommand = "prova"
 
     try session.write("dopo\n", to: "N.md")
 
-    let entries = WriteJournal(root: vault.root).entries()
+    let entries = session.journalOnDisk.entries()
     #expect(entries.count == 1)
     let entry = try #require(entries.first)
     #expect(entry.path == "N.md")
@@ -116,11 +116,11 @@ import Testing
     let vault = try TemporaryVault()
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
 
     try session.write("nuovo\n", to: "N.md")
 
-    let entry = try #require(WriteJournal(root: vault.root).entries().first)
+    let entry = try #require(session.journalOnDisk.entries().first)
     // Nil rather than "": undoing a creation means deleting, which is a different act
     // and one the CLI refuses to perform.
     #expect(entry.textBefore == nil)
@@ -133,19 +133,19 @@ import Testing
     try vault.write("prima\n", to: "N.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     session.isDryRun = true
 
     try session.write("dopo\n", to: "N.md")
 
     // Nothing happened, and an entry saying otherwise would be a lie in the one file
     // whose whole job is to be trusted.
-    #expect(WriteJournal(root: vault.root).entries().isEmpty)
+    #expect(session.journalOnDisk.entries().isEmpty)
 }
 
 @Test func aJournalSurvivesALineItCannotRead() throws {
     let vault = try TemporaryVault()
-    let journal = WriteJournal(root: vault.root)
+    let journal = WriteJournal(directory: vault.stateBase.appending(path: "ai-journal"))
     let now = Date()
     #expect(journal.record(WriteJournal.Entry(
         id: "uno", timestamp: now, path: "A.md",

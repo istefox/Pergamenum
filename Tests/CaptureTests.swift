@@ -184,7 +184,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(try #require(summary.diff).contains("+Aggiunta"))
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
     #expect(!onDisk.contains("Aggiunta"), "una prova non deve toccare il file")
-    #expect(VaultAPI.journalLog(at: vault.root, limit: nil).isEmpty)
+    #expect(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).isEmpty)
 }
 
 @MainActor
@@ -213,7 +213,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
     _ = try VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
-    let id = try #require(VaultAPI.journalLog(at: vault.root, limit: nil).last?.id)
+    let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
     _ = try VaultAPI.undo(session, id: id)
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)

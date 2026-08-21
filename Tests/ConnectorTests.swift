@@ -217,7 +217,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
     #expect(onDisk.contains("- [ ] Delta >2026-08-22"))
 
-    let log = VaultAPI.journalLog(at: vault.root, limit: nil)
+    let log = try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil)
     #expect(log.count == 1)
     #expect(log.first?.command == "add_task")
     #expect(log.first?.created == false)
@@ -230,7 +230,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
     _ = try VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
-    let id = try #require(VaultAPI.journalLog(at: vault.root, limit: nil).last?.id)
+    let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     // Somebody else edits the file after that write.
     try vault.write(note + "\n\nScritto da qualcun altro\n", to: "Nota.md")
@@ -250,7 +250,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
     _ = try VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
-    let id = try #require(VaultAPI.journalLog(at: vault.root, limit: nil).last?.id)
+    let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
     _ = try VaultAPI.undo(session, id: id)
@@ -265,7 +265,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     VaultAPI.arm(session, command: "create_note", dryRun: false)
     _ = try VaultAPI.createNote(session, title: "Nuova", folder: nil, topic: nil, date: nil)
-    let id = try #require(VaultAPI.journalLog(at: vault.root, limit: nil).last?.id)
+    let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
     // This command does not delete. Saying so beats removing a file on a model's say-so.
