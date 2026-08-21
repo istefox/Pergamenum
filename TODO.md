@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=33 -->
+<!-- project-tasks: prefix=PG lastId=34 -->
 # PROJECT TASKS
 
-Updated: 2026-08-21 · Open: 12 (P1: 0) · In progress: 0
+Updated: 2026-08-21 · Open: 11 (P1: 0) · In progress: 0
 
 ## Open Issues
 
@@ -25,7 +25,7 @@ Updated: 2026-08-21 · Open: 12 (P1: 0) · In progress: 0
 - [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
   - Closed in six slices: the ADR and the SPEC amendment (`d923bda`), the mockups (`f14f21d`), the week, the month, the red days and the sidebar (`553aca0`, `cfc46e3`), the drag and the editable block (`5da6838`), the per-view controls (`c272388`), the rollover (`86c6dab`), the event notes and the weekly review (`3e530c8`).
   - **The rollover amendment is spent and it is narrow.** SPEC §7.3 keeps the NotePlan rule as the default; the setting is off, bounded to a number of days, and shows without moving. Reopening it further needs its own reason.
-  - The weekly review ships as a template with four view blocks and **none of them says «this week»**: the block grammar compares `modified` against a written-out date only, so a literal week goes stale the following Monday in silence. A relative date literal in the grammar is a decision for its own ADR - see `PG-032`.
+  - The weekly review shipped as a template with four view blocks and **none of them said «this week»**: the block grammar compared `modified` against a written-out date only, so a literal week went stale the following Monday in silence. Closed by `PG-032` the same week, and the template now asks with `week-start`.
 - [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
   - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
   - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
@@ -36,9 +36,15 @@ Updated: 2026-08-21 · Open: 12 (P1: 0) · In progress: 0
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
 - [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
-- [ ] `PG-032` **P2** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 -->
-  - **Decided: ADR-0014 is written and accepted.** Three words - `today`, `today-N`, `week-start` - accepted only where an ISO date already is, with the day passed into `ViewEvaluator.evaluate` rather than read from the clock, and an open view re-evaluated on `NSCalendarDayChangedNotification`. A forward bound is refused until `deadline.next` becomes comparable, because `+` is not in the lexer's word set and widening the alphabet needs a question to justify it.
-  - Left to do is the implementation, and it is four pieces: the parse in `ViewFilter`, the day threaded through `ViewEvaluator`, the observer on the views pane, and the edit to `SampleViews` that takes the workaround paragraph out of the weekly review.
+- [x] `PG-032` **P2** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+  - **ADR-0014, then four pieces, merged as PR #77 (`0331b0e`).** Three words - `today`, `today-N`, `week-start` - accepted only where an ISO date already is; `ViewDateBound` holds the bound and parses it; the day is a parameter of `ViewEvaluator.evaluate` and never read from the clock there, which is what lets a test fix its Friday; `onDayChange` re-evaluates the panes; and the weekly review in `SampleViews` lost the workaround and the paragraph apologising for it.
+  - A forward bound stays refused until `deadline.next` becomes comparable: `+` is not in the lexer's word set, and widening the alphabet needs a question to justify it.
+  - Verified on screen on a Friday, which is the day the two spellings disagree: `week-start` and `today-7` returned different sets, a bad bound named its line instead of emptying the list, and the Viste pane described the filter in the block's own words rather than in today's date.
+
+- [x] `PG-034` **P3** Nothing retraced a step: nine panes, three day scales and tabs, and no way back — `Sources/App/NavigationHistory.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+  - ADR-0015 and the implementation, merged as PR #78. `Cmd+[` and `Cmd+]`, two arrows at the leading edge, two entries in the Vista menu. A place is derived from the state the window already holds, the way `RootView.currentItem` is, and recorded by **one** observer rather than by the eleven methods that move the window.
+  - Two mechanisms are values rather than flags, and both for the same reason: the observer runs on the view update *after* the change, so anything set and cleared around the change is already false when it is read. The history holds the destination it expects back; `DayController` describes its last day move rather than flagging one in progress.
+  - **Left open on purpose: the Workspace is one place, not one per canvas.** Its folder lives on a `WorkspaceController` held as `@State` inside `WorkspaceView`, so the window cannot read it without lifting the controller to the app. ADR-0015 §D1 records the way out; when that lifting happens for another reason, `case canvas(String)` is a small amendment and one `switch`.
 - [x] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
   - Closed with `scripts/uitests.sh` plus a written rule in `CLAUDE.md`: the suite runs before every merge to `main`. A merge is the one moment rare enough to afford twelve minutes and important enough to deserve them.
   - **Refused: a pre-push hook and a fast subset.** Neither is possible, and the reason is the same one that keeps the suite out of `test-cmd`: XCUITest takes the machine, so even a single UI test closes the app in front of whoever is working. The constraint is not the twelve minutes.
