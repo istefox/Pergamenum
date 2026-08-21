@@ -106,6 +106,11 @@ printf '\n'
 grep -E "^	 Executed [0-9]+ tests?" "$LOG" | tail -1 || true
 
 failures=$(grep -E "^Test Case .* failed \(" "$LOG" || true)
+if [ -z "$failures" ] && [ "$RESULT" -eq 0 ]; then
+    # Said out loud rather than left to be inferred from a count: the whole point of this
+    # script is that the state of the suite stops being something somebody has to work out.
+    printf '\nuitests: verde.\n'
+fi
 if [ -n "$failures" ]; then
     printf '\nFallimenti:\n'
     printf '%s\n' "$failures" | while IFS= read -r line; do
