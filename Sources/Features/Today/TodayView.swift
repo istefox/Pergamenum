@@ -189,7 +189,10 @@ struct TodayView: View {
                 hidesMarkup: vault.settings.hidesMarkup,
                 onFollowLink: { title in
                     if let path = vault.index.resolve(title: title).first { vault.openNote(at: path) }
-                }
+                },
+                vaultRoot: vault.root,
+                notePath: note.relativePath,
+                thumbnails: vault.thumbnails
             )
             .frame(minHeight: 320)
         } else {

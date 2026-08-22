@@ -49,6 +49,16 @@ extension NoteTextView {
         /// Filled by `applyStyling`, which already knows what every range of the note is,
         /// so recognising them costs no second parse.
         private(set) var unspellableRanges: [NSRange] = []
+        /// Every `![[file.est]]`/`![alt](file.est)` line's own syntax range, found by the
+        /// same `applyStyling` walk over `MarkdownStyler.spans(in:)` that already
+        /// recognises `.embedRun` (ADR-0018 slice 3, Step 2). `NoteTextView+Embeds.swift`
+        /// reads this rather than parsing the note a second time.
+        private(set) var embedRuns: [NSRange] = []
+        /// Where each embed resolves to, once resolved - the render table
+        /// `EditorDecorationDelegate` will read in Step 3. Owned here rather than
+        /// resolved inline: filling it calls `ThumbnailStore`, an actor, and that
+        /// delegate cannot be `@MainActor` at all (ADR-0018 slice 3, Step 2).
+        let embeds = EmbedTable()
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -163,6 +173,7 @@ extension NoteTextView {
             guard !isStyling, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
+            applyEmbeds(to: textView)
             applyTransclusions(to: textView, theme: parent.theme)
             // After the two passes above: a keystroke shifts every offset below it, and
             // the revealed set has to be recomputed against the new text (ADR-0018 §D2).
@@ -221,6 +232,7 @@ extension NoteTextView {
             // Paragraph-start offset to its hidden markers, each relative to it - the key
             // space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
             var hiddenMarkers: [Int: [HiddenMarker]] = [:]
+            var embedRuns: [NSRange] = []
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -251,6 +263,7 @@ extension NoteTextView {
                     )
                     hiddenMarkers[paragraphStart, default: []].append(marker)
                 }
+                if case .embedRun = styled.span { embedRuns.append(nsRange) }
             }
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
@@ -258,6 +271,7 @@ extension NoteTextView {
             decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
+            self.embedRuns = embedRuns
         }
 
         /// Keeps the spelling underline off markdown syntax (M8).

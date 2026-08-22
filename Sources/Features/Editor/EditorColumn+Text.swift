@@ -58,6 +58,7 @@ extension EditorColumnView {
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
             onOpenEmbed: { name in preview(embed: name, in: note) },
+            vaultRoot: vault.root, notePath: note.relativePath, thumbnails: vault.thumbnails,
             onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
             onPasteImage: { data in save(pastedImage: data, in: note) },
             insertion: pendingInsertion,

@@ -32,6 +32,19 @@ struct NoteTextView: NSViewRepresentable {
     /// editor shows the syntax, not the picture (SPEC §5), so this is how the file
     /// itself is reached from here.
     var onOpenEmbed: ((String) -> Void)?
+    /// The vault an embed's target is resolved in (ADR-0018 slice 3). Nil where there is
+    /// no vault behind the editor - the same permissive default `spellCheck` and
+    /// `hidesMarkup` take - and then `![[foto.png]]` stays unresolved, exactly today's
+    /// behaviour.
+    var vaultRoot: URL?
+    /// The open note's own path, so a relative embed target is looked up beside it
+    /// first, the same as `Attachment.resolve` already does for reading mode
+    /// (`MarkdownReadingView.notePath`).
+    var notePath = ""
+    /// The vault's render cache for embedded files - the same `ThumbnailStore` reading
+    /// mode's `EmbeddedFileView` reads, so a picture is rendered once and shared between
+    /// the two surfaces rather than duplicated.
+    var thumbnails: ThumbnailStore?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
     var onDropFile: ((URL) -> String?)?
@@ -134,6 +147,7 @@ struct NoteTextView: NSViewRepresentable {
         textView.textLayoutManager?.delegate = context.coordinator.decorations
         textView.string = text
         context.coordinator.applyStyling(to: textView, theme: theme)
+        context.coordinator.applyEmbeds(to: textView)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyMatches(
             to: textView, matches: matches, current: currentMatch, theme: theme
@@ -215,6 +229,7 @@ struct NoteTextView: NSViewRepresentable {
             ))
         }
         context.coordinator.applyStyling(to: textView, theme: theme)
+        context.coordinator.applyEmbeds(to: textView)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyFolding(to: textView, folded: foldedEntries, theme: theme)
         // After the styling, always: `applyStyling` rewrites every attribute in the storage
