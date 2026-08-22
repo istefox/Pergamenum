@@ -27,7 +27,7 @@ struct MockupGalleryView: View {
     static let contentWidth: CGFloat = 720
 
     enum Screen: String, CaseIterable, Identifiable {
-        case capture, slash, code, outline, folding, transclusion, find, format,
+        case capture, slash, code, outline, folding, transclusion, embed, find, format,
              history, template, tabs, tagBrowser, mentions, views, week, taskControls,
              editor, workspace, today, tasks
 
@@ -41,6 +41,7 @@ struct MockupGalleryView: View {
             case .outline: "Indice"
             case .folding: "Ripiegamento"
             case .transclusion: "Transclusione"
+            case .embed: "Immagini e PDF"
             case .find: "Trova"
             case .format: "Formato"
             case .history: "Cronologia"
@@ -68,6 +69,7 @@ struct MockupGalleryView: View {
             case .outline: "M8, realizzato"
             case .folding: "M8, realizzato"
             case .transclusion: "M8, da approvare"
+            case .embed: "ADR-0018 slice 3, da approvare"
             case .find: "M8, realizzato"
             case .format: "M8, realizzato"
             case .history: "M9, realizzato"
@@ -123,6 +125,7 @@ struct MockupGalleryView: View {
         case .outline: OutlineMockup()
         case .folding: FoldingMockup()
         case .transclusion: TransclusionMockup()
+        case .embed: EmbedMockup()
         case .find: FindBarMockup()
         case .format: FormatBarMockup()
         case .history: HistoryMockup()

@@ -87,6 +87,19 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-22: **ADR-0018 slice 2 in `main`** (PR #86, merge commit a `4b4a2cc`). Nessuna
+  CI configurata su questo repository, quindi nessun check da attendere prima del merge.
+  **Mockup di slice 3 approvato**: `EmbedMockup.swift` in `Sources/Features/DesignGallery/`,
+  registrato in `MockupGalleryView` come schermata "Immagini e PDF". Sei scene: immagine
+  incorporata al posto di `![[foto.jpg]]`, PDF con la prima pagina al posto di
+  `![alt](file.pdf)`, selezione dell'intero blocco con un click, contrasto fra il cursore
+  che rivela l'enfasi ma lascia disegnata l'immagine (D2 non si applica all'embed, per
+  disegno), riferimento non trovato nel vault, e il prima/dopo di un Backspace che rimuove
+  il blocco intero in un solo passaggio di annulla (D5). Build di `Pergamenum`, `perg` e
+  `pergamenum-mcp` verificate dopo l'aggiunta. Prossimo passo: pianificazione
+  dell'implementazione di slice 3, gated dalla probe 6 di D6 (attachment su un run a
+  lunghezza invariata, immagine e PDF).
+
 - 2026-08-22: **ADR-0018 slice 2 implementata** (branch
   `feature/adr-0018-slice2-hide-emphasis`, da `main` a `3d5ef71`, non ancora in una PR).
   I delimitatori `*`/`**` di un'enfasi si nascondono con lo stesso meccanismo del `#`:
