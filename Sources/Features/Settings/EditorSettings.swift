@@ -21,9 +21,9 @@ struct EditorSettings: View {
             ))
             .accessibilityIdentifier("settings-hides-markup")
 
-            Text("I `#` di un titolo non vengono disegnati, e ricompaiono quando il cursore entra "
-                 + "nel paragrafo. Il file non cambia: i caratteri ci sono sempre, anche quando non "
-                 + "si vedono.")
+            Text("I `#` di un titolo e i `*` di un'enfasi non vengono disegnati, e ricompaiono "
+                 + "quando il cursore entra nel paragrafo. Il file non cambia: i caratteri ci sono "
+                 + "sempre, anche quando non si vedono.")
                 .themedText(.caption, color: .textTertiary)
 
             Toggle("Correttore ortografico", isOn: Binding(

@@ -78,6 +78,63 @@ func stylesHeadings(_ level: Int) {
     #expect(styled("  # Titolo", .headingMarker) == "# ")
 }
 
+// MARK: - The emphasis marker (ADR-0018 §D1, slice 2)
+
+private func emphasisMarkers(_ text: String) -> [String] {
+    MarkdownStyler.spans(in: text)
+        .filter { $0.span == .emphasisMarker }
+        .map { String(text[$0.range]) }
+}
+
+@Test func anItalicRunYieldsTwoOneCharacterMarkers() {
+    #expect(emphasisMarkers("testo *corsivo* qui") == ["*", "*"])
+}
+
+@Test func aBoldRunYieldsTwoTwoCharacterMarkers() {
+    #expect(emphasisMarkers("testo **grassetto** qui") == ["**", "**"])
+}
+
+@Test func theEmphasisMarkerSpansComeAfterTheRunSpan() {
+    // Same rule as the heading marker: later spans win on overlap, so the marker's
+    // colour lands on top of the run's own font rather than the other way round.
+    let ordered = MarkdownStyler.spans(in: "*corsivo*").map(\.span)
+    let runIndex = ordered.firstIndex(of: .italic)
+    let markerIndices = ordered.indices.filter { ordered[$0] == .emphasisMarker }
+    #expect(runIndex != nil)
+    #expect(markerIndices.count == 2)
+    if let runIndex {
+        #expect(markerIndices.allSatisfy { runIndex < $0 })
+    }
+}
+
+@Test func underscoreEmphasisHasNoMarkerSpan() {
+    // Deliberate narrowing of ADR-0018 §D1: `emphasis(_:at:)` has no word-boundary rule,
+    // so `nome_file_lungo` already parses as italic. Hiding `_` would read as
+    // `nomefilelungo`, so it stays visible - parsed and coloured, never collapsed.
+    #expect(emphasisMarkers("testo _corsivo_ qui").isEmpty)
+    #expect(spans("testo _corsivo_ qui").contains(.italic))
+}
+
+@Test func anEmptyEmphasisRunHasNoMarkerSpan() {
+    // `****` and adjacent empty `**` would collapse to nothing if hidden - worse than
+    // four visible characters, the same reasoning as the empty heading.
+    #expect(emphasisMarkers("testo **** qui").isEmpty)
+}
+
+@Test func anUnclosedEmphasisRunHasNoMarkerSpan() {
+    #expect(emphasisMarkers("un asterisco * solo").isEmpty)
+}
+
+@Test func twoEmphasisRunsOnOneLineYieldFourMarkers() {
+    #expect(emphasisMarkers("*uno* e **due**") == ["*", "*", "**", "**"])
+}
+
+@Test func emphasisInsideAFenceHasNoMarkerSpan() {
+    // `echo *tutto*` inside the fence is not italic at all (`markdownStopsBeingMarkdownInsideAFence`),
+    // so it yields no marker either; the only pair present is the real `*corsivo*` after the fence.
+    #expect(emphasisMarkers(shellNote) == ["*", "*"])
+}
+
 @Test func stylesInlineTagsOnlyAtWordBoundaries() {
     // The `#` inside a URL fragment is not a tag.
     #expect(!spans("vedi https://x.test/a#type-note").contains(.tag("#type-note")))

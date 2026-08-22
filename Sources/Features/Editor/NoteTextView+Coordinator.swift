@@ -218,9 +218,9 @@ extension NoteTextView {
             let text = textView.string
             let nsText = text as NSString
             var unspellable: [NSRange] = []
-            // Paragraph-start offset to marker range relative to it - the key space
-            // `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
-            var headingMarkers: [Int: NSRange] = [:]
+            // Paragraph-start offset to its hidden markers, each relative to it - the key
+            // space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
+            var hiddenMarkers: [Int: [HiddenMarker]] = [:]
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -236,19 +236,26 @@ extension NoteTextView {
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
-                if styled.span == .headingMarker {
+                let kind: HiddenMarker.Kind? = switch styled.span {
+                case .headingMarker: .heading
+                case .emphasisMarker: .emphasis
+                default: nil
+                }
+                if let kind {
                     let paragraphStart = nsText.paragraphRange(
                         for: NSRange(location: nsRange.location, length: 0)
                     ).location
-                    headingMarkers[paragraphStart] = NSRange(
-                        location: nsRange.location - paragraphStart, length: nsRange.length
+                    let marker = HiddenMarker(
+                        range: NSRange(location: nsRange.location - paragraphStart, length: nsRange.length),
+                        kind: kind
                     )
+                    hiddenMarkers[paragraphStart, default: []].append(marker)
                 }
             }
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
-            decorations.apply(headingMarkers: headingMarkers, hidingMarkup: parent.hidesMarkup)
+            decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
         }

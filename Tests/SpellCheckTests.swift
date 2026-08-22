@@ -99,6 +99,8 @@ private func unspellable(in note: String) -> [String] {
     #expect(!MarkdownStyler.suppressesSpellCheck(.heading(level: 1)))
     #expect(!MarkdownStyler.suppressesSpellCheck(.bold))
     #expect(!MarkdownStyler.suppressesSpellCheck(.italic))
+    // Punctuation, not prose - unlike the run it wraps (ADR-0018 §D1, slice 2).
+    #expect(MarkdownStyler.suppressesSpellCheck(.emphasisMarker))
 }
 
 @Test func anEmbeddedFileNameIsNotSpellChecked() {
