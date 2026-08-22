@@ -80,6 +80,13 @@ enum MarkdownAttributedText {
                     ? (Transclusion.isNoteReference(target) ? noteURL(for: target) : embedURL(for: target))
                     : nil
             )
+        case .embedRun:
+            // No attributes yet, on purpose: `.embedRun` spans the whole `![[foto.png]]`
+            // or `![alt](foto.png)`, wider than the marker-sized spans `default` below is
+            // safe for, and the collapse into a preview is Step 3's, not this one's. An
+            // explicit `[:]` here keeps this step from painting a colour over a range
+            // `default` was never asked to cover.
+            [:]
         default:
             [.foregroundColor: NSColor(theme.color(colorToken(for: span)))]
         }
@@ -109,6 +116,11 @@ enum MarkdownAttributedText {
         // rather than replaces, so a marker keeps its run's font - bold, or oblique, or
         // the heading's, applied first - and only gets this colour on top, for free.
         case .linkSyntax, .headingMarker, .emphasisMarker: .textTertiary
+        // `.embedRun` has its own explicit arm in `attributes(for:)` that returns `[:]`
+        // (Step 3 is what collapses it into a preview), so this entry exists only to
+        // keep this table exhaustive - the same shelf as `.heading`/`.linkTarget` above,
+        // which never arrive here either.
+        case .embedRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let done): done ? .taskDone : .taskOpen
