@@ -2,8 +2,9 @@ import AppKit
 import OSLog
 
 /// Everything the editor draws that is not the note's own characters: folded sections kept
-/// out of the layout, the headings that say how much they are hiding, and the notes a
-/// transclusion shows underneath its source line.
+/// out of the layout, the headings that say how much they are hiding, the notes a
+/// transclusion shows underneath its source line, and, since ADR-0018 slice 3, the picture
+/// an embed line draws in place of its own `![[…]]`/`![alt](…)` syntax.
 ///
 /// The mechanism is `NSTextContentManagerDelegate.shouldEnumerateTextElement`, whose header
 /// in the macOS 26.5 SDK says returning NO makes an element "skipped from the enumeration",
@@ -24,13 +25,17 @@ import OSLog
 /// Not `@MainActor`: Swift 6 refuses both conformances ("crosses into main actor-isolated
 /// code"), so this object holds plain values and is fed from the view.
 /// One object because a text view has one content-storage delegate and one layout-manager
-/// delegate; two features, kept as two separate inputs so neither can quietly depend on the
-/// other's state.
+/// delegate; four features - folding, transclusion, marker hiding and, since ADR-0018
+/// slice 3, embeds - kept as four separate inputs so none can quietly depend on another's
+/// state.
 /// One hidden delimiter, at its range relative to its paragraph's start, and what kind
 /// it is - which decides how `EditorDecorationDelegate` re-validates it before drawing.
+/// An embed's marker covers its whole `![[…]]`/`![alt](…)` run, never the paragraph's own
+/// trailing newline - probe 6 measured that including it makes no observable difference,
+/// and the project's discipline is not to touch more than the minimum anyway.
 struct HiddenMarker: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
-        case heading, emphasis
+        case heading, emphasis, embed
     }
 
     let range: NSRange
@@ -51,13 +56,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
     nonisolated(unsafe) private var renditions: [Int: TranscludedRendition] = [:]
-    /// A paragraph's hidden markers - a heading's `#`s and the space after them, or an
-    /// emphasis run's opening and closing `*`/`**` - each relative to its own paragraph's
-    /// start, not to the document (ADR-0018 §D1). Filled by `applyStyling`'s walk over
-    /// `MarkdownStyler.spans(in:)`, the same one that already knows where every marker
-    /// is. One table for both kinds rather than two: the two features this object already
-    /// carries (folding, transclusion) are kept as separate inputs, but a heading marker
-    /// and an emphasis marker are the same feature - hiding - with two sources.
+    /// An embed's resolved picture, or the fact that it could not be drawn, by the
+    /// paragraph offset of the line that names it - the same key space `hiddenMarkers`
+    /// below uses. `EmbedTable` (ADR-0018 slice 3, Step 2) measures and resolves it on the
+    /// main actor and hands over a finished value, the exact crossing `renditions` above
+    /// already makes: this object cannot be `@MainActor`, so it never calls back into
+    /// `EmbedTable` or `ThumbnailStore`.
+    nonisolated(unsafe) private var embedRenditions: [Int: EmbedRendition] = [:]
+    /// A paragraph's hidden markers - a heading's `#`s and the space after them, an
+    /// emphasis run's opening and closing `*`/`**`, or an embed's own whole run - each
+    /// relative to its own paragraph's start, not to the document (ADR-0018 §D1). Filled
+    /// by `applyStyling`'s walk over `MarkdownStyler.spans(in:)`, the same one that already
+    /// knows where every marker is. One table for all three kinds rather than three: the
+    /// other features this object carries (folding, transclusion) are kept as separate
+    /// inputs, but a heading marker, an emphasis marker and an embed's run are the same
+    /// feature - hiding - with three sources.
     nonisolated(unsafe) private var hiddenMarkers: [Int: [HiddenMarker]] = [:]
     /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
     /// selection, an active IME composition or the find bar's current match touches them
@@ -73,14 +86,23 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     nonisolated(unsafe) static let collapsedFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
 
     var isFolding: Bool { !foldedHeadings.isEmpty }
-    /// How many markers the last styling pass registered, heading and emphasis alike -
-    /// what a test reads to confirm `applyStyling` populated the table, the same way
-    /// `isFolding` reads `foldedHeadings` for the folding half of this file.
+    /// How many markers the last styling pass registered, heading, emphasis and embed
+    /// alike - what a test reads to confirm `applyStyling` populated the table, the same
+    /// way `isFolding` reads `foldedHeadings` for the folding half of this file.
     var hiddenMarkerCount: Int { hiddenMarkers.values.reduce(0) { $0 + $1.count } }
 
     func apply(renditions: [Int: TranscludedRendition]) {
         self.renditions = renditions
         Logger.folding.notice("transclusioni: \(renditions.count, privacy: .public) rese")
+    }
+
+    /// Registers where every embed has resolved to, so far - called both after an
+    /// ordinary styling pass and, later, when a still-pending render lands
+    /// (`EmbedTable.setRenditions`, ADR-0018 slice 3): the delegate has no other way to
+    /// learn a picture is ready, since it cannot itself watch the actor that renders one.
+    func apply(embeds: [Int: EmbedRendition]) {
+        embedRenditions = embeds
+        Logger.folding.notice("embed: \(embeds.count, privacy: .public) rese")
     }
 
     func apply(hiddenLines: Set<Int>, foldedHeadings headings: [Int: Int]) {
@@ -167,9 +189,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         _ textContentStorage: NSTextContentStorage,
         textParagraphWith range: NSRange
     ) -> NSTextParagraph? {
-        guard hidesMarkup, !revealedParagraphs.contains(range.location),
-              let markers = hiddenMarkers[range.location], !markers.isEmpty,
-              let storage = textContentStorage.textStorage
+        guard hidesMarkup, let storage = textContentStorage.textStorage else { return nil }
+
+        // The embed branch, first and unconditionally on `revealedParagraphs`: a drawn
+        // embed does not reveal on caret the way a heading/emphasis marker does (D5's
+        // deliberate exception to D2), or the caret passing over the line, or Backspace
+        // reaching it, would fight the redraw one character at a time instead of meeting
+        // a picture to delete whole (ADR-0018 slice 3, Step 3; Step 4 is what makes the
+        // caret and Backspace actually treat it that way).
+        if let embedded = embedParagraph(at: range, storage: storage) {
+            return embedded
+        }
+
+        guard !revealedParagraphs.contains(range.location),
+              let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
 
         // Re-read from the real characters rather than trust the table: it is filled by
@@ -194,11 +227,93 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return NSTextParagraph(attributedString: copy)
     }
 
+    /// The embed's own branch of the substitution above: swaps the run's first character
+    /// for `NSAttachmentCharacter` in the *displayed* copy only, the one mechanism probe 6
+    /// found TextKit 2 actually recognises (`EmbedAttachmentProbeTests` - an `.attachment`
+    /// attribute kept over the original `!` is never asked for its bounds or its image at
+    /// all). Nil, leaving the raw syntax on screen exactly as today, whenever there is
+    /// nothing yet to draw: no embed marker at this offset, no rendition yet because
+    /// `EmbedTable`'s render is still in flight, or the marker gone stale against the real
+    /// characters since the last styling pass.
+    private func embedParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
+        guard let rendition = embedRenditions[range.location],
+              let marker = (hiddenMarkers[range.location] ?? []).first(where: { $0.kind == .embed }),
+              NSMaxRange(marker.range) <= range.length
+        else { return nil }
+
+        let text = storage.string as NSString
+        let markerRange = NSRange(location: range.location + marker.range.location, length: marker.range.length)
+        guard let embed = Self.stillSpellsAnEmbed(text, at: markerRange, rendition: rendition) else { return nil }
+
+        let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+        let attachmentRange = NSRange(location: marker.range.location, length: 1)
+        let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
+
+        let attachment = NSTextAttachment()
+        switch rendition {
+        case .drawn(let image): attachment.image = image
+        case .missing: attachment.image = Self.missingEmbedImage
+        }
+
+        // A substitution, not an insertion: one character out, one in, the paragraph's
+        // own length unmoved - `NSTextContentManager.h:120`'s own constraint, the same one
+        // the hiding branch below keeps by never touching length at all.
+        copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
+        copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
+        copy.addAttribute(
+            .accessibilityAttachment, value: embed.alt ?? embed.target, range: attachmentRange
+        )
+        if restRange.length > 0 {
+            copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
+        }
+        return NSTextParagraph(attributedString: copy)
+    }
+
+    /// A minimal placeholder for a `.missing` embed - already decided for this slice: a
+    /// file the vault does not have is drawn as broken, not left as raw syntax, which
+    /// already means "still rendering" everywhere else in this file. `secondaryLabelColor`
+    /// for the same reason `badgeColor` defaults to it: a themed tint can replace this
+    /// later without this delegate gaining a dependency it does not otherwise need.
+    private static let missingEmbedImage: NSImage = {
+        let size = NSSize(width: 28, height: 28)
+        guard let symbol = NSImage(systemSymbolName: "photo.badge.exclamationmark", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 20, weight: .regular))
+        else { return NSImage(size: size) }
+        symbol.isTemplate = true
+        let tinted = NSImage(size: size)
+        tinted.lockFocus()
+        symbol.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1)
+        NSColor.secondaryLabelColor.set()
+        NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        tinted.unlockFocus()
+        return tinted
+    }()
+
     private static func stillSpells(_ kind: HiddenMarker.Kind, _ text: NSString, at range: NSRange) -> Bool {
         switch kind {
         case .heading: stillSpellsAHeadingMarker(text, at: range)
         case .emphasis: stillSpellsAnEmphasisMarker(text, at: range)
+        // Never handled here: an embed marker is drawn only by the dedicated
+        // `embedParagraph(at:storage:)` branch above, which re-validates it with
+        // `stillSpellsAnEmbed` before this generic, font-collapsing path ever sees the
+        // paragraph (ADR-0018 slice 3, Step 3).
+        case .embed: false
         }
+    }
+
+    /// Whether `range` still spells a whole embed line - `![[file.est]]` or
+    /// `![alt](file.est)` - read from the text as it is right now, and, for a rendition
+    /// already known to be `.missing`, that it still names the same file: the one case
+    /// this delegate can check identity for, since a `.drawn` rendition carries no name of
+    /// its own to compare against (`EmbedRendition`, ADR-0018 slice 3, Step 2).
+    private static func stillSpellsAnEmbed(
+        _ text: NSString, at range: NSRange, rendition: EmbedRendition
+    ) -> Attachment.Embed? {
+        guard range.location >= 0, NSMaxRange(range) <= text.length,
+              let embed = Attachment.embed(inLine: text.substring(with: range))
+        else { return nil }
+        if case .missing(let name) = rendition, embed.target != name { return nil }
+        return embed
     }
 
     /// Whether `range` still spells one to six `#`s followed by exactly one space, read
