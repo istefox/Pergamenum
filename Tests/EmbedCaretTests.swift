@@ -309,4 +309,31 @@ import Testing
         #expect(box.width > 0)
         #expect(!coordinator.selectEmbed(at: CGPoint(x: box.midX, y: box.midY), in: textView))
     }
+
+    /// R4 for the click, completing the guard already checked for Backspace and
+    /// movement above: with `hidesMarkup` off the run is raw, unselected text, and a
+    /// click there must behave exactly as ordinary text selection would - `selectEmbed`
+    /// itself is what refuses (`guard decorations.hidesMarkup`), this only proves it.
+    @Test func aClickOnAnUnrenderedRunDoesNotClaimAnything() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: false, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        _ = await Self.waitForRendition(at: Self.embedOffset, in: coordinator)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        let box = Self.fragmentFrame(at: Self.embedOffset, in: textView)
+        #expect(box.width > 0)
+        #expect(!coordinator.selectEmbed(at: CGPoint(x: box.midX, y: box.midY), in: textView))
+    }
 }
