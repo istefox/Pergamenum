@@ -19,10 +19,14 @@ extension EditorColumnView {
 
     /// Opens the Quick Look panel on an embedded file.
     ///
-    /// The editor shows `![[foto.png]]` as text and always will (SPEC §5 rules out a
-    /// preview that hides the syntax), so this is how the picture behind the line is
-    /// seen without leaving the note. A name the vault cannot place is reported rather
-    /// than swallowed: a broken embed is worth knowing about.
+    /// Reached by clicking the file name inside `![[foto.png]]` while its raw syntax is
+    /// still on screen - `hidesMarkup` off, or the run not yet collapsed into a picture
+    /// (still rendering, or not an image/PDF). Once ADR-0018 slice 3 draws the picture
+    /// in the run's place, a click there selects the run instead
+    /// (`selectEmbed(at:in:)`) - and, unlike a heading or emphasis marker, the caret
+    /// reaching that line does not bring the raw text back (D5's deliberate exception
+    /// to D2). A name the vault cannot place is reported rather than swallowed: a
+    /// broken embed is worth knowing about.
     func preview(embed name: String, in note: VaultController.OpenNote) {
         guard let root = vault.root else { return }
         guard let relative = Attachment.resolve(name, nearNoteAt: note.relativePath, inVaultAt: root)

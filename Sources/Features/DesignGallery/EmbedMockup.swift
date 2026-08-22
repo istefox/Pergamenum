@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Embed incorporato (M8, ADR-0018 slice 3, da approvare)
+// MARK: - Embed incorporato (M8, ADR-0018 slice 3, realizzato)
 
 /// An image or a PDF's first page, drawn where `![[foto.jpg]]` or `![alt](capitolato.pdf)`
 /// sits today - the third and last construct of ADR-0018, and the one that reopened it: a

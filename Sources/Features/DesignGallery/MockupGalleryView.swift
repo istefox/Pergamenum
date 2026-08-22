@@ -69,7 +69,7 @@ struct MockupGalleryView: View {
             case .outline: "M8, realizzato"
             case .folding: "M8, realizzato"
             case .transclusion: "M8, da approvare"
-            case .embed: "ADR-0018 slice 3, da approvare"
+            case .embed: "ADR-0018 slice 3, realizzato"
             case .find: "M8, realizzato"
             case .format: "M8, realizzato"
             case .history: "M9, realizzato"
