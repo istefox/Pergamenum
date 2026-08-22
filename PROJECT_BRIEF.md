@@ -87,6 +87,35 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-22: **ADR-0017 in tre slice, `PG-004` chiuso** (PR #83, in `main` a `9fe5a45`).
+  `.pergamenum/` sincronizzava su iCloud senza nessuna esclusione da nessuna parte del
+  codice, e quattro dei suoi otto contenuti erano stato derivato o locale a questa
+  macchina, non un fatto sul vault: `cache.db`, `thumbnails/`, `history/` e `ai-journal/`
+  lasciano il vault per `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/`,
+  restano `settings.json`, `vocabolari.json`, `themes/` e `starred.json`, la stessa
+  distinzione che ADR-0012 §D6/§D10 aveva già tracciato fra stelle e tab. L'id del vault è
+  un UUID coniato in `settings.json` e non un hash del percorso, perché un percorso cambia
+  con una rinomina nel Finder e un hash lo perderebbe: una directory chiamata così non è
+  leggibile a occhio, `vault.json` è la targhetta che compensa. **Slice 1**: `VaultState`,
+  `cache.db`/`thumbnails/` spostati per cancellazione e ricostruzione - niente si può
+  perdere, la cache è per definizione rifabbricabile - l'esclusione da Time Machine di D4
+  su un'unica directory, e il varco di isolamento test che mancava (`VaultController.open`
+  scriveva nella vera Application Support da quattordici file di unit test e da ogni UI
+  test, 860 directory trovate a mano in un pomeriggio). **Slice 2**: `history/` e
+  `ai-journal/` si spostano, non si cancellano - sono l'unica copia che esiste, la cache
+  no - per `move`, con fallback copia-verifica-rimuovi, e una nota nel vault se una
+  migrazione trova un vault duplicato. **Slice 3** non ha scritto codice nuovo: i
+  connettori risolvevano già `VaultState.applicationSupportBase()` dalla slice 1, quindi lo
+  slice è stato verifica - 1269/1269 unitari, `perg` e `pergamenum-mcp` compilano,
+  `scripts/mcp-smoke.py` pulito, e a mano sul vault iCloud reale un `perg note new` vero ha
+  fatto atterrare `ai-journal/` e `history/` nella stessa directory di stato che l'app già
+  risolveva, con lo stesso `vaultID`. **«Cancella `.pergamenum/` per azzerare l'app» non è
+  più vero**: ora significa cancellare una directory sotto Application Support, e cancellare
+  `.pergamenum/` porta via impostazioni, vocabolario, tema e stelle lasciando intatti
+  indice e cronologia - l'opposto di quello che chi lo digita si aspetterebbe. L'emendamento
+  allo SPEC (§6.5, §12, l'albero di §85 che nominano ancora i vecchi percorsi) resta debito
+  su `PG-015`, per scelta dell'ADR §D5, non bloccante per questa chiusura.
+
 - 2026-08-21 (sera): **ADR-0016 in cinque slice, `PG-005` chiuso.** Sul branch
   `feature/m13-vault-entire`, non ancora in `main`, non ancora aperta una PR. **Il journal
   impara a descrivere un gesto**: `WriteJournal.Entry` guadagna `operation`, `kind` e
