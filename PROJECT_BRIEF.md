@@ -87,6 +87,25 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-22: **ADR-0018 slice 3 implementata per intero, tutti i sette step del piano approvato
+  (PR #87-94, `main` a `d5bd4b4`).** Un'immagine o un PDF incorporato con `![[file.est]]` o
+  `![alt](file.est)`, da solo su una riga, si disegna al posto della sintassi: il carattere
+  portante del run viene scambiato con `NSAttachmentCharacter` nella copia del paragrafo
+  sostituito (non nello storage reale - trovato empiricamente alla probe 6, la lettura letterale
+  di D3 dell'ADR non è mai riconosciuta da TextKit 2). Il cursore scavalca il run disegnato in un
+  colpo solo da entrambi i lati; Backspace/Canc al bordo lo rimuove intero più il newline in un
+  solo passo di undo (D-1); un click lo seleziona; un file mancante disegna un segnaposto (D-2)
+  invece di restare testo grezzo; un embed disegnato non segue mai la regola di reveal-on-caret di
+  D2 (eccezione deliberata di D5). Nessun setting nuovo, il toggle `hidesMarkup` esistente governa
+  tutto (D7), verificato end-to-end. 1358 test unitari, `perg`/`pergamenum-mcp` invariati,
+  `UITests/NoteImageUITests.swift` riscritto deliberatamente (asseriva l'esatto contrario prima di
+  questa slice) con un nuovo identificatore di accessibilità `editor-embed`. **Verificato a
+  schermo per lo Step 3 (disegno)**: immagine disegnata correttamente al posto della sintassi.
+  **Non ancora verificato a schermo**: il collaudo manuale di cursore/cancellazione/click dello
+  Step 4, deliberatamente rimandato a fine slice; e `scripts/uitests.sh` sull'intera suite, da
+  eseguire prima di considerare la slice davvero chiusa, per l'accordo di lavoro del progetto.
+  **ADR-0018 così completa su tutte e tre le slice.**
+
 - 2026-08-22: **ADR-0018 slice 3, Step 0 (probe 6 di D6) superata per immagine e PDF**, con una
   precisazione rispetto alla lettera dell'ADR. La lettura letterale di D3 - applicare
   `.attachment` mantenendo il carattere del run - **non è mai riconosciuta da TextKit 2**:
