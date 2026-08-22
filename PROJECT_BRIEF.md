@@ -87,6 +87,28 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-22: **ADR-0018 slice 3, Step 0 (probe 6 di D6) superata per immagine e PDF**, con una
+  precisazione rispetto alla lettera dell'ADR. La lettura letterale di D3 - applicare
+  `.attachment` mantenendo il carattere del run - **non è mai riconosciuta da TextKit 2**:
+  `attachmentBoundsForAttributes:...` non viene interrogato, l'altezza della riga non cresce, e
+  ciò che si disegna è il glifo ordinario del carattere tenuto. Il meccanismo che funziona resta
+  dentro il vincolo di `NSTextContentManager.h:120` (lunghezza invariata, non identità dei
+  caratteri): nella sola copia *sostituita e disegnata* il carattere portante diventa
+  `NSAttachmentCharacter` (U+FFFC), mentre lo storage reale non cambia. Con questo meccanismo,
+  immagine e PDF (prima pagina via `ThumbnailStore.renderPDF`, la stessa chiamata della card
+  Workspace) si disegnano entrambi esattamente una volta e la riga cresce di conseguenza -
+  **nessuno dei due richiede il fallback `NSTextLayoutFragment`**. Le quattro sotto-domande del
+  piano: il carattere tenuto disegna il proprio glifo se non schermato (verificato, e lo swap a
+  U+FFFC lo elimina alla radice); i bounds vengono interrogati una volta per passata di layout;
+  un `\n` finale a 0.01pt non fa differenza osservabile in questa configurazione, l'attachment a
+  dimensione piena domina comunque l'altezza; `isRichText = false` non blocca il layout
+  dell'attachment nel paragrafo sostituito. Verifica offscreen completa: 6 nuovi test in
+  `Tests/EmbedAttachmentProbeTests.swift` (1314/1314 totali, SwiftLint pulito salvo un
+  `file_length` non bloccante). **Verifica a schermo fatta da Stefano**: schermata `#if DEBUG`
+  temporanea in `MockupGalleryView` ("Probe 6 (ADR-0018)"), immagine e prima pagina PDF disegnate
+  correttamente, riga cresciuta. Gate D6 probe 6 chiuso, schermata di debug rimossa. Prossimo
+  passo: Step 1 (parser) del piano di implementazione.
+
 - 2026-08-22: **ADR-0018 slice 2 in `main`** (PR #86, merge commit a `4b4a2cc`). Nessuna
   CI configurata su questo repository, quindi nessun check da attendere prima del merge.
   **Mockup di slice 3 approvato**: `EmbedMockup.swift` in `Sources/Features/DesignGallery/`,
