@@ -83,6 +83,12 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var diaryHours: HourWindow
     /// Whether the editor underlines misspellings, and in which language (M8).
     var spellCheck: SpellCheck
+    /// Whether the editor hides a heading's `#` marker (and the space after it) while the
+    /// caret is elsewhere, redrawing it the instant the caret's paragraph, a selection, an
+    /// IME composition or the find bar's current match touches that line (ADR-0018 §D1).
+    /// On by default and fully reversible: the characters are never removed from the file,
+    /// only what is drawn changes, so turning this off is a toggle rather than a revert.
+    var hidesMarkup: Bool
     /// Whether the day surfaces the unfinished tasks of the days before it (ADR-0013 §D1).
     ///
     /// **Off by default, and it shows rather than moves.** SPEC §7.3 rejects rollover outright
@@ -131,6 +137,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         // Off, so that updating the app does not fill a vault of markdown with red
         // underlines nobody asked for. It is found in Impostazioni, not on first launch.
         spellCheck: .off,
+        hidesMarkup: true,
         rollover: false,
         rolloverDays: VaultSettings.defaultRolloverDays,
         patronSaint: nil
@@ -176,6 +183,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.diaryHours).clamped
         spellCheck = try container.decodeIfPresent(SpellCheck.self, forKey: .spellCheck)
             ?? fallback.spellCheck
+        hidesMarkup = try container.decodeIfPresent(Bool.self, forKey: .hidesMarkup) ?? fallback.hidesMarkup
         rollover = try container.decodeIfPresent(Bool.self, forKey: .rollover) ?? fallback.rollover
         // Clamped like `blockMinutes`, and for the same reason: this file is meant to be edited
         // by hand, and a 0 there would make the setting look on and show nothing.
@@ -204,6 +212,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         dayHours: HourWindow = .dayDefault,
         diaryHours: HourWindow = .diaryDefault,
         spellCheck: SpellCheck = .off,
+        hidesMarkup: Bool = true,
         rollover: Bool = false,
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
         patronSaint: PatronSaint? = nil,
@@ -219,6 +228,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.dayHours = dayHours
         self.diaryHours = diaryHours
         self.spellCheck = spellCheck
+        self.hidesMarkup = hidesMarkup
         self.rollover = rollover
         self.rolloverDays = rolloverDays
         self.patronSaint = patronSaint

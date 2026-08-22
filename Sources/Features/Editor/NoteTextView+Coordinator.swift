@@ -37,6 +37,11 @@ extension NoteTextView {
         /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
         /// unbounded in practice: a note names as many targets as it names.
         var renditionCache: [String: TranscludedRendition] = [:]
+        /// The revealed paragraphs already applied (ADR-0018 §D2), so an unchanged set
+        /// does not invalidate the layout on every view update. Not private for the same
+        /// reason as `lastRenditions`: the mutator, `applyReveal`, lives in
+        /// `NoteTextView+Reveal`.
+        var lastRevealed: Set<Int> = []
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
@@ -86,6 +91,10 @@ extension NoteTextView {
             // owns, so showing it needs no SwiftUI update at all. That matters here more than
             // anywhere - this method runs on every arrow key.
             (textView as? CompletingTextView)?.refreshFormatBar(theme: parent.theme)
+            // Before the guard below, on purpose: moving the caret within the same
+            // outline entry - by far the common case - would otherwise never reveal
+            // anything (ADR-0018 §D2).
+            applyReveal(to: textView)
             let caret = textView.selectedRange().location
             let entry = parent.outlineRanges.lastIndex { $0.location <= caret }
             guard lastOutlineEntry != .some(entry) else { return }
@@ -155,6 +164,9 @@ extension NoteTextView {
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
             applyTransclusions(to: textView, theme: parent.theme)
+            // After the two passes above: a keystroke shifts every offset below it, and
+            // the revealed set has to be recomputed against the new text (ADR-0018 §D2).
+            applyReveal(to: textView)
 
             // Typing has to keep the caret on screen, and under TextKit 2 it does not do so
             // by itself once the note has just grown taller: the two `apply` passes above
@@ -204,23 +216,39 @@ extension NoteTextView {
             defer { isStyling = false }
 
             let text = textView.string
+            let nsText = text as NSString
             var unspellable: [NSRange] = []
+            // Paragraph-start offset to marker range relative to it - the key space
+            // `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
+            var headingMarkers: [Int: NSRange] = [:]
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
-                range: NSRange(location: 0, length: (text as NSString).length)
+                range: NSRange(location: 0, length: nsText.length)
             )
             for styled in MarkdownStyler.spans(in: text) {
                 let nsRange = NSRange(styled.range, in: text)
                 guard nsRange.location != NSNotFound,
-                      NSMaxRange(nsRange) <= (text as NSString).length
+                      NSMaxRange(nsRange) <= nsText.length
                 else { continue }
                 storage.addAttributes(
                     MarkdownAttributedText.attributes(for: styled.span, theme: theme),
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
+                if styled.span == .headingMarker {
+                    let paragraphStart = nsText.paragraphRange(
+                        for: NSRange(location: nsRange.location, length: 0)
+                    ).location
+                    headingMarkers[paragraphStart] = NSRange(
+                        location: nsRange.location - paragraphStart, length: nsRange.length
+                    )
+                }
             }
+            // Before `endEditing()`, not after: that call is what fires the document-wide
+            // `.editedAttributes` that re-triggers the content manager's enumeration, so
+            // the table has to already be current when it does (ADR-0018 §D1).
+            decorations.apply(headingMarkers: headingMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
         }

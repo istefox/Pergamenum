@@ -34,6 +34,50 @@ func stylesHeadings(_ level: Int) {
     #expect(result.contains(.tag("#type-note")))
 }
 
+// MARK: - The heading marker (ADR-0018 §D1)
+
+@Test func stylesTheHeadingMarkerSeparatelyFromTheHeadingSpan() {
+    // Isolated from the heading span: the marker is its own range, not a slice reported
+    // out of `.heading`'s.
+    #expect(styled("# Titolo", .headingMarker) == "# ")
+    #expect(styled("## Titolo", .headingMarker) == "## ")
+}
+
+@Test func theHeadingMarkerRangeIncludesExactlyOneTrailingSpace() {
+    // Hashes plus the single space after them - not the extra spaces before the title.
+    #expect(styled("#   Titolo", .headingMarker) == "# ")
+}
+
+@Test func theHeadingMarkerSpanIsOrderedAfterTheHeadingSpan() {
+    // Later spans win on overlap; the marker must come second so its colour lands on
+    // top of the heading's own font and colour rather than the other way round.
+    let ordered = MarkdownStyler.spans(in: "# Titolo").map(\.span)
+    let headingIndex = ordered.firstIndex(of: .heading(level: 1))
+    let markerIndex = ordered.firstIndex(of: .headingMarker)
+    #expect(headingIndex != nil)
+    #expect(markerIndex != nil)
+    if let headingIndex, let markerIndex {
+        #expect(headingIndex < markerIndex)
+    }
+}
+
+@Test func aHeadingWithNoTitleYetHasNoMarkerSpan() {
+    // Hiding the hashes on an empty heading would shrink the row to nothing the instant
+    // the caret left it - worse than four characters that do nothing yet.
+    #expect(!spans("# ").contains(.headingMarker))
+    #expect(!spans("#   ").contains(.headingMarker))
+}
+
+@Test func aTagIsNeverAHeadingMarker() {
+    #expect(!spans("#type-note in apertura di riga").contains(.headingMarker))
+}
+
+@Test func headingMarkerRangeExcludesIndentation() {
+    // Mirrors `indentedTaskMarkersKeepTheirPosition`: the marker's start is measured
+    // from where the line's own content begins, not from column zero.
+    #expect(styled("  # Titolo", .headingMarker) == "# ")
+}
+
 @Test func stylesInlineTagsOnlyAtWordBoundaries() {
     // The `#` inside a URL fragment is not a tag.
     #expect(!spans("vedi https://x.test/a#type-note").contains(.tag("#type-note")))
@@ -158,6 +202,12 @@ private func italics(_ text: String) -> [String] {
     let result = spans(shellNote)
     #expect(result.contains(.tag("#topic-cli")))
     #expect(styled(shellNote, .italic) == "*corsivo*")
+}
+
+@Test func aHeadingInsideAFenceHasNoMarkerSpan() {
+    // `# nota per #project-forno` is a shell comment inside the fence, not a heading -
+    // the whole line is skipped by the per-line loop, so it gains no marker either.
+    #expect(!spans(shellNote).contains(.headingMarker))
 }
 
 @Test func theGrammarReachesTheCodeInsideTheFence() {

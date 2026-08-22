@@ -15,6 +15,17 @@ struct EditorSettings: View {
 
     var body: some View {
         Form {
+            Toggle("Nascondi i marcatori mentre scrivi", isOn: Binding(
+                get: { vault.settings.hidesMarkup },
+                set: { value in vault.updateSettings { $0.hidesMarkup = value } }
+            ))
+            .accessibilityIdentifier("settings-hides-markup")
+
+            Text("I `#` di un titolo non vengono disegnati, e ricompaiono quando il cursore entra "
+                 + "nel paragrafo. Il file non cambia: i caratteri ci sono sempre, anche quando non "
+                 + "si vedono.")
+                .themedText(.caption, color: .textTertiary)
+
             Toggle("Correttore ortografico", isOn: Binding(
                 get: { vault.settings.spellCheck.isEnabled },
                 set: { isOn in

@@ -53,6 +53,7 @@ extension EditorColumnView {
             noteTitles: vault.index.allNotes.map(\.title),
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
+            hidesMarkup: vault.settings.hidesMarkup,
             editorCommands: slashCommands,
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
