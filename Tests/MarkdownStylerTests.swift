@@ -308,3 +308,55 @@ private func italics(_ text: String) -> [String] {
     #expect(styled("usa `codice` inline", .code) == "`codice`")
     #expect(!spans("usa `codice` inline").contains(.codeBlock))
 }
+
+// MARK: - The embed run (ADR-0018, slice 3)
+
+@Test func stylesAWikilinkEmbedAloneOnALine() {
+    #expect(styled("![[foto.png]]", .embedRun) == "![[foto.png]]")
+}
+
+@Test func stylesACommonMarkEmbedAloneOnALine() {
+    #expect(styled("![alt](foto.png)", .embedRun) == "![alt](foto.png)")
+}
+
+@Test func embedRunRangeExcludesIndentationAndTrailingSpace() {
+    // Indentation is tolerated; the range reported is the embed's own characters, not
+    // the row it sits on - trailing whitespace included, since nothing else on the row
+    // needs to keep it.
+    #expect(styled("  ![[foto.png]]  ", .embedRun) == "![[foto.png]]")
+}
+
+@Test func aBareWikilinkHasNoEmbedRunSpan() {
+    // D4, the regression this slice must never reintroduce: `![[nota]]` with no
+    // extension stays a transclusion, and a transclusion must never collapse the way
+    // an image does.
+    #expect(!spans("![[nota]]").contains(.embedRun))
+}
+
+@Test func anEmbedInsideASentenceHasNoEmbedRunSpan() {
+    // Only a whole line is an embed - `Attachment.embed(inLine:)`'s own rule, which
+    // `Transclusion.target(ofLine:)` inherits: a picture named inside a sentence stays
+    // inline text, not something to collapse.
+    #expect(!spans("vedi ![[foto.png]] qui sotto").contains(.embedRun))
+}
+
+@Test func anEmbedInsideAFenceHasNoEmbedRunSpan() {
+    // Inside a fence, markdown is not markdown - the same exclusion `spans(in:)` already
+    // applies to every other line-level span, and `embedRun(inLine:)` never sees a line
+    // the per-line loop has skipped.
+    let note = "```md\n![[foto.png]]\n```"
+    #expect(!spans(note).contains(.embedRun))
+}
+
+@Test func aRemoteEmbedTargetHasNoEmbedRunSpan() {
+    // The app makes no network call (principle 2, fully offline);
+    // `Transclusion.target(ofLine:)` already drops a remote target before either
+    // branch, so this never reaches `.file`.
+    #expect(!spans("![[https://example.com/foto.png]]").contains(.embedRun))
+    #expect(!spans("![alt](http://example.com/foto.png)").contains(.embedRun))
+}
+
+@Test func embedRunSuppressesSpellCheck() {
+    // A file name is not prose to correct.
+    #expect(MarkdownStyler.suppressesSpellCheck(.embedRun))
+}

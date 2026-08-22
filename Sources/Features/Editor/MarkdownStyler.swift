@@ -37,6 +37,12 @@ enum MarkdownStyler {
         /// leads to a file, not to a note: clicking it used to ask the vault for a note
         /// called "foto.png" and, finding none, do nothing at all.
         case embedTarget(String)
+        /// The whole embed of a line that is nothing else - `![[foto.png]]` or
+        /// `![alt](foto.png)` (ADR-0018, slice 3). Recognised by `embedRun(inLine:)`,
+        /// which also decides the file/note split `.embedTarget` above never had to: a
+        /// bare `![[nota]]` stays a transclusion and never reaches this case (D4). Carries
+        /// no attributes of its own yet - the collapse into a preview is Step 3's.
+        case embedRun
         /// An inline `#tag` in the body.
         case tag(String)
         /// A whole fenced code block, opening and closing backticks included.
@@ -104,7 +110,7 @@ enum MarkdownStyler {
     static func suppressesSpellCheck(_ span: Span) -> Bool {
         switch span {
         case .frontmatter, .code, .codeBlock, .codeToken,
-             .linkSyntax, .linkTarget, .embedTarget, .tag,
+             .linkSyntax, .linkTarget, .embedTarget, .embedRun, .tag,
              .taskMarker, .scheduled, .due, .annotation, .headingMarker, .emphasisMarker:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
@@ -196,6 +202,12 @@ enum MarkdownStyler {
                 range: absolute(indent, marker.length),
                 span: .taskMarker(done: marker.done)
             ))
+        }
+
+        if let embed = embedRun(inLine: line) {
+            let offset = line.distance(from: line.startIndex, to: embed.lowerBound)
+            let length = line.distance(from: embed.lowerBound, to: embed.upperBound)
+            result.append(StyledRange(range: absolute(offset, length), span: .embedRun))
         }
 
         result.append(contentsOf: inlineSpans(in: line, absolute: absolute))
