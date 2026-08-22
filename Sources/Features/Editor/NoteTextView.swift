@@ -16,6 +16,12 @@ struct NoteTextView: NSViewRepresentable {
     /// Whether misspellings are underlined, and in which language (M8, SPEC §12). Off by
     /// default so a text view built without a vault behind it behaves as it always did.
     var spellCheck: SpellCheck = .off
+    /// Whether a heading's `#` marker is hidden until the caret's paragraph, a selection,
+    /// an IME composition or the find bar's current match touches it (ADR-0018 §D1).
+    /// **`false` here, `true` in `VaultSettings`, deliberately** - the same contrast as
+    /// `spellCheck`'s default: a text view with no vault behind it behaves exactly as
+    /// before, and the vault's own default is what a real note editor reads through.
+    var hidesMarkup = false
     /// The slash menu's catalogue, already filtered to what can run (M8). Passed in
     /// rather than built here: whether a command can run is a fact about the app, and
     /// the editor is not the place that knows it.
@@ -217,6 +223,10 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.applyMatches(
             to: textView, matches: matches, current: currentMatch, theme: theme
         )
+        // After the matches, so the find bar's current match is a reveal trigger too
+        // (ADR-0018 §D2), and before growing the view so a reveal's height change is
+        // already accounted for.
+        context.coordinator.applyReveal(to: textView)
         context.coordinator.growToFitTheText(textView)
 
         if let insertion {

@@ -3,14 +3,19 @@ import Foundation
 /// Classifies spans of a note's source for the editor to style.
 ///
 /// SPEC §5 asks for "source mode improved": the syntax stays visible and gets styled,
-/// rather than being hidden the way a live preview would. So this never removes or
-/// replaces characters - it only says what each range *is*, and the view decides how
+/// rather than being hidden the way a live preview would. ADR-0018 §D1 narrows that for
+/// one case, a heading's `#` marker, which the view may choose not to draw while the
+/// caret is elsewhere. This classifier still never removes or replaces characters - it
+/// only says what each range *is*, and it is the view that decides how, or whether,
 /// that looks using theme tokens.
 enum MarkdownStyler {
     enum Span: Equatable, Sendable {
         /// The whole `---` block at the top of the file.
         case frontmatter
         case heading(level: Int)
+        /// The `#`s of a heading, and the single space after them (ADR-0018 §D1, slice 1).
+        /// The level is already on `.heading`, so this carries no payload of its own.
+        case headingMarker
         case bold
         case italic
         /// `~~testo~~`. Added with the format bar (M8), and it closes a real gap rather than
@@ -95,7 +100,7 @@ enum MarkdownStyler {
         switch span {
         case .frontmatter, .code, .codeBlock, .codeToken,
              .linkSyntax, .linkTarget, .embedTarget, .tag,
-             .taskMarker, .scheduled, .due, .annotation:
+             .taskMarker, .scheduled, .due, .annotation, .headingMarker:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
@@ -165,6 +170,19 @@ enum MarkdownStyler {
             // A heading needs a space after the hashes; `#tag` at line start is a tag.
             if hashes <= 6, trimmed.dropFirst(hashes).hasPrefix(" ") {
                 result.append(StyledRange(range: lineRange, span: .heading(level: hashes)))
+                // After the heading span, on purpose: later spans win on overlap, so the
+                // marker keeps the heading's font and gets its own colour on top.
+                //
+                // No marker for "# " or "#   " - a heading with no title yet. Hiding the
+                // hashes there would shrink the row to nothing the instant the caret leaves
+                // it, which is worse than showing four characters that do nothing yet.
+                let hasTitle = trimmed.dropFirst(hashes + 1).contains { $0 != " " }
+                if hasTitle {
+                    result.append(StyledRange(
+                        range: absolute(indent, hashes + 1),
+                        span: .headingMarker
+                    ))
+                }
             }
         }
 
@@ -177,16 +195,6 @@ enum MarkdownStyler {
 
         result.append(contentsOf: inlineSpans(in: line, absolute: absolute))
         return result
-    }
-
-    private static func taskMarker(in line: some StringProtocol) -> (length: Int, done: Bool)? {
-        // `- [ ]`, `- [x]`, `- [>]`, `- [-]` (SPEC §7.1), and the `*` bullet variant.
-        guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
-        let after = line.dropFirst()
-        guard after.hasPrefix(" ["), after.count >= 4 else { return nil }
-        let state = Array(after)[2]
-        guard Array(after)[3] == "]" else { return nil }
-        return (5, state == "x" || state == "X")
     }
 
     private static func inlineSpans(
@@ -344,4 +352,19 @@ enum MarkdownStyler {
         }
         return result
     }
+}
+
+/// The `- [ ]`/`- [x]`/`- [>]`/`- [-]` marker at the start of a task line (SPEC §7.1), and
+/// the `*` bullet variant.
+///
+/// File scope rather than a nested `private static func`: `MarkdownStyler`'s own body
+/// reached SwiftLint's length limit the moment the heading marker (ADR-0018 §D1) added a
+/// few lines to it, and this helper depends on nothing the type itself carries.
+private func taskMarker(in line: some StringProtocol) -> (length: Int, done: Bool)? {
+    guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
+    let after = line.dropFirst()
+    guard after.hasPrefix(" ["), after.count >= 4 else { return nil }
+    let state = Array(after)[2]
+    guard Array(after)[3] == "]" else { return nil }
+    return (5, state == "x" || state == "X")
 }

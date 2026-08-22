@@ -40,8 +40,29 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
     nonisolated(unsafe) private var renditions: [Int: TranscludedRendition] = [:]
+    /// A heading's marker range - the `#`s and the single space after them - relative to
+    /// its own paragraph's start, not to the document (ADR-0018 §D1, slice 1). Filled by
+    /// `applyStyling`'s walk over `MarkdownStyler.spans(in:)`, the same one that already
+    /// knows where every marker is.
+    nonisolated(unsafe) private var headingMarkers: [Int: NSRange] = [:]
+    /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
+    /// selection, an active IME composition or the find bar's current match touches them
+    /// (ADR-0018 §D2). Keyed the same way as `headingMarkers`.
+    nonisolated(unsafe) private var revealedParagraphs: Set<Int> = []
+    /// The vault's `hidesMarkup` setting. `false` makes
+    /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
+    /// markup is fully reversible with a toggle rather than a revert.
+    nonisolated(unsafe) var hidesMarkup = false
+    /// Small enough to draw as nothing while still breaking the line the way a real
+    /// character does - unlike a `\n` at this size, which is why folding uses a different
+    /// mechanism: this hides a delimiter mid-paragraph, not a whole paragraph.
+    nonisolated(unsafe) static let collapsedFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
 
     var isFolding: Bool { !foldedHeadings.isEmpty }
+    /// How many headings the last styling pass registered a marker for - what a test
+    /// reads to confirm `applyStyling` populated the table, the same way `isFolding`
+    /// reads `foldedHeadings` for the folding half of this file.
+    var headingMarkerCount: Int { headingMarkers.count }
 
     func apply(renditions: [Int: TranscludedRendition]) {
         self.renditions = renditions
@@ -54,6 +75,30 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         Logger.folding.notice(
             "pieghe: \(headings.count, privacy: .public) sezioni, \(hiddenLines.count, privacy: .public) righe"
         )
+    }
+
+    /// Registers where the heading markers are and whether they should be hidden at all.
+    ///
+    /// Guarded rather than unconditional: `applyStyling` calls this on every keystroke and
+    /// every SwiftUI update, and logging on each of those would drown the one line per
+    /// fold this file otherwise writes.
+    func apply(headingMarkers markers: [Int: NSRange], hidingMarkup hides: Bool) {
+        guard markers != headingMarkers || hides != hidesMarkup else { return }
+        headingMarkers = markers
+        hidesMarkup = hides
+        Logger.folding.notice(
+            "marcatori: \(markers.count, privacy: .public) intestazioni, nascondi=\(hides, privacy: .public)"
+        )
+    }
+
+    /// Sets which paragraphs are drawn in full, and returns the ones that changed since
+    /// the last call - what the caller invalidates, never the whole document. No logging:
+    /// this fires on every paragraph-crossing arrow key, and `notice` persists by default,
+    /// which would be noise.
+    func apply(revealedParagraphs paragraphs: Set<Int>) -> Set<Int> {
+        let changed = revealedParagraphs.symmetricDifference(paragraphs)
+        revealedParagraphs = paragraphs
+        return changed
     }
 
     // MARK: Hiding
@@ -94,6 +139,47 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         fragment.badgeColor = badgeColor
         fragment.badgeBackground = badgeBackground
         return fragment
+    }
+
+    // MARK: Revealing
+
+    /// Substitutes a heading's paragraph with one whose marker is drawn at a font too
+    /// small to be seen, never removing or replacing a character - the same
+    /// `NSTextContentStorageDelegate` hook `TransclusionLayoutTests` measured a
+    /// *displayed* paragraph differing from the *stored* one through
+    /// (`docs/20260817_TextKit2_live_editing.md`).
+    func textContentStorage(
+        _ textContentStorage: NSTextContentStorage,
+        textParagraphWith range: NSRange
+    ) -> NSTextParagraph? {
+        guard hidesMarkup, !revealedParagraphs.contains(range.location),
+              let marker = headingMarkers[range.location],
+              NSMaxRange(marker) <= range.length,
+              let storage = textContentStorage.textStorage
+        else { return nil }
+
+        // Re-read from the real characters rather than trust the table: it is filled by
+        // the last styling pass, this is a later layout pass, and the two can go stale
+        // between each other. Silently collapsing prose would be the failure mode here,
+        // not a crash.
+        let absoluteMarker = NSRange(location: range.location + marker.location, length: marker.length)
+        guard Self.stillSpellsAHeadingMarker(storage.string as NSString, at: absoluteMarker) else {
+            return nil
+        }
+
+        let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+        copy.addAttribute(.font, value: Self.collapsedFont, range: marker)
+        return NSTextParagraph(attributedString: copy)
+    }
+
+    /// Whether `range` still spells one to six `#`s followed by exactly one space, read
+    /// from the text as it is right now.
+    private static func stillSpellsAHeadingMarker(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
+        let candidate = text.substring(with: range)
+        guard candidate.hasSuffix(" ") else { return false }
+        let hashes = candidate.dropLast()
+        return !hashes.isEmpty && hashes.count <= 6 && hashes.allSatisfy { $0 == "#" }
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {

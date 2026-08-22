@@ -186,6 +186,7 @@ struct TodayView: View {
                 noteTitles: vault.index.allNotes.map(\.title),
                 tagSuggestions: [],
                 spellCheck: vault.settings.spellCheck,
+                hidesMarkup: vault.settings.hidesMarkup,
                 onFollowLink: { title in
                     if let path = vault.index.resolve(title: title).first { vault.openNote(at: path) }
                 }

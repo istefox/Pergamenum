@@ -613,3 +613,21 @@ private func makeRecord(
     let chosen = Data(#"{"blockMinutes":45}"#.utf8)
     #expect(try JSONDecoder().decode(VaultSettings.self, from: chosen).blockMinutes == 45)
 }
+
+/// `hidesMarkup` (ADR-0018 §D1): on by default, and a settings file written before the
+/// key existed must decode to `true` rather than to the zero value of `Bool` - the one
+/// polarity a plain-`Bool` field's "written before the key existed" test has not yet
+/// exercised anywhere in the suite, because every other plain-`Bool` field defaults to
+/// `false` or to `true` in a context where either reads as "unset".
+@Test func hidesMarkupDefaultsToTrueAndAnOlderSettingsFileStillReadsTrue() throws {
+    #expect(VaultSettings.default.hidesMarkup)
+
+    let older = Data(#"{"dailyFolder":"Calendar","blockMinutes":45}"#.utf8)
+    let settings = try JSONDecoder().decode(VaultSettings.self, from: older)
+    #expect(settings.hidesMarkup)
+    #expect(settings.dailyFolder == "Calendar")
+    #expect(settings.blockMinutes == 45)
+
+    let turnedOff = Data(#"{"dailyFolder":"Calendar","hidesMarkup":false}"#.utf8)
+    #expect(try JSONDecoder().decode(VaultSettings.self, from: turnedOff).hidesMarkup == false)
+}

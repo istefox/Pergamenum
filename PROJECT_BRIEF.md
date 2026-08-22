@@ -87,6 +87,28 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-22: **ADR-0018 scritta e slice 1 implementato** (branch
+  `feature/adr-0018-slice1-hide-heading-marker`, non ancora in `main`). L'editor smette di
+  mostrare sempre ogni carattere markdown: il `#` (o `##`…) di un'intestazione e lo spazio
+  dopo si nascondono mentre il cursore è altrove, tornano visibili quando il cursore entra
+  nel paragrafo, senza mai toccare il testo sul disco - un `NSTextContentStorageDelegate`
+  sostituisce il paragrafo *disegnato* con uno di lunghezza identica, font 0.01pt sul solo
+  marcatore. Dietro una nuova impostazione di vault, `hidesMarkup`, accesa di default.
+  1295 test unitari (26 nuovi), `perg` e `pergamenum-mcp` compilano. Riapre SPEC §14 e
+  ADR-0005 §D2 con un emendamento stretto (tre costrutti, non la regola), sul modello di
+  come ADR-0013 ha emendato §7.3. **Verificato a schermo, passo per passo**: reveal su
+  titolo/corpo, Home/Fine, click all'estrema sinistra di un titolo collassato (piccolo
+  salto atteso quando il marcatore si rivela, cosmetico), un titolo lungo che va a capo,
+  spegnimento del toggle che raggiunge una nota già aperta senza riaprirla. **Un caso
+  apparentemente rotto e poi chiarito**: con una sezione piegata che nasconde tutto il
+  resto della nota, cliccare nello spazio vuoto sotto il titolo lasciava il `#` visibile -
+  non un difetto del meccanismo (confermato con la freccia giù, che lo nasconde
+  correttamente), ma il comportamento standard di `NSTextView` per un click sotto tutto il
+  testo visibile: il cursore va a fine documento, che qui coincide con il titolo stesso
+  perché non c'è nient'altro di enumerabile. Il pannello Diario non è stato verificato per
+  mancanza di una nota a due colonne pronta - non bloccante. Slice 2 (`*`/`_`, le cinque
+  probe di D6) e slice 3 (l'embed immagine/PDF) restano aperti.
+
 - 2026-08-22: **ADR-0017 in tre slice, `PG-004` chiuso** (PR #83, in `main` a `9fe5a45`).
   `.pergamenum/` sincronizzava su iCloud senza nessuna esclusione da nessuna parte del
   codice, e quattro dei suoi otto contenuti erano stato derivato o locale a questa
