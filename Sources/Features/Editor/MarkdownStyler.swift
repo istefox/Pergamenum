@@ -4,10 +4,12 @@ import Foundation
 ///
 /// SPEC §5 asks for "source mode improved": the syntax stays visible and gets styled,
 /// rather than being hidden the way a live preview would. ADR-0018 §D1 narrows that for
-/// two cases so far - a heading's `#` marker and a `*`/`**` emphasis delimiter - which
-/// the view may choose not to draw while the caret is elsewhere. This classifier still
-/// never removes or replaces characters - it only says what each range *is*, and it is
-/// the view that decides how, or whether, that looks using theme tokens.
+/// three cases across its three slices - a heading's `#` marker, a `*`/`**` emphasis
+/// delimiter, and a whole line that is only an image/PDF embed - each of which the
+/// view may draw differently from the raw source, by a rule of its own (a marker
+/// reveals on caret, a drawn embed does not - D5). This classifier still never removes
+/// or replaces characters - it only says what each range *is*, and it is the view that
+/// decides how, or whether, that looks using theme tokens.
 enum MarkdownStyler {
     enum Span: Equatable, Sendable {
         /// The whole `---` block at the top of the file.

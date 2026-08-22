@@ -28,9 +28,11 @@ struct NoteTextView: NSViewRepresentable {
     var editorCommands: [EditorCommand] = []
     var onRunCommand: ((ShortcutCommand) -> Void)?
     let onFollowLink: (String) -> Void
-    /// Called with the file name inside `![[foto.png]]` when the embed is clicked. The
-    /// editor shows the syntax, not the picture (SPEC §5), so this is how the file
-    /// itself is reached from here.
+    /// Called with the file name inside `![[foto.png]]` when its raw syntax is clicked -
+    /// `hidesMarkup` off, or the run not yet collapsed into a picture. Once ADR-0018
+    /// slice 3 draws the picture in the run's place, a click there selects it instead
+    /// (`selectEmbed(at:in:)`) and never reaches this callback; unlike a heading or
+    /// emphasis marker, the caret alone never brings the raw text back (D5).
     var onOpenEmbed: ((String) -> Void)?
     /// The vault an embed's target is resolved in (ADR-0018 slice 3). Nil where there is
     /// no vault behind the editor - the same permissive default `spellCheck` and

@@ -59,8 +59,8 @@ enum MarkdownAttributedText {
         case .strikethrough:
             // A line through the whole run, markers included - true of strikethrough, which
             // is what SPEC §5's styled source means for this span. It is not universal any
-            // more: ADR-0018 narrows it for three cases across its three slices (headings
-            // and emphasis so far, the image/PDF embed later), and strikethrough is not one.
+            // more: ADR-0018 narrows it for three cases across its three slices (headings,
+            // emphasis, and the image/PDF embed), and strikethrough is not one.
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         case .codeBlock:
             // Only a background. The colour is left to whatever the grammar found inside,

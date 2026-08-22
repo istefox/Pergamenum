@@ -260,9 +260,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // the hiding branch below keeps by never touching length at all.
         copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
         copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
-        copy.addAttribute(
-            .accessibilityAttachment, value: embed.alt ?? embed.target, range: attachmentRange
-        )
+        // `.accessibilityAttachment`'s value is documented as "id - corresponding element"
+        // (`NSAccessibilityConstants.h`), the same shape `NSAccessibilityLinkTextAttribute`
+        // has - not a label string. An `NSAccessibilityElement` here is what turns the
+        // picture into a stop of its own for VoiceOver, and `editor-embed` is what an
+        // XCUITest asks for by identifier rather than by the alt text it reads out loud.
+        // Falls back to the plain label were the factory ever to answer something else -
+        // VoiceOver still reads it, an XCUITest asking for `editor-embed` simply finds none.
+        var accessibilityValue: Any = embed.alt ?? embed.target
+        if let embedElement = NSAccessibilityElement.element(
+            withRole: NSAccessibility.Role.image, frame: .zero, label: embed.alt ?? embed.target, parent: nil
+        ) as? NSAccessibilityElement {
+            embedElement.setAccessibilityIdentifier("editor-embed")
+            accessibilityValue = embedElement
+        }
+        copy.addAttribute(.accessibilityAttachment, value: accessibilityValue, range: attachmentRange)
         if restRange.length > 0 {
             copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
         }

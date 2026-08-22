@@ -4,8 +4,10 @@ import XCTest
 /// A picture embedded in a note, seen inside the app.
 ///
 /// Inserting one already worked - the Inserisci menu and the drop both copy the file
-/// into the vault and write `![[nome.png]]` - but nothing ever drew it: the editor shows
-/// the source by design (SPEC §5) and reading mode rendered the embed as a label.
+/// into the vault and write `![[nome.png]]` - and reading mode has long drawn it as a
+/// real picture rather than a label. ADR-0018 slice 3 closed the editor's own half of
+/// that gap: with `hidesMarkup` on (the vault's own default), a resolved image or PDF
+/// is drawn in the run's own place too, rather than left as raw syntax.
 final class NoteImageUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -58,9 +60,10 @@ final class NoteImageUITests: XCTestCase {
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
         note.click()
 
-        // The editor shows the source and no picture: that is the mode's whole job.
+        // `hidesMarkup` is on by default, so the editor draws the picture in the run's
+        // own place too (ADR-0018 slice 3) - Lettura is no longer the only mode that does.
         XCTAssertTrue(app.radioButtons["Lettura"].waitForExistence(timeout: 5))
-        XCTAssertFalse(embed.exists, "l'editor sta disegnando l'immagine")
+        XCTAssertTrue(editorEmbed.waitForExistence(timeout: 5), "l'editor non sta disegnando l'immagine")
 
         app.radioButtons["Lettura"].click()
         XCTAssertTrue(embed.waitForExistence(timeout: 10), "l'immagine non è disegnata in lettura")
@@ -77,11 +80,21 @@ final class NoteImageUITests: XCTestCase {
 
         app.radioButtons["Modifica"].click()
         XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 5), "l'editor non è tornato")
-        XCTAssertFalse(embed.exists, "l'immagine è rimasta sullo schermo con l'editor")
+        XCTAssertTrue(
+            editorEmbed.waitForExistence(timeout: 5), "l'editor non è tornato a disegnare l'immagine"
+        )
     }
 
     private var embed: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "note-embed").firstMatch
+    }
+
+    /// The editor's own drawn embed (ADR-0018 slice 3), distinct from `embed` above: that
+    /// one is `EmbeddedFileView`'s, Lettura's SwiftUI reading view, and never appears while
+    /// the editor is on screen. This one is the `NSAccessibilityElement` a resolved image
+    /// or PDF carries once `EditorDecorationDelegate` collapses its run into a picture.
+    private var editorEmbed: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "editor-embed").firstMatch
     }
 
     /// A real PNG, so Quick Look has something it can actually render: a file with the

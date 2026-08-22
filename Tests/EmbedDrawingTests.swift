@@ -74,9 +74,15 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
         let attachment = attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
         #expect(attachment?.image != nil)
         // The wikilink form carries no alt text of its own, so the label falls back to
-        // the target name (ADR-0018 slice 3, Step 3, item 3).
-        let label = attributed.attribute(.accessibilityAttachment, at: 0, effectiveRange: nil) as? String
-        #expect(label == "foto.png")
+        // the target name (ADR-0018 slice 3, Step 3, item 3). The value itself is an
+        // `NSAccessibilityElement`, not a plain string - `.accessibilityAttachment` is
+        // documented as "id - corresponding element" - and `editor-embed` is the
+        // identifier Step 6's UI test asks for by name rather than by this label.
+        let element = try #require(
+            attributed.attribute(.accessibilityAttachment, at: 0, effectiveRange: nil) as? NSAccessibilityElement
+        )
+        #expect(element.accessibilityLabel() == "foto.png")
+        #expect(element.accessibilityIdentifier() == "editor-embed")
     }
 
     /// D5's own deliberate exception to D2: a drawn embed does not reveal on caret the
