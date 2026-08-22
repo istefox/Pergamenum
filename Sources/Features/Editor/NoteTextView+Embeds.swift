@@ -64,6 +64,20 @@ final class EmbedTable {
     /// The text view a pending render invalidates when it lands. Weak: this table
     /// outlives no `NSTextView` on purpose, the same as `Coordinator.textView`.
     private weak var textView: NSTextView?
+    /// The delegate this table's own render table feeds (ADR-0018 slice 3, Step 3), by
+    /// the same `Coordinator.decorations` instance every other decoration reaches it
+    /// through. Weak for the same reason as `textView`: this table does not own it. Set
+    /// once, by `attach(decorations:)` below, rather than threaded through `apply(runs:…)`
+    /// on every keystroke - `apply(runs:…)` already sits at the parameter-count limit
+    /// `SwiftLint` enforces project-wide, and the delegate this table feeds never changes
+    /// for the lifetime of a `Coordinator`.
+    private weak var decorations: EditorDecorationDelegate?
+
+    /// Wires the delegate this table feeds, once, at `Coordinator.init` - the one point
+    /// in this table's lifetime where the wiring is fixed for good.
+    func attach(decorations: EditorDecorationDelegate) {
+        self.decorations = decorations
+    }
 
     /// The width every embed renders at, matching `EmbeddedFileView.renderWidth` bit for
     /// bit. `ThumbnailStore` quantises internally, so requesting the same value here is
@@ -177,15 +191,20 @@ final class EmbedTable {
     /// takes for the same reason: a note can embed more than one file, and this runs on
     /// every keystroke as well as every render's completion.
     ///
-    /// Nothing reads `renditions` yet - `EditorDecorationDelegate` grows to draw from it
-    /// in Step 3 - so today this asks the layout to re-run its enumeration over
-    /// paragraphs whose attributes have not visibly changed. Wired in now rather than
-    /// left for Step 3 to add, the same way `applyStyling` already calls
-    /// `decorations.apply(hiddenMarkers:...)` before anything drew from it.
+    /// `decorations.apply(embeds:)` is called from here rather than only from
+    /// `applyEmbeds` above, and before the invalidation below rather than after: this is
+    /// the one place both a keystroke's synchronous resolution and a render's own,
+    /// later-arriving completion (`requestRender`'s `Task`) end up, and the delegate has
+    /// to already hold the current picture by the time the invalidation below asks the
+    /// layout to re-run its enumeration - the same way `applyStyling` already calls
+    /// `decorations.apply(hiddenMarkers:...)` before anything drew from it (ADR-0018
+    /// slice 3, Step 3).
     private func setRenditions(_ next: [Int: EmbedRendition], text: NSString) {
         let changed = Set(next.keys).union(renditions.keys).filter { next[$0] != renditions[$0] }
         renditions = next
-        guard !changed.isEmpty, let textView, let storage = textView.textStorage else { return }
+        guard !changed.isEmpty else { return }
+        decorations?.apply(embeds: next)
+        guard let textView, let storage = textView.textStorage else { return }
         storage.beginEditing()
         for offset in changed where offset < text.length {
             let paragraph = text.paragraphRange(for: NSRange(location: offset, length: 0))
@@ -205,7 +224,10 @@ final class EmbedTable {
 
 extension NoteTextView.Coordinator {
     /// Resolves every embed `applyStyling` just found to a picture (ADR-0018 slice 3,
-    /// Step 2). Never a second parse of the note: `embedRuns` is exactly what the same
+    /// Step 2). `embeds.apply(runs:...)` is also what reaches `decorations` (Step 3),
+    /// which is what actually draws one - via `setRenditions`, not from here directly,
+    /// since a render's own later completion has to reach it the same way. Never a
+    /// second parse of the note: `embedRuns` is exactly what the same
     /// `MarkdownStyler.spans(in:)` walk `applyStyling` already made found, and this only
     /// walks it.
     func applyEmbeds(to textView: NSTextView) {

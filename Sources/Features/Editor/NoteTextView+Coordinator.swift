@@ -55,13 +55,15 @@ extension NoteTextView {
         /// reads this rather than parsing the note a second time.
         private(set) var embedRuns: [NSRange] = []
         /// Where each embed resolves to, once resolved - the render table
-        /// `EditorDecorationDelegate` will read in Step 3. Owned here rather than
-        /// resolved inline: filling it calls `ThumbnailStore`, an actor, and that
-        /// delegate cannot be `@MainActor` at all (ADR-0018 slice 3, Step 2).
+        /// `EditorDecorationDelegate` reads from, via `decorations.apply(embeds:)`, to
+        /// actually draw one (ADR-0018 slice 3, Step 3). Owned here rather than resolved
+        /// inline: filling it calls `ThumbnailStore`, an actor, and that delegate cannot
+        /// be `@MainActor` at all (Step 2).
         let embeds = EmbedTable()
 
         init(parent: NoteTextView) {
             self.parent = parent
+            embeds.attach(decorations: decorations)
         }
 
         /// Takes the caret to a line the index pointed at, or to a match the find bar
@@ -251,6 +253,7 @@ extension NoteTextView {
                 let kind: HiddenMarker.Kind? = switch styled.span {
                 case .headingMarker: .heading
                 case .emphasisMarker: .emphasis
+                case .embedRun: .embed
                 default: nil
                 }
                 if let kind {
