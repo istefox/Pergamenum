@@ -269,6 +269,30 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return NSTextParagraph(attributedString: copy)
     }
 
+    /// Whether a drawn embed's run sits at this exact paragraph-start offset right now,
+    /// and its absolute range when it does - the same validity `embedParagraph(at:
+    /// storage:)` requires before it draws one, asked from outside for the caret and
+    /// click rules of Step 4 (ADR-0018 slice 3): they must act on a picture that is
+    /// actually on screen this instant, never on a stale table entry and never on raw
+    /// text with `hidesMarkup` off - which is why the check is repeated here rather than
+    /// left to the caller alone (R4 of the plan: the failure mode of skipping it is
+    /// Backspace eating visible prose whole).
+    ///
+    /// `offset` is a candidate paragraph-start, the same key space `embedRenditions` and
+    /// `hiddenMarkers` already use - not "the paragraph containing an arbitrary
+    /// location". An offset that is not itself a paragraph's start simply misses both
+    /// dictionaries and answers nil, which is the right answer for a location inside a
+    /// paragraph's own body.
+    func drawnEmbedRange(atParagraphStart offset: Int, in text: NSString) -> NSRange? {
+        guard hidesMarkup,
+              let rendition = embedRenditions[offset],
+              let marker = (hiddenMarkers[offset] ?? []).first(where: { $0.kind == .embed })
+        else { return nil }
+        let markerRange = NSRange(location: offset + marker.range.location, length: marker.range.length)
+        guard Self.stillSpellsAnEmbed(text, at: markerRange, rendition: rendition) != nil else { return nil }
+        return markerRange
+    }
+
     /// A minimal placeholder for a `.missing` embed - already decided for this slice: a
     /// file the vault does not have is drawn as broken, not left as raw syntax, which
     /// already means "still rendering" everywhere else in this file. `secondaryLabelColor`

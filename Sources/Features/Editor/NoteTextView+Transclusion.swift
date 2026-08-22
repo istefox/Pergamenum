@@ -172,9 +172,14 @@ extension NoteTextView.Coordinator {
     }
 
     /// Walks the laid-out fragments of one kind and stops at the first that claims the
-    /// click. Shared by the two decorations, because doing it twice is how they would end
-    /// up disagreeing about coordinates.
-    private func decoration<Fragment: NSTextLayoutFragment>(
+    /// click. Shared by every click decoration - folding, transclusion and, since
+    /// ADR-0018 slice 3 Step 4, a drawn embed's own `selectEmbed(at:in:)` in
+    /// `NoteTextView+EmbedCaret.swift` - because doing it twice is how they would end up
+    /// disagreeing about coordinates. Not `private`: an embed's paragraph is a plain
+    /// `NSTextLayoutFragment` rather than a dedicated subclass, so that caller
+    /// instantiates `Fragment` as the base class itself and needs this from outside the
+    /// file.
+    func decoration<Fragment: NSTextLayoutFragment>(
         at point: CGPoint,
         in textView: NSTextView,
         claimedBy claim: (Fragment) -> Bool
@@ -193,8 +198,10 @@ extension NoteTextView.Coordinator {
     /// A layout fragment's frame is in the text container's coordinates and a click arrives
     /// in the view's; between them sits `textContainerInset`, 24 by 20 here. The first
     /// version of the transclusion click compared the two directly, so the containment test
-    /// could not succeed anywhere on the page.
-    private static func inContainer(_ point: CGPoint, of textView: NSTextView) -> CGPoint {
+    /// could not succeed anywhere on the page. Not `private`, for the same reason as
+    /// `decoration(at:in:claimedBy:)` above: `selectEmbed(at:in:)` needs the same
+    /// conversion rather than a second one that could drift from it.
+    static func inContainer(_ point: CGPoint, of textView: NSTextView) -> CGPoint {
         let origin = textView.textContainerOrigin
         return CGPoint(x: point.x - origin.x, y: point.y - origin.y)
     }

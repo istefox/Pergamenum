@@ -199,12 +199,21 @@ struct NoteTextView: NSViewRepresentable {
         textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
-        // Two decorations, asked in turn: whoever claims the click keeps it. They cannot
-        // both claim one - a folded heading's line is not a transclusion's line.
+        // The caret and Backspace/Delete crossing a drawn embed's run in one step
+        // (ADR-0018 slice 3, Step 4, D5) - closed over `textView` the same way the click
+        // handler below is, since `claimsEmbedCommand` needs the live selection.
+        textView.claimsCommand = { [weak textView] selector in
+            guard let textView else { return false }
+            return coordinator.claimsEmbedCommand(selector, in: textView)
+        }
+        // Three decorations, asked in turn: whoever claims the click keeps it. They
+        // cannot both claim one - a folded heading's line is not a transclusion's line,
+        // and neither is a drawn embed's.
         textView.onClickInMargin = { [weak textView] point in
             guard let textView else { return false }
             return coordinator.openTransclusion(at: point, in: textView)
                 || coordinator.unfold(at: point, in: textView)
+                || coordinator.selectEmbed(at: point, in: textView)
         }
     }
 
