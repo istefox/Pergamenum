@@ -4,10 +4,10 @@ import Foundation
 ///
 /// SPEC §5 asks for "source mode improved": the syntax stays visible and gets styled,
 /// rather than being hidden the way a live preview would. ADR-0018 §D1 narrows that for
-/// one case, a heading's `#` marker, which the view may choose not to draw while the
-/// caret is elsewhere. This classifier still never removes or replaces characters - it
-/// only says what each range *is*, and it is the view that decides how, or whether,
-/// that looks using theme tokens.
+/// two cases so far - a heading's `#` marker and a `*`/`**` emphasis delimiter - which
+/// the view may choose not to draw while the caret is elsewhere. This classifier still
+/// never removes or replaces characters - it only says what each range *is*, and it is
+/// the view that decides how, or whether, that looks using theme tokens.
 enum MarkdownStyler {
     enum Span: Equatable, Sendable {
         /// The whole `---` block at the top of the file.
@@ -18,6 +18,11 @@ enum MarkdownStyler {
         case headingMarker
         case bold
         case italic
+        /// One `*` or `**` delimiter of a `.bold`/`.italic` run (ADR-0018 §D1, slice 2).
+        /// `_`/`__` are deliberately excluded - hiding them would read as
+        /// `nomefilelungo` for `nome_file_lungo`, which `emphasis(_:at:)` already parses
+        /// as italic with no word-boundary rule.
+        case emphasisMarker
         /// `~~testo~~`. Added with the format bar (M8), and it closes a real gap rather than
         /// adding a style: `MarkdownInlineParser` has rendered strikethrough in Lettura since
         /// the reading view existed, and the editor left it plain - the same text looking
@@ -100,7 +105,7 @@ enum MarkdownStyler {
         switch span {
         case .frontmatter, .code, .codeBlock, .codeToken,
              .linkSyntax, .linkTarget, .embedTarget, .tag,
-             .taskMarker, .scheduled, .due, .annotation, .headingMarker:
+             .taskMarker, .scheduled, .due, .annotation, .headingMarker, .emphasisMarker:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
@@ -211,6 +216,10 @@ enum MarkdownStyler {
                 continue
             }
             result.append(StyledRange(range: absolute(index, length), span: span))
+            // After the run span, on purpose - later spans win on overlap (ADR-0018 §D1).
+            if characters[index] == "*", span == .bold || span == .italic {
+                result.append(contentsOf: emphasisMarkers(at: index, length: length, span: span, absolute: absolute))
+            }
             index += length
         }
         return result
@@ -360,6 +369,25 @@ enum MarkdownStyler {
 /// File scope rather than a nested `private static func`: `MarkdownStyler`'s own body
 /// reached SwiftLint's length limit the moment the heading marker (ADR-0018 §D1) added a
 /// few lines to it, and this helper depends on nothing the type itself carries.
+/// The opening and closing `*`/`**` of an emphasis run, or none when hiding them would
+/// collapse the run to nothing (`****`, adjacent empty `**`). File scope for the same
+/// reason as `taskMarker` below (ADR-0018 §D1, slice 2).
+private func emphasisMarkers(
+    at index: Int,
+    length: Int,
+    span: MarkdownStyler.Span,
+    absolute: (Int, Int) -> Range<String.Index>
+) -> [MarkdownStyler.StyledRange] {
+    let markerLength = span == .bold ? 2 : 1
+    guard length > 2 * markerLength else { return [] }
+    return [
+        MarkdownStyler.StyledRange(range: absolute(index, markerLength), span: .emphasisMarker),
+        MarkdownStyler.StyledRange(
+            range: absolute(index + length - markerLength, markerLength), span: .emphasisMarker
+        )
+    ]
+}
+
 private func taskMarker(in line: some StringProtocol) -> (length: Int, done: Bool)? {
     guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
     let after = line.dropFirst()

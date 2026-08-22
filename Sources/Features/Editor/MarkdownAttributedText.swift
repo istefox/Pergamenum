@@ -60,7 +60,7 @@ enum MarkdownAttributedText {
             // A line through the whole run, markers included - true of strikethrough, which
             // is what SPEC §5's styled source means for this span. It is not universal any
             // more: ADR-0018 narrows it for three cases across its three slices (headings
-            // here, emphasis and the image/PDF embed later), and strikethrough is not one.
+            // and emphasis so far, the image/PDF embed later), and strikethrough is not one.
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         case .codeBlock:
             // Only a background. The colour is left to whatever the grammar found inside,
@@ -103,12 +103,12 @@ enum MarkdownAttributedText {
         // rest, because the line already says what it is and a second signal would shout.
         case .strikethrough: .textSecondary
         case .frontmatter, .code, .annotation: .textSecondary
-        // `.headingMarker` needs no arm of its own in `attributes(for:)`: that switch's
-        // `default` already returns `[.foregroundColor: …colorToken(for: span)…]`, and
-        // `addAttributes` merges rather than replaces, so the marker keeps the heading's
-        // font - set by the `.heading` arm over the whole line, applied first - and gets
-        // this colour on top for free.
-        case .linkSyntax, .headingMarker: .textTertiary
+        // Neither `.headingMarker` nor `.emphasisMarker` needs an arm of its own in
+        // `attributes(for:)`: that switch's `default` already returns
+        // `[.foregroundColor: …colorToken(for: span)…]`, and `addAttributes` merges
+        // rather than replaces, so a marker keeps its run's font - bold, or oblique, or
+        // the heading's, applied first - and only gets this colour on top, for free.
+        case .linkSyntax, .headingMarker, .emphasisMarker: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let done): done ? .taskDone : .taskOpen

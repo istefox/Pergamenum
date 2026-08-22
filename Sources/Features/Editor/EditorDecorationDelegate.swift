@@ -26,6 +26,17 @@ import OSLog
 /// One object because a text view has one content-storage delegate and one layout-manager
 /// delegate; two features, kept as two separate inputs so neither can quietly depend on the
 /// other's state.
+/// One hidden delimiter, at its range relative to its paragraph's start, and what kind
+/// it is - which decides how `EditorDecorationDelegate` re-validates it before drawing.
+struct HiddenMarker: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case heading, emphasis
+    }
+
+    let range: NSRange
+    let kind: Kind
+}
+
 final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
                                       NSTextLayoutManagerDelegate, @unchecked Sendable {
     /// The UTF-16 offset at which each hidden line begins. A set, because this is asked
@@ -40,11 +51,14 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
     nonisolated(unsafe) private var renditions: [Int: TranscludedRendition] = [:]
-    /// A heading's marker range - the `#`s and the single space after them - relative to
-    /// its own paragraph's start, not to the document (ADR-0018 §D1, slice 1). Filled by
-    /// `applyStyling`'s walk over `MarkdownStyler.spans(in:)`, the same one that already
-    /// knows where every marker is.
-    nonisolated(unsafe) private var headingMarkers: [Int: NSRange] = [:]
+    /// A paragraph's hidden markers - a heading's `#`s and the space after them, or an
+    /// emphasis run's opening and closing `*`/`**` - each relative to its own paragraph's
+    /// start, not to the document (ADR-0018 §D1). Filled by `applyStyling`'s walk over
+    /// `MarkdownStyler.spans(in:)`, the same one that already knows where every marker
+    /// is. One table for both kinds rather than two: the two features this object already
+    /// carries (folding, transclusion) are kept as separate inputs, but a heading marker
+    /// and an emphasis marker are the same feature - hiding - with two sources.
+    nonisolated(unsafe) private var hiddenMarkers: [Int: [HiddenMarker]] = [:]
     /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
     /// selection, an active IME composition or the find bar's current match touches them
     /// (ADR-0018 §D2). Keyed the same way as `headingMarkers`.
@@ -59,10 +73,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     nonisolated(unsafe) static let collapsedFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
 
     var isFolding: Bool { !foldedHeadings.isEmpty }
-    /// How many headings the last styling pass registered a marker for - what a test
-    /// reads to confirm `applyStyling` populated the table, the same way `isFolding`
-    /// reads `foldedHeadings` for the folding half of this file.
-    var headingMarkerCount: Int { headingMarkers.count }
+    /// How many markers the last styling pass registered, heading and emphasis alike -
+    /// what a test reads to confirm `applyStyling` populated the table, the same way
+    /// `isFolding` reads `foldedHeadings` for the folding half of this file.
+    var hiddenMarkerCount: Int { hiddenMarkers.values.reduce(0) { $0 + $1.count } }
 
     func apply(renditions: [Int: TranscludedRendition]) {
         self.renditions = renditions
@@ -77,17 +91,18 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         )
     }
 
-    /// Registers where the heading markers are and whether they should be hidden at all.
+    /// Registers where the hidden markers are and whether they should be hidden at all.
     ///
     /// Guarded rather than unconditional: `applyStyling` calls this on every keystroke and
     /// every SwiftUI update, and logging on each of those would drown the one line per
     /// fold this file otherwise writes.
-    func apply(headingMarkers markers: [Int: NSRange], hidingMarkup hides: Bool) {
-        guard markers != headingMarkers || hides != hidesMarkup else { return }
-        headingMarkers = markers
+    func apply(hiddenMarkers markers: [Int: [HiddenMarker]], hidingMarkup hides: Bool) {
+        guard markers != hiddenMarkers || hides != hidesMarkup else { return }
+        hiddenMarkers = markers
         hidesMarkup = hides
+        let count = markers.values.reduce(0) { $0 + $1.count }
         Logger.folding.notice(
-            "marcatori: \(markers.count, privacy: .public) intestazioni, nascondi=\(hides, privacy: .public)"
+            "marcatori: \(count, privacy: .public), nascondi=\(hides, privacy: .public)"
         )
     }
 
@@ -153,23 +168,37 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         textParagraphWith range: NSRange
     ) -> NSTextParagraph? {
         guard hidesMarkup, !revealedParagraphs.contains(range.location),
-              let marker = headingMarkers[range.location],
-              NSMaxRange(marker) <= range.length,
+              let markers = hiddenMarkers[range.location], !markers.isEmpty,
               let storage = textContentStorage.textStorage
         else { return nil }
 
         // Re-read from the real characters rather than trust the table: it is filled by
         // the last styling pass, this is a later layout pass, and the two can go stale
         // between each other. Silently collapsing prose would be the failure mode here,
-        // not a crash.
-        let absoluteMarker = NSRange(location: range.location + marker.location, length: marker.length)
-        guard Self.stillSpellsAHeadingMarker(storage.string as NSString, at: absoluteMarker) else {
-            return nil
+        // not a crash. Each marker is checked on its own, so one gone stale does not
+        // cancel the others in the same paragraph.
+        let survivors = markers.filter { marker in
+            NSMaxRange(marker.range) <= range.length &&
+                Self.stillSpells(
+                    marker.kind,
+                    storage.string as NSString,
+                    at: NSRange(location: range.location + marker.range.location, length: marker.range.length)
+                )
         }
+        guard !survivors.isEmpty else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        copy.addAttribute(.font, value: Self.collapsedFont, range: marker)
+        for marker in survivors {
+            copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
+        }
         return NSTextParagraph(attributedString: copy)
+    }
+
+    private static func stillSpells(_ kind: HiddenMarker.Kind, _ text: NSString, at range: NSRange) -> Bool {
+        switch kind {
+        case .heading: stillSpellsAHeadingMarker(text, at: range)
+        case .emphasis: stillSpellsAnEmphasisMarker(text, at: range)
+        }
     }
 
     /// Whether `range` still spells one to six `#`s followed by exactly one space, read
@@ -180,6 +209,14 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard candidate.hasSuffix(" ") else { return false }
         let hashes = candidate.dropLast()
         return !hashes.isEmpty && hashes.count <= 6 && hashes.allSatisfy { $0 == "#" }
+    }
+
+    /// Whether `range` still spells exactly one or two `*`, read from the text as it is
+    /// right now.
+    private static func stillSpellsAnEmphasisMarker(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
+        let candidate = text.substring(with: range)
+        return (candidate.count == 1 || candidate.count == 2) && candidate.allSatisfy { $0 == "*" }
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {

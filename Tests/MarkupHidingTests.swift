@@ -21,7 +21,7 @@ private struct Frame {
 @MainActor
 private func frames(
     text: String,
-    markers: [Int: NSRange],
+    markers: [Int: [HiddenMarker]],
     hidesMarkup: Bool,
     revealed: Set<Int> = []
 ) -> (frames: [Frame], length: Int) {
@@ -33,7 +33,7 @@ private func frames(
     layout.textContainer = container
 
     let delegate = EditorDecorationDelegate()
-    delegate.apply(headingMarkers: markers, hidingMarkup: hidesMarkup)
+    delegate.apply(hiddenMarkers: markers, hidingMarkup: hidesMarkup)
     _ = delegate.apply(revealedParagraphs: revealed)
     content.delegate = delegate
 
@@ -71,12 +71,12 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
     private static let note = "# Titolo\ncorpo\n"
     private static let headingOffset = 0
     /// "# " - the hash and the one space after it, relative to the paragraph's own start.
-    private static let marker = NSRange(location: 0, length: 2)
+    private static let marker = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .heading)
 
     @Test func aCollapsedMarkerCostsNoWidth() {
         let base = frames(text: Self.note, markers: [:], hidesMarkup: false)
         let collapsed = frames(
-            text: Self.note, markers: [Self.headingOffset: Self.marker], hidesMarkup: true
+            text: Self.note, markers: [Self.headingOffset: [Self.marker]], hidesMarkup: true
         )
 
         let baseHeading = base.frames.first { $0.offset == Self.headingOffset }?.frame
@@ -91,7 +91,7 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
     @Test func lineHeightIsUnchangedByTheCollapse() {
         let base = frames(text: Self.note, markers: [:], hidesMarkup: false)
         let collapsed = frames(
-            text: Self.note, markers: [Self.headingOffset: Self.marker], hidesMarkup: true
+            text: Self.note, markers: [Self.headingOffset: [Self.marker]], hidesMarkup: true
         )
 
         let baseHeading = base.frames.first { $0.offset == Self.headingOffset }?.frame
@@ -101,7 +101,7 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
 
     @Test func theHookReturnsNilForARevealedParagraph() {
         let delegate = EditorDecorationDelegate()
-        delegate.apply(headingMarkers: [Self.headingOffset: Self.marker], hidingMarkup: true)
+        delegate.apply(hiddenMarkers: [Self.headingOffset: [Self.marker]], hidingMarkup: true)
         _ = delegate.apply(revealedParagraphs: [Self.headingOffset])
 
         #expect(substitutedParagraph(delegate, note: Self.note) == nil)
@@ -112,14 +112,92 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
         // since become plain prose - the last styling pass has not caught up with this
         // layout pass yet.
         let delegate = EditorDecorationDelegate()
-        delegate.apply(headingMarkers: [0: NSRange(location: 0, length: 2)], hidingMarkup: true)
+        delegate.apply(hiddenMarkers: [0: [Self.marker]], hidingMarkup: true)
 
         #expect(substitutedParagraph(delegate, note: "corpo\ndopo\n") == nil)
     }
 
     @Test func theHookIsInertWhenTheSettingIsOff() {
         let delegate = EditorDecorationDelegate()
-        delegate.apply(headingMarkers: [Self.headingOffset: Self.marker], hidingMarkup: false)
+        delegate.apply(hiddenMarkers: [Self.headingOffset: [Self.marker]], hidingMarkup: false)
+
+        #expect(substitutedParagraph(delegate, note: Self.note) == nil)
+    }
+}
+
+// MARK: - The emphasis marker (ADR-0018 §D1, slice 2)
+
+@MainActor
+@Suite struct MarkupHidingEmphasis {
+    private static let note = "testo **grassetto** qui\ncorpo\n"
+    private static let paragraphOffset = 0
+    /// The two `**` delimiters of "**grassetto**", relative to the paragraph's own start.
+    private static let openMarker = HiddenMarker(range: NSRange(location: 6, length: 2), kind: .emphasis)
+    private static let closeMarker = HiddenMarker(range: NSRange(location: 17, length: 2), kind: .emphasis)
+
+    @Test func aCollapsedEmphasisPairCostsWidthAndKeepsTheLengthIdentical() {
+        let base = frames(text: Self.note, markers: [:], hidesMarkup: false)
+        let collapsed = frames(
+            text: Self.note,
+            markers: [Self.paragraphOffset: [Self.openMarker, Self.closeMarker]],
+            hidesMarkup: true
+        )
+
+        let baseParagraph = base.frames.first { $0.offset == Self.paragraphOffset }?.frame
+        let collapsedParagraph = collapsed.frames.first { $0.offset == Self.paragraphOffset }?.frame
+        #expect(baseParagraph != nil)
+        #expect(collapsedParagraph != nil)
+        #expect((collapsedParagraph?.width ?? 0) < (baseParagraph?.width ?? 0))
+        #expect(base.length == collapsed.length)
+    }
+
+    @Test func lineHeightIsUnchangedByAnEmphasisCollapse() {
+        let base = frames(text: Self.note, markers: [:], hidesMarkup: false)
+        let collapsed = frames(
+            text: Self.note,
+            markers: [Self.paragraphOffset: [Self.openMarker, Self.closeMarker]],
+            hidesMarkup: true
+        )
+
+        let baseParagraph = base.frames.first { $0.offset == Self.paragraphOffset }?.frame
+        let collapsedParagraph = collapsed.frames.first { $0.offset == Self.paragraphOffset }?.frame
+        #expect(collapsedParagraph?.height == baseParagraph?.height)
+    }
+
+    @Test func aParagraphWithAHeadingAndAnEmphasisMarkerCollapsesBothInOneSubstitution() {
+        let note = "# Titolo **enfasi** qui\n"
+        let headingMarker = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .heading)
+        // "**enfasi**" starts right after "# Titolo " (9 characters).
+        let open = HiddenMarker(range: NSRange(location: 9, length: 2), kind: .emphasis)
+        let close = HiddenMarker(range: NSRange(location: 17, length: 2), kind: .emphasis)
+
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [0: [headingMarker, open, close]], hidingMarkup: true)
+
+        let paragraph = substitutedParagraph(delegate, note: note)
+        #expect(paragraph != nil)
+        // Never a character added or removed by the substitution.
+        #expect(paragraph?.attributedString.length == (note as NSString).paragraphRange(
+            for: NSRange(location: 0, length: 0)
+        ).length)
+    }
+
+    @Test func aStaleEmphasisEntryDoesNotCollapseProse() {
+        // The table still says a pair of `*` sits at this range, but the text there has
+        // since become plain prose.
+        let delegate = EditorDecorationDelegate()
+        let stale = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .emphasis)
+        delegate.apply(hiddenMarkers: [0: [stale]], hidingMarkup: true)
+
+        #expect(substitutedParagraph(delegate, note: "corpo\ndopo\n") == nil)
+    }
+
+    @Test func theHookIsInertForEmphasisWhenTheSettingIsOff() {
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(
+            hiddenMarkers: [Self.paragraphOffset: [Self.openMarker, Self.closeMarker]],
+            hidingMarkup: false
+        )
 
         #expect(substitutedParagraph(delegate, note: Self.note) == nil)
     }
@@ -133,7 +211,7 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
 /// fastest way to lie to a test is to reimplement the thing it is checking.
 @MainActor
 @Suite struct MarkupCoordinator {
-    private static let threeHeadingNote = "# Uno\ncorpo uno\n# Due\ncorpo due\n# Tre\ncorpo tre\n"
+    private static let threeHeadingNote = "# Uno\ncorpo **uno**\n# Due\ncorpo due\n# Tre\ncorpo tre\n"
 
     private static func editor(hidesMarkup: Bool) -> (NSTextView, NoteTextView.Coordinator) {
         let view = NoteTextView(
@@ -156,11 +234,13 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
     }
 
     /// "# Due"'s own paragraph start, for tests that need a genuine selection change.
-    private static let headingDue = 16
+    /// "# Uno\n" (6) + "corpo **uno**\n" (14).
+    private static let headingDue = 20
 
-    @Test func stylingAThreeHeadingNotePopulatesThreeDelegateEntries() {
+    @Test func stylingAThreeHeadingNotePopulatesAllDelegateEntries() {
         let (_, coordinator) = Self.editor(hidesMarkup: true)
-        #expect(coordinator.decorations.headingMarkerCount == 3)
+        // Three heading markers plus the two `**` delimiters of "**uno**".
+        #expect(coordinator.decorations.hiddenMarkerCount == 5)
     }
 
     @Test func callingApplyRevealTwiceWithoutASelectionChangeDoesNotReinvalidateTheSecondTime() throws {

@@ -87,8 +87,44 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
-- 2026-08-22: **ADR-0018 scritta e slice 1 implementato** (branch
-  `feature/adr-0018-slice1-hide-heading-marker`, non ancora in `main`). L'editor smette di
+- 2026-08-22: **ADR-0018 slice 2 implementata** (branch
+  `feature/adr-0018-slice2-hide-emphasis`, da `main` a `3d5ef71`, non ancora in una PR).
+  I delimitatori `*`/`**` di un'enfasi si nascondono con lo stesso meccanismo del `#`:
+  `EditorDecorationDelegate` passa da una singola voce per intestazione a un
+  `[Int: [HiddenMarker]]`, una lista di marcatori per paragrafo, ciascuno con il proprio
+  tipo (`.heading`/`.emphasis`) e la propria ri-validazione contro il testo reale.
+  **Restringimento deliberato rispetto all'ADR**: solo `*`/`**` collassano, `_`/`__`
+  restano visibili - `emphasis(_:at:)` non ha una regola di confine di parola, quindi
+  `nome_file_lungo` viene già letto come corsivo oggi e nasconderne gli underscore
+  leggerebbe `nomefilelungo`; l'underscore resta analizzato e colorato come oggi, senza
+  collassare. 1308 test unitari (13 nuovi), `perg` e `pergamenum-mcp` compilano,
+  SwiftLint pulito (il corpo di `MarkdownStyler` e la lunghezza del file hanno richiesto
+  di spostare l'emissione dei marcatori a scope di file, come già fatto per
+  `taskMarker`). **Le cinque probe di D6, tutte passate a schermo**: IME (accento
+  composto atterra correttamente), selezione col mouse su un run collassato (rettangolo
+  continuo, copia integra gli asterischi), undo coalescing (un Cmd+Z annulla solo
+  l'ultima parola, non il passaggio tra paragrafi), word wrap (va a capo correttamente
+  sia con marcatori nascosti sia rivelati), VoiceOver (gli asterischi vengono comunque
+  annunciati). **Un allarme rientrato durante il giro manuale**: premere Invio a fine
+  titolo sembrava allungare il titolo invece di andare a riga nuova - non è un difetto
+  di questa slice ma il comportamento noto del *folding* di una sezione piegata (già
+  documentato in una sessione precedente: senza nulla di enumerabile sotto un titolo
+  piegato, il cursore si comporta in modo standard-AppKit anomalo lì), confermato
+  riprovando su un titolo non piegato dove il comportamento è normale. Slice 3
+  (l'embed immagine/PDF, con probe 6) resta aperta.
+
+- 2026-08-22: **ADR-0018 slice 1 in `main`** (PR #85, merged a `3d5ef71`). Prima del
+  merge, `scripts/uitests.sh` sull'intera suite: 4 fallimenti su 70, tutti riconducibili
+  a instabilità già note e non a questo cambiamento - `Could not launch "Pergamenum"`
+  (RunningBoard, `testAColonOffersEmojiByName`), due «elemento non trovato»
+  (`testAHashInsideAWikilinkOffersTheHeadingsOfThatNote`,
+  `testTypingAfterTheLastHeadingReachesTheEndOfTheNote`) e un composer che non atterra
+  nella pagina attesa (`testANewNoteIsNamedInTheEditorAndNotInAFloatingWindow`). Nessuno
+  dei quattro tocca intestazioni o markup nascosto; coerente con la flakiness UI-test
+  già investigata (130+ run, causa non isolata). Slice 2 parte da `main` su
+  `feature/adr-0018-slice2-hide-emphasis`.
+
+  **ADR-0018 slice 1**, per verbale. L'editor smette di
   mostrare sempre ogni carattere markdown: il `#` (o `##`…) di un'intestazione e lo spazio
   dopo si nascondono mentre il cursore è altrove, tornano visibili quando il cursore entra
   nel paragrafo, senza mai toccare il testo sul disco - un `NSTextContentStorageDelegate`
