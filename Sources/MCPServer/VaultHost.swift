@@ -22,9 +22,9 @@ final class VaultHost {
         self.allowsWriting = allowsWriting
     }
 
-    static func open(at root: URL, allowsWriting: Bool) async -> VaultHost {
+    static func open(at root: URL, allowsWriting: Bool) async throws -> VaultHost {
         VaultHost(
-            session: await VaultResolution.session(at: root), allowsWriting: allowsWriting
+            session: try await VaultResolution.session(at: root), allowsWriting: allowsWriting
         )
     }
 
@@ -111,7 +111,9 @@ final class VaultHost {
         case "vault_stats":
             return reply(VaultAPI.stats(session))
         case "journal_log":
-            return reply(VaultAPI.journalLog(at: session.root, limit: arguments.int("limit")))
+            return reply(try VaultAPI.journalLog(
+                at: session.root, base: try VaultState.applicationSupportBase(), limit: arguments.int("limit")
+            ))
         default:
             return nil
         }

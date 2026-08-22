@@ -89,6 +89,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession.swift",
     "Sources/Vault/VaultSession+Diary.swift",
     "Sources/Vault/VaultSession+Files.swift",
+    "Sources/Vault/VaultSession+Identity.swift",
     "Sources/Vault/VaultSession+Journal.swift",
     "Sources/Vault/VaultSession+Notes.swift",
     "Sources/Vault/VaultSession+Search.swift",
@@ -98,6 +99,9 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+TimeBlocks.swift",
     "Sources/Vault/VaultSession+Watching.swift",
     "Sources/Vault/VaultSettings.swift",
+    "Sources/Vault/VaultState.swift",
+    "Sources/Vault/VaultState+Migration.swift",
+    "Sources/Vault/VaultState+DirectoryMove.swift",
     "Sources/Vault/WriteJournal.swift",
 ]
 

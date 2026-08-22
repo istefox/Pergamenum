@@ -7,15 +7,30 @@ import Testing
 /// Shared with `VaultSessionTests`, which needs the same throwaway vault.
 struct TemporaryVault: ~Copyable {
     let root: URL
+    /// Stands in for `VaultState.applicationSupportBase()`, so a `VaultSession` built
+    /// against this vault never touches the real Application Support directory
+    /// (ADR-0017) - the same failure `RecentVaults.volatile()` exists to prevent, now
+    /// with files instead of `UserDefaults`.
+    let stateBase: URL
 
+    // Both throwing calls happen against locals, and `self`'s two stored properties
+    // are assigned only at the end: a noncopyable struct's initializer cannot always
+    // prove definite initialization across two interleaved throw points otherwise.
     init() throws {
-        root = FileManager.default.temporaryDirectory
+        let root = FileManager.default.temporaryDirectory
             .appending(path: "pergamenum-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let stateBase = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-state-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
+
+        self.root = root
+        self.stateBase = stateBase
     }
 
     deinit {
         try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     @discardableResult

@@ -11,8 +11,9 @@ import QuickLookThumbnailing
 /// spreadsheet or a video still shows something recognisable rather than a generic
 /// icon.
 ///
-/// The cache lives in `.pergamenum/thumbnails/` and is disposable like the index:
-/// deleting it costs a re-render, never data.
+/// The cache lives beside the vault, under this vault's Application Support state
+/// directory (ADR-0017), and is disposable like the index: deleting it costs a
+/// re-render, never data.
 actor ThumbnailStore {
     private let root: URL
     private let directory: URL
@@ -20,11 +21,12 @@ actor ThumbnailStore {
     /// renders it once per size rather than ten times.
     private var tasks: [String: Task<NSImage?, Never>] = [:]
 
-    init(root: URL) {
+    /// `root` resolves the *source* file being thumbnailed; `directory` is where the
+    /// rendered cache lives and is resolved by the caller from `VaultState.thumbnails`
+    /// - only the cache moved out of the vault, not the files it renders.
+    init(root: URL, directory: URL) {
         self.root = root
-        directory = root
-            .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
-            .appending(path: VaultLayout.thumbnailsDirectory, directoryHint: .isDirectory)
+        self.directory = directory
     }
 
     /// A thumbnail for a vault file at roughly the given point size.

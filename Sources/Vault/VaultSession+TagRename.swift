@@ -64,7 +64,7 @@ extension VaultSession {
         let changes = tagRenamePreview(old, to: new)
         guard !changes.isEmpty else { return TagRenameOutcome() }
 
-        let journal = WriteJournal(root: root)
+        let journal = journalOnDisk
         let entriesBefore = Set(journal.entries().map(\.id))
         let previousJournal = self.journal
         let previousCommand = journalCommand
@@ -108,7 +108,7 @@ extension VaultSession {
     /// for the same three kinds.
     @discardableResult
     func undoJournalledWrites(_ ids: [String]) -> TagRenameOutcome {
-        let journal = WriteJournal(root: root)
+        let journal = journalOnDisk
         var entries: [WriteJournal.Entry] = []
         var missing: [String] = []
         for id in ids {

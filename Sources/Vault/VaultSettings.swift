@@ -105,6 +105,15 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// (`ItalianHolidays`), and this is the one day no algorithm knows.
     var patronSaint: PatronSaint?
 
+    /// This vault's identity, minted as a UUID the first time it is opened and
+    /// written back through `updateSettings` (ADR-0017 §D2). Names the directory
+    /// under `~/Library/Application Support/it.stefer.pergamenum/vaults/` where the
+    /// derived stores this ADR moves out of the vault live.
+    ///
+    /// A path was rejected as the identifier: renaming the vault's folder in the
+    /// Finder would silently orphan every derived store keyed on it.
+    var vaultID: String?
+
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
     static let defaultDiaryFolder = "Diario"
@@ -181,6 +190,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
                 ? nil
                 : candidate
         }
+        vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID)
     }
 
     init(
@@ -196,7 +206,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         spellCheck: SpellCheck = .off,
         rollover: Bool = false,
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
-        patronSaint: PatronSaint? = nil
+        patronSaint: PatronSaint? = nil,
+        vaultID: String? = nil
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -211,17 +222,19 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.rollover = rollover
         self.rolloverDays = rolloverDays
         self.patronSaint = patronSaint
+        self.vaultID = vaultID
     }
 }
 
 /// The app's private directory inside the vault, and the file names in it.
+///
+/// `thumbnails/` and `cache.db` used to live here too; ADR-0017 moves both beside the
+/// vault instead, and their names now live on `VaultState`.
 enum VaultLayout {
     static let privateDirectory = ".pergamenum"
     static let settingsFile = "settings.json"
     static let vocabularyFile = "vocabolari.json"
     static let themesDirectory = "themes"
-    static let thumbnailsDirectory = "thumbnails"
-    static let cacheFile = "cache.db"
     /// The starred notes of ADR-0012 D6. In the vault because starring describes the notes and
     /// travels with them; the open tabs describe this machine and stay in `UserDefaults`.
     static let starredFile = "starred.json"

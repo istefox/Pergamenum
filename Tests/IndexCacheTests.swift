@@ -5,15 +5,42 @@ import Testing
 
 private struct CacheVault: ~Copyable {
     let root: URL
+    /// A throwaway sibling of `root`, standing in for `VaultState.applicationSupportBase()`
+    /// (ADR-0017) - `cacheURL` is resolved through the real `VaultState` rather than a
+    /// hand-rolled path, so this suite exercises the location the app actually writes to.
+    let stateBase: URL
     let cacheURL: URL
 
+    // Everything that can throw happens against locals, and `self`'s three stored
+    // properties are assigned only at the end with nothing throwing in between - a
+    // noncopyable struct's initializer cannot prove definite initialization across
+    // more than two interleaved throw points, and three properties here tripped it.
     init() throws {
-        root = FileManager.default.temporaryDirectory
+        let root = FileManager.default.temporaryDirectory
             .appending(path: "pergamenum-cache-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        cacheURL = root.appending(path: ".pergamenum/cache.db")
+        let stateBase = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-cache-state-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
+
+        self.root = root
+        self.stateBase = stateBase
+        self.cacheURL = VaultState(id: "cache-vault-test", base: stateBase).cacheFile
     }
-    deinit { try? FileManager.default.removeItem(at: root) }
+    deinit {
+        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: stateBase)
+    }
+
+    /// Writes junk straight to `cacheURL`, standing in for a damaged or half-written
+    /// cache file - `cacheURL` no longer lives under `root`, so this cannot go through
+    /// `write(_:to:)`, which is relative to the vault.
+    func corruptCache() throws {
+        try FileManager.default.createDirectory(
+            at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try Data("questo non è un database".utf8).write(to: cacheURL)
+    }
 
     func write(_ contents: String, to relativePath: String) throws {
         let url = root.appending(path: relativePath, directoryHint: .notDirectory)
@@ -142,7 +169,7 @@ Corpo con [[Altra nota]].
 
 @Test func loadingACorruptFileGivesNothingRatherThanHalfAVault() throws {
     let vault = try CacheVault()
-    try vault.write("questo non è un database", to: ".pergamenum/cache.db")
+    try vault.corruptCache()
     // A partial read would be indistinguishable from a vault that had lost notes.
     #expect(IndexCache(url: vault.cacheURL).load().isEmpty)
 }

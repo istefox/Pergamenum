@@ -7,6 +7,7 @@ import XCTest
 /// the file on disk. A day that is only on screen is a day that is not written down.
 final class DiaryUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -15,8 +16,12 @@ final class DiaryUITests: XCTestCase {
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
 
         app = XCUIApplication()
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES"]
+                               "-disableCalendar", "YES",
+                               "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         showDiary()
@@ -25,6 +30,7 @@ final class DiaryUITests: XCTestCase {
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     private func showDiary() {

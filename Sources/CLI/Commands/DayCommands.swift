@@ -17,7 +17,7 @@ enum DayCommands {
 
     @MainActor
     private static func show(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         // The date may come as the word after `show` or as `--day`, because both read
         // naturally: `perg day show 2026-08-18` and `perg day show --day 2026-08-18`.
         let day = try VaultAPI.day(session, on: arguments.word(2) ?? arguments["day"])

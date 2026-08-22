@@ -62,7 +62,7 @@ tags:
 @MainActor
 private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(taskNote, to: "Lavoro.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }

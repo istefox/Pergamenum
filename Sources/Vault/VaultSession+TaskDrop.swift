@@ -71,7 +71,7 @@ extension VaultSession {
             return outcome
         }
 
-        let journal = WriteJournal(root: root)
+        let journal = journalOnDisk
         let entriesBefore = Set(journal.entries().map(\.id))
         let previousJournal = self.journal
         let previousCommand = journalCommand

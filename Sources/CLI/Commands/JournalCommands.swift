@@ -13,8 +13,9 @@ enum JournalCommands {
     }
 
     private static func log(_ arguments: Arguments) throws -> ExitCode {
-        let rows = VaultAPI.journalLog(
+        let rows = try VaultAPI.journalLog(
             at: try VaultResolution.root(from: arguments),
+            base: try VaultState.applicationSupportBase(),
             limit: arguments["limit"].flatMap(Int.init)
         )
 

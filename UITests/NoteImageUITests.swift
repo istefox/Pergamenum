@@ -8,6 +8,7 @@ import XCTest
 /// the source by design (SPEC §5) and reading mode rendered the embed as a label.
 final class NoteImageUITests: XCTestCase {
     private var vault: URL!
+    private var stateBase: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -34,14 +35,19 @@ final class NoteImageUITests: XCTestCase {
         )
 
         app = XCUIApplication()
+        stateBase = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES"]
+                               "-disableCalendar", "YES",
+                               "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
     }
 
     override func tearDownWithError() throws {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
+        try? FileManager.default.removeItem(at: stateBase)
     }
 
     func testReadingModeDrawsTheEmbeddedPictureAndSaysWhenOneIsMissing() throws {

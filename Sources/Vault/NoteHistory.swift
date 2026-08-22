@@ -7,25 +7,21 @@ import Foundation
 /// This one answers a different question, "show me this note five saves ago", and is
 /// filled by every write to a note, app or connector alike.
 ///
-/// Under `.pergamenum/`, with the rest of the disposable state, though "disposable" is
-/// not quite the whole story: losing `.pergamenum/history/` loses the old versions and
-/// nothing else, the same guarantee `WriteJournal` carries for its own directory - but
-/// unlike `cache.db` it cannot be rebuilt from a vault scan, because nothing else on
-/// disk remembers what a note looked like before its last save.
+/// Beside the vault rather than inside it, with the rest of this machine's derived
+/// state (ADR-0017): not derived from the vault itself, its own header says so - unlike
+/// `cache.db` it cannot be rebuilt, because nothing else on disk remembers what a note
+/// looked like before its last save - but derived from *this machine's* sequence of
+/// saves. Two Macs editing the same vault build two different, both-correct histories,
+/// and there is no useful way to merge them; keeping it beside the vault rather than in
+/// it is what "disposable" always meant here, applied one door further out.
 ///
 /// One file per snapshot, laid out under a directory that mirrors the note's own
 /// relative path, rather than one JSONL keyed by a hash: text notes are small, so a
 /// diff engine buys nothing a full copy does not already give for free (`WriteJournal`
-/// made the identical call for `textBefore`), and a person looking at
-/// `.pergamenum/history/` on disk can find a note's history by eye.
+/// made the identical call for `textBefore`), and a person looking at the state
+/// directory's `history/` on disk can still find a note's history by eye.
 struct NoteHistory {
     let directory: URL
-
-    init(root: URL) {
-        directory = root
-            .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
-            .appending(path: "history", directoryHint: .isDirectory)
-    }
 
     /// One saved version of a note.
     struct Snapshot: Equatable, Sendable {

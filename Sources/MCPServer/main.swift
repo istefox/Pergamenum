@@ -83,7 +83,16 @@ func boot() async -> Int32 {
         return 1
     }
 
-    let host = await VaultHost.open(at: root, allowsWriting: arguments.has("allow-write"))
+    let host: VaultHost
+    do {
+        host = try await VaultHost.open(at: root, allowsWriting: arguments.has("allow-write"))
+    } catch let refusal as ConnectorError {
+        Diagnostics.log(refusal.description)
+        return 1
+    } catch {
+        Diagnostics.log("\(error)")
+        return 1
+    }
     let server = Server(
         name: "pergamenum",
         version: version,

@@ -125,6 +125,8 @@ final class VaultController {
     /// through the three doors in `VaultController+Files`.
     let pinnedTagsStore: PinnedTagsStore
 
+    private static let log = Logger(subsystem: AppInfo.bundleIdentifier, category: "vault-state")
+
     /// The pinned tags of the open vault, kept here so a view watching the controller redraws
     /// when one is added. The store is the record; this is what the browser reads.
     ///
@@ -149,16 +151,31 @@ final class VaultController {
         watcher?.stop()
         watcher = nil
 
+        // Resolved once, ahead of the session: `VaultSession` and `ThumbnailStore`
+        // both need it, and a failure here means neither can be built - there is no
+        // silent fallback location to write derived state into instead (ADR-0017).
+        // `processDefaultBase()`, not `applicationSupportBase()` directly: this is the
+        // one call every one of the fourteen test files that build a `VaultController`
+        // and call `open(_:)` goes through, and it must never be the real directory
+        // from a test run.
+        guard let stateBase = try? VaultState.processDefaultBase() else {
+            Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
+            return
+        }
+
         // The session reads settings and vocabulary as it is built, which is why this
         // is one statement rather than the four it replaced.
-        session = VaultSession(
+        let newSession = VaultSession(
             root: url,
+            stateBase: stateBase,
             bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
         )
-        // Owned here, not by the Workspace that used to create it: the cache in
-        // `.pergamenum/thumbnails` belongs to the vault, and reading mode needs the same
-        // renderer to draw a picture embedded in a note.
-        thumbnails = ThumbnailStore(root: url)
+        session = newSession
+        // Owned here, not by the Workspace that used to create it: the cache belongs
+        // to the vault, and reading mode needs the same renderer to draw a picture
+        // embedded in a note. The cache directory comes from the same resolved state
+        // the session just built, so both land in the same place (ADR-0017).
+        thumbnails = ThumbnailStore(root: url, directory: newSession.state.thumbnails)
         // Recorded on open rather than on close, so a crash still leaves the vault
         // reachable from the recents menu next launch.
         recents.remember(url)

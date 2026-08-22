@@ -1,13 +1,10 @@
 <!-- project-tasks: prefix=PG lastId=34 -->
 # PROJECT TASKS
 
-Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
+Updated: 2026-08-22 · Open: 8 (P1: 0) · In progress: 0
 
 ## Open Issues
 
-- [ ] `PG-004` **P2** `.pergamenum/` syncs in iCloud with no exclusion anywhere in the codebase, and will produce conflict copies; deciding what moves out of the vault needs an ADR — `Sources/Index/IndexCache.swift` <!-- src:manual opened:2026-08-16 -->
-  - `cache.db` is harmless by principle 3, the cache is rebuildable, but the conflict files accumulate in the vault the user reads.
-  - Widened 2026-08-21, folding in `PG-003`: `.pergamenum/history/` (`NoteHistory`, ADR-0011) and `.pergamenum/ai-journal/` (`WriteJournal`, ADR-0007/0016) carry the identical exposure - verified this session that no `NSURLIsExcludedFromBackupKey` or equivalent exists anywhere; `VaultLayout.isExcludedDirectory` only hides dot-directories from the note scanner and says nothing about iCloud sync or Time Machine. One ADR should decide what moves out of the vault or gets excluded, for all three disposable stores, not three separate decisions.
 - [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
@@ -61,6 +58,7 @@ Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
   - Each is applied before the milestone that depends on it, never after.
   - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
   - **§17 Viste is overdue by this entry's own rule**: M11 shipped the query language, the renderers and the board's write, and the SPEC still does not describe any of it. ADR-0009 carries the design, so nothing is undocumented, but the spec is no longer the place to read what the app does.
+  - ADR-0017 §D5 files a fourth amendment here rather than blocking `PG-004`: the tree at §85 ("cache, thumbnail, impostazioni, vocabolari" under `.pergamenum/`), §6.5 ("cache in `.pergamenum/thumbnails/`") and §12 ("Indice in `.pergamenum/cache.db`") are all false once cache.db and thumbnails/ move to Application Support, and doubly so once history/ and ai-journal/ follow in slice 2.
 
 ## Blocked / Decisions Needed
 
@@ -80,6 +78,9 @@ Updated: 2026-08-21 · Open: 9 (P1: 0) · In progress: 0
 
 ## Done
 
+- [x] `PG-004` **P2** `.pergamenum/` synced in iCloud with no exclusion anywhere in the codebase, and produced conflict copies; deciding what moves out of the vault needed an ADR — `Sources/Vault/VaultState.swift` <!-- src:manual opened:2026-08-16 closed:2026-08-22 -->
+  - Closed by ADR-0017 (`docs/adr/0017-the-derived-stores-leave-the-vault.md`, PR #82), three slices on `feature/pg-004-state-outside-vault`. **Slice 1**: `VaultState`, the vault id in `settings.json`, `cache.db` and `thumbnails/` moved to Application Support by delete-and-rebuild, D4's backup exclusion, the test-isolation seam for both the unit and UI suites. **Slice 2**: `history/` and `ai-journal/` move rather than delete, the duplicated-vault check, `NoteHistory`/`WriteJournal` take an injected directory. **Slice 3**: connector parity — `VaultResolution.session` and `VaultAPI.journalLog` were already resolving `VaultState.applicationSupportBase()` as of slices 1-2, so this slice was verification, not new code: 1269/1269 unit tests, both `perg` and `pergamenum-mcp` build, `scripts/mcp-smoke.py` all green (its own journal/undo checks confirm the wiring in a throwaway vault), and a hand check on the live iCloud vault (`.../Vaults/Pergamena/`) — a real `note new` through `perg` landed `ai-journal/` and `history/` in the Application Support state directory under the same `vaultID` the app already resolved, `.pergamenum/` stayed at just `settings.json` and `vocabolari.json`, and the test note was trashed and the scratch folder removed afterward.
+  - The SPEC amendment (§6.5, §12, the §85 tree) is filed as debt on `PG-015`, per ADR-0017 §D5 — not blocking this closure.
 - [x] `PG-003` **P2** M9's version snapshots add a second write-time store beside `WriteJournal`: disposable, but state the vault did not have before <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
   - Folded into `PG-004` rather than resolved on its own: `.pergamenum/history/` carries the exact same iCloud-conflict exposure already tracked there for `cache.db`, so one ADR should decide the scope of all of `.pergamenum/`, not each store separately.
 - [x] `PG-005` **P2** `NoteFileOperations` did not go through `VaultSession.write`, so the journal covered only part of a link rewrite and neither connector could offer `note rename|move|trash` — `Sources/Vault/NoteFileOperations.swift` <!-- src:manual opened:2026-08-16 closed:2026-08-21 -->

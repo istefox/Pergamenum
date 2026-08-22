@@ -192,7 +192,7 @@ extension VaultSession {
     /// texts, so reversing it has to put the texts back before the file moves back.
     @discardableResult
     func undo(operation id: String) -> TagRenameOutcome {
-        let members = WriteJournal(root: root).entries(operation: id)
+        let members = journalOnDisk.entries(operation: id)
         guard !members.isEmpty else {
             return TagRenameOutcome(failures: ["\(id): non è un'operazione nel journal"])
         }

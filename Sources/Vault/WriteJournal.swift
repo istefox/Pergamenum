@@ -3,10 +3,13 @@ import Foundation
 /// A record of every write a connector made, and the text that was there before it
 /// (ADR-0007 §D6).
 ///
-/// Under `.pergamenum/`, with the rest of the disposable state: losing it loses nothing
-/// the vault does not still hold. It is a safety net for writes the user did not type
-/// themselves, not a version history - the vault's own history is git, or Time Machine,
-/// or the fact that these are plain files.
+/// Beside the vault rather than inside it, with the rest of this machine's derived
+/// state (ADR-0017): losing it loses nothing the vault does not still hold, so it was
+/// never a fact about the vault to begin with, only about what a connector did on this
+/// machine. It is a safety net for writes the user did not type themselves, not a
+/// version history - the vault's own history is git, or Time Machine, or the fact that
+/// these are plain files. An `undo` offered on a second Mac for a write made on the
+/// first would pass its own hash guard and still be the wrong offer.
 ///
 /// One entry per file written, newest last, one JSON object per line: appending to a
 /// JSONL file cannot corrupt what is already in it, which a re-encoded JSON array can.
@@ -97,10 +100,8 @@ struct WriteJournal {
         }
     }
 
-    init(root: URL) {
-        directory = root
-            .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
-            .appending(path: "ai-journal", directoryHint: .isDirectory)
+    init(directory: URL) {
+        self.directory = directory
     }
 
     private var file: URL { directory.appending(path: "journal.jsonl") }

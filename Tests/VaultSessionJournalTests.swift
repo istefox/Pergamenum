@@ -16,11 +16,11 @@ private func note(_ body: String = "Corpo.") -> String {
 private func armedSession(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note(), to: "Uno.md")
     try vault.write(note(), to: "Due.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     // The app arms none of this (ADR-0007 §D6); a test that wants to read the journal has to
     // arm it exactly as a connector does.
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     return session
 }
 
@@ -36,11 +36,11 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
         try? session.write(note("Due, riscritta."), to: "Due.md")
     }
 
-    let entries = WriteJournal(root: vault.root).entries()
+    let entries = session.journalOnDisk.entries()
     #expect(entries.count == 2)
     let ids = Set(entries.compactMap(\.operation))
     #expect(ids.count == 1, "due scritture di un solo gesto hanno preso due id")
-    #expect(WriteJournal(root: vault.root).entries(operation: ids.first ?? "").count == 2)
+    #expect(session.journalOnDisk.entries(operation: ids.first ?? "").count == 2)
 }
 
 @MainActor
@@ -51,7 +51,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     try session.write(note("Da sola."), to: "Uno.md")
 
-    #expect(WriteJournal(root: vault.root).entries().first?.operation == nil)
+    #expect(session.journalOnDisk.entries().first?.operation == nil)
 }
 
 @MainActor
@@ -82,7 +82,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(!session.exists("Uno.md"))
     #expect(session.exists("Archivio/Uno.md"))
 
-    let entry = try #require(WriteJournal(root: vault.root).entries().last)
+    let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.kind == .move)
     #expect(entry.pathBefore == "Uno.md")
     #expect(entry.path == "Archivio/Uno.md")
@@ -125,7 +125,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try session.trashFile(at: "Uno.md")
 
     #expect(!session.exists("Uno.md"))
-    let entry = try #require(WriteJournal(root: vault.root).entries().last)
+    let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.kind == .removal)
     #expect(entry.textBefore?.contains("Corpo.") == true)
     // There is no file after this, and an empty hash says so rather than pretending.
@@ -152,7 +152,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(session.exists("Uno.md"))
     #expect(!session.exists("Archivio/Uno.md"))
     #expect(session.exists("Due.md"))
-    #expect(WriteJournal(root: vault.root).entries().isEmpty, "una prova a vuoto ha scritto nel journal")
+    #expect(session.journalOnDisk.entries().isEmpty, "una prova a vuoto ha scritto nel journal")
 }
 
 @MainActor
@@ -182,7 +182,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     try session.writeFile("{\"nodes\":[],\"edges\":[],\"x\":1}", to: "Lavagna.canvas")
 
-    let entry = try #require(WriteJournal(root: vault.root).entries().last)
+    let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.path == "Lavagna.canvas")
     #expect(entry.kind == .textReplacement)
     #expect(entry.textBefore == "{\"nodes\":[],\"edges\":[]}")

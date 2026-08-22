@@ -13,7 +13,7 @@ enum TaskCommands {
 
     @MainActor
     private static func list(_ arguments: Arguments) async throws -> ExitCode {
-        let session = await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
         let tasks = try VaultAPI.tasks(
             session,
             view: arguments["view"],

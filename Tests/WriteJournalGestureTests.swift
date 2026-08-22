@@ -12,7 +12,7 @@ private func journal() throws -> (WriteJournal, URL) {
     let root = URL(filePath: NSTemporaryDirectory())
         .appending(path: "JournalTest-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    return (WriteJournal(root: root), root)
+    return (WriteJournal(directory: root), root)
 }
 
 private func entry(

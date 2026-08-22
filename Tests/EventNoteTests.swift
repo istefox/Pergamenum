@@ -112,7 +112,7 @@ private let thursday = CalendarDate(iso: "2026-08-20")!
 @MainActor
 @Test func theNoteIsBornInTheCaptureShapeAndTheDayLinksToIt() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let created = session.eventNote(
@@ -142,7 +142,7 @@ private let thursday = CalendarDate(iso: "2026-08-20")!
 @MainActor
 @Test func askingTwiceReturnsTheSameNoteRatherThanASecondOne() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let first = session.eventNote(for: "Riunione tecnica", on: thursday)

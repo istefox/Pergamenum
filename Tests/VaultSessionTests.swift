@@ -10,9 +10,10 @@ import Testing
 /// state can open a vault and do the whole job. `perg` and `pergamenum-mcp` will hold
 /// exactly what these tests hold.
 @MainActor
-private func openSession(_ root: URL) async -> VaultSession {
+private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let session = VaultSession(
         root: root,
+        stateBase: stateBase,
         bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
     )
     await session.rescan()
@@ -24,7 +25,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionCreatesAConformantNoteWithNoControllerInvolved() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let path = try session.createNote(
         title: "Nota nuova",
@@ -49,7 +50,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionRefusesANonConformantTitleRatherThanFixingIt() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     #expect(throws: VaultSession.CreationError.self) {
         try session.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
@@ -64,7 +65,7 @@ private func openSession(_ root: URL) async -> VaultSession {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nVedi [[Beta]].\n", to: "Alfa.md")
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n", to: "Beta.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let outcome = try session.renameNote(at: "Beta.md", to: "Gamma")
     #expect(outcome.newPath == "Gamma.md")
@@ -78,7 +79,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionCapturesATaskIntoAnInboxItCreates() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let result = try #require(session.captureTask(
         VaultSession.TaskDraft(text: "Consegnare la relazione", due: CalendarDate(iso: "2026-08-20"))
@@ -102,7 +103,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @Test func aSessionCompletesATaskByRewritingItsLine() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Alfa\n", to: "T.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let task = try #require(session.index.allTasks.first)
     guard case .written(let result) = session.apply(.state(.done), to: task) else {
@@ -120,7 +121,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @Test func aSessionReportsAStaleLineRatherThanRewritingWhateverSitsThere() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Alfa\n", to: "T.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
     let task = try #require(session.index.allTasks.first)
 
     // Someone else edits the file: the line the index remembers is now a different one.
@@ -140,7 +141,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionBlocksOutADayCreatingTheDailyNote() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
     let day = CalendarDate(iso: "2026-08-11")!
 
     let placed = try #require(session.addTimeBlock(title: "Collaudo", on: day, startMinutes: 9 * 60))
@@ -158,7 +159,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionLeavesADayAloneWhenThereIsNothingToWrite() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
     let day = CalendarDate(iso: "2026-08-11")!
 
     // No blocks and no note: `unchanged` rather than a file created for nothing.
@@ -172,7 +173,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @MainActor
 @Test func aSessionWritesAndReadsBackADiaryDay() async throws {
     let vault = try TemporaryVault()
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
     let day = CalendarDate(iso: "2026-08-11")!
 
     let entry = DiaryEntry(startMinutes: 10 * 60, durationMinutes: 45, title: "Sopralluogo")
@@ -196,7 +197,7 @@ private func openSession(_ root: URL) async -> VaultSession {
         to: "Alfa.md"
     )
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nAltro.\n", to: "Beta.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     #expect(session.search(SearchQuery("trasmissibilità")).map(\.path) == ["Alfa.md"])
     #expect(session.search(SearchQuery("tag:topic-acoustics")).map(\.path) == ["Alfa.md"])
@@ -211,7 +212,7 @@ private func openSession(_ root: URL) async -> VaultSession {
     try vault.write(front + "Cita [[Beta]].\n", to: "Alfa.md")
     try vault.write(front + "Nessun link.\n", to: "Beta.md")
     try vault.write(front + "Sola.\n", to: "Gamma.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     // `is:starred` reads the store of D6, `linked:` and `orphan:` the link graph. None
     // of the three is in the file the search reads, which is why they are applied
@@ -231,7 +232,7 @@ private func openSession(_ root: URL) async -> VaultSession {
     let front = "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n"
     try vault.write(front + "# Titolo\n\n## Sezione\n\nCorpo.\n", to: "Alfa.md")
     try vault.write(front + "Solo prosa.\n", to: "Beta.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let hits = session.search(SearchQuery("regex:^##\\s"))
     #expect(hits.map(\.path) == ["Alfa.md"])
@@ -254,7 +255,7 @@ private func openSession(_ root: URL) async -> VaultSession {
                     to: "PerAlias.md")
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nCurvatura del profilo.\n",
                     to: "Estranea.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let mentions = session.unlinkedMentions(for: "Curva di trasmissibilità.md")
 
@@ -272,7 +273,7 @@ private func openSession(_ root: URL) async -> VaultSession {
 @Test func aSessionKnowsItsOwnWriteFromSomebodyElsesEdit() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nUno.\n", to: "N.md")
-    let session = await openSession(vault.root)
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     // Its own write comes back from the watcher and is not reported: the caller
     // already knows about it, and reporting it would raise a conflict against itself.

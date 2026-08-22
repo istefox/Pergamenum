@@ -32,7 +32,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
         to: "Clienti/Nexion.md"
     )
     try vault.write(noteWithTwoViews, to: "Viste.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
 }

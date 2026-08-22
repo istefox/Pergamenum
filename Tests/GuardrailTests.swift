@@ -52,7 +52,7 @@ import Testing
 @Test func aDryRunComputesTheWriteAndDoesNotPerformIt() async throws {
     let vault = try TemporaryVault()
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Alfa\n", to: "T.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
     let onDiskBefore = try String(contentsOf: vault.root.appending(path: "T.md"), encoding: .utf8)
@@ -76,7 +76,7 @@ import Testing
 @MainActor
 @Test func aDryRunOfANewNoteCreatesNoFile() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     session.isDryRun = true
 
@@ -94,14 +94,14 @@ import Testing
 @Test func aJournalledWriteKeepsWhatItReplaced() async throws {
     let vault = try TemporaryVault()
     try vault.write("prima\n", to: "N.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     session.journalCommand = "prova"
 
     try session.write("dopo\n", to: "N.md")
 
-    let entries = WriteJournal(root: vault.root).entries()
+    let entries = session.journalOnDisk.entries()
     #expect(entries.count == 1)
     let entry = try #require(entries.first)
     #expect(entry.path == "N.md")
@@ -114,13 +114,13 @@ import Testing
 @MainActor
 @Test func aJournalMarksACreationAsHavingNoTextBefore() async throws {
     let vault = try TemporaryVault()
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
 
     try session.write("nuovo\n", to: "N.md")
 
-    let entry = try #require(WriteJournal(root: vault.root).entries().first)
+    let entry = try #require(session.journalOnDisk.entries().first)
     // Nil rather than "": undoing a creation means deleting, which is a different act
     // and one the CLI refuses to perform.
     #expect(entry.textBefore == nil)
@@ -131,21 +131,21 @@ import Testing
 @Test func aDryRunIsNotJournalled() async throws {
     let vault = try TemporaryVault()
     try vault.write("prima\n", to: "N.md")
-    let session = VaultSession(root: vault.root)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
-    session.journal = WriteJournal(root: vault.root)
+    session.journal = session.journalOnDisk
     session.isDryRun = true
 
     try session.write("dopo\n", to: "N.md")
 
     // Nothing happened, and an entry saying otherwise would be a lie in the one file
     // whose whole job is to be trusted.
-    #expect(WriteJournal(root: vault.root).entries().isEmpty)
+    #expect(session.journalOnDisk.entries().isEmpty)
 }
 
 @Test func aJournalSurvivesALineItCannotRead() throws {
     let vault = try TemporaryVault()
-    let journal = WriteJournal(root: vault.root)
+    let journal = WriteJournal(directory: vault.stateBase.appending(path: "ai-journal"))
     let now = Date()
     #expect(journal.record(WriteJournal.Entry(
         id: "uno", timestamp: now, path: "A.md",
