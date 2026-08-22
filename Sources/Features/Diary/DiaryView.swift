@@ -103,6 +103,9 @@ struct DiaryView: View {
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
             onFollowLink: follow,
+            vaultRoot: vault.root,
+            notePath: fileLabel,
+            thumbnails: vault.thumbnails,
             onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
             onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
         )
