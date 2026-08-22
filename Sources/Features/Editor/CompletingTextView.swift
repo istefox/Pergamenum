@@ -68,6 +68,15 @@ final class CompletingTextView: NSTextView {
     /// carries a link attribute and `clickedOnLink` never fires for it.
     var onClickInMargin: ((CGPoint) -> Bool)?
 
+    /// Claims a keyboard command before the ordinary editing behaviour gets it, while the
+    /// completion panel is closed - the panel's own keys in `doCommand(by:)` below still
+    /// win when it is open, since choosing a suggestion outranks crossing an embed the
+    /// caret happens to sit beside. Set by `NoteTextView.wire(_:to:)` to
+    /// `claimsEmbedCommand(_:in:)` (ADR-0018 slice 3, Step 4), the same closure shape
+    /// `onClickInMargin` already has and for the same reason: this view has exactly one
+    /// owner, and a closure makes that owner's identity a non-issue.
+    var claimsCommand: ((Selector) -> Bool)?
+
     /// True where the caret is in one of the three contexts that offer candidate strings
     /// rather than commands.
     ///
@@ -194,6 +203,7 @@ final class CompletingTextView: NSTextView {
     /// the note.
     override func doCommand(by selector: Selector) {
         guard completionPanel.isVisible else {
+            if let claimsCommand, claimsCommand(selector) { return }
             super.doCommand(by: selector)
             return
         }
