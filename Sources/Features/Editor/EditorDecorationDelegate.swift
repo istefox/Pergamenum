@@ -249,11 +249,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let attachmentRange = NSRange(location: marker.range.location, length: 1)
         let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
 
-        let attachment = NSTextAttachment()
+        // An `EmbedAttachment` rather than a plain `NSTextAttachment`, so the picture is
+        // drawn at the size the run itself asks for (ADR-0019 §D2). Both facts it needs
+        // are already here and neither is a new input: the run's own text is the exact
+        // substring `stillSpellsAnEmbed` just re-read above, and the natural size is the
+        // rendition's own picture - the placeholder's, for `.missing`. This object still
+        // learns nothing about the container or the column; `attachmentBounds` reads those
+        // from the live `NSTextContainer` at layout time, which is why it can, and this
+        // cannot.
+        let attachment = EmbedAttachment()
         switch rendition {
         case .drawn(let image): attachment.image = image
         case .missing: attachment.image = Self.missingEmbedImage
         }
+        attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
+        attachment.natural = attachment.image?.size ?? .zero
 
         // A substitution, not an insertion: one character out, one in, the paragraph's
         // own length unmoved - `NSTextContentManager.h:120`'s own constraint, the same one
