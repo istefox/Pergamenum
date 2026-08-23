@@ -74,15 +74,19 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
         let attachment = attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
         #expect(attachment?.image != nil)
         // The wikilink form carries no alt text of its own, so the label falls back to
-        // the target name (ADR-0018 slice 3, Step 3, item 3). The value itself is an
-        // `NSAccessibilityElement`, not a plain string - `.accessibilityAttachment` is
-        // documented as "id - corresponding element" - and `editor-embed` is the
-        // identifier Step 6's UI test asks for by name rather than by this label.
-        let element = try #require(
-            attributed.attribute(.accessibilityAttachment, at: 0, effectiveRange: nil) as? NSAccessibilityElement
+        // the target name (ADR-0018 slice 3, Step 3, item 3). `.accessibilityAttachment`'s
+        // value is this plain label string, not the `NSAccessibilityElement` VoiceOver
+        // actually stops on - that element is built by
+        // `CompletingTextView.accessibilityChildren()` from a real, on-screen text view
+        // (`CompletingTextView+Accessibility.swift`), not by this offscreen delegate, and
+        // `EmbedCaretTests` is where its own identifier and frame are asserted (ADR-0018
+        // slice 3, Step 6 fix: an `NSAccessibilityElement` built right here, with
+        // `parent: nil`, never actually reached VoiceOver - this test used to assert on
+        // that orphan instead of on the thing a screen reader can find).
+        let label = try #require(
+            attributed.attribute(.accessibilityAttachment, at: 0, effectiveRange: nil) as? String
         )
-        #expect(element.accessibilityLabel() == "foto.png")
-        #expect(element.accessibilityIdentifier() == "editor-embed")
+        #expect(label == "foto.png")
     }
 
     /// D5's own deliberate exception to D2: a drawn embed does not reveal on caret the

@@ -262,19 +262,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
         // `.accessibilityAttachment`'s value is documented as "id - corresponding element"
         // (`NSAccessibilityConstants.h`), the same shape `NSAccessibilityLinkTextAttribute`
-        // has - not a label string. An `NSAccessibilityElement` here is what turns the
-        // picture into a stop of its own for VoiceOver, and `editor-embed` is what an
-        // XCUITest asks for by identifier rather than by the alt text it reads out loud.
-        // Falls back to the plain label were the factory ever to answer something else -
-        // VoiceOver still reads it, an XCUITest asking for `editor-embed` simply finds none.
-        var accessibilityValue: Any = embed.alt ?? embed.target
-        if let embedElement = NSAccessibilityElement.element(
-            withRole: NSAccessibility.Role.image, frame: .zero, label: embed.alt ?? embed.target, parent: nil
-        ) as? NSAccessibilityElement {
-            embedElement.setAccessibilityIdentifier("editor-embed")
-            accessibilityValue = embedElement
-        }
-        copy.addAttribute(.accessibilityAttachment, value: accessibilityValue, range: attachmentRange)
+        // has - a plain label string here, not the element itself. It used to be an
+        // `NSAccessibilityElement` built right at this call site, with `parent: nil`
+        // because nothing here has an `NSView` to give it one: `EditorDecorationDelegate`
+        // is not `@MainActor` and holds no text view (`NoteTextView+Embeds.swift:32-38`
+        // says why). That element never became a stop for VoiceOver - a dump of the real
+        // accessibility tree showed no `Image` node and no `editor-embed` identifier at
+        // all, because `NSAccessibilityElement.h`'s own header says its vendor "must
+        // maintain ownership of the NSAccessibilityElements", and nothing here ever called
+        // `accessibilityAddChildElement:` to give AppKit one to keep. The element that
+        // actually reaches VoiceOver now lives in `CompletingTextView`'s own
+        // `accessibilityChildren()` override (`CompletingTextView+Accessibility.swift`),
+        // built from this same label the moment the real text view is asked, not pushed in
+        // from here ahead of time.
+        copy.addAttribute(.accessibilityAttachment, value: embed.alt ?? embed.target, range: attachmentRange)
         if restRange.length > 0 {
             copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
         }
