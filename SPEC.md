@@ -128,6 +128,4 @@ parte della sintassi embed già esistente (`EmbedRun`), estesa a leggere il suff
 - [ ] R-08 — Riaprendo una nota il cui embed è stato ridimensionato, l'embed si disegna già
   alla dimensione salvata letta da `|larghezza[xaltezza]`.
 - [ ] R-09 — La feature funziona identicamente per embed immagine ed embed PDF.
-- [ ] R-10 — Il ridimensionamento via tastiera o VoiceOver non è implementato in questa
-  feature (no-test: decisione di scope esplicita, verificata rileggendo l'ADR e il piano, non
-  un comportamento che un test automatico può asserire come assente in modo affidabile).
+- [ ] R-10 — Il ridimensionamento via tastiera o VoiceOver non è implementato in questa feature (no-test: decisione di scope esplicita, verificata rileggendo l'ADR e il piano, non un comportamento che un test automatico può asserire come assente in modo affidabile).
