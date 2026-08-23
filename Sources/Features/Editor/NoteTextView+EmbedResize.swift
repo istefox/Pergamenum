@@ -186,9 +186,9 @@ extension NoteTextView.Coordinator {
     ///
     /// The size committed is `EmbedDrag.size`, the last clamp `.moved` resolved, and not
     /// the release point: a gesture with no `.moved` at all has never resolved anything but
-    /// the picture's own current size, and that is precisely D6's zero-movement case - the
-    /// suffix it formats equals the one already written, `rewritten(run:to:natural:)`
-    /// answers nil, and the press behaves like a click on the picture.
+    /// the picture's own current size, and that is precisely D6's zero-movement case -
+    /// `commit(_:in:)` compares the two sizes, finds nothing to write, and the press behaves
+    /// like a click on the picture.
     private func endResize(in textView: NSTextView) -> Bool {
         guard let drag = abandonResize() else { return false }
         commit(drag, in: textView)
@@ -225,15 +225,35 @@ extension NoteTextView.Coordinator {
     /// nil unless a picture is still drawn there this instant - the same guard `selectEmbed`
     /// and `claimsEmbedCommand` lean on, for the same reason.
     ///
-    /// Nil from `rewritten(run:to:natural:)` is not a failure: it is the zero-movement case,
-    /// answered the way §D6 asks for - the run selected, exactly as a click on the picture
-    /// would have left it, and not one character written.
+    /// **The zero-movement case is decided on the size, before the text is consulted at
+    /// all** (§D6: "a press inside the handle that moves nothing before release rewrites
+    /// nothing - the resolved size is unchanged - and selects the run instead"). That
+    /// premise is about the *size*, and `rewritten(run:to:natural:)` cannot answer it: it
+    /// compares the suffix it formats against the one the run already carries, and for an
+    /// embed carrying no suffix at all there is nothing to be equal to - a plain click on
+    /// `![[foto.png]]`'s handle turned it into `![[foto.png|720]]` with nothing dragged.
+    /// Comparing what `drag.size` writes against what the size the picture was *drawn* at
+    /// would write answers the question §D6 actually asks, for a written suffix and an
+    /// absent one alike, and it covers the same defect's other face: an embed written
+    /// `|300` but drawn at 200 in a window too narrow for it is not silently rewritten to
+    /// `|200` by a click that resized nothing.
+    ///
+    /// Nil from `rewritten(run:to:natural:)` past that guard is not a failure either - a
+    /// drag that ends on a size rounding to the suffix already written is the same
+    /// no-op - and both roads lead to the same place: the run selected, exactly as a click
+    /// on the picture would have left it, and not one character written.
     private func commit(_ drag: EmbedDrag, in textView: NSTextView) {
         let text = textView.string as NSString
         guard NSMaxRange(drag.run) <= text.length else { return }
         let paragraph = text.paragraphRange(for: NSRange(location: drag.run.location, length: 0))
         guard let run = decorations.drawnEmbedRange(atParagraphStart: paragraph.location, in: text)
         else { return }
+        guard EmbedResize.suffix(for: drag.size, natural: drag.natural)
+                != EmbedResize.suffix(for: drag.picture.size, natural: drag.natural)
+        else {
+            textView.setSelectedRange(run)
+            return
+        }
         guard let rewritten = EmbedResize.rewritten(
             run: text.substring(with: run), to: drag.size, natural: drag.natural
         ) else {

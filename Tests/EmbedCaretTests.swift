@@ -808,6 +808,34 @@ import Testing
         #expect(textView.selectedRange() == NSRange(location: Self.embedOffset, length: runLength))
     }
 
+    /// D6's zero-movement case again, on the embed that carries **no** suffix at all - the
+    /// case the guarantee is worth the most on, and the one the sized fixture above cannot
+    /// see. `EmbedResize.rewritten(run:to:natural:)` compares the suffix it formats against
+    /// the one already written, and "no suffix" never equals a computed one, so a plain
+    /// click on the handle of `![[foto.png]]` must not be allowed to reach it: the note
+    /// would come back as `![[foto.png|720]]` with nothing having been dragged, which is
+    /// D6's "rewrites nothing" read as "rewrites whatever the picture happens to measure".
+    @Test func beganImmediatelyFollowedByEndedOnAnUnsizedEmbedWritesNothingAndSelectsTheRun() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root, text: Self.note)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        _ = coordinator.resizeEmbed(.ended(began), in: textView)
+
+        #expect(textView.string == Self.note)
+        #expect(
+            textView.selectedRange() == NSRange(location: Self.embedOffset, length: Self.runLength)
+        )
+    }
+
     /// D7: Obsidian's verified sizing syntax exists only for the wikilink spelling, so a
     /// CommonMark `![alt](foto.png)` embed - which still draws a picture, per ADR-0018 §D3 -
     /// gets no handle at all, and `.began` must decline it rather than start a gesture that
