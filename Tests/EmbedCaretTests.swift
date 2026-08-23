@@ -337,6 +337,119 @@ import Testing
         #expect(!coordinator.selectEmbed(at: CGPoint(x: box.midX, y: box.midY), in: textView))
     }
 
+    // MARK: - Resize handle hit-test (ADR-0019, plan 2026-08-23-ridimensionamento-maniglie-embed-editor, Task 5)
+
+    /// R-01: with `hidesMarkup` on and a landed render, the handle's hit rect exists and
+    /// sits inside the picture's own frame - `fragmentFrame(at:in:)` reports the whole
+    /// paragraph's frame, which for a standalone embed paragraph is the picture's frame,
+    /// the same equivalence `aClickOnTheDrawnPictureSelectsItsWholeRun` above already
+    /// leans on. The probed point is the picture's own bottom-right corner, where
+    /// `EmbedResize.handleRect(in:)` paints the square.
+    @Test func handleRectAnswersARectInsideThePictureFrameWhenMarkupIsHidden() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: true, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        _ = await Self.waitForRendition(at: Self.embedOffset, in: coordinator)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        let box = Self.fragmentFrame(at: Self.embedOffset, in: textView)
+        #expect(box.width > 0)
+        let corner = CGPoint(x: box.maxX - 5, y: box.maxY - 5)
+        let handle = try #require(coordinator.handleRect(forEmbedAt: corner, in: textView))
+        // Grown by half a point either side: the two frames come from independent
+        // arithmetic (the fragment walk vs. `frameForTextAttachment(at:)`), and this
+        // assertion is about containment, not about matching floating-point rounding.
+        #expect(box.insetBy(dx: -0.5, dy: -0.5).contains(handle))
+    }
+
+    /// R-07: with `hidesMarkup` off nothing is drawn at all - the run stays raw text - so
+    /// there is no handle anywhere, at any point.
+    @Test func handleRectAnswersNilWhenMarkupIsNotHidden() throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: false, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
+    }
+
+    /// A `.missing` embed draws a placeholder, not a real picture - "there is nothing
+    /// downstream that would notice" is D1's own phrase for the size, and D8 gives the
+    /// same answer to the handle: `guard case .drawn` refuses before any geometry is
+    /// computed.
+    @Test func handleRectAnswersNilForAMissingEmbed() throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // No file written at all: `assente.png` resolves synchronously to `.missing`,
+        // the same fixture `EmbedResolutionTests.aMissingFileResolvesToMissingWithoutTouchingTheRenderer`
+        // already relies on.
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let text = "prima\n![[assente.png]]\ndopo\n"
+        let fixture = Self.editor(text: text, hidesMarkup: true, root: root, thumbnails: thumbnails)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        let offset = (text as NSString).range(of: "![[assente.png]]").location
+        #expect(coordinator.embeds.renditions[offset] == .missing(name: "assente.png"))
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        let box = Self.fragmentFrame(at: offset, in: textView)
+        #expect(box.width > 0)
+        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: box.midX, y: box.midY), in: textView) == nil)
+    }
+
+    /// Nothing landed yet, synchronously: the same first-pass state
+    /// `EmbedResolutionTests.anImageEmbedResolvesToADrawnRenditionWithARealRender` asserts
+    /// before awaiting the render. No entry in `embeds.renditions` means
+    /// `drawnEmbedRange(atParagraphStart:in:)` itself answers nil, so there is nothing for
+    /// the handle to sit on regardless of where `point` falls.
+    @Test func handleRectAnswersNilBeforeARenditionLands() throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: true, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        #expect(coordinator.embeds.renditions[Self.embedOffset] == nil)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
+    }
+
     // MARK: - Accessibility (ADR-0018 slice 3, Step 6 fix)
 
     /// The regression this whole fix exists for: a drawn embed used to have no stop at
