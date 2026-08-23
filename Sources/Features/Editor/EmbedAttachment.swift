@@ -33,6 +33,18 @@ final class EmbedAttachment: NSTextAttachment {
     /// R-06's "no written size" case falls back to untouched but for the column clamp.
     var natural: CGSize = .zero
 
+    /// The colour the resize handle is painted in, or nil for an embed that gets none
+    /// (ADR-0019 §D5). Pushed in from `EditorDecorationDelegate.handleColor` at
+    /// construction - the same one-line hand-over `FoldedHeadingFragment.badgeColor`
+    /// already receives - and never read from a theme here: this type is built by an
+    /// object that has no `ThemeEngine` and cannot be given one.
+    ///
+    /// Optional where the delegate's own property is not, and that is the whole of how a
+    /// `.missing` embed keeps its old drawing: a placeholder is handed no colour, so
+    /// nothing is composited over it, which matches `handleRect(forEmbedAt:in:)` refusing
+    /// it at `guard case .drawn` (§D8).
+    var handleColor: NSColor?
+
     /// The last picture `image(for:…)` built, kept so a second pass at the same bounds
     /// hands back the same object instead of allocating another. One slot rather than a
     /// dictionary keyed by size: probe 6 measured that one draw pass asks an attachment
@@ -83,16 +95,52 @@ final class EmbedAttachment: NSTextAttachment {
         // the picture is actually drawn, at the destination's own resolution, which is
         // what keeps a thumbnail scaled up by the column clamp from being resampled twice.
         // `NSImage.h:117` warns the handler "may be invoked whenever and on whatever
-        // thread the image itself is drawn on" - the only state it touches is `source`,
-        // a finished render `ThumbnailStore` never mutates again, drawn exactly as
-        // TextKit would have drawn it itself.
+        // thread the image itself is drawn on", so it touches exactly two things and both
+        // are captured locals rather than members of `self`: `source`, a finished render
+        // `ThumbnailStore` never mutates again and that TextKit would have drawn the same
+        // way itself, and `handle` below, an immutable `NSColor`. The attachment itself is
+        // not held by the block at all.
+        let handle = handleColor
         let picture = NSImage(size: size, flipped: false) { rect in
-            // Task 5 composites `EmbedResize.handleRect(in:)` here, on top of this draw
-            // and inside these same bounds (ADR-0019 §D5).
             source.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            if let handle { Self.drawHandle(in: rect, color: handle) }
             return true
         }
         redrawn = picture
         return picture
+    }
+
+    /// Paints ADR-0019 §D5's square into the picture's own bottom-right corner, on top of
+    /// the picture and inside the same bounds - the property `frameForTextAttachment(at:)`,
+    /// the click hit-test and the embed's accessibility frame all rest on, since a handle
+    /// that had to grow the bounds would silently move every one of them.
+    ///
+    /// **The one mirror between two coordinate spaces, and the reason it is here.**
+    /// `EmbedResize.handleRect(in:)` answers in the text view's own *flipped* space, where
+    /// `maxY` is the bottom edge - the space `handleRect(forEmbedAt:in:)` hit-tests a click
+    /// in. This drawing handler is *unflipped* (`flipped: false`, which is what puts
+    /// `source` the right way up), so `maxY` is the top and the square has to be reflected
+    /// across `rect`'s own middle. `EmbedResize` is not given an opinion about which way up
+    /// a context is; what it keeps is the side and the inset, read from it here rather than
+    /// retyped, so the painted square and the 22-point target around it cannot drift apart.
+    private static func drawHandle(in rect: CGRect, color: NSColor) {
+        let square = EmbedResize.handleRect(in: rect)
+        let mirrored = CGRect(
+            x: square.minX,
+            y: rect.minY + rect.maxY - square.maxY,
+            width: square.width,
+            height: square.height
+        )
+        // A picture too small to hold its own handle gets none rather than a clipped one:
+        // `EmbedResize.minimumSide` makes this unreachable through the drag, and
+        // `image(for:…)` is asked for sizes the drag never chose.
+        guard rect.contains(mirrored) else { return }
+        color.setFill()
+        // The corner radius `ResizeHandleView` already gives the Workspace's own grips -
+        // a quarter of the side - so the two resize affordances in this app are the same
+        // shape at two sizes rather than two shapes.
+        NSBezierPath(
+            roundedRect: mirrored, xRadius: mirrored.width / 4, yRadius: mirrored.height / 4
+        ).fill()
     }
 }

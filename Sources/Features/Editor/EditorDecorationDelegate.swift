@@ -52,6 +52,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// The colour a drawn embed's resize handle is painted in (ADR-0019 §D5), pushed in
+    /// from a token the same way `badgeColor` above is and handed on to `EmbedAttachment`.
+    nonisolated(unsafe) var handleColor: NSColor = .secondaryLabelColor
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
@@ -262,6 +265,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         case .drawn(let image): attachment.image = image
         case .missing: attachment.image = Self.missingEmbedImage
         }
+        // Only a picture gets a handle: a `.missing` placeholder is refused by the same
+        // `guard case .drawn` the hit test uses, so the two cannot disagree (ADR-0019 §D8).
+        if case .drawn = rendition { attachment.handleColor = handleColor }
         attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
         attachment.natural = attachment.image?.size ?? .zero
 

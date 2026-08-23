@@ -268,6 +268,16 @@ extension NoteTextView {
                 }
                 if case .embedRun = styled.span { embedRuns.append(nsRange) }
             }
+            // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
+            // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
+            // makes in `applyFolding` above. Here rather than threaded through
+            // `applyEmbeds(to:)`, which has no theme and would need one at three call
+            // sites; and here rather than beside `badgeColor`, because `applyFolding`
+            // returns early for a note with nothing folded, which is most notes.
+            // `.accentPrimary` and not the badge's `.textTertiary`: this square is
+            // painted over an arbitrary picture and has to be aimed at, which a tertiary
+            // text grey on a photograph is not.
+            decorations.handleColor = NSColor(theme.color(.accentPrimary))
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
