@@ -30,6 +30,14 @@ final class CompletingTextView: NSTextView {
     /// on the next keystroke of the same word. AppKit's list used to remember this for the
     /// three completions it served; now nothing else will.
     private var dismissedLocation: Int?
+    /// One accessibility element per paragraph currently drawing an embed, by paragraph
+    /// offset - built and kept current by the `accessibilityChildren()` override in
+    /// `CompletingTextView+Accessibility.swift` (ADR-0018 slice 3, Step 6 fix). Reused
+    /// rather than rebuilt on every query: VoiceOver tracks an element's identity, and
+    /// recreating it each call made it flicker in the run this fix measured against. Not
+    /// `private`: the override that owns this cache lives in its own file, at the length
+    /// the linter already caps this one at.
+    var embedAccessibilityElements: [Int: NSAccessibilityElement] = [:]
     /// Called with pasted text; returns true when it handled the paste itself.
     var onPasteURL: ((String) -> Bool)?
     /// Called with the PNG bytes of a pasted image; returns the name it was saved under.

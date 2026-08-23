@@ -336,4 +336,69 @@ import Testing
         #expect(box.width > 0)
         #expect(!coordinator.selectEmbed(at: CGPoint(x: box.midX, y: box.midY), in: textView))
     }
+
+    // MARK: - Accessibility (ADR-0018 slice 3, Step 6 fix)
+
+    /// The regression this whole fix exists for: a drawn embed used to have no stop at
+    /// all in the accessibility tree, because `EditorDecorationDelegate` built its own
+    /// `NSAccessibilityElement` with `parent: nil` and AppKit never adopted it. Lives
+    /// here rather than in `EmbedDrawingTests`, which is entirely offscreen by
+    /// construction - a bare `NSTextContentStorage`, no `NSTextView`, no window, nothing
+    /// to grow a real accessibility tree from - and this is the one fixture in the suite
+    /// that already builds a real `CompletingTextView` inside a real `NSWindow`
+    /// (`editor(text:hidesMarkup:root:thumbnails:)` above) with a landed render.
+    @Test func aDrawnEmbedIsAReachableAccessibilityElement() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: true, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        _ = await Self.waitForRendition(at: Self.embedOffset, in: coordinator)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        let children = try #require(textView.accessibilityChildren())
+        let embeds = children.compactMap { $0 as? NSAccessibilityElement }
+            .filter { $0.accessibilityIdentifier() == "editor-embed" }
+        let embed = try #require(embeds.first)
+        #expect(embeds.count == 1)
+        #expect(embed.accessibilityLabel() == "foto.png")
+        #expect(embed.accessibilityFrame() != .zero)
+    }
+
+    /// R4's own accessibility half: with `hidesMarkup` off the raw `![[foto.png]]` stays
+    /// plain text, so there is nothing for `CompletingTextView.accessibilityChildren()`
+    /// to build an element for - `drawnEmbedRange`'s own `hidesMarkup` guard is what
+    /// refuses, the same guard every other embed feature in this file already leans on.
+    @Test func rawSyntaxWithHidingMarkupOffHasNoAccessibilityElement() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(
+            text: Self.note, hidesMarkup: false, root: root, thumbnails: thumbnails
+        )
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        _ = await Self.waitForRendition(at: Self.embedOffset, in: coordinator)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+
+        let children = textView.accessibilityChildren() ?? []
+        let embeds = children.compactMap { $0 as? NSAccessibilityElement }
+            .filter { $0.accessibilityIdentifier() == "editor-embed" }
+        #expect(embeds.isEmpty)
+    }
 }
