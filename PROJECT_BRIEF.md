@@ -87,6 +87,23 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-23: **ADR-0019 (ridimensionamento con maniglia di trascinamento) implementata per i 7
+  task automatizzabili del piano (task 1-7 di 9), 1412 test unitari verdi, zero regressioni.**
+  Una maniglia di 14 punti nell'angolo in basso a destra di ogni embed disegnato (immagine o PDF,
+  solo con `hidesMarkup` acceso) si trascina per ridimensionarlo: un overlay live segue il
+  puntatore senza toccare il testo sorgente, si blocca fra 80pt e la larghezza della colonna, e al
+  rilascio riscrive la sintassi `|W` o `|WxH` in un solo passo di undo qualunque sia il numero di
+  passi intermedi (D-4). Un embed CommonMark `![alt](file.est)` non offre mai la maniglia (D7,
+  nessuna sintassi di dimensionamento verificata per quella forma). **R-10 (nessun
+  ridimensionamento da tastiera o VoiceOver in questa feature) verificato per grep**: nessun file
+  toccato da questa feature aggiunge `NSAccessibilityElement`, `accessibilityChildren`,
+  `setAccessibilityRole` o `accessibilityPerform`, e `CompletingTextView+Accessibility.swift`
+  (PR #96, ADR-0018 slice 3) resta bit per bit invariato. **Non ancora fatto**: Task 8 di 9
+  (redazione di questo paragrafo, appena completata) chiude la sola parte scritta; Task 9 di 9
+  richiede un collaudo manuale a schermo (maniglia visibile, trascinamento senza lag, click
+  altrove seleziona ancora l'embed, `hidesMarkup` spento nasconde la maniglia) e
+  `scripts/uitests.sh` per intero prima del merge su `main`, per l'accordo di lavoro del progetto.
+
 - 2026-08-22: **ADR-0018 slice 3 implementata per intero, tutti i sette step del piano approvato
   (PR #87-94, `main` a `d5bd4b4`).** Un'immagine o un PDF incorporato con `![[file.est]]` o
   `![alt](file.est)`, da solo su una riga, si disegna al posto della sintassi: il carattere
