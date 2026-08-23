@@ -259,3 +259,29 @@ move the previous copy aside rather than deleting it.
 - Update the "Status" section of PROJECT_BRIEF.md when a milestone is reached.
 - New dependencies go through `Tuist/Package.swift` followed by `tuist install`, not
   through the Xcode UI.
+
+## Decisions from the embed drag-resize chain (ADR-0019)
+
+Drag-to-resize handle on the editor's drawn image/PDF embeds: `docs/adr/0019-embed-drag-resize.md`.
+
+Key architectural decisions:
+- **Size lives only in the note's own text**, read as Obsidian's native `|W` / `|WxH` suffix on
+  the wikilink embed syntax. No new storage anywhere (no index field, no frontmatter, no table).
+- **`EmbedAttachment: NSTextAttachment`** resolves the drawn size through
+  `attachmentBounds(for:location:textContainer:...)`, which receives the live `textContainer` at
+  layout time — never a value pushed in from outside, which would go stale on window resize.
+- **The resize handle is painted inside the picture the attachment returns**, not a separate
+  `NSView` — this keeps `frameForTextAttachment(at:)` (and therefore click hit-testing and the
+  embed's accessibility frame from ADR-0018/PR #96) identical to the geometry without a handle.
+- **The source-text rewrite happens once, at `mouseUp`**, through the same atomic
+  `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` mechanism the embed's
+  Backspace deletion already uses — one undo step regardless of drag length.
+- **A CommonMark `![alt](file.png)` embed gets no resize handle.** Obsidian's verified sizing
+  syntax only exists for the wikilink form; this app's own writers only ever emit wikilinks, so
+  no note this app created is affected.
+
+Detail: `docs/adr/0019-embed-drag-resize.md`.
+
+## Chain decision index
+
+- **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
