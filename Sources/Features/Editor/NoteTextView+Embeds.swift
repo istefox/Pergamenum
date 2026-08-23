@@ -79,11 +79,30 @@ final class EmbedTable {
         self.decorations = decorations
     }
 
-    /// The width every embed renders at, matching `EmbeddedFileView.renderWidth` bit for
-    /// bit. `ThumbnailStore` quantises internally, so requesting the same value here is
-    /// what makes one file cost one render shared between the editor and reading mode,
-    /// rather than a second cache entry for the same picture.
+    /// The width an embed **with no written size** renders at, matching
+    /// `EmbeddedFileView.renderWidth` bit for bit *for that case alone*.
+    /// `ThumbnailStore` quantises internally, so requesting the same value here is what
+    /// makes one unsized file cost one render shared between the editor and reading
+    /// mode, rather than a second cache entry for the same picture.
+    ///
+    /// An embed whose run carries `|W` or `|WxH` renders at that width instead
+    /// (ADR-0019 §D4) and stops sharing reading mode's render: 720 buckets to 960 and
+    /// `|300` buckets to 320. That is the point rather than a cost - a picture drawn at
+    /// 300 points should not be a 1280-pixel render - and `ThumbnailStore`'s seven
+    /// buckets are the ceiling on how many renders one file can cost over its whole
+    /// life, however often it is resized. Reading mode is not touched by any of this:
+    /// `EmbeddedFileView.renderWidth` stays 720 and is neither read nor changed here.
     private static let renderWidth: CGFloat = 720
+
+    /// `renderCache`'s and `pending`'s shared key: the resolved path and the bucket
+    /// `ThumbnailStore` will actually render at, never the width that was asked for
+    /// (ADR-0019 §D4). Keyed by the bucket, two embeds of one file written `|300` and
+    /// `|310` share the one render the store would answer both of them with; keyed by
+    /// the request, this table would hold two entries for a picture the store keeps
+    /// only one of, and be finer-grained than the store underneath it.
+    private static func renderCacheKey(relativePath: String, width: CGFloat) -> String {
+        "\(relativePath)@\(ThumbnailStore.bucket(for: width))"
+    }
 
     /// Resolves every embed line `applyStyling` just found, from the cache when it is
     /// already there and by starting a render when it is not.
@@ -136,10 +155,19 @@ final class EmbedTable {
         // same as a line still waiting on its first render.
         guard Self.isRenderableType(of: relativePath) else { return nil }
 
-        let key = "\(relativePath)@\(Int(Self.renderWidth))"
+        // ADR-0019 §D4: the run's own `|W`/`|WxH` decides the width its render is asked
+        // for, and only a run naming none falls back to the constant. Read out of
+        // `syntax`, the argument this method already receives - the signature does not
+        // change, and there is no room for it to: `apply(runs:…)` next door records the
+        // parameter count SwiftLint caps this file at.
+        let width: CGFloat = switch EmbedResize.written(inRun: syntax) {
+        case .width(let written), .both(let written, _): written
+        case nil: Self.renderWidth
+        }
+        let key = Self.renderCacheKey(relativePath: relativePath, width: width)
         if let cached = renderCache[key] { return cached }
         requestRender(
-            relativePath: relativePath, key: key, thumbnails: thumbnails,
+            relativePath: relativePath, width: width, thumbnails: thumbnails,
             fallbackName: embed.target, offset: offset
         )
         return nil
@@ -155,16 +183,23 @@ final class EmbedTable {
         return resolved
     }
 
-    /// Starts a render, unless one for the same file at the same width is already on its
-    /// way - `pending[key]` gaining its first waiter is what tells the two apart, so two
-    /// embeds of the same picture start one render between them.
+    /// Starts a render, unless one for the same file in the same width bucket is already
+    /// on its way - `pending[key]` gaining its first waiter is what tells the two apart,
+    /// so two embeds of the same picture start one render between them, whether they are
+    /// written at the same width or at two widths that bucket together.
+    ///
+    /// Takes the width rather than the key `rendition(forSyntax:…)` just computed, so
+    /// that the key's shape stays in the one place that owns it
+    /// (`renderCacheKey(relativePath:width:)`) and this stays inside the parameter count
+    /// SwiftLint caps this file at.
     private func requestRender(
         relativePath: String,
-        key: String,
+        width: CGFloat,
         thumbnails: ThumbnailStore,
         fallbackName: String,
         offset: Int
     ) {
+        let key = Self.renderCacheKey(relativePath: relativePath, width: width)
         let isFirstWaiter = pending[key, default: []].isEmpty
         pending[key, default: []].insert(offset)
         guard isFirstWaiter else { return }
@@ -173,7 +208,7 @@ final class EmbedTable {
         // `await`ing the actor hop into `ThumbnailStore` - never the reverse, and never a
         // reference to the actor handed anywhere else (ADR-0018 slice 3, Step 2).
         Task { @MainActor [weak self] in
-            let render = await thumbnails.thumbnail(for: relativePath, width: Self.renderWidth)
+            let render = await thumbnails.thumbnail(for: relativePath, width: width)
             let image = await render.value
             guard let self else { return }
             let rendition: EmbedRendition = image.map(EmbedRendition.drawn) ?? .missing(name: fallbackName)
