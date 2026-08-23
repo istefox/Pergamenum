@@ -59,7 +59,7 @@ import Testing
         for step in 1...3 {
             let t = CGFloat(step) / 3
             _ = coordinator.resizeEmbed(
-                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t)), in: textView
+                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t), constrained: false), in: textView
             )
         }
         _ = coordinator.resizeEmbed(.ended(CGPoint(x: began.x + dx, y: began.y + dy)), in: textView)
@@ -105,7 +105,7 @@ import Testing
         for step in 1...4 {
             let t = CGFloat(step) / 4
             _ = coordinator.resizeEmbed(
-                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t)), in: textView
+                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t), constrained: false), in: textView
             )
         }
         // `.ended` writes `drag.size`, the last clamp `.moved` resolved - exactly the
@@ -145,7 +145,9 @@ import Testing
         let dy = finalHeight - box.height
 
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
-        _ = coordinator.resizeEmbed(.moved(CGPoint(x: began.x + dx, y: began.y + dy)), in: textView)
+        _ = coordinator.resizeEmbed(
+            .moved(CGPoint(x: began.x + dx, y: began.y + dy), constrained: false), in: textView
+        )
         _ = coordinator.resizeEmbed(.ended(CGPoint(x: began.x + dx, y: began.y + dy)), in: textView)
 
         let expectedWidth = Int(finalWidth.rounded())
@@ -181,7 +183,7 @@ import Testing
         for step in 1...moves {
             let t = CGFloat(step) / CGFloat(moves)
             _ = coordinator.resizeEmbed(
-                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t)), in: textView
+                .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t), constrained: false), in: textView
             )
         }
         _ = coordinator.resizeEmbed(.ended(CGPoint(x: began.x + dx, y: began.y + dy)), in: textView)

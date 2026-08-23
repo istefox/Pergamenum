@@ -129,3 +129,9 @@ parte della sintassi embed già esistente (`EmbedRun`), estesa a leggere il suff
   alla dimensione salvata letta da `|larghezza[xaltezza]`.
 - [ ] R-09 — La feature funziona identicamente per embed immagine ed embed PDF.
 - [ ] R-10 — Il ridimensionamento via tastiera o VoiceOver non è implementato in questa feature (no-test: decisione di scope esplicita, verificata rileggendo l'ADR e il piano, non un comportamento che un test automatico può asserire come assente in modo affidabile).
+- [ ] R-11 — Tenendo premuto Shift durante il trascinamento, l'altezza segue proporzionalmente
+  la larghezza (rapporto dell'immagine originale), invece che muoversi libera come nel
+  trascinamento normale; il vincolo si applica e si toglie in tempo reale seguendo lo stato
+  del tasto durante il gesto, non solo al momento in cui la maniglia viene afferrata. (Non
+  Ctrl: su macOS Control-clic apre il menu contestuale prima che il drag raggiunga l'editor,
+  verificato a schermo il 2026-08-23.)

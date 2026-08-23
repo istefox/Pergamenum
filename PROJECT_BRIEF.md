@@ -87,6 +87,16 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-23: **ADR-0019 estesa in corso d'opera con R-11 (blocco delle proporzioni tenendo
+  premuto Shift durante il trascinamento, D9), Task 10 di 10, 1419 test unitari verdi.** Il
+  tasto letto in tempo reale a ogni evento (non fissato al `mouseDown`) era inizialmente Ctrl,
+  scartato dopo verifica a schermo: Control-clic su macOS apre sempre il menu contestuale prima
+  che il drag raggiunga l'editor. Shift, riletto a ogni `mouseDragged`, forza l'altezza al
+  rapporto d'aspetto originale dell'immagine, sopra il vincolo di colonna/minimo di R-05 già
+  esistente; al rilascio il vincolo produce sempre la forma `|W` (mai `|WxH`), riconosciuta
+  automaticamente da `suffix(for:natural:)` senza codice aggiuntivo. Verificato a schermo:
+  funziona correttamente, incluso il rilascio del tasto a metà trascinamento.
+
 - 2026-08-23: **ADR-0019 (ridimensionamento con maniglia di trascinamento) implementata per i 7
   task automatizzabili del piano (task 1-7 di 9), 1412 test unitari verdi, zero regressioni.**
   Una maniglia di 14 punti nell'angolo in basso a destra di ogni embed disegnato (immagine o PDF,

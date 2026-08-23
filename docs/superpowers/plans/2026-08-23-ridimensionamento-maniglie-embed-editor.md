@@ -205,7 +205,12 @@ in this feature.**
 ### Task 7 — The commit: one replacement, one undo step (R-03, R-04)
 
 - Test in `Tests/EmbedCaretTests.swift`, modelled line for line on the existing
-  `backspaceAtTheRightEdgeOfADrawnEmbedRemovesItWholeInOneUndoStep`:
+  `backspaceAtTheRightEdgeOfADrawnEmbedRemovesItWholeInOneUndoStep`. **Post-RTF note:** this
+  suite was later split by the `review-triage-fix` cycle's refactorer into
+  `Tests/EmbedResizeCommitTests.swift` (Task 7's content, R-03/R-04) and
+  `Tests/EmbedResizeGestureTests.swift` (Tasks 5-6's content) plus the shared
+  `Tests/EmbedEditorTestSupport.swift` fixtures — the assertions below now live in
+  `EmbedResizeCommitTests.swift`, not in `EmbedCaretTests.swift`:
   - `.began` → several `.moved` → `.ended` leaves the note reading `![[foto.png|W]]` with the
     expected integer (**R-03**), and `![[foto.png|WxH]]` when the drag changed the ratio;
   - one `undo()` restores the note **exactly** as it was before `.began`, and a second `undo()`
@@ -247,11 +252,14 @@ test can assert as absent. It is discharged by a written record and a verificati
   probe results were recorded — one line, naming R-10 and the deferral.
 - Budget: PROJECT_BRIEF.md (~15 lines)
 
-### Task 9 — On screen, then the whole UI suite (R-01, R-02, R-05, R-09)
+### Task 9 — On screen, then the whole UI suite (R-01, R-02, R-05, R-09, R-11)
 
 Neither of these is optional and neither is a formality. ADR-0019 D8's probe 2 — whether AppKit
 delivers `mouseDragged` to a view whose `mouseDown` did not call `super` — has no other answer,
-and it is the assumption the entire mouse layer rests on.
+and it is the assumption the entire mouse layer rests on. **Runs after Task 10 lands**, added
+mid-cycle (R-11): Tasks 1-8 were verified on screen once already before R-11 existed, but the
+checklist below folds the Shift-lock check into the same pass rather than a separate one, since
+both exercise the same drag gesture.
 
 1. **On screen, by hand, with a written result.** Build and run a Debug build against a throwaway
    vault (`-recentVaults '("/path")'` — the array form, or nothing is reopened), holding one note
@@ -264,7 +272,10 @@ and it is the assumption the entire mouse layer rests on.
    - releasing rewrites the line, redraws the picture at that size, and one Cmd+Z puts
      everything back;
    - a plain click elsewhere on the picture still selects it;
-   - `hidesMarkup` off: raw syntax, no handle anywhere.
+   - `hidesMarkup` off: raw syntax, no handle anywhere;
+   - holding Shift while dragging locks the rectangle's height to the picture's own aspect ratio,
+     and releasing Shift mid-drag (mouse still down) reverts to free resizing on the very next
+     pointer move, both without a visible jump or lag (**R-11**).
    Write the result of each into the commit's PR description and one line into `PROJECT_BRIEF.md`.
    **Before checking any window, run `ps -Ao pid,command | grep Pergamenum.app/Contents/MacOS`** —
    a UI-test instance from an earlier run outlives its suite and shows notes nobody created.
@@ -273,6 +284,44 @@ and it is the assumption the entire mouse layer rests on.
    *replaces* the selection rather than adding to it. Expect roughly twelve minutes. Do not merge
    on a red UI suite and do not merge without having run it.
 3. `.claude/test-cmd` green in full one last time, after `tuist generate --no-open`.
+
+### Task 10 — Shift held during the drag locks the aspect ratio, read live (R-11)
+
+Added mid-cycle after Tasks 1-8 were manually verified and found working (ADR-0019 D9). Executes
+**before** Task 9's on-screen pass, ahead of it in the plan's own numbering only.
+
+- Test in `Tests/EmbedResizeGestureTests.swift` (the Task 5/6 split-out file), driving the
+  Coordinator directly exactly as the existing `.moved` tests do — no `NSEvent` synthesis, a
+  `constrained: Bool` passed straight into the call:
+  - `resizeEmbed(.moved(p, constrained: true), in:)`, after a `.began` on a picture whose natural
+    size is not square, leaves `EmbedDrag.size` with `height == (width * naturalRatio).rounded()`
+    for a `p` that would otherwise (unconstrained) imply a different height;
+  - the same `p` with `constrained: false` reproduces today's free-resize result exactly — R-11
+    adds a branch, it does not change the unconstrained path (regression guard);
+  - a sequence `.moved(p1, constrained: true)` then `.moved(p2, constrained: false)` then
+    `.moved(p3, constrained: true)` ends with the same size a single `.moved(p3, constrained:
+    true)` from `.began` would produce — nothing is latched between calls (R-11's "not only at
+    the moment the handle is grabbed");
+  - the constrained width still obeys the column clamp from `EmbedResize.resolved` (R-05
+    composes with R-11, not instead of it) — assert with a `p` past the right margin;
+  - `.ended` after a constrained `.moved` commits a size whose `EmbedResize.suffix(for:natural:)`
+    is the bare `|W` form, not `|WxH` — a Shift-constrained release is indistinguishable in the
+    note from any other resize that landed on the natural ratio (D9, no new suffix form).
+- Then `Sources/Features/Editor/EmbedResize.swift`: `Phase.moved` gains a second associated
+  value, `case moved(CGPoint, constrained: Bool)`; a small pure helper (or inline arithmetic in
+  the existing width-then-height computation) applies the natural-ratio height override **after**
+  the existing column/floor clamp on width, only when `constrained` is true. No new public type.
+- Then `Sources/Features/Editor/NoteTextView+EmbedResize.swift`: `resizeEmbed(_:in:)`'s `.moved`
+  case reads the new associated value and forwards it into the width/height computation described
+  above — `EmbedDrag`'s stored `natural` (already present since Task 6) is the ratio source, no
+  new state.
+- Then `Sources/Features/Editor/CompletingTextView+Pasteboard.swift`: `mouseDragged` reads
+  `event.modifierFlags.contains(.control)` and passes it as `constrained:` into the
+  `.moved(point, constrained:)` case it already constructs — one line changes, the call site
+  already exists from Task 6.
+- **No change to `EmbedResizeOverlay.swift`** — it draws `EmbedDrag.size` and nothing else
+  already, so the constrained `W × H` reaches the label for free.
+- Budget: Sources/Features/Editor/EmbedResize.swift, Sources/Features/Editor/NoteTextView+EmbedResize.swift, Sources/Features/Editor/CompletingTextView+Pasteboard.swift, Tests/EmbedResizeGestureTests.swift (~140 lines)
 
 ---
 

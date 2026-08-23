@@ -29,9 +29,15 @@ enum EmbedResize {
 
     /// One step of the drag gesture (ADR-0019 §D6), each carrying the point the mouse
     /// event reports, in the text view's own coordinate space.
+    ///
+    /// `.moved` also carries whether Ctrl is held on *this* event (ADR-0019 §D9, plan
+    /// Task 10, R-11) - read live off `NSEvent.modifierFlags` at the call site
+    /// (`CompletingTextView+Pasteboard.swift`'s `mouseDragged`) rather than cached
+    /// anywhere, so releasing or pressing Ctrl mid-drag takes effect on the very next
+    /// `.moved` and nothing here has to remember what the gesture started with.
     enum Phase {
         case began(CGPoint)
-        case moved(CGPoint)
+        case moved(CGPoint, constrained: Bool)
         case ended(CGPoint)
     }
 
@@ -106,6 +112,25 @@ enum EmbedResize {
                 height: max(minimumSide, requestedHeight)
             )
         }
+    }
+
+    /// `size` with its height replaced by the proportional height for the width it already
+    /// has - the whole of the Ctrl-constrained drag's arithmetic (ADR-0019 §D9, R-11).
+    ///
+    /// **Applied after `resolved(written:natural:column:)`, never instead of it.** R-05's
+    /// floor and column clamp decide the width first and are left exactly as they are; the
+    /// height is then computed from *that* width, so a constrained drag taken past the right
+    /// margin locks its ratio against the width it was actually given rather than the one it
+    /// asked for. Composing the two in that order is why R-11 needs no second clamp of its
+    /// own, and why it cannot disagree with R-05 about the margin.
+    ///
+    /// Rounded, because this is the height `suffix(for:natural:)` then has to recognise as
+    /// proportional - it compares against `(width * ratio).rounded()` within a point - and
+    /// that recognition is what lets the commit write the bare `|W` form for a Ctrl-drag
+    /// rather than a `|WxH` spelling the same picture. Degenerate renditions go through
+    /// `aspectRatio(of:)`'s own square fallback, so nothing here can produce a `NaN`.
+    static func constrainedToNaturalRatio(_ size: CGSize, natural: CGSize) -> CGSize {
+        CGSize(width: size.width, height: (size.width * aspectRatio(of: natural)).rounded())
     }
 
     /// The suffix `rewritten(run:to:natural:)` writes for `size`: `"W"` when its height is

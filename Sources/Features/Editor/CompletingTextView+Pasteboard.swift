@@ -31,7 +31,16 @@ extension CompletingTextView {
     /// dragging is untouched by either override.
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if onEmbedResize?(.moved(point)) == true { return }
+        // Shift is read off *this* event and passed on rather than remembered anywhere
+        // (ADR-0019 §D9, R-11). Latching it at `.began` would make it a mode the gesture
+        // enters, and a modifier the person is holding is one they can let go of: read
+        // per-event, the lock engages and releases mid-drag exactly as the hand does.
+        // Not Control: Control-click is macOS's system-wide secondary-click gesture and
+        // opens the contextual menu before this handler ever sees the drag (confirmed on
+        // screen, 2026-08-23).
+        if onEmbedResize?(.moved(point, constrained: event.modifierFlags.contains(.shift))) == true {
+            return
+        }
         super.mouseDragged(with: event)
     }
 

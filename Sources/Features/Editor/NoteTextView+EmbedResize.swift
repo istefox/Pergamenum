@@ -109,8 +109,10 @@ extension NoteTextView.Coordinator {
     /// for some drawn embed's picture whose spelling can carry a size at all - the
     /// coexistence rule with `selectEmbed(at:in:)`/`onClickInMargin`, ADR-0019 §D6, and §D7's
     /// CommonMark exclusion - `.moved` rewrites the pending overlay's frame through
-    /// `EmbedResize.resolved(written:natural:column:)`'s own clamp, and `.ended` takes the
-    /// overlay away and makes the one edit the whole gesture is worth.
+    /// `EmbedResize.resolved(written:natural:column:)`'s own clamp, and, when the event it
+    /// came from held Ctrl, locks the height to the natural ratio on top of that clamp
+    /// (§D9, R-11) - and `.ended` takes the overlay away and makes the one edit the whole
+    /// gesture is worth.
     ///
     /// Three overrides on `CompletingTextView` forward here and nothing else does, so the
     /// whole gesture is one method a test calls three times - which is the trade ADR-0019
@@ -123,7 +125,8 @@ extension NoteTextView.Coordinator {
     func resizeEmbed(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
         switch phase {
         case .began(let point): beginResize(at: point, in: textView)
-        case .moved(let point): continueResize(to: point, in: textView)
+        case .moved(let point, let constrained):
+            continueResize(to: point, constrained: constrained, in: textView)
         case .ended: endResize(in: textView)
         }
     }
@@ -155,7 +158,15 @@ extension NoteTextView.Coordinator {
 
     /// Moves the pending rectangle, and nothing else: not one character of the note is
     /// written between here and `.ended` (**R-02**).
-    private func continueResize(to point: CGPoint, in textView: NSTextView) -> Bool {
+    ///
+    /// `constrained` is the Ctrl state of the event that produced `point`, never of the one
+    /// that began the gesture (ADR-0019 §D9, R-11). It is read fresh on every call and
+    /// nothing about it is kept on `EmbedDrag`, so Ctrl pressed or let go halfway through a
+    /// drag takes effect on the very next mouse event instead of at the next press - which
+    /// is the whole difference between a modifier and a mode.
+    private func continueResize(
+        to point: CGPoint, constrained: Bool, in textView: NSTextView
+    ) -> Bool {
         guard var drag = embedDrag else { return false }
         // The delta from where the handle was *grabbed*, never the pointer's own distance
         // from the picture's corner: a press that landed six points inside the 22-point
@@ -169,11 +180,20 @@ extension NoteTextView.Coordinator {
         // past the margin and snapped back at release is a different gesture from one that
         // stops at the margin. `.both` rather than `.width`, because SPEC's scope has the
         // two dimensions move independently, so the height asked for is the height shown.
-        let size = EmbedResize.resolved(
+        let clamped = EmbedResize.resolved(
             written: .both(requested.width, requested.height),
             natural: drag.natural,
             column: EmbedResize.column(of: textView.textContainer)
         )
+        // R-11 last, and touching the height only: the width is whatever the clamp above
+        // resolved - R-05 composes with the lock rather than being replaced by it - and the
+        // height stops being the one the pointer asked for and becomes the one the
+        // rendition's ratio implies for *that* width. The order is the rule, not a
+        // preference: a ratio locked before the clamp would be locked to a width the margin
+        // was about to take away, and the rectangle would leave the ratio it was holding.
+        let size = constrained
+            ? EmbedResize.constrainedToNaturalRatio(clamped, natural: drag.natural)
+            : clamped
         drag.size = size
         drag.overlay.frame = CGRect(origin: drag.picture.origin, size: size)
         embedDrag = drag

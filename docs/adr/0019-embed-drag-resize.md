@@ -367,6 +367,57 @@ is a textual conflict and not a design one. See the Consequences.)*
    *"not a reason to decide differently; a reason not to claim the feature works until someone
    has clicked there."*
 
+**D9. Holding Shift during the drag locks the height to the picture's own aspect ratio, read live
+off the current event's modifier flags, not off the flags at `.began`.**
+
+Added after manual verification (2026-08-23): the free-aspect drag D6 describes is confirmed
+working, and the aspect-ratio lock is the one addition asked for on top of it, gated the same
+way every other modifier-driven behaviour in AppKit is - by asking the event, not by caching a
+decision made when the gesture started.
+
+`EmbedResize.Phase.moved(CGPoint)` gains a second associated value:
+`.moved(CGPoint, constrained: Bool)`. `CompletingTextView+Pasteboard.swift`'s `mouseDragged`
+reads `event.modifierFlags.contains(.shift)` on every event it receives and passes it through
+- so releasing Shift mid-drag reverts to free resizing on the very next `mouseDragged`, and
+pressing it partway through starts constraining from that point, both same-frame. Nothing is
+latched at `.began`: `resizeEmbed(.moved(point, constrained:), in:)` reads the flag fresh each
+call, exactly as it reads `point` fresh each call.
+
+**The ratio locked is the picture's natural aspect ratio** (`EmbedDrag.natural.height /
+EmbedDrag.natural.width`, already stored for every gesture since Task 6) - the same ratio
+`EmbedResize.resolved(written: nil, …)` already uses for an embed with no written size (R-06),
+so "Shift-drag" and "never-yet-resized" agree on what "proportional" means without a second
+constant anywhere. `continueResize(to:in:)` computes the unconstrained clamped width exactly as
+before (D6/D3's column-and-floor clamp is unconditional and unaffected), and when `constrained`
+is true, overrides the height to `(width * ratio).rounded()` **after** that clamp - so the width
+still obeys R-05's floor and column ceiling, and the height derived from it inherits both
+transitively rather than being clamped a second, independent time.
+
+**The overlay's `W × H` readout reflects the constrained pair while Shift is held**, since it
+draws `EmbedDrag.size` and nothing else - no separate code path for the label, so it cannot show
+a number the commit would disagree with.
+
+**At `.ended`, the commit is unchanged (D7): whatever `EmbedDrag.size` holds at release is what
+`EmbedResize.rewritten(run:to:natural:)` formats.** A constrained drag released while Shift is
+still held commits a size whose height is exactly proportional, which `suffix(for:natural:)`
+already recognises and writes as `|W` rather than `|WxH` (D7's "the suffix" paragraph) - so a
+Shift-constrained resize is indistinguishable in the note from an unconstrained one that happened
+to land on the same ratio. This ADR adds no new suffix form and no new field to what is written;
+Shift changes only what the pointer is allowed to reach during the gesture.
+
+**Rejected: latching the modifier at `.began`.** A user who decides mid-drag that they want the
+original proportions back would otherwise have to release the mouse and start over. Reading the
+event live costs nothing extra - `mouseDragged` already receives the event `resizeEmbed` needs
+the point from - and matches how a constrained drag and Option-drag-from-center behave
+throughout the rest of AppKit.
+
+**Rejected: Control.** The first implementation read `event.modifierFlags.contains(.control)`.
+On screen (2026-08-23) it never reached `mouseDragged` at all: Control-click is macOS's
+system-wide secondary-click gesture, so AppKit routes it to the contextual menu before this
+view's own event handling sees it. Shift carries no such system-level meaning over a drag and
+is the modifier already used for proportional resize elsewhere on the platform (Keynote,
+Pages), so the fix is a one-line change of which flag is read, not a new mechanism.
+
 ## Consequences
 
 - **The note gains characters it did not have, and that is the feature.** Every other transform

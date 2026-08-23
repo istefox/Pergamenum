@@ -177,7 +177,9 @@ import Testing
 
         let hitRect = EmbedResize.handleHitRect(in: box)
         #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
-        _ = coordinator.resizeEmbed(.moved(CGPoint(x: box.maxX + 20, y: box.maxY + 20)), in: textView)
+        _ = coordinator.resizeEmbed(
+            .moved(CGPoint(x: box.maxX + 20, y: box.maxY + 20), constrained: false), in: textView
+        )
 
         #expect(textView.string == before)
         #expect(textView.subviews.count == subviewsBefore + 1)
@@ -197,7 +199,9 @@ import Testing
 
         let hitRect = EmbedResize.handleHitRect(in: box)
         #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
-        _ = coordinator.resizeEmbed(.moved(CGPoint(x: box.minX + 10, y: box.minY + 10)), in: textView)
+        _ = coordinator.resizeEmbed(
+            .moved(CGPoint(x: box.minX + 10, y: box.minY + 10), constrained: false), in: textView
+        )
 
         let overlay = try #require(textView.subviews.last)
         #expect(overlay.frame.width == EmbedResize.minimumSide)
@@ -219,7 +223,7 @@ import Testing
         let hitRect = EmbedResize.handleHitRect(in: box)
         #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
         _ = coordinator.resizeEmbed(
-            .moved(CGPoint(x: box.minX + column + 500, y: box.minY + 20)), in: textView
+            .moved(CGPoint(x: box.minX + column + 500, y: box.minY + 20), constrained: false), in: textView
         )
 
         let overlay = try #require(textView.subviews.last)
@@ -241,9 +245,201 @@ import Testing
         let hitRect = EmbedResize.handleHitRect(in: box)
         #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
         let dragPoint = CGPoint(x: box.maxX + 20, y: box.maxY + 20)
-        _ = coordinator.resizeEmbed(.moved(dragPoint), in: textView)
+        _ = coordinator.resizeEmbed(.moved(dragPoint, constrained: false), in: textView)
         _ = coordinator.resizeEmbed(.ended(dragPoint), in: textView)
 
         #expect(textView.subviews.count == subviewsBefore)
+    }
+
+    // MARK: - Ctrl-constrained aspect-ratio lock (Task 10, ADR-0019 §D9, R-11)
+    //
+    // `EmbedResize.Phase.moved` now carries `constrained: Bool` (mechanical signature
+    // change), but nothing downstream reads it yet - `NoteTextView+EmbedResize.swift`'s
+    // `continueResize(to:in:)` still computes the same free-aspect resize regardless of
+    // the flag, and `CompletingTextView+Pasteboard.swift`'s `mouseDragged` still always
+    // passes `constrained: false`. Every test below that actually exercises the lock is
+    // expected to fail red - not to fail to compile - until the coder half of Task 10
+    // wires the natural-ratio override into `continueResize(to:in:)` and reads
+    // `event.modifierFlags.contains(.control)` in `mouseDragged`.
+
+    /// R-11's core claim: `.moved(p, constrained: true)`, after `.began` on a picture
+    /// whose natural size is not square, leaves `EmbedDrag.size` with a height that is
+    /// exactly the proportional height for the resolved width - `(width *
+    /// naturalRatio).rounded()` - even though `p` was chosen to imply a very different,
+    /// free-resize height (a large `dx`, a tiny `dy`). D9: "overrides the height to
+    /// `(width * ratio).rounded()` **after** that clamp".
+    @Test func movedWithConstrainedTrueLocksHeightToTheNaturalAspectRatio() async throws {
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        let drag = try #require(coordinator.embedDrag)
+        // The fixture's own PNG is written 40x30 (`EmbedEditorFixtures.writeImage`) -
+        // deliberately not square - but the ratio is read off `drag.natural` rather than
+        // assumed, since `ThumbnailStore`'s real render is what the gesture actually
+        // measures (`EmbedResizeCommitTests`' own fixtures make the same point).
+        #expect(drag.natural.width != drag.natural.height)
+        let ratio = drag.natural.height / drag.natural.width
+        let pictureFrame = drag.picture
+
+        // A wide, barely-taller drag: free resize would leave the height nowhere near
+        // proportional to the new width.
+        let p = CGPoint(x: began.x + 150, y: began.y + 5)
+        let column = EmbedResize.column(of: textView.textContainer)
+        let requestedWidth = pictureFrame.width + p.x - began.x
+        let requestedHeight = pictureFrame.height + p.y - began.y
+        let unconstrained = EmbedResize.resolved(
+            written: .both(requestedWidth, requestedHeight), natural: drag.natural, column: column
+        )
+        let expectedHeight = (unconstrained.width * ratio).rounded()
+        // Sanity on the test's own premise: free resize really would answer something
+        // else here, or this test could not distinguish "locked" from "not locked".
+        #expect(unconstrained.height != expectedHeight)
+
+        _ = coordinator.resizeEmbed(.moved(p, constrained: true), in: textView)
+
+        let resolved = try #require(coordinator.embedDrag?.size)
+        // The width clamp is unaffected by R-11 (D9: "composes with", not "instead of").
+        #expect(resolved.width == unconstrained.width)
+        #expect(resolved.height == expectedHeight)
+    }
+
+    /// R-11's regression guard: the very same `p`, on the very same gesture, with
+    /// `constrained: false` reproduces today's free-resize result exactly -
+    /// `EmbedResize.resolved(written: .both(...), ...)`'s own answer, unaltered. "R-11
+    /// adds a branch, it does not change the unconstrained path."
+    @Test func movedWithConstrainedFalseReproducesTheFreeResizeResultExactly() async throws {
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        let drag = try #require(coordinator.embedDrag)
+        let pictureFrame = drag.picture
+
+        let p = CGPoint(x: began.x + 150, y: began.y + 5)
+        let column = EmbedResize.column(of: textView.textContainer)
+        let requestedWidth = pictureFrame.width + p.x - began.x
+        let requestedHeight = pictureFrame.height + p.y - began.y
+        let unconstrained = EmbedResize.resolved(
+            written: .both(requestedWidth, requestedHeight), natural: drag.natural, column: column
+        )
+
+        _ = coordinator.resizeEmbed(.moved(p, constrained: false), in: textView)
+
+        #expect(coordinator.embedDrag?.size == unconstrained)
+    }
+
+    /// R-11's "not only at the moment the handle is grabbed": a sequence of
+    /// `.moved(p1, constrained: true)`, `.moved(p2, constrained: false)`,
+    /// `.moved(p3, constrained: true)` ends on the same size a single
+    /// `.moved(p3, constrained: true)` from a fresh `.began` at the same point would
+    /// produce - nothing about `p1`/`p2` is latched into how `p3` resolves, and the
+    /// constrained flag is read fresh on every call rather than cached from `.began`.
+    /// The second `.began` below is a clean re-grab, not a continuation:
+    /// `beginResize(at:in:)` calls `abandonResize()` first, so whatever the first
+    /// sequence left open is discarded without being committed.
+    @Test func constrainedStateIsReadFreshOnEveryMovedNotLatchedAtBegan() async throws {
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        let p1 = CGPoint(x: began.x + 40, y: began.y + 10)
+        let p2 = CGPoint(x: began.x + 90, y: began.y + 60)
+        let p3 = CGPoint(x: began.x + 150, y: began.y + 5)
+
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        _ = coordinator.resizeEmbed(.moved(p1, constrained: true), in: textView)
+        _ = coordinator.resizeEmbed(.moved(p2, constrained: false), in: textView)
+        _ = coordinator.resizeEmbed(.moved(p3, constrained: true), in: textView)
+        let sequenceResult = try #require(coordinator.embedDrag?.size)
+
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        _ = coordinator.resizeEmbed(.moved(p3, constrained: true), in: textView)
+        let singleCallResult = try #require(coordinator.embedDrag?.size)
+
+        #expect(sequenceResult == singleCallResult)
+    }
+
+    /// R-05 composes with R-11, it does not stand in for it: a constrained drag past the
+    /// right margin still clamps its width to `EmbedResize.column(of:)`'s own answer
+    /// (the existing floor/column clamp, unaffected by D9), and the height locked to the
+    /// natural ratio is computed from that already-clamped width, not from the
+    /// unclamped, past-the-margin request.
+    @Test func constrainedDragStillObeysTheColumnClampOnWidth() async throws {
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+        let column = EmbedResize.column(of: textView.textContainer)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+        let drag = try #require(coordinator.embedDrag)
+        let ratio = drag.natural.height / drag.natural.width
+        let expectedHeight = (column * ratio).rounded()
+
+        _ = coordinator.resizeEmbed(
+            .moved(CGPoint(x: box.minX + column + 500, y: box.minY + 20), constrained: true), in: textView
+        )
+
+        let resolved = try #require(coordinator.embedDrag?.size)
+        #expect(resolved.width == column)
+        #expect(resolved.height == expectedHeight)
+    }
+
+    /// D9's "no new suffix form": `.ended` after a `.moved(_, constrained: true)` commits
+    /// a size whose `EmbedResize.suffix(for:natural:)` is the bare `|W` form, because the
+    /// height the constrained drag ends on is, by construction, exactly the proportional
+    /// height for its width - indistinguishable in the note from any other resize that
+    /// happened to land on the natural ratio. The drag's own deltas (`dx: 150, dy: 5`)
+    /// are deliberately non-proportional, so an unconstrained commit would answer `|WxH`
+    /// instead - the failure this test is meant to catch before the lock exists.
+    @Test func endedAfterAConstrainedMovedCommitsABareWidthSuffixNotWidthByHeight() async throws {
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+
+        let dragPoint = CGPoint(x: began.x + 150, y: began.y + 5)
+        _ = coordinator.resizeEmbed(.moved(dragPoint, constrained: true), in: textView)
+        _ = coordinator.resizeEmbed(.ended(dragPoint), in: textView)
+
+        #expect(textView.string.hasPrefix("prima\n![[foto.png|"))
+        // No suffix in this fixture's alphabet other than the one this drag would write
+        // contains an "x" - `sizedNote`'s own `|300` doesn't either - so this is exactly
+        // "the suffix has no `x`-separated height part", not a coincidence of the prose
+        // around it.
+        #expect(!textView.string.contains("x"))
     }
 }
