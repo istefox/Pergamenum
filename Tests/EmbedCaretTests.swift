@@ -632,13 +632,22 @@ import Testing
 
         let hitRect = EmbedResize.handleHitRect(in: box)
         let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
-        let ratio = box.height / box.width
-        let finalWidth = box.width + 150
-        let finalHeight = (finalWidth * ratio).rounded()
-        let dx = finalWidth - box.width
-        let dy = finalHeight - box.height
-
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
+
+        // Ratio read off the overlay's own starting frame (`grabbed.picture`, what
+        // `beginResize(at:in:)` seeds it with) rather than `box`
+        // (`fragmentFrame(at:in:)`, the layout fragment): the two differ by a few points
+        // in height for this fixture, identical in width, so a ratio computed from `box`
+        // lands the proportional height only within a fraction of a point of what the
+        // gesture actually measures - a margin `suffix(for:natural:)`'s own `> 1` guard
+        // is not meant to be relied on this tightly.
+        let pictureFrame = try #require(textView.subviews.last).frame
+        let ratio = pictureFrame.height / pictureFrame.width
+        let finalWidth = pictureFrame.width + 150
+        let finalHeight = (finalWidth * ratio).rounded()
+        let dx = finalWidth - pictureFrame.width
+        let dy = finalHeight - pictureFrame.height
+
         for step in 1...3 {
             let t = CGFloat(step) / 3
             _ = coordinator.resizeEmbed(
@@ -666,24 +675,40 @@ import Testing
 
         let hitRect = EmbedResize.handleHitRect(in: box)
         let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
-        let ratio = box.height / box.width
-        let finalWidth = box.width + 150
+        #expect(coordinator.resizeEmbed(.began(began), in: textView))
+
+        // The gesture's own deltas are measured against `grabbed.picture`
+        // (`beginResize(at:in:)` seeds the overlay's frame with it verbatim), not `box`
+        // (`fragmentFrame(at:in:)`, the layout fragment) - the two differ by a few points
+        // in height for this fixture (the line's own descent below the attachment
+        // baseline), identical in width. Reading the overlay's own starting frame back
+        // here, rather than computing from `box`, keeps this test's arithmetic exactly
+        // proportional to what the production gesture actually measures.
+        let pictureFrame = try #require(textView.subviews.last).frame
+        let ratio = pictureFrame.height / pictureFrame.width
+        let finalWidth = pictureFrame.width + 150
         let proportionalHeight = (finalWidth * ratio).rounded()
         let finalHeight = proportionalHeight + 100
-        let dx = finalWidth - box.width
-        let dy = finalHeight - box.height
+        let dx = finalWidth - pictureFrame.width
+        let dy = finalHeight - pictureFrame.height
 
-        #expect(coordinator.resizeEmbed(.began(began), in: textView))
         for step in 1...4 {
             let t = CGFloat(step) / 4
             _ = coordinator.resizeEmbed(
                 .moved(CGPoint(x: began.x + dx * t, y: began.y + dy * t)), in: textView
             )
         }
+        // `.ended` writes `drag.size`, the last clamp `.moved` resolved - exactly the
+        // overlay's own frame right before `.ended` takes it away
+        // (`continueResize(to:in:)` sets both together). Read from there instead of
+        // trusting a second, independent computation of the same arithmetic, so this
+        // assertion tracks the real committed geometry rather than a copy of it that
+        // could drift.
+        let committed = try #require(textView.subviews.last).frame
         _ = coordinator.resizeEmbed(.ended(CGPoint(x: began.x + dx, y: began.y + dy)), in: textView)
 
-        let expectedWidth = Int(finalWidth.rounded())
-        let expectedHeight = Int(finalHeight.rounded())
+        let expectedWidth = Int(committed.width.rounded())
+        let expectedHeight = Int(committed.height.rounded())
         #expect(textView.string == "prima\n![[foto.png|\(expectedWidth)x\(expectedHeight)]]\ndopo\n")
     }
 
