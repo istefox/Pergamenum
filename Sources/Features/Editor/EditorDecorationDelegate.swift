@@ -262,13 +262,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // cannot.
         let attachment = EmbedAttachment()
         switch rendition {
-        case .drawn(let image): attachment.image = image
-        case .missing: attachment.image = Self.missingEmbedImage
+        case .drawn(let image):
+            attachment.image = image
+            // The written size and the handle are both a *picture's* affordances, and they
+            // are set in the one branch that has a picture. A `.missing` placeholder is
+            // refused by the same `guard case .drawn` the hit test uses, so the paint, the
+            // hit target and the drawn size cannot disagree (ADR-0019 §D8) - and a note
+            // that says `![[foto.png|900]]` about a file the vault no longer has draws the
+            // 28-point broken-image glyph at 28 points, not that glyph blown up to 900.
+            // `natural` for this branch is the placeholder's own size, and a `written` of
+            // nil is what makes `EmbedResize.resolved` hand it back untouched.
+            attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
+            attachment.handleColor = handleColor
+        case .missing:
+            attachment.image = Self.missingEmbedImage
         }
-        // Only a picture gets a handle: a `.missing` placeholder is refused by the same
-        // `guard case .drawn` the hit test uses, so the two cannot disagree (ADR-0019 §D8).
-        if case .drawn = rendition { attachment.handleColor = handleColor }
-        attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
         attachment.natural = attachment.image?.size ?? .zero
 
         // A substitution, not an insertion: one character out, one in, the paragraph's

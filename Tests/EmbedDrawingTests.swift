@@ -292,18 +292,28 @@ private func writePDF(named name: String, in root: URL, pageSize: CGSize = CGSiz
     private static func resolvedBounds(
         note: String, offset: Int, run: String, rendition: EmbedRendition
     ) throws -> CGRect {
+        try Self.attachment(note: note, offset: offset, run: run, rendition: rendition).attachmentBounds(
+            for: [:], location: anyTextLocation(), textContainer: Self.container(),
+            proposedLineFragment: .zero, position: .zero
+        )
+    }
+
+    /// The substituted paragraph's own `.attachment`, for the one case that has to assert
+    /// against the rendition's picture rather than against a number typed here: the
+    /// `.missing` placeholder's natural size is a private constant of the delegate, and a
+    /// test that hardcoded 28 would go quietly wrong the day the glyph is drawn at another
+    /// size.
+    private static func attachment(
+        note: String, offset: Int, run: String, rendition: EmbedRendition
+    ) throws -> NSTextAttachment {
         let marker = HiddenMarker(range: NSRange(location: 0, length: (run as NSString).length), kind: .embed)
         let delegate = EditorDecorationDelegate()
         delegate.apply(hiddenMarkers: [offset: [marker]], hidingMarkup: true)
         delegate.apply(embeds: [offset: rendition])
 
         let paragraph = try #require(substitutedParagraph(delegate, note: note, at: offset))
-        let attachment = try #require(
+        return try #require(
             paragraph.attributedString.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
-        )
-        return attachment.attachmentBounds(
-            for: [:], location: anyTextLocation(), textContainer: Self.container(),
-            proposedLineFragment: .zero, position: .zero
         )
     }
 
@@ -347,5 +357,31 @@ private func writePDF(named name: String, in root: URL, pageSize: CGSize = CGSiz
         )
         let expected = EmbedResize.resolved(written: nil, natural: natural.size, column: Self.column)
         #expect(bounds.size == expected)
+    }
+
+    /// A suffix on an embed whose file the vault does not have (ADR-0019 §D5/§D8: only a
+    /// picture is sized and only a picture gets a handle). The placeholder is a small fixed
+    /// glyph, and stretching it to a width somebody wrote for the *photograph* draws a
+    /// 20-point SF Symbol blown up some thirty times - which is what happened while
+    /// `written` was set before the rendition was looked at, since the delegate had already
+    /// re-read the run either way. The expectation is the placeholder's own picture, not a
+    /// number: `attachment.image` is exactly what the delegate put there.
+    @Test func aMissingRenditionIgnoresAWrittenSuffixAndKeepsThePlaceholdersNaturalSize() throws {
+        let note = "prima\n![[assente.png|900]]\ndopo\n"
+        let attachment = try Self.attachment(
+            note: note, offset: 6, run: "![[assente.png|900]]", rendition: .missing(name: "assente.png")
+        )
+        let placeholder = try #require(attachment.image?.size)
+        #expect(placeholder.width < EmbedResize.minimumSide) // a glyph, not a picture the clamp applies to
+        let bounds = attachment.attachmentBounds(
+            for: [:], location: anyTextLocation(), textContainer: Self.container(),
+            proposedLineFragment: .zero, position: .zero
+        )
+        #expect(bounds.size == placeholder)
+        // The size the suffix *would* have produced had it been read, named rather than
+        // typed: with this suite's 400-point column it is the column clamp, not 900, so an
+        // assertion against the literal 900 would have been green through the defect.
+        let stretched = EmbedResize.resolved(written: .width(900), natural: placeholder, column: Self.column)
+        #expect(bounds.size != stretched)
     }
 }
