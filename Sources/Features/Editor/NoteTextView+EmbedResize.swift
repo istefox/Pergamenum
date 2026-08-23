@@ -4,7 +4,7 @@ import SwiftUI
 /// A drawn embed's resize handle: where it is, and the drag that starts on it (ADR-0019:
 /// "A drawn embed is resized by dragging it, and the size is written into the note"). Plan
 /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`,
-/// Tasks 5 and 6.
+/// Tasks 5, 6 and 7.
 ///
 /// A `Coordinator` extension beside `NoteTextView+EmbedCaret.swift`, sharing its shape:
 /// `decoration(at:in:claimedBy:)` for the fragment walk,
@@ -66,8 +66,17 @@ extension NoteTextView.Coordinator {
             // *something* is drawn at this offset, and a placeholder is. The rendition is
             // what tells a picture from a placeholder, which is ADR-0019 §D8's one line on
             // top of the range lookup rather than a second copy of the lookup's own checks.
+            // `EmbedResize.isSizable(run:)` and not a second reading of the two spellings:
+            // `drawnEmbedRange` answers for both (`stillSpellsAnEmbed` accepts `![[…]]` and
+            // `![alt](…)` alike, which is right for the caret, the click and Backspace), and
+            // ADR-0019 §D7 is the one rule that tells them apart - a CommonMark embed draws,
+            // deletes and selects exactly as before and has no handle, because there is
+            // nowhere to put the answer. Asked here rather than at the commit so the press
+            // falls through to `selectEmbed(at:in:)` instead of starting a gesture that
+            // `rewritten(run:to:natural:)` would decline at `.ended`.
             guard case .drawn(let image) = embeds.renditions[paragraphStart],
                   let run = decorations.drawnEmbedRange(atParagraphStart: paragraphStart, in: text),
+                  EmbedResize.isSizable(run: text.substring(with: run)),
                   let attachmentLocation = content.location(
                       content.documentRange.location, offsetBy: run.location
                   ),
@@ -95,12 +104,13 @@ extension NoteTextView.Coordinator {
     }
 
     /// The drag itself (ADR-0019 §D6-§D7). Plan
-    /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`, Task 6:
-    /// `.began` claims a point only inside `EmbedResize.handleHitRect(in:)` for some drawn
-    /// embed's picture - the coexistence rule with `selectEmbed(at:in:)`/`onClickInMargin`,
-    /// ADR-0019 §D6 - `.moved` rewrites the pending overlay's frame through
+    /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`,
+    /// Tasks 6 and 7: `.began` claims a point only inside `EmbedResize.handleHitRect(in:)`
+    /// for some drawn embed's picture whose spelling can carry a size at all - the
+    /// coexistence rule with `selectEmbed(at:in:)`/`onClickInMargin`, ADR-0019 §D6, and §D7's
+    /// CommonMark exclusion - `.moved` rewrites the pending overlay's frame through
     /// `EmbedResize.resolved(written:natural:column:)`'s own clamp, and `.ended` takes the
-    /// overlay away.
+    /// overlay away and makes the one edit the whole gesture is worth.
     ///
     /// Three overrides on `CompletingTextView` forward here and nothing else does, so the
     /// whole gesture is one method a test calls three times - which is the trade ADR-0019
@@ -114,7 +124,7 @@ extension NoteTextView.Coordinator {
         switch phase {
         case .began(let point): beginResize(at: point, in: textView)
         case .moved(let point): continueResize(to: point, in: textView)
-        case .ended: endResize()
+        case .ended: endResize(in: textView)
         }
     }
 
@@ -124,8 +134,9 @@ extension NoteTextView.Coordinator {
         // pointer left the window, the app was switched away mid-drag, both named in
         // ADR-0019's Consequences as the class of defect this codebase's first drag brings
         // with it - would otherwise leave its rectangle painted over the note for good,
-        // and the next press is the one event certain to follow it.
-        _ = endResize()
+        // and the next press is the one event certain to follow it. Thrown away rather than
+        // committed - `abandonResize()`'s own comment says why.
+        abandonResize()
         guard let grabbed = grabbedEmbed(at: point, in: textView) else { return false }
         let overlay = EmbedResizeOverlay(
             frame: grabbed.picture, style: Self.overlayStyle(theme: parent.theme)
@@ -169,19 +180,72 @@ extension NoteTextView.Coordinator {
         return true
     }
 
-    /// Takes the rectangle away and forgets the gesture, answering false when there was
-    /// none in flight - which is what leaves an ordinary selection's own `mouseUp` to
-    /// `super` (§D6).
+    /// Takes the rectangle away and writes the size the gesture ended on, answering false
+    /// when there was no gesture - which is what leaves an ordinary selection's own
+    /// `mouseUp` to `super` (§D6).
     ///
-    /// **Task 6 stops here.** Resolving the final size into the note's own characters is
-    /// Task 7's single `replaceAtomically(_:with:in:)` (§D7), and it is why `EmbedDrag`
-    /// carries a `run` and a `size` that nothing reads yet: they are what that one edit
-    /// will be computed from, captured at the only moments they can be.
-    private func endResize() -> Bool {
-        guard let drag = embedDrag else { return false }
+    /// The size committed is `EmbedDrag.size`, the last clamp `.moved` resolved, and not
+    /// the release point: a gesture with no `.moved` at all has never resolved anything but
+    /// the picture's own current size, and that is precisely D6's zero-movement case - the
+    /// suffix it formats equals the one already written, `rewritten(run:to:natural:)`
+    /// answers nil, and the press behaves like a click on the picture.
+    private func endResize(in textView: NSTextView) -> Bool {
+        guard let drag = abandonResize() else { return false }
+        commit(drag, in: textView)
+        return true
+    }
+
+    /// The overlay taken away and the gesture forgotten, with **nothing written** - and the
+    /// drag handed back, so the one caller that means to write can.
+    ///
+    /// Separate from `endResize(in:)` because `.began`'s own recovery call must *not* write:
+    /// a gesture whose `mouseUp` never arrived (the pointer left the window, the app was
+    /// switched away mid-drag) is one ADR-0019's Consequences say ends in no write at all,
+    /// and committing it on the next press - against a `run` captured before whatever
+    /// happened in between - would turn a stranded rectangle into a stray edit somewhere in
+    /// the note.
+    @discardableResult
+    private func abandonResize() -> EmbedDrag? {
+        guard let drag = embedDrag else { return nil }
         drag.overlay.removeFromSuperview()
         embedDrag = nil
-        return true
+        return drag
+    }
+
+    /// ADR-0019 §D7's one edit, and R-03/R-04 with it: the run rewritten to carry the size
+    /// the drag ended on, through the single `replaceAtomically(_:with:in:)` the embed's
+    /// Backspace deletion already goes through - so a drag of one pixel and a drag of four
+    /// hundred produce the same one undoable step, because there is only ever one.
+    ///
+    /// **The range is asked for again rather than trusted.** `drag.run` was captured at
+    /// `.began` and R-02 guarantees nothing was written since, but a reload from disk or the
+    /// conflict banner's "Ricarica da disco" can move a note under a gesture, and a stale
+    /// range replaced wholesale is `replaceCharacters` over whatever prose now occupies those
+    /// offsets. `drawnEmbedRange(atParagraphStart:in:)` re-reads the live text and answers
+    /// nil unless a picture is still drawn there this instant - the same guard `selectEmbed`
+    /// and `claimsEmbedCommand` lean on, for the same reason.
+    ///
+    /// Nil from `rewritten(run:to:natural:)` is not a failure: it is the zero-movement case,
+    /// answered the way §D6 asks for - the run selected, exactly as a click on the picture
+    /// would have left it, and not one character written.
+    private func commit(_ drag: EmbedDrag, in textView: NSTextView) {
+        let text = textView.string as NSString
+        guard NSMaxRange(drag.run) <= text.length else { return }
+        let paragraph = text.paragraphRange(for: NSRange(location: drag.run.location, length: 0))
+        guard let run = decorations.drawnEmbedRange(atParagraphStart: paragraph.location, in: text)
+        else { return }
+        guard let rewritten = EmbedResize.rewritten(
+            run: text.substring(with: run), to: drag.size, natural: drag.natural
+        ) else {
+            textView.setSelectedRange(run)
+            return
+        }
+        guard replaceAtomically(run, with: rewritten, in: textView) else { return }
+        // Left on the rewritten run, which is where `selectEmbed(at:in:)` leaves a click and
+        // what keeps ADR-0018 §D5's rule that the caret never enters a drawn embed. After
+        // the write, never before: `didChangeText()` has just run the restyle chain, and a
+        // selection set ahead of it would be a selection into the text as it was.
+        textView.setSelectedRange(NSRange(location: run.location, length: (rewritten as NSString).length))
     }
 
     /// The overlay's colours and face, from the theme the view was built with - ADR-0019
@@ -208,21 +272,23 @@ extension NoteTextView.Coordinator {
     /// state that describes a picture and can disagree with the note is state nothing
     /// downstream would notice going wrong.
     struct EmbedDrag {
-        /// The embed's own run in the note's characters - the range Task 7's `.ended` will
-        /// replace. Captured at `.began` and safe to keep for the length of the gesture
-        /// precisely because R-02 writes nothing while it lasts, so no offset moves.
+        /// The embed's own run in the note's characters, as it stood at `.began` - what
+        /// `commit(_:in:)` finds the paragraph by, before asking `drawnEmbedRange` for the
+        /// range it actually replaces. Safe to keep for the length of the gesture precisely
+        /// because R-02 writes nothing while it lasts, so no offset moves under it.
         var run: NSRange
         /// The picture as it was drawn when the drag began, in the text view's own
         /// coordinate space: the overlay's origin, and the size every `.moved` adds its
         /// delta to.
         var picture: CGRect
         /// The rendition's own size, for `EmbedResize`'s aspect ratio - what tells `|W`
-        /// from `|WxH` when Task 7 formats the suffix.
+        /// from `|WxH` when `commit(_:in:)` formats the suffix.
         var natural: CGSize
         /// Where the press landed, so the rectangle follows the pointer rather than
         /// jumping to it.
         var grab: CGPoint
-        /// The clamped size the last `.moved` resolved, which is what Task 7 writes.
+        /// The clamped size the last `.moved` resolved - what `.ended` writes, and, for a
+        /// gesture that never moved at all, the picture's own size as it was drawn.
         var size: CGSize
         /// The rectangle on screen. Held here rather than found again by position in
         /// `textView.subviews`: a text view's subviews are not this file's to count.

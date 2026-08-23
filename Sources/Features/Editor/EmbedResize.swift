@@ -68,6 +68,21 @@ enum EmbedResize {
         return parsed(suffix: suffix)
     }
 
+    /// Whether a size could be written into `run` at all - the wikilink spelling, with or
+    /// without a suffix already on it. ADR-0019 §D7: `![alt](file.est)` draws exactly as it
+    /// does today and gets no handle, because Obsidian's verified sizing syntax exists only
+    /// for `![[…]]` and SPEC's scope forbids inventing a second one.
+    ///
+    /// **This is the gate `.began` asks before it claims a press**
+    /// (`NoteTextView+EmbedResize.swift`), and it goes through the same `wikilink(inRun:)`
+    /// `rewritten(run:to:natural:)` does on purpose: a handle offered on a run the commit
+    /// would then refuse is a gesture that ends in nothing, which reads as a broken drag
+    /// rather than as a spelling that has no size syntax. `written(inRun:)` cannot answer
+    /// this - it returns nil for a bare `![[foto.png]]` too, and that one *is* resizable.
+    static func isSizable(run: String) -> Bool {
+        wikilink(inRun: run) != nil
+    }
+
     /// ADR-0019 §D3's one clamp, called from every one of its three sites: no written
     /// size resolves `natural` width-clamped to `column` with height scaled
     /// proportionally; `.width` clamps to `[minimumSide, column]` with height scaled
