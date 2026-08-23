@@ -85,6 +85,18 @@ final class CompletingTextView: NSTextView {
     /// owner, and a closure makes that owner's identity a non-issue.
     var claimsCommand: ((Selector) -> Bool)?
 
+    /// The three halves of a drag - press, move, release - offered to a drawn embed's
+    /// resize handle before anything else does anything with them; returns true when the
+    /// gesture took it (ADR-0019 §D6). Set by `NoteTextView.wire(_:to:)` to
+    /// `resizeEmbed(_:in:)`, the same closure shape `onClickInMargin` and `claimsCommand`
+    /// already have and for the reason `claimsCommand`'s own comment gives.
+    ///
+    /// **This view knows nothing about the gesture beyond forwarding it**, which is why
+    /// there is one closure and not three: where a drag has got to is state, it belongs to
+    /// the `Coordinator` that answers here, and a text view holding half of it would be a
+    /// second place for the same gesture to be in.
+    var onEmbedResize: ((EmbedResize.Phase) -> Bool)?
+
     /// True where the caret is in one of the three contexts that offer candidate strings
     /// rather than commands.
     ///

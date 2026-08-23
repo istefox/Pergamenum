@@ -34,6 +34,14 @@ import Testing
 // glyph, whether `attachmentBoundsForAttributes:...` is actually consulted for a
 // substituted paragraph, whether a 0.01pt trailing newline still breaks the line, and
 // whether `NSTextView.isRichText = false` (`NoteTextView.swift:98`) gets in the way.
+//
+// Extended for ADR-0019 D8 probe 1 (plan
+// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`, Task 1):
+// probe 6 above measured that `attachmentBounds(...)` *fires*; it never measured that a
+// returned rect different from `image.size` is honoured. `LoggingAttachment.forcedBounds`
+// stands in for `EmbedAttachment.attachmentBounds` answering
+// `EmbedResize.resolved(written:natural:column:)` before either type exists, checked one
+// content type at a time (R-01, R-09).
 
 // MARK: - The instrument under test, local to the probe
 
@@ -42,6 +50,13 @@ import Testing
 private final class LoggingAttachment: NSTextAttachment, @unchecked Sendable {
     nonisolated(unsafe) private(set) var boundsQueries = 0
     nonisolated(unsafe) private(set) var imageQueries = 0
+    /// ADR-0019 D8 probe 1: when set, `attachmentBounds(...)` answers this rect instead of
+    /// asking `super`, standing in for `EmbedAttachment.attachmentBounds` answering
+    /// `EmbedResize.resolved(written:natural:column:)` before that type exists.
+    nonisolated(unsafe) var forcedBounds: CGSize?
+    /// The bounds probe 1's second half checks: the same non-default rect must reach the
+    /// paint call, not only the layout one.
+    nonisolated(unsafe) private(set) var lastImageBounds: CGRect?
 
     override func attachmentBounds(
         for attributes: [NSAttributedString.Key: Any],
@@ -51,6 +66,9 @@ private final class LoggingAttachment: NSTextAttachment, @unchecked Sendable {
         position: CGPoint
     ) -> CGRect {
         boundsQueries += 1
+        if let forcedBounds {
+            return CGRect(origin: .zero, size: forcedBounds)
+        }
         return super.attachmentBounds(
             for: attributes, location: location, textContainer: textContainer,
             proposedLineFragment: proposedLineFragment, position: position
@@ -64,6 +82,7 @@ private final class LoggingAttachment: NSTextAttachment, @unchecked Sendable {
         textContainer: NSTextContainer?
     ) -> NSImage? {
         imageQueries += 1
+        lastImageBounds = bounds
         return super.image(for: bounds, attributes: attributes, location: location, textContainer: textContainer)
     }
 }
@@ -479,5 +498,72 @@ private func hasDarkPixel(_ bitmap: NSBitmapImageRep, threshold: CGFloat = 0.45)
         // property that governs the real backing store.
         #expect(plainAttachment.boundsQueries > 0)
         #expect(plainFragment?.layoutFragmentFrame.height == richFragment?.layoutFragmentFrame.height)
+    }
+
+    // MARK: ADR-0019 D8 probe 1 - a non-default `attachmentBounds` return really sizes
+    // the line (R-01, R-09), one content type each. Gates Tasks 3, 5 and 6: failing
+    // either sends D2's rejected `attachment.bounds` route out next.
+
+    @Test func aNonDefaultAttachmentBoundsReallySizesTheLineForAnImage() {
+        let natural = CGSize(width: 64, height: 48)
+        let forced = CGSize(width: 200, height: 150)
+
+        func fragment(forcedBounds: CGSize?) -> (LoggingAttachment, NSTextLayoutFragment?) {
+            let attachment = LoggingAttachment(data: nil, ofType: nil)
+            attachment.image = syntheticImage(.systemRed, size: natural)
+            attachment.forcedBounds = forcedBounds
+            let delegate = AttachmentProbeDelegate(
+                paragraphRange: Self.embedParagraphRange, attachmentOffset: 0, attachment: attachment,
+                collapsedRange: Self.collapsedRange, usesObjectReplacementCharacter: true
+            )
+            let layout = layoutFragments(text: Self.note, delegate: delegate).fragments
+                .first { $0.offset == Self.embedOffset }?.layout
+            return (attachment, layout)
+        }
+
+        let (_, unforcedFragment) = fragment(forcedBounds: nil)
+        let (forcedAttachment, forcedFragment) = fragment(forcedBounds: forced)
+
+        // Measured: unforced (natural 64x48 image) fragment height == 51.0pt, forced
+        // (200x150) fragment height == 153.0pt - both 3pt over the raw image height because
+        // the layout fragment adds the paragraph's own line spacing on top of the attachment.
+        let unforcedHeight = unforcedFragment?.layoutFragmentFrame.height ?? 0
+        let forcedHeight = forcedFragment?.layoutFragmentFrame.height ?? 0
+        #expect(forcedHeight > unforcedHeight)
+
+        // Draw once so `image(for:bounds:...)` actually runs and records what it was handed.
+        if let forcedFragment { _ = rasterize(forcedFragment) }
+        #expect(forcedAttachment.lastImageBounds?.size == forced)
+    }
+
+    @Test func aNonDefaultAttachmentBoundsReallySizesTheLineForAPDFFirstPage() throws {
+        let thumbnail = try #require(syntheticPDFFirstPageThumbnail(.systemBlue))
+        let forced = CGSize(width: 200, height: 150)
+
+        func fragment(forcedBounds: CGSize?) -> (LoggingAttachment, NSTextLayoutFragment?) {
+            let attachment = LoggingAttachment(data: nil, ofType: nil)
+            attachment.image = thumbnail
+            attachment.forcedBounds = forcedBounds
+            let delegate = AttachmentProbeDelegate(
+                paragraphRange: Self.embedParagraphRange, attachmentOffset: 0, attachment: attachment,
+                collapsedRange: Self.collapsedRange, usesObjectReplacementCharacter: true
+            )
+            let layout = layoutFragments(text: Self.note, delegate: delegate).fragments
+                .first { $0.offset == Self.embedOffset }?.layout
+            return (attachment, layout)
+        }
+
+        let (_, unforcedFragment) = fragment(forcedBounds: nil)
+        let (forcedAttachment, forcedFragment) = fragment(forcedBounds: forced)
+
+        // Measured: unforced (thumbnail natural 96x67.2) fragment height == 70.0pt, forced
+        // (200x150) fragment height == 153.0pt - the same 3pt line-spacing addition as the
+        // image test above, on top of a different natural height.
+        let unforcedHeight = unforcedFragment?.layoutFragmentFrame.height ?? 0
+        let forcedHeight = forcedFragment?.layoutFragmentFrame.height ?? 0
+        #expect(forcedHeight > unforcedHeight)
+
+        if let forcedFragment { _ = rasterize(forcedFragment) }
+        #expect(forcedAttachment.lastImageBounds?.size == forced)
     }
 }

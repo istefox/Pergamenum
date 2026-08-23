@@ -52,6 +52,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// The colour a drawn embed's resize handle is painted in (ADR-0019 §D5), pushed in
+    /// from a token the same way `badgeColor` above is and handed on to `EmbedAttachment`.
+    nonisolated(unsafe) var handleColor: NSColor = .secondaryLabelColor
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
@@ -249,11 +252,32 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let attachmentRange = NSRange(location: marker.range.location, length: 1)
         let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
 
-        let attachment = NSTextAttachment()
+        // An `EmbedAttachment` rather than a plain `NSTextAttachment`, so the picture is
+        // drawn at the size the run itself asks for (ADR-0019 §D2). Both facts it needs
+        // are already here and neither is a new input: the run's own text is the exact
+        // substring `stillSpellsAnEmbed` just re-read above, and the natural size is the
+        // rendition's own picture - the placeholder's, for `.missing`. This object still
+        // learns nothing about the container or the column; `attachmentBounds` reads those
+        // from the live `NSTextContainer` at layout time, which is why it can, and this
+        // cannot.
+        let attachment = EmbedAttachment()
         switch rendition {
-        case .drawn(let image): attachment.image = image
-        case .missing: attachment.image = Self.missingEmbedImage
+        case .drawn(let image):
+            attachment.image = image
+            // The written size and the handle are both a *picture's* affordances, and they
+            // are set in the one branch that has a picture. A `.missing` placeholder is
+            // refused by the same `guard case .drawn` the hit test uses, so the paint, the
+            // hit target and the drawn size cannot disagree (ADR-0019 §D8) - and a note
+            // that says `![[foto.png|900]]` about a file the vault no longer has draws the
+            // 28-point broken-image glyph at 28 points, not that glyph blown up to 900.
+            // `natural` for this branch is the placeholder's own size, and a `written` of
+            // nil is what makes `EmbedResize.resolved` hand it back untouched.
+            attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
+            attachment.handleColor = handleColor
+        case .missing:
+            attachment.image = Self.missingEmbedImage
         }
+        attachment.natural = attachment.image?.size ?? .zero
 
         // A substitution, not an insertion: one character out, one in, the paragraph's
         // own length unmoved - `NSTextContentManager.h:120`'s own constraint, the same one

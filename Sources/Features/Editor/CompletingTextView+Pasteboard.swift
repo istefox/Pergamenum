@@ -14,8 +14,40 @@ extension CompletingTextView {
     /// the caret would jump every time somebody meant to follow the note.
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // The resize handle first, and the order is load-bearing (ADR-0019 §D6):
+        // `selectEmbed(at:in:)`, which `onClickInMargin` reaches next, claims the whole
+        // picture's frame - asked first it would swallow the corner, and the handle would
+        // be a square that selects. Asked second it answers exactly as it does today,
+        // because `.began` claims a 22-point corner square and declines everywhere else.
+        if onEmbedResize?(.began(point)) == true { return }
         if onClickInMargin?(point) == true { return }
         super.mouseDown(with: event)
+    }
+
+    /// The middle and the end of the one drag this editor has (ADR-0019 §D6).
+    ///
+    /// Both fall through to `super` when unclaimed, and unclaimed is the ordinary case:
+    /// `onEmbedResize` answers false whenever no resize is in flight, so selecting text by
+    /// dragging is untouched by either override.
+    override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        // Shift is read off *this* event and passed on rather than remembered anywhere
+        // (ADR-0019 §D9, R-11). Latching it at `.began` would make it a mode the gesture
+        // enters, and a modifier the person is holding is one they can let go of: read
+        // per-event, the lock engages and releases mid-drag exactly as the hand does.
+        // Not Control: Control-click is macOS's system-wide secondary-click gesture and
+        // opens the contextual menu before this handler ever sees the drag (confirmed on
+        // screen, 2026-08-23).
+        if onEmbedResize?(.moved(point, constrained: event.modifierFlags.contains(.shift))) == true {
+            return
+        }
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if onEmbedResize?(.ended(point)) == true { return }
+        super.mouseUp(with: event)
     }
 
     /// Pasting a URL over a selection writes a markdown link (SPEC §5); pasting a

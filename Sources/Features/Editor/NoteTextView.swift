@@ -208,6 +208,15 @@ struct NoteTextView: NSViewRepresentable {
             guard let textView else { return false }
             return coordinator.claimsEmbedCommand(selector, in: textView)
         }
+        // A drag on a drawn embed's resize handle (ADR-0019 §D6) - closed over `textView`
+        // weakly, exactly as `claimsCommand` above is, and for the same reason: the
+        // gesture needs the live layout, which only the view has, and the closure outlives
+        // nothing it holds. Offered the press *before* the chain below, which
+        // `CompletingTextView.mouseDown(with:)` is where it is decided.
+        textView.onEmbedResize = { [weak textView] phase in
+            guard let textView else { return false }
+            return coordinator.resizeEmbed(phase, in: textView)
+        }
         // Three decorations, asked in turn: whoever claims the click keeps it. They
         // cannot both claim one - a folded heading's line is not a transclusion's line,
         // and neither is a drawn embed's.

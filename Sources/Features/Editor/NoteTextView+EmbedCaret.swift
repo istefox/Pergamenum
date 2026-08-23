@@ -60,7 +60,7 @@ extension NoteTextView.Coordinator {
             guard let range = EmbedNavigation.deletionRange(
                 selection: selection, direction: direction, drawnRuns: runs, textLength: text.length
             ) else { return false }
-            return deleteAtomically(range, in: textView)
+            return replaceAtomically(range, with: "", in: textView)
         }
     }
 
@@ -89,13 +89,24 @@ extension NoteTextView.Coordinator {
     /// `endEditing`/`didChangeText()` after, and a stale range - the document moved on
     /// since `range` was computed - skipped rather than trusted, even though this call
     /// is synchronous end to end and the discipline is the same regardless.
-    private func deleteAtomically(_ range: NSRange, in textView: NSTextView) -> Bool {
+    ///
+    /// **The only mechanism either of this feature's two writes may use.** Backspace over
+    /// a drawn embed calls it with `""` (ADR-0018 slice 3, Step 4) and the resize gesture's
+    /// `mouseUp` calls it with the run rewritten to carry a size suffix (ADR-0019 §D7);
+    /// generalising the deletion rather than writing a second edit path is what makes R-04
+    /// - exactly one undo step per gesture, whatever its length - a property of there being
+    /// only one edit rather than a rule someone has to keep. No `insertText`, no undo group
+    /// opened by hand, and never a write through `parent.text`, which is the far end of the
+    /// chain `didChangeText()` starts rather than a way into it.
+    func replaceAtomically(_ range: NSRange, with replacement: String, in textView: NSTextView) -> Bool {
         let length = (textView.string as NSString).length
         guard NSMaxRange(range) <= length,
-              textView.shouldChangeText(inRanges: [NSValue(range: range)], replacementStrings: [""])
+              textView.shouldChangeText(
+                  inRanges: [NSValue(range: range)], replacementStrings: [replacement]
+              )
         else { return false }
         textView.textStorage?.beginEditing()
-        textView.textStorage?.replaceCharacters(in: range, with: "")
+        textView.textStorage?.replaceCharacters(in: range, with: replacement)
         textView.textStorage?.endEditing()
         textView.didChangeText()
         return true
@@ -127,13 +138,33 @@ extension NoteTextView.Coordinator {
                       content.documentRange.location, offsetBy: run.location
                   )
             else { return false }
-            let local = fragment.frameForTextAttachment(at: attachmentLocation)
-            guard !local.isEmpty else { return false }
-            let frame = fragment.layoutFragmentFrame
-            let inContainer = local.offsetBy(dx: frame.minX, dy: frame.minY)
-            guard inContainer.contains(Self.inContainer(point, of: textView)) else { return false }
+            guard let picture = Self.drawnPictureFrame(at: attachmentLocation, in: fragment),
+                  picture.contains(Self.inContainer(point, of: textView))
+            else { return false }
             textView.setSelectedRange(run)
             return true
         }
+    }
+
+    /// A drawn embed's picture, in the text container's own coordinates, or nil when the
+    /// attachment at `location` occupies no space in `fragment` - which is what a
+    /// paragraph that is not drawing a picture answers.
+    ///
+    /// Extracted rather than written twice: `handleRect(forEmbedAt:in:)`
+    /// (`NoteTextView+EmbedResize.swift`, ADR-0019 §D6) needs the same frame the click
+    /// above hit-tests against, and a handle whose corner disagreed with the picture's
+    /// own corner by one rounding of the same two additions is the defect that would be
+    /// hardest to see and hardest to explain. The two spaces are the same pair
+    /// `TranscludedLineFragment.renditionFrame` and `FoldedHeadingFragment.badgeFrame(at:)`
+    /// already bridge: `frameForTextAttachmentAtLocation:` answers in the fragment's own
+    /// coordinate system (its header, verbatim) and `layoutFragmentFrame` is already in
+    /// the container's.
+    static func drawnPictureFrame(
+        at location: any NSTextLocation, in fragment: NSTextLayoutFragment
+    ) -> CGRect? {
+        let local = fragment.frameForTextAttachment(at: location)
+        guard !local.isEmpty else { return nil }
+        let frame = fragment.layoutFragmentFrame
+        return local.offsetBy(dx: frame.minX, dy: frame.minY)
     }
 }
