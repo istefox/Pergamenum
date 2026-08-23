@@ -60,6 +60,13 @@ extension NoteTextView {
         /// inline: filling it calls `ThumbnailStore`, an actor, and that delegate cannot
         /// be `@MainActor` at all (Step 2).
         let embeds = EmbedTable()
+        /// The embed resize drag in flight, or nil when there is none (ADR-0019 §D6:
+        /// the gesture's state lives here rather than on the text view, which owns no
+        /// decoration's state and knows about none of them). Not private for the same
+        /// reason as `lastRenditions` and `lastRevealed` above: the three phases that
+        /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
+        /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
+        var embedDrag: EmbedDrag?
 
         init(parent: NoteTextView) {
             self.parent = parent
