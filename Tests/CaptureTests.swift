@@ -35,7 +35,9 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     #expect(try Destination.named("note", folder: nil) == .newNote(folder: nil))
     #expect(try Destination.named("nota", folder: "01 Progetti") == .newNote(folder: "01 Progetti"))
-    #expect(try Destination.named("task", folder: nil) == .task)
+    #expect(try Destination.named("task", folder: nil) == .task(note: nil))
+    #expect(try Destination.named("task:00 Inbox/Capture.md", folder: nil)
+        == .task(note: "00 Inbox/Capture.md"))
     #expect(try Destination.named("oggi", folder: nil) == .today)
     #expect(try Destination.named("today", folder: nil) == .today)
     #expect(try Destination.named("note:Calendar/20260811.md", folder: nil)
@@ -139,12 +141,26 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     }
     // On a task they are exactly what they say.
     let summary = try VaultAPI.capture(
-        session, to: .task, text: "Richiamare Rossi", scheduled: "2026-08-20", due: "2026-08-25"
+        session, to: .task(note: nil), text: "Richiamare Rossi", scheduled: "2026-08-20", due: "2026-08-25"
     )
     let onDisk = try String(
         contentsOf: vault.root.appending(path: summary.path), encoding: .utf8
     )
     #expect(onDisk.contains("- [ ] Richiamare Rossi >2026-08-20 !2026-08-25"))
+}
+
+@MainActor
+@Test func aTaskCapturedWithANoteGoesThereInsteadOfTheInbox() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try VaultAPI.capture(
+        session, to: .task(note: "Nota.md"), text: "Ricontrollare la curva"
+    )
+    #expect(summary.path == "Nota.md")
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
+    #expect(onDisk.contains("- [ ] Ricontrollare la curva"))
 }
 
 @MainActor

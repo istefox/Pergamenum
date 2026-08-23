@@ -16,17 +16,19 @@ struct CapturePanelView: View {
 
     @State private var focusRequest = 0
     @State private var isChoosingNote = false
+    @State private var isChoosingFolder = false
     @State private var openPanel: DatePanel?
 
     private enum DatePanel: Hashable { case scheduled, due }
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            destinationBar
+            targetRow
             field
             if controller.destination.takesDates { dateChips }
-            if controller.destination == .existing { notePicker }
             if let outcome = controller.outcome { outcomeRow(outcome) }
+            Divider().overlay(theme.color(.borderSubtle))
+            destinationIcons
             footer
         }
         .padding(theme.spacing(.m))
@@ -38,12 +40,30 @@ struct CapturePanelView: View {
         // records: SwiftUI hands focus back to a TextField by selecting all of it.
         .onChange(of: openPanel) { _, now in if now == nil { focusRequest += 1 } }
         .onChange(of: isChoosingNote) { _, now in if !now { focusRequest += 1 } }
+        .onChange(of: isChoosingFolder) { _, now in if !now { focusRequest += 1 } }
         .onExitCommand(perform: onClose)
     }
 
     // MARK: Destinations
 
-    private var destinationBar: some View {
+    /// Where the capture is actually going, above the text - the destination
+    /// dropdown Craft's Quick Entry puts at the top of its own panel, rather than
+    /// buried behind a click nobody makes until they wonder where the text went.
+    @ViewBuilder
+    private var targetRow: some View {
+        switch controller.destination {
+        case .note: folderPicker
+        case .task, .existing: notePicker
+        case .today: EmptyView()
+        }
+    }
+
+    /// The four destinations as a compact icon rail, Craft's mode row moved to the
+    /// bottom of the panel. The label and the shortcut digit that used to sit beside
+    /// each icon are gone - `targetRow` and `field`'s placeholder already say which
+    /// destination is active, so dropping them here is not losing the information,
+    /// only where it is said. `.help` keeps the name one hover away.
+    private var destinationIcons: some View {
         HStack(spacing: theme.spacing(.xs)) {
             ForEach(Array(CaptureController.Destination.allCases.enumerated()), id: \.element) { index, item in
                 let isCurrent = item == controller.destination
@@ -51,22 +71,46 @@ struct CapturePanelView: View {
                     controller.destination = item
                     focusRequest += 1
                 } label: {
-                    HStack(spacing: theme.spacing(.xs)) {
-                        Image(systemName: item.symbol)
-                        Text(item.title).themedText(.caption, color: isCurrent ? .textPrimary : .textSecondary)
-                        Text("⌘\(index + 1)").themedText(.caption, color: .textTertiary)
-                    }
-                    .foregroundStyle(theme.color(isCurrent ? .textPrimary : .textSecondary))
-                    .padding(.horizontal, theme.spacing(.s))
-                    .padding(.vertical, theme.spacing(.xs))
-                    .background(isCurrent ? theme.color(.accentMuted) : .clear)
-                    .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+                    Image(systemName: item.symbol)
+                        .foregroundStyle(theme.color(isCurrent ? .textPrimary : .textTertiary))
+                        .frame(width: 26, height: 26)
+                        .background(isCurrent ? theme.color(.accentMuted) : .clear)
+                        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 .accessibilityIdentifier("capture-destination-\(item.rawValue)")
+                .help("\(item.title) — ⌘\(index + 1)")
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: Folder (Nota nuova)
+
+    /// A `Button` + popover, not a `Menu`: `Menu`'s `.borderlessButton` style draws its
+    /// closed-state label at the system menu font regardless of any `.font`/`themedText`
+    /// applied to it - confirmed on screen, "00 Inbox" here read visibly smaller than
+    /// `notePicker`'s "Inbox" even though both asked for the same `.caption` token. A
+    /// plain button popover is what `notePicker` already uses and already renders
+    /// correctly, so this is the same mechanism rather than a second one to keep in sync.
+    private var folderPicker: some View {
+        Button { isChoosingFolder = true } label: {
+            HStack(spacing: theme.spacing(.xs)) {
+                Image(systemName: "folder")
+                Text(controller.folder ?? VaultAPI.CaptureDestination.defaultFolder)
+                    .themedText(.caption, color: .textTertiary)
+                Image(systemName: "chevron.down").font(.caption2)
+            }
+            .foregroundStyle(theme.color(.textTertiary))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("capture-folder")
+        .popover(isPresented: $isChoosingFolder) {
+            CaptureFolderPicker(session: session) { folder in
+                controller.folder = folder
+                isChoosingFolder = false
+            }
         }
     }
 
@@ -137,10 +181,10 @@ struct CapturePanelView: View {
         Button { isChoosingNote = true } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: "doc.text")
-                Text(chosenNoteTitle).themedText(.caption, color: .textSecondary)
+                Text(chosenNoteTitle).themedText(.caption, color: .textTertiary)
                 Image(systemName: "chevron.down").font(.caption2)
             }
-            .foregroundStyle(theme.color(.textSecondary))
+            .foregroundStyle(theme.color(.textTertiary))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("capture-note")
@@ -152,8 +196,13 @@ struct CapturePanelView: View {
         }
     }
 
+    /// Nil is not the same absence for the two destinations that share this row: for
+    /// `.task` it is the fixed inbox note, a default that already works; for
+    /// `.existing` it is a choice not yet made, and `capture()` refuses it.
     private var chosenNoteTitle: String {
-        guard let path = controller.notePath else { return "Scegli una nota…" }
+        guard let path = controller.notePath else {
+            return controller.destination == .task ? "Inbox" : "Scegli una nota…"
+        }
         return NoteName.title(fromFileName: (path as NSString).lastPathComponent)
     }
 
@@ -210,6 +259,36 @@ struct CapturePanelView: View {
 
 /// The note to append to, chosen by typing. The quick switcher's fuzzy match over the
 /// index, which is the same way every other "which note" question in the app is asked.
+/// The folder a new note lands in, chosen the same way `CaptureNotePicker` chooses a
+/// note: a button opening a popover, not a `Menu` (see `folderPicker`'s own comment).
+private struct CaptureFolderPicker: View {
+    @Environment(\.theme) private var theme
+    let session: VaultSession?
+    let onChoose: (String?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { onChoose(nil) } label: {
+                Text(VaultAPI.CaptureDestination.defaultFolder)
+                    .themedText(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            ForEach(session?.folders ?? [], id: \.self) { folder in
+                Button { onChoose(folder) } label: {
+                    Text(folder)
+                        .themedText(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, theme.spacing(.xs))
+            }
+        }
+        .padding(theme.spacing(.s))
+        .frame(width: 220)
+    }
+}
+
 private struct CaptureNotePicker: View {
     @Environment(\.theme) private var theme
     let session: VaultSession?

@@ -11,7 +11,7 @@ import SwiftUI
 /// able to capture without leaving what you are doing.
 @MainActor
 final class CapturePanel {
-    private var panel: NSPanel?
+    private var panel: EscapableCapturePanel?
     private let controller: CaptureController
 
     /// Read when the panel is shown rather than held, so a vault opened after launch is
@@ -88,17 +88,28 @@ final class CapturePanel {
         .environment(\.theme, theme())
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makePanel() -> EscapableCapturePanel {
+        let panel = EscapableCapturePanel(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 160),
             // `.nonactivatingPanel` is the one that matters: without it, showing the
             // panel brings Pergamenum forward and the app the user was in loses focus.
-            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
+            // No `.titled`: a titled window reserves titlebar height even with the
+            // title and buttons hidden, and `setContentSize(_:)` does not subtract
+            // it - the SwiftUI content ended up shorter than the window, leaving an
+            // empty strip of raw panel background above the card. A borderless panel
+            // has no titlebar to reserve space for, so the content fills the window.
+            styleMask: [.nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
+        // A borderless window is opaque and square by default - `.titled` was what
+        // gave it macOS's own rounded corners, along with the reserved titlebar
+        // height. Without `.titled`, the window itself has to go transparent so only
+        // `CapturePanelView`'s own rounded, shadowed card shows - otherwise the card
+        // floats inside a square, opaque frame the same colour as the desktop behind
+        // it, which reads as "a rectangle with a smaller rounded rectangle in it".
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.isMovableByWindowBackground = true
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -109,9 +120,7 @@ final class CapturePanel {
         // full-screen app. Whether this is enough here is a thing to try, not to assume.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isReleasedWhenClosed = false
-        panel.standardWindowButton(.closeButton)?.isHidden = true
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.onDismiss = { [weak self] in self?.hide() }
         return panel
     }
 
@@ -129,5 +138,35 @@ final class CapturePanel {
             x: frame.midX - size.width / 2,
             y: frame.midY + frame.height / 6 - size.height / 2
         ))
+    }
+}
+
+/// A panel that closes on Escape and can always reclaim keyboard focus with a click.
+///
+/// `CapturePanelView`'s `.onExitCommand` was the first attempt at Escape, and it is
+/// silent: with the composer's `ComposerTextField` holding first responder (an
+/// `NSTextField`, not a SwiftUI view), `cancelOperation:` reaches the field's editor
+/// first, and an `NSTextField` field editor with nothing further to cancel does not
+/// forward the action up the responder chain to where SwiftUI's exit-command handling
+/// is listening - `.onExitCommand` never fires. Overriding `cancelOperation(_:)` here
+/// catches it at the window itself, upstream of that dead end, regardless of which view
+/// happens to have focus.
+///
+/// `canBecomeKey` matters for a different reason, found on screen: dropping `.titled`
+/// from the panel's `styleMask` (to stop AppKit reserving titlebar height for a hidden
+/// title bar) also dropped `NSWindow`'s default `canBecomeKeyWindow`, which is `true`
+/// only when `.titled` is set. Losing it meant that once some other window took key
+/// status - clicking anywhere else on screen - clicking back on this panel could not
+/// give it back: not just Escape, typing itself stopped reaching the text field, the
+/// panel sitting there inert until the hotkey was pressed again. Overriding it back to
+/// `true` is the one line a borderless panel needs to stay interactive for its whole
+/// life, not only for the first click that opened it.
+private final class EscapableCapturePanel: NSPanel {
+    var onDismiss: (() -> Void)?
+
+    override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        onDismiss?()
     }
 }

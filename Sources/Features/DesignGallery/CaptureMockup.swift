@@ -101,9 +101,11 @@ private struct CapturePanelMock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
             if state == .shortcutRefused { refusedBanner }
-            destinationBar
+            targetRow
             field
             if destination == .task { dateChips }
+            Divider().overlay(theme.color(.borderSubtle))
+            destinationIcons
             footer
         }
         .padding(theme.spacing(.m))
@@ -119,23 +121,40 @@ private struct CapturePanelMock: View {
 
     // MARK: Destinations
 
-    /// The four destinations as one row, each with the key that reaches it. A popover
-    /// like the `TaskComposer`'s would cost a click for the choice made most often, and
-    /// the panel is opened to type, not to navigate.
-    private var destinationBar: some View {
+    /// Where the capture is actually going, above the text - matches
+    /// `CapturePanelView.targetRow`: a folder for a new note, a note for a task or an
+    /// existing note, nothing for today.
+    @ViewBuilder
+    private var targetRow: some View {
+        switch destination {
+        case .note: targetChip(symbol: "folder", label: "00 Inbox")
+        case .task: targetChip(symbol: "doc.text", label: "Inbox")
+        case .existing: targetChip(symbol: "doc.text", label: "Scegli una nota…")
+        case .today: EmptyView()
+        }
+    }
+
+    private func targetChip(symbol: String, label: String) -> some View {
+        HStack(spacing: theme.spacing(.xs)) {
+            Image(systemName: symbol)
+            Text(label).themedText(.caption, color: .textTertiary)
+        }
+        .foregroundStyle(theme.color(.textTertiary))
+    }
+
+    /// The four destinations as a compact icon rail, matching
+    /// `CapturePanelView.destinationIcons` - Craft's mode row moved to the bottom of
+    /// the panel, the name said by `targetRow`/`field` instead of printed here.
+    private var destinationIcons: some View {
         HStack(spacing: theme.spacing(.xs)) {
             ForEach(Array(Destination.allCases.enumerated()), id: \.element) { index, item in
                 let isCurrent = item == destination
-                HStack(spacing: theme.spacing(.xs)) {
-                    Image(systemName: item.symbol)
-                    Text(item.title).themedText(.caption, color: isCurrent ? .textPrimary : .textSecondary)
-                    Text("⌘\(index + 1)").themedText(.caption, color: .textTertiary)
-                }
-                .foregroundStyle(theme.color(isCurrent ? .textPrimary : .textSecondary))
-                .padding(.horizontal, theme.spacing(.s))
-                .padding(.vertical, theme.spacing(.xs))
-                .background(isCurrent ? theme.color(.accentMuted) : .clear)
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+                Image(systemName: item.symbol)
+                    .foregroundStyle(theme.color(isCurrent ? .textPrimary : .textTertiary))
+                    .frame(width: 26, height: 26)
+                    .background(isCurrent ? theme.color(.accentMuted) : .clear)
+                    .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+                    .help("\(item.title) — ⌘\(index + 1)")
             }
             Spacer(minLength: 0)
         }

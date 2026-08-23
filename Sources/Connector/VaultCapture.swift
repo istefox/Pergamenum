@@ -16,8 +16,9 @@ extension VaultAPI {
     enum CaptureDestination: Equatable, Sendable {
         /// A new note, titled by the first line. `nil` folder means the inbox folder.
         case newNote(folder: String?)
-        /// A task line in the inbox note.
-        case task
+        /// A task line. `nil` note means the fixed inbox note (`TaskDestination.inboxPath`);
+        /// an existing note's path means the task is written there instead.
+        case task(note: String?)
         /// The end of today's daily note, created if today has none yet.
         case today
         /// The end of a note that already exists.
@@ -39,7 +40,7 @@ extension VaultAPI {
         static func named(_ raw: String, folder: String?) throws -> CaptureDestination {
             switch raw {
             case "note", "nota": return .newNote(folder: folder)
-            case "task", "attività", "attivita": return .task
+            case "task", "attività", "attivita": return .task(note: nil)
             case "today", "oggi": return .today
             case let other where other.hasPrefix("note:"):
                 let path = String(other.dropFirst("note:".count))
@@ -47,9 +48,15 @@ extension VaultAPI {
                     throw ConnectorError("«note:» vuole il percorso di una nota dopo i due punti", usage: true)
                 }
                 return .note(path)
+            case let other where other.hasPrefix("task:"):
+                let path = String(other.dropFirst("task:".count))
+                guard !path.isEmpty else {
+                    throw ConnectorError("«task:» vuole il percorso di una nota dopo i due punti", usage: true)
+                }
+                return .task(note: path)
             case let other:
                 throw ConnectorError(
-                    "«\(other)» non è una destinazione; ci sono note, task, today, note:PERCORSO",
+                    "«\(other)» non è una destinazione; ci sono note, task, today, note:PERCORSO, task:PERCORSO",
                     usage: true
                 )
             }
@@ -74,7 +81,7 @@ extension VaultAPI {
         guard !body.isEmpty else {
             throw ConnectorError("serve il testo da catturare", usage: true)
         }
-        if destination != .task, scheduled != nil || due != nil {
+        if case .task = destination {} else if scheduled != nil || due != nil {
             throw ConnectorError(
                 "le date valgono solo per un task: usa --dest task, oppure toglile",
                 usage: true
@@ -82,8 +89,8 @@ extension VaultAPI {
         }
 
         switch destination {
-        case .task:
-            return try addTask(session, text: body, scheduled: scheduled, due: due, note: nil)
+        case .task(let note):
+            return try addTask(session, text: body, scheduled: scheduled, due: due, note: note)
         case .today:
             return try captureIntoDay(session, text: body)
         case .note(let path):

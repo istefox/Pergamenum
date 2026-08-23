@@ -70,8 +70,12 @@ final class CaptureController {
     var text = ""
     var scheduled: CalendarDate?
     var due: CalendarDate?
-    /// Where `.existing` writes. Nil means the destination cannot be used yet.
+    /// Where `.existing` and `.task` both write, shared: for `.existing`, nil means the
+    /// destination cannot be used yet; for `.task`, nil means the fixed inbox note - a
+    /// usable default, not a refusal.
     var notePath: String?
+    /// Where `.note` writes. Nil means the default folder (`VaultAPI.CaptureDestination.defaultFolder`).
+    var folder: String?
     private(set) var outcome: Outcome?
 
     /// When the unsent text stops being worth keeping.
@@ -183,8 +187,8 @@ final class CaptureController {
         // Explicit `return` on every branch: one arm has to throw, and a switch that
         // mixes an implicit-return arm with a statement arm stops inferring the type.
         switch destination {
-        case .note: return .newNote(folder: nil)
-        case .task: return .task
+        case .note: return .newNote(folder: folder)
+        case .task: return .task(note: notePath)
         case .today: return .today
         case .existing:
             guard let notePath, !notePath.isEmpty else {
