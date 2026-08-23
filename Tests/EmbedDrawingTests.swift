@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import Testing
 @testable import Pergamenum
 
@@ -224,5 +225,127 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
         let attributed = try #require(paragraph).attributedString
         #expect((attributed.string as NSString).character(at: 0) == 0xFFFC)
         #expect(attributed.attribute(.attachment, at: 0, effectiveRange: nil) != nil)
+    }
+}
+
+// MARK: - Task 3 (ADR-0019, plan `2026-08-23-ridimensionamento-maniglie-embed-editor.md`):
+// a wikilink embed's own `|W`/`|WxH` suffix drives what `attachmentBounds(…)` answers.
+
+/// An `NSTextLocation` for a call to `attachmentBounds(for:location:textContainer:…)` made
+/// outside a real layout pass. ADR-0019 §D2's own design never derives the resolved size
+/// from `location` at all - only `textContainer` (the column) and the attachment's own
+/// `written`/`natural` matter - so what this answers is never asserted on; it exists only
+/// because the SDK's signature requires one.
+@MainActor
+private func anyTextLocation() -> any NSTextLocation {
+    let storage = NSTextContentStorage()
+    storage.textStorage?.setAttributedString(NSAttributedString(string: "x"))
+    return storage.documentRange.location
+}
+
+@MainActor
+private func makeTempVaultRoot() throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-embed-resize-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
+/// A one-page PDF, written to disk so `ThumbnailStore`'s real PDF branch
+/// (`ThumbnailStore.renderPDF`, `fileURL.pathExtension.lowercased() == "pdf"`) renders it,
+/// the same way `EmbedResolutionTests.writeImage` writes a real PNG for `Attachment.resolve`
+/// to read - R-09 asks that the feature work identically for image and PDF embeds, so this
+/// test's rendition has to come from the PDF path, never a bare `NSImage` standing in for
+/// one.
+@MainActor
+private func writePDF(named name: String, in root: URL, pageSize: CGSize = CGSize(width: 200, height: 140)) throws {
+    guard let page = PDFPage(image: syntheticImage(size: pageSize)) else { throw CocoaError(.fileWriteUnknown) }
+    let document = PDFDocument()
+    document.insert(page, at: 0)
+    guard let data = document.dataRepresentation() else { throw CocoaError(.fileWriteUnknown) }
+    try data.write(to: root.appending(path: name, directoryHint: .notDirectory))
+}
+
+/// **Red on purpose.** `EditorDecorationDelegate.embedParagraph(at:storage:)` still builds
+/// a plain `NSTextAttachment` (Task 3's own three-line change - constructing an
+/// `EmbedAttachment`, parsing the suffix with `EmbedResize.written(inRun:)`, setting
+/// `natural` - is the coder's half, not written here). So every `attachmentBounds(…)` call
+/// below still answers the SDK default derived from `image.size`, never
+/// `EmbedResize.resolved(written:natural:column:)`, and every `#expect` fails until that
+/// wiring lands. The expected values are computed by calling `EmbedResize.resolved`
+/// directly (Task 2, already merged and tested) rather than hardcoded, so this suite turns
+/// green the moment the delegate's attachment actually consults it - no test-side change
+/// required.
+@MainActor
+@Suite struct EmbedDrawingResize {
+    private static let column: CGFloat = 400
+
+    private static func container() -> NSTextContainer {
+        let container = NSTextContainer(size: CGSize(width: column, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        return container
+    }
+
+    /// The `.attachment` attribute of an embed paragraph substituted through the real
+    /// delegate, and the `CGRect` its `attachmentBounds(…)` answers against a container
+    /// whose column is `Self.column` - the same "known width" the task names.
+    private static func resolvedBounds(
+        note: String, offset: Int, run: String, rendition: EmbedRendition
+    ) throws -> CGRect {
+        let marker = HiddenMarker(range: NSRange(location: 0, length: (run as NSString).length), kind: .embed)
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [offset: [marker]], hidingMarkup: true)
+        delegate.apply(embeds: [offset: rendition])
+
+        let paragraph = try #require(substitutedParagraph(delegate, note: note, at: offset))
+        let attachment = try #require(
+            paragraph.attributedString.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        )
+        return attachment.attachmentBounds(
+            for: [:], location: anyTextLocation(), textContainer: Self.container(),
+            proposedLineFragment: .zero, position: .zero
+        )
+    }
+
+    @Test func aWidthOnlySuffixResolvesToTheWrittenWidthWithProportionalHeight() throws {
+        let natural = CGSize(width: 64, height: 48)
+        let note = "prima\n![[foto.png|300]]\ndopo\n"
+        let bounds = try Self.resolvedBounds(
+            note: note, offset: 6, run: "![[foto.png|300]]", rendition: .drawn(syntheticImage(size: natural))
+        )
+        let expected = EmbedResize.resolved(written: .width(300), natural: natural, column: Self.column)
+        #expect(bounds.size == expected)
+    }
+
+    @Test func aWidthByHeightSuffixResolvesToBothWithAFreeAspectRatio() throws {
+        let natural = CGSize(width: 64, height: 48)
+        let note = "prima\n![[foto.png|300x200]]\ndopo\n"
+        let bounds = try Self.resolvedBounds(
+            note: note, offset: 6, run: "![[foto.png|300x200]]", rendition: .drawn(syntheticImage(size: natural))
+        )
+        let expected = EmbedResize.resolved(written: .both(300, 200), natural: natural, column: Self.column)
+        #expect(bounds.size == expected)
+    }
+
+    /// No suffix (R-06) and a PDF-sourced rendition (R-09) together: the natural size comes
+    /// from `ThumbnailStore`'s own PDF branch, rendered wide enough (720, the unsized-embed
+    /// width ADR-0019 §D4 keeps) that the column actually clamps it, so this test would pass
+    /// by accident if the clamp were simply skipped.
+    @Test func aNoSuffixEmbedFromAPDFRenditionResolvesToTheNaturalSizeClampedToTheColumn() async throws {
+        let root = try makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePDF(named: "documento.pdf", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let natural = try #require(await thumbnails.thumbnail(for: "documento.pdf", width: 720).value)
+        #expect(natural.size.width > Self.column) // the clamp below is meaningful, not a no-op
+
+        let note = "prima\n![[documento.pdf]]\ndopo\n"
+        let bounds = try Self.resolvedBounds(
+            note: note, offset: 6, run: "![[documento.pdf]]", rendition: .drawn(natural)
+        )
+        let expected = EmbedResize.resolved(written: nil, natural: natural.size, column: Self.column)
+        #expect(bounds.size == expected)
     }
 }
