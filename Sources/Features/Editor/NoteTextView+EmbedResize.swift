@@ -65,4 +65,21 @@ extension NoteTextView.Coordinator {
         }
         return handle
     }
+
+    /// The drag itself (ADR-0019 §D6-§D7). Plan
+    /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`, Task 6:
+    /// `.began` claims a point only inside `EmbedResize.handleHitRect(in:)` for some drawn
+    /// embed's picture - the coexistence rule with `selectEmbed(at:in:)`/`onClickInMargin`,
+    /// ADR-0019 §D6 - `.moved` rewrites the pending overlay's frame through
+    /// `EmbedResize.resolved(written:natural:column:)`'s own clamp, and `.ended` commits the
+    /// rewritten run through `replaceAtomically(_:with:in:)` (ADR-0019 §D7) and removes the
+    /// overlay.
+    ///
+    /// **Declared ahead of its own implementation.** `Tests/EmbedCaretTests.swift`'s Task 6
+    /// tests are written against this signature before the body exists, so the suite
+    /// type-checks and those tests fail red rather than fail to compile - the stub below
+    /// claims nothing, unconditionally, until the coder fills it in.
+    func resizeEmbed(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
+        false
+    }
 }

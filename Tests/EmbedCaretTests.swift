@@ -107,6 +107,27 @@ import Testing
         return found.offsetBy(dx: origin.x, dy: origin.y)
     }
 
+    /// The shared setup every resize-drag test below needs: a landed render, real layout,
+    /// and the drawn picture's own frame - the same three steps every test above already
+    /// repeats by hand (`waitForRendition` then `ensureLayout` then `fragmentFrame`),
+    /// factored once here because Task 6 adds enough new tests that copying it a further
+    /// six times would grow this already-over-`type_body_length` file for no reason a
+    /// reader would thank later.
+    private static func landedEmbed(root: URL) async throws -> (fixture: Fixture, box: CGRect) {
+        try Self.writeImage(named: "foto.png", in: root)
+        let thumbnails = ThumbnailStore(
+            root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
+        )
+        let fixture = Self.editor(text: Self.note, hidesMarkup: true, root: root, thumbnails: thumbnails)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyEmbeds(to: textView)
+        _ = await Self.waitForRendition(at: Self.embedOffset, in: coordinator)
+        textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
+        return (fixture, Self.fragmentFrame(at: Self.embedOffset, in: textView))
+    }
+
     private static let note = "prima\n![[foto.png]]\ndopo\n"
     /// "prima\n" is six characters; the embed's own paragraph starts right after it.
     private static let embedOffset = 6
@@ -448,6 +469,123 @@ import Testing
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
 
         #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
+    }
+
+    // MARK: - Drag (ADR-0019, plan 2026-08-23-ridimensionamento-maniglie-embed-editor, Task 6)
+    //
+    // `resizeEmbed(_:in:)` is declared but not yet implemented
+    // (`NoteTextView+EmbedResize.swift`, stub returning `false`) - every test below is
+    // expected to fail red, not to fail to compile, until the coder fills it in. Driven the
+    // way `selectEmbed(at:in:)` already is above: directly, no `NSEvent` synthesis.
+
+    /// R-02/ADR-0019 §D6's coexistence rule: `.began` claims a point only inside
+    /// `EmbedResize.handleHitRect(in:)`, the 22-point square around the handle - not
+    /// `handleRect(in:)`, the smaller 14-point square it paints - and declines everywhere
+    /// else on the picture, which is what leaves `onClickInMargin`/`selectEmbed(at:in:)`
+    /// free to claim an ordinary click on the rest of it.
+    @Test func resizeEmbedBeganClaimsOnlyTheHandleHitRectNotElsewhereOnThePicture() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        let onTheHandle = CGPoint(x: hitRect.midX, y: hitRect.midY)
+        let elsewhereOnThePicture = CGPoint(x: box.minX + 4, y: box.minY + 4)
+        #expect(!hitRect.contains(elsewhereOnThePicture))
+
+        #expect(coordinator.resizeEmbed(.began(onTheHandle), in: textView))
+        #expect(!coordinator.resizeEmbed(.began(elsewhereOnThePicture), in: textView))
+    }
+
+    /// R-02: nothing about the source text changes between `.began` and `.moved` - only an
+    /// overlay appears, so `textView.string` stays byte-identical and the text view gains
+    /// exactly one subview (ADR-0019 §D7's overlay, whatever its own declared type turns
+    /// out to be - this reads only `NSView.subviews.count`, never a cast).
+    @Test func draggingFromBeganThroughMovedLeavesTheSourceTextUnchangedAndAddsOneSubview() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+        let before = textView.string
+        let subviewsBefore = textView.subviews.count
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
+        _ = coordinator.resizeEmbed(.moved(CGPoint(x: box.maxX + 20, y: box.maxY + 20)), in: textView)
+
+        #expect(textView.string == before)
+        #expect(textView.subviews.count == subviewsBefore + 1)
+    }
+
+    /// R-05, the clamp's low boundary, live during the drag rather than only at commit
+    /// (ADR-0019 §D3's three call sites): a point implying a width far below the floor
+    /// still leaves the overlay at `EmbedResize.minimumSide`, never narrower.
+    @Test func movedToAPointImplyingAWidthBelowTheFloorClampsTheOverlayToTheMinimumSide() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
+        _ = coordinator.resizeEmbed(.moved(CGPoint(x: box.minX + 10, y: box.minY + 10)), in: textView)
+
+        let overlay = try #require(textView.subviews.last)
+        #expect(overlay.frame.width == EmbedResize.minimumSide)
+    }
+
+    /// R-05, the clamp's other boundary: a point past the editor's own column leaves the
+    /// overlay exactly at `EmbedResize.column(of:)`'s own answer for this fixture's
+    /// container, never wider, whatever the pointer's own x-coordinate is.
+    @Test func movedToAPointPastTheRightMarginClampsTheOverlayToTheColumnWidth() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+        let column = EmbedResize.column(of: textView.textContainer)
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
+        _ = coordinator.resizeEmbed(
+            .moved(CGPoint(x: box.minX + column + 500, y: box.minY + 20)), in: textView
+        )
+
+        let overlay = try #require(textView.subviews.last)
+        #expect(overlay.frame.width == column)
+    }
+
+    /// `.ended` removes the overlay - the other half of ADR-0019 §D7's "one edit is made
+    /// and the overlay goes", whichever way the edit resolves.
+    @Test func endedRemovesTheOverlaySubview() async throws {
+        let root = try Self.makeTempVaultRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (fixture, box) = try await Self.landedEmbed(root: root)
+        let textView = fixture.textView
+        let coordinator = fixture.coordinator
+        defer { fixture.window.orderOut(nil) }
+        #expect(box.width > 0)
+        let subviewsBefore = textView.subviews.count
+
+        let hitRect = EmbedResize.handleHitRect(in: box)
+        #expect(coordinator.resizeEmbed(.began(CGPoint(x: hitRect.midX, y: hitRect.midY)), in: textView))
+        let dragPoint = CGPoint(x: box.maxX + 20, y: box.maxY + 20)
+        _ = coordinator.resizeEmbed(.moved(dragPoint), in: textView)
+        _ = coordinator.resizeEmbed(.ended(dragPoint), in: textView)
+
+        #expect(textView.subviews.count == subviewsBefore)
     }
 
     // MARK: - Accessibility (ADR-0018 slice 3, Step 6 fix)
