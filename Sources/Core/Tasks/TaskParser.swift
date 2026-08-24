@@ -423,12 +423,24 @@ enum TaskParser {
     /// one"), and removes it together with its preceding space when `workspacePath`
     /// is nil.
     ///
-    /// TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3): signature-only
-    /// stub as of this commit, returning the line unchanged. `Tests/TaskMarkerWriteTests.swift`
-    /// already encodes the replace-or-append/clear behaviour as failing assertions for
-    /// the coder's Task 3 to fill in.
+    /// Removal then append, the shape `line(for:scheduledOn:)` and `line(for:dueOn:)`
+    /// already have: the marker is taken out through `withPrecedingSpace` so no double
+    /// space is left behind, and the new one goes at the end of the line.
     static func line(for task: TaskItem, assigningWorkspace workspacePath: String?) -> String {
-        task.rawLine
+        var line = task.rawLine
+        if let existing = workspaceMarkerRange(in: line) {
+            line.removeSubrange(withPrecedingSpace(existing, in: line))
+        }
+        guard let workspacePath else { return line.trimmingTrailingWhitespace() }
+        return line.trimmingTrailingWhitespace() + " ^[[\(workspacePath)]]"
+    }
+
+    /// The whole `^[[<name>.canvas]]` marker, caret included, so removing one leaves no
+    /// stranded `^` behind - the same reason `markerRange(in:prefix:)` returns the hour
+    /// along with the date.
+    private static func workspaceMarkerRange(in line: String) -> Range<String.Index>? {
+        guard let entry = annotatedLinks(in: line).first(where: \.isWorkspace) else { return nil }
+        return line.index(before: entry.link.range.lowerBound)..<entry.link.range.upperBound
     }
 
     /// Inserts a sub-task line immediately below `parent`, allocating `^id`/`^parent`
@@ -436,12 +448,48 @@ enum TaskParser {
     /// at `parent.lineIndex` is no longer `parent.rawLine` - the same staleness guard
     /// `rewrite(_:at:expecting:with:)` (this file) already applies.
     ///
-    /// TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3): signature-only
-    /// stub as of this commit, returning nil unconditionally. `Tests/TaskMarkerWriteTests.swift`
-    /// already encodes the two-line insert and its staleness guard as failing assertions
-    /// for the coder's Task 3 to fill in.
+    /// One scan, not two: a parent with no `^id` takes the next id and the child takes
+    /// the one after it, computed from the same starting value. Two separate
+    /// `nextLocalID` calls would hand both lines the same number, since the first write
+    /// is not on disk when the second is computed.
+    ///
+    /// The child always gets an `^id` of its own, whether or not the parent needed one
+    /// (R-07: "creates a new task line with an auto-assigned `^id`"), so it can become a
+    /// parent in turn without a rewrite.
     static func insertingSubtask(in text: String, below parent: TaskItem, draft: SubtaskDraft) -> String? {
-        nil
+        var lines = text.components(separatedBy: "\n")
+        guard lines.indices.contains(parent.lineIndex),
+              lines[parent.lineIndex] == parent.rawLine
+        else { return nil }
+
+        var nextID = nextLocalID(in: text)
+        var parentLine = parent.rawLine
+        let parentID: Int
+        if let existing = parent.localID {
+            parentID = existing
+        } else {
+            parentID = nextID
+            nextID += 1
+            parentLine = parentLine.trimmingTrailingWhitespace() + " ^id(\(parentID))"
+        }
+        let childID = nextID
+
+        // Cosmetic only, never read back: the hierarchy is `^parent`, and a note
+        // reindented by hand keeps working (ADR-0021 D9).
+        let indentation = String(parent.rawLine.prefix(while: { $0 == " " || $0 == "\t" })) + "  "
+        let childLine = indentation + line(
+            forNewTask: draft.text,
+            scheduled: draft.scheduled,
+            scheduledTime: draft.scheduledTime,
+            due: draft.due,
+            dueTime: draft.dueTime,
+            reminder: draft.reminder,
+            recurrence: draft.recurrence
+        ) + " ^parent(\(parentID)) ^id(\(childID))"
+
+        lines[parent.lineIndex] = parentLine
+        lines.insert(childLine, at: parent.lineIndex + 1)
+        return lines.joined(separator: "\n")
     }
 
     private static func replacingMarker(in line: String, with marker: Character) -> String {
