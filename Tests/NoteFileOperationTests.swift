@@ -71,7 +71,7 @@ import Testing
     #expect(updated?.contains("[[Nuovo]]") == true)
 }
 
-// MARK: - The `^[[…]].canvas` Workspace marker survives a rename (ADR-0021 §D3)
+// MARK: - The `^[[…]].canvas` Workspace marker survives a rename (ADR-0021 §D3, R-13)
 //
 // Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 4:
 // `NoteRename.rewritingLinks` replaces `link.range`, which for a non-embed link starts at

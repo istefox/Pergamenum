@@ -172,9 +172,16 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     /// `BoardTray.assignedTasks`' header carries the count in its own accessibility
     /// label (`"Task assegnati a questa board: N"`), which is data rather than prose
     /// that might be reworded - a legitimate thing to assert on directly.
+    ///
+    /// Matched on `value`, not `label`: on macOS, `.accessibilityLabel(_:)` applied to a
+    /// plain `Text` is exposed through `AXValue`, not `AXTitle`/`AXLabel` - confirmed by
+    /// reading the failing run's exported UI-hierarchy attachment, which showed
+    /// `identifier: 'board-assigned-tasks-header', value: Task assegnati a q...` with no
+    /// `label:` at all. `label ==` never matches a `StaticText` for this reason; `value ==`
+    /// does. `assertProjectGroupExists` below hit the identical shape for the same reason.
     private func assertAssignedTasksHeaderCount(_ expected: Int) {
         let header = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Task assegnati a questa board: \(expected)"))
+            .matching(NSPredicate(format: "value == %@", "Task assegnati a questa board: \(expected)"))
             .firstMatch
         XCTAssertTrue(header.waitForExistence(timeout: 10), "l'intestazione TASK ASSEGNATI non conta \(expected)")
     }
@@ -316,12 +323,15 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     /// would otherwise read as a date) - asserted on directly rather than approximated,
     /// since this is the one place in the whole walk that string is a contract rather
     /// than incidental copy.
+    ///
+    /// Matched on `value`, not `label` - see `assertAssignedTasksHeaderCount` above for
+    /// why: `.accessibilityLabel(_:)` on a plain `Text` surfaces as `AXValue` on macOS.
     private func assertProjectGroupExists(done: Int, total: Int) {
         let group = app.descendants(matching: .any).matching(identifier: "task-project-group").firstMatch
         XCTAssertTrue(group.waitForExistence(timeout: 10), "il gruppo «Progetti» non è comparso")
 
         let progress = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "\(done) di \(total) completati"))
+            .matching(NSPredicate(format: "value == %@", "\(done) di \(total) completati"))
             .firstMatch
         XCTAssertTrue(
             progress.waitForExistence(timeout: 8),

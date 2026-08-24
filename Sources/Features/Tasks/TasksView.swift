@@ -261,8 +261,11 @@ struct TasksView: View {
             isExpanded: Binding(
                 get: { !collapsedProjects.contains(group.id) },
                 set: { expanded in
-                    if expanded { collapsedProjects.remove(group.id) }
-                    else { collapsedProjects.insert(group.id) }
+                    if expanded {
+                        collapsedProjects.remove(group.id)
+                    } else {
+                        collapsedProjects.insert(group.id)
+                    }
                 }
             )
         ) {
@@ -279,14 +282,29 @@ struct TasksView: View {
                 if let progress = group.progress {
                     Text("\(progress.done)/\(progress.total)")
                         .themedText(.mono, color: .textTertiary)
-                        // Read out in words: "1/3" is a date to VoiceOver as often as a count.
+                        // Read out in words: "1/3" is a date to VoiceOver as often as a date.
                         .accessibilityLabel(
                             "\(progress.done) di \(progress.total) completati"
                         )
+                        // On macOS, `.accessibilityIdentifier` applied to an ANCESTOR
+                        // propagates onto every descendant AX element in the same view
+                        // subtree that has no identifier of its own on THAT element,
+                        // *and even overrides one a descendant already set* - confirmed
+                        // twice by reading an exported UI-hierarchy attachment: first
+                        // with the identifier on the whole DisclosureGroup (it leaked
+                        // onto the disclosed child rows below, replacing their own
+                        // "task-row"), then with it on this HStack (it still overrode
+                        // row(parent)'s own "task-row", one level up). Putting it on
+                        // this Text - a leaf with no identifier of its own, and a
+                        // sibling of row(parent) rather than a container of it - is
+                        // what keeps it from touching anything else. Safe because
+                        // TaskListOptions.bySubtasks(_:) always sets `progress`
+                        // together with `parent` - see its own comment - so this
+                        // branch runs whenever `project(_:parent:rolledIDs:)` does.
+                        .accessibilityIdentifier("task-project-group")
                 }
             }
         }
-        .accessibilityIdentifier("task-project-group")
     }
 
     private func row(_ task: TaskItem, isRolledOver: Bool = false) -> some View {

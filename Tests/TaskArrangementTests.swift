@@ -118,7 +118,7 @@ private func task(
     #expect(first == second)
 }
 
-// MARK: - "Progetti", the `.subtasks` grouping (ADR-0021 D6). Plan
+// MARK: - "Progetti", the `.subtasks` grouping (ADR-0021 D6, R-08, R-10). Plan
 // `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 8.
 //
 // `TaskArrangement.groups`'s `.subtasks` arm is a signature-only placeholder as of this

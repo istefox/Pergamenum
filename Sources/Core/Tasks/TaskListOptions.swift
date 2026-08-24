@@ -124,10 +124,10 @@ struct TaskGroup: Equatable, Sendable, Identifiable {
     var tasks: [TaskItem]
     /// The project task this group is the children of, set only by `.subtasks`
     /// (ADR-0021 D6). `nil` for every other grouping.
-    var parent: TaskItem? = nil
+    var parent: TaskItem?
     /// How many of `parent`'s children are done, set only by `.subtasks`. `nil`
     /// wherever `parent` is `nil`.
-    var progress: TaskProgress? = nil
+    var progress: TaskProgress?
 
     /// Falls back to `title` so nothing that groups by project or by day changes;
     /// rises to the parent's own id when there is one, so two projects whose parent

@@ -286,7 +286,7 @@ private struct TemporaryRoot: ~Copyable {
 }
 
 // MARK: - `CanvasStore.allBoards()` (ADR-0021 "A task carries its Workspace and its place in a
-// project as caret markers in its own line, and nothing new is stored anywhere else", §D10).
+// project as caret markers in its own line, and nothing new is stored anywhere else", §D10, R-01).
 // Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 6: the
 // Workspace folder browser. D10 rejects putting `.canvas` files into `IndexSnapshot` (a version
 // bump and a change to what every consumer of "a note" means) and enumerates them on demand

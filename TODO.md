@@ -1,11 +1,14 @@
-<!-- project-tasks: prefix=PG lastId=34 -->
+<!-- project-tasks: prefix=PG lastId=40 -->
 # PROJECT TASKS
 
-Updated: 2026-08-22 · Open: 8 (P1: 0) · In progress: 0
+Updated: 2026-08-24 · Open: 14 (P1: 0) · In progress: 0
+
+## GitHub Issues
+
 
 ## Open Issues
 
-- [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 -->
+- [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 runs:1 -->
   - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
 ## In Progress
@@ -14,47 +17,60 @@ Updated: 2026-08-22 · Open: 8 (P1: 0) · In progress: 0
 
 ## Backlog / To Add
 
-- [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+- [ ] `PG-036` **P3** `bySubtasks(_:)` trips `cyclomatic_complexity` (11 vs. the configured 10) — `Sources/Core/Tasks/TaskListOptions.swift` <!-- src:session opened:2026-08-24 runs:1 -->
+  - Found in the review-triage-fix cycle 2 pass on ADR-0021. Non-blocking (warning, not error); the reviewer suggested extracting the "is this task a heading" walk into its own helper if the function grows further. Left as-is for now rather than forcing a split that isn't otherwise needed.
+- [ ] `PG-035` **P3** Warning-level `file_length`/`type_body_length` SwiftLint drift spread across five files by ADR-0021, none crossing the `error` threshold <!-- src:session opened:2026-08-24 runs:1 -->
+  - `Sources/Features/Tasks/TasksView.swift` (file_length 445>400, type_body_length 304>250), `Sources/Features/Tasks/TaskComposer.swift` (type_body_length 252>250), `Sources/App/PergamenumApp.swift` (file_length 406>400), `Sources/Index/IndexSnapshot.swift` (file_length 412>400), `Sources/App/CommandActions.swift` (file_length 401>400, type_body_length 252→260, already a warning at base). Found in review-triage-fix cycle 2. Recurs across features (the same `swiftlint-drift` pattern already fixed once for `type_body_length` errors in `TaskParser.swift`/`WorkspaceView.swift`); worth a `swiftlint --fix`-driven pre-commit pass rather than chasing each file individually in review.
+- [ ] `PG-037` **P2** `TaskGroup.parent`/`progress` are parallel optionals standing in for a discriminated union — `Sources/Core/Tasks/TaskListOptions.swift` <!-- src:review opened:2026-08-24 promote:declined -->
+  - Found at Gate 5.06 (type-design-analyzer) on ADR-0021. Nothing enforces the two fields are set together beyond the one call site (`bySubtasks(_:)`) that always sets them as a pair; a future construction site could set one without the other and it would compile. A `Kind` enum (`.plain` / `.project(parent:progress:)`) on `TaskGrouping`'s output would make the invariant compiler-checked instead of comment-only.
+- [ ] `PG-038` **P2** Case-insensitive `workspacePath` matching is independently re-derived at multiple call sites — `Sources/Features/Tasks/WorkspacePicker.swift:84`, `Sources/Index/IndexSnapshot.swift:187-188` <!-- src:review opened:2026-08-24 promote:declined -->
+  - Found at Gate 5.06 (type-design-analyzer) on ADR-0021. `task.workspacePath?.lowercased() == name.lowercased()` is written independently at each site rather than through one shared comparison or a `BoardName`-style wrapper. Currently consistent by coincidence, not by construction; a third site (the write side already exists in `TaskParser+Writes.swift`) that skips the `.lowercased()` would silently break matching.
+- [ ] `PG-040` **P3** Malformed `^id(abc)`/`^parent(abc)` is silently dropped with no linter finding — `Sources/Core/Tasks/TaskParser.swift` `caretInteger(in:name:)` <!-- src:review opened:2026-08-24 promote:declined -->
+  - Found at Gate 5.06 (silent-failure-hunter, confidence ~50) on ADR-0021. `Int(value.trimmingCharacters(...))` returns nil on a malformed marker with nothing raised, unlike R-11/R-12's other malformed-marker linter checks in `VaultSession+Search.swift`. Consistent with the parser's existing permissive style elsewhere, so not a regression, but currently invisible to both the user and the linter.
+- [ ] `PG-039` **P3** `CanvasStore.allBoards()`'s `try?` fallback isn't documented as deliberate — `Sources/Vault/CanvasStore.swift:118` <!-- src:review opened:2026-08-24 promote:declined -->
+  - Found at Gate 5.06 (silent-failure-hunter, confidence ~55) on ADR-0021. `let values = try? url.resourceValues(...)` falls back to `url.lastPathComponent` on failure with no comment stating the fallback is deliberate, unlike the codebase's habit of narrating other `try?`/`guard` fallbacks nearby. Low impact — display name only.
+
+- [x] `PG-011` **P3** M10 Navigazione e organizzazione: tabs, split view, tag browser, starred, the missing search operators <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:1 -->
   - Closed with slice 4 (ADR-0012 D8/D9): the search operators, the extended Quick Open and the unlinked mentions.
-- [x] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 <!-- src:session opened:2026-08-20 closed:2026-08-21 -->
+- [x] `PG-031` **P3** Two UI tests still click `radioButtons["Modifica"]` and `["Lettura"]`, which became icons on 2026-08-19 <!-- src:session opened:2026-08-20 closed:2026-08-21 runs:1 -->
   - Closed by running them: `DesignAndReadingUITests` and `NoteImageUITests` both pass. The words survive as accessibility labels, so the change to icons cost the tests nothing. What the same run *did* find is `PG-033`.
-- [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 -->
+- [x] `PG-013` **P3** M12 La settimana: the week and month scales, the drag that writes, the view controls, the rollover, the event notes <!-- src:session opened:2026-08-16 closed:2026-08-21 runs:1 -->
   - Closed in six slices: the ADR and the SPEC amendment (`d923bda`), the mockups (`f14f21d`), the week, the month, the red days and the sidebar (`553aca0`, `cfc46e3`), the drag and the editable block (`5da6838`), the per-view controls (`c272388`), the rollover (`86c6dab`), the event notes and the weekly review (`3e530c8`).
   - **The rollover amendment is spent and it is narrow.** SPEC §7.3 keeps the NotePlan rule as the default; the setting is off, bounded to a number of days, and shows without moving. Reopening it further needs its own reason.
   - The weekly review shipped as a template with four view blocks and **none of them said «this week»**: the block grammar compared `modified` against a written-out date only, so a literal week went stale the following Monday in silence. Closed by `PG-032` the same week, and the template now asks with `week-start`.
-- [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+- [x] `PG-012` **P2** M11 Viste: saved queries over the index, rendered as table, board, gallery or calendar <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:1 -->
   - Closed in six slices: the engine in `Core/Query`, the schema bump, the mockups, the four read-only renderers, the board and its guarded write, the connector.
   - The schema bump is **spent**: `IndexCache.schemaVersion` is 3 and carries `embedTargets`. The milestone's one allowance is gone (ADR-0009 §D2).
-- [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-014` **P3** M13 Vault completo: `note rename|move|trash` under the journal, prompts in the vault, static export, import, AppIntents <!-- src:session opened:2026-08-16 runs:1 -->
   - `note rename|move|trash` is done, closed as `PG-005`. What is left: prompts in the vault, static export, import, AppIntents.
-- [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 -->
+- [ ] `PG-019` **P2** The index's second half: drag a section to move it, which is a real text rewrite through `VaultSession.write` with the journal behind it — `Sources/Features/Editor/OutlinePane.swift` <!-- src:session opened:2026-08-17 runs:1 -->
   - Deferred on purpose when the index shipped: listing and jumping touch nothing, moving a section writes. Belonged with `PG-005`, now closed - ADR-0016 leaves the transaction and `moveFile` ready to use, so a future ADR for this drag does not need to redesign that part, only the gesture and its mockup.
-- [ ] `PG-030` **P2** A board grouped by `status-*` draws its columns and refuses every drop, because tag.md 5.1 forbids `status-*` on a note except `status-inbox` — `docs/adr/0009-views-are-queries-over-the-index.md` <!-- src:session opened:2026-08-20 -->
+- [ ] `PG-030` **P2** A board grouped by `status-*` draws its columns and refuses every drop, because tag.md 5.1 forbids `status-*` on a note except `status-inbox` — `docs/adr/0009-views-are-queries-over-the-index.md` <!-- src:session opened:2026-08-20 runs:1 -->
   - The roadmap's own M11 acceptance criterion is a client board dragged between statuses, and it cannot be met conformantly today. The fix is upstream: tag.md in `harness-system` decides whether a note may carry a status, and `vocabolari.json` is regenerated from it (principle 5). ADR-0009 §D5 is amended with the finding; the shipped *Clienti attivi* view groups by `project-*` instead and says why in its own prose.
-- [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 -->
+- [ ] `PG-029` **P3** Nothing on screen says a note draft is parked — `Sources/Features/Editor/NewNoteComposer.swift` <!-- src:session opened:2026-08-19 runs:1 -->
   - Stepping out of the composer keeps the title, the folder, the topic and the template for the next `Cmd+N` (PG-028), and `Cmd+N` is the only way back to them. Left out of that slice on purpose: a «riprendi» row in the list or a badge on the toolbar button is a design decision, and whether one is needed at all is a question for use rather than for review.
-- [x] `PG-032` **P2** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+- [x] `PG-032` **P2** The view grammar has no relative date, so a saved view cannot say «this week» — `Sources/Core/Query/ViewFilter.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 runs:1 -->
   - **ADR-0014, then four pieces, merged as PR #77 (`0331b0e`).** Three words - `today`, `today-N`, `week-start` - accepted only where an ISO date already is; `ViewDateBound` holds the bound and parses it; the day is a parameter of `ViewEvaluator.evaluate` and never read from the clock there, which is what lets a test fix its Friday; `onDayChange` re-evaluates the panes; and the weekly review in `SampleViews` lost the workaround and the paragraph apologising for it.
   - A forward bound stays refused until `deadline.next` becomes comparable: `+` is not in the lexer's word set, and widening the alphabet needs a question to justify it.
   - Verified on screen on a Friday, which is the day the two spellings disagree: `week-start` and `today-7` returned different sets, a bad bound named its line instead of emptying the list, and the Viste pane described the filter in the block's own words rather than in today's date.
 
-- [x] `PG-034` **P3** Nothing retraced a step: nine panes, three day scales and tabs, and no way back — `Sources/App/NavigationHistory.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+- [x] `PG-034` **P3** Nothing retraced a step: nine panes, three day scales and tabs, and no way back — `Sources/App/NavigationHistory.swift` <!-- src:session opened:2026-08-21 closed:2026-08-21 runs:1 -->
   - ADR-0015 and the implementation, merged as PR #78. `Cmd+[` and `Cmd+]`, two arrows at the leading edge, two entries in the Vista menu. A place is derived from the state the window already holds, the way `RootView.currentItem` is, and recorded by **one** observer rather than by the eleven methods that move the window.
   - Two mechanisms are values rather than flags, and both for the same reason: the observer runs on the view update *after* the change, so anything set and cleared around the change is already false when it is read. The history holds the destination it expects back; `DayController` describes its last day move rather than flagging one in progress.
   - **Left open on purpose: the Workspace is one place, not one per canvas.** Its folder lives on a `WorkspaceController` held as `@State` inside `WorkspaceView`, so the window cannot read it without lifting the controller to the app. ADR-0015 §D1 records the way out; when that lifting happens for another reason, `case canvas(String)` is a small amendment and one `switch`.
-- [x] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 closed:2026-08-21 -->
+- [x] `PG-033` **P2** The UI suite is seen only when somebody decides to look, and three of its tests were red for days — `UITests/` <!-- src:session opened:2026-08-21 closed:2026-08-21 runs:1 -->
   - Closed with `scripts/uitests.sh` plus a written rule in `CLAUDE.md`: the suite runs before every merge to `main`. A merge is the one moment rare enough to afford twelve minutes and important enough to deserve them.
   - **Refused: a pre-push hook and a fast subset.** Neither is possible, and the reason is the same one that keeps the suite out of `test-cmd`: XCUITest takes the machine, so even a single UI test closes the app in front of whoever is working. The constraint is not the twelve minutes.
   - Considered and deferred: a nightly `launchd` run, which would remove the discipline from the equation but does not run if the Mac sleeps, and a report nobody reads is noise. Worth revisiting if the merge rule turns out not to hold.
   - Found by the run `PG-031` asked for: 67 tests, 3 failures, all three failing identically at `5da6838` and so red since before M12's last slices. Two were a stale placeholder, one was the suite reading the machine's real calendar; all three are fixed in `dec6ba3`.
   - **The point is not the three tests, it is that nobody knew.** The suite is outside `.claude/test-cmd` for a load-bearing reason - with it in there, every turn ended by terminating the app the person at the keyboard was using - so the cost of that decision is a suite whose state is unknown between deliberate runs. Options worth weighing: a second `test-cmd` run only on request, a pre-push hook, or a written rule that the suite runs before every merge to `main`. None of them is free and the choice needs a reason, not a habit.
   - A full run also needs ~12 minutes of nobody touching the keyboard, and leaves several app instances alive that must be killed before the next one (`PG-026`).
-- [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 -->
+- [ ] `PG-026` **P3** `CLAUDE.md` is missing three things measured on 2026-08-18 — `CLAUDE.md` <!-- src:session opened:2026-08-18 runs:1 -->
   - A full UI run started with stale instances alive gives **18 failures that are not real**, every one at exactly 60.2 s: the launch timeout. The note at "A UI-test instance outlives its run" says the instances survive; it does not say what they then cost. Kill every instance before a full run, and read the timings before believing a failure.
   - `firstRect(forCharacterRange:)` returns a **zero rectangle** for a range TextKit 2 has not laid out - the end of every long note - and a zero rectangle sent to a popup's placement clamps it to the screen's bottom-left corner.
   - The runner's temporary directory is inside its container and is unreadable from outside, sandbox off or not. `XCTAttachment` plus `-resultBundlePath`, then `xcrun xcresulttool export attachments`, is how a screenshot actually gets looked at.
 
-- [ ] `PG-015` **P3** SPEC amendments §5, §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 -->
+- [ ] `PG-015` **P3** SPEC amendments §5, §12, plus new §16 Cattura and §17 Viste — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:session opened:2026-08-16 runs:1 -->
   - Each is applied before the milestone that depends on it, never after.
   - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
   - **§17 Viste is overdue by this entry's own rule**: M11 shipped the query language, the renderers and the board's write, and the SPEC still does not describe any of it. ADR-0009 carries the design, so nothing is undocumented, but the spec is no longer the place to read what the app does.
@@ -62,10 +78,34 @@ Updated: 2026-08-22 · Open: 8 (P1: 0) · In progress: 0
 
 ## Blocked / Decisions Needed
 
-- [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 -->
+- [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:1 -->
   - Approved 2026-08-20 with M12's slicing, knowing the SPEC rejects rollover by name. ADR-0013 §D1 carries the argument and the three narrowings that keep it an amendment rather than a reversal; §7.3 is amended in place. The number is 13, not the 12 the roadmap predicted: 10, 11 and 12 went to transclusion, templates and tabs.
-- [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 -->
+- [ ] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 runs:1 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
+
+## Steps — workspace-tasks-notes-integration (derived from 2026-08-24-workspace-tasks-notes-integration.manifest.yml)
+
+ADR-0021, three caret markers on a task line (`^[[<canvas>]]`, `^id(N)`, `^parent(N)`), no new
+storage. Plan: `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, 10 tasks.
+
+- [x] 1. `TaskItem`/`TaskParser` gain `workspacePath`/`localID`/`parentLocalID`, `annotatedLinks`
+- [x] 2. `TaskProgress`, `IndexSnapshot.tasks(assignedToWorkspace:)`/`subtasks(of:)`/`progress(ofProject:)`
+- [x] 3. `VaultSession+Tasks` writes: `.workspace` change, `TaskDraft.parent`, `captureSubtask`
+- [x] 4. Caret-safe note rename (workspace/id/parent markers survive a rename rewrite)
+- [x] 5. `NoteViolations.taskMarkers` advisory linter (duplicate workspace, orphaned parent)
+- [x] 6. `NoteTree.build(fromPaths:)`, `CanvasStore.allBoards()`, `WorkspaceBrowser` tree view
+- [x] 7. `WorkspaceReferences.notes(in:)`, `BoardChrome` TASK ASSEGNATI / NOTE REFERENZIATE
+- [x] 8. `TaskGrouping.subtasks` ("Progetti"), `TaskListOptions.bySubtasks(_:)`
+- [x] 9. `.taskAddSubtask` shortcut, `TaskComposer` sub-task mode, `WorkspacePicker` sheet
+- [x] 10. End-to-end UI test (`WorkspaceIntegrationUITests`); found and fixed two real bugs
+      (`VaultController.selectedTask` staleness, macOS AX-identifier propagation on
+      `DisclosureGroup`)
+
+Status: implementation complete, 1527/1527 unit tests, 71/71 UI suite (one pre-existing
+unrelated flake noted separately). Two review-triage-fix cycles run at Gate 5, zero regressions,
+zero weakened tests. Gate 5.06 specialized review run, zero CRITICAL/IMPORTANT from error
+handling, two IMPORTANT type-design findings filed as `PG-037`/`PG-038` (non-blocking). Awaiting
+Step 7 commit.
 
 ## Project Map
 

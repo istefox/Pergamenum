@@ -192,8 +192,16 @@ private struct WorkspaceTreeRow: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Cartella \(node.name), \(node.noteCount) Workspace")
+            // On macOS an `.accessibilityIdentifier` on the `DisclosureGroup` itself
+            // propagates onto every descendant AX element - including the disclosed
+            // ForEach rows below, overriding each one's own identifier (confirmed the
+            // same way the TasksView.swift `task-project-group` fix was: an exported
+            // UI-hierarchy attachment). `label:` and the disclosed content are siblings
+            // under the `DisclosureGroup`, never one containing the other, so putting the
+            // identifier here - on this label's own combined element, which has no
+            // pre-existing identifier of its own to clobber - never touches them.
+            .accessibilityIdentifier("workspace-folder-\(node.id)")
         }
-        .accessibilityIdentifier("workspace-folder-\(node.id)")
     }
 
     private var boardRow: some View {

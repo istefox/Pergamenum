@@ -88,7 +88,7 @@ private func note(_ path: String) -> NoteRecord {
 }
 
 // MARK: - `NoteTree.build(fromPaths:)` (ADR-0021 "A task carries its Workspace and its place in
-// a project as caret markers in its own line, and nothing new is stored anywhere else", §D10).
+// a project as caret markers in its own line, and nothing new is stored anywhere else", §D10, R-01).
 // Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 6: the
 // Workspace folder browser's second entry point over the same private `Builder`, exercised here
 // with `.canvas` paths rather than `NoteRecord`s. Every test above this mark uses `build(from:)`
