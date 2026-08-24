@@ -13,6 +13,9 @@ extension VaultSession {
         /// an hour onto it would invent one.
         case scheduleAt(CalendarDate, TaskTime)
         case link(String)
+        /// Assigns or clears the task's Workspace marker `^[[<canvas>.canvas]]`
+        /// (ADR-0021 D9). Replaces any existing marker rather than appending a second.
+        case workspace(String?)
     }
 
     /// Where a captured task is written (SPEC §7.4).
@@ -55,6 +58,12 @@ extension VaultSession {
         var reminder: TaskReminder?
         /// `@repeat(n/N)`, the finite recurrence of SPEC §7.1.
         var recurrence: TaskRecurrence?
+        /// The task this draft becomes a sub-task of (ADR-0021 D9, A9). Nil composes an
+        /// ordinary top-level task exactly as before; set, `captureTask` is meant to
+        /// route through `TaskParser.insertingSubtask(in:below:draft:)` instead of
+        /// appending - not yet wired as of this commit (plan
+        /// `2026-08-24-workspace-tasks-notes-integration`, Task 3's own placeholder).
+        var parent: TaskItem?
 
         /// The day the task belongs to, for whoever has to put it somewhere: the day it
         /// shows up on, or failing that the day it is due.
@@ -94,6 +103,13 @@ extension VaultSession {
                 TaskParser.line(for: task, scheduledOn: date, at: time)
             case .link(let target):
                 TaskParser.line(for: task, addingLinkTo: target)
+            case .workspace(let path):
+                // TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3):
+                // `TaskParser.line(for:assigningWorkspace:)` is a signature-only stub
+                // as of this commit and returns the line unchanged. This arm exists so
+                // `TaskChange` stays exhaustive and the target builds; the coder's
+                // Task 3 fills in the stub, and this arm needs no change when it does.
+                TaskParser.line(for: task, assigningWorkspace: path)
             }
 
             guard let updated = TaskParser.rewrite(
