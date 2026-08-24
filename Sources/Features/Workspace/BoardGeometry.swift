@@ -72,26 +72,29 @@ enum BoardGeometry {
 
     // MARK: Resize
 
-    /// Applies a resize drag to a card.
+    /// Applies a resize drag to a rectangle, driven by one of the eight grips.
     ///
     /// `lockAspect` is the Shift modifier of SPEC §6.3. A side grip with Shift held
     /// scales the other dimension to match, which is what keeps an image from being
-    /// stretched by a grip that only moves one edge.
+    /// stretched by a grip that only moves one edge. `minimum` defaults to a card's own
+    /// floor (`minimumSize`) but is overridden by ADR-0020's crop rectangle, whose floor
+    /// is a fraction of the image rather than 40x30 board units.
     static func resized(
         _ frame: CGRect,
         handle: Handle,
         by translation: CGSize,
-        lockAspect: Bool = false
+        lockAspect: Bool = false,
+        minimum: CGSize = minimumSize
     ) -> CGRect {
         var left = frame.minX
         var top = frame.minY
         var right = frame.maxX
         var bottom = frame.maxY
 
-        if handle.movesLeftEdge { left = min(right - minimumSize.width, left + translation.width) }
-        if handle.movesRightEdge { right = max(left + minimumSize.width, right + translation.width) }
-        if handle.movesTopEdge { top = min(bottom - minimumSize.height, top + translation.height) }
-        if handle.movesBottomEdge { bottom = max(top + minimumSize.height, bottom + translation.height) }
+        if handle.movesLeftEdge { left = min(right - minimum.width, left + translation.width) }
+        if handle.movesRightEdge { right = max(left + minimum.width, right + translation.width) }
+        if handle.movesTopEdge { top = min(bottom - minimum.height, top + translation.height) }
+        if handle.movesBottomEdge { bottom = max(top + minimum.height, bottom + translation.height) }
 
         var result = CGRect(x: left, y: top, width: right - left, height: bottom - top)
         guard lockAspect, frame.width > 0, frame.height > 0 else { return result }
@@ -101,9 +104,9 @@ enum BoardGeometry {
         let ratio = frame.height / frame.width
         let drivesWidth = handle.movesLeftEdge || handle.movesRightEdge
         if drivesWidth {
-            result.size.height = max(minimumSize.height, result.width * ratio)
+            result.size.height = max(minimum.height, result.width * ratio)
         } else {
-            result.size.width = max(minimumSize.width, result.height / ratio)
+            result.size.width = max(minimum.width, result.height / ratio)
         }
         // A grip on the top or left moves the origin, so the anchor stays put.
         if handle.movesLeftEdge { result.origin.x = frame.maxX - result.width }

@@ -71,6 +71,19 @@ struct BoardContentLayer: View {
                             }
                         }
                     }
+                    if CanvasCrop.read(from: node) != nil {
+                        Divider()
+                        Button("Adatta al ritaglio") { Task { await fitToCrop(node) } }
+                    }
+                }
+                if isCroppable(node) {
+                    Divider()
+                    Button("Ritaglia") {
+                        workspace.beginCrop(nodeID: node.id, drawnSize: workspace.displayFrame(for: node).size)
+                    }
+                    if CanvasCrop.read(from: node) != nil {
+                        Button("Rimuovi ritaglio") { workspace.removeCrop(nodeIDs: targets(node)) }
+                    }
                 }
                 Divider()
                 Button("Elimina") { workspace.delete(nodeIDs: targets(node)) }
@@ -137,7 +150,9 @@ struct BoardContentLayer: View {
     /// its parent's bounds is drawn but never hit.
     @ViewBuilder
     private func grips(_ node: CanvasNode, isSelected: Bool, frame: CGRect) -> some View {
-        if isSelected {
+        // No point on screen belongs to two gestures at once: the crop editor draws its
+        // own eight grips over the same card (ADR-0020 D5).
+        if isSelected, workspace.croppingNodeID != node.id {
             let target = BoardGeometry.boardUnits(
                 BoardGeometry.handleTargetScreenSize, at: workspace.zoom
             )
@@ -195,7 +210,10 @@ struct BoardContentLayer: View {
                         .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
                 )
         } else {
-            NodeCard(node: node, subfolder: workspace.subfolder(for: node), workspace: workspace)
+            NodeCard(
+                node: node, subfolder: workspace.subfolder(for: node), workspace: workspace,
+                modifiers: modifiers
+            )
         }
     }
 
@@ -218,6 +236,33 @@ struct BoardContentLayer: View {
         ("Grande", CGSize(width: 480, height: 360)),
         ("Colonna", CGSize(width: 260, height: 520)),
     ]
+
+    /// Whether "Ritaglia" belongs on this card's menu at all (ADR-0020 D8): a raster
+    /// image, at a zoom where there is something on screen to aim at.
+    private func isCroppable(_ node: CanvasNode) -> Bool {
+        guard case .file(let path, _) = node.kind else { return false }
+        return CanvasCrop.isCroppable(path: path) && !BoardGeometry.drawsPlaceholder(at: workspace.zoom)
+    }
+
+    /// "Adatta al ritaglio" (ADR-0020 D4): resizes each target that carries a crop to the
+    /// height its own cropped region implies at its current width, so the card stops
+    /// letterboxing without ever moving the crop itself. Needs the source image's own
+    /// pixel size, which only `ThumbnailStore` knows - the one part of this action that
+    /// cannot be synchronous.
+    private func fitToCrop(_ node: CanvasNode) async {
+        guard let store = workspace.thumbnails else { return }
+        for id in targets(node) {
+            guard let target = workspace.document.node(id: id),
+                  case .file(let path, _) = target.kind,
+                  let crop = CanvasCrop.read(from: target)
+            else { continue }
+            let task = await store.thumbnail(for: path, width: target.width)
+            guard let image = await task.value else { continue }
+            let croppedAspect = (crop.width * image.size.width) / (crop.height * image.size.height)
+            guard croppedAspect.isFinite, croppedAspect > 0 else { continue }
+            workspace.resize(nodeID: id, to: CGSize(width: target.width, height: target.width / croppedAspect))
+        }
+    }
 
     private func copyLink(to node: CanvasNode) {
         guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }

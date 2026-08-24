@@ -87,6 +87,24 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-24: **ADR-0020 (crop non distruttivo della card immagine) implementata per intero, 8
+  task su 8, 1455 test unitari verdi, zero regressioni.** Il ritaglio è un rettangolo
+  normalizzato scritto come stringa scalare `"x y w h"` sulla chiave prefissata
+  `pergamenum-crop` del nodo canvas (`CanvasCrop.swift`), mai consumata fuori da `unknown`:
+  `Sources/Core/Canvas/JSONCanvas.swift` resta invariato. Il file sorgente non viene mai
+  riscritto (verificato via SHA-256 invariato prima/dopo il crop e dopo la rimozione); la
+  card disegna solo la card, mai l'indice o la cache. Modalità di editing esplicita sul
+  controller (`croppingNodeID`/`cropDraft`/`cropOriginal`, `WorkspaceController+Crop.swift`),
+  con editor a schermo (`BoardCropEditor.swift`): l'immagine intera scrimmata fuori dal
+  rettangolo, otto maniglie che riusano `ResizeHandleView`, trascinamento interno per
+  spostare, Shift per bloccare le proporzioni. Voci di menu "Ritaglia", "Rimuovi ritaglio" e
+  "Adatta al ritaglio" (dentro "Ridimensiona") verificate a schermo su `.jpeg`, esclusi
+  `.pdf`/sticky/gruppo. **Probe 2 (round-trip con Obsidian) deliberatamente non eseguita**:
+  Stefano ha deciso lo stesso giorno di non tenere più la compatibilità Obsidian (principio 4
+  di `CLAUDE.md`) come vincolo prioritario, spostando la direzione dell'app verso harness e
+  organizzazione del lavoro personale - decisione di prodotto registrata nell'ADR, non ancora
+  propagata a `CLAUDE.md`/SPEC §14 (conversazione separata, esplicitamente rimandata).
+
 - 2026-08-23: **ADR-0019 estesa in corso d'opera con R-11 (blocco delle proporzioni tenendo
   premuto Shift durante il trascinamento, D9), Task 10 di 10, 1419 test unitari verdi.** Il
   tasto letto in tempo reale a ogni evento (non fissato al `mouseDown`) era inizialmente Ctrl,

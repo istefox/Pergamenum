@@ -519,6 +519,23 @@ Budget: `Tests/CanvasCropTests.swift`, `Tests/CanvasTests.swift` (~140 lines).
 
 No budget: the outcome of a probe cannot be estimated in lines.
 
+**Task 8 outcome, 2026-08-24.** Probe 2 was deliberately not run: Stefano decided the same
+day this ADR was implemented that Obsidian round-trip compatibility (principle 4 of
+`CLAUDE.md`) is no longer a direction he wants the app held to - it is being pointed at
+personal harness and work-organisation use instead. This is a product-direction decision,
+not a technical finding, and it is recorded here rather than silently skipped, per this
+task's own "a pass criterion with no written answer is not a probe." `CLAUDE.md` principle
+4 and SPEC §14 are unchanged by this note; revisiting them is a separate, explicit
+conversation, not something this ADR does on its own. D1's string-scalar encoding (never
+an object or a list) still holds regardless of whether Obsidian round-tripping is verified
+- it was chosen for the corruption class named in the Context, not for this probe.
+
+Tasks 1-7 are all implemented and verified by the suite (`Tests/CanvasCropProbeTests.swift`,
+`Tests/CanvasCropTests.swift`, `Tests/CanvasTests.swift`), and Tasks 5-6 were additionally
+checked on screen: "Ritaglia" appears only for a croppable file card, the editor draws the
+scrim and eight grips, Enter/Esc/click-outside all land, "Rimuovi ritaglio" and "Adatta al
+ritaglio" both behave as designed.
+
 ## References
 
 - SPEC §6.2 (canvas format and prefixed properties), §6.3 (resize grips), §6.4 tool 5 (Immagine),

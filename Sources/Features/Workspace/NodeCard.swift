@@ -6,6 +6,9 @@ struct NodeCard: View {
     let node: CanvasNode
     let subfolder: String?
     let workspace: WorkspaceController
+    /// Shift, for the crop editor's aspect lock (ADR-0020 D5) - the same modifiers the
+    /// board already tracks for the resize grips, threaded one level further in.
+    var modifiers: EventModifiers = []
 
     var body: some View {
         switch node.kind {
@@ -91,12 +94,19 @@ struct NodeCard: View {
     private func previewCard(_ path: String) -> some View {
         cardChrome {
             VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                ThumbnailImage(
-                    workspace: workspace,
-                    relativePath: path,
-                    width: node.width,
-                    fallbackSymbol: symbol(for: path)
-                )
+                Group {
+                    if workspace.croppingNodeID == node.id {
+                        BoardCropEditor(workspace: workspace, node: node, path: path, modifiers: modifiers)
+                    } else {
+                        ThumbnailImage(
+                            workspace: workspace,
+                            relativePath: path,
+                            width: node.width,
+                            fallbackSymbol: symbol(for: path),
+                            crop: CanvasCrop.read(from: node)
+                        )
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
 
@@ -222,15 +232,31 @@ struct ThumbnailImage: View {
     let relativePath: String
     let width: CGFloat
     let fallbackSymbol: String
+    /// ADR-0020: the region of the image to draw, or `nil` for the whole thing. The
+    /// uncropped path below is untouched by this parameter's addition - same requested
+    /// width, same `fit`, same cache key - so a card with no crop cannot regress.
+    var crop: CanvasCrop?
 
     @State private var image: NSImage?
+
+    /// A crop of fractional width `w` magnifies the visible region by `1/w` (D7), so the
+    /// render is asked for at the resolution the *visible* region needs rather than the
+    /// whole picture's.
+    private var requestWidth: CGFloat {
+        guard let crop, crop.width > 0 else { return width }
+        return width / crop.width
+    }
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
+                if let crop {
+                    CroppedThumbnail(image: image, crop: crop)
+                } else {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                }
             } else {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(theme.color(.backgroundTertiary))
@@ -243,12 +269,40 @@ struct ThumbnailImage: View {
         // Keyed on the size bucket rather than the raw width, so dragging a resize
         // handle does not start a render per frame (SPEC §6.5 asks for a regenerated
         // thumbnail at the end of a resize, not during it).
-        .task(id: "\(relativePath)@\(ThumbnailStore.bucket(for: width))") {
+        .task(id: "\(relativePath)@\(ThumbnailStore.bucket(for: requestWidth))") {
             guard let store = workspace.thumbnails else { return }
-            let task = await store.thumbnail(for: relativePath, width: width)
+            let task = await store.thumbnail(for: relativePath, width: requestWidth)
             let rendered = await task.value
             if !Task.isCancelled { image = rendered }
         }
+    }
+}
+
+/// Draws only the region of `image` named by `crop`, scaled to fill the view under the
+/// same `fit` rule the whole image uses (ADR-0020 D4): the crop rectangle's own aspect
+/// ratio decides how the view fits its available space, then the whole image is scaled
+/// and offset so that exactly the cropped region lands inside it.
+private struct CroppedThumbnail: View {
+    let image: NSImage
+    let crop: CanvasCrop
+
+    private var croppedAspect: CGFloat {
+        let width = crop.width * image.size.width
+        let height = crop.height * image.size.height
+        return height > 0 ? width / height : 1
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let scale = proxy.size.width / max(crop.width * image.size.width, 0.001)
+            Image(nsImage: image)
+                .resizable()
+                .frame(width: image.size.width * scale, height: image.size.height * scale)
+                .offset(x: -crop.x * image.size.width * scale, y: -crop.y * image.size.height * scale)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                .clipped()
+        }
+        .aspectRatio(croppedAspect, contentMode: .fit)
     }
 }
 

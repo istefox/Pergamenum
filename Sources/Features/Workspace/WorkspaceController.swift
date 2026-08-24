@@ -127,6 +127,9 @@ final class WorkspaceController {
     }
 
     func detach() {
+        // A crop mode left open when the vault closes must not be silently lost
+        // (ADR-0020 Consequences: "the board gains its first modal state").
+        endCrop(confirm: true)
         saveTask?.cancel()
         saveTask = nil
         store = nil
@@ -151,6 +154,9 @@ final class WorkspaceController {
 
     func open(folder newFolder: String) {
         guard let store else { return }
+        // Navigating away confirms an open crop the same way a click outside the card
+        // would (ADR-0020 D5), rather than silently discarding it.
+        endCrop(confirm: true)
         // Leaving a board with pending edits must not lose them.
         flushPendingSave()
 
@@ -210,6 +216,10 @@ final class WorkspaceController {
     private func apply(_ outcome: BoardHistory.Outcome) -> Bool {
         switch outcome {
         case .restored(let restored):
+            // The document just jumped to another point in history; an in-flight crop
+            // draft measured against the old one is stale and must not be written over
+            // whatever undo/redo just restored (ADR-0020 D5, Consequences).
+            endCrop(confirm: false)
             document = restored
             // A card that no longer exists must not stay selected: the toolbar would
             // offer actions on nothing.
@@ -285,6 +295,20 @@ final class WorkspaceController {
     var resizeHandle: BoardGeometry.Handle = .bottomRight
     var resizeOriginalFrame: CGRect = .zero
     var resizedFrame: CGRect?
+
+    /// The card being cropped, transient like the resize above and for the same reason
+    /// (ADR-0020 D5): a crop is written once, at `endCrop(confirm:)`, not per frame.
+    /// `cropOriginal` and `cropDraft` are both in the drawn image's own point space, not
+    /// the crop's stored fraction space - D5's own argument for why: a locked aspect
+    /// ratio has to mean a literal square on screen, which only holds in points. Only
+    /// `endCrop` converts to a normalised `CanvasCrop` before writing it.
+    var croppingNodeID: String?
+    var cropHandle: BoardGeometry.Handle = .bottomRight
+    var cropOriginal: CGRect = .zero
+    var cropDraft: CGRect?
+    /// The image's drawn point size at `beginCrop`, needed to clamp the draft inside the
+    /// picture and to normalise it back to a fraction at commit.
+    var cropDrawnSize: CGSize = .zero
 
     /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it
     /// started from and how far the pointer has travelled from there, in board units.
