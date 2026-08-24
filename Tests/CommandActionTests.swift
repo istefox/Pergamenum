@@ -120,6 +120,38 @@ private func actions() -> CommandActions {
     #expect(!actions.vault.consumePendingNewBoard())
 }
 
+// MARK: - ADR-0021 (plan 2026-08-24-workspace-tasks-notes-integration), Task 9
+//
+// "Aggiungi sotto-task" (UX blueprint's menu bar map): reachable only with a task
+// selected, and running it opens the composer already pointed at that task as the
+// parent - `vault.taskDraft` non-nil is what `RootView` reads to show the composer
+// sheet at all (`RootView.swift`), so asserting `taskDraft?.parent` is asserting the
+// state a person would see, not a pixel.
+
+private func makeTask(_ line: String = "- [ ] Capofila", sourcePath: String = "x.md") -> TaskItem {
+    TaskParser.parse(line: line, sourcePath: sourcePath, lineIndex: 0)!
+}
+
+@MainActor
+@Test func addSubtaskIsRefusedWithNoTaskSelectedAndOfferedWithOne() {
+    let actions = actions()
+    #expect(!actions.canRun(.taskAddSubtask))
+
+    actions.vault.selectedTask = makeTask()
+    #expect(actions.canRun(.taskAddSubtask))
+}
+
+@MainActor
+@Test func runningAddSubtaskOpensTheComposerWithTheSelectedTaskAsParent() {
+    let actions = actions()
+    let parent = makeTask()
+    actions.vault.selectedTask = parent
+
+    actions.run(.taskAddSubtask)
+
+    #expect(actions.vault.taskDraft?.parent == parent)
+}
+
 @MainActor
 @Test func switchingPaneIsTheOneActionSafeToRunWithNothingOpen() {
     // The only `run` a test can exercise without touching the file system, a panel or

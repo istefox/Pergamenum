@@ -232,6 +232,11 @@ final class CommandActions {
             vault.rescheduleSelectedTask(daysFromToday: 2)
         case .taskNextWeek:
             vault.rescheduleSelectedTask(daysFromToday: 7)
+        case .taskAddSubtask:
+            // Placeholder (Task 9, ADR-0021): opening the composer with `draft.parent`
+            // set to `vault.selectedTask` is the coder's wiring; `TaskMarkerWriteTests`
+            // and `CommandActionTests` are what turn this red until it lands.
+            break
         default:
             assertionFailure("«\(command.title)» è nella sezione Task e non è gestito")
         }
@@ -292,6 +297,11 @@ final class CommandActions {
             command == .goBack ? history.canGoBack : history.canGoForward
         case .taskToggle:
             vault.selectedTask != nil
+        case .taskAddSubtask:
+            // Placeholder (Task 9, ADR-0021): the real condition is `vault.selectedTask
+            // != nil`, same as `taskToggle`. Left always-off on purpose so the coder's
+            // wiring is what turns `CommandActionTests` green, not this stub.
+            false
         case .newEvent:
             calendar.eventAccess.isGranted
         case .newReminder:
