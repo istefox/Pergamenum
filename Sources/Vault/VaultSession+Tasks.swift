@@ -59,10 +59,10 @@ extension VaultSession {
         /// `@repeat(n/N)`, the finite recurrence of SPEC §7.1.
         var recurrence: TaskRecurrence?
         /// The task this draft becomes a sub-task of (ADR-0021 D9, A9). Nil composes an
-        /// ordinary top-level task exactly as before; set, `captureTask` is meant to
-        /// route through `TaskParser.insertingSubtask(in:below:draft:)` instead of
-        /// appending - not yet wired as of this commit (plan
-        /// `2026-08-24-workspace-tasks-notes-integration`, Task 3's own placeholder).
+        /// ordinary top-level task exactly as before; set, `captureTask` routes through
+        /// `TaskParser.insertingSubtask(in:below:draft:)` and writes into the parent's
+        /// own note rather than the draft's destination - `^id` is note-local (D2), so a
+        /// sub-task filed anywhere else would point at nothing.
         var parent: TaskItem?
 
         /// The day the task belongs to, for whoever has to put it somewhere: the day it
@@ -104,11 +104,6 @@ extension VaultSession {
             case .link(let target):
                 TaskParser.line(for: task, addingLinkTo: target)
             case .workspace(let path):
-                // TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3):
-                // `TaskParser.line(for:assigningWorkspace:)` is a signature-only stub
-                // as of this commit and returns the line unchanged. This arm exists so
-                // `TaskChange` stays exhaustive and the target builds; the coder's
-                // Task 3 fills in the stub, and this arm needs no change when it does.
                 TaskParser.line(for: task, assigningWorkspace: path)
             }
 
@@ -131,9 +126,14 @@ extension VaultSession {
 
     /// Quick capture (SPEC §7.4): appends the composed task to its destination note,
     /// creating the inbox note if it is not there yet.
+    ///
+    /// A draft carrying a parent takes the other route instead (ADR-0021 D9): the line
+    /// is inserted below that parent, in the parent's own note, through the same
+    /// `read` → rewrite → atomic `write` path.
     @discardableResult
     func captureTask(_ draft: TaskDraft) -> WriteResult? {
         guard !draft.isEmpty else { return nil }
+        if let parent = draft.parent { return captureSubtask(draft, below: parent) }
         let relativePath = draft.destination.relativePath
 
         do {
@@ -156,6 +156,35 @@ extension VaultSession {
             return try write(body + separator + line + "\n", to: relativePath)
         } catch {
             recordProblem("cattura rapida: \(error)")
+            return nil
+        }
+    }
+
+    /// Inserts a composed draft as a sub-task of `parent` (ADR-0021 D9, A9; R-07).
+    ///
+    /// Returns nil when the parent's line has moved on since it was read, which is the
+    /// same refusal `apply(_:to:)` gives for the same reason: inserting against a line
+    /// index that no longer holds the line it was read from would file the sub-task
+    /// under whatever now sits there.
+    private func captureSubtask(_ draft: TaskDraft, below parent: TaskItem) -> WriteResult? {
+        do {
+            let (_, text) = try read(parent.sourcePath)
+            let draft = TaskParser.SubtaskDraft(
+                text: draft.text,
+                scheduled: draft.scheduled,
+                scheduledTime: draft.scheduledTime,
+                due: draft.due,
+                dueTime: draft.dueTime,
+                reminder: draft.reminder,
+                recurrence: draft.recurrence
+            )
+            guard let updated = TaskParser.insertingSubtask(in: text, below: parent, draft: draft) else {
+                recordProblem("il task non è più dove risultava: \(parent.sourcePath)")
+                return nil
+            }
+            return try write(updated, to: parent.sourcePath)
+        } catch {
+            recordProblem("sotto-task: \(error)")
             return nil
         }
     }
