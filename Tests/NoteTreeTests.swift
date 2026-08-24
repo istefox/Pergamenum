@@ -86,3 +86,82 @@ private func note(_ path: String) -> NoteRecord {
     // A note at the root needs nothing opened.
     #expect(NoteTree.ancestors(of: "Appunti.md").isEmpty)
 }
+
+// MARK: - `NoteTree.build(fromPaths:)` (ADR-0021 "A task carries its Workspace and its place in
+// a project as caret markers in its own line, and nothing new is stored anywhere else", §D10).
+// Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 6: the
+// Workspace folder browser's second entry point over the same private `Builder`, exercised here
+// with `.canvas` paths rather than `NoteRecord`s. Every test above this mark uses `build(from:)`
+// and is left untouched - it is the guard that the `Builder` refactor this task asks for does not
+// change the note tree's existing behaviour.
+//
+// `NoteTree.build(fromPaths:)` is a signature-only stub returning `[]` as of this commit: every
+// test below is expected to fail red on its assertions, not to fail to compile.
+
+@Test func buildFromPathsProducesTheSameFolderShapeBuildFromNotesUses() {
+    let tree = NoteTree.build(fromPaths: [
+        "Appunti.canvas",
+        "01 Progetti/vibrofer-emea/vibrofer-emea.canvas",
+        "01 Progetti/altro.canvas",
+        "9 Attivi/nine.canvas",
+        "10 Archivio/ten.canvas",
+    ])
+
+    // Hand-written expected tree: folders before leaves at every level (never mixed
+    // in among them, `foldersComeBeforeNotesAtEveryLevel` above), Finder-style sort
+    // ("9 Attivi" before "10 Archivio", `namesSortTheWayTheFinderSortsThem` above),
+    // `id` is the vault-relative path, `name` is the file name with its extension
+    // stripped, and a leaf carries `children == nil` so the outline draws no
+    // disclosure triangle on it - every one of these is a property `build(from:)`
+    // already has, and `build(fromPaths:)` is asked to have the identical shape.
+    let expected: [NoteTree.Node] = [
+        NoteTree.Node(
+            id: "01 Progetti", name: "01 Progetti", kind: .folder,
+            children: [
+                NoteTree.Node(
+                    id: "01 Progetti/vibrofer-emea", name: "vibrofer-emea", kind: .folder,
+                    children: [
+                        NoteTree.Node(
+                            id: "01 Progetti/vibrofer-emea/vibrofer-emea.canvas",
+                            name: "vibrofer-emea", kind: .note, children: nil, noteCount: 1
+                        ),
+                    ],
+                    noteCount: 1
+                ),
+                NoteTree.Node(
+                    id: "01 Progetti/altro.canvas", name: "altro", kind: .note, children: nil, noteCount: 1
+                ),
+            ],
+            noteCount: 2
+        ),
+        NoteTree.Node(
+            id: "9 Attivi", name: "9 Attivi", kind: .folder,
+            children: [
+                NoteTree.Node(id: "9 Attivi/nine.canvas", name: "nine", kind: .note, children: nil, noteCount: 1),
+            ],
+            noteCount: 1
+        ),
+        NoteTree.Node(
+            id: "10 Archivio", name: "10 Archivio", kind: .folder,
+            children: [
+                NoteTree.Node(id: "10 Archivio/ten.canvas", name: "ten", kind: .note, children: nil, noteCount: 1),
+            ],
+            noteCount: 1
+        ),
+        NoteTree.Node(id: "Appunti.canvas", name: "Appunti", kind: .note, children: nil, noteCount: 1),
+    ]
+
+    #expect(tree == expected)
+}
+
+@Test func buildFromPathsOnAnEmptyListYieldsAnEmptyTree() {
+    #expect(NoteTree.build(fromPaths: []) == [])
+}
+
+@Test func buildFromPathsNeverExtendsNodeKind() {
+    // ADR-0021 D10: a board row is a `.note` leaf, not a new `Kind` case - extending
+    // the enum would force every `switch` over `Kind` in `NoteListPane` to grow a case
+    // for something that can never appear there.
+    let tree = NoteTree.build(fromPaths: ["Board.canvas"])
+    #expect(tree.map(\.kind) == [.note])
+}

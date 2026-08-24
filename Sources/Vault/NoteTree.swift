@@ -39,6 +39,24 @@ enum NoteTree {
         return root.nodes(prefix: "")
     }
 
+    /// Builds the tree from a flat list of vault-relative paths rather than from the
+    /// index - the Workspace browser's entry point, over the same private `Builder`.
+    ///
+    /// ADR-0021 D10: `.canvas` files never enter `IndexSnapshot`, so `CanvasStore
+    /// .allBoards()` hands this a plain `[String]` instead of `[NoteRecord]`. A leaf's
+    /// `name` is its file name with the extension stripped, the same rule `title` is
+    /// always under for a note (frontmatter has no `title` key to override it, SPEC
+    /// §4.3) - so the two entry points produce the same folder shape for the same
+    /// layout. `Node.kind` is **not** extended: a board row is a `.note` leaf here too
+    /// (D10), and the Workspace browser draws its own icon over it.
+    ///
+    /// Placeholder for Task 6 of `2026-08-24-workspace-tasks-notes-integration`: the
+    /// coder refactors the private `Builder` to hold `(path, name)` so both entry
+    /// points share one implementation.
+    static func build(fromPaths paths: [String]) -> [Node] {
+        []
+    }
+
     /// The folders on the path from the root down to `path`, which is what has to be
     /// open for a note to be visible.
     ///

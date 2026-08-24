@@ -101,6 +101,19 @@ struct CanvasStore: Sendable {
         var unplaced: [String]
     }
 
+    /// Every `.canvas` file in the vault, as vault-relative paths, sorted.
+    ///
+    /// ADR-0021 D10: boards are enumerated on demand rather than carried in
+    /// `IndexSnapshot`, which stays a note index. Called when the Workspace browser
+    /// appears and on `scanGeneration`, the same trigger the note tree rebuilds on.
+    ///
+    /// Placeholder for Task 6 of `2026-08-24-workspace-tasks-notes-integration`: the
+    /// coder implements the walk (mirroring `VaultScanner.scan()`, skipping the same
+    /// excluded directories through `VaultLayout.isExcludedDirectory`).
+    func allBoards() -> [String] {
+        []
+    }
+
     /// Creates a real directory for a folder card (SPEC §6.4, tool 4).
     func createFolder(named name: String, in parent: String) throws -> String {
         let relativePath = parent.isEmpty ? name : "\(parent)/\(name)"
