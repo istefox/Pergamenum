@@ -67,7 +67,14 @@ enum TaskParser {
         task.completed = annotationDate(in: body, name: "done")
         task.reminder = reminder(in: body)
         task.recurrence = recurrence(in: body)
-        task.links = WikilinkParser.links(in: body).filter { !$0.isEmbed }.map(\.target)
+        let annotated = annotatedLinks(in: body)
+        // The Workspace marker is an assignment, not a mention: it leaves `links`
+        // entirely (ADR-0021 D1), so the plain-wikilink mechanism of SPEC §7.2 keeps
+        // meaning "notes and boards this task references" and the two never collide.
+        task.workspacePath = annotated.first(where: \.isWorkspace)?.link.target
+        task.links = annotated.filter { !$0.isWorkspace && !$0.link.isEmbed }.map(\.link.target)
+        task.localID = caretInteger(in: body, name: "id")
+        task.parentLocalID = caretInteger(in: body, name: "parent")
         task.tags = tags(in: body)
         task.project = task.tags.first { $0.namespace == .project }
         task.text = displayText(from: body)
@@ -78,12 +85,13 @@ enum TaskParser {
     /// (ADR-0021 D2). Counts every task line, not only open ones - a done or
     /// cancelled task still occupies its id.
     ///
-    /// Signature-only stub as of this commit (plan `2026-08-24-workspace-tasks-notes-
-    /// integration`, Task 1): the constant below is deliberately wrong so a test
-    /// naming this member fails on its assertion rather than failing to compile. The
-    /// coder's Task 1 work replaces the body with the scan ADR-0021 D2 describes.
+    /// A scan of the note rather than a persisted counter: an id is read out of the
+    /// file, so deleting every derived store loses nothing and a note edited in
+    /// Obsidian or by hand keeps working. Goes through `tasks(in:sourcePath:)` so the
+    /// fenced-code skip is the same one every other reader gets.
     static func nextLocalID(in text: String) -> Int {
-        0
+        let highest = tasks(in: text, sourcePath: "").compactMap(\.localID).max() ?? 0
+        return highest + 1
     }
 
     private static func state(for marker: Character) -> TaskItem.State? {
@@ -135,6 +143,43 @@ enum TaskParser {
         guard let start = body.range(of: "@\(name)(") else { return nil }
         guard let end = body.range(of: ")", range: start.upperBound..<body.endIndex) else { return nil }
         return String(body[start.upperBound..<end.lowerBound])
+    }
+
+    /// `^id(<N>)` / `^parent(<N>)` (ADR-0021 D1), the caret sibling of
+    /// `annotationValue(in:name:)`.
+    ///
+    /// `range(of:)` finds the first occurrence, so a line carrying two of the same
+    /// marker keeps the first and ignores the rest - the rule `marker(in:prefix:)`
+    /// already applies to a line carrying two `>` dates.
+    private static func caretAnnotation(in body: String, name: String) -> String? {
+        guard let start = body.range(of: "^\(name)(") else { return nil }
+        guard let end = body.range(of: ")", range: start.upperBound..<body.endIndex) else { return nil }
+        return String(body[start.upperBound..<end.lowerBound])
+    }
+
+    private static func caretInteger(in body: String, name: String) -> Int? {
+        guard let value = caretAnnotation(in: body, name: name) else { return nil }
+        return Int(value.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Every wikilink in a body, each paired with whether it is the Workspace marker
+    /// `^[[<name>.canvas]]` of ADR-0021 D1.
+    ///
+    /// The two conditions are deliberately narrow: a `^` immediately before the link
+    /// **and** a target ending in `.canvas`, case-insensitively. Anything else -
+    /// `^[[Nota]]`, or a caret that merely happens to precede a link in prose - keeps
+    /// today's meaning exactly, an ordinary wikilink with a literal caret in front of
+    /// it. That is the whole of the backward-compatibility argument, and it costs one
+    /// `hasSuffix`.
+    private static func annotatedLinks(in body: String) -> [(link: Wikilink, isWorkspace: Bool)] {
+        WikilinkParser.links(in: body).map { link in
+            guard !link.isEmbed,
+                  link.range.lowerBound > body.startIndex,
+                  body[body.index(before: link.range.lowerBound)] == "^",
+                  link.target.lowercased().hasSuffix(".canvas")
+            else { return (link, false) }
+            return (link, true)
+        }
     }
 
     private static func reminder(in body: String) -> TaskReminder? {
@@ -196,10 +241,16 @@ enum TaskParser {
         for tag in tags(in: body) {
             text = text.replacingOccurrences(of: "#\(tag.description)", with: "")
         }
-        for link in WikilinkParser.links(in: body) {
-            text = text.replacingOccurrences(of: link.rendered, with: "")
+        // The Workspace markers go first, caret included: removing `[[X.canvas]]` on
+        // its own would strand a `^` mid-sentence (ADR-0021 D1).
+        let annotated = annotatedLinks(in: body)
+        for entry in annotated where entry.isWorkspace {
+            text = text.replacingOccurrences(of: "^" + entry.link.rendered, with: "")
         }
-        for pattern in ["@done", "@remind", "@repeat"] {
+        for entry in annotated where !entry.isWorkspace {
+            text = text.replacingOccurrences(of: entry.link.rendered, with: "")
+        }
+        for pattern in ["@done", "@remind", "@repeat", "^id", "^parent"] {
             while let start = text.range(of: "\(pattern)("),
                   let end = text.range(of: ")", range: start.upperBound..<text.endIndex) {
                 text.removeSubrange(start.lowerBound..<end.upperBound)
