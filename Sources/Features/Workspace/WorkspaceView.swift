@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkspaceView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
     @State private var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
     /// Shift and Option as they are held right now. `DragGesture` carries no modifier
@@ -14,7 +15,6 @@ struct WorkspaceView: View {
     /// rather than compounding on every frame of the gesture.
     @State private var pinchOrigin: CGFloat?
     @State private var newItemDraft: NewItemDraft?
-    @State private var isShowingTray = true
     @State private var isShowingQuickLook = false
     @State private var importProposals: [WorkspaceController.ImportProposal] = []
     /// Pen settings for the Disegno tool (SPEC §6.4, tool 10).
@@ -36,10 +36,19 @@ struct WorkspaceView: View {
             BoardTopBar(workspace: workspace)
             Divider()
             HStack(spacing: 0) {
+                // R-01: the vault's boards, in the shape they have on disk. Leading,
+                // beside the tool column, because it is where you are rather than what
+                // you can do - the same split the note pane makes between its list and
+                // its editor.
+                WorkspaceBrowser(openBoardPath: openBoardPath) { path in
+                    workspace.open(folder: (path as NSString).deletingLastPathComponent)
+                }
+                .frame(width: 200)
+                Divider()
                 BoardToolbar(workspace: workspace)
                 Divider()
                 board
-                if isShowingTray {
+                if navigation.isShowingTray {
                     Divider()
                     BoardTray(workspace: workspace)
                 }
@@ -111,6 +120,14 @@ struct WorkspaceView: View {
         }
     }
 
+    /// The board on screen, as a vault-relative path, so the browser can draw its row
+    /// as the selected one. A board is named after its folder (`boardPath(forFolder:)`
+    /// is the whole of that mapping), so the folder the controller holds is enough.
+    private var openBoardPath: String? {
+        guard let root = vault.root else { return nil }
+        return CanvasStore(root: root).boardPath(forFolder: workspace.folder)
+    }
+
     private func openPendingCanvas() {
         guard let pending = vault.consumePendingCanvasRoute() else { return }
         if let missing = workspace.openRoute(pending, viewport: viewportSize) {
@@ -157,10 +174,16 @@ struct WorkspaceView: View {
             .help("Anteprima rapida del file selezionato (barra spaziatrice)")
             .disabled(workspace.selectedFileURLs.isEmpty)
 
-            Toggle(isOn: $isShowingTray) {
+            // The same state the Vista menu's «Pannello Workspace» drives, now that it
+            // lives on `Navigation`: one toggle, two places to reach it.
+            // Label left as it was: `UITests/SectionToolbarsUITests.swift:132` finds this
+            // toggle by its words, and renaming it to match the menu entry would break a
+            // suite this task does not own. The identifier below is what a new test uses.
+            Toggle(isOn: Bindable(navigation).isShowingTray) {
                 Label("Nuovi elementi", systemImage: "tray")
             }
-            .help("Elementi della cartella non ancora posati sulla board")
+            .help("Nuovi elementi, task collegati e assegnati, note referenziate")
+            .accessibilityIdentifier("workspace-tray-toggle")
         }
     }
 

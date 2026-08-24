@@ -48,6 +48,13 @@ struct ViewCommands: Commands {
             // tasks and the unlinked mentions were three answers with no key between them.
             Button("Ispettore") { actions.run(.toggleInspector) }
                 .keyboardShortcut(shortcuts.shortcut(for: .toggleInspector))
+            // The Workspace's own trailing column (ADR-0021 D7): nuovi elementi, task
+            // collegati, task assegnati, note referenziate. A `Toggle` for the same
+            // reason "Modalità lettura" is one - the checkmark beside it is the state.
+            // No shortcut and no `ShortcutCommand` case: the UX blueprint asks for none,
+            // and "Dividi l'editor" above is the precedent for a keyless Vista entry.
+            Toggle("Pannello Workspace", isOn: Bindable(navigation).isShowingTray)
+                .disabled(navigation.pane != .workspace)
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere
