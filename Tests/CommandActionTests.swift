@@ -35,7 +35,7 @@ private func actions() -> CommandActions {
     let actions = actions()
     // Exactly the set the File and Vista menus disabled on `vault.root == nil`.
     for command: ShortcutCommand in [
-        .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook,
+        .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook,
         .globalSearch, .quickSwitcher, .runConformanceCheck,
     ] {
         #expect(!actions.canRun(command), "«\(command.title)» dovrebbe essere spenta senza vault")
@@ -108,6 +108,16 @@ private func actions() -> CommandActions {
         _ = actions.canRun(command)
     }
     #expect(ShortcutCommand.allCases.count > 0)
+}
+
+@MainActor
+@Test func newBoardSwitchesToWorkspaceAndRaisesThePendingFlag() {
+    let actions = actions()
+    actions.run(.newBoard)
+    #expect(actions.navigation.pane == .workspace)
+    #expect(actions.vault.consumePendingNewBoard())
+    // Consumed once: the Workspace reads it on appear and on change, never twice.
+    #expect(!actions.vault.consumePendingNewBoard())
 }
 
 @MainActor

@@ -115,6 +115,11 @@ final class CommandActions {
             // pane the command would compose out of sight.
             navigation.pane = .notes
             vault.beginNewNote()
+        case .newBoard:
+            // The Workspace pane first, for the same reason: the folder-naming sheet
+            // opens on the Workspace, so any other pane would compose it out of sight.
+            navigation.pane = .workspace
+            vault.beginNewBoard()
         case .dailyNote:
             // Reported rather than swallowed: the command doing nothing at all, with no
             // reason given, is the worst outcome when the daily note cannot be created.
@@ -271,7 +276,7 @@ final class CommandActions {
     /// menu teaches people not to trust it.
     func canRun(_ command: ShortcutCommand) -> Bool {
         switch command {
-        case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
+        case .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .runConformanceCheck:
             vault.root != nil
         case .save:

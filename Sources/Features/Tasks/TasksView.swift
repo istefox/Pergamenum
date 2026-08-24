@@ -9,6 +9,8 @@ struct TasksView: View {
     @State private var selectedTaskID: String?
     /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
     @State private var linking: TaskItem?
+    /// The task waiting for a due date (SPEC §7.1 `!YYYY-MM-DD`, context menu "Aggiungi scadenza").
+    @State private var addingDueFor: TaskItem?
     /// Every view's controls in one JSON map (ADR-0013 §D6).
     ///
     /// One key rather than five: `@AppStorage` takes a literal key, so a property per view
@@ -37,6 +39,9 @@ struct TasksView: View {
                 vault.apply(.link(title), to: task)
                 linking = nil
             }
+        }
+        .sheet(item: $addingDueFor) { task in
+            dueDateSheet(for: task)
         }
         .onChange(of: vault.isLinkingSelectedTask) { _, requested in
             guard requested, let task = vault.selectedTask else { return }
@@ -313,11 +318,38 @@ struct TasksView: View {
         Button("+2 giorni") { vault.apply(.schedule(today.adding(days: 2)), to: task) }
         Button("Settimana prossima") { vault.apply(.schedule(today.adding(days: 7)), to: task) }
         Button("Togli la data") { vault.apply(.schedule(nil), to: task) }
+        Button("Aggiungi scadenza…") { addingDueFor = task }
         Divider()
         Button("Collega nota o board…") { linking = task }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
         Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }
+    }
+
+    /// The date picker for "Aggiungi scadenza…" (SPEC §7.1 `!YYYY-MM-DD`).
+    private func dueDateSheet(for task: TaskItem) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Scadenza").themedText(.title)
+            MonthCalendar(
+                selection: .constant(task.due),
+                onPick: { date in
+                    vault.apply(.due(date), to: task)
+                    addingDueFor = nil
+                }
+            )
+            HStack {
+                if task.due != nil {
+                    Button("Rimuovi scadenza") {
+                        vault.apply(.due(nil), to: task)
+                        addingDueFor = nil
+                    }
+                }
+                Spacer()
+                Button("Chiudi") { addingDueFor = nil }.keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 320)
     }
 
     private func open(link target: String) {

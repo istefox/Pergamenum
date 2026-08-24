@@ -361,3 +361,44 @@ private struct DrawingRoot: ~Copyable {
     #expect(Set(proposals.map(\.point.x)).count == 3)
     controller.detach()
 }
+
+@MainActor
+@Test func fileMenuImportProposesTheAssistedNameForAnEmailAndKeepsAPlainFileAsIs() async throws {
+    let root = try DrawingRoot()
+    let emlSource = FileManager.default.temporaryDirectory
+        .appending(path: "scaricato-\(UUID().uuidString).eml")
+    try Data("""
+    Date: Tue, 4 Aug 2026 09:15:00 +0200
+    From: Rossi Impianti Srl <info@rossimpianti.test>
+    Subject: Richiesta offerta
+
+    corpo
+    """.utf8).write(to: emlSource)
+    defer { try? FileManager.default.removeItem(at: emlSource) }
+
+    let pngSource = FileManager.default.temporaryDirectory
+        .appending(path: "schema-\(UUID().uuidString).png")
+    try Data([0x89, 0x50, 0x4E, 0x47]).write(to: pngSource)
+    defer { try? FileManager.default.removeItem(at: pngSource) }
+
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(root.url)
+
+    let proposals = controller.proposeImport([emlSource, pngSource])
+    #expect(proposals.count == 2)
+    #expect(proposals[0].proposedName == "20260804_RossiImpianti_Email_richiesta-offerta.eml")
+    #expect(proposals[1].proposedName == pngSource.lastPathComponent)
+
+    for proposal in proposals { controller.commitImport(proposal) }
+    #expect(FileManager.default.fileExists(
+        atPath: root.url.appending(path: "00 Inbox/\(proposals[0].proposedName)")
+            .path(percentEncoded: false)
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: root.url.appending(path: "00 Inbox/\(proposals[1].proposedName)")
+            .path(percentEncoded: false)
+    ))
+    // Copied, not moved: the source may live outside the vault.
+    #expect(FileManager.default.fileExists(atPath: emlSource.path(percentEncoded: false)))
+    controller.close()
+}
