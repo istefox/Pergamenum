@@ -61,6 +61,18 @@ struct TaskItem: Equatable, Sendable, Identifiable {
     /// Every tag on the line.
     var tags: [Tag]
 
+    /// `^[[<name>.canvas]]` (ADR-0021 D1): the one Workspace this task is assigned to.
+    /// Not one of `links` - assignment is a different fact from "this task mentions
+    /// that board" and has its own field so the two never collide.
+    var workspacePath: String? = nil
+    /// `^id(<N>)` (ADR-0021 D1, D2): this task's identifier within its own note.
+    /// Never reused across notes and never persisted anywhere but the line itself.
+    var localID: Int? = nil
+    /// `^parent(<N>)` (ADR-0021 D1, D2): the `^id` of this task's parent, in the same
+    /// note. A `^parent` that names no `^id` in the same file is not an error at parse
+    /// time - the linter is what notices (R-12).
+    var parentLocalID: Int? = nil
+
     var id: String { "\(sourcePath)#\(lineIndex)" }
 
     /// Late relative to a given day: due before it and still open.

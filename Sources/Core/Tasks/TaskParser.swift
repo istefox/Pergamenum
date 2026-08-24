@@ -74,6 +74,18 @@ enum TaskParser {
         return task
     }
 
+    /// One past the highest `^id(<N>)` in the note, or 1 for a note with none
+    /// (ADR-0021 D2). Counts every task line, not only open ones - a done or
+    /// cancelled task still occupies its id.
+    ///
+    /// Signature-only stub as of this commit (plan `2026-08-24-workspace-tasks-notes-
+    /// integration`, Task 1): the constant below is deliberately wrong so a test
+    /// naming this member fails on its assertion rather than failing to compile. The
+    /// coder's Task 1 work replaces the body with the scan ADR-0021 D2 describes.
+    static func nextLocalID(in text: String) -> Int {
+        0
+    }
+
     private static func state(for marker: Character) -> TaskItem.State? {
         switch marker {
         case " ": .open
