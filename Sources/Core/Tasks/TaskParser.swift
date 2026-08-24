@@ -182,6 +182,20 @@ enum TaskParser {
         }
     }
 
+    /// Every Workspace marker target on a task line, in source order.
+    ///
+    /// `parse` keeps only the first (ADR-0021 D1, "the first wins"), so a caller that
+    /// needs to *see* the discarded ones - the R-11 linter rule of §D11 is the only
+    /// one - cannot read them back off `TaskItem`. It goes through the same
+    /// `annotatedLinks` walk rather than re-deriving the caret rule, so the marker the
+    /// linter calls a duplicate is by construction the marker the parser ignored.
+    ///
+    /// Takes the whole raw line: the `- [x] ` prefix carries no `[[`, so the walk sees
+    /// exactly what it sees on a body.
+    static func workspaceTargets(inLine line: String) -> [String] {
+        annotatedLinks(in: line).filter(\.isWorkspace).map(\.link.target)
+    }
+
     private static func reminder(in body: String) -> TaskReminder? {
         guard let value = annotationValue(in: body, name: "remind") else { return nil }
         let parts = value.split(separator: " ")

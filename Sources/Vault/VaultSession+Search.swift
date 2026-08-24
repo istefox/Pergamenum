@@ -126,7 +126,34 @@ extension VaultSession {
             frontmatter: FrontmatterRules.validate(document),
             tags: TagRules.validate(document.frontmatter.tags, category: category, vocabulary: vocabulary),
             relatedMissingInSection: discrepancies.missingInSection,
-            relatedMissingInFrontmatter: discrepancies.missingInFrontmatter
+            relatedMissingInFrontmatter: discrepancies.missingInFrontmatter,
+            taskMarkers: taskMarkerViolations(path: path, text: text)
         )
+    }
+
+    /// The two advisory task-marker rules of ADR-0021 §D11 (R-11, R-12).
+    ///
+    /// A pure function of the note's own text: `TaskParser.tasks(in:sourcePath:)` reads
+    /// the string and nothing else, so no index and no vault are consulted and the rule
+    /// is testable without either. That is also what makes R-12 note-local by
+    /// construction (§D2) - a matching `^id` in a different note is not visible from
+    /// here, so it cannot clear the finding.
+    private func taskMarkerViolations(path: String, text: String) -> [TaskMarkerViolation] {
+        let tasks = TaskParser.tasks(in: text, sourcePath: path)
+        let localIDs = Set(tasks.compactMap(\.localID))
+        var findings: [TaskMarkerViolation] = []
+
+        for task in tasks {
+            let targets = TaskParser.workspaceTargets(inLine: task.rawLine)
+            if targets.count > 1 {
+                findings.append(
+                    .duplicateWorkspace(line: task.lineIndex, kept: targets[0], ignored: targets[1])
+                )
+            }
+            if let parent = task.parentLocalID, !localIDs.contains(parent) {
+                findings.append(.orphanedParent(line: task.lineIndex, parent: parent))
+            }
+        }
+        return findings
     }
 }
