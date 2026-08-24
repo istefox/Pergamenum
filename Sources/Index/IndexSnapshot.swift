@@ -183,30 +183,30 @@ struct IndexSnapshot: Sendable {
     /// `[[X.canvas]]` wikilink with no caret is a mention, not an assignment, and does
     /// not appear here (R-04).
     ///
-    /// Signature-only as of this commit (plan Task 2): the coder's implementation goes
-    /// here, matching `workspacePath` rather than returning nothing.
     func tasks(assignedToWorkspace canvasFileName: String) -> [TaskItem] {
-        []
+        let needle = canvasFileName.lowercased()
+        return allTasks.filter { $0.workspacePath?.lowercased() == needle }
     }
 
     /// The same-note children of a task, bucketed on its `^id` (ADR-0021 D2, D5). A
     /// `^parent(N)` in a different note whose own `^id(N)` matches is **not** a child:
     /// ids are note-local, and the join is `sourcePath`-scoped.
-    ///
-    /// Signature-only as of this commit (plan Task 2): returning nothing regardless of
-    /// `task.localID` is the wrong-but-compiling placeholder the coder replaces.
     func subtasks(of task: TaskItem) -> [TaskItem] {
-        []
+        guard let id = task.localID else { return [] }
+        guard let record = notes[task.sourcePath] else { return [] }
+        return record.tasks.filter { $0.parentLocalID == id }
     }
 
     /// How many of a project's sub-tasks are done (ADR-0021 D5). `nil` for a task with
     /// no sub-tasks. Computed on read from what is already in the snapshot; nothing
     /// here reaches a file.
-    ///
-    /// Signature-only as of this commit (plan Task 2): the coder's implementation
-    /// replaces this with `subtasks(of:)` counted by `state == .done`.
     func progress(ofProject task: TaskItem) -> TaskProgress? {
-        nil
+        let children = subtasks(of: task)
+        guard !children.isEmpty else { return nil }
+        return TaskProgress(
+            done: children.filter { $0.state == .done }.count,
+            total: children.count
+        )
     }
 
     /// The five views of SPEC §7.4.
