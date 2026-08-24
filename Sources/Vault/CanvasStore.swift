@@ -107,11 +107,32 @@ struct CanvasStore: Sendable {
     /// `IndexSnapshot`, which stays a note index. Called when the Workspace browser
     /// appears and on `scanGeneration`, the same trigger the note tree rebuilds on.
     ///
-    /// Placeholder for Task 6 of `2026-08-24-workspace-tasks-notes-integration`: the
-    /// coder implements the walk (mirroring `VaultScanner.scan()`, skipping the same
-    /// excluded directories through `VaultLayout.isExcludedDirectory`).
+    /// The walk mirrors `VaultScanner.scan()`: an enumerator that skips the descendants
+    /// of an excluded directory outright rather than filtering its files one at a time,
+    /// so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are never entered.
     func allBoards() -> [String] {
-        []
+        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: keys,
+            options: [.skipsPackageDescendants]
+        ) else {
+            return []
+        }
+
+        var paths: [String] = []
+        while let url = enumerator.nextObject() as? URL {
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            let name = values?.name ?? url.lastPathComponent
+
+            if values?.isDirectory == true {
+                if VaultLayout.isExcludedDirectory(name) { enumerator.skipDescendants() }
+                continue
+            }
+            guard url.pathExtension.lowercased() == Self.fileExtension else { continue }
+            paths.append(VaultScanner.relativePath(of: url, under: root))
+        }
+        return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// Creates a real directory for a folder card (SPEC §6.4, tool 4).

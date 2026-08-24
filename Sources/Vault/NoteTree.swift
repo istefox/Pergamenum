@@ -34,7 +34,10 @@ enum NoteTree {
     static func build(from notes: [NoteRecord]) -> [Node] {
         var root = Builder()
         for note in notes {
-            root.insert(note, components: note.relativePath.split(separator: "/").map(String.init))
+            root.insert(
+                Builder.Leaf(path: note.relativePath, name: note.title),
+                components: note.relativePath.split(separator: "/").map(String.init)
+            )
         }
         return root.nodes(prefix: "")
     }
@@ -50,11 +53,16 @@ enum NoteTree {
     /// layout. `Node.kind` is **not** extended: a board row is a `.note` leaf here too
     /// (D10), and the Workspace browser draws its own icon over it.
     ///
-    /// Placeholder for Task 6 of `2026-08-24-workspace-tasks-notes-integration`: the
-    /// coder refactors the private `Builder` to hold `(path, name)` so both entry
-    /// points share one implementation.
     static func build(fromPaths paths: [String]) -> [Node] {
-        []
+        var root = Builder()
+        for path in paths {
+            let fileName = (path as NSString).lastPathComponent
+            root.insert(
+                Builder.Leaf(path: path, name: (fileName as NSString).deletingPathExtension),
+                components: path.split(separator: "/").map(String.init)
+            )
+        }
+        return root.nodes(prefix: "")
     }
 
     /// The folders on the path from the root down to `path`, which is what has to be
@@ -72,20 +80,31 @@ enum NoteTree {
         return result
     }
 
-    /// Accumulates one folder's contents while the notes are walked.
+    /// Accumulates one folder's contents while the leaves are walked.
+    ///
+    /// A leaf is a `(path, name)` pair rather than a `NoteRecord`, which is the whole of
+    /// what the tree ever read out of one: the path is the identity and the name is the
+    /// row. Holding the pair is what lets `build(fromPaths:)` reach the same algorithm
+    /// with `.canvas` paths that carry no record anywhere (ADR-0021 D10) instead of a
+    /// second tree implementation beside this one.
     private struct Builder {
-        var folders: [String: Builder] = [:]
-        var notes: [NoteRecord] = []
-
-        mutating func insert(_ note: NoteRecord, components: [String]) {
-            guard let first = components.first, components.count > 1 else {
-                notes.append(note)
-                return
-            }
-            folders[first, default: Builder()].insert(note, components: Array(components.dropFirst()))
+        struct Leaf {
+            var path: String
+            var name: String
         }
 
-        /// This folder's rows: subfolders first, then notes, each group in the order
+        var folders: [String: Builder] = [:]
+        var leaves: [Leaf] = []
+
+        mutating func insert(_ leaf: Leaf, components: [String]) {
+            guard let first = components.first, components.count > 1 else {
+                leaves.append(leaf)
+                return
+            }
+            folders[first, default: Builder()].insert(leaf, components: Array(components.dropFirst()))
+        }
+
+        /// This folder's rows: subfolders first, then leaves, each group in the order
         /// the Finder would use - so `9 Note` sorts before `10 Note` and accents do
         /// not push a note to the end of the list.
         func nodes(prefix: String) -> [Node] {
@@ -103,13 +122,13 @@ enum NoteTree {
                 }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-            let noteNodes = notes
-                .map { note in
-                    Node(id: note.relativePath, name: note.title, kind: .note, children: nil, noteCount: 1)
+            let leafNodes = leaves
+                .map { leaf in
+                    Node(id: leaf.path, name: leaf.name, kind: .note, children: nil, noteCount: 1)
                 }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-            return folderNodes + noteNodes
+            return folderNodes + leafNodes
         }
     }
 }
