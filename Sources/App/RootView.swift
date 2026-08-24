@@ -136,6 +136,25 @@ struct RootView: View {
         )) {
             GlobalSearchView()
         }
+        // File → "Importa file…" (SPEC §10): vault-wide, not tied to any one pane,
+        // same reasoning as the global search sheet above.
+        .sheet(isPresented: Binding(
+            get: { !vault.fileImportProposals.isEmpty },
+            set: { if !$0 { vault.fileImportProposals = [] } }
+        )) {
+            FileImportSheet(
+                proposals: Binding(
+                    get: { vault.fileImportProposals },
+                    set: { vault.fileImportProposals = $0 }
+                ),
+                onCancel: { vault.fileImportProposals = [] },
+                onConfirm: { proposals in
+                    for proposal in proposals { vault.commitImport(proposal) }
+                    vault.fileImportProposals = []
+                    Task { await vault.rescan() }
+                }
+            )
+        }
         // At window level rather than inside the Attività pane: quick capture is meant
         // to work from wherever you are, and presented by that pane the command did
         // nothing at all from the other four.

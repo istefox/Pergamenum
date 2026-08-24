@@ -171,6 +171,24 @@ private let today = CalendarDate(iso: "2026-08-11")!
     #expect(!cleared.contains(">2026-08"))
 }
 
+@Test func settingADueDateReplacesTheExistingOne() {
+    let raw = "- [ ] Task !2026-08-15 coda"
+    let task = TaskParser.parse(line: raw, sourcePath: "x.md", lineIndex: 0)!
+
+    let due = TaskParser.line(for: task, dueOn: CalendarDate(iso: "2026-08-20")!)
+    #expect(due.contains("!2026-08-20"))
+    #expect(!due.contains("!2026-08-15"))
+    #expect(due.contains("coda"))
+
+    let cleared = TaskParser.line(for: task, dueOn: nil)
+    #expect(!cleared.contains("!2026-08"))
+}
+
+@Test func settingADueDateOnATaskWithNoneAppendsIt() {
+    let task = TaskParser.parse(line: "- [ ] Task", sourcePath: "x.md", lineIndex: 0)!
+    #expect(TaskParser.line(for: task, dueOn: today) == "- [ ] Task !2026-08-11")
+}
+
 @Test func schedulingATaskThatHadNoDateAppendsIt() {
     let task = TaskParser.parse(line: "- [ ] Task", sourcePath: "x.md", lineIndex: 0)!
     #expect(TaskParser.line(for: task, scheduledOn: today) == "- [ ] Task >2026-08-11")
@@ -313,6 +331,26 @@ tags:
     let onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(onDisk.contains("- [ ] Oggi >2026-08-20"))
     #expect(!onDisk.contains(">2026-08-11\n"))
+    controller.close()
+}
+
+@MainActor
+@Test func settingADueDateFromTheContextMenuWritesIt() async throws {
+    let vault = try TaskVault()
+    try vault.write(taskNote, to: "Note.md")
+
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
+
+    #expect(controller.apply(.due(CalendarDate(iso: "2026-08-25")!), to: task))
+    var onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
+    #expect(onDisk.contains("!2026-08-25"))
+
+    let updated = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
+    #expect(controller.apply(.due(nil), to: updated))
+    onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
+    #expect(!onDisk.contains("!2026-08-25"))
     controller.close()
 }
 

@@ -299,6 +299,9 @@ struct VaultCommands: Commands {
             Button("Nuova nota") { actions.run(.newNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newNote))
                 .disabled(!actions.canRun(.newNote))
+            Button("Nuova board") { actions.run(.newBoard) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newBoard))
+                .disabled(!actions.canRun(.newBoard))
             Button("Oggi") { actions.run(.dailyNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
                 .disabled(!actions.canRun(.dailyNote))
@@ -363,6 +366,15 @@ struct VaultCommands: Commands {
                     Button("Svuota elenco") { RecentVaults().forgetAll() }
                 }
             }
+            Button("Importa file…") {
+                if let urls = VaultOpenPanel.chooseFiles(
+                    title: "Importa file",
+                    message: "I file vengono copiati in 00 Inbox, con proposta di nome."
+                ) {
+                    vault.fileImportProposals = vault.proposeImport(urls)
+                }
+            }
+            .disabled(vault.root == nil)
             Button("Importa convenzioni…") { VaultOpenPanel.chooseHarnessRepository(into: vault) }
                 .disabled(vault.root == nil)
             Menu("Esporta nota") {

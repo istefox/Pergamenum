@@ -289,6 +289,24 @@ final class VaultController {
         return pendingWorkspacePlacement
     }
 
+    /// Switches to the Workspace and opens the "Cartella" tool's naming sheet on the
+    /// current board (File → "Nuova board", SPEC §10). A folder is what SPEC §6.1 calls
+    /// a board into being: there is no separate "create board" primitive to call.
+    func beginNewBoard() { pendingNewBoard = true }
+
+    /// Read by the Workspace on appear and on change, since it may not be mounted yet
+    /// when this is set (same reasoning as `pendingWorkspacePlacement`).
+    private(set) var pendingNewBoard = false
+
+    func consumePendingNewBoard() -> Bool {
+        defer { pendingNewBoard = false }
+        return pendingNewBoard
+    }
+
+    /// Proposals from File → "Importa file…" (SPEC §10), waiting for the user to
+    /// confirm or edit each name before the copy happens.
+    var fileImportProposals: [FileImportProposal] = []
+
     // MARK: Vault-private files
     //
 

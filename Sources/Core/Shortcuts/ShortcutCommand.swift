@@ -11,6 +11,10 @@ import Foundation
 /// not text: renaming one silently drops the user's binding for that command.
 enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case newNote
+    /// File → "Nuova board" (SPEC §10): switches to the Workspace and opens the
+    /// "Cartella" tool's naming sheet on the current board, since a folder is what
+    /// SPEC §6.1 calls a board into being.
+    case newBoard
     case dailyNote
     case quickTask
     /// The only command here that is not a menu key: it is registered with the system
@@ -112,7 +116,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
 
     var section: Section {
         switch self {
-        case .newNote, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
+        case .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory,
              .toggleStar, .applyTemplate:
             .file
@@ -138,6 +142,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .newNote: "Nuova nota"
+        case .newBoard: "Nuova board"
         case .dailyNote: "Nota di oggi"
         case .newTab: "Nuova tab"
         case .closeTab: "Chiudi tab"
@@ -198,6 +203,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var defaultBinding: KeyBinding {
         switch self {
         case .newNote: KeyBinding("n", .command)
+        // Not Cmd+Shift+C: it collides with a global hotkey Paste registers, found on
+        // screen (the app's own hotkey wins, and Pergamenum's menu equivalent never
+        // fires). Checked the same way ⌃Space was for `globalCapture`.
+        case .newBoard: KeyBinding("b", [.command, .shift])
         // Cmd+T is the tab key in every application that has tabs, so «Nota di oggi»
         // gives it up rather than making Cmd+T mean something else here (ADR-0012 D5).
         // Cmd+Shift+T is not free either: it is «riapri l'ultima tab chiusa», by the same

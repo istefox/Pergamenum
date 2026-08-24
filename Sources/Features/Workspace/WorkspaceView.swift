@@ -57,6 +57,7 @@ struct WorkspaceView: View {
             if let root = vault.root {
                 workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails)
             }
+            checkPendingNewBoard()
         }
         .onDisappear { workspace.flushPendingSave() }
         // `pergamenum://canvas?file=…&node=…` parks its target on the controller, and
@@ -65,6 +66,14 @@ struct WorkspaceView: View {
         // the app arrives before this view exists.
         .task { openPendingCanvas() }
         .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
+        // File → "Nuova board" (SPEC §10): set before this view existed this session
+        // (checked on appear, above) or while it is already showing (checked here) -
+        // the same double registration `openPendingCanvas` needs and for the same
+        // reason.
+        .onChange(of: vault.pendingNewBoard) { _, isPending in
+            guard isPending else { return }
+            checkPendingNewBoard()
+        }
         .onChange(of: vault.pendingWorkspacePlacement) { _, pending in
             // A note sent here from the editor lands on the board of its own folder,
             // which is where it already lives on disk.
@@ -107,6 +116,14 @@ struct WorkspaceView: View {
         if let missing = workspace.openRoute(pending, viewport: viewportSize) {
             vault.recordProblem("il link punta a una card che non esiste: \(missing)")
         }
+    }
+
+    /// File → "Nuova board": opens the same naming sheet the "Cartella" tool's tap
+    /// handler opens (`handleTap(at:)`, `.folder` case), on the current board, at the
+    /// same position-less default `pendingWorkspacePlacement` uses below.
+    private func checkPendingNewBoard() {
+        guard vault.consumePendingNewBoard() else { return }
+        newItemDraft = NewItemDraft(kind: .folder, point: CGPoint(x: 60, y: 60))
     }
 
     /// The board's window-level commands.

@@ -278,6 +278,16 @@ enum TaskParser {
         return line.trimmingTrailingWhitespace() + " >\(date)" + (time.map { " " + $0.text } ?? "")
     }
 
+    /// The line for a task with a due date set or cleared (`!YYYY-MM-DD`, SPEC §7.1).
+    static func line(for task: TaskItem, dueOn date: CalendarDate?) -> String {
+        var line = task.rawLine
+        if let existing = markerRange(in: line, prefix: "!") {
+            line.removeSubrange(withPrecedingSpace(existing, in: line))
+        }
+        guard let date else { return line.trimmingTrailingWhitespace() }
+        return line.trimmingTrailingWhitespace() + " !\(date)"
+    }
+
     /// The line for a task that does not exist yet, in the marker order of SPEC §7.1.
     ///
     /// A marker already typed into the text wins over the one the composer holds: the
