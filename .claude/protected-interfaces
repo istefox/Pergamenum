@@ -1,0 +1,5 @@
+# Protected interfaces (ADR-0053). interface-check.sh blocks a diff that removes or changes
+# the signature of any entry here. Added 2026-08-24 per ADR-0021 (Gate 2 proposal, approved).
+
+Sources/Index/IndexCache.swift:schemaVersion — argued over by three ADRs; a silent bump invalidates ADR-0021 §D4
+Sources/Connector/VaultPayloads.swift:VaultAPI.LintFinding — JSON shape emitted by `perg lint --json` and the MCP `lint` tool to external callers

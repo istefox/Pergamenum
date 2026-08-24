@@ -282,7 +282,29 @@ Key architectural decisions:
 
 Detail: `docs/adr/0019-embed-drag-resize.md`.
 
+## Decisions from the Workspace/Task/Note integration chain (ADR-0021)
+
+Workspace browser, Task↔Workspace/Note relations, and project sub-tasks: `docs/adr/0021-workspace-tasks-notes-integration.md`.
+
+Key architectural decisions:
+- **No new dependency, no schema, no index bump.** GRDB does not exist in this repo (MCP is the
+  only third-party dependency) and there is no "task table" — `StoredTask` re-parses `rawLine`
+  through `TaskParser.parse` instead of serializing fields, so a field added to `TaskItem` and read
+  by the parser is free in the cache with no migration. `schemaVersion` stays 3.
+- **`^[[...]]` is a Workspace marker only when its target ends in `.canvas`**, and stays an
+  ordinary wikilink at the rename-rewrite level — the caret sits outside the `[[` range the
+  rewriter already rewrites, so rename-updates-references comes for free with no new code.
+- **"Progetti" is a sixth `TaskGrouping`, never a sixth `TaskView`** — the five task views are
+  closed by ADR-0013 §D6; the grouping axis is the one left open for exactly this kind of addition.
+- **Two protected interfaces declared** (`.claude/protected-interfaces`, ADR-0053): `IndexCache`'s
+  `schemaVersion` and `VaultPayloads`' `VaultAPI.LintFinding` JSON shape (consumed by `perg lint`
+  and the MCP `lint` tool) — both now block a signature change without a deliberate edit to that
+  file.
+
+Detail: `docs/adr/0021-workspace-tasks-notes-integration.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
 - **ADR-0020** — non-destructive image card crop, persisted as one prefixed scalar key `pergamenum-crop` on the canvas node, never touching the file on disk → `docs/adr/0020-image-card-crop.md`
+- **ADR-0021** — Workspace browser + Task↔Workspace/Note relations + project sub-tasks, entirely as new task-line caret markers, no new storage → `docs/adr/0021-workspace-tasks-notes-integration.md`
