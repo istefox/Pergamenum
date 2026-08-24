@@ -262,3 +262,68 @@ private func snapshot(_ notes: [String: String]) -> IndexSnapshot {
 
     #expect(index.progress(ofProject: parent) == nil)
 }
+
+// MARK: - R-15, as a property of the parser (ADR-0021 D12). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 10.
+//
+// "No frontmatter key or tag prefix outside the closed schemas (SPEC §4.3, §4.4) is
+// introduced by this feature." The three caret markers live entirely inside a task
+// line, below the frontmatter block and outside every tag, so this is a property that
+// holds by construction rather than a behaviour that has to be specially coded - the
+// point of this test is to make that argument mechanical: two otherwise-identical
+// notes, one carrying all three markers and one carrying none of them, parse to the
+// same `Frontmatter` and the same tag set.
+
+@Test func aNoteWithAllThreeCaretMarkersParsesToTheSameFrontmatterAndTagSetAsWithoutThem() {
+    let frontmatterBlock = """
+    ---
+    date: 2026-08-24
+    tags:
+      - type-nota
+      - project-vibrofer
+    ---
+
+
+    """
+
+    let withoutMarkers = frontmatterBlock + """
+    # Progetto Vibrofer
+
+    - [ ] Padre #project-vibrofer
+      - [ ] Figlio >2026-09-01 !2026-09-10
+    """
+
+    let withMarkers = frontmatterBlock + """
+    # Progetto Vibrofer
+
+    - [ ] Padre #project-vibrofer ^id(1) ^[[vibrofer-emea.canvas]]
+      - [ ] Figlio >2026-09-01 !2026-09-10 ^parent(1) ^id(2)
+    """
+
+    let plainDocument = NoteDocument.parse(withoutMarkers)
+    let markedDocument = NoteDocument.parse(withMarkers)
+
+    // The frontmatter block above is byte-identical in both notes; this is the
+    // assertion that the caret markers on the task lines below it do not change what
+    // the frontmatter parser reads - no foreign key appears, and `tags:` reads the
+    // same two entries either way.
+    #expect(markedDocument.frontmatter == plainDocument.frontmatter)
+    #expect(markedDocument.frontmatter.foreignKeys.isEmpty)
+
+    // And the tag set the note carries as a whole - frontmatter tags plus every
+    // inline tag on a task line - is identical too: `^id`, `^parent` and
+    // `^[[…]].canvas` are read by `caretAnnotation(in:name:)` and the workspace-link
+    // walk beside it, never by the tag scanner, so neither can be mistaken for a tag
+    // in either direction.
+    let plainTasks = TaskParser.tasks(in: withoutMarkers, sourcePath: "Nota.md")
+    let markedTasks = TaskParser.tasks(in: withMarkers, sourcePath: "Nota.md")
+    let plainTagSet = Set(plainDocument.frontmatter.tags).union(plainTasks.flatMap(\.tags))
+    let markedTagSet = Set(markedDocument.frontmatter.tags).union(markedTasks.flatMap(\.tags))
+    #expect(markedTagSet == plainTagSet)
+
+    // The markers are exactly the difference between the two task lists - proof that
+    // this test is exercising the markers at all rather than two notes that merely
+    // happen to agree.
+    #expect(markedTasks.contains { $0.localID == 1 })
+    #expect(plainTasks.allSatisfy { $0.localID == nil && $0.parentLocalID == nil })
+}
