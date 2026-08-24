@@ -13,12 +13,36 @@ enum WorkspaceReferences {
     /// Every note this board carries: the `.md` Document cards, plus every wikilink
     /// found inside its text nodes. De-duplicated, stable order.
     ///
-    /// Signature-only stub as of this commit (plan
-    /// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task
-    /// 7): returns `[]` unconditionally so the target builds and
-    /// `Tests/WorkspaceReferenceTests.swift` fails red on its assertions rather than
-    /// failing to compile.
+    /// Order is the board document's own node order, and within a text node the
+    /// source order `WikilinkParser.links` returns - so two calls on the same document
+    /// answer identically and the section does not reshuffle itself on every redraw.
+    /// `.link`, `.group` and `.unknown` nodes carry no note, and a `.file` node whose
+    /// path is not a `.md` is a PDF, an image or an email card rather than a note.
     static func notes(in document: CanvasDocument) -> [String] {
-        []
+        var results: [String] = []
+        var seen: Set<String> = []
+
+        func append(_ path: String) {
+            guard !path.isEmpty, seen.insert(path).inserted else { return }
+            results.append(path)
+        }
+
+        for node in document.nodes {
+            switch node.kind {
+            case .file(let path, _):
+                // Case-insensitively, the way the rest of the app reads an extension:
+                // a card pointing at `Nota.MD` is still a note.
+                guard (path as NSString).pathExtension.lowercased() == "md" else { continue }
+                append(path)
+            case .text(let text):
+                for link in WikilinkParser.links(in: text) {
+                    append(link.target)
+                }
+            case .link, .group, .unknown:
+                continue
+            }
+        }
+
+        return results
     }
 }
