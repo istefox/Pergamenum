@@ -133,6 +133,8 @@ extension VaultAPI {
         let tags: [String]
         let relatedMissingInSection: [String]
         let relatedMissingInFrontmatter: [String]
+        /// The two advisory task-marker findings of ADR-0021 §D11 (R-11, R-12).
+        let taskMarkers: [String]
         let count: Int
 
         init(path: String, _ violations: NoteViolations) {
@@ -142,6 +144,7 @@ extension VaultAPI {
             tags = violations.tags.map { "\($0)" }
             relatedMissingInSection = violations.relatedMissingInSection
             relatedMissingInFrontmatter = violations.relatedMissingInFrontmatter
+            taskMarkers = violations.taskMarkers.map { "\($0)" }
             count = violations.count
         }
     }

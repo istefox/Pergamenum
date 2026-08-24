@@ -1,0 +1,329 @@
+import Foundation
+import Testing
+@testable import Pergamenum
+
+// ADR-0021 ("A task carries its Workspace and its place in a project as caret markers in
+// its own line, and nothing new is stored anywhere else"), §D1 and §D2. Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 1: the three
+// caret markers `^[[<canvas>.canvas]]`, `^id(<N>)` and `^parent(<N>)`, pure - no index, no
+// vault, no disk, matching `Tests/TaskTests.swift`'s own split from the rewriting and
+// view-sorting tests beside it.
+//
+// `Sources/Core/Tasks/TaskItem.swift` carries only the three defaulted properties this file
+// references, and `Sources/Core/Tasks/TaskParser.swift`'s `nextLocalID(in:)` is a
+// signature-only stub as of this commit (ADR-0155 §D1 style): every test below is expected
+// to fail red on its assertions, not to fail to compile - the coder's Task 1 work fills in
+// the marker recognition, the `links`/`text` filtering and `nextLocalID`'s scan that this
+// file already encodes as assertions. Two tests are guards rather than new-behaviour
+// assertions and are expected to already be green: the backward-compatibility case
+// (`^[[Nota]]`, no `.canvas`) and the plain-link case that mirrors
+// `Tests/TaskTests.swift:37-40`.
+
+private func task(_ line: String, in path: String = "Nota.md", at index: Int = 0) -> TaskItem {
+    TaskParser.parse(line: line, sourcePath: path, lineIndex: index)!
+}
+
+// MARK: - `^[[<canvas>.canvas]]` — the Workspace marker (R-02, R-04)
+
+@Test func workspaceMarkerIsReadAndExcludedFromLinks() {
+    let t = task("- [ ] Verifica disegno ^[[vibrofer-emea.canvas]]")
+    #expect(t.workspacePath == "vibrofer-emea.canvas")
+    #expect(!t.links.contains("vibrofer-emea.canvas"))
+}
+
+@Test func aCaretedLinkWithoutDotCanvasStaysAnOrdinaryWikilinkBackwardCompatible() {
+    // Today's behaviour, unchanged (ADR-0021 D1): a caret in front of a link to a note
+    // with no `.canvas` suffix is not a Workspace marker at all. This is the guard for
+    // the backward-compatibility argument and it is expected to already be green.
+    let t = task("- [ ] Vedi ^[[Nota]]")
+    #expect(t.workspacePath == nil)
+    #expect(t.links == ["Nota"])
+}
+
+@Test func aPlainCanvasLinkWithoutACaretIsNotAWorkspaceAssignment() {
+    // Guards Tests/TaskTests.swift:37-40 (`tasks[7].links == ["Progetto X.canvas"]`),
+    // which must stay green untouched: a plain wikilink to a board is still just a
+    // link, independent of the new caret mechanism (R-04's other half).
+    let t = task("- [ ] Task con canvas collegato, vedi [[Progetto X.canvas]]")
+    #expect(t.workspacePath == nil)
+    #expect(t.links.contains("Progetto X.canvas"))
+}
+
+@Test func theCanvasSuffixDetectionIsCaseInsensitive() {
+    // ADR-0021 D1: "the target ends in `.canvas` (case-insensitively)".
+    let t = task("- [ ] Verifica ^[[vibrofer-emea.CANVAS]]")
+    #expect(t.workspacePath == "vibrofer-emea.CANVAS")
+}
+
+@Test func aSecondWorkspaceMarkerIsIgnoredTheFirstWins() {
+    // ADR-0021 D1: "A second occurrence of any of the three is ignored and the first
+    // wins", the same rule `marker(in:prefix:)` already applies to a line carrying two
+    // `>` dates.
+    let t = task("- [ ] Verifica ^[[vibrofer-emea.canvas]] ^[[altro-progetto.canvas]]")
+    #expect(t.workspacePath == "vibrofer-emea.canvas")
+    #expect(!t.links.contains("vibrofer-emea.canvas"))
+    #expect(!t.links.contains("altro-progetto.canvas"))
+}
+
+// MARK: - `^id(<N>)` and `^parent(<N>)` (ADR-0021 D1, D2)
+
+@Test func idMarkerSetsLocalID() {
+    let t = task("- [ ] Capitolato ^id(3)")
+    #expect(t.localID == 3)
+    #expect(t.parentLocalID == nil)
+}
+
+@Test func parentMarkerSetsParentLocalID() {
+    let t = task("- [ ] Sotto-task ^parent(1)")
+    #expect(t.parentLocalID == 1)
+    #expect(t.localID == nil)
+}
+
+@Test func allThreeMarkersAreNilWhenAbsent() {
+    let t = task("- [ ] Task semplice")
+    #expect(t.workspacePath == nil)
+    #expect(t.localID == nil)
+    #expect(t.parentLocalID == nil)
+}
+
+// MARK: - Order independence (R-04)
+
+@Test(arguments: [
+    // `^[[...]]`, then `^id`, then `^parent`.
+    "- [ ] Verifica ^[[vibrofer-emea.canvas]] ^id(2) ^parent(1) "
+        + ">2026-09-01 !2026-09-10 [[Nota A]] [[Nota B]] #project-x",
+    // `^parent`, then `^[[...]]`, then `^id`.
+    "- [ ] Verifica ^parent(1) ^[[vibrofer-emea.canvas]] ^id(2) "
+        + ">2026-09-01 !2026-09-10 [[Nota A]] [[Nota B]] #project-x",
+    // `^id`, then `^parent`, then `^[[...]]` at the very end.
+    "- [ ] Verifica ^id(2) ^parent(1) "
+        + ">2026-09-01 !2026-09-10 [[Nota A]] [[Nota B]] #project-x ^[[vibrofer-emea.canvas]]",
+])
+func allThreeMarkersParseInAnyOrderAlongsideExistingSyntax(_ line: String) {
+    let t = task(line)
+    #expect(t.workspacePath == "vibrofer-emea.canvas")
+    #expect(t.localID == 2)
+    #expect(t.parentLocalID == 1)
+    #expect(t.scheduled == CalendarDate(iso: "2026-09-01"))
+    #expect(t.due == CalendarDate(iso: "2026-09-10"))
+    #expect(t.links == ["Nota A", "Nota B"])
+    #expect(t.project == Tag("project-x"))
+}
+
+// MARK: - `text` strips all three markers cleanly
+
+@Test func displayTextStripsAllThreeMarkersLeavingNoDoubleSpaceOrStrandedCaret() {
+    let t = task("- [ ] Verifica ^[[vibrofer-emea.canvas]] disegno ^id(2) e ^parent(1) finale")
+    #expect(!t.text.contains("^"))
+    #expect(!t.text.contains("id("))
+    #expect(!t.text.contains("parent("))
+    #expect(!t.text.contains("[["))
+    #expect(!t.text.contains("  "))
+}
+
+// MARK: - Fenced code blocks (the existing `codeRanges` skip still holds)
+
+@Test func aCaretMarkerInsideAFencedCodeBlockIsNotATask() {
+    let note = """
+    - [ ] Vero task
+
+    ```markdown
+    - [ ] Esempio nella documentazione ^id(3)
+    ```
+
+    - [x] Altro vero task
+    """
+    let tasks = TaskParser.tasks(in: note, sourcePath: "x.md")
+    #expect(tasks.map(\.text) == ["Vero task", "Altro vero task"])
+}
+
+// MARK: - `TaskParser.nextLocalID(in:)` (ADR-0021 D2)
+
+@Test func nextLocalIDStartsAtOneForANoteWithNoIDs() {
+    let note = """
+    - [ ] Senza id
+    - [ ] Ancora senza id ^parent(4)
+    """
+    #expect(TaskParser.nextLocalID(in: note) == 1)
+}
+
+@Test func nextLocalIDIsOneMoreThanTheHighestExistingID() {
+    let note = """
+    - [ ] Uno ^id(1)
+    - [ ] Due ^id(5)
+    - [ ] Tre ^id(3)
+    """
+    #expect(TaskParser.nextLocalID(in: note) == 6)
+}
+
+@Test func nextLocalIDCountsIDsOnEveryTaskLineNotOnlyOpenOnes() {
+    let note = """
+    - [x] Fatto ^id(7) @done(2026-08-11)
+    - [-] Annullato ^id(2)
+    - [>] Ripianificato ^id(9)
+    """
+    #expect(TaskParser.nextLocalID(in: note) == 10)
+}
+
+// MARK: - The three index queries (ADR-0021 D4, D5; R-14, R-04). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 2.
+//
+// `IndexSnapshot.tasks(assignedToWorkspace:)`, `.subtasks(of:)` and `.progress(ofProject:)`
+// are signature-only stubs as of this commit (`Sources/Index/IndexSnapshot.swift`, `// MARK:
+// Tasks`): every test below is expected to fail red on its assertions, not to fail to
+// compile - the coder's Task 2 work fills in the query logic these tests already encode as
+// assertions. `TaskProgress` itself is a plain, already-implemented data type
+// (`Sources/Core/Tasks/TaskItem.swift`).
+
+/// Several notes, each holding the given task lines, indexed together - the shape
+/// `Tests/RolloverTests.swift` uses for one note, extended to several so the "across
+/// notes" and "same-note only" assertions below have something to distinguish.
+private func snapshot(_ notes: [String: String]) -> IndexSnapshot {
+    var snapshot = IndexSnapshot()
+    for (path, body) in notes {
+        let tasks = body.components(separatedBy: "\n").enumerated().compactMap { index, line in
+            TaskParser.parse(line: line, sourcePath: path, lineIndex: index)
+        }
+        var frontmatter = Frontmatter.empty
+        frontmatter.tags = [Tag("type-note")!]
+        let record = NoteRecord(
+            relativePath: path, title: path, frontmatter: frontmatter, linkTargets: [],
+            tasks: tasks, modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
+        )
+        snapshot.update(record, at: path)
+    }
+    return snapshot
+}
+
+// MARK: - `tasks(assignedToWorkspace:)` (R-04's other half)
+
+@Test func tasksAssignedToWorkspaceFindsAcrossNotesCaseInsensitivelyAndIgnoresPlainLinks() {
+    let index = snapshot([
+        "Nota A.md": "- [ ] Uno ^[[vibrofer-emea.canvas]]",
+        "Nota B.md": "- [ ] Due ^[[VIBROFER-EMEA.CANVAS]]",
+        // A plain wikilink to the same board, no caret: a mention, not an assignment -
+        // the two mechanisms are independent (ADR-0021 D1).
+        "Nota C.md": "- [ ] Tre [[vibrofer-emea.canvas]]",
+        "Nota D.md": "- [ ] Quattro ^[[altro-progetto.canvas]]",
+    ])
+
+    let assigned = index.tasks(assignedToWorkspace: "vibrofer-emea.canvas")
+
+    #expect(Set(assigned.map(\.text)) == ["Uno", "Due"])
+    #expect(assigned.count == 2)
+}
+
+// MARK: - `subtasks(of:)` (the D2 assertion: ids are note-local)
+
+@Test func subtasksOfReturnsOnlySameNoteChildrenNotAMatchingIDInAnotherNote() {
+    let index = snapshot([
+        "Progetto.md": """
+        - [ ] Padre ^id(1)
+        - [ ] Figlio vero ^parent(1)
+        """,
+        // Same `^id(1)`, a different note: `^parent(1)` here must not resolve against
+        // the parent above, or the "Progetti" grouping would silently merge two
+        // unrelated projects the first time two notes both reached the same id.
+        "Altro.md": """
+        - [ ] Un altro padre ^id(1)
+        - [ ] Non è figlio di Progetto.md ^parent(1)
+        """,
+    ])
+    let parent = index.allTasks.first { $0.sourcePath == "Progetto.md" && $0.localID == 1 }!
+
+    let children = index.subtasks(of: parent)
+
+    #expect(children.map(\.text) == ["Figlio vero"])
+    #expect(!children.contains { $0.sourcePath == "Altro.md" })
+}
+
+// MARK: - `progress(ofProject:)`
+
+@Test func progressOfProjectCountsDoneStateOverTheChildren() {
+    let index = snapshot([
+        "Progetto.md": """
+        - [ ] Padre ^id(1)
+        - [x] Figlio uno ^parent(1) @done(2026-08-20)
+        - [ ] Figlio due ^parent(1)
+        - [x] Figlio tre ^parent(1) @done(2026-08-21)
+        """,
+    ])
+    let parent = index.allTasks.first { $0.localID == 1 }!
+
+    #expect(index.progress(ofProject: parent) == TaskProgress(done: 2, total: 3))
+}
+
+@Test func progressOfProjectIsNilForATaskWithNoChildren() {
+    // Also the "never touches a file" assertion: this snapshot's records name paths
+    // that exist nowhere on disk, so a correct answer here can only have come from the
+    // in-memory tasks the snapshot already holds.
+    let index = snapshot(["Nota.md": "- [ ] Da solo, senza figli ^id(1)"])
+    let parent = index.allTasks.first { $0.localID == 1 }!
+
+    #expect(index.progress(ofProject: parent) == nil)
+}
+
+// MARK: - R-15, as a property of the parser (ADR-0021 D12). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 10.
+//
+// "No frontmatter key or tag prefix outside the closed schemas (SPEC §4.3, §4.4) is
+// introduced by this feature." The three caret markers live entirely inside a task
+// line, below the frontmatter block and outside every tag, so this is a property that
+// holds by construction rather than a behaviour that has to be specially coded - the
+// point of this test is to make that argument mechanical: two otherwise-identical
+// notes, one carrying all three markers and one carrying none of them, parse to the
+// same `Frontmatter` and the same tag set.
+
+@Test func aNoteWithAllThreeCaretMarkersParsesToTheSameFrontmatterAndTagSetAsWithoutThem() {
+    let frontmatterBlock = """
+    ---
+    date: 2026-08-24
+    tags:
+      - type-nota
+      - project-vibrofer
+    ---
+
+
+    """
+
+    let withoutMarkers = frontmatterBlock + """
+    # Progetto Vibrofer
+
+    - [ ] Padre #project-vibrofer
+      - [ ] Figlio >2026-09-01 !2026-09-10
+    """
+
+    let withMarkers = frontmatterBlock + """
+    # Progetto Vibrofer
+
+    - [ ] Padre #project-vibrofer ^id(1) ^[[vibrofer-emea.canvas]]
+      - [ ] Figlio >2026-09-01 !2026-09-10 ^parent(1) ^id(2)
+    """
+
+    let plainDocument = NoteDocument.parse(withoutMarkers)
+    let markedDocument = NoteDocument.parse(withMarkers)
+
+    // The frontmatter block above is byte-identical in both notes; this is the
+    // assertion that the caret markers on the task lines below it do not change what
+    // the frontmatter parser reads - no foreign key appears, and `tags:` reads the
+    // same two entries either way.
+    #expect(markedDocument.frontmatter == plainDocument.frontmatter)
+    #expect(markedDocument.frontmatter.foreignKeys.isEmpty)
+
+    // And the tag set the note carries as a whole - frontmatter tags plus every
+    // inline tag on a task line - is identical too: `^id`, `^parent` and
+    // `^[[…]].canvas` are read by `caretAnnotation(in:name:)` and the workspace-link
+    // walk beside it, never by the tag scanner, so neither can be mistaken for a tag
+    // in either direction.
+    let plainTasks = TaskParser.tasks(in: withoutMarkers, sourcePath: "Nota.md")
+    let markedTasks = TaskParser.tasks(in: withMarkers, sourcePath: "Nota.md")
+    let plainTagSet = Set(plainDocument.frontmatter.tags).union(plainTasks.flatMap(\.tags))
+    let markedTagSet = Set(markedDocument.frontmatter.tags).union(markedTasks.flatMap(\.tags))
+    #expect(markedTagSet == plainTagSet)
+
+    // The markers are exactly the difference between the two task lists - proof that
+    // this test is exercising the markers at all rather than two notes that merely
+    // happen to agree.
+    #expect(markedTasks.contains { $0.localID == 1 })
+    #expect(plainTasks.allSatisfy { $0.localID == nil && $0.parentLocalID == nil })
+}

@@ -34,13 +34,32 @@ struct LinkedTasksPanel: View {
                 Text(emptyText).themedText(.caption, color: .textTertiary)
             } else {
                 ForEach(tasks) { task in
-                    row(task)
+                    TaskPanelRow(task: task, identifierPrefix: "linked-task")
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Task collegati a \(title)")
     }
+}
 
-    private func row(_ task: TaskItem) -> some View {
+/// One task as a side panel draws it: a checkbox that completes it in place, its text,
+/// the note it lives in, and its `!`/`>` date.
+///
+/// Its own view rather than a method on `LinkedTasksPanel`, because the board's "Task
+/// assegnati" section (ADR-0021 §D7) draws the same row from a different query, and two
+/// copies of a row are two rows that drift. The header above makes that argument about
+/// the panel; this makes it true one level down.
+struct TaskPanelRow: View {
+    @Environment(\.theme) private var theme
+    @Environment(VaultController.self) private var vault
+
+    let task: TaskItem
+    /// Distinguishes the sections a row can appear in, so a UI test names the one it
+    /// means. `CLAUDE.md`: a UI test must never find a control by the words on it.
+    let identifierPrefix: String
+
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
             Image(systemName: task.state == .done ? "checkmark.square" : "square")
                 .foregroundStyle(theme.color(
@@ -80,5 +99,8 @@ struct LinkedTasksPanel: View {
             Divider()
             Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(task.state == .done ? "Completato" : "Da fare"): \(task.text)")
+        .accessibilityIdentifier("\(identifierPrefix)-\(task.id)")
     }
 }

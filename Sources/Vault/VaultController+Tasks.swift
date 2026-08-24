@@ -73,7 +73,29 @@ extension VaultController {
 
         lastCapture = draft
         recordTaskWrite()
+        refreshSelectedTask(afterRewriting: draft.parent)
         return true
+    }
+
+    /// Re-resolves `selectedTask` after a capture that rewrote the selected task's own
+    /// line, so a second command acts on the line now on disk rather than the snapshot
+    /// it replaced - the same reason `rescheduleSelectedTask` re-resolves after its write.
+    ///
+    /// The case that needs it is a sub-task capture: inserting the first sub-task appends
+    /// `^id(N)` to the parent's own line as a side effect (ADR-0021 D9), and a second
+    /// capture built from the pre-`^id` selection is refused by the staleness guard in
+    /// `TaskParser.insertingSubtask(in:below:draft:)` with nothing shown to the user.
+    private func refreshSelectedTask(afterRewriting task: TaskItem?) {
+        guard let task, let selected = selectedTask,
+              selected.sourcePath == task.sourcePath, selected.text == task.text
+        else { return }
+        // A task that the rescan can no longer find leaves the selection alone: losing it
+        // here would disable the Task menu on a task the user can still see.
+        if let refreshed = index.allTasks.first(where: {
+            $0.sourcePath == task.sourcePath && $0.text == task.text
+        }) {
+            selectedTask = refreshed
+        }
     }
 
     /// Quick capture of a bare line, with no date and no destination but the inbox.

@@ -246,6 +246,7 @@ enum ConformanceText {
             + frontmatterLines(violations.frontmatter)
             + tagLines(violations.tags)
             + relatedLines(violations)
+            + taskMarkerLines(violations.taskMarkers)
     }
 
     private static func nameLines(_ violations: [NoteName.Violation]) -> [String] {
@@ -306,6 +307,22 @@ enum ConformanceText {
         lines.append(contentsOf: violations.relatedMissingInFrontmatter.map {
             "\($0) è in Note correlate ma non in related"
         })
+        return lines
+    }
+
+    /// ADR-0021 §D11. The line number is written 1-based, as an editor shows it, while
+    /// `TaskMarkerViolation` carries the 0-based index every other reader of a note
+    /// uses.
+    private static func taskMarkerLines(_ violations: [TaskMarkerViolation]) -> [String] {
+        var lines: [String] = []
+        for violation in violations {
+            switch violation {
+            case .duplicateWorkspace(let line, let kept, let ignored):
+                lines.append("Riga \(line + 1): due Workspace sullo stesso task, vale \(kept) e \(ignored) è ignorato")
+            case .orphanedParent(let line, let parent):
+                lines.append("Riga \(line + 1): ^parent(\(parent)) senza ^id(\(parent)) in questa nota")
+            }
+        }
         return lines
     }
 }

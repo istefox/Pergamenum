@@ -70,6 +70,18 @@ import Testing
     }
 }
 
+// MARK: - ADR-0021 (plan 2026-08-24-workspace-tasks-notes-integration), Task 9
+//
+// "Aggiungi sotto-task": UX blueprint's menu bar map names Cmd+Shift+Return in the
+// Task menu. `noTwoCommandsShipOnTheSameKeys` above is the collision guard, and it
+// already walks `ShortcutCommand.allCases`, so `.taskAddSubtask` is exercised by it
+// with no edit to that test - this one only pins the three facts that test cannot.
+
+@Test func taskAddSubtaskLivesInTheTaskSectionWithTheBlueprintsBinding() {
+    #expect(ShortcutCommand.taskAddSubtask.section == .task)
+    #expect(ShortcutCommand.taskAddSubtask.defaultBinding == KeyBinding("return", [.command, .shift]))
+}
+
 // MARK: - The store
 
 /// A throwaway suite, so these never touch the real preferences.

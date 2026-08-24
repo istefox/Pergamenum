@@ -11,6 +11,17 @@ struct TasksView: View {
     @State private var linking: TaskItem?
     /// The task waiting for a due date (SPEC §7.1 `!YYYY-MM-DD`, context menu "Aggiungi scadenza").
     @State private var addingDueFor: TaskItem?
+    /// The task waiting for a Workspace (ADR-0021 D9, R-03). Separate from `linking`: a
+    /// task carries any number of wikilinks and exactly one `^[[…]].canvas` marker, so the
+    /// two are two gestures rather than one picker with a mode.
+    @State private var assigningWorkspaceFor: TaskItem?
+    /// The "Progetti" groups the user folded shut (ADR-0021 D6), by `TaskGroup.id`.
+    ///
+    /// Collapsed rather than expanded ids, so a project opens showing its sub-tasks: the
+    /// grouping is chosen to see the hierarchy, and a list of closed rows would hide the
+    /// thing it was switched on for. Window state, not a preference - it is deliberately
+    /// not in `taskListOptions`, which describes how a view reads on every launch.
+    @State private var collapsedProjects: Set<String> = []
     /// Every view's controls in one JSON map (ADR-0013 §D6).
     ///
     /// One key rather than five: `@AppStorage` takes a literal key, so a property per view
@@ -42,6 +53,9 @@ struct TasksView: View {
         }
         .sheet(item: $addingDueFor) { task in
             dueDateSheet(for: task)
+        }
+        .sheet(item: $assigningWorkspaceFor) { task in
+            WorkspacePicker(task: task) { assigningWorkspaceFor = nil }
         }
         .onChange(of: vault.isLinkingSelectedTask) { _, requested in
             guard requested, let task = vault.selectedTask else { return }
@@ -103,6 +117,12 @@ struct TasksView: View {
             .help("Collega il task a una nota o a una board")
             .disabled(selected == nil)
 
+            Button { assigningWorkspaceFor = selected } label: {
+                Label("Assegna a un Workspace", systemImage: "rectangle.3.group")
+            }
+            .help("Assegna il task a un Workspace")
+            .disabled(selected == nil)
+
             Button {
                 if let task = selected { vault.openNote(at: task.sourcePath) }
             } label: {
@@ -141,14 +161,18 @@ struct TasksView: View {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     ForEach(arranged) { group in
                         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-                            // An ungrouped list has one group with no title, and no heading
-                            // is drawn for it: a single "Oggi" above the day's own view says
-                            // nothing the sidebar has not already said.
-                            if !group.title.isEmpty {
-                                Text(group.title).themedText(.heading)
-                            }
-                            ForEach(group.tasks) { task in
-                                row(task, isRolledOver: rolledIDs.contains(task.id))
+                            if let parent = group.parent {
+                                project(group, parent: parent, rolledIDs: rolledIDs)
+                            } else {
+                                // An ungrouped list has one group with no title, and no
+                                // heading is drawn for it: a single "Oggi" above the day's
+                                // own view says nothing the sidebar has not already said.
+                                if !group.title.isEmpty {
+                                    Text(group.title).themedText(.heading)
+                                }
+                                ForEach(group.tasks) { task in
+                                    row(task, isRolledOver: rolledIDs.contains(task.id))
+                                }
                             }
                         }
                     }
@@ -222,6 +246,66 @@ struct TasksView: View {
     private var moveKey: String { shortcuts.binding(for: .taskToday).displayString }
 
     private static let rolledOverTitle = "Rimandati"
+
+    /// A "Progetti" group: the parent task on the disclosure header, its `^parent` children
+    /// indented beneath it, and how many of them are done beside the header (ADR-0021 D6).
+    ///
+    /// The header is the **same** `row` every other task is drawn with, so a project is
+    /// completable, selectable and right-clickable exactly like the tasks under it - it is
+    /// a task, and a heading that only looked like one would be a second row view to keep
+    /// in step with this one.
+    private func project(
+        _ group: TaskGroup, parent: TaskItem, rolledIDs: Set<String>
+    ) -> some View {
+        DisclosureGroup(
+            isExpanded: Binding(
+                get: { !collapsedProjects.contains(group.id) },
+                set: { expanded in
+                    if expanded {
+                        collapsedProjects.remove(group.id)
+                    } else {
+                        collapsedProjects.insert(group.id)
+                    }
+                }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: theme.spacing(.s)) {
+                ForEach(group.tasks) { task in
+                    row(task, isRolledOver: rolledIDs.contains(task.id))
+                }
+            }
+            .padding(.leading, theme.spacing(.m))
+            .padding(.top, theme.spacing(.xs))
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
+                row(parent)
+                if let progress = group.progress {
+                    Text("\(progress.done)/\(progress.total)")
+                        .themedText(.mono, color: .textTertiary)
+                        // Read out in words: "1/3" is a date to VoiceOver as often as a date.
+                        .accessibilityLabel(
+                            "\(progress.done) di \(progress.total) completati"
+                        )
+                        // On macOS, `.accessibilityIdentifier` applied to an ANCESTOR
+                        // propagates onto every descendant AX element in the same view
+                        // subtree that has no identifier of its own on THAT element,
+                        // *and even overrides one a descendant already set* - confirmed
+                        // twice by reading an exported UI-hierarchy attachment: first
+                        // with the identifier on the whole DisclosureGroup (it leaked
+                        // onto the disclosed child rows below, replacing their own
+                        // "task-row"), then with it on this HStack (it still overrode
+                        // row(parent)'s own "task-row", one level up). Putting it on
+                        // this Text - a leaf with no identifier of its own, and a
+                        // sibling of row(parent) rather than a container of it - is
+                        // what keeps it from touching anything else. Safe because
+                        // TaskListOptions.bySubtasks(_:) always sets `progress`
+                        // together with `parent` - see its own comment - so this
+                        // branch runs whenever `project(_:parent:rolledIDs:)` does.
+                        .accessibilityIdentifier("task-project-group")
+                }
+            }
+        }
+    }
 
     private func row(_ task: TaskItem, isRolledOver: Bool = false) -> some View {
         let isSelected = selectedTaskID == task.id
@@ -321,6 +405,7 @@ struct TasksView: View {
         Button("Aggiungi scadenza…") { addingDueFor = task }
         Divider()
         Button("Collega nota o board…") { linking = task }
+        Button("Assegna a un Workspace…") { assigningWorkspaceFor = task }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
         Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }

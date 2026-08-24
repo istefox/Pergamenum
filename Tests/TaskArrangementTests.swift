@@ -6,6 +6,12 @@ import Testing
 // checked here is everything under it that can be wrong without looking wrong: a sort that is
 // not stable, a group that swallows the tasks with nothing to group by, a stored preference
 // that does not survive the round trip.
+//
+// Extended for ADR-0021 ("A task carries its Workspace and its place in a project as caret
+// markers in its own line, and nothing new is stored anywhere else"), §D6. Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 8: the
+// "Progetti" `.subtasks` grouping, and the R-10 regression guard on the five groupings and
+// five `TaskView`s that already existed.
 
 private func task(
     _ line: String, in path: String = "01 Progetti/Presse idrauliche.md", at index: Int = 0
@@ -110,6 +116,190 @@ private func task(
     let second = TaskArrangement.groups(tasks.reversed(), options: options)[0].tasks.map(\.id)
 
     #expect(first == second)
+}
+
+// MARK: - "Progetti", the `.subtasks` grouping (ADR-0021 D6, R-08, R-10). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 8.
+//
+// `TaskArrangement.groups`'s `.subtasks` arm is a signature-only placeholder as of this
+// commit (`Sources/Core/Tasks/TaskListOptions.swift`): every test below naming `.subtasks`
+// is expected to fail red on its assertions, not to fail to compile - the coder's Task 8
+// work fills in the bucketing on `(sourcePath, parentLocalID)` these tests already encode
+// as assertions. The two tests further down that exercise `.none`/`.note`/`.project`/
+// `.schedule`/`.deadline` and the five `TaskView`s are regression guards (R-10) and are
+// expected to already be green: adding a case to an exhaustive switch does not touch the
+// arms that were already there.
+
+@Test func subtasksGroupsOneParentPerGroupWithChildrenIndentedAndProgress() {
+    let parent = task("- [ ] Ristrutturazione ^id(1)", at: 0)
+    let doneChild = task("- [x] Preventivo ^parent(1)", at: 1)
+    let openChild = task("- [ ] Sopralluogo ^parent(1)", at: 2)
+
+    let groups = TaskArrangement.groups(
+        [parent, doneChild, openChild],
+        options: TaskListOptions(grouping: .subtasks, sorting: .text)
+    )
+
+    #expect(groups.count == 1)
+    #expect(groups[0].parent == parent)
+    #expect(groups[0].tasks.map(\.text) == ["Preventivo", "Sopralluogo"])
+    #expect(groups[0].progress == TaskProgress(done: 1, total: 2))
+}
+
+@Test func subtasksTasksWithNeitherIDNorParentLandInSenzaLast() {
+    let parent = task("- [ ] Progetto ^id(1)", at: 0)
+    let child = task("- [ ] Fase ^parent(1)", at: 1)
+    let lone = task("- [ ] Nota sparsa", at: 2)
+
+    let groups = TaskArrangement.groups(
+        [parent, child, lone],
+        options: TaskListOptions(grouping: .subtasks, sorting: .text)
+    )
+
+    // The project group first, "Senza" trailing - the existing rule of `grouped(_:by:)`
+    // that every other grouping already relies on.
+    #expect(groups.count == 2)
+    #expect(groups.last?.title == TaskArrangement.noneTitle)
+    #expect(groups.last?.tasks.map(\.text) == ["Nota sparsa"])
+    #expect(groups.last?.parent == nil)
+    #expect(groups.last?.progress == nil)
+}
+
+@Test func subtasksIDsAreNoteLocalTwoNotesEachWithIDOneProduceTwoGroups() {
+    // The D2 assertion at the arrangement level: `^id(1)` in `A.md` and `^id(1)` in `B.md`
+    // are two different tasks, so a global-id mistake here would silently merge two
+    // unrelated projects the moment two notes both reached one sub-task.
+    let parentA = task("- [ ] Progetto A ^id(1)", in: "A.md", at: 0)
+    let childA = task("- [ ] Fase A ^parent(1)", in: "A.md", at: 1)
+    let parentB = task("- [ ] Progetto B ^id(1)", in: "B.md", at: 0)
+    let childB = task("- [ ] Fase B ^parent(1)", in: "B.md", at: 1)
+
+    let groups = TaskArrangement.groups(
+        [parentA, childA, parentB, childB],
+        options: TaskListOptions(grouping: .subtasks, sorting: .text)
+    )
+
+    #expect(groups.count == 2)
+    #expect(Set(groups.map(\.id)) == Set([parentA.id, parentB.id]))
+    #expect(groups.first { $0.parent?.sourcePath == "A.md" }?.tasks.map(\.text) == ["Fase A"])
+    #expect(groups.first { $0.parent?.sourcePath == "B.md" }?.tasks.map(\.text) == ["Fase B"])
+}
+
+@Test func subtasksOrphanedParentStillAppearsInSenzaRatherThanVanishing() {
+    // SPEC edge case: "the sub-task still appears ungrouped in the flat Attività views."
+    // No task in this note carries `^id(9)`, so `^parent(9)` names nothing. A real project
+    // (`^id(1)` with one child) sits alongside it, so a bucketing bug that dumped
+    // everything into one heading - the same failure a single-task fixture could not have
+    // caught - would show up as a wrong `groups.count` or a child under the wrong parent.
+    let parent = task("- [ ] Progetto ^id(1)", at: 0)
+    let child = task("- [ ] Fase ^parent(1)", at: 1)
+    let orphan = task("- [ ] Fase senza padre ^parent(9)", at: 2)
+
+    let groups = TaskArrangement.groups(
+        [parent, child, orphan], options: TaskListOptions(grouping: .subtasks, sorting: .text)
+    )
+
+    #expect(groups.count == 2)
+    let senza = groups.first { $0.title == TaskArrangement.noneTitle }
+    #expect(senza?.tasks.map(\.text) == ["Fase senza padre"])
+    #expect(senza?.parent == nil)
+    let project = groups.first { $0.parent != nil }
+    #expect(project?.parent == parent)
+    #expect(project?.tasks.map(\.text) == ["Fase"])
+}
+
+@Test func subtasksOrderingIsStableWhenTheChildrenTieOnTheirSortKey() {
+    // The same shape as `theSortIsStableWhenTwoTasksShareTheirKey` above, for the new
+    // grouping: without the tie-break on the id, six same-text children could reorder
+    // between two redraws of the same list.
+    let parent = task("- [ ] Progetto ^id(1)", at: 0)
+    let children = (0..<6).map { task("- [ ] Uguale ^parent(1)", at: $0 + 1) }
+    let options = TaskListOptions(grouping: .subtasks, sorting: .text)
+
+    let first = TaskArrangement.groups([parent] + children, options: options)[0]
+        .tasks.map(\.id)
+    let second = TaskArrangement.groups([parent] + children.reversed(), options: options)[0]
+        .tasks.map(\.id)
+
+    #expect(first == second)
+}
+
+@Test func theFiveExistingGroupingsAreUnaffectedByTheSubtasksAddition() {
+    // R-10: adding `.subtasks` must not perturb `.none`, `.note`, `.project`, `.schedule`
+    // or `.deadline` - the `TaskArrangement.groups` switch grew a case, it was not
+    // rewritten. Tasks below carry ADR-0021 markers on purpose, so a `.subtasks`-only bug
+    // that leaked into the sort key or the heading of another grouping would show here.
+    let tasks = [
+        task("- [ ] Disegno ^id(1)", in: "01 Progetti/Presse idrauliche.md", at: 0),
+        task(
+            "- [ ] Capitolato ^parent(1) #project-presse >2026-08-17 !2026-08-20",
+            in: "02 Clienti/Vibrofer.md", at: 1
+        ),
+        task("- [ ] Offerta ^[[vibrofer-emea.canvas]]", in: "02 Clienti/Vibrofer.md", at: 2),
+    ]
+
+    #expect(
+        TaskArrangement.groups(tasks, options: TaskListOptions(grouping: .none, sorting: .text))
+            .flatMap(\.tasks).map(\.text) == ["Capitolato", "Disegno", "Offerta"]
+    )
+    #expect(
+        TaskArrangement.groups(tasks, options: TaskListOptions(grouping: .note, sorting: .text))
+            .map(\.title) == ["Presse idrauliche", "Vibrofer"]
+    )
+    #expect(
+        TaskArrangement.groups(tasks, options: TaskListOptions(grouping: .project, sorting: .text))
+            .map(\.title) == ["project-presse", TaskArrangement.noneTitle]
+    )
+    #expect(
+        TaskArrangement.groups(
+            tasks, options: TaskListOptions(grouping: .schedule, sorting: .schedule)
+        ).map(\.title) == ["lunedì 17/08/2026", TaskArrangement.noneTitle]
+    )
+    #expect(
+        TaskArrangement.groups(
+            tasks, options: TaskListOptions(grouping: .deadline, sorting: .deadline)
+        ).map(\.title) == ["giovedì 20/08/2026", TaskArrangement.noneTitle]
+    )
+}
+
+/// One note holding the given task lines, indexed - the shape `Tests/RolloverTests.swift`
+/// and `Tests/TaskMarkerTests.swift` already use, reused here so the view-filter guard
+/// below can call the real `IndexSnapshot.tasks(for:on:)` rather than assume its behaviour.
+private func indexed(_ body: String, path: String = "01 Progetti/Pergamenum.md") -> IndexSnapshot {
+    let tasks = body.components(separatedBy: "\n").enumerated().compactMap { index, line in
+        TaskParser.parse(line: line, sourcePath: path, lineIndex: index)
+    }
+    var frontmatter = Frontmatter.empty
+    frontmatter.tags = [Tag("type-note")!]
+    let record = NoteRecord(
+        relativePath: path, title: "Pergamenum", frontmatter: frontmatter, linkTargets: [],
+        tasks: tasks, modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
+    )
+    var snapshot = IndexSnapshot()
+    snapshot.update(record, at: path)
+    return snapshot
+}
+
+@Test func theFiveTaskViewsStillReturnSubtasksAlongsideEverythingElse() {
+    // R-10's other half, spelled out rather than assumed: `IndexSnapshot.tasks(for:on:)` is
+    // untouched by this task, and a sub-task must satisfy the same five view filters as any
+    // other task - the grouping axis (`TaskArrangement`) and the view axis
+    // (`IndexSnapshot.TaskView`) stay independent (ADR-0013 §D6). Day and offsets mirror the
+    // proven fixture in `Tests/TaskTests.swift`'s `sortsTasksIntoTheFiveViews`.
+    let day = CalendarDate(iso: "2026-08-11")!
+    let index = indexed("""
+        - [ ] Progetto ^id(1)
+        - [ ] Senza data ^parent(1)
+        - [ ] Oggi >2026-08-11 ^parent(1)
+        - [ ] Fra tre giorni >2026-08-14 ^parent(1)
+        - [ ] Di progetto #project-pergamenum ^parent(1)
+        """)
+
+    #expect(index.tasks(for: .inbox, on: day).map(\.text).contains("Senza data"))
+    #expect(index.tasks(for: .today, on: day).map(\.text).contains("Oggi"))
+    #expect(index.tasks(for: .upcoming, on: day).map(\.text).contains("Fra tre giorni"))
+    #expect(index.tasks(for: .byProject, on: day).map(\.text).contains("Di progetto"))
+    #expect(index.tasks(for: .all, on: day).count == 5)
 }
 
 @Test func theFiveViewsOpenOnTheirOwnControls() {

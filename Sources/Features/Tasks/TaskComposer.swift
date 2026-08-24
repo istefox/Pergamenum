@@ -34,9 +34,10 @@ struct TaskComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             header
+            parentRow
             ComposerTextField(
                 text: $draft.text,
-                placeholder: "Nuovo task",
+                placeholder: draft.parent == nil ? "Nuovo task" : "Nuovo sotto-task",
                 font: theme.nsFont(.body),
                 color: NSColor(theme.color(.textPrimary)),
                 focusRequest: focusRequest,
@@ -83,6 +84,11 @@ struct TaskComposer: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("task-composer-destination")
             .help("Scegli la nota in cui scrivere il task")
+            // A sub-task has no destination to choose: `^id` is note-local (ADR-0021
+            // D2), so it goes in the parent's own note and nowhere else. Shown greyed
+            // rather than hidden, so the panel does not change shape between the two
+            // ways of reaching it.
+            .disabled(draft.parent != nil)
             .popover(isPresented: $isChoosingDestination, arrowEdge: .bottom) {
                 DestinationPicker(destination: $draft.destination) { isChoosingDestination = false }
             }
@@ -108,6 +114,32 @@ struct TaskComposer: View {
 
     private var destinationSymbol: String {
         draft.destination == .inbox ? "tray" : "doc.text"
+    }
+
+    // MARK: Parent
+
+    /// Which task this one becomes a child of (ADR-0021 D9, A9), drawn only when the
+    /// composer was opened by «Aggiungi sotto-task».
+    ///
+    /// Read-only on purpose: the parent is chosen by selecting a task before running the
+    /// command, and a second way to change it here would be a second selection to keep
+    /// in step with the list's.
+    @ViewBuilder
+    private var parentRow: some View {
+        if let parent = draft.parent {
+            HStack(spacing: theme.spacing(.xs)) {
+                Image(systemName: "arrow.turn.down.right")
+                    .foregroundStyle(theme.color(.textTertiary))
+                Text("Sotto-task di")
+                    .themedText(.caption, color: .textTertiary)
+                Text(parent.text)
+                    .themedText(.caption, color: .textSecondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Sotto-task di \(parent.text)")
+            .accessibilityIdentifier("task-composer-parent")
+        }
     }
 
     // MARK: Timeline

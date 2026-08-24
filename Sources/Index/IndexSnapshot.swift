@@ -177,6 +177,38 @@ struct IndexSnapshot: Sendable {
         }
     }
 
+    /// Tasks assigned to a Workspace via `^[[<canvas>.canvas]]` (ADR-0021 D1, D5), for
+    /// the board's "Task assegnati" section. Matches the file name case-insensitively,
+    /// mirroring `tasks(linkingTo:)` above. Independent of `tasks(linkingTo:)`: a plain
+    /// `[[X.canvas]]` wikilink with no caret is a mention, not an assignment, and does
+    /// not appear here (R-04).
+    ///
+    func tasks(assignedToWorkspace canvasFileName: String) -> [TaskItem] {
+        let needle = canvasFileName.lowercased()
+        return allTasks.filter { $0.workspacePath?.lowercased() == needle }
+    }
+
+    /// The same-note children of a task, bucketed on its `^id` (ADR-0021 D2, D5). A
+    /// `^parent(N)` in a different note whose own `^id(N)` matches is **not** a child:
+    /// ids are note-local, and the join is `sourcePath`-scoped.
+    func subtasks(of task: TaskItem) -> [TaskItem] {
+        guard let id = task.localID else { return [] }
+        guard let record = notes[task.sourcePath] else { return [] }
+        return record.tasks.filter { $0.parentLocalID == id }
+    }
+
+    /// How many of a project's sub-tasks are done (ADR-0021 D5). `nil` for a task with
+    /// no sub-tasks. Computed on read from what is already in the snapshot; nothing
+    /// here reaches a file.
+    func progress(ofProject task: TaskItem) -> TaskProgress? {
+        let children = subtasks(of: task)
+        guard !children.isEmpty else { return nil }
+        return TaskProgress(
+            done: children.filter { $0.state == .done }.count,
+            total: children.count
+        )
+    }
+
     /// The five views of SPEC §7.4.
     enum TaskView: String, CaseIterable, Identifiable, Sendable {
         case inbox, today, upcoming, byProject, all

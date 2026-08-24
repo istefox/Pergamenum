@@ -80,6 +80,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case taskTomorrow
     case taskPlusTwo
     case taskNextWeek
+    /// "Aggiungi sotto-task" (ADR-0021 D9, A9; UX blueprint's menu bar map): opens the
+    /// composer with `TaskDraft.parent` set to the selected task, so `captureTask`
+    /// routes through `TaskParser.insertingSubtask(in:below:draft:)` instead of
+    /// appending an ordinary top-level task.
+    case taskAddSubtask
 
     /// The window's history (ADR-0015). Appended at the end rather than placed beside the
     /// pane commands they sit with in the menu: these rawValues are the keys of the overrides
@@ -130,7 +135,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
              .paneDiary, .paneViews, .paneStarred, .readingMode, .toggleInspector,
              .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward:
             .view
-        case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek:
+        case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
         case .previousDay, .nextDay, .newEvent, .newReminder:
             .calendar
@@ -187,6 +192,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .taskTomorrow: "Pianifica il task domani"
         case .taskPlusTwo: "Pianifica il task fra 2 giorni"
         case .taskNextWeek: "Pianifica il task la settimana prossima"
+        case .taskAddSubtask: "Aggiungi sotto-task"
         case .previousDay: "Giorno precedente"
         case .nextDay: "Giorno successivo"
         case .newEvent: "Nuovo evento"
@@ -281,6 +287,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .taskTomorrow: KeyBinding("1", [.command, .option])
         case .taskPlusTwo: KeyBinding("2", [.command, .option])
         case .taskNextWeek: KeyBinding("3", [.command, .option])
+        // Checked against the catalogue (`noTwoCommandsShipOnTheSameKeys`) and against
+        // the app's own map before being bound: `taskToggle` is Cmd+Return, `newBoard`
+        // is Cmd+Shift+B, `quickTask` is Cmd+Shift+N, and the board's bare `Return` is
+        // scoped to an open crop, so Cmd+Shift+Return collides with none of them
+        // (UX blueprint's keyboard table).
+        case .taskAddSubtask: KeyBinding("return", [.command, .shift])
         case .previousDay: KeyBinding("left", .command)
         case .nextDay: KeyBinding("right", .command)
         case .newEvent: KeyBinding("e", .command)

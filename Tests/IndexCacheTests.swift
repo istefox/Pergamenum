@@ -203,6 +203,57 @@ Corpo con [[Altra nota]].
     #expect(Array(cache.load().keys) == ["Seconda.md"])
 }
 
+// MARK: - ADR-0021 D4: the three new `TaskItem` fields ride the existing re-parse, no
+// schema bump (R-14, R-04). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 2.
+// `StoredTask` is untouched (D4's closing paragraph) - these tests hold that promise, not
+// a new field on it.
+
+private let taskMarkerNote = """
+- [ ] Padre assegnato ^[[vibrofer-emea.canvas]] ^id(1)
+- [ ] Figlio del padre ^parent(1)
+"""
+
+@Test func theThreeNewTaskFieldsSurviveASaveAndLoadRoundTripWithNoSchemaBump() throws {
+    let vault = try CacheVault()
+    try vault.write(taskMarkerNote, to: "Progetto.md")
+    let cache = IndexCache(url: vault.cacheURL)
+    #expect(cache.save(VaultScanner(root: vault.root).scan().records))
+
+    let tasks = try #require(cache.load()["Progetto.md"]).record.record.tasks
+    #expect(tasks.count == 2)
+    #expect(tasks[0].workspacePath == "vibrofer-emea.canvas")
+    #expect(tasks[0].localID == 1)
+    #expect(tasks[0].parentLocalID == nil)
+    #expect(tasks[1].workspacePath == nil)
+    #expect(tasks[1].localID == nil)
+    #expect(tasks[1].parentLocalID == 1)
+
+    // Literal, so a coder who bumps the schema to carry this feature turns this test
+    // red (ADR-0021 D4: "There is no schema change, no version bump").
+    #expect(IndexCache.schemaVersion == 3)
+}
+
+@Test func deletingCacheDbAndRescanningReDerivesTheSameRelationships() throws {
+    let vault = try CacheVault()
+    try vault.write(taskMarkerNote, to: "Progetto.md")
+    let cache = IndexCache(url: vault.cacheURL)
+    #expect(cache.save(VaultScanner(root: vault.root).scan().records))
+    let beforeTasks = try #require(cache.load()["Progetto.md"]).record.record.tasks
+
+    // "Delete cache.db and rescan" (R-14), taken literally.
+    cache.clear()
+    #expect(cache.load().isEmpty)
+
+    let rescanned = try #require(
+        VaultScanner(root: vault.root).scan().records.first { $0.relativePath == "Progetto.md" }
+    )
+
+    #expect(rescanned.tasks.map(\.workspacePath) == beforeTasks.map(\.workspacePath))
+    #expect(rescanned.tasks.map(\.localID) == beforeTasks.map(\.localID))
+    #expect(rescanned.tasks.map(\.parentLocalID) == beforeTasks.map(\.parentLocalID))
+}
+
 @Test func clearingRemovesTheFile() throws {
     let vault = try CacheVault()
     try vault.write(note, to: "Nota.md")

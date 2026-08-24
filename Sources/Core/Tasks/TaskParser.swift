@@ -67,11 +67,31 @@ enum TaskParser {
         task.completed = annotationDate(in: body, name: "done")
         task.reminder = reminder(in: body)
         task.recurrence = recurrence(in: body)
-        task.links = WikilinkParser.links(in: body).filter { !$0.isEmbed }.map(\.target)
+        let annotated = annotatedLinks(in: body)
+        // The Workspace marker is an assignment, not a mention: it leaves `links`
+        // entirely (ADR-0021 D1), so the plain-wikilink mechanism of SPEC §7.2 keeps
+        // meaning "notes and boards this task references" and the two never collide.
+        task.workspacePath = annotated.first(where: \.isWorkspace)?.link.target
+        task.links = annotated.filter { !$0.isWorkspace && !$0.link.isEmbed }.map(\.link.target)
+        task.localID = caretInteger(in: body, name: "id")
+        task.parentLocalID = caretInteger(in: body, name: "parent")
         task.tags = tags(in: body)
         task.project = task.tags.first { $0.namespace == .project }
         task.text = displayText(from: body)
         return task
+    }
+
+    /// One past the highest `^id(<N>)` in the note, or 1 for a note with none
+    /// (ADR-0021 D2). Counts every task line, not only open ones - a done or
+    /// cancelled task still occupies its id.
+    ///
+    /// A scan of the note rather than a persisted counter: an id is read out of the
+    /// file, so deleting every derived store loses nothing and a note edited in
+    /// Obsidian or by hand keeps working. Goes through `tasks(in:sourcePath:)` so the
+    /// fenced-code skip is the same one every other reader gets.
+    static func nextLocalID(in text: String) -> Int {
+        let highest = tasks(in: text, sourcePath: "").compactMap(\.localID).max() ?? 0
+        return highest + 1
     }
 
     private static func state(for marker: Character) -> TaskItem.State? {
@@ -123,6 +143,57 @@ enum TaskParser {
         guard let start = body.range(of: "@\(name)(") else { return nil }
         guard let end = body.range(of: ")", range: start.upperBound..<body.endIndex) else { return nil }
         return String(body[start.upperBound..<end.lowerBound])
+    }
+
+    /// `^id(<N>)` / `^parent(<N>)` (ADR-0021 D1), the caret sibling of
+    /// `annotationValue(in:name:)`.
+    ///
+    /// `range(of:)` finds the first occurrence, so a line carrying two of the same
+    /// marker keeps the first and ignores the rest - the rule `marker(in:prefix:)`
+    /// already applies to a line carrying two `>` dates.
+    private static func caretAnnotation(in body: String, name: String) -> String? {
+        guard let start = body.range(of: "^\(name)(") else { return nil }
+        guard let end = body.range(of: ")", range: start.upperBound..<body.endIndex) else { return nil }
+        return String(body[start.upperBound..<end.lowerBound])
+    }
+
+    private static func caretInteger(in body: String, name: String) -> Int? {
+        guard let value = caretAnnotation(in: body, name: name) else { return nil }
+        return Int(value.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Every wikilink in a body, each paired with whether it is the Workspace marker
+    /// `^[[<name>.canvas]]` of ADR-0021 D1.
+    ///
+    /// The two conditions are deliberately narrow: a `^` immediately before the link
+    /// **and** a target ending in `.canvas`, case-insensitively. Anything else -
+    /// `^[[Nota]]`, or a caret that merely happens to precede a link in prose - keeps
+    /// today's meaning exactly, an ordinary wikilink with a literal caret in front of
+    /// it. That is the whole of the backward-compatibility argument, and it costs one
+    /// `hasSuffix`.
+    static func annotatedLinks(in body: String) -> [(link: Wikilink, isWorkspace: Bool)] {
+        WikilinkParser.links(in: body).map { link in
+            guard !link.isEmbed,
+                  link.range.lowerBound > body.startIndex,
+                  body[body.index(before: link.range.lowerBound)] == "^",
+                  link.target.lowercased().hasSuffix(".canvas")
+            else { return (link, false) }
+            return (link, true)
+        }
+    }
+
+    /// Every Workspace marker target on a task line, in source order.
+    ///
+    /// `parse` keeps only the first (ADR-0021 D1, "the first wins"), so a caller that
+    /// needs to *see* the discarded ones - the R-11 linter rule of §D11 is the only
+    /// one - cannot read them back off `TaskItem`. It goes through the same
+    /// `annotatedLinks` walk rather than re-deriving the caret rule, so the marker the
+    /// linter calls a duplicate is by construction the marker the parser ignored.
+    ///
+    /// Takes the whole raw line: the `- [x] ` prefix carries no `[[`, so the walk sees
+    /// exactly what it sees on a body.
+    static func workspaceTargets(inLine line: String) -> [String] {
+        annotatedLinks(in: line).filter(\.isWorkspace).map(\.link.target)
     }
 
     private static func reminder(in body: String) -> TaskReminder? {
@@ -184,10 +255,16 @@ enum TaskParser {
         for tag in tags(in: body) {
             text = text.replacingOccurrences(of: "#\(tag.description)", with: "")
         }
-        for link in WikilinkParser.links(in: body) {
-            text = text.replacingOccurrences(of: link.rendered, with: "")
+        // The Workspace markers go first, caret included: removing `[[X.canvas]]` on
+        // its own would strand a `^` mid-sentence (ADR-0021 D1).
+        let annotated = annotatedLinks(in: body)
+        for entry in annotated where entry.isWorkspace {
+            text = text.replacingOccurrences(of: "^" + entry.link.rendered, with: "")
         }
-        for pattern in ["@done", "@remind", "@repeat"] {
+        for entry in annotated where !entry.isWorkspace {
+            text = text.replacingOccurrences(of: entry.link.rendered, with: "")
+        }
+        for pattern in ["@done", "@remind", "@repeat", "^id", "^parent"] {
             while let start = text.range(of: "\(pattern)("),
                   let end = text.range(of: ")", range: start.upperBound..<text.endIndex) {
                 text.removeSubrange(start.lowerBound..<end.upperBound)
@@ -215,7 +292,7 @@ enum TaskParser {
 
     /// The whole marker, hour included, so removing one leaves no `15:00` stranded in
     /// the middle of a sentence.
-    private static func markerRange(in text: String, prefix: Character) -> Range<String.Index>? {
+    static func markerRange(in text: String, prefix: Character) -> Range<String.Index>? {
         let characters = Array(text)
         for index in characters.indices where characters[index] == prefix {
             let precededByBoundary = index == 0 || characters[index - 1] == " "
@@ -231,98 +308,7 @@ enum TaskParser {
         return nil
     }
 
-    // MARK: Rewriting
-
-    /// Rewrites one task line inside a file's text.
-    ///
-    /// Returns nil when the line is not the task it was told to change, which is what
-    /// stops a stale index from rewriting the wrong line after the note moved on.
-    static func rewrite(
-        _ text: String,
-        at lineIndex: Int,
-        expecting original: String,
-        with newLine: String
-    ) -> String? {
-        var lines = text.components(separatedBy: "\n")
-        guard lines.indices.contains(lineIndex), lines[lineIndex] == original else { return nil }
-        lines[lineIndex] = newLine
-        return lines.joined(separator: "\n")
-    }
-
-    /// The line for a task with a new state, preserving indentation, bullet and any
-    /// syntax this parser does not model.
-    static func line(for task: TaskItem, settingState state: TaskItem.State, today: CalendarDate) -> String {
-        var line = replacingMarker(in: task.rawLine, with: state.marker)
-
-        // `@done(...)` follows the state rather than being set by hand: it is the one
-        // annotation the app owns.
-        line = removingAnnotation(named: "done", from: line)
-        if state == .done {
-            line = line.trimmingTrailingWhitespace() + " @done(\(today))"
-        }
-        return line.trimmingTrailingWhitespace()
-    }
-
-    /// The line for a task moved to a new day, or with its schedule cleared.
-    ///
-    /// The hour goes with the day: "domani" said by a reschedule command is a day and
-    /// not a time, and carrying the old `09:00` onto it would invent one.
-    static func line(
-        for task: TaskItem, scheduledOn date: CalendarDate?, at time: TaskTime? = nil
-    ) -> String {
-        var line = task.rawLine
-        if let existing = markerRange(in: line, prefix: ">") {
-            line.removeSubrange(withPrecedingSpace(existing, in: line))
-        }
-        guard let date else { return line.trimmingTrailingWhitespace() }
-        return line.trimmingTrailingWhitespace() + " >\(date)" + (time.map { " " + $0.text } ?? "")
-    }
-
-    /// The line for a task with a due date set or cleared (`!YYYY-MM-DD`, SPEC §7.1).
-    static func line(for task: TaskItem, dueOn date: CalendarDate?) -> String {
-        var line = task.rawLine
-        if let existing = markerRange(in: line, prefix: "!") {
-            line.removeSubrange(withPrecedingSpace(existing, in: line))
-        }
-        guard let date else { return line.trimmingTrailingWhitespace() }
-        return line.trimmingTrailingWhitespace() + " !\(date)"
-    }
-
-    /// The line for a task that does not exist yet, in the marker order of SPEC §7.1.
-    ///
-    /// A marker already typed into the text wins over the one the composer holds: the
-    /// two would otherwise both be written, and a line carrying two `>` dates parses
-    /// back to whichever the scanner meets first, which is not a choice anyone made.
-    static func line(
-        forNewTask text: String,
-        scheduled: CalendarDate? = nil,
-        scheduledTime: TaskTime? = nil,
-        due: CalendarDate? = nil,
-        dueTime: TaskTime? = nil,
-        reminder: TaskReminder? = nil,
-        recurrence: TaskRecurrence? = nil
-    ) -> String {
-        let body = text.trimmingCharacters(in: .whitespaces)
-        var line = "- [ ] " + body
-        if let scheduled, markerRange(in: body, prefix: ">") == nil {
-            line += " >\(scheduled)" + (scheduledTime.map { " " + $0.text } ?? "")
-        }
-        if let due, markerRange(in: body, prefix: "!") == nil {
-            line += " !\(due)" + (dueTime.map { " " + $0.text } ?? "")
-        }
-        if let reminder, !body.contains("@remind(") { line += " " + reminder.rendered }
-        if let recurrence, !body.contains("@repeat(") { line += " " + recurrence.rendered }
-        return line
-    }
-
-    /// Adds or replaces a wikilink to a note or canvas, which is how "Collega
-    /// nota/canvas…" works (SPEC §7.2).
-    static func line(for task: TaskItem, addingLinkTo target: String) -> String {
-        guard !task.links.contains(target) else { return task.rawLine }
-        return task.rawLine.trimmingTrailingWhitespace() + " [[\(target)]]"
-    }
-
-    private static func replacingMarker(in line: String, with marker: Character) -> String {
+    static func replacingMarker(in line: String, with marker: Character) -> String {
         guard let open = line.firstIndex(of: "["),
               let close = line.range(of: "]", range: open..<line.endIndex)
         else { return line }
@@ -331,7 +317,7 @@ enum TaskParser {
         return result
     }
 
-    private static func removingAnnotation(named name: String, from line: String) -> String {
+    static func removingAnnotation(named name: String, from line: String) -> String {
         var result = line
         while let start = result.range(of: "@\(name)("),
               let end = result.range(of: ")", range: start.upperBound..<result.endIndex) {
@@ -345,7 +331,7 @@ enum TaskParser {
     ///
     /// Deliberately not a blanket collapse of double spaces: that also ate the leading
     /// indentation of a nested task, silently reformatting the user's note.
-    private static func withPrecedingSpace(
+    static func withPrecedingSpace(
         _ range: Range<String.Index>, in text: String
     ) -> Range<String.Index> {
         guard range.lowerBound > text.startIndex else { return range }
@@ -354,7 +340,7 @@ enum TaskParser {
     }
 }
 
-private extension String {
+extension String {
     func trimmingTrailingWhitespace() -> String {
         var result = self
         while let last = result.last, last == " " || last == "\t" {

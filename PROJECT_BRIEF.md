@@ -87,6 +87,22 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-24: **ADR-0021 (Workspace browser + relazioni Task↔Workspace/Nota + sotto-task di
+  progetto) implementata per intero, 10 task su 10, 1527 test unitari verdi più la suite UI
+  completa verde (71/71, l'unico fallimento rimasto in `WorkspaceBoardUITests` è precedente
+  e non toccato da questa feature).** Tre marker caret sulla riga del task
+  (`^[[board.canvas]]`, `^id(N)`, `^parent(N)`) sono l'unico storage nuovo: nessuna colonna,
+  nessun campo su `StoredTask`, `IndexCache.schemaVersion` resta 3 - il valore si rideriva
+  interamente da `TaskParser` a ogni rescan. Sidebar "Workspace" con browser ad albero
+  riusando `NoteTree`; dashboard della board con sezioni "Task assegnati" e "Note
+  referenziate"; comando "Aggiungi sotto-task" (Cmd+Shift+Return) con `WorkspacePicker` per
+  l'assegnazione; raggruppamento "Progetti" in Attività con indicatore di avanzamento
+  derivato, mai scritto su file. Due difetti reali trovati e corretti durante la scrittura
+  del test end-to-end: `VaultController.selectedTask` non si aggiornava dopo la scrittura di
+  un sotto-task (una seconda "Aggiungi sotto-task" sullo stesso task selezionato falliva in
+  silenzio); `.accessibilityIdentifier` su un `DisclosureGroup`/contenitore SwiftUI su macOS
+  si propaga sugli elementi discendenti sovrascrivendo il loro identificatore proprio -
+  scoperto due volte prima di isolarlo su una foglia sorella invece che su un contenitore.
 - 2026-08-24: **ADR-0020 (crop non distruttivo della card immagine) implementata per intero, 8
   task su 8, 1455 test unitari verdi, zero regressioni.** Il ritaglio è un rettangolo
   normalizzato scritto come stringa scalare `"x y w h"` sulla chiave prefissata

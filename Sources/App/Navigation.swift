@@ -93,6 +93,14 @@ final class Navigation {
     /// holds three of the app's answers had no key and no menu entry.
     var isShowingInspector = true
 
+    /// Whether the Workspace shows its tray - unplaced items, linked tasks, and the
+    /// board dashboard of ADR-0021 §D7.
+    ///
+    /// Here for the same reason `isShowingInspector` is: it started as `@State` in
+    /// `WorkspaceView`, where the toolbar toggle beside it was the only thing that
+    /// could reach it, so the Vista menu had no way to offer «Pannello Workspace».
+    var isShowingTray = true
+
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,
