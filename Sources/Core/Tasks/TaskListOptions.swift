@@ -17,6 +17,10 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
     case project
     case schedule
     case deadline
+    /// One group per project task's `^id`, its `^parent` children indented beneath it
+    /// (ADR-0021 D6). Not a sixth `TaskView` - ADR-0013 §D6 closed that list and named
+    /// this the open axis.
+    case subtasks
 
     var id: String { rawValue }
 
@@ -27,6 +31,7 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
         case .project: "Per progetto"
         case .schedule: "Per data"
         case .deadline: "Per scadenza"
+        case .subtasks: "Progetti"
         }
     }
 
@@ -37,6 +42,7 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
         case .project: "folder"
         case .schedule: "calendar"
         case .deadline: "exclamationmark.triangle"
+        case .subtasks: "list.bullet.indent"
         }
     }
 }
@@ -116,8 +122,18 @@ struct TaskGroup: Equatable, Sendable, Identifiable {
     /// Empty when the list is not grouped, and the view draws no heading for it.
     var title: String
     var tasks: [TaskItem]
+    /// The project task this group is the children of, set only by `.subtasks`
+    /// (ADR-0021 D6). `nil` for every other grouping.
+    var parent: TaskItem? = nil
+    /// How many of `parent`'s children are done, set only by `.subtasks`. `nil`
+    /// wherever `parent` is `nil`.
+    var progress: TaskProgress? = nil
 
-    var id: String { title }
+    /// Falls back to `title` so nothing that groups by project or by day changes;
+    /// rises to the parent's own id when there is one, so two projects whose parent
+    /// tasks read the same in two different notes are two rows rather than one
+    /// (ADR-0021 D2, D6).
+    var id: String { parent?.id ?? title }
 }
 
 /// Turns a view's tasks into the list the user asked for.
@@ -152,6 +168,13 @@ enum TaskArrangement {
             return grouped(sorted) { $0.scheduled.map(dayTitle) ?? noneTitle }
         case .deadline:
             return grouped(sorted) { $0.due.map(dayTitle) ?? noneTitle }
+        case .subtasks:
+            // Placeholder (ADR-0021 D6, plan `2026-08-24-workspace-tasks-notes-integration`
+            // Task 8): keeps `Pergamenum` compiling with an exhaustive switch. Does not
+            // bucket on `(sourcePath, parentLocalID)`, set `parent`/`progress`, or split out
+            // "Senza" - the coder's Task 8 replaces this arm. `Tests/TaskArrangementTests.swift`
+            // fails red on assertions against this arm, not on a compile error.
+            return [TaskGroup(title: noneTitle, tasks: sorted)]
         }
     }
 
