@@ -285,6 +285,66 @@ private struct TemporaryRoot: ~Copyable {
     #expect(CanvasID.generate() != id)
 }
 
+// MARK: - `CanvasStore.allBoards()` (ADR-0021 "A task carries its Workspace and its place in a
+// project as caret markers in its own line, and nothing new is stored anywhere else", §D10).
+// Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 6: the
+// Workspace folder browser. D10 rejects putting `.canvas` files into `IndexSnapshot` (a version
+// bump and a change to what every consumer of "a note" means) and enumerates them on demand
+// instead, walking the vault the same way `VaultScanner.scan()` does and skipping the same
+// excluded directories through `VaultLayout.isExcludedDirectory`.
+//
+// `CanvasStore.allBoards()` is a signature-only stub returning `[]` as of this commit: every
+// test below is expected to fail red on its assertions, not to fail to compile.
+
+@Test func allBoardsFindsNestedCanvasFilesAsSortedVaultRelativePaths() throws {
+    let root = try TemporaryRoot()
+    try root.makeFile("root.canvas")
+    try root.makeFile("01 Progetti/vibrofer-emea/vibrofer-emea.canvas")
+    try root.makeFile("02 Aree/area.canvas")
+    let store = CanvasStore(root: root.url)
+
+    #expect(store.allBoards() == [
+        "01 Progetti/vibrofer-emea/vibrofer-emea.canvas",
+        "02 Aree/area.canvas",
+        "root.canvas",
+    ])
+}
+
+@Test func allBoardsSkipsExcludedDirectories() throws {
+    // Mirrors `VaultLayout.isExcludedDirectory`'s own dot-prefix rule (`.obsidian`, `.git`,
+    // `.pergamenum` and any other dot-directory), the same rule `VaultScanner.scan()` applies
+    // to notes.
+    let root = try TemporaryRoot()
+    try root.makeFile(".obsidian/hidden.canvas")
+    try root.makeFile(".git/hidden.canvas")
+    try root.makeFile(".pergamenum/hidden.canvas")
+    try root.makeFile(".trash/hidden.canvas")
+    try root.makeFile("01 Progetti/visibile.canvas")
+    let store = CanvasStore(root: root.url)
+
+    #expect(store.allBoards() == ["01 Progetti/visibile.canvas"])
+}
+
+@Test func allBoardsIgnoresEverythingThatIsNotACanvasFile() throws {
+    let root = try TemporaryRoot()
+    try root.makeFile("Nota.md")
+    try root.makeFile("documento.pdf")
+    try root.makeFile("immagine.png")
+    try root.makeFile("01 Progetti/altra nota.md")
+    let store = CanvasStore(root: root.url)
+
+    #expect(store.allBoards().isEmpty)
+}
+
+@Test func allBoardsReturnsEmptyForAVaultWithNoBoards() throws {
+    let root = try TemporaryRoot()
+    try root.makeDirectory("01 Progetti")
+    try root.makeFile("01 Progetti/nota.md")
+    let store = CanvasStore(root: root.url)
+
+    #expect(store.allBoards() == [])
+}
+
 // MARK: - Workspace controller
 
 @MainActor
