@@ -71,6 +71,32 @@ import Testing
     #expect(updated?.contains("[[Nuovo]]") == true)
 }
 
+// MARK: - The `^[[…]].canvas` Workspace marker survives a rename (ADR-0021 §D3)
+//
+// Plan `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 4:
+// `NoteRename.rewritingLinks` replaces `link.range`, which for a non-embed link starts at
+// `[[` - the caret sits outside that range and is expected to survive untouched with no new
+// code. These three tests are that claim, checked rather than assumed.
+
+@Test func caretWorkspaceMarkerSurvivesARenameIntact() {
+    let text = "- [ ] Testo ^[[Vecchio.canvas]] >2026-09-01"
+    let updated = NoteRename.rewritingLinks(in: text, from: "Vecchio.canvas", to: "Nuovo.canvas")
+    #expect(updated == "- [ ] Testo ^[[Nuovo.canvas]] >2026-09-01")
+}
+
+@Test func onlyTheCanvasTargetMovesWhenALineAlsoCarriesAPlainLink() {
+    let text = "- [ ] Testo [[Nota]] ^[[Vecchio.canvas]]"
+    let updated = NoteRename.rewritingLinks(in: text, from: "Vecchio.canvas", to: "Nuovo.canvas")
+    #expect(updated == "- [ ] Testo [[Nota]] ^[[Nuovo.canvas]]")
+}
+
+@Test func theRewrittenLineStillParsesAsAssignedToTheNewWorkspace() {
+    let text = "- [ ] Testo ^[[Vecchio.canvas]] >2026-09-01"
+    let updated = NoteRename.rewritingLinks(in: text, from: "Vecchio.canvas", to: "Nuovo.canvas")
+    let task = updated.flatMap { TaskParser.parse(line: $0, sourcePath: "Nota.md", lineIndex: 0) }
+    #expect(task?.workspacePath == "Nuovo.canvas")
+}
+
 // MARK: - The operations on disk
 
 private struct OpsVault: ~Copyable {
