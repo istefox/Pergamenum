@@ -253,6 +253,14 @@ struct TaskCommands: Commands {
             Button("Completa o riapri") { actions.run(.taskToggle) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToggle))
                 .disabled(!actions.canRun(.taskToggle))
+            // The menu is the whole point of this entry as much as the key is: the UX
+            // blueprint asks for «Aggiungi sotto-task» to be reachable with no mouse and
+            // no toolbar, and a command that only exists as a keystroke is a command
+            // nobody discovers. The binding comes from the store, never from a literal
+            // (ADR-0002).
+            Button("Aggiungi sotto-task") { actions.run(.taskAddSubtask) }
+                .keyboardShortcut(shortcuts.shortcut(for: .taskAddSubtask))
+                .disabled(!actions.canRun(.taskAddSubtask))
 
             Divider()
             Button("Pianifica oggi") { actions.run(.taskToday) }

@@ -233,10 +233,7 @@ final class CommandActions {
         case .taskNextWeek:
             vault.rescheduleSelectedTask(daysFromToday: 7)
         case .taskAddSubtask:
-            // Placeholder (Task 9, ADR-0021): opening the composer with `draft.parent`
-            // set to `vault.selectedTask` is the coder's wiring; `TaskMarkerWriteTests`
-            // and `CommandActionTests` are what turn this red until it lands.
-            break
+            addSubtaskToSelectedTask()
         default:
             assertionFailure("«\(command.title)» è nella sezione Task e non è gestito")
         }
@@ -295,13 +292,11 @@ final class CommandActions {
             canRunFolding(command)
         case .goBack, .goForward:
             command == .goBack ? history.canGoBack : history.canGoForward
-        case .taskToggle:
+        // Both act on the task the list has selected, and neither has anything to do
+        // without one: «Aggiungi sotto-task» needs a parent to hang the `^parent` off
+        // (ADR-0021 D2), not merely a note.
+        case .taskToggle, .taskAddSubtask:
             vault.selectedTask != nil
-        case .taskAddSubtask:
-            // Placeholder (Task 9, ADR-0021): the real condition is `vault.selectedTask
-            // != nil`, same as `taskToggle`. Left always-off on purpose so the coder's
-            // wiring is what turns `CommandActionTests` green, not this stub.
-            false
         case .newEvent:
             calendar.eventAccess.isGranted
         case .newReminder:
@@ -349,6 +344,20 @@ final class CommandActions {
     private func canRunOnOpenNote(_ command: ShortcutCommand) -> Bool {
         guard vault.openNote != nil else { return false }
         return command == .applyTemplate ? !vault.templates.isEmpty : true
+    }
+
+    /// Opens the composer already pointed at the selected task as its parent (ADR-0021
+    /// D9, A9), which is the whole of «Aggiungi sotto-task».
+    ///
+    /// The destination is set to the parent's own note even though `captureTask` ignores
+    /// it for a draft with a parent: `^id` is note-local (D2), so the sub-task can only
+    /// go where the parent is, and a composer whose header said "Inbox" while writing
+    /// somewhere else would be lying about it.
+    private func addSubtaskToSelectedTask() {
+        guard let parent = vault.selectedTask else { return }
+        var draft = VaultController.TaskDraft(destination: .note(parent.sourcePath))
+        draft.parent = parent
+        vault.taskDraft = draft
     }
 
     /// Four commands do exactly one thing: set a `Bool` on the controller that some view

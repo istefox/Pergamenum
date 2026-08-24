@@ -11,6 +11,10 @@ struct TasksView: View {
     @State private var linking: TaskItem?
     /// The task waiting for a due date (SPEC §7.1 `!YYYY-MM-DD`, context menu "Aggiungi scadenza").
     @State private var addingDueFor: TaskItem?
+    /// The task waiting for a Workspace (ADR-0021 D9, R-03). Separate from `linking`: a
+    /// task carries any number of wikilinks and exactly one `^[[…]].canvas` marker, so the
+    /// two are two gestures rather than one picker with a mode.
+    @State private var assigningWorkspaceFor: TaskItem?
     /// The "Progetti" groups the user folded shut (ADR-0021 D6), by `TaskGroup.id`.
     ///
     /// Collapsed rather than expanded ids, so a project opens showing its sub-tasks: the
@@ -49,6 +53,9 @@ struct TasksView: View {
         }
         .sheet(item: $addingDueFor) { task in
             dueDateSheet(for: task)
+        }
+        .sheet(item: $assigningWorkspaceFor) { task in
+            WorkspacePicker(task: task) { assigningWorkspaceFor = nil }
         }
         .onChange(of: vault.isLinkingSelectedTask) { _, requested in
             guard requested, let task = vault.selectedTask else { return }
@@ -108,6 +115,12 @@ struct TasksView: View {
                 Label("Collega nota o board", systemImage: "link")
             }
             .help("Collega il task a una nota o a una board")
+            .disabled(selected == nil)
+
+            Button { assigningWorkspaceFor = selected } label: {
+                Label("Assegna a un Workspace", systemImage: "rectangle.3.group")
+            }
+            .help("Assegna il task a un Workspace")
             .disabled(selected == nil)
 
             Button {
@@ -374,6 +387,7 @@ struct TasksView: View {
         Button("Aggiungi scadenza…") { addingDueFor = task }
         Divider()
         Button("Collega nota o board…") { linking = task }
+        Button("Assegna a un Workspace…") { assigningWorkspaceFor = task }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
         Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }
