@@ -172,12 +172,32 @@ struct WorkspaceView: View {
                 theme.color(.canvasBackground)
                     .contentShape(Rectangle())
                     .onTapGesture { location in
-                        handleTap(at: canvasPoint(from: location, in: geometry.size))
+                        // A click outside the card confirms an open crop (ADR-0020 D5)
+                        // rather than acting on whatever tool is selected.
+                        if workspace.croppingNodeID != nil {
+                            workspace.endCrop(confirm: true)
+                        } else {
+                            handleTap(at: canvasPoint(from: location, in: geometry.size))
+                        }
                     }
                     // Attached to the background alone. On the whole board it also
                     // fired while a card was being dragged, and the two gestures moved
                     // the same content against each other.
                     .gesture(backgroundGesture(in: geometry.size))
+
+                // Esc cancels an open crop, Enter confirms it (ADR-0020 D5). Hidden
+                // buttons rather than an `onKeyPress`: the board hosts no first
+                // responder of its own, and a keyboard shortcut on a button reaches the
+                // window regardless of what has focus, the same way Annulla/Ripeti do
+                // in the toolbar above.
+                if workspace.croppingNodeID != nil {
+                    Button("") { workspace.endCrop(confirm: false) }
+                        .keyboardShortcut(.escape, modifiers: [])
+                        .hidden()
+                    Button("") { workspace.endCrop(confirm: true) }
+                        .keyboardShortcut(.return, modifiers: [])
+                        .hidden()
+                }
 
                 if workspace.showsGrid { grid }
 

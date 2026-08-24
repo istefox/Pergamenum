@@ -591,3 +591,144 @@ private struct TemporaryRoot: ~Copyable {
     #expect(controller.arrowEndPoint == nil)
     controller.detach()
 }
+
+// MARK: - ADR-0020, Task 3: crop mode transitions
+
+@MainActor
+@Test func confirmingACropWritesExactlyOneKeyAndOneHistoryStep() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
+    controller.endCrop(confirm: true)
+
+    let node = try #require(controller.document.node(id: id))
+    #expect(CanvasCrop.read(from: node) != nil)
+    #expect(controller.canUndo)
+    // Exactly one history step for the crop: undoing once removes the crop and nothing
+    // else - the node itself, placed by `placeFile` before the crop, is still there.
+    controller.undo()
+    let afterUndo = try #require(controller.document.node(id: id))
+    #expect(CanvasCrop.read(from: afterUndo) == nil)
+    #expect(afterUndo.id == id)
+    controller.detach()
+}
+
+@MainActor
+@Test func cancellingACropWritesNothingAndLeavesUnsavedChangesAlone() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+    controller.flushPendingSave()
+    #expect(!controller.hasUnsavedChanges)
+    let undoDepthBefore = controller.canUndo
+
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
+    controller.endCrop(confirm: false)
+
+    #expect(!controller.hasUnsavedChanges)
+    #expect(controller.canUndo == undoDepthBefore)
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) == nil)
+    #expect(controller.croppingNodeID == nil)
+    controller.detach()
+}
+
+@MainActor
+@Test func croppingBackToTheWholeImageRemovesTheKeyRatherThanWritingAWholeRectangle() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+
+    // First crop it, confirmed, then drag every grip back out to the full image.
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
+    controller.endCrop(confirm: true)
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) != nil)
+
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .topLeft, translation: CGSize(width: -800, height: -400), lockAspect: false)
+    controller.endCrop(confirm: true)
+
+    let node = try #require(controller.document.node(id: id))
+    #expect(CanvasCrop.read(from: node) == nil)
+    #expect(node.unknown[CanvasCrop.key] == nil)
+    controller.detach()
+}
+
+@MainActor
+@Test func undoRestoresTheUncroppedNodeAndCancelsAnInFlightCrop() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
+    controller.endCrop(confirm: true)
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) != nil)
+
+    // A second, still-open crop gesture on the same node when undo fires - undo must
+    // cancel it rather than let its stale draft overwrite the just-restored document.
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    #expect(controller.croppingNodeID == id)
+
+    controller.undo()
+
+    #expect(controller.croppingNodeID == nil)
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) == nil)
+    controller.detach()
+}
+
+@MainActor
+@Test func navigatingAwayEndsAnOpenCropMode() throws {
+    let root = try TemporaryRoot()
+    try root.makeDirectory("Altra")
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    #expect(controller.croppingNodeID == id)
+
+    controller.open(folder: "Altra")
+    #expect(controller.croppingNodeID == nil)
+    controller.detach()
+}
+
+@MainActor
+@Test func removingACropOutsideTheModeClearsTheKeyInOneMutation() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("foto.png", at: .zero)
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
+    controller.endCrop(confirm: true)
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) != nil)
+
+    controller.removeCrop(nodeIDs: [id])
+    #expect(CanvasCrop.read(from: try #require(controller.document.node(id: id))) == nil)
+
+    // A no-op removal on a node that carries no crop must not touch history.
+    let historyDepthBefore = controller.canUndo
+    controller.removeCrop(nodeIDs: [id])
+    #expect(controller.canUndo == historyDepthBefore)
+    controller.detach()
+}
+
+@MainActor
+@Test func aNonCroppableFileNeverEntersCropMode() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let id = controller.placeFile("documento.pdf", at: .zero)
+
+    controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
+    #expect(controller.croppingNodeID == nil)
+    controller.detach()
+}
