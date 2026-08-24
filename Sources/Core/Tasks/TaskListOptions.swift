@@ -169,12 +169,7 @@ enum TaskArrangement {
         case .deadline:
             return grouped(sorted) { $0.due.map(dayTitle) ?? noneTitle }
         case .subtasks:
-            // Placeholder (ADR-0021 D6, plan `2026-08-24-workspace-tasks-notes-integration`
-            // Task 8): keeps `Pergamenum` compiling with an exhaustive switch. Does not
-            // bucket on `(sourcePath, parentLocalID)`, set `parent`/`progress`, or split out
-            // "Senza" - the coder's Task 8 replaces this arm. `Tests/TaskArrangementTests.swift`
-            // fails red on assertions against this arm, not on a compile error.
-            return [TaskGroup(title: noneTitle, tasks: sorted)]
+            return bySubtasks(sorted)
         }
     }
 
@@ -238,6 +233,82 @@ enum TaskArrangement {
                 return first.localizedStandardCompare(second) == .orderedAscending
             }
             .map { TaskGroup(title: $0, tasks: buckets[$0] ?? []) }
+    }
+
+    /// One group per project task, its `^parent` children beneath it (ADR-0021 D6).
+    ///
+    /// **The join is `(sourcePath, localID)`, never `localID` alone.** Ids are note-local
+    /// (D2), so `^id(1)` in `A.md` and `^id(1)` in `B.md` are two different projects and a
+    /// key without the path would silently merge them the first time two notes each reached
+    /// one sub-task. The same scoping `IndexSnapshot.subtasks(of:)` applies, restated here
+    /// because this side has no index: `TaskArrangement` is handed a flat list and the
+    /// relationships have to be rebuilt from the tasks themselves.
+    ///
+    /// A project heading is a task carrying an `^id` that some other task actually names: an
+    /// `^id` with no children is not a project, it is a task, and it goes to "Senza" with
+    /// everything else that has nothing to group by - alongside an orphaned `^parent(N)` whose
+    /// `^id(N)` exists in no task of that note, which must still appear rather than vanish.
+    private static func bySubtasks(_ tasks: [TaskItem]) -> [TaskGroup] {
+        struct ProjectKey: Hashable {
+            let sourcePath: String
+            let localID: Int
+        }
+
+        // First occurrence wins on a note that carries `^id(1)` twice, the same rule
+        // `marker(in:prefix:)` already applies to a line with two `>` dates. `tasks` arrives
+        // sorted, so "first" is a deterministic choice and not an accident of input order.
+        var parents: [ProjectKey: TaskItem] = [:]
+        var parentOrder: [ProjectKey] = []
+        for task in tasks {
+            guard let localID = task.localID else { continue }
+            let key = ProjectKey(sourcePath: task.sourcePath, localID: localID)
+            guard parents[key] == nil else { continue }
+            parents[key] = task
+            parentOrder.append(key)
+        }
+
+        var children: [ProjectKey: [TaskItem]] = [:]
+        for task in tasks {
+            guard let parentLocalID = task.parentLocalID else { continue }
+            let key = ProjectKey(sourcePath: task.sourcePath, localID: parentLocalID)
+            guard parents[key] != nil else { continue }
+            children[key, default: []].append(task)
+        }
+
+        // A second walk of the same sorted list rather than an `else` in the one above: the
+        // "is this a heading" question cannot be answered until every child has been bucketed,
+        // and walking `tasks` again is what keeps "Senza" in the order the sort asked for.
+        var ungrouped: [TaskItem] = []
+        for task in tasks {
+            if let parentLocalID = task.parentLocalID,
+               parents[ProjectKey(sourcePath: task.sourcePath, localID: parentLocalID)] != nil {
+                continue
+            }
+            if let localID = task.localID,
+               children[ProjectKey(sourcePath: task.sourcePath, localID: localID)] != nil {
+                continue
+            }
+            ungrouped.append(task)
+        }
+
+        var groups = parentOrder.compactMap { key -> TaskGroup? in
+            guard let parent = parents[key], let kids = children[key] else { return nil }
+            return TaskGroup(
+                title: parent.text,
+                tasks: kids,
+                parent: parent,
+                // The same count `IndexSnapshot.progress(ofProject:)` returns, over the
+                // children this list actually holds: a view that filters its tasks reports
+                // progress on what it is showing.
+                progress: TaskProgress(
+                    done: kids.filter { $0.state == .done }.count, total: kids.count
+                )
+            )
+        }
+        if !ungrouped.isEmpty {
+            groups.append(TaskGroup(title: noneTitle, tasks: ungrouped))
+        }
+        return groups
     }
 
     private static func byNote(_ tasks: [TaskItem], priorityPaths: Set<String>) -> [TaskGroup] {
