@@ -164,3 +164,101 @@ func allThreeMarkersParseInAnyOrderAlongsideExistingSyntax(_ line: String) {
     """
     #expect(TaskParser.nextLocalID(in: note) == 10)
 }
+
+// MARK: - The three index queries (ADR-0021 D4, D5; R-14, R-04). Plan
+// `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 2.
+//
+// `IndexSnapshot.tasks(assignedToWorkspace:)`, `.subtasks(of:)` and `.progress(ofProject:)`
+// are signature-only stubs as of this commit (`Sources/Index/IndexSnapshot.swift`, `// MARK:
+// Tasks`): every test below is expected to fail red on its assertions, not to fail to
+// compile - the coder's Task 2 work fills in the query logic these tests already encode as
+// assertions. `TaskProgress` itself is a plain, already-implemented data type
+// (`Sources/Core/Tasks/TaskItem.swift`).
+
+/// Several notes, each holding the given task lines, indexed together - the shape
+/// `Tests/RolloverTests.swift` uses for one note, extended to several so the "across
+/// notes" and "same-note only" assertions below have something to distinguish.
+private func snapshot(_ notes: [String: String]) -> IndexSnapshot {
+    var snapshot = IndexSnapshot()
+    for (path, body) in notes {
+        let tasks = body.components(separatedBy: "\n").enumerated().compactMap { index, line in
+            TaskParser.parse(line: line, sourcePath: path, lineIndex: index)
+        }
+        var frontmatter = Frontmatter.empty
+        frontmatter.tags = [Tag("type-note")!]
+        let record = NoteRecord(
+            relativePath: path, title: path, frontmatter: frontmatter, linkTargets: [],
+            tasks: tasks, modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
+        )
+        snapshot.update(record, at: path)
+    }
+    return snapshot
+}
+
+// MARK: - `tasks(assignedToWorkspace:)` (R-04's other half)
+
+@Test func tasksAssignedToWorkspaceFindsAcrossNotesCaseInsensitivelyAndIgnoresPlainLinks() {
+    let index = snapshot([
+        "Nota A.md": "- [ ] Uno ^[[vibrofer-emea.canvas]]",
+        "Nota B.md": "- [ ] Due ^[[VIBROFER-EMEA.CANVAS]]",
+        // A plain wikilink to the same board, no caret: a mention, not an assignment -
+        // the two mechanisms are independent (ADR-0021 D1).
+        "Nota C.md": "- [ ] Tre [[vibrofer-emea.canvas]]",
+        "Nota D.md": "- [ ] Quattro ^[[altro-progetto.canvas]]",
+    ])
+
+    let assigned = index.tasks(assignedToWorkspace: "vibrofer-emea.canvas")
+
+    #expect(Set(assigned.map(\.text)) == ["Uno", "Due"])
+    #expect(assigned.count == 2)
+}
+
+// MARK: - `subtasks(of:)` (the D2 assertion: ids are note-local)
+
+@Test func subtasksOfReturnsOnlySameNoteChildrenNotAMatchingIDInAnotherNote() {
+    let index = snapshot([
+        "Progetto.md": """
+        - [ ] Padre ^id(1)
+        - [ ] Figlio vero ^parent(1)
+        """,
+        // Same `^id(1)`, a different note: `^parent(1)` here must not resolve against
+        // the parent above, or the "Progetti" grouping would silently merge two
+        // unrelated projects the first time two notes both reached the same id.
+        "Altro.md": """
+        - [ ] Un altro padre ^id(1)
+        - [ ] Non è figlio di Progetto.md ^parent(1)
+        """,
+    ])
+    let parent = index.allTasks.first { $0.sourcePath == "Progetto.md" && $0.localID == 1 }!
+
+    let children = index.subtasks(of: parent)
+
+    #expect(children.map(\.text) == ["Figlio vero"])
+    #expect(!children.contains { $0.sourcePath == "Altro.md" })
+}
+
+// MARK: - `progress(ofProject:)`
+
+@Test func progressOfProjectCountsDoneStateOverTheChildren() {
+    let index = snapshot([
+        "Progetto.md": """
+        - [ ] Padre ^id(1)
+        - [x] Figlio uno ^parent(1) @done(2026-08-20)
+        - [ ] Figlio due ^parent(1)
+        - [x] Figlio tre ^parent(1) @done(2026-08-21)
+        """,
+    ])
+    let parent = index.allTasks.first { $0.localID == 1 }!
+
+    #expect(index.progress(ofProject: parent) == TaskProgress(done: 2, total: 3))
+}
+
+@Test func progressOfProjectIsNilForATaskWithNoChildren() {
+    // Also the "never touches a file" assertion: this snapshot's records name paths
+    // that exist nowhere on disk, so a correct answer here can only have come from the
+    // in-memory tasks the snapshot already holds.
+    let index = snapshot(["Nota.md": "- [ ] Da solo, senza figli ^id(1)"])
+    let parent = index.allTasks.first { $0.localID == 1 }!
+
+    #expect(index.progress(ofProject: parent) == nil)
+}

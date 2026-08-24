@@ -88,6 +88,16 @@ struct TaskItem: Equatable, Sendable, Identifiable {
     }
 }
 
+/// How many of a project's sub-tasks are done, out of how many there are
+/// (ADR-0021 D5). Returned by `IndexSnapshot.progress(ofProject:)`.
+///
+/// A struct rather than a tuple: `TaskGroup` carries it and is `Equatable`, and a
+/// tuple would break that synthesis.
+struct TaskProgress: Equatable, Sendable {
+    var done: Int
+    var total: Int
+}
+
 /// An hour of the day, as it is written after a `>` or `!` date.
 ///
 /// SPEC §7.1 spells both markers as a bare `YYYY-MM-DD`, and this adds an optional
