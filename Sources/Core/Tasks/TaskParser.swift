@@ -385,6 +385,65 @@ enum TaskParser {
         return task.rawLine.trimmingTrailingWhitespace() + " [[\(target)]]"
     }
 
+    // MARK: - Workspace assignment and sub-tasks (ADR-0021 D9, A9)
+
+    /// A sub-task being composed for `insertingSubtask(in:below:draft:)`: its own text
+    /// and the same dates/annotations `line(forNewTask:…)` accepts, independent of the
+    /// parent's (R-07's last clause).
+    struct SubtaskDraft: Equatable, Sendable {
+        var text: String
+        var scheduled: CalendarDate?
+        var scheduledTime: TaskTime?
+        var due: CalendarDate?
+        var dueTime: TaskTime?
+        var reminder: TaskReminder?
+        var recurrence: TaskRecurrence?
+
+        init(
+            text: String,
+            scheduled: CalendarDate? = nil,
+            scheduledTime: TaskTime? = nil,
+            due: CalendarDate? = nil,
+            dueTime: TaskTime? = nil,
+            reminder: TaskReminder? = nil,
+            recurrence: TaskRecurrence? = nil
+        ) {
+            self.text = text
+            self.scheduled = scheduled
+            self.scheduledTime = scheduledTime
+            self.due = due
+            self.dueTime = dueTime
+            self.reminder = reminder
+            self.recurrence = recurrence
+        }
+    }
+
+    /// Assigns or clears the Workspace marker `^[[<canvas>.canvas]]` (ADR-0021 D9):
+    /// replaces any existing one so a task is never assigned twice (R-03, "exactly
+    /// one"), and removes it together with its preceding space when `workspacePath`
+    /// is nil.
+    ///
+    /// TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3): signature-only
+    /// stub as of this commit, returning the line unchanged. `Tests/TaskMarkerWriteTests.swift`
+    /// already encodes the replace-or-append/clear behaviour as failing assertions for
+    /// the coder's Task 3 to fill in.
+    static func line(for task: TaskItem, assigningWorkspace workspacePath: String?) -> String {
+        task.rawLine
+    }
+
+    /// Inserts a sub-task line immediately below `parent`, allocating `^id`/`^parent`
+    /// from one `nextLocalID` scan (ADR-0021 D9, A9; R-07). Returns nil when the line
+    /// at `parent.lineIndex` is no longer `parent.rawLine` - the same staleness guard
+    /// `rewrite(_:at:expecting:with:)` (this file) already applies.
+    ///
+    /// TODO(plan `2026-08-24-workspace-tasks-notes-integration`, Task 3): signature-only
+    /// stub as of this commit, returning nil unconditionally. `Tests/TaskMarkerWriteTests.swift`
+    /// already encodes the two-line insert and its staleness guard as failing assertions
+    /// for the coder's Task 3 to fill in.
+    static func insertingSubtask(in text: String, below parent: TaskItem, draft: SubtaskDraft) -> String? {
+        nil
+    }
+
     private static func replacingMarker(in line: String, with marker: Character) -> String {
         guard let open = line.firstIndex(of: "["),
               let close = line.range(of: "]", range: open..<line.endIndex)
