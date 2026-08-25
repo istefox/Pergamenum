@@ -7,6 +7,20 @@ extension WorkspaceController {
         zoom = min(max(zoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
+    /// The step-zoom the `−`/`+` controls use. `zoom(by:)` alone leaves `pan` fixed,
+    /// so the board point under the viewport's centre drifts toward the origin on
+    /// every step — after enough clicks the content is not where the pointer is
+    /// looking anymore. Reading that point before the zoom change and re-centring on
+    /// it after is the same fix `zoomToFit` already applies for its own case.
+    func zoom(by factor: CGFloat, in viewport: CGSize) {
+        let anchor = CGPoint(
+            x: (viewport.width / 2 - pan.width) / zoom,
+            y: (viewport.height / 2 - pan.height) / zoom
+        )
+        zoom(by: factor)
+        centre(on: anchor, in: viewport)
+    }
+
     /// Sets the zoom directly, clamped to the range of SPEC §6.1. Used by the pinch
     /// gesture, which computes an absolute value rather than a step.
     func setZoom(_ value: CGFloat) {

@@ -32,6 +32,12 @@ struct NodeCard: View {
         if let color = node.color {
             Text(text.isEmpty ? "Nota" : text)
                 .themedText(.body)
+                // Pins the AX role explicitly: at a low enough board zoom, macOS
+                // computes this Text's role inconsistently between its "legacy" and
+                // "modern" accessibility attributes (observed as AXRole = AXHeading
+                // alongside a StaticText automation type), and XCUITest's snapshot
+                // request throws instead of reporting the element missing.
+                .accessibilityAddTraits(.isStaticText)
                 .padding(theme.spacing(.s))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(stickyColor(color))
@@ -40,6 +46,7 @@ struct NodeCard: View {
         } else {
             Text(text.isEmpty ? "Testo" : text)
                 .themedText(.heading)
+                .accessibilityAddTraits(.isStaticText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }

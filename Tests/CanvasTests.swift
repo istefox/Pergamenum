@@ -461,6 +461,32 @@ private struct TemporaryRoot: ~Copyable {
 }
 
 @MainActor
+@Test func zoomingWithTheButtonKeepsTheViewportCentreFixed() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+    let viewport = CGSize(width: 800, height: 600)
+
+    // Anchor the viewport centre on a board point away from the origin, the way
+    // `zoomToFit` would after opening a real board — the drift this guards against
+    // is invisible when the anchor already sits at (0, 0).
+    let anchor = CGPoint(x: 450, y: 390)
+    controller.centre(on: anchor, in: viewport)
+
+    for _ in 0..<6 { controller.zoom(by: 1 / 1.25, in: viewport) }
+
+    // The board point under the viewport's centre must be the same one before and
+    // after: `screen = board * zoom + pan`, solved for `board`.
+    let boardPointNowAtCentre = CGPoint(
+        x: (viewport.width / 2 - controller.pan.width) / controller.zoom,
+        y: (viewport.height / 2 - controller.pan.height) / controller.zoom
+    )
+    #expect(abs(boardPointNowAtCentre.x - anchor.x) < 1)
+    #expect(abs(boardPointNowAtCentre.y - anchor.y) < 1)
+    controller.detach()
+}
+
+@MainActor
 @Test func zoomToFitOnAnEmptyBoardResetsInsteadOfDividingByZero() throws {
     let root = try TemporaryRoot()
     let controller = WorkspaceController()
