@@ -54,12 +54,21 @@ struct WorkspacePaneDivider: View {
             .accessibilityIdentifier("workspace-browser-divider")
     }
 
+    /// **Measured in global space, never in the divider's own.** The divider rides the
+    /// board list's trailing edge, which moves as a side effect of the drag: measured
+    /// locally, every frame recomputes the translation against a view that has already
+    /// moved, the same feedback loop documented at `TimelineBlockBox.moveGesture` - it
+    /// oscillates and looks like the toolbar splitting into two lagging copies.
     private var drag: some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 let start = widthAtDragStart ?? width
                 widthAtDragStart = start
-                width = Self.clamp(start + value.translation.width)
+                // No transaction may animate a live drag: an interpolated width is a
+                // divider lagging behind the hand that is pulling it.
+                withTransaction(Transaction(animation: nil)) {
+                    width = Self.clamp(start + value.translation.width)
+                }
             }
             .onEnded { _ in widthAtDragStart = nil }
     }
