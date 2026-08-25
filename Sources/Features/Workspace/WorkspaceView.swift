@@ -26,9 +26,19 @@ struct WorkspaceView: View {
     /// (ADR-0012 §D10).
     @AppStorage("workspaceBrowserWidth") private var browserWidth: Double = 200
     /// Raised on leaving concentrazione, consumed once the board's `GeometryReader`
-    /// reports the size it grew back into - `zoomToFit` needs that size, and at the
+    /// settles on the size it grew back into - `zoomToFit` needs that size, and at the
     /// moment of the click it is still the narrow one.
     @State private var needsRefit = false
+    /// The entering counterpart to `needsRefit`: raised on entering concentrazione,
+    /// consumed the same way once the board's widened viewport is known.
+    @State private var needsActualSizeZoom = false
+    /// `NavigationSplitView` animates `columnVisibility`, so toggling concentrazione
+    /// reports several intermediate `geometry.size` values before the panels finish
+    /// sliding in or out - fitting against the first one undercorrects and leaves part
+    /// of the content behind the tray or the board list once the layout keeps moving.
+    /// Debounced instead of one-shot: every intermediate size reschedules this, so only
+    /// the size the layout actually settles on ever reaches `zoomToFit`/`zoomToActualSize`.
+    @State private var pendingFitTask: Task<Void, Never>?
 
     /// What the user is about to create, once they have typed its name or URL.
     private struct NewItemDraft: Identifiable {
@@ -76,12 +86,12 @@ struct WorkspaceView: View {
             isShowingQuickLook = true
             vault.isShowingQuickLook = false
         }
-        // Only on leaving concentrazione: the board just grew back the width the app
-        // sidebar, the board list and the tray gave up, and the fit has to catch up
-        // with it. Entering leaves the zoom exactly where it was - narrowing the board
-        // is not a reason to move what is already in view.
+        // Entering shows the content at its actual size - concentrazione is for working
+        // on the board, not for reading it at whatever scale it happened to be left at.
+        // Leaving hands the width back to the app sidebar, the board list and the tray,
+        // so the fit has to catch up with the viewport they take back.
         .onChange(of: navigation.isWorkspaceFocused) { _, focused in
-            if !focused { needsRefit = true }
+            if focused { needsActualSizeZoom = true } else { needsRefit = true }
         }
         .onAppear {
             if let root = vault.root {
@@ -407,9 +417,22 @@ struct WorkspaceView: View {
             .onChange(of: vault.settings) { _, _ in applyBoardSettings() }
             .onChange(of: geometry.size) { _, size in
                 viewportSize = size
-                if needsRefit {
+                guard needsActualSizeZoom || needsRefit else { return }
+                let actualSize = needsActualSizeZoom
+                pendingFitTask?.cancel()
+                pendingFitTask = Task {
+                    // Long enough to land after the columnVisibility animation's last
+                    // intermediate frame, short enough that the fit still reads as
+                    // immediate once the panels stop moving.
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { return }
+                    if actualSize {
+                        workspace.zoomToActualSize(in: size)
+                    } else {
+                        workspace.zoomToFit(in: size)
+                    }
+                    needsActualSizeZoom = false
                     needsRefit = false
-                    workspace.zoomToFit(in: size)
                 }
             }
             .onChange(of: workspace.folder) { _, _ in

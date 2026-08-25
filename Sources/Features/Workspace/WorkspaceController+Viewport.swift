@@ -43,6 +43,17 @@ extension WorkspaceController {
         centre(on: CGPoint(x: bounds.midX, y: bounds.midY), in: viewport)
     }
 
+    /// Shows the board at its actual size, centred on its content - concentrazione's
+    /// entry state, the fixed-scale counterpart to `zoomToFit`'s scaled one.
+    func zoomToActualSize(in viewport: CGSize) {
+        guard let bounds = contentBounds, viewport.width > 0, viewport.height > 0 else {
+            resetZoom()
+            return
+        }
+        zoom = 1
+        centre(on: CGPoint(x: bounds.midX, y: bounds.midY), in: viewport)
+    }
+
     /// Places a board point at the middle of the viewport.
     ///
     /// The view scales from its top-left corner and then offsets, so a board point `p`
