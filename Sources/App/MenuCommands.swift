@@ -55,6 +55,10 @@ struct ViewCommands: Commands {
             // and "Dividi l'editor" above is the precedent for a keyless Vista entry.
             Toggle("Pannello Workspace", isOn: Bindable(navigation).isShowingTray)
                 .disabled(navigation.pane != .workspace)
+            // Hides the app sidebar, the board list and the tray at once, for more
+            // room on the board itself. Same keyless precedent as the toggle above.
+            Toggle("Concentrazione", isOn: Bindable(navigation).isWorkspaceFocused)
+                .disabled(navigation.pane != .workspace)
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere

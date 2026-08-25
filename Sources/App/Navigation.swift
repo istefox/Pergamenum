@@ -101,6 +101,14 @@ final class Navigation {
     /// could reach it, so the Vista menu had no way to offer «Pannello Workspace».
     var isShowingTray = true
 
+    /// Whether the Workspace hides its three chrome panels - the app sidebar, the board
+    /// list and the tray - down to the board and its vertical tool column.
+    ///
+    /// Here for the same reason `isShowingTray` is: the menu bar's Vista entry needs to
+    /// reach it. Hides rather than turns off: `isShowingTray` is untouched while this is
+    /// on, so leaving the mode returns the tray to whatever state it was actually in.
+    var isWorkspaceFocused = false
+
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,

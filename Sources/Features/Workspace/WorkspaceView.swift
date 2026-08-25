@@ -21,6 +21,14 @@ struct WorkspaceView: View {
     @State private var penColor: ColorToken = .textPrimary
     @State private var penWidth: CGFloat = 2
     @State private var isErasing = false
+    /// The board list's width, dragged with `WorkspacePaneDivider`. Machine-local
+    /// (`@AppStorage`, not `VaultSettings`): it describes the screen, not the vault
+    /// (ADR-0012 §D10).
+    @AppStorage("workspaceBrowserWidth") private var browserWidth: Double = 200
+    /// Raised on leaving concentrazione, consumed once the board's `GeometryReader`
+    /// reports the size it grew back into - `zoomToFit` needs that size, and at the
+    /// moment of the click it is still the narrow one.
+    @State private var needsRefit = false
 
     /// What the user is about to create, once they have typed its name or URL.
     private struct NewItemDraft: Identifiable {
@@ -39,16 +47,22 @@ struct WorkspaceView: View {
                 // R-01: the vault's boards, in the shape they have on disk. Leading,
                 // beside the tool column, because it is where you are rather than what
                 // you can do - the same split the note pane makes between its list and
-                // its editor.
-                WorkspaceBrowser(openBoardPath: openBoardPath, actions: folderActions) { path in
-                    workspace.open(folder: (path as NSString).deletingLastPathComponent)
+                // its editor. Hidden in concentrazione, alongside the app sidebar and
+                // the tray, so the board keeps the width they gave up.
+                if !navigation.isWorkspaceFocused {
+                    WorkspaceBrowser(openBoardPath: openBoardPath, actions: folderActions) { path in
+                        workspace.open(folder: (path as NSString).deletingLastPathComponent)
+                    }
+                    .frame(width: CGFloat(browserWidth))
+                    WorkspacePaneDivider(width: Binding(
+                        get: { CGFloat(browserWidth) },
+                        set: { browserWidth = Double($0) }
+                    ))
                 }
-                .frame(width: 200)
-                Divider()
                 BoardToolbar(workspace: workspace)
                 Divider()
                 board
-                if navigation.isShowingTray {
+                if navigation.isShowingTray && !navigation.isWorkspaceFocused {
                     Divider()
                     BoardTray(workspace: workspace)
                 }
@@ -61,6 +75,13 @@ struct WorkspaceView: View {
             guard requested else { return }
             isShowingQuickLook = true
             vault.isShowingQuickLook = false
+        }
+        // Only on leaving concentrazione: the board just grew back the width the app
+        // sidebar, the board list and the tray gave up, and the fit has to catch up
+        // with it. Entering leaves the zoom exactly where it was - narrowing the board
+        // is not a reason to move what is already in view.
+        .onChange(of: navigation.isWorkspaceFocused) { _, focused in
+            if !focused { needsRefit = true }
         }
         .onAppear {
             if let root = vault.root {
@@ -273,6 +294,15 @@ struct WorkspaceView: View {
             }
             .help("Nuovi elementi, task collegati e assegnati, note referenziate")
             .accessibilityIdentifier("workspace-tray-toggle")
+
+            // Hides the app sidebar, the board list and the tray, leaving only the
+            // tool column and the board. Same reach pattern as the tray toggle above:
+            // one piece of state on `Navigation`, a toolbar toggle and a Vista entry.
+            Toggle(isOn: Bindable(navigation).isWorkspaceFocused) {
+                Label("Concentrazione", systemImage: "rectangle.expand.vertical")
+            }
+            .help("Nasconde la sidebar, l'elenco board e il tray per lasciare più spazio alla board")
+            .accessibilityIdentifier("workspace-focus-toggle")
         }
     }
 
@@ -375,7 +405,13 @@ struct WorkspaceView: View {
                 applyBoardSettings()
             }
             .onChange(of: vault.settings) { _, _ in applyBoardSettings() }
-            .onChange(of: geometry.size) { _, size in viewportSize = size }
+            .onChange(of: geometry.size) { _, size in
+                viewportSize = size
+                if needsRefit {
+                    needsRefit = false
+                    workspace.zoomToFit(in: size)
+                }
+            }
             .onChange(of: workspace.folder) { _, _ in
                 // A board opens over its content, not over the origin.
                 workspace.zoomToFit(in: viewportSize)
