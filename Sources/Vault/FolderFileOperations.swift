@@ -229,7 +229,7 @@ struct FolderFileOperations {
             var changed = false
             for index in document.nodes.indices {
                 guard case .file(let path, let subpath) = document.nodes[index].kind,
-                      path.hasPrefix("\(oldFolder)/")
+                      path == oldFolder || path.hasPrefix("\(oldFolder)/")
                 else { continue }
                 document.nodes[index].kind = .file(
                     path: Self.repointing(path, from: oldFolder, to: newFolder), subpath: subpath

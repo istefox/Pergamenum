@@ -133,3 +133,19 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(!controller.problems.isEmpty, "la rinomina rifiutata deve registrare un problema")
     controller.close()
 }
+
+// MARK: - The facade's success path (VaultController.trashFolder)
+
+@MainActor
+@Test func vaultControllerTrashesAFolderAndForgetsTheNoteItRemoved() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+
+    let trashed = controller.trashFolder(at: "01 Progetti/vecchio")
+
+    #expect(trashed == true)
+    #expect(controller.problems.isEmpty)
+    controller.close()
+}

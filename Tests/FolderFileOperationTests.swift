@@ -266,6 +266,26 @@ private let sampleBoard = """
     #expect(change.after.contains("01 Progetti/vecchio-altro/x.md"))
 }
 
+@Test func renamePlanRepointsAFolderCardThatPointsAtTheRenamedFolderItselfNotJustAFileInsideIt() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("01 Progetti/vecchio")
+    // A "Cartella" tool card (WorkspaceController.createFolder) points at the folder's
+    // own path with no trailing component - the same shape `path == oldFolder`, distinct
+    // from the file-inside-folder shape the prefix test above covers.
+    let rootBoard = """
+    {"nodes":[\
+    {"id":"a","type":"file","file":"01 Progetti/vecchio","x":0,"y":0,"width":260,"height":180}\
+    ],"edges":[]}
+    """
+    try vault.write(rootBoard, to: "Labs.canvas")
+
+    let plan = try vault.operations.renamePlan("01 Progetti/vecchio", to: "nuovo", knownPaths: [])
+
+    let change = try #require(plan.boardChanges.first { $0.path == "Labs.canvas" })
+    #expect(change.after.contains("01 Progetti/nuovo"))
+    #expect(!change.after.contains("01 Progetti/vecchio"))
+}
+
 @Test func renamePlanSkipsTheMarkerRewriteAndReportsAFailureWhenTheBoardNameIsAmbiguous() throws {
     let vault = try FolderOpsVault()
     try vault.write(sampleBoard, to: "A/x/x.canvas")

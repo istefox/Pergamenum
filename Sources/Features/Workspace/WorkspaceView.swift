@@ -167,7 +167,7 @@ struct WorkspaceView: View {
             // The board is still usable and the name can be retried, so this is a line in
             // the problem list rather than a modal - the same treatment the "Cartella"
             // tool gives a rejected name.
-            workspace.recordProblem("nuova workspace: \(error)")
+            vault.recordProblem("nuova workspace: \(error)")
         }
     }
 
