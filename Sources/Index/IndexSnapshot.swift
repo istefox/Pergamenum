@@ -184,8 +184,7 @@ struct IndexSnapshot: Sendable {
     /// not appear here (R-04).
     ///
     func tasks(assignedToWorkspace canvasFileName: String) -> [TaskItem] {
-        let needle = canvasFileName.lowercased()
-        return allTasks.filter { $0.workspacePath?.lowercased() == needle }
+        allTasks.filter { WorkspaceBoardResolver.matches(canvasFileName, workspacePath: $0.workspacePath) }
     }
 
     /// The same-note children of a task, bucketed on its `^id` (ADR-0021 D2, D5). A

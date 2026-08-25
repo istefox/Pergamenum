@@ -80,8 +80,8 @@ struct WorkspacePicker: View {
     }
 
     private func row(_ path: String) -> some View {
-        let name = Self.fileName(of: path)
-        let isAssigned = task.workspacePath?.lowercased() == name.lowercased()
+        let name = WorkspaceBoardResolver.fileName(of: path)
+        let isAssigned = WorkspaceBoardResolver.matches(path, workspacePath: task.workspacePath)
         return Button {
             assign(name)
         } label: {
@@ -129,15 +129,10 @@ struct WorkspacePicker: View {
         onClose()
     }
 
-    /// What gets written into the line: the board's file name, extension included.
-    private static func fileName(of path: String) -> String {
-        (path as NSString).lastPathComponent
-    }
-
     /// What the row reads: the file name without `.canvas`, which is how the Workspace
     /// pane names the same board.
     private static func displayName(of path: String) -> String {
-        (fileName(of: path) as NSString).deletingPathExtension
+        (WorkspaceBoardResolver.fileName(of: path) as NSString).deletingPathExtension
     }
 
     /// The folder the board sits in, so two boards of the same name are told apart.

@@ -1,152 +1,187 @@
-# SPEC — Workspace UI: creazione board, toolbar e rename
+# SPEC — Task row richer info display
 
-**Topic slug:** workspace-ui-creazione-board-toolbar-e-r
+**Topic slug:** task-list-row-richer-info-display-worksp
 
 ## Objectives
 
-The Workspace sidebar (`WorkspaceBrowser`) currently exposes no way to create a new board, no
-way to name one when creating it (the mechanism exists but is reachable only from File → "Nuova
-board", not from the Workspace UI itself), and no way to rename or delete an existing one. This
-feature closes all three gaps, and along the way introduces the vault's first folder-rename and
-folder-delete operations (today only single notes can be renamed or trashed).
+The Attività task row shows too little of what a task actually carries. Today a task assigned to
+a Workspace board via `^[[board.canvas]]` (ADR-0021) is invisible on the row — it has no marker at
+all, and it lands under "Senza" in the "Per progetto" grouping, which groups by an unrelated
+`^id`/`^parent` sub-task relation, not by Workspace. A task with both a scheduled date and a
+deadline silently loses one of the two on the row. Tags never appear on the row at all.
 
-A "workspace" in this app is always the board of a real folder (`CanvasStore.boardPath(forFolder:)`
-names the board after the folder). Creating, naming, renaming or deleting a workspace therefore
-means creating, renaming or deleting the folder underneath it.
+This feature makes the row (and, for Workspace assignment specifically, a new grouping) surface
+the metadata that already exists on `TaskItem` but is not drawn: which note the task lives in
+(already shown), which Workspace board it is assigned to (not shown today), scheduled date and
+deadline together when both exist (only one shown today), and its tags (not shown today).
 
 ## Scope
 
 In scope:
-- A toolbar in the `WorkspaceBrowser` header with: "+ Nuova workspace", "Rinomina", "Elimina",
-  "Espandi tutto" / "Comprimi tutto".
-- Creating a new workspace/folder with an explicit parent picker and a chosen name, validated
-  against `NoteName.validate` rules.
-- Renaming an existing workspace/folder, with a vault-wide rewrite of every wikilink (`[[...]]`)
-  and every task marker (`^[[...]].canvas`) that references a note or board whose path changed.
-- Deleting a workspace/folder (moves the whole folder to the system Trash via
-  `FileManager.trashItem`, consistent with the existing single-note delete), gated by a
-  confirmation dialog that states how many notes/subfolders will be removed.
-- The vault root's own board (named after the vault itself) is exempt from both rename and
-  delete — those actions are disabled on that row.
-- Name-collision handling: both create and rename block inline on a name that already exists,
-  the same pattern `RenameNoteSheet` already uses for `NoteName.Violation`.
-- Navigation behavior: renaming the currently open board keeps it open under its new name;
-  deleting it moves the view to the nearest surviving parent folder.
+- Workspace-assignment indicator on the task row, both densities (`compact`: minimal icon;
+  `expanded`: full board name, path when unambiguous, clickable to open the board).
+- A sixth `TaskGrouping` case, "Per Workspace", grouping tasks by assigned board.
+- Showing both scheduled date and deadline on the row when a task has both.
+- Tag chips on the expanded row, one neutral design-system color (no per-namespace colors — see
+  Trade-offs).
+- A shared helper resolving a task's stored `workspacePath` (a bare board file name) to the
+  board's full vault-relative path, replacing the two existing independent implementations of
+  that same comparison (`IndexSnapshot.tasks(assignedToWorkspace:)`, `WorkspacePicker.row`) —
+  closes `PG-038`.
 
-Out of scope:
-- Moving a workspace to a different parent without renaming it (drag-and-drop reparenting).
-- Any change to the underlying `.canvas` file format or to how a board's spatial content is
-  stored — only the folder/board's *name and existence* are touched.
-- Undo/redo for rename or delete beyond what the filesystem Trash already provides (no
-  `WriteJournal` entry — this mirrors the existing single-note delete, which is not journaled
-  either).
+Out of scope (explicitly deferred, decided in interview):
+- Per-namespace tag colors (8 new design tokens, light+dark) — needs its own mockup and its own
+  chain, per CLAUDE.md's "no hardcoded colors, every token needs an approved mockup" rule.
+- Any change to note-reference or wikilink display on the row (already correct).
+- Any change to `TaskGrouping.project` ("Per progetto") — it stays exactly what it is today, the
+  `^id`/`^parent` sub-task grouping (ADR-0021 §D6); this feature does not touch it.
 
 ## Stack
 
-No new dependency. Swift 6, SwiftUI, on the macOS 26 SDK, consistent with the rest of the app.
-The rewrite logic reuses `NoteRename`'s existing wikilink-rewrite machinery, extended to also
-recognize the `^[[...]].canvas` task marker introduced by ADR-0021.
+Swift 6, SwiftUI, macOS 26 SDK. No new dependency. No index schema change (`workspacePath`
+resolution is computed at read time from `CanvasStore.allBoards()`, exactly as `WorkspacePicker`
+already does — nothing new is persisted).
 
 ## Architecture
 
-New pieces, at a level architect decides on the concrete file layout:
-
-- `CanvasStore` or a new `FolderRenameOperations` file gains `renameFolder(from:to:)`,
-  performing the on-disk `FileManager` move and reusing the vault's wikilink-rewrite pass
-  (`NoteRename`-style) scoped to every note whose path starts with the renamed folder's old
-  prefix, plus every task marker referencing the folder's old board file name.
-- The same layer gains `deleteFolder(at:)`, trashing the folder via `FileManager.trashItem`.
-- `WorkspaceBrowser` gains a header toolbar (new subview, e.g. `WorkspaceBrowserToolbar`) wired
-  to: create (opens a naming sheet with a parent-folder picker), rename (opens a renaming sheet
-  seeded with the selected row's current name), delete (opens a confirmation dialog stating
-  the content count), expand-all/collapse-all (already exist as context-menu actions — the
-  toolbar exposes the same `expanded` binding).
-- The existing `checkPendingNewBoard()` / `NewCanvasItemSheet` flow in `WorkspaceView` stays for
-  the File → "Nuova board" menu path; the new sidebar "+" button opens a parallel or shared sheet
-  that additionally lets the user pick the parent folder (File → "Nuova board" keeps defaulting
-  to the currently open board, unchanged).
-- Root-board exemption: the toolbar's Rename/Elimina buttons (and the row's context menu, if one
-  is added) are disabled when the selected row's `node.id` is empty/root, mirroring how
-  `CanvasStore.boardPath(forFolder:)` special-cases the empty folder today.
+- `Sources/Core/Tasks/TaskItem.swift` — no change; `workspacePath: String?` and `tags: [Tag]`
+  already exist and already carry what this feature needs.
+- New shared resolver (exact file TBD by the architect, likely `Sources/Core/Tasks/` or
+  `Sources/Vault/`, pure — no SwiftUI import, so it stays reachable by `perg`/`pergamenum-mcp`
+  per the `sharedSources` rule in CLAUDE.md): given a vault root and a bare board file name,
+  returns one of `.unique(path)`, `.ambiguous`, `.notFound` (or an equivalent enum — architect's
+  call). Consumed by:
+  - `IndexSnapshot.tasks(assignedToWorkspace:)` (existing call site, replaces its own inline
+    comparison).
+  - `WorkspacePicker.row` (existing call site, replaces its own inline comparison).
+  - The new row-display code in `TasksView.swift` (new call site).
+  - The new `.workspace` case in `TaskArrangement.groups(...)` (new call site).
+- `Sources/Core/Tasks/TaskListOptions.swift` — `TaskGrouping` gains a `case workspace` (title "Per
+  Workspace", icon `rectangle.3.group` — same icon the toolbar's "Assegna a un Workspace" button
+  and `WorkspacePicker` already use for this concept). `TaskArrangement.groups(...)` gains a
+  `.workspace` branch grouping by the resolved board's full path when unambiguous, by the bare
+  board name when ambiguous, and unassigned tasks under a group titled "Nessun Workspace" (not
+  the shared `TaskArrangement.noneTitle` constant — deliberately, per interview: this grouping's
+  empty bucket is more specific than the other five).
+- `Sources/Features/Tasks/TasksView.swift`:
+  - `row(_:)` gains a compact-density Workspace indicator (icon only, shown only when
+    `task.workspacePath != nil`).
+  - `details(_:)` (the expanded second/third line) gains: the Workspace name (resolved via the
+    shared helper; full path when unambiguous, bare name when ambiguous or when the reference is
+    orphaned — no board on disk matches the stored name at all), clickable when resolved to
+    exactly one path, plain text when ambiguous or orphaned; both `!due` and `>scheduled` shown
+    together when both exist (today only one renders); tag chips.
+  - Opening a Workspace board from the row reuses the existing route mechanism
+    (`vault.routeState.pendingCanvas` / `Navigation.pane = .workspace`), the same one
+    `PergamenumURL`'s `pergamenum://canvas` route and in-board node navigation already use — no
+    new navigation primitive.
+- `Sources/Features/Tasks/WorkspacePicker.swift` — its own `isAssigned` comparison (line 84)
+  switches to the shared helper; no behavior change, only de-duplication.
+- `Sources/Index/IndexSnapshot.swift` — `tasks(assignedToWorkspace:)` switches to the shared
+  helper; no behavior change, only de-duplication.
 
 ## Data model
 
-No new persisted state. A workspace/board continues to be identified purely by its folder's
-vault-relative path; nothing new is stored in the index, in frontmatter, or in the `.canvas`
-file itself (schemaVersion stays unchanged, consistent with ADR-0021 D10).
+No new fields, no index schema bump. Everything drawn already exists on `TaskItem`
+(`workspacePath`, `scheduled`, `due`, `tags`, `links`, `sourcePath`). The only new piece of
+*derived* data is the resolved-path lookup, computed on demand from `CanvasStore.allBoards()` and
+never persisted — the same non-persistence choice `WorkspacePicker` already makes for its own
+board list.
+
+## API
+
+No connector-facing change. `Sources/Connector/VaultAPI` is untouched — this is a pure
+presentation-layer feature (row rendering, grouping) with one shared internal resolver that is
+not part of the CLI/MCP surface.
 
 ## UI flows
 
-**Create:**
-1. User clicks "+" in the Workspace toolbar (or File → "Nuova board", unchanged).
-2. Sheet opens: text field for name, picker for parent folder (defaulting to the currently open
-   board's folder, or root if none).
-3. Live validation against `NoteName.validate` plus a same-parent name-collision check; "Crea" is
-   disabled with an inline error until both pass.
-4. On confirm: folder is created on disk, the sidebar tree refreshes (`scanGeneration`), the new
-   board opens.
-
-**Rename:**
-1. User selects a row in the Workspace sidebar and clicks "Rinomina" in the toolbar (disabled if
-   the row is the vault root).
-2. Sheet opens, seeded with the current name, same validation as create.
-3. On confirm: folder renamed on disk; every wikilink and every `^[[...]].canvas` task marker
-   referencing a path under the old folder is rewritten; if the renamed folder is (or contains)
-   the currently open board, the view stays open, now reflecting the new path/name.
-
-**Delete:**
-1. User selects a row and clicks "Elimina" in the toolbar (disabled on the vault root).
-2. Confirmation dialog states the folder name and counts (e.g. "Verranno eliminate 4 note e 2
-   sottocartelle").
-3. On confirm: folder moved to Trash; if it was (or contained) the currently open board, the view
-   moves to the nearest surviving parent.
+1. **Compact row, task assigned to a Workspace.** The row shows the task text and, beside it (or
+   inline with the checkbox/marker cluster — architect/coder's call on exact placement, but not
+   in the second line, since compact density has none), a small `rectangle.3.group` icon. No
+   other row gains this icon.
+2. **Expanded row, task assigned to a Workspace, unambiguous.** Second line gains a clickable
+   segment showing the board's full vault-relative path (e.g. "Prova/Prova 2 rinominata"),
+   styled like the existing note-reference button. Clicking it switches to the Workspace pane and
+   opens that board.
+3. **Expanded row, task assigned to a Workspace, ambiguous (two+ boards share the file name).**
+   Second line shows the bare board name only (no path), not clickable as a board-open action;
+   clicking it opens `WorkspacePicker` for that task instead, so the user can clarify/reassign.
+4. **Expanded row, task assigned to a Workspace, orphaned (no board on disk has that name any
+   more).** Second line shows the bare name written in the marker, as plain text, not clickable.
+5. **Expanded row, task with both `>scheduled` and `!due`.** Trailing area shows both markers
+   (today shows only `!due` when both are present).
+6. **Expanded row, task with tags.** Second/third line gains one chip per tag, single neutral
+   design-system color, `#namespace-value` text.
+7. **Attività, grouping menu.** A sixth entry "Per Workspace" (icon `rectangle.3.group`) appears
+   alongside the existing five. Selecting it groups the current view's tasks by resolved board
+   path (unambiguous) or bare board name (ambiguous), with unassigned tasks under "Nessun
+   Workspace".
 
 ## Edge cases
 
-- Renaming/deleting the vault root board: blocked at the UI level (buttons disabled).
-- Name collision on create or rename: blocked inline, no silent overwrite, no auto-suffix.
-- Renaming a folder whose new name fails `NoteName.validate`: blocked inline with the same
-  violation text `ConformanceText.lines` already renders for note rename.
-- Deleting a folder that contains the currently open board, a nested board, or notes referenced
-  by other boards' `NOTE REFERENZIATE` panels: those references become unresolved (shown with
-  the existing "questionmark.square.dashed" treatment `BoardChrome.swift` already renders for an
-  unresolved reference) — this is the existing, accepted behavior for a deleted note; nothing new
-  is invented for the folder case.
-- A folder deleted while it (or an ancestor) is the currently open board: the view must not be
-  left pointing at a folder that no longer exists — falls back to the nearest surviving parent.
-- Wikilink rewrite touches every note in the vault, not just the renamed folder's own contents —
-  the same vault-wide scope `NoteRename`'s existing note-rename rewrite already has.
+- Ambiguous board name (two folders, same board file name): row shows name-only, not clickable as
+  open-board; grouping heading shows name-only too, and two differently-located same-named boards
+  collapse into one grouping bucket (documented limitation, consistent with the ambiguity itself
+  being unresolvable without more context — same limitation ADR-0022 §D8 already accepts for the
+  marker-rewrite case).
+- Orphaned board reference (marker points to a file that no longer exists): row shows the raw
+  name from the marker, not clickable, no error state — mirrors how an ordinary wikilink to a
+  missing note already renders in this app.
+- Task with no Workspace assignment: no icon in compact, no Workspace segment in expanded, lands
+  in "Nessun Workspace" when grouped by Workspace.
+- Task with neither `>scheduled` nor `!due`: trailing area unchanged (nothing shown there today,
+  nothing shown there after this feature).
+- Task with no tags: no chip row, no layout gap.
+- Empty vault / no boards at all: "Per Workspace" grouping shows a single "Nessun Workspace"
+  bucket with every task in it — no crash, no special-cased empty state beyond that.
 
 ## Success criteria
 
-- [ ] R-01 — The Workspace sidebar header shows a toolbar with "+ Nuova workspace", "Rinomina",
-      "Elimina", "Espandi tutto"/"Comprimi tutto".
-- [ ] R-02 — Clicking "+ Nuova workspace" opens a sheet with a name field and a parent-folder
-      picker; confirming creates the folder on disk under the chosen parent with the chosen name.
-- [ ] R-03 — Creating a workspace with a name that collides with an existing folder/file in the
-      chosen parent is blocked inline, with no folder created.
-- [ ] R-04 — Creating a workspace with a name that fails `NoteName.validate` is blocked inline.
-- [ ] R-05 — Selecting a non-root row and clicking "Rinomina" opens a sheet seeded with the
-      current name; confirming a valid new name renames the folder on disk.
-- [ ] R-06 — After a rename, every wikilink (`[[...]]`) elsewhere in the vault that pointed to a
-      note under the renamed folder is rewritten to the new path.
-- [ ] R-07 — After a rename, every task line's `^[[...]].canvas` marker that referenced the
-      renamed folder's board is rewritten to the new board file name.
-- [ ] R-08 — Renaming the folder backing the currently open board keeps that board open, now
-      showing the new name in the breadcrumb.
-- [ ] R-09 — "Rinomina" and "Elimina" are disabled when the vault root row is selected.
-- [ ] R-10 — Selecting a non-root row and clicking "Elimina" shows a confirmation dialog stating
-      how many notes and subfolders will be removed.
-- [ ] R-11 — Confirming delete moves the folder (and everything inside it, including its
-      `.canvas` file) to the system Trash via `FileManager.trashItem`, not `removeItem`.
-- [ ] R-12 — Deleting the folder backing the currently open board (or an ancestor of it) moves
-      the Workspace view to the nearest surviving parent folder.
-- [ ] R-13 — Unit tests cover: folder rename with wikilink rewrite, folder rename with task
-      marker rewrite, name-collision rejection on create and rename, and the root-folder
-      exemption from rename/delete.
-- [ ] R-14 — Manual UI verification: create, rename, delete and the toolbar buttons all
-      exercised end-to-end in the running app before this feature is considered complete
-      (no-test: this is a manual QA pass over the running app, not something a unit test asserts).
-- [ ] R-15 — `docs/20260811_Pergamenum_SpecApp.md` §6.1 is updated to document that a board's
-      folder can be renamed and deleted from the Workspace sidebar, and what happens to
-      references when it is (no-test: a documentation update, not an assertable behavior).
+- [x] R-01 — The task row's expanded density shows the assigned Workspace board's full
+      vault-relative path when the board name resolves to exactly one board on disk.
+- [x] R-02 — The Workspace name shown on the row is clickable and switches to the Workspace pane,
+      opening the resolved board, when resolution is unambiguous.
+- [x] R-03 — When board-name resolution is ambiguous (multiple boards share the file name), the
+      row shows the bare board name only (no path), and clicking it opens `WorkspacePicker` for
+      that task instead of attempting to open a board.
+- [x] R-04 — When the stored board name matches no board on disk (orphaned reference), the row
+      shows the raw name as plain, non-clickable text.
+- [x] R-05 — The task row's compact density shows a minimal Workspace-assignment icon
+      (`rectangle.3.group`) when the task is assigned to a Workspace, and shows nothing extra
+      when it is not.
+- [x] R-06 — When a task has both a scheduled date (`>date`) and a deadline (`!date`), the
+      expanded row shows both, not only the deadline as today.
+- [x] R-07 — The task row's expanded density shows one chip per tag the task carries, using a
+      single neutral design-system color token (no per-namespace differentiation in this cycle).
+- [x] R-08 — `TaskGrouping` gains a sixth case "Per Workspace" (icon `rectangle.3.group`) that
+      groups the current view's tasks by resolved assigned-board path (or bare name when
+      ambiguous), with unassigned tasks grouped under "Nessun Workspace".
+- [x] R-09 — A single shared helper resolves a task's `workspacePath` to a board's full path (or
+      reports ambiguous/not-found), and replaces the two pre-existing independent
+      implementations of that same comparison in `IndexSnapshot.tasks(assignedToWorkspace:)` and
+      `WorkspacePicker.row` — no third duplicate copy exists after this feature (closes `PG-038`).
+- [x] R-10 — No view touched by this feature introduces a hardcoded color; every color used goes
+      through an existing design-system token (SPEC binding rule, CLAUDE.md).
+- [x] R-11 — Unit tests cover: the new `.workspace` case of `TaskArrangement.groups(...)`
+      (unambiguous, ambiguous, and unassigned-to-"Nessun Workspace" cases), the shared resolver
+      helper (unique match, ambiguous match, no match), and the row logic that shows both
+      scheduled date and deadline when both are present.
+- [x] R-12 (no-test: this is a manual QA pass over the running app, not something a unit test
+      asserts) — Manual verification on the running app: compact row shows the Workspace icon
+      only when assigned, expanded row shows note/Workspace/tags/both-dates together correctly,
+      clicking the Workspace name opens the correct board, and the new "Per Workspace" grouping
+      populates "Nessun Workspace" correctly for unassigned tasks.
+
+## Trade-offs (recorded from interview)
+
+- **Full path over bare name for the Workspace display**, chosen despite the extra row width,
+  because the user explicitly wants precision over compactness for this specific piece of
+  information — reconsider if it proves visually cramped during manual QA.
+- **Single neutral tag-chip color, not per-namespace**, because no color token for any of the 8
+  tag namespaces (SPEC §4.4) exists in `Resources/Themes/*.json` today, and CLAUDE.md requires an
+  approved mockup before a new design token is introduced. Per-namespace color is explicitly
+  deferred to its own future chain, not dropped.
+- **"Nessun Workspace" rather than the shared `TaskArrangement.noneTitle` ("Senza")** for this
+  grouping's empty bucket — a deliberate one-grouping exception, chosen in interview over
+  consistency with the other five groupings' shared empty-label constant.

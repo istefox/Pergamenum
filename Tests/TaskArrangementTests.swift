@@ -315,6 +315,73 @@ private func indexed(_ body: String, path: String = "01 Progetti/Pergamenum.md")
     #expect(IndexSnapshot.TaskView.allCases.allSatisfy { $0.defaultListOptions.density == .expanded })
 }
 
+// MARK: - "Per Workspace", the `.workspace` grouping (R-08, R-09).
+
+@Test func workspaceGroupingUsesTheFullPathWhenTheBoardNameIsUnique() {
+    let tasks = [task("- [ ] Offerta ^[[vibrofer-emea.canvas]]", at: 0)]
+
+    let groups = TaskArrangement.groups(
+        tasks,
+        options: TaskListOptions(grouping: .workspace, sorting: .text),
+        boards: ["02 Clienti/Vibrofer/vibrofer-emea.canvas"]
+    )
+
+    #expect(groups.map(\.title) == ["02 Clienti/Vibrofer/vibrofer-emea.canvas"])
+}
+
+@Test func workspaceGroupingUsesTheBareNameWhenTheBoardNameIsAmbiguous() {
+    let first = task("- [ ] Offerta A ^[[board.canvas]]", at: 0)
+    let second = task("- [ ] Offerta B ^[[board.canvas]]", at: 1)
+
+    let groups = TaskArrangement.groups(
+        [first, second],
+        options: TaskListOptions(grouping: .workspace, sorting: .text),
+        boards: ["Alfa/board.canvas", "Beta/board.canvas"]
+    )
+
+    #expect(groups.count == 1)
+    #expect(groups[0].title == "board.canvas")
+    #expect(groups[0].tasks.map(\.text) == ["Offerta A", "Offerta B"])
+}
+
+@Test func workspaceGroupingUsesTheBareNameWhenTheBoardIsOrphaned() {
+    let tasks = [task("- [ ] Offerta ^[[sparita.canvas]]", at: 0)]
+
+    let groups = TaskArrangement.groups(
+        tasks, options: TaskListOptions(grouping: .workspace, sorting: .text), boards: []
+    )
+
+    #expect(groups.map(\.title) == ["sparita.canvas"])
+}
+
+@Test func workspaceGroupingPutsUnassignedTasksUnderNessunWorkspaceRatherThanSenza() {
+    let tasks = [
+        task("- [ ] Assegnato ^[[vibrofer-emea.canvas]]", at: 0),
+        task("- [ ] Non assegnato", at: 1),
+    ]
+
+    let groups = TaskArrangement.groups(
+        tasks,
+        options: TaskListOptions(grouping: .workspace, sorting: .text),
+        boards: ["Vibrofer/vibrofer-emea.canvas"]
+    )
+
+    #expect(groups.map(\.title) == ["Vibrofer/vibrofer-emea.canvas", TaskArrangement.noWorkspaceTitle])
+    #expect(groups.last?.tasks.map(\.text) == ["Non assegnato"])
+}
+
+@Test func workspaceGroupingWithNoBoardsAtAllPutsEverythingUnderNessunWorkspace() {
+    let tasks = [task("- [ ] Primo", at: 0), task("- [ ] Secondo", at: 1)]
+
+    let groups = TaskArrangement.groups(
+        tasks, options: TaskListOptions(grouping: .workspace, sorting: .text), boards: []
+    )
+
+    #expect(groups.count == 1)
+    #expect(groups[0].title == TaskArrangement.noWorkspaceTitle)
+    #expect(groups[0].tasks.map(\.text) == ["Primo", "Secondo"])
+}
+
 @Test func theStoredControlsSurviveTheRoundTrip() {
     let map = [
         IndexSnapshot.TaskView.all.rawValue:
