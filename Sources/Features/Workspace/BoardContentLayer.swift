@@ -49,45 +49,12 @@ struct BoardContentLayer: View {
             // A group answers the pointer on its frame only; everything else answers
             // over its whole rectangle.
             .contentShape(hitShape(for: node))
-            .onTapGesture(count: 2) { open(node) }
+            .onTapGesture(count: 2) { cardActions.open(node) }
             .onTapGesture { workspace.select(nodeID: node.id, adding: modifiers.contains(.shift)) }
-            .contextMenu {
-                Button("Apri") { open(node) }
-                Button("Copia link Pergamenum") { copyLink(to: node) }
-                Divider()
-                Menu("Colore") {
-                    Button("Nessuno") { workspace.setColor(nil, forNodeIDs: targets(node)) }
-                    ForEach(1...6, id: \.self) { preset in
-                        Button(Self.colorNames[preset - 1]) {
-                            workspace.setColor(.preset(preset), forNodeIDs: targets(node))
-                        }
-                    }
-                }
-                Menu("Ridimensiona") {
-                    ForEach(Self.sizePresets, id: \.name) { preset in
-                        Button(preset.name) {
-                            for id in targets(node) {
-                                workspace.resize(nodeID: id, to: preset.size)
-                            }
-                        }
-                    }
-                    if CanvasCrop.read(from: node) != nil {
-                        Divider()
-                        Button("Adatta al ritaglio") { Task { await fitToCrop(node) } }
-                    }
-                }
-                if isCroppable(node) {
-                    Divider()
-                    Button("Ritaglia") {
-                        workspace.beginCrop(nodeID: node.id, drawnSize: workspace.displayFrame(for: node).size)
-                    }
-                    if CanvasCrop.read(from: node) != nil {
-                        Button("Rimuovi ritaglio") { workspace.removeCrop(nodeIDs: targets(node)) }
-                    }
-                }
-                Divider()
-                Button("Elimina") { workspace.delete(nodeIDs: targets(node)) }
-            }
+            // The entries come from `CardCommand`, which the board's command bar reads
+            // too, so the two surfaces cannot offer a card different commands under
+            // different names (ADR-0023 §D1, §D8).
+            .contextMenu { BoardCardMenuItems.menu(for: node, actions: cardActions) }
             .gesture(cardGesture(node))
             // The grips come after the card's own gesture, which is what puts them
             // above it: attached before, the card's drag took the pointer first and
@@ -217,81 +184,27 @@ struct BoardContentLayer: View {
         }
     }
 
-    /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card
-    /// can be linked to from Obsidian, DEVONthink or Mail (SPEC §9).
-    /// The cards an action applies to: the whole selection when the card is part of
-    /// it, otherwise just this one. Acting on the selection when the user right-clicked
-    /// something outside it is how a context menu deletes the wrong thing.
-    private func targets(_ node: CanvasNode) -> Set<String> {
-        workspace.selection.contains(node.id) ? workspace.selection : [node.id]
+    /// What a card command does, and which cards it does it to. One value, read by this
+    /// menu and by `BoardCardControls`, so the two surfaces perform the same body rather
+    /// than two that agree today (ADR-0023 §D1). Every one of those bodies used to live in
+    /// this file, back when the context menu was the only surface there was, and moved to
+    /// `BoardCardActions` unchanged.
+    private var cardActions: BoardCardActions {
+        BoardCardActions(workspace: workspace, vault: vault)
     }
 
     /// The JSON Canvas preset colours (SPEC §6.2), named as the spec numbers them.
-    private static let colorNames = ["Rosso", "Arancio", "Giallo", "Verde", "Ciano", "Viola"]
+    ///
+    /// Kept here rather than moved beside the menu builder that reads them: they are the
+    /// submenu's contents, not the command list, and both surfaces read them from this one
+    /// table.
+    static let colorNames = ["Rosso", "Arancio", "Giallo", "Verde", "Ciano", "Viola"]
 
     /// The presets of SPEC §10, "ridimensiona a preset".
-    private static let sizePresets: [(name: String, size: CGSize)] = [
+    static let sizePresets: [(name: String, size: CGSize)] = [
         ("Piccola", CGSize(width: 200, height: 120)),
         ("Media", CGSize(width: 320, height: 220)),
         ("Grande", CGSize(width: 480, height: 360)),
         ("Colonna", CGSize(width: 260, height: 520)),
     ]
-
-    /// Whether "Ritaglia" belongs on this card's menu at all (ADR-0020 D8): a raster
-    /// image, at a zoom where there is something on screen to aim at.
-    private func isCroppable(_ node: CanvasNode) -> Bool {
-        guard case .file(let path, _) = node.kind else { return false }
-        return CanvasCrop.isCroppable(path: path) && !BoardGeometry.drawsPlaceholder(at: workspace.zoom)
-    }
-
-    /// "Adatta al ritaglio" (ADR-0020 D4): resizes each target that carries a crop to the
-    /// height its own cropped region implies at its current width, so the card stops
-    /// letterboxing without ever moving the crop itself. Needs the source image's own
-    /// pixel size, which only `ThumbnailStore` knows - the one part of this action that
-    /// cannot be synchronous.
-    private func fitToCrop(_ node: CanvasNode) async {
-        guard let store = workspace.thumbnails else { return }
-        for id in targets(node) {
-            guard let target = workspace.document.node(id: id),
-                  case .file(let path, _) = target.kind,
-                  let crop = CanvasCrop.read(from: target)
-            else { continue }
-            let task = await store.thumbnail(for: path, width: target.width)
-            guard let image = await task.value else { continue }
-            let croppedAspect = (crop.width * image.size.width) / (crop.height * image.size.height)
-            guard croppedAspect.isFinite, croppedAspect > 0 else { continue }
-            workspace.resize(nodeID: id, to: CGSize(width: target.width, height: target.width / croppedAspect))
-        }
-    }
-
-    private func copyLink(to node: CanvasNode) {
-        guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }
-        let boardPath = store.boardPath(forFolder: workspace.folder)
-        guard let url = PergamenumLink.canvas(path: boardPath, nodeID: node.id) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
-    }
-
-    /// Double click: enter a folder's board, or open the file the card points at.
-    private func open(_ node: CanvasNode) {
-        if let subfolder = workspace.subfolder(for: node) {
-            workspace.open(folder: subfolder)
-            return
-        }
-        switch node.kind {
-        case .file(let path, _):
-            if path.lowercased().hasSuffix(".svg"), workspace.editDrawing(nodeID: node.id) {
-                // One of our own drawings: reopen the ink rather than the image.
-                workspace.tool = .drawing
-            } else if path.hasSuffix(".md") {
-                vault.openNote(at: path)
-            } else if let root = vault.root {
-                NSWorkspace.shared.open(root.appending(path: path))
-            }
-        case .link(let url):
-            if let target = URL(string: url) { NSWorkspace.shared.open(target) }
-        case .text, .group, .unknown:
-            break
-        }
-    }
 }

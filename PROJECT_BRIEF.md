@@ -87,6 +87,18 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-25: **ADR-0023 (parità barra/menu contestuale su sei cluster di comandi + Duplica
+  card) implementata per intero, 8 task su 8, 1628 test unitari verdi, weakening-scan CLEAN,
+  build di entrambi i connettori (`perg`, `pergamenum-mcp`) verdi, suite UI 70/71 (l'unico
+  fallimento è `PG-041`, precedente e non toccato da questa feature).** Ogni cluster (riga
+  cartella Workspace, riga nota, riga task, card board, cella giorno calendario, embed
+  disegnato nell'editor) ha ora un solo catalogo di comandi letto sia dalla barra/menu sia dal
+  menu contestuale, così le due superfici non possono divergere. Nuovo comando Duplica card
+  (`CanvasID.generate(avoiding:)`, nessun file scritto su disco). Il menu contestuale
+  dell'embed nell'editor ricade su `super.menu(for:)` quando il punto non è un embed, per non
+  perdere ortografia/sostituzioni/incolla sul resto dell'editor - verificato dal build ma non
+  da un test automatico, va controllato a mano. QA manuale ancora da fare; Gate 5 (ciclo di
+  review) non ancora deciso.
 - 2026-08-24: **ADR-0021 (Workspace browser + relazioni Task↔Workspace/Nota + sotto-task di
   progetto) implementata per intero, 10 task su 10, 1527 test unitari verdi più la suite UI
   completa verde (71/71, l'unico fallimento rimasto in `WorkspaceBoardUITests` è precedente

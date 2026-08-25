@@ -12,6 +12,10 @@ import SwiftUI
 /// One type used by both lists, so the tree and the flat list cannot drift apart.
 struct NoteRowMenu: View {
     @Environment(VaultController.self) var vault
+    /// Cluster 2 of ADR-0023: three commands that existed only in the menu bar, acting on
+    /// «the open note». Injected at `PergamenumApp.swift:149` and present at all three of
+    /// this view's call sites, which are inside `NoteListPane` inside `VaultBrowser`.
+    @Environment(CommandActions.self) var commandActions
     let note: NoteRecord
     @Binding var renaming: NoteRecord?
     @Binding var deleting: NoteRecord?
@@ -30,6 +34,9 @@ struct NoteRowMenu: View {
                     .disabled(folder == note.folder)
             }
         }
+        rowCommand(.copyLink)
+        rowCommand(.noteHistory)
+        rowCommand(.applyTemplate)
         Divider()
         Button("Rivela nel Finder") {
             guard let root = vault.root else { return }
@@ -39,6 +46,18 @@ struct NoteRowMenu: View {
         }
         Divider()
         Button("Elimina…", role: .destructive) { deleting = note }
+    }
+
+    /// One of cluster 2's three entries (ADR-0023 §D5, R-03/R-04).
+    ///
+    /// The title comes from the command itself rather than being retyped here, so the row
+    /// and the menu bar cannot be reworded apart (§D1), and `run(_:on:)` opens the row's
+    /// note before acting - a row is not necessarily the note in front of you.
+    /// `.disabled` asks the same catalogue, which is what the File and Vista menus do
+    /// beside these very commands.
+    private func rowCommand(_ command: ShortcutCommand) -> some View {
+        Button(command.title) { commandActions.run(command, on: note.relativePath) }
+            .disabled(!commandActions.canRun(command, on: note.relativePath))
     }
 }
 

@@ -327,9 +327,40 @@ Key architectural decisions:
 
 Detail: `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`.
 
+## Decisions from the universal command surface parity chain (ADR-0023)
+
+Toolbar/context-menu parity for six command clusters (Workspace folder row, note row, task row,
+canvas card, editor embed, calendar day cell) plus a net-new Duplica card command:
+`docs/adr/0023-universal-command-surface-parity.md`.
+
+Key architectural decisions:
+- **A command is named once and rendered twice** — per cluster, title/SF Symbol/applicability
+  live in one declaration (`CardCommand`, `CalendarDayCommand`, `CommandActions.run(_:on:)`) read
+  by both the toolbar/menu-bar surface and the context menu, so the two cannot diverge.
+- **The Workspace folder row's context menu attaches to the row's label, never to its
+  `DisclosureGroup`** — a modifier on the `DisclosureGroup` reaches every descendant row exposed
+  under it, so a menu placed there would append the parent folder's "Elimina" to every board row
+  nested inside it. This is a different trap from ADR-0022 §D8's own AX-identifier propagation
+  (that one is about the header's `.accessibilityElement(children: .contain)`, not applicable to
+  an `NSMenu`-backed context menu).
+- **Duplica card writes only a new node to the `.canvas` file** — new `id` via
+  `CanvasID.generate(avoiding:)`, position offset by one grid step (24pt), every other field
+  copied verbatim (crop state included). No file on disk is created, moved, or duplicated (CLAUDE.md
+  principle 1, "file over app").
+- **The editor embed's context menu is `menu(for:)` returning a custom `NSMenu`, always falling
+  through to `super.menu(for:)` when outside an embed** — a `menu(for:)` override that returns
+  `nil` on a miss silently drops the system's spelling/substitutions/paste menu for the whole
+  editor, not just the embed.
+- **No new `ShortcutCommand` case and no new key binding** — every new command already has a
+  shortcut where one existed before (menu-bar cases) or never had one (card/cell context-menu-only
+  actions); the catalogue stays the set of rebindable shortcuts, not all commands.
+
+Detail: `docs/adr/0023-universal-command-surface-parity.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
 - **ADR-0020** — non-destructive image card crop, persisted as one prefixed scalar key `pergamenum-crop` on the canvas node, never touching the file on disk → `docs/adr/0020-image-card-crop.md`
 - **ADR-0021** — Workspace browser + Task↔Workspace/Note relations + project sub-tasks, entirely as new task-line caret markers, no new storage → `docs/adr/0021-workspace-tasks-notes-integration.md`
 - **ADR-0022** — Workspace sidebar toolbar, folder-backed board creation/rename/delete, no journal, no connector exposure → `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`
+- **ADR-0023** — Toolbar/context-menu command parity across six clusters + Duplica card, one catalogue per cluster shared by both surfaces → `docs/adr/0023-universal-command-surface-parity.md`

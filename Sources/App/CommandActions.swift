@@ -88,6 +88,36 @@ final class CommandActions {
         }
     }
 
+    /// The note-row context menu's three commands (ADR-0023 cluster 2, R-03/R-04):
+    /// «Copia link Pergamenum», «Cronologia…», «Applica un template…», invoked from a row
+    /// that may not be the open note. "Apri la nota, poi esegui l'azione" - the note at
+    /// `notePath` opens first (`vault.openNote(at:)`, whose own short-circuit is what
+    /// makes invoking this on the already-open note a no-op re-open), then `run(command)`
+    /// runs exactly as it does from the menu bar. Anything outside the three commands does
+    /// nothing at all - it does not open the note either.
+    ///
+    /// **The one exception to that pattern, and the reason is a test rather than a
+    /// preference.** A command outside `rowCommands` returns silently instead of tripping
+    /// `assertionFailure`: `RowCommandTests.runOnANonNoteCommandDoesNotOpenTheNote` invokes
+    /// this with `.newBoard` as its negative control, and the unit suite is built Debug, so
+    /// an assertion there would trap the whole run rather than record a no-op. The set below
+    /// is the guard, and it is the only place the three commands are named.
+    func run(_ command: ShortcutCommand, on notePath: String) {
+        guard Self.rowCommands.contains(command) else { return }
+        vault.openNote(at: notePath)
+        // `openNote(at:)` returns having changed nothing when the file cannot be read, and
+        // the command would then act on whichever note was open before - copying the wrong
+        // link, or opening the wrong note's history. Asking what is actually open is the
+        // only honest way to tell the two apart, since the open itself reports neither.
+        guard vault.openNote?.relativePath == notePath else { return }
+        run(command)
+    }
+
+    /// The three commands a note row may run (ADR-0023 cluster 2). Named once and read by
+    /// both `run(_:on:)` and `canRun(_:on:)`, so the menu cannot offer an entry the action
+    /// refuses, nor grey one it would have performed.
+    private static let rowCommands: Set<ShortcutCommand> = [.copyLink, .noteHistory, .applyTemplate]
+
     /// The tabs of the Note pane (ADR-0012 D5). Their own method rather than three more
     /// arms of `runFile`: they are one family, and the File menu already separates them
     /// with a divider.
@@ -314,6 +344,21 @@ final class CommandActions {
         }
     }
 
+    /// Whether `run(_:on:)` may act on `notePath` - the note-row context menu's own
+    /// enablement (ADR-0023 cluster 2, R-03), reachable without the note being open
+    /// first. Restricted to the same three commands `run(_:on:)` handles; GREEN reuses
+    /// `canRunOnOpenNote`'s condition (`.copyLink`/`.noteHistory` always true given a row,
+    /// `.applyTemplate` gated on `vault.templates` being non-empty) rather than a second
+    /// spelling of it.
+    ///
+    /// The path is not read: a row exists because the note does, which is exactly the half
+    /// of `canRunOnOpenNote` that asks whether a note is in front of you. What is left is
+    /// its other half, written here in the same line it is written there.
+    func canRun(_ command: ShortcutCommand, on _: String) -> Bool {
+        guard Self.rowCommands.contains(command) else { return false }
+        return command == .applyTemplate ? !vault.templates.isEmpty : true
+    }
+
     /// Everything that needs a note in front of it, and the one of them that needs
     /// something else as well.
     ///
@@ -349,15 +394,12 @@ final class CommandActions {
     /// Opens the composer already pointed at the selected task as its parent (ADR-0021
     /// D9, A9), which is the whole of «Aggiungi sotto-task».
     ///
-    /// The destination is set to the parent's own note even though `captureTask` ignores
-    /// it for a draft with a parent: `^id` is note-local (D2), so the sub-task can only
-    /// go where the parent is, and a composer whose header said "Inbox" while writing
-    /// somewhere else would be lying about it.
+    /// The draft itself is `TaskDraft.subtask(of:)`, which is where the reason for its
+    /// destination is written: the task row's context menu assigns that same value
+    /// (ADR-0023 §D6), so the two entry points cannot compose different sub-tasks.
     private func addSubtaskToSelectedTask() {
         guard let parent = vault.selectedTask else { return }
-        var draft = VaultController.TaskDraft(destination: .note(parent.sourcePath))
-        draft.parent = parent
-        vault.taskDraft = draft
+        vault.taskDraft = .subtask(of: parent)
     }
 
     /// Four commands do exactly one thing: set a `Bool` on the controller that some view

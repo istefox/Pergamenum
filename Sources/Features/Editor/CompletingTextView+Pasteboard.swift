@@ -50,6 +50,25 @@ extension CompletingTextView {
         super.mouseUp(with: event)
     }
 
+    /// The contextual menu for a secondary click: a drawn embed's own where one landed on
+    /// a picture, and AppKit's everywhere else (ADR-0023 §D9, R-08).
+    ///
+    /// **The fall-through is the whole of this override.** `onEmbedMenu` answers nil for
+    /// every point outside a picture - which is almost every point in a note - and `super`
+    /// is what then builds the menu the editor has always had: spelling, substitutions,
+    /// cut, copy, paste. An override that returned its own nil there would take that menu
+    /// away from the entire text view rather than from the embed, and nothing about the
+    /// picture's own menu would look wrong while it did.
+    ///
+    /// `menu(for:)` and not `rightMouseDown(with:)`: AppKit asks the view what menu to
+    /// show and then shows it, so the ordinary path stays ordinary and Ctrl-click - the
+    /// system-wide secondary click `mouseDragged(with:)` above already has to work around
+    /// - arrives here on its own.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        return onEmbedMenu?(point) ?? super.menu(for: event)
+    }
+
     /// Pasting a URL over a selection writes a markdown link (SPEC §5); pasting a
     /// picture writes the file into the vault and embeds it.
     override func paste(_ sender: Any?) {

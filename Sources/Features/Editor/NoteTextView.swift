@@ -217,6 +217,14 @@ struct NoteTextView: NSViewRepresentable {
             guard let textView else { return false }
             return coordinator.resizeEmbed(phase, in: textView)
         }
+        // A secondary click on a drawn embed (ADR-0023 §D9) - closed over `textView`
+        // weakly for the reason the two above are, and answering nil where there is no
+        // view left, which is what `CompletingTextView.menu(for:)` turns into the editor's
+        // ordinary contextual menu instead of no menu at all.
+        textView.onEmbedMenu = { [weak textView] point in
+            guard let textView else { return nil }
+            return coordinator.embedMenu(at: point, in: textView)
+        }
         // Three decorations, asked in turn: whoever claims the click keeps it. They
         // cannot both claim one - a folded heading's line is not a transclusion's line,
         // and neither is a drawn embed's.

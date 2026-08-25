@@ -167,4 +167,37 @@ enum CanvasID {
         let digits = "0123456789abcdef"
         return String((0..<16).map { _ in digits.randomElement()! })
     }
+
+    /// Duplica's own generator (ADR-0023 §D11): retries `make()` against every id already
+    /// in the document - nodes and edges both, since a strict JSON Canvas reader is
+    /// entitled to treat them as one namespace - with a bounded random retry and then a
+    /// deterministic suffix walk that cannot fail to terminate or return a taken id.
+    ///
+    /// Plan `docs/superpowers/plans/2026-08-25-universal-command-surface-parity.md`, Task 2
+    /// (R-10, R-11). `generate()` above is untouched: `Tests/CanvasTests.swift` pins its
+    /// 16-hex shape and Obsidian parity depends on it.
+    static func generate(avoiding taken: Set<String>, using make: () -> String = { generate() }) -> String {
+        // A collision between two 16-hex values is already improbable; sixteen of them in
+        // a row means the generator is not producing free values at all, so stop asking.
+        for _ in 0..<16 {
+            let candidate = make()
+            if !taken.contains(candidate) { return candidate }
+        }
+
+        // Deterministic escape, so a generator that can never produce a free value still
+        // terminates with an id `taken` does not hold. The walk visits distinct
+        // candidates 0, 1, 2, … - the same twelve-character stem with a different four-hex
+        // counter - and `taken` holds exactly `taken.count` values, so at most that many
+        // of them can collide: candidate number `taken.count` is free at the latest.
+        // More candidates than `taken` can hold is the whole argument; the loop cannot run
+        // away and cannot return a taken id.
+        let stem = String(make().prefix(12))
+        var counter = 0
+        var candidate = stem + String(format: "%04x", counter)
+        while taken.contains(candidate) {
+            counter += 1
+            candidate = stem + String(format: "%04x", counter)
+        }
+        return candidate
+    }
 }

@@ -1,187 +1,164 @@
-# SPEC — Task row richer info display
+# SPEC — Universal command surface parity (PG-042)
 
-**Topic slug:** task-list-row-richer-info-display-worksp
+**Topic slug:** universal-command-surface-parity
 
 ## Objectives
 
-The Attività task row shows too little of what a task actually carries. Today a task assigned to
-a Workspace board via `^[[board.canvas]]` (ADR-0021) is invisible on the row — it has no marker at
-all, and it lands under "Senza" in the "Per progetto" grouping, which groups by an unrelated
-`^id`/`^parent` sub-task relation, not by Workspace. A task with both a scheduled date and a
-deadline silently loses one of the two on the row. Tags never appear on the row at all.
-
-This feature makes the row (and, for Workspace assignment specifically, a new grouping) surface
-the metadata that already exists on `TaskItem` but is not drawn: which note the task lives in
-(already shown), which Workspace board it is assigned to (not shown today), scheduled date and
-deadline together when both exist (only one shown today), and its tags (not shown today).
+Pergamenum's commands are scattered unevenly across three surfaces: the menu bar (with a
+keyboard shortcut), toolbars, and per-row context menus. A prior read-only survey of every command
+surface in the app found six gap clusters where a command exists on one surface but not on the
+others it should reasonably appear on, plus one command family (the drawn-embed delete) with no
+discoverable UI at all beyond its shortcut. This feature closes those gaps so that, per row/card/
+cell type, every applicable command is reachable both from a toolbar/menu-bar entry point and from
+the corresponding right-click context menu — "universal" here means complete for the six identified
+clusters, not a claim that every future command will automatically appear everywhere.
 
 ## Scope
 
-In scope:
-- Workspace-assignment indicator on the task row, both densities (`compact`: minimal icon;
-  `expanded`: full board name, path when unambiguous, clickable to open the board).
-- A sixth `TaskGrouping` case, "Per Workspace", grouping tasks by assigned board.
-- Showing both scheduled date and deadline on the row when a task has both.
-- Tag chips on the expanded row, one neutral design-system color (no per-namespace colors — see
-  Trade-offs).
-- A shared helper resolving a task's stored `workspacePath` (a bare board file name) to the
-  board's full vault-relative path, replacing the two existing independent implementations of
-  that same comparison (`IndexSnapshot.tasks(assignedToWorkspace:)`, `WorkspacePicker.row`) —
-  closes `PG-038`.
+In scope — six gap clusters plus one net-new command:
 
-Out of scope (explicitly deferred, decided in interview):
-- Per-namespace tag colors (8 new design tokens, light+dark) — needs its own mockup and its own
-  chain, per CLAUDE.md's "no hardcoded colors, every token needs an approved mockup" rule.
-- Any change to note-reference or wikilink display on the row (already correct).
-- Any change to `TaskGrouping.project` ("Per progetto") — it stays exactly what it is today, the
-  `^id`/`^parent` sub-task grouping (ADR-0021 §D6); this feature does not touch it.
+1. **Workspace folder row context menu** — add Rinomina and Elimina to the folder row's own
+   context menu (today: `WorkspaceBrowserToolbar.swift` toolbar-only, `WorkspaceBrowser.swift`
+   right-click shows only Espandi tutto/Comprimi tutto). This revisits ADR-0022 §D8's deliberate
+   toolbar-only decision, with the user's informed consent.
+2. **Note-row context menu** — add three actions that today exist only as menu-bar items acting on
+   "the open note": Copia link, Cronologia, Applica un template.
+3. **Task-row context menu** — add "Aggiungi sotto-task" (today: menu-bar/shortcut only, acting on
+   the selected task).
+4. **Canvas card toolbar** — add board-toolbar equivalents, shown only when a card is selected, for
+   actions that today exist only in the card's own context menu: Copia link, Colore, Ridimensiona
+   preset, Ritaglia (with Adatta al ritaglio / Rimuovi ritaglio), Elimina.
+5. **Editor embed context menu** — add a right-click context menu on a drawn image/PDF embed with
+   Elimina, the one command in the app with zero discoverable UI beyond its keyboard shortcut.
+6. **Calendar day-cell context menus** — add "Nuovo evento" and "Nuovo promemoria" to the day-cell
+   context menus in MonthView, WeekView and MiniCalendar (today: Calendario menu-bar only).
+7. **Duplica card (net-new)** — a new command on the canvas card toolbar/context menu that
+   duplicates the canvas node only, pointing at the same referenced file, offset from the original
+   position. Not a surface-parity fix (the command does not exist anywhere today) — explicitly
+   scoped in by the user despite the initial recommendation to defer it.
+
+Out of scope (deliberate exceptions, confirmed during interview):
+- Global capture hotkey (Ctrl+Opt+Space) — fires system-wide; a menu entry inside Pergamenum
+  would only help while the app is frontmost, so it stays shortcut-only (ADR-0008 §D1 unchanged).
+- Cmd+1…Cmd+9 tab switching — not a command in the `ShortcutCommand` catalogue, stays that way.
+- Embed resize (drag gesture, ADR-0019) — a continuous gesture, not a discrete command; no menu
+  treatment.
+- No new context menus are added where a row/cell has none of the six clusters' commands to offer
+  (e.g. no blanket "add a context menu to everything").
+- No per-namespace tag colours, no unrelated visual redesign of any existing menu.
 
 ## Stack
 
-Swift 6, SwiftUI, macOS 26 SDK. No new dependency. No index schema change (`workspacePath`
-resolution is computed at read time from `CanvasStore.allBoards()`, exactly as `WorkspacePicker`
-already does — nothing new is persisted).
+Swift 6, SwiftUI, macOS 26 SDK — same as the rest of the app. AppKit only where already bridged
+(canvas, editor `NSTextView`). No new dependency.
 
 ## Architecture
 
-- `Sources/Core/Tasks/TaskItem.swift` — no change; `workspacePath: String?` and `tags: [Tag]`
-  already exist and already carry what this feature needs.
-- New shared resolver (exact file TBD by the architect, likely `Sources/Core/Tasks/` or
-  `Sources/Vault/`, pure — no SwiftUI import, so it stays reachable by `perg`/`pergamenum-mcp`
-  per the `sharedSources` rule in CLAUDE.md): given a vault root and a bare board file name,
-  returns one of `.unique(path)`, `.ambiguous`, `.notFound` (or an equivalent enum — architect's
-  call). Consumed by:
-  - `IndexSnapshot.tasks(assignedToWorkspace:)` (existing call site, replaces its own inline
-    comparison).
-  - `WorkspacePicker.row` (existing call site, replaces its own inline comparison).
-  - The new row-display code in `TasksView.swift` (new call site).
-  - The new `.workspace` case in `TaskArrangement.groups(...)` (new call site).
-- `Sources/Core/Tasks/TaskListOptions.swift` — `TaskGrouping` gains a `case workspace` (title "Per
-  Workspace", icon `rectangle.3.group` — same icon the toolbar's "Assegna a un Workspace" button
-  and `WorkspacePicker` already use for this concept). `TaskArrangement.groups(...)` gains a
-  `.workspace` branch grouping by the resolved board's full path when unambiguous, by the bare
-  board name when ambiguous, and unassigned tasks under a group titled "Nessun Workspace" (not
-  the shared `TaskArrangement.noneTitle` constant — deliberately, per interview: this grouping's
-  empty bucket is more specific than the other five).
-- `Sources/Features/Tasks/TasksView.swift`:
-  - `row(_:)` gains a compact-density Workspace indicator (icon only, shown only when
-    `task.workspacePath != nil`).
-  - `details(_:)` (the expanded second/third line) gains: the Workspace name (resolved via the
-    shared helper; full path when unambiguous, bare name when ambiguous or when the reference is
-    orphaned — no board on disk matches the stored name at all), clickable when resolved to
-    exactly one path, plain text when ambiguous or orphaned; both `!due` and `>scheduled` shown
-    together when both exist (today only one renders); tag chips.
-  - Opening a Workspace board from the row reuses the existing route mechanism
-    (`vault.routeState.pendingCanvas` / `Navigation.pane = .workspace`), the same one
-    `PergamenumURL`'s `pergamenum://canvas` route and in-board node navigation already use — no
-    new navigation primitive.
-- `Sources/Features/Tasks/WorkspacePicker.swift` — its own `isAssigned` comparison (line 84)
-  switches to the shared helper; no behavior change, only de-duplication.
-- `Sources/Index/IndexSnapshot.swift` — `tasks(assignedToWorkspace:)` switches to the shared
-  helper; no behavior change, only de-duplication.
+- **Note-row actions invoked from a non-open row (cluster 2):** "Apri la nota, poi esegui
+  l'azione" — the context menu action opens the note first (same as the existing "Apri" row
+  action), then performs Copia link / Cronologia / Applica template against the now-open note.
+  These three actions stay conceptually "acts on the open note"; the context menu just adds an
+  implicit open step rather than being reimplemented as acting on an arbitrary path.
+- **Card toolbar visibility (cluster 4):** the new card-toolbar buttons (Copia link, Colore,
+  Ridimensiona, Ritaglia, Duplica) are shown only when exactly a card is selected on the board and
+  hidden entirely — not shown-disabled — when no card is selected, matching how Anteprima rapida
+  already behaves in that toolbar.
+- **Embed context menu (cluster 5):** the new context menu attaches to the embed itself (right
+  click on the image/PDF inside the editor), not to a toolbar or menu-bar location — there is no
+  natural "selected embed" concept in the editor today, so a toolbar surface is not introduced.
+- **Calendar day-cells (cluster 6):** all three calendar surfaces (MonthView, WeekView,
+  MiniCalendar) get both new context-menu items identically — no surface-specific variation.
+- **Workspace folder row (cluster 1):** the new Rinomina/Elimina context-menu entries call the
+  same `VaultController.renameFolder`/`trashFolder` facade the toolbar buttons already call
+  (ADR-0022) — no new business logic, only a second UI entry point.
+- **Root-folder guard (cluster 1, edge case):** the vault root row does not gain Rinomina/Elimina
+  in its context menu at all — consistent with the toolbar, which already disables both on the
+  root selection. `FolderFileOperations`'s independent reject-on-root guard is unchanged and
+  remains the actual defense; the context menu simply never offers the entries there, so no user
+  ever reaches the guard through this new surface.
+- **Duplica card (cluster 7) — data model:** duplicating a card means appending a new JSON Canvas
+  node to the board's `.canvas` file, same `type: "file"` and same `file` path as the original,
+  a new generated `id`, and `x`/`y` offset from the original (small fixed pixel offset, same
+  pattern as a manual duplicate-and-drag in Obsidian). `width`/`height` copy the original.
+  **No new file is created and no file on disk is touched** — this is "file over app" and
+  "rebuildable index" (CLAUDE.md principles 1/3) applied to the canvas: the underlying note/PDF/
+  image stays a single file; only the canvas's own node list gains an entry.
 
-## Data model
+## UI flows per cluster
 
-No new fields, no index schema bump. Everything drawn already exists on `TaskItem`
-(`workspacePath`, `scheduled`, `due`, `tags`, `links`, `sourcePath`). The only new piece of
-*derived* data is the resolved-path lookup, computed on demand from `CanvasStore.allBoards()` and
-never persisted — the same non-persistence choice `WorkspacePicker` already makes for its own
-board list.
-
-## API
-
-No connector-facing change. `Sources/Connector/VaultAPI` is untouched — this is a pure
-presentation-layer feature (row rendering, grouping) with one shared internal resolver that is
-not part of the CLI/MCP surface.
-
-## UI flows
-
-1. **Compact row, task assigned to a Workspace.** The row shows the task text and, beside it (or
-   inline with the checkbox/marker cluster — architect/coder's call on exact placement, but not
-   in the second line, since compact density has none), a small `rectangle.3.group` icon. No
-   other row gains this icon.
-2. **Expanded row, task assigned to a Workspace, unambiguous.** Second line gains a clickable
-   segment showing the board's full vault-relative path (e.g. "Prova/Prova 2 rinominata"),
-   styled like the existing note-reference button. Clicking it switches to the Workspace pane and
-   opens that board.
-3. **Expanded row, task assigned to a Workspace, ambiguous (two+ boards share the file name).**
-   Second line shows the bare board name only (no path), not clickable as a board-open action;
-   clicking it opens `WorkspacePicker` for that task instead, so the user can clarify/reassign.
-4. **Expanded row, task assigned to a Workspace, orphaned (no board on disk has that name any
-   more).** Second line shows the bare name written in the marker, as plain text, not clickable.
-5. **Expanded row, task with both `>scheduled` and `!due`.** Trailing area shows both markers
-   (today shows only `!due` when both are present).
-6. **Expanded row, task with tags.** Second/third line gains one chip per tag, single neutral
-   design-system color, `#namespace-value` text.
-7. **Attività, grouping menu.** A sixth entry "Per Workspace" (icon `rectangle.3.group`) appears
-   alongside the existing five. Selecting it groups the current view's tasks by resolved board
-   path (unambiguous) or bare board name (ambiguous), with unassigned tasks under "Nessun
-   Workspace".
+1. **Workspace folder row:** right-click a folder row (not the vault root) → context menu gains
+   Rinomina and Elimina below the existing Espandi tutto/Comprimi tutto, same icons/behavior as
+   the toolbar buttons.
+2. **Note row:** right-click any note row → context menu gains Copia link, Cronologia, Applica
+   template. Selecting one from a row that is not the currently open note first opens that note
+   (replicating the existing "Apri" behavior), then performs the action.
+3. **Task row:** right-click a task row → context menu gains "Aggiungi sotto-task", acting on that
+   row's task exactly as the existing menu-bar/shortcut version acts on the selected task.
+4. **Canvas card:** select a card on the board → the board's own toolbar (not the sidebar
+   toolbar) shows new buttons for Copia link, Colore, Ridimensiona, Ritaglia (context-sensitive:
+   shows Adatta al ritaglio/Rimuovi ritaglio depending on crop state), Duplica. Deselecting the
+   card hides all of them.
+5. **Editor embed:** right-click a drawn image/PDF embed in the editor → new context menu with
+   Elimina, performing the same atomic delete the Backspace shortcut already does.
+6. **Calendar day-cell:** right-click an empty day cell in MonthView, WeekView, or MiniCalendar →
+   context menu gains "Nuovo evento" and "Nuovo promemoria", pre-filling that day, matching the
+   Calendario menu-bar versions.
+7. **Duplica card:** invoke Duplica (card toolbar button or card context menu) on a selected
+   canvas card → a new card appears on the same board, offset from the original, referencing the
+   same underlying file.
 
 ## Edge cases
 
-- Ambiguous board name (two folders, same board file name): row shows name-only, not clickable as
-  open-board; grouping heading shows name-only too, and two differently-located same-named boards
-  collapse into one grouping bucket (documented limitation, consistent with the ambiguity itself
-  being unresolvable without more context — same limitation ADR-0022 §D8 already accepts for the
-  marker-rewrite case).
-- Orphaned board reference (marker points to a file that no longer exists): row shows the raw
-  name from the marker, not clickable, no error state — mirrors how an ordinary wikilink to a
-  missing note already renders in this app.
-- Task with no Workspace assignment: no icon in compact, no Workspace segment in expanded, lands
-  in "Nessun Workspace" when grouped by Workspace.
-- Task with neither `>scheduled` nor `!due`: trailing area unchanged (nothing shown there today,
-  nothing shown there after this feature).
-- Task with no tags: no chip row, no layout gap.
-- Empty vault / no boards at all: "Per Workspace" grouping shows a single "Nessun Workspace"
-  bucket with every task in it — no crash, no special-cased empty state beyond that.
+- **Duplica card on a card whose referenced file no longer exists on disk:** the duplicate is
+  still created (same missing-file reference as the original) — the canvas node is a pointer, and
+  Pergamenum's existing missing-file card rendering (broken-file placeholder) already handles this
+  case for the original card; the duplicate renders identically. No special-cased error path.
+- **Root-folder row (cluster 1):** Rinomina/Elimina are absent from its context menu entirely (see
+  Architecture above) — never shown, never disabled-and-shown.
+- **Card toolbar with no selection (cluster 4):** the new buttons are hidden, not disabled (see
+  Architecture above).
+- **Note-row actions on an already-open note (cluster 2):** no implicit re-open — the action runs
+  directly against the currently open note, same as invoking it from the menu bar today.
+- Every new context-menu entry follows the existing per-surface convention for disabled vs.
+  hidden that surface already uses elsewhere (e.g. the folder row already hides rather than
+  disables inapplicable entries) — no new convention is introduced by this feature.
+
+## UI/UX conventions
+
+- SF Symbols coherent with the icons already used for the same command elsewhere in the app (the
+  toolbar icon for a given command is reused verbatim in its new context-menu appearance, and vice
+  versa) — no new icon choices.
+- No emoji, Craft-aesthetic spacing, W3C DTCG tokens only for any new color use (CLAUDE.md Design
+  system section) — applies to the card-toolbar buttons and any new menu styling.
+- Italian UI strings, English code/comments/commits (project convention, unchanged).
 
 ## Success criteria
 
-- [x] R-01 — The task row's expanded density shows the assigned Workspace board's full
-      vault-relative path when the board name resolves to exactly one board on disk.
-- [x] R-02 — The Workspace name shown on the row is clickable and switches to the Workspace pane,
-      opening the resolved board, when resolution is unambiguous.
-- [x] R-03 — When board-name resolution is ambiguous (multiple boards share the file name), the
-      row shows the bare board name only (no path), and clicking it opens `WorkspacePicker` for
-      that task instead of attempting to open a board.
-- [x] R-04 — When the stored board name matches no board on disk (orphaned reference), the row
-      shows the raw name as plain, non-clickable text.
-- [x] R-05 — The task row's compact density shows a minimal Workspace-assignment icon
-      (`rectangle.3.group`) when the task is assigned to a Workspace, and shows nothing extra
-      when it is not.
-- [x] R-06 — When a task has both a scheduled date (`>date`) and a deadline (`!date`), the
-      expanded row shows both, not only the deadline as today.
-- [x] R-07 — The task row's expanded density shows one chip per tag the task carries, using a
-      single neutral design-system color token (no per-namespace differentiation in this cycle).
-- [x] R-08 — `TaskGrouping` gains a sixth case "Per Workspace" (icon `rectangle.3.group`) that
-      groups the current view's tasks by resolved assigned-board path (or bare name when
-      ambiguous), with unassigned tasks grouped under "Nessun Workspace".
-- [x] R-09 — A single shared helper resolves a task's `workspacePath` to a board's full path (or
-      reports ambiguous/not-found), and replaces the two pre-existing independent
-      implementations of that same comparison in `IndexSnapshot.tasks(assignedToWorkspace:)` and
-      `WorkspacePicker.row` — no third duplicate copy exists after this feature (closes `PG-038`).
-- [x] R-10 — No view touched by this feature introduces a hardcoded color; every color used goes
-      through an existing design-system token (SPEC binding rule, CLAUDE.md).
-- [x] R-11 — Unit tests cover: the new `.workspace` case of `TaskArrangement.groups(...)`
-      (unambiguous, ambiguous, and unassigned-to-"Nessun Workspace" cases), the shared resolver
-      helper (unique match, ambiguous match, no match), and the row logic that shows both
-      scheduled date and deadline when both are present.
-- [x] R-12 (no-test: this is a manual QA pass over the running app, not something a unit test
-      asserts) — Manual verification on the running app: compact row shows the Workspace icon
-      only when assigned, expanded row shows note/Workspace/tags/both-dates together correctly,
-      clicking the Workspace name opens the correct board, and the new "Per Workspace" grouping
-      populates "Nessun Workspace" correctly for unassigned tasks.
-
-## Trade-offs (recorded from interview)
-
-- **Full path over bare name for the Workspace display**, chosen despite the extra row width,
-  because the user explicitly wants precision over compactness for this specific piece of
-  information — reconsider if it proves visually cramped during manual QA.
-- **Single neutral tag-chip color, not per-namespace**, because no color token for any of the 8
-  tag namespaces (SPEC §4.4) exists in `Resources/Themes/*.json` today, and CLAUDE.md requires an
-  approved mockup before a new design token is introduced. Per-namespace color is explicitly
-  deferred to its own future chain, not dropped.
-- **"Nessun Workspace" rather than the shared `TaskArrangement.noneTitle` ("Senza")** for this
-  grouping's empty bucket — a deliberate one-grouping exception, chosen in interview over
-  consistency with the other five groupings' shared empty-label constant.
+- [ ] R-01 — Il context menu della riga cartella Workspace (non radice) offre Rinomina ed
+      Elimina, con lo stesso comportamento dei pulsanti toolbar esistenti (ADR-0022).
+- [ ] R-02 — Il context menu della riga cartella Workspace sulla radice del vault NON mostra
+      Rinomina/Elimina.
+- [ ] R-03 — Il context menu della riga nota offre Copia link, Cronologia e Applica template.
+- [ ] R-04 — Invocare una delle tre azioni della riga nota (R-03) da una nota non aperta apre
+      prima la nota, poi esegue l'azione.
+- [ ] R-05 — Il context menu della riga task offre "Aggiungi sotto-task", con lo stesso
+      comportamento dello shortcut/menu esistente.
+- [ ] R-06 — La toolbar del board mostra Copia link, Colore, Ridimensiona, Ritaglia (con
+      Adatta al ritaglio/Rimuovi ritaglio) e Duplica quando una card è selezionata.
+- [ ] R-07 — I pulsanti di R-06 sono nascosti (non disabilitati) quando nessuna card è
+      selezionata.
+- [ ] R-08 — L'embed immagine/PDF nell'editor ha un context menu proprio con Elimina, che esegue
+      lo stesso delete atomico dello shortcut Backspace esistente.
+- [ ] R-09 — MonthView, WeekView e MiniCalendar offrono "Nuovo evento" e "Nuovo promemoria" nel
+      context menu della cella giorno, identici tra loro.
+- [ ] R-10 — Duplica card crea un nuovo nodo canvas che referenzia lo stesso file dell'originale,
+      senza creare né duplicare alcun file su disco.
+- [ ] R-11 — Duplica card su una card con file mancante crea comunque il duplicato, che mostra lo
+      stesso placeholder "file mancante" dell'originale.
+- [ ] R-12 — Nessuna regressione nei context menu e nelle toolbar esistenti (manual QA pass su
+      tutte le sei superfici toccate).
+- [ ] R-13 — Ogni nuova voce di menu/toolbar usa lo stesso SF Symbol già in uso per lo stesso
+      comando altrove nell'app.
+- [ ] R-14 — La suite unit passa (`-only-testing:PergamenumTests`) e il build `perg`
+      (`Sources/Core`/`Sources/Connector`) non regredisce (no import SwiftUI introdotto in quei
+      target).

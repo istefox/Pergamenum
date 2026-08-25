@@ -13,6 +13,12 @@ struct DayMonthSection: View {
     let day: CalendarDate
     let onSelect: (CalendarDate) -> Void
     let onOpenDailyNote: (CalendarDate) -> Void
+    /// Passed straight through to the grid's own context menu (ADR-0023 §D10). This
+    /// section holds no `DayController` either - it is the day view's arrangement of the
+    /// month, not a second owner of it - so the two closures travel the same way
+    /// `onSelect` and `onOpenDailyNote` already do.
+    let onNewEvent: (CalendarDate) -> Void
+    let onNewReminder: (CalendarDate) -> Void
 
     /// The width of the column the section sits in, measured by the day view: the
     /// content around it is capped for readability, so measuring here would see a
@@ -32,6 +38,8 @@ struct DayMonthSection: View {
                     day: day,
                     onSelect: onSelect,
                     onOpenDailyNote: onOpenDailyNote,
+                    onNewEvent: onNewEvent,
+                    onNewReminder: onNewReminder,
                     cellHeight: Self.cellHeight(forWidth: Self.calendarWidth(inColumnOf: columnWidth)),
                     dueDays: dueDays
                 )

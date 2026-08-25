@@ -13,6 +13,15 @@ struct MiniCalendar: View {
     let day: CalendarDate
     let onSelect: (CalendarDate) -> Void
     let onOpenDailyNote: (CalendarDate) -> Void
+    /// What «Nuovo evento» and «Nuovo promemoria» do on a cell (ADR-0023 §D10). Two
+    /// closures rather than a `DayController`: this view takes `onSelect` and
+    /// `onOpenDailyNote` the same way and holds no controller on purpose, and handing it
+    /// one to satisfy a menu entry would spend that decoupling on a menu entry.
+    ///
+    /// Required rather than defaulted to `{ _ in }`, so a future second call site cannot
+    /// draw the two entries and have them do nothing.
+    let onNewEvent: (CalendarDate) -> Void
+    let onNewReminder: (CalendarDate) -> Void
     /// Set by the day view from the width it has, so the grid keeps its proportions
     /// instead of drawing cells four times wider than tall.
     var cellHeight: CGFloat = 22
@@ -120,6 +129,10 @@ struct MiniCalendar: View {
                     Button(hasDailyNote(date) ? "Apri la daily note" : "Crea la daily note") {
                         onOpenDailyNote(date)
                     }
+                    Divider()
+                    CalendarDayMenuItems(
+                        day: date, onNewEvent: onNewEvent, onNewReminder: onNewReminder
+                    )
                 }
         } else {
             Color.clear.frame(maxWidth: .infinity, minHeight: cellHeight)
