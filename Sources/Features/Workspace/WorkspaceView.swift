@@ -40,7 +40,7 @@ struct WorkspaceView: View {
                 // beside the tool column, because it is where you are rather than what
                 // you can do - the same split the note pane makes between its list and
                 // its editor.
-                WorkspaceBrowser(openBoardPath: openBoardPath) { path in
+                WorkspaceBrowser(openBoardPath: openBoardPath, actions: folderActions) { path in
                     workspace.open(folder: (path as NSString).deletingLastPathComponent)
                 }
                 .frame(width: 200)
@@ -126,6 +126,95 @@ struct WorkspaceView: View {
     private var openBoardPath: String? {
         guard let root = vault.root else { return nil }
         return CanvasStore(root: root).boardPath(forFolder: workspace.folder)
+    }
+
+    // MARK: Folder verbs
+
+    /// The sidebar's three verbs, performed here rather than in the browser because all
+    /// three need this view's `WorkspaceController` (ADR-0022 §D10).
+    ///
+    /// Each one is the same three steps in the same order, and the order is the whole of
+    /// the decision: **flush first** - the board autosaves about a second after a change
+    /// and that write would otherwise land on the old path, recreating the directory the
+    /// rename moved or the delete trashed (§F10) - then the vault call, then the
+    /// navigation rule that says where the open board goes next.
+    private var folderActions: WorkspaceFolderActions {
+        WorkspaceFolderActions(
+            create: { name, parent in createWorkspace(named: name, in: parent) },
+            rename: { folder, newName in renameWorkspace(folder, to: newName) },
+            delete: { folder in deleteWorkspace(folder) }
+        )
+    }
+
+    /// Creates the folder, gives it its board, and opens it (R-02).
+    ///
+    /// `CanvasStore.createFolder(named:in:)` unchanged: it refuses a name that is taken
+    /// and does not create intermediate directories, and the sheet has already blocked on
+    /// both. The board file is written straight after because a workspace is a folder
+    /// *with a board* - the sidebar tree is built from `allBoards()`, so a folder created
+    /// without one would not appear in the pane it was created from. Empty, so it holds
+    /// exactly what `load(folder:)` would have returned had the file stayed missing.
+    private func createWorkspace(named name: String, in parent: String) {
+        guard let root = vault.root else { return }
+        flushBoard()
+        do {
+            let store = CanvasStore(root: root)
+            let created = try store.createFolder(named: name, in: parent)
+            try store.save(.empty, folder: created)
+            workspace.open(folder: created)
+            Task { await vault.rescan() }
+        } catch {
+            // The board is still usable and the name can be retried, so this is a line in
+            // the problem list rather than a modal - the same treatment the "Cartella"
+            // tool gives a rejected name.
+            workspace.recordProblem("nuova workspace: \(error)")
+        }
+    }
+
+    /// Renames the folder and keeps the open board on it (R-05, R-08).
+    private func renameWorkspace(_ folder: String, to newName: String) {
+        flushBoard()
+        guard vault.renameFolder(at: folder, to: newName) else { return }
+
+        // The destination `FolderFileOperations.renamePlan` computed for itself: a rename
+        // is a new last component under the same parent, never a move (SPEC, out of scope).
+        let parent = (folder as NSString).deletingLastPathComponent
+        let newPath = parent.isEmpty ? newName : "\(parent)/\(newName)"
+        let landing = WorkspaceFolderActions.folderAfterRename(
+            open: workspace.folder, renamed: folder, to: newPath
+        )
+        guard landing != workspace.folder else { return }
+        // Reopened rather than renamed in place: the document on screen was read from a
+        // file that has moved, and `open(folder:)` is what re-reads it, refreshes the
+        // folder's contents and redraws the breadcrumb from `workspace.folder`.
+        workspace.open(folder: landing)
+    }
+
+    /// Trashes the folder and lands on its parent when what went was underfoot (R-11, R-12).
+    ///
+    /// The confirmation happened in the browser, which is where the counts are; by the
+    /// time this runs the question has been answered.
+    private func deleteWorkspace(_ folder: String) {
+        flushBoard()
+        guard vault.trashFolder(at: folder) else { return }
+
+        let landing = WorkspaceFolderActions.folderAfterDelete(
+            open: workspace.folder, deleted: folder
+        )
+        guard landing != workspace.folder else { return }
+        workspace.open(folder: landing)
+    }
+
+    /// Everything the board still owes the disk, written now.
+    ///
+    /// The crop is ended before the flush rather than left to `open(folder:)`, which ends
+    /// it on the way out (ADR-0020 §D5): confirming a crop is a `mutate`, and a `mutate`
+    /// after the folder has moved is a write to a path that is no longer there - the
+    /// autosave problem of §F10 arriving through the other door. Ended here, its write
+    /// goes to the folder that still exists.
+    private func flushBoard() {
+        workspace.endCrop(confirm: true)
+        workspace.flushPendingSave()
     }
 
     private func openPendingCanvas() {
