@@ -26,10 +26,22 @@ struct WorkspaceBrowser: View {
     @State private var expanded: Set<String> = []
     @State private var tree: [NoteTree.Node] = []
     @State private var boards: [String] = []
+    /// The row the toolbar's verbs act on, as a folder path (ADR-0022 §D9). Nil until
+    /// something is clicked, which is not the same as the vault root: `targetFolder`
+    /// falls back to the open board's folder so the toolbar is never inert for lack of a
+    /// click.
+    @State private var selectedFolder: String?
+    @State private var isCreatingWorkspace = false
+    @State private var isRenamingWorkspace = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            // A second row *beside* the header, never inside it: the header groups its
+            // children with `.accessibilityElement(children: .contain)` under its own
+            // identifier, and a button placed in there risks answering to
+            // `workspace-browser-header` rather than to its own (ADR-0022 §D8, §F9).
+            toolbar
             Divider()
             if filter.isEmpty {
                 folderTree
@@ -42,7 +54,81 @@ struct WorkspaceBrowser: View {
         // files on disk, and a board list is tens of entries beside it.
         .task(id: vault.scanGeneration) { rebuild() }
         .onChange(of: openBoardPath) { _, path in reveal(path) }
+        .sheet(isPresented: $isCreatingWorkspace) {
+            NewWorkspaceSheet(
+                parents: WorkspaceFolderSheets.parentOptions(from: boards),
+                initialParent: targetFolder,
+                isNameAvailable: nameIsAvailable,
+                onConfirm: { name, parent in
+                    isCreatingWorkspace = false
+                    createWorkspace(named: name, in: parent)
+                },
+                onCancel: { isCreatingWorkspace = false }
+            )
+        }
+        .sheet(isPresented: $isRenamingWorkspace) {
+            RenameWorkspaceSheet(
+                folder: targetFolder,
+                isNameAvailable: nameIsAvailable,
+                onConfirm: { newName in
+                    isRenamingWorkspace = false
+                    renameWorkspace(targetFolder, to: newName)
+                },
+                onCancel: { isRenamingWorkspace = false }
+            )
+        }
     }
+
+    // MARK: Toolbar
+
+    private var toolbar: some View {
+        WorkspaceBrowserToolbar(
+            target: targetFolder,
+            onNew: { isCreatingWorkspace = true },
+            onRename: { isRenamingWorkspace = true },
+            onDelete: { deleteWorkspace(targetFolder) },
+            // The same `expanded` binding the tree's context menu drives: two places to
+            // reach one piece of state, never two pieces of state (ADR-0022 §D8).
+            onExpandAll: { expanded = Self.allFolders(in: tree) },
+            onCollapseAll: { expanded = [] }
+        )
+    }
+
+    /// The folder the toolbar's verbs act on: the selected row, or the open board's own
+    /// folder when nothing has been clicked (ADR-0022 §D9).
+    private var targetFolder: String {
+        if let selectedFolder { return selectedFolder }
+        guard let openBoardPath else { return "" }
+        return (openBoardPath as NSString).deletingLastPathComponent
+    }
+
+    /// The collision predicate both sheets block on, live, so a name that is already
+    /// taken is refused before anything is created rather than reported afterwards
+    /// (ADR-0022 §D11, R-03).
+    ///
+    /// The same function the performing code guards with
+    /// (`FolderFileOperations.nameIsAvailable`), reached through the vault's root - not a
+    /// second spelling of the rule for the sheet to disagree with.
+    private func nameIsAvailable(_ name: String, in parent: String) -> Bool {
+        guard let root = vault.root else { return true }
+        return FolderFileOperations(store: NoteStore(root: root)).nameIsAvailable(name, in: parent)
+    }
+
+    // MARK: Verbs
+    //
+    // Inert for now, and it is one decision rather than three: all three verbs need the
+    // `WorkspaceController` that `WorkspaceView` owns - `flushPendingSave()` before
+    // anything touches disk, or the autosave lands on the old path afterwards, and
+    // `open(folder:)` after a rename or a delete so the board follows (ADR-0022 §D10).
+    // This view has no business holding that controller, so `WorkspaceView` passes the
+    // actions in. Until it does, a confirmed sheet closes and writes nothing: a rename
+    // performed here would be one the open board could not follow.
+
+    private func createWorkspace(named name: String, in parent: String) {}
+
+    private func renameWorkspace(_ folder: String, to newName: String) {}
+
+    private func deleteWorkspace(_ folder: String) {}
 
     // MARK: Header
 
@@ -72,6 +158,7 @@ struct WorkspaceBrowser: View {
                 WorkspaceTreeRow(
                     node: node,
                     expanded: $expanded,
+                    selected: $selectedFolder,
                     openBoardPath: openBoardPath,
                     onOpen: onOpen
                 )
@@ -100,6 +187,7 @@ struct WorkspaceBrowser: View {
                         noteCount: 1
                     ),
                     expanded: $expanded,
+                    selected: $selectedFolder,
                     openBoardPath: openBoardPath,
                     onOpen: onOpen
                 )
@@ -152,6 +240,9 @@ private struct WorkspaceTreeRow: View {
 
     let node: NoteTree.Node
     @Binding var expanded: Set<String>
+    /// The folder the toolbar acts on. A row writes to it; nothing here reads it except
+    /// to draw itself as the selected one (ADR-0022 §D9).
+    @Binding var selected: String?
     let openBoardPath: String?
     let onOpen: (String) -> Void
 
@@ -181,6 +272,7 @@ private struct WorkspaceTreeRow: View {
                 WorkspaceTreeRow(
                     node: child,
                     expanded: $expanded,
+                    selected: $selected,
                     openBoardPath: openBoardPath,
                     onOpen: onOpen
                 )
@@ -189,11 +281,16 @@ private struct WorkspaceTreeRow: View {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: isExpanded.wrappedValue ? "folder" : "folder.fill")
                     .foregroundStyle(theme.color(.accentPrimary))
-                Text(node.name).themedText(.body).lineLimit(1)
+                Text(node.name)
+                    .themedText(.body, color: selected == node.id ? .accentPrimary : .textPrimary)
+                    .lineLimit(1)
                 Spacer(minLength: theme.spacing(.xs))
                 Text("\(node.noteCount)").themedText(.caption, color: .textTertiary)
             }
             .contentShape(Rectangle())
+            // Selects the folder without toggling its disclosure (ADR-0022 §D9): the
+            // triangle opens it, the label says which folder the toolbar's verbs mean.
+            .onTapGesture { selected = node.id }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Cartella \(node.name), \(node.noteCount) Workspace")
             // On macOS an `.accessibilityIdentifier` on the `DisclosureGroup` itself
@@ -210,7 +307,13 @@ private struct WorkspaceTreeRow: View {
 
     private var boardRow: some View {
         let isOpen = node.id == openBoardPath
-        return Button { onOpen(node.id) } label: {
+        return Button {
+            // A board is named after its folder, so "the selected workspace" is that
+            // folder - clicking a board selects it and opens the board, as it always did
+            // (ADR-0022 §D9).
+            selected = (node.id as NSString).deletingLastPathComponent
+            onOpen(node.id)
+        } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: "rectangle.3.group")
                     .foregroundStyle(theme.color(isOpen ? .accentPrimary : .textTertiary))
