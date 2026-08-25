@@ -303,8 +303,33 @@ Key architectural decisions:
 
 Detail: `docs/adr/0021-workspace-tasks-notes-integration.md`.
 
+## Decisions from the Workspace UI creazione/toolbar/rename chain (ADR-0022)
+
+Workspace sidebar toolbar, folder-backed board creation with an explicit parent picker, folder
+rename and folder delete: `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`.
+
+Key architectural decisions:
+- **A wikilink names a note by title, never by path** — a folder rename rewrites no ordinary
+  `[[Nota]]` link. What actually breaks and gets repointed: `.canvas` node file paths vault-wide,
+  and the renamed folder's own board file name (`^[[old.canvas]]` / `[[old.canvas]]`).
+- **The `^[[...]].canvas` marker rewrite reuses `NoteRename.rewritingLinks` unchanged** — no
+  extension, since the caret already sits outside the rewritten `link.range` (ADR-0021 §D3).
+- **An ambiguous board file name (two folders sharing a name) skips the marker rewrite and
+  reports it**, rather than guessing — only the unambiguous `.canvas`-path repoint always runs.
+- **Folder rename and folder delete are not journalled and not exposed to `VaultAPI`/the
+  connectors** — `WriteJournal` has no entry kind that can describe a directory; recovery is the
+  Trash (delete) or a reverse rename, same as before this feature.
+- **Delete moves the whole folder via `FileManager.trashItem`, never `removeItem`** — the only
+  deletion convention this repo has, matching the existing single-note trash.
+- **The new toolbar is a sibling row of `WorkspaceBrowser`'s header, never a child of it** — the
+  header's own `accessibilityElement(children: .contain)` would otherwise propagate its
+  identifier onto any button placed inside it.
+
+Detail: `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
 - **ADR-0020** — non-destructive image card crop, persisted as one prefixed scalar key `pergamenum-crop` on the canvas node, never touching the file on disk → `docs/adr/0020-image-card-crop.md`
 - **ADR-0021** — Workspace browser + Task↔Workspace/Note relations + project sub-tasks, entirely as new task-line caret markers, no new storage → `docs/adr/0021-workspace-tasks-notes-integration.md`
+- **ADR-0022** — Workspace sidebar toolbar, folder-backed board creation/rename/delete, no journal, no connector exposure → `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`
