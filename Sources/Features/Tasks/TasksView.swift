@@ -452,6 +452,19 @@ struct TasksView: View {
     private func contextMenu(_ task: TaskItem) -> some View {
         Button(task.state == .done ? "Riapri" : "Completa") { vault.toggle(task) }
         Divider()
+        // The Task menu's own entry, on the row it is about (ADR-0023 §D6, R-05). The
+        // title comes from the shortcut catalogue rather than from a second literal, so
+        // rewording the menu item rewords this one; the draft comes from
+        // `TaskDraft.subtask(of:)`, so both entry points compose the same sub-task.
+        //
+        // Selecting the row is part of the command: the four rescheduling keys act on
+        // `vault.selectedTask`, and a right-click that opened the composer while leaving
+        // them pointed at whatever was clicked before would arm them at the wrong task.
+        Button(ShortcutCommand.taskAddSubtask.title) {
+            selectedTaskID = task.id
+            vault.selectedTask = task
+            vault.taskDraft = .subtask(of: task)
+        }
         // The quick reschedule of SPEC §7.3.
         Button("Pianifica oggi") { vault.apply(.schedule(today), to: task) }
         Button("Domani") { vault.apply(.schedule(today.adding(days: 1)), to: task) }

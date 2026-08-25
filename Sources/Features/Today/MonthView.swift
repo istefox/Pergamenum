@@ -132,6 +132,21 @@ struct MonthView: View {
             controller.show(column.day)
             controller.openDailyNote()
         }
+        Divider()
+        // The day first, then the flag, in both closures: the composer reads
+        // `controller.day`, so setting the flag on the anchor day would open a sheet about
+        // a different date than the one right-clicked.
+        CalendarDayMenuItems(
+            day: column.day,
+            onNewEvent: { day in
+                controller.show(day)
+                controller.isCreatingEvent = true
+            },
+            onNewReminder: { day in
+                controller.show(day)
+                controller.isCreatingReminder = true
+            }
+        )
     }
 
     /// The same four destinations as the week: a cell is smaller, not different.

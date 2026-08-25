@@ -97,6 +97,20 @@ final class CompletingTextView: NSTextView {
     /// second place for the same gesture to be in.
     var onEmbedResize: ((EmbedResize.Phase) -> Bool)?
 
+    /// A secondary click offered to a drawn embed before the editor builds its own
+    /// contextual menu; answers a menu when the point landed on a picture and nil
+    /// everywhere else (ADR-0023 §D9). Set by `NoteTextView.wire(_:to:)` to
+    /// `embedMenu(at:in:)`, the fourth closure of the shape `onClickInMargin`,
+    /// `claimsCommand` and `onEmbedResize` already have and for the reason
+    /// `claimsCommand`'s own comment gives.
+    ///
+    /// **Nil is the ordinary answer and it is not a failure**: `menu(for:)` in
+    /// `CompletingTextView+Pasteboard.swift` falls through to `super` on it, which is what
+    /// keeps spelling, substitutions, cut, copy and paste on every point of the note that
+    /// is not a picture. A menu returned from here replaces that one only where a picture
+    /// actually is.
+    var onEmbedMenu: ((CGPoint) -> NSMenu?)?
+
     /// True where the caret is in one of the three contexts that offer candidate strings
     /// rather than commands.
     ///

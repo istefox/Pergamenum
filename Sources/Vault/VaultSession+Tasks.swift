@@ -79,6 +79,20 @@ extension VaultSession {
         }
 
         var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
+
+        /// ADR-0023 §D6 (plan 2026-08-25-universal-command-surface-parity, Task 6): the
+        /// draft «Aggiungi sotto-task» builds, as a value both entry points can assign -
+        /// the Task menu through `CommandActions`, the task row's own context menu
+        /// directly. A value rather than a body, because "the same draft from two places"
+        /// is a thing a test can say as an equality.
+        ///
+        /// The destination is set to the parent's own note even though `captureTask`
+        /// ignores it for a draft with a parent: `^id` is note-local (ADR-0021 D2), so the
+        /// sub-task can only go where the parent is, and a composer whose header said
+        /// "Inbox" while writing somewhere else would be lying about it.
+        static func subtask(of parent: TaskItem) -> Self {
+            Self(destination: .note(parent.sourcePath), parent: parent)
+        }
     }
 
     /// Completes, reopens, cancels or reschedules a task by rewriting its source line.

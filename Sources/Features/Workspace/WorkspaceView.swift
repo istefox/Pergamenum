@@ -332,6 +332,12 @@ struct WorkspaceView: View {
                 }
 
                 VStack(alignment: .trailing, spacing: theme.spacing(.xs)) {
+                    // Above the pen row, so the zoom controls stay where a person has
+                    // learned to find them when the bar appears and disappears with the
+                    // selection (ADR-0023 §D7).
+                    if BoardCardControls.isShown(selection: workspace.selection) {
+                        BoardCardControls(workspace: workspace)
+                    }
                     if workspace.tool == .drawing {
                         BoardPenControls(
                             workspace: workspace,

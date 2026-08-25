@@ -378,7 +378,7 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Finestra / Aiuto**: standard macOS; Aiuto include "Guida sintassi task" e "Convenzioni harness" (rinvio ai documenti della repo).
 
-**Menu contestuali** (minimo richiesto): card canvas (apri, copia link Pergamenum, ridimensiona a preset, colore, elimina), task (pianifica, scadenza, collega nota/canvas, vai a origine), nota nella sidebar (rinomina con aggiornamento link W-08, sposta, elimina), giorno nel mini-calendario (apri daily note).
+**Menu contestuali** (ADR-0023 — parità con la barra strumenti/menu su ogni cluster: un solo catalogo di comandi per cluster, condiviso dalle due superfici): card canvas (apri, copia link Pergamenum, ridimensiona a preset, colore, duplica, elimina), riga task (pianifica, scadenza, collega nota/canvas, aggiungi sotto-task, vai a origine), riga cartella Workspace nella sidebar (rinomina, elimina), riga nota nella sidebar (rinomina con aggiornamento link W-08, sposta, copia link Pergamenum, cronologia, applica template, elimina), giorno nel mini-calendario/griglia mese/griglia settimana (apri daily note, nuovo evento, nuovo promemoria — disabilitati anziché nascosti senza accesso EventKit), embed disegnato nell'editor (elimina, stesso percorso di Backspace).
 
 ---
 

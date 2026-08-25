@@ -131,6 +131,17 @@ struct TodayView: View {
                         controller.show(date)
                         controller.openDailyNote()
                     },
+                    // The day first, then the flag, in both: the two sheets above read
+                    // `controller.day`, so setting the flag alone would compose on the day
+                    // the view is anchored on rather than on the cell that was clicked.
+                    onNewEvent: { date in
+                        controller.show(date)
+                        controller.isCreatingEvent = true
+                    },
+                    onNewReminder: { date in
+                        controller.show(date)
+                        controller.isCreatingReminder = true
+                    },
                     columnWidth: columnWidth,
                     dueDays: vault.index.dueDays
                 )

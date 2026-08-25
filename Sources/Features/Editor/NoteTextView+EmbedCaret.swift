@@ -114,6 +114,25 @@ extension NoteTextView.Coordinator {
 
     /// Selects a drawn embed's whole run when the click landed on its picture (D5).
     ///
+    /// False is what hands the click on to whoever is next in
+    /// `NoteTextView.wire(_:to:)`'s chain, and then to `super` - the ordinary answer for
+    /// every point of a note that is not a picture.
+    func selectEmbed(at point: CGPoint, in textView: NSTextView) -> Bool {
+        guard let run = drawnEmbedRun(at: point, in: textView) else { return false }
+        textView.setSelectedRange(run)
+        return true
+    }
+
+    /// The whole run of the drawn embed whose picture `point` landed on, or nil when it
+    /// landed on none.
+    ///
+    /// The single fragment walk this file makes. `selectEmbed(at:in:)` asks for a
+    /// selection and `embedMenu(at:in:)` asks for a menu, and both are the same question -
+    /// *which picture, if any, does this point land on?* - so answering it twice is how a
+    /// menu naming one embed while the selection highlighted another would come about.
+    /// The same extraction `NoteTextView+EmbedResize.swift` already makes with
+    /// `grabbedEmbed(at:in:)`, for the same reason.
+    ///
     /// `NSTextLayoutFragment.frameForTextAttachmentAtLocation:` answers in the
     /// fragment's own coordinate system (its header, verbatim) and `layoutFragmentFrame`
     /// is already in the text container's - the same two-space arithmetic
@@ -124,12 +143,13 @@ extension NoteTextView.Coordinator {
     /// `NSTextLayoutFragment` (Step 3 draws an embed without a custom subclass), so the
     /// generic parameter is instantiated as the base class itself, and the claim closure
     /// below is what tells an embed's paragraph from an ordinary one.
-    func selectEmbed(at point: CGPoint, in textView: NSTextView) -> Bool {
+    private func drawnEmbedRun(at point: CGPoint, in textView: NSTextView) -> NSRange? {
         guard decorations.hidesMarkup,
               let manager = textView.textLayoutManager, let content = manager.textContentManager
-        else { return false }
+        else { return nil }
         let text = textView.string as NSString
-        return decoration(at: point, in: textView) { (fragment: NSTextLayoutFragment) in
+        var hit: NSRange?
+        _ = decoration(at: point, in: textView) { (fragment: NSTextLayoutFragment) in
             let paragraphStart = content.offset(
                 from: content.documentRange.location, to: fragment.rangeInElement.location
             )
@@ -141,9 +161,68 @@ extension NoteTextView.Coordinator {
             guard let picture = Self.drawnPictureFrame(at: attachmentLocation, in: fragment),
                   picture.contains(Self.inContainer(point, of: textView))
             else { return false }
-            textView.setSelectedRange(run)
+            hit = run
             return true
         }
+        return hit
+    }
+
+    /// The drawn embed's own context menu, or nil when the secondary click landed on no
+    /// picture - which is what leaves `CompletingTextView.menu(for:)` to `super`, and the
+    /// note with the contextual menu it has always had (ADR-0023 §D9, R-08).
+    ///
+    /// **The run is selected before the menu is built**, exactly as a primary click on the
+    /// same picture would have selected it: a menu whose one entry is «Elimina» has to name
+    /// something visible, and one opened over a picture while the selection stayed three
+    /// paragraphs above would be asking about an embed nobody had pointed at.
+    ///
+    /// A stale run is refused here rather than at the write, and the entry is then never
+    /// drawn at all: `EmbedContextMenu.deletionRange(forRun:textLength:)` is asked while the
+    /// menu is being built, so a «Elimina» that could not write anything is not offered and
+    /// then silently declined by `replaceAtomically(_:with:in:)`.
+    func embedMenu(at point: CGPoint, in textView: NSTextView) -> NSMenu? {
+        guard let run = drawnEmbedRun(at: point, in: textView),
+              let range = EmbedContextMenu.deletionRange(
+                  forRun: run, textLength: (textView.string as NSString).length
+              )
+        else { return nil }
+        textView.setSelectedRange(run)
+        let menu = NSMenu()
+        for title in EmbedContextMenu.items() {
+            let item = NSMenuItem(
+                title: title, action: #selector(deleteEmbedFromMenu(_:)), keyEquivalent: ""
+            )
+            // An `NSMenuItem` holds its target weakly, so the target has to be something
+            // that outlives the menu - the Coordinator is, SwiftUI keeping it for as long
+            // as the view exists, and `MenuBarItem.entry(_:_:)` keeps its own alive for the
+            // same reason. An entry whose target has gone greys itself out.
+            item.target = self
+            // Carried on the entry rather than kept on the Coordinator: what «Elimina»
+            // deletes belongs to the click that opened this menu, and a pending deletion
+            // held between the menu opening and a choice being made - or never made - is
+            // state that can disagree with the note, which ADR-0018 §D3 keeps out of this
+            // feature.
+            item.representedObject = PendingEmbedDeletion(range: range, textView: textView)
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    /// «Elimina», through the one edit path this feature's other two writes already take:
+    /// the same `replaceAtomically(_:with:in:)` Backspace over a drawn embed calls with
+    /// `""`, over the same range `EmbedNavigation` computes for it. The menu and the key
+    /// are one deletion with two ways in, rather than two that agree today.
+    @objc private func deleteEmbedFromMenu(_ sender: NSMenuItem) {
+        guard let pending = sender.representedObject as? PendingEmbedDeletion else { return }
+        _ = replaceAtomically(pending.range, with: "", in: pending.textView)
+    }
+
+    /// What one menu entry is about: the range the click already resolved and the view it
+    /// resolved it in, so the action reads back exactly what was on screen when the menu
+    /// opened rather than asking the layout a second question.
+    private struct PendingEmbedDeletion {
+        let range: NSRange
+        let textView: NSTextView
     }
 
     /// A drawn embed's picture, in the text container's own coordinates, or nil when the

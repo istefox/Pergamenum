@@ -193,7 +193,9 @@ struct WorkspaceBrowser: View {
                     expanded: $expanded,
                     selected: $selectedFolder,
                     openBoardPath: openBoardPath,
-                    onOpen: onOpen
+                    onOpen: onOpen,
+                    onRename: { _ in isRenamingWorkspace = true },
+                    onDelete: { confirmDelete(of: $0) }
                 )
             }
         }
@@ -222,7 +224,9 @@ struct WorkspaceBrowser: View {
                     expanded: $expanded,
                     selected: $selectedFolder,
                     openBoardPath: openBoardPath,
-                    onOpen: onOpen
+                    onOpen: onOpen,
+                    onRename: { _ in isRenamingWorkspace = true },
+                    onDelete: { confirmDelete(of: $0) }
                 )
             }
         }
@@ -308,6 +312,11 @@ private struct WorkspaceTreeRow: View {
     @Binding var selected: String?
     let openBoardPath: String?
     let onOpen: (String) -> Void
+    /// The two folder verbs, by folder path. The row does not perform them: it hands the
+    /// path to the same closures the toolbar's buttons call, so the context menu is a
+    /// second entry point rather than a second code path (ADR-0023 §D4).
+    let onRename: (String) -> Void
+    let onDelete: (String) -> Void
 
     var body: some View {
         switch node.kind {
@@ -337,7 +346,9 @@ private struct WorkspaceTreeRow: View {
                     expanded: $expanded,
                     selected: $selected,
                     openBoardPath: openBoardPath,
-                    onOpen: onOpen
+                    onOpen: onOpen,
+                    onRename: onRename,
+                    onDelete: onDelete
                 )
             }
         } label: {
@@ -365,6 +376,33 @@ private struct WorkspaceTreeRow: View {
             // identifier here - on this label's own combined element, which has no
             // pre-existing identifier of its own to clobber - never touches them.
             .accessibilityIdentifier("workspace-folder-\(node.id)")
+            // On this label and never on the `DisclosureGroup` above it, for the reason
+            // the note beside the identifier gives: a modifier there reaches every
+            // disclosed descendant, so the parent folder's «Elimina» would hang off every
+            // board row nested inside it - right-clicking a board would offer to delete
+            // the folder it lives in (ADR-0023 §D2).
+            //
+            // Plain titles, no SF Symbols: the toolbar keeps its `pencil`/`trash` and this
+            // menu keeps the absence of one, which is what «the same symbol» means for a
+            // surface that draws none (ADR-0023 §D1).
+            .contextMenu {
+                // The same rule the toolbar's two buttons are enabled by, asked in the
+                // second place it is rendered rather than restated (ADR-0023 §D1, §D3).
+                if WorkspaceBrowserToolbar.canMutate(folder: node.id) {
+                    // The selection first: both sheets are seeded from
+                    // `WorkspaceBrowser.targetFolder`, which reads it, and a secondary
+                    // click fires no `onTapGesture` - so without this the verb would act
+                    // on whatever was clicked before the right-click (ADR-0023 §D4).
+                    Button("Rinomina…") {
+                        selected = node.id
+                        onRename(node.id)
+                    }
+                    Button("Elimina…", role: .destructive) {
+                        selected = node.id
+                        onDelete(node.id)
+                    }
+                }
+            }
         }
     }
 
