@@ -6,6 +6,10 @@ struct TasksView: View {
     @Environment(VaultController.self) private var vault
     @Environment(ShortcutStore.self) private var shortcuts
     @State private var view: IndexSnapshot.TaskView = .today
+    /// Every board's vault-relative path, for the Workspace segment on each row and the
+    /// `.workspace` grouping. Fetched once per scan rather than per row: `CanvasStore.allBoards()`
+    /// is an uncached full filesystem walk (`WorkspacePicker` makes the same choice for itself).
+    @State private var boards: [String] = []
     @State private var selectedTaskID: String?
     /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
     @State private var linking: TaskItem?
@@ -56,6 +60,9 @@ struct TasksView: View {
         }
         .sheet(item: $assigningWorkspaceFor) { task in
             WorkspacePicker(task: task) { assigningWorkspaceFor = nil }
+        }
+        .task(id: vault.scanGeneration) {
+            boards = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
         }
         .onChange(of: vault.isLinkingSelectedTask) { _, requested in
             guard requested, let task = vault.selectedTask else { return }
@@ -219,7 +226,8 @@ struct TasksView: View {
             // Only *Tutti* floats its starred notes, which is where the roadmap asks for them:
             // in a view already grouped by day or by project, a star would fight the grouping
             // the user chose rather than help it.
-            priorityPaths: view == .all ? Set(vault.starredNotes.map(\.relativePath)) : []
+            priorityPaths: view == .all ? Set(vault.starredNotes.map(\.relativePath)) : [],
+            boards: boards
         )
     }
 
@@ -315,6 +323,14 @@ struct TasksView: View {
                     .foregroundStyle(theme.color(task.isOverdue(on: today) ? .taskOverdue : .taskOpen))
                     .onTapGesture { vault.toggle(task) }
 
+                // A minimal marker in both densities (R-05): the assignment itself is worth
+                // knowing about even in the one-line row that has no room for which board.
+                if task.workspacePath != nil {
+                    Image(systemName: "rectangle.3.group")
+                        .foregroundStyle(theme.color(.textTertiary))
+                        .help("Assegnato a un Workspace")
+                }
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(task.text)
                         .themedText(.body, color: task.state == .done ? .taskDone : .textPrimary)
@@ -337,10 +353,15 @@ struct TasksView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.color(.accentPrimary))
                         .help("Riscrive «>data» nella nota di origine (\(moveKey) sul task selezionato)")
-                } else if let due = task.due {
-                    Text("!\(due)").themedText(.mono, color: .taskOverdue)
-                } else if let scheduled = task.scheduled {
-                    Text(">\(scheduled)").themedText(.mono, color: .taskScheduled)
+                } else {
+                    // Both shown together when both exist (R-06): a task past its deadline but
+                    // rescheduled ahead of it used to lose one of the two markers silently.
+                    if let due = task.due {
+                        Text("!\(due)").themedText(.mono, color: .taskOverdue)
+                    }
+                    if let scheduled = task.scheduled {
+                        Text(">\(scheduled)").themedText(.mono, color: .taskScheduled)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -363,9 +384,9 @@ struct TasksView: View {
         .contextMenu { contextMenu(task) }
     }
 
-    /// The row's second line: where the task is written, what it links to, and its project.
-    /// Its own function so `row` stays inside the length SwiftLint asks for, which is the same
-    /// reason the controls are their own view.
+    /// The row's second line: where the task is written, what it links to, its project, its
+    /// assigned Workspace and its tags. Its own function so `row` stays inside the length
+    /// SwiftLint asks for, which is the same reason the controls are their own view.
     private func details(_ task: TaskItem) -> some View {
         HStack(spacing: theme.spacing(.xs)) {
             Button {
@@ -388,6 +409,41 @@ struct TasksView: View {
 
             if let project = task.project {
                 Text(project.description).themedText(.caption, color: .textTertiary)
+            }
+
+            workspaceSegment(task)
+
+            ForEach(task.tags, id: \.self) { tag in
+                ViewTagChip(text: "#\(tag.description)")
+            }
+        }
+    }
+
+    /// The assigned-Workspace segment of `details` (R-01…R-04): a clickable full path when the
+    /// stored file name resolves to exactly one board, a bare name that opens `WorkspacePicker`
+    /// when it is ambiguous, or plain text when the reference is orphaned. Nothing at all when
+    /// the task carries no `^[[…]].canvas` marker.
+    @ViewBuilder
+    private func workspaceSegment(_ task: TaskItem) -> some View {
+        switch WorkspaceBoardResolver.resolve(task.workspacePath, in: boards) {
+        case .unique(let path):
+            Button {
+                vault.routeState.pendingCanvas = (path, nil)
+            } label: {
+                Text("▦ \(path)").themedText(.caption, color: .accentPrimary)
+            }
+            .buttonStyle(.plain)
+        case .ambiguous:
+            Button {
+                assigningWorkspaceFor = task
+            } label: {
+                Text("▦ \(WorkspaceBoardResolver.fileName(of: task.workspacePath ?? ""))")
+                    .themedText(.caption, color: .textTertiary)
+            }
+            .buttonStyle(.plain)
+        case .notFound:
+            if let workspacePath = task.workspacePath {
+                Text("▦ \(workspacePath)").themedText(.caption, color: .textTertiary)
             }
         }
     }

@@ -21,6 +21,10 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
     /// (ADR-0021 D6). Not a sixth `TaskView` - ADR-0013 §D6 closed that list and named
     /// this the open axis.
     case subtasks
+    /// One group per assigned Workspace board (ADR-0021 D9), unrelated to `.project` -
+    /// that groups by the `^id`/`^parent` sub-task relation, this by the `^[[board.canvas]]`
+    /// marker. The seventh grouping, same open axis `.subtasks` already opened.
+    case workspace
 
     var id: String { rawValue }
 
@@ -32,6 +36,7 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
         case .schedule: "Per data"
         case .deadline: "Per scadenza"
         case .subtasks: "Progetti"
+        case .workspace: "Per Workspace"
         }
     }
 
@@ -43,6 +48,7 @@ enum TaskGrouping: String, CaseIterable, Codable, Sendable, Identifiable {
         case .schedule: "calendar"
         case .deadline: "exclamationmark.triangle"
         case .subtasks: "list.bullet.indent"
+        case .workspace: "rectangle.3.group"
         }
     }
 }
@@ -146,13 +152,21 @@ enum TaskArrangement {
     /// grouped-by-project and grouped-by-note cases cannot disagree about the wording.
     static let noneTitle = "Senza"
 
+    /// The heading an unassigned task ends up under when grouping by Workspace - deliberately
+    /// not `noneTitle`: "Senza" answers "senza cosa?" for the other five groupings alike, and
+    /// this one is specific enough that the interview asked for its own wording (SPEC trade-offs).
+    static let noWorkspaceTitle = "Nessun Workspace"
+
     /// - Parameter priorityPaths: source notes whose group floats to the top when grouping by
     ///   note. The starred notes of ADR-0012 §D6, which the roadmap asks to see first in
     ///   *Tutti*. Empty everywhere else, and ignored by every other grouping.
+    /// - Parameter boards: every board's vault-relative path, for resolving `.workspace`
+    ///   grouping (`WorkspaceBoardResolver`). Empty and ignored by every other grouping.
     static func groups(
         _ tasks: [TaskItem],
         options: TaskListOptions,
-        priorityPaths: Set<String> = []
+        priorityPaths: Set<String> = [],
+        boards: [String] = []
     ) -> [TaskGroup] {
         guard !tasks.isEmpty else { return [] }
         let sorted = sort(tasks, by: options.sorting)
@@ -170,6 +184,8 @@ enum TaskArrangement {
             return grouped(sorted) { $0.due.map(dayTitle) ?? noneTitle }
         case .subtasks:
             return bySubtasks(sorted)
+        case .workspace:
+            return byWorkspace(sorted, boards: boards)
         }
     }
 
@@ -216,7 +232,7 @@ enum TaskArrangement {
     // MARK: Grouping
 
     private static func grouped(
-        _ tasks: [TaskItem], by heading: (TaskItem) -> String
+        _ tasks: [TaskItem], lastTitle: String = noneTitle, by heading: (TaskItem) -> String
     ) -> [TaskGroup] {
         var order: [String] = []
         var buckets: [String: [TaskItem]] = [:]
@@ -225,14 +241,28 @@ enum TaskArrangement {
             if buckets[title] == nil { order.append(title) }
             buckets[title, default: []].append(task)
         }
-        // Alphabetical, except that "Senza" goes last wherever it appears: it is the absence
-        // of the thing the list is grouped by, and it is never what somebody scrolled to.
+        // Alphabetical, except that the empty-bucket title goes last wherever it appears: it is
+        // the absence of the thing the list is grouped by, and it is never what somebody
+        // scrolled to.
         return order
             .sorted { first, second in
-                if (first == noneTitle) != (second == noneTitle) { return second == noneTitle }
+                if (first == lastTitle) != (second == lastTitle) { return second == lastTitle }
                 return first.localizedStandardCompare(second) == .orderedAscending
             }
             .map { TaskGroup(title: $0, tasks: buckets[$0] ?? []) }
+    }
+
+    /// One group per assigned board, resolved via `WorkspaceBoardResolver`: the full path when
+    /// unambiguous, the bare file name when ambiguous or orphaned, `noWorkspaceTitle` when the
+    /// task carries no `^[[board.canvas]]` marker at all.
+    private static func byWorkspace(_ tasks: [TaskItem], boards: [String]) -> [TaskGroup] {
+        grouped(tasks, lastTitle: noWorkspaceTitle) { task in
+            guard let workspacePath = task.workspacePath else { return noWorkspaceTitle }
+            switch WorkspaceBoardResolver.resolve(workspacePath, in: boards) {
+            case .unique(let path): return path
+            case .ambiguous, .notFound: return workspacePath
+            }
+        }
     }
 
     /// One group per project task, its `^parent` children beneath it (ADR-0021 D6).

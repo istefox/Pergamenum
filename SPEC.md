@@ -1,186 +1,187 @@
-# SPEC — Workspace file browser, Task↔Workspace/Note relations, project sub-tasks
+# SPEC — Task row richer info display
 
-**Topic slug:** workspace-tasks-notes-integration
+**Topic slug:** task-list-row-richer-info-display-worksp
 
 ## Objectives
 
-Give Stefano a way to work Pergamenum's three existing tools — vault notes, Workspace canvases,
-and the task system — as one connected project surface for client work:
+The Attività task row shows too little of what a task actually carries. Today a task assigned to
+a Workspace board via `^[[board.canvas]]` (ADR-0021) is invisible on the row — it has no marker at
+all, and it lands under "Senza" in the "Per progetto" grouping, which groups by an unrelated
+`^id`/`^parent` sub-task relation, not by Workspace. A task with both a scheduled date and a
+deadline silently loses one of the two on the row. Tags never appear on the row at all.
 
-1. Browse and open Workspaces (`.canvas` files) through a dedicated folder tree in the sidebar,
-   alongside the existing Note and Task trees.
-2. Assign exactly one Workspace to a Task, and see, from the Workspace side, which tasks are
-   assigned to it, plus which notes it references — in a dedicated side panel on the canvas.
-3. Manage a Task as a project: sub-tasks with their own independent due dates, grouped and
-   expandable in the Attività view, with a derived (non-authoritative) progress indicator.
-4. Assign multiple Notes to a Task (already possible today via wikilinks in the task line, per
-   SPEC §7.2) and exactly one Workspace (new field, see below).
+This feature makes the row (and, for Workspace assignment specifically, a new grouping) surface
+the metadata that already exists on `TaskItem` but is not drawn: which note the task lives in
+(already shown), which Workspace board it is assigned to (not shown today), scheduled date and
+deadline together when both exist (only one shown today), and its tags (not shown today).
 
-## Non-objectives
+## Scope
 
-- No new top-level "client project" grouping above individual Workspace files — Workspace-as-file
-  keeps mapping 1:1 to a `.canvas`, browsed through the vault's existing folder structure.
-- No change to `.pergamenum/vocabolari.json`, the tag schema (SPEC §4.4), or the note frontmatter
-  schema (SPEC §4.3). Both stay closed, per CLAUDE.md.
-- No automatic completion cascade from sub-tasks to their parent task.
-- No cross-file cascading delete/update for orphaned `^parent` references — the conformance
-  linter flags them; nothing blocks or auto-repairs.
-- No change to Obsidian round-trip compatibility beyond what this feature explicitly introduces
-  (see Decisions below) — already deprioritized as a product direction (ADR-0020, 2026-08-24).
+In scope:
+- Workspace-assignment indicator on the task row, both densities (`compact`: minimal icon;
+  `expanded`: full board name, path when unambiguous, clickable to open the board).
+- A sixth `TaskGrouping` case, "Per Workspace", grouping tasks by assigned board.
+- Showing both scheduled date and deadline on the row when a task has both.
+- Tag chips on the expanded row, one neutral design-system color (no per-namespace colors — see
+  Trade-offs).
+- A shared helper resolving a task's stored `workspacePath` (a bare board file name) to the
+  board's full vault-relative path, replacing the two existing independent implementations of
+  that same comparison (`IndexSnapshot.tasks(assignedToWorkspace:)`, `WorkspacePicker.row`) —
+  closes `PG-038`.
 
-## Decisions carried from the interview
-
-- **Workspace browser reuses the existing folder tree over `.canvas` files.** No new file format,
-  no new persisted grouping concept. It is a third top-level sidebar section (Note / Workspace /
-  Task), mirroring the existing note folder tree's UI pattern.
-- **Task↔Workspace and Task↔Note relations are new explicit caret markers in the task line text**,
-  not the existing generic wikilink mechanism (SPEC §7.2 stays as-is for incidental links; these
-  markers are the *authoritative* single-Workspace assignment):
-  - `^[[Workspace.canvas]]` — the one Workspace assigned to this task. A second `^[[...]].canvas`
-    marker in the same task line is invalid; the conformance linter (§4.7) flags it, the first
-    occurrence wins at read time.
-  - Plain wikilinks `[[Note title]]` in the task text continue to mean "note(s) linked to this
-    task" exactly as SPEC §7.2 already defines — no change; this is how "multiple Notes per Task"
-    is satisfied, unchanged from today.
-  - This deliberately breaks Obsidian readability for the `^[[Workspace.canvas]]` marker specifically
-    (it renders as literal text with a caret prefix in Obsidian) — accepted tradeoff, confirmed
-    2026-08-24, consistent with ADR-0020's same-day Obsidian-compatibility deprioritization. The
-    file remains valid Markdown; nothing else about the note breaks.
-- **Sub-task hierarchy uses new explicit id/parent caret markers**, not GFM indentation and not the
-  `#project-*` tag:
-  - `^id(N)` — assigned automatically by the app when a sub-task is created via "Aggiungi
-    sotto-task", auto-incrementing, unique **within the containing note only** (not vault-wide).
-    No registry to maintain — consistent with the rebuildable-index principle (CLAUDE.md
-    principle 3): ids are read directly from the note text at scan time.
-  - `^parent(N)` — on a sub-task line, references its parent task's `^id(N)` within the same note.
-  - **Deliberately not a tag**: `#task-NNN` was considered and rejected — `task` is not one of the
-    closed tag-schema prefixes (`client|competitor|project|type|topic|status|area|source`, SPEC
-    §4.4), and CLAUDE.md forbids extending that schema locally (harness-system is the source of
-    truth). The `^id`/`^parent` markers are a separate, task-line-local namespace; they do not
-    touch the tag system.
-  - A parent task with sub-tasks shows a **derived, non-authoritative progress indicator**
-    ("3/5 completati") in the Attività view. Completing all sub-tasks does **not** write `@done`
-    to the parent line automatically — the parent's own completion stays a manual action, same as
-    every other task (no hidden automatic file writes).
-  - Deleting/editing lines such that a `^parent(N)` points at an id no longer present in the note
-    produces no cascade and no block: the conformance linter (§4.7) flags the orphaned reference.
-    Note rename/move is already covered by the existing wikilink-rewrite mechanism (wikilink.md
-    W-08); ids are note-local so they need no rewriting on move.
-- **Workspace dashboard**: a new collapsible right-side panel on the canvas (same UI pattern as
-  the existing "Task collegati" / "Backlink" panels on notes, SPEC §7.2), with two sections:
-  - **Task assegnati** — every task in the vault whose line carries `^[[this-canvas]]`, with
-    status/dates, completable in place (writes to the task's source note, same as the existing
-    "Task collegati" panel).
-  - **Note referenziate** — the Document cards and wikilinks present on this canvas.
-  This panel is new UI; it does not replace or change the existing tag-based project view
-  (SPEC line 152), which continues to aggregate by `#project-*` unchanged.
-- **Attività view** gets a new "Progetti" grouping mode: a parent task with `^id` is
-  expandable/collapsible, showing its `^parent`-linked sub-tasks indented beneath it with the
-  progress indicator described above. The existing Inbox/Oggi/Progetto/Tutti groupings stay flat
-  and unchanged — every sub-task still appears there individually if it has its own `>date`/`!due`.
-- **EventKit / Calendario integration is unchanged**: a sub-task with its own `!scadenza` or
-  `>date` participates in the timeline/calendar exactly like any other task (SPEC §7.5/§7.6) — no
-  special-casing for parent/child relationship on the calendar side.
-
-## Architecture
-
-- **Parser extension** (`Sources/Core` task-line parser): recognize three new caret markers —
-  `^[[<canvas-file>]]` (Workspace assignment), `^id(<N>)`, `^parent(<N>)` — alongside the existing
-  `>date`, `!due`, `@remind(...)`, `@repeat(...)` markers. Grammar addition only; no change to the
-  frontmatter or tag parsers.
-- **Index (`.pergamenum/cache.db` via GRDB, per CLAUDE.md principle 3)**: extend the task table
-  with `workspace_path` (nullable, from `^[[...]]`), `local_id` (nullable, from `^id`),
-  `parent_local_id` (nullable, from `^parent`). Entirely derived from a vault rescan — deleting
-  the cache loses nothing, consistent with the existing rebuildable-index guarantee.
-- **Workspace browser**: new sidebar section reusing the existing folder-tree view component used
-  for notes, filtered to `.canvas` files, with the existing card/thumbnail conventions.
-- **Workspace dashboard panel**: new `NSViewRepresentable`/SwiftUI panel on the canvas view,
-  querying the index for tasks where `workspace_path` matches the open canvas's path, and for
-  Document cards / note wikilinks already present on the canvas (no new query — existing canvas
-  card enumeration).
-- **Task detail / Attività view**: existing task list view extended with an optional "Progetti"
-  grouping mode, driven by `local_id`/`parent_local_id` joined within the same source note.
-- **Conformance linter (§4.7)**: two new advisory rules — duplicate `^[[...]].canvas` marker in
-  one task line (second ignored, first wins), and `^parent(N)` referencing an id not present in
-  the same note (orphaned reference). Both advisory, neither blocks a save or a scan.
-
-## Data model
-
-No frontmatter changes. No tag schema changes. All new state lives in task-line text (source of
-truth, per CLAUDE.md principle 1 "file over app") and is mirrored into the rebuildable SQLite
-index, per principle 3.
-
-Task line grammar addition (informal):
-
-```
-- [ ] <text> [[Note A]] [[Note B]] ^[[Workspace.canvas]] ^id(3) ^parent(1) >2026-09-01 !2026-09-10
-```
-
-- `[[Note A]] [[Note B]]` — existing wikilink mechanism, unchanged (SPEC §7.2): "Notes linked to
-  this task", zero or more.
-- `^[[Workspace.canvas]]` — new, zero or one per task line: the single assigned Workspace.
-- `^id(N)` — new, zero or one per task line: this task's local identifier (assigned by the app on
-  sub-task creation, not manually typed under normal use).
-- `^parent(N)` — new, zero or one per task line: the local id of this task's parent within the
-  same note.
-- All markers are order-independent relative to each other and to the existing `>date`/`!due`
-  markers, consistent with the existing task grammar's tolerance.
-
-## UI flows
-
-1. **Browse and open a Workspace**: sidebar → Workspace section → folder tree of `.canvas` files
-   → click opens the canvas, same interaction model as the existing note tree.
-2. **Assign a Workspace to a Task**: Task detail panel → "Workspace" field → picker (same
-   component class as the existing note-linking picker) → writes `^[[chosen.canvas]]` into the
-   task's source line.
-3. **View a Workspace's assigned tasks and notes**: open a Workspace canvas → toggle the new right
-   side panel → "Task assegnati" (completable in place) and "Note referenziate" sections.
-4. **Create a project with sub-tasks**: on any task, "Aggiungi sotto-task" command → new task line
-   created with `^id` auto-assigned and `^parent` pointing at the current task's `^id` (created if
-   the current task didn't have one yet) → each sub-task gets its own `>date`/`!due` independently.
-5. **View projects in Attività**: Attività sidebar → new "Progetti" grouping → parent tasks appear
-   expandable, showing progress ("3/5 completati") and their sub-tasks indented; other groupings
-   (Inbox/Oggi/Progetto/Tutti) remain flat and show every task, including sub-tasks, individually.
-
-## Edge cases
-
-- Two `^[[...]].canvas` markers on one task line → first wins at read time; linter flags it as
-  advisory, no block, no auto-fix.
-- `^parent(N)` with no matching `^id(N)` in the same note (deleted line, typo, or copy-pasted from
-  elsewhere) → orphaned reference, linter flags it as advisory; the sub-task still appears
-  ungrouped in the flat Attività views.
-- Note/canvas rename or move → existing wikilink-rewrite mechanism (W-08) updates any
-  `^[[Workspace.canvas]]` reference exactly as it updates plain wikilinks today; `^id`/`^parent`
-  need no rewrite since they are note-local.
-- Task copied to another note (e.g. via daily-note reference or manual copy-paste) carrying an
-  `^id`/`^parent` → those become meaningless in the new note (ids are note-local); not actively
-  stripped, but not resolved either — advisory linter territory if it ever matters in practice.
-- Deleting the parent task line while sub-tasks remain → no cascade; sub-tasks keep their
-  `^parent(N)` pointing at a now-orphaned id, flagged by the linter as above.
-- Workspace assigned to a task that is later deleted from the canvas (canvas file deleted) →
-  `^[[Workspace.canvas]]` becomes an unresolved wikilink, same handling as any other unresolved
-  wikilink in the app today (§Link non risolti view).
-
-## Success criteria
-
-- [ ] R-01 — A new "Workspace" section exists in the sidebar, showing a folder tree of `.canvas` files, and clicking an entry opens that canvas.
-- [ ] R-02 — The task-line parser recognizes `^[[<canvas-file>]]`, `^id(<N>)`, and `^parent(<N>)` markers without breaking existing `>date`/`!due`/`@remind`/`@repeat`/wikilink parsing.
-- [ ] R-03 — Assigning a Workspace to a task via the Task detail panel's "Workspace" field writes exactly one `^[[...]].canvas` marker into the task's source line.
-- [ ] R-04 — A task can carry multiple plain wikilinks to notes (`[[Note A]] [[Note B]]`) alongside its single `^[[Workspace.canvas]]` marker, and both are indexed correctly.
-- [ ] R-05 — Opening a Workspace canvas and toggling the new side panel shows a "Task assegnati" section listing every task in the vault whose line carries `^[[this-canvas]]`, with status and dates, completable in place.
-- [ ] R-06 — The same side panel's "Note referenziate" section lists the Document cards and note wikilinks present on the open canvas.
-- [ ] R-07 — "Aggiungi sotto-task" on a task creates a new task line with an auto-assigned `^id`, sets `^parent` to the current task's id (assigning one to the parent first if absent), and the new sub-task's own `>date`/`!due` are independent of the parent's.
-- [ ] R-08 — The Attività view offers a "Progetti" grouping mode where a parent task with an `^id` is expandable/collapsible, shows its `^parent`-linked sub-tasks indented beneath it, and displays a derived "N/M completati" progress indicator that does not write to any file.
-- [ ] R-09 — Completing every sub-task of a project does not automatically mark the parent task complete (no `@done` auto-write).
-- [ ] R-10 — Existing flat Attività groupings (Inbox/Oggi/Progetto/Tutti) continue to show every task, including sub-tasks, individually and unchanged.
-- [ ] R-11 — A second `^[[...]].canvas` marker on the same task line is flagged as an advisory finding by the conformance linter (§4.7); the first occurrence is used at read/index time; nothing blocks the save.
-- [ ] R-12 — A `^parent(N)` referencing an id not present in the same note is flagged as an advisory finding by the conformance linter; no cascade, no auto-repair.
-- [ ] R-13 — Renaming or moving a `.canvas` file updates every `^[[...]].canvas` marker referencing it, via the existing wikilink-rewrite mechanism (W-08).
-- [ ] R-14 — The SQLite index (`workspace_path`, `local_id`, `parent_local_id` on the task table) is fully derivable from a vault rescan; deleting `cache.db` and rescanning reproduces identical Workspace/sub-task relationships.
-- [ ] R-15 — No frontmatter key or tag prefix outside the closed schemas (SPEC §4.3, §4.4) is introduced by this feature.
-- [ ] R-16 — End-to-end, offline: open the Workspace browser, select a client `.canvas`, see its assigned tasks and referenced notes in the side panel; create a project task with 2 sub-tasks on different due dates; assign the same Workspace and two different notes to the project task; see it expandable with a progress bar in Attività; all state survives an app restart and a full index rebuild.
+Out of scope (explicitly deferred, decided in interview):
+- Per-namespace tag colors (8 new design tokens, light+dark) — needs its own mockup and its own
+  chain, per CLAUDE.md's "no hardcoded colors, every token needs an approved mockup" rule.
+- Any change to note-reference or wikilink display on the row (already correct).
+- Any change to `TaskGrouping.project` ("Per progetto") — it stays exactly what it is today, the
+  `^id`/`^parent` sub-task grouping (ADR-0021 §D6); this feature does not touch it.
 
 ## Stack
 
-Unchanged from the project baseline (see CLAUDE.md): Swift 6, SwiftUI on macOS 26 SDK, GRDB for
-the SQLite cache, TextKit 2 editor, no new dependencies.
+Swift 6, SwiftUI, macOS 26 SDK. No new dependency. No index schema change (`workspacePath`
+resolution is computed at read time from `CanvasStore.allBoards()`, exactly as `WorkspacePicker`
+already does — nothing new is persisted).
+
+## Architecture
+
+- `Sources/Core/Tasks/TaskItem.swift` — no change; `workspacePath: String?` and `tags: [Tag]`
+  already exist and already carry what this feature needs.
+- New shared resolver (exact file TBD by the architect, likely `Sources/Core/Tasks/` or
+  `Sources/Vault/`, pure — no SwiftUI import, so it stays reachable by `perg`/`pergamenum-mcp`
+  per the `sharedSources` rule in CLAUDE.md): given a vault root and a bare board file name,
+  returns one of `.unique(path)`, `.ambiguous`, `.notFound` (or an equivalent enum — architect's
+  call). Consumed by:
+  - `IndexSnapshot.tasks(assignedToWorkspace:)` (existing call site, replaces its own inline
+    comparison).
+  - `WorkspacePicker.row` (existing call site, replaces its own inline comparison).
+  - The new row-display code in `TasksView.swift` (new call site).
+  - The new `.workspace` case in `TaskArrangement.groups(...)` (new call site).
+- `Sources/Core/Tasks/TaskListOptions.swift` — `TaskGrouping` gains a `case workspace` (title "Per
+  Workspace", icon `rectangle.3.group` — same icon the toolbar's "Assegna a un Workspace" button
+  and `WorkspacePicker` already use for this concept). `TaskArrangement.groups(...)` gains a
+  `.workspace` branch grouping by the resolved board's full path when unambiguous, by the bare
+  board name when ambiguous, and unassigned tasks under a group titled "Nessun Workspace" (not
+  the shared `TaskArrangement.noneTitle` constant — deliberately, per interview: this grouping's
+  empty bucket is more specific than the other five).
+- `Sources/Features/Tasks/TasksView.swift`:
+  - `row(_:)` gains a compact-density Workspace indicator (icon only, shown only when
+    `task.workspacePath != nil`).
+  - `details(_:)` (the expanded second/third line) gains: the Workspace name (resolved via the
+    shared helper; full path when unambiguous, bare name when ambiguous or when the reference is
+    orphaned — no board on disk matches the stored name at all), clickable when resolved to
+    exactly one path, plain text when ambiguous or orphaned; both `!due` and `>scheduled` shown
+    together when both exist (today only one renders); tag chips.
+  - Opening a Workspace board from the row reuses the existing route mechanism
+    (`vault.routeState.pendingCanvas` / `Navigation.pane = .workspace`), the same one
+    `PergamenumURL`'s `pergamenum://canvas` route and in-board node navigation already use — no
+    new navigation primitive.
+- `Sources/Features/Tasks/WorkspacePicker.swift` — its own `isAssigned` comparison (line 84)
+  switches to the shared helper; no behavior change, only de-duplication.
+- `Sources/Index/IndexSnapshot.swift` — `tasks(assignedToWorkspace:)` switches to the shared
+  helper; no behavior change, only de-duplication.
+
+## Data model
+
+No new fields, no index schema bump. Everything drawn already exists on `TaskItem`
+(`workspacePath`, `scheduled`, `due`, `tags`, `links`, `sourcePath`). The only new piece of
+*derived* data is the resolved-path lookup, computed on demand from `CanvasStore.allBoards()` and
+never persisted — the same non-persistence choice `WorkspacePicker` already makes for its own
+board list.
+
+## API
+
+No connector-facing change. `Sources/Connector/VaultAPI` is untouched — this is a pure
+presentation-layer feature (row rendering, grouping) with one shared internal resolver that is
+not part of the CLI/MCP surface.
+
+## UI flows
+
+1. **Compact row, task assigned to a Workspace.** The row shows the task text and, beside it (or
+   inline with the checkbox/marker cluster — architect/coder's call on exact placement, but not
+   in the second line, since compact density has none), a small `rectangle.3.group` icon. No
+   other row gains this icon.
+2. **Expanded row, task assigned to a Workspace, unambiguous.** Second line gains a clickable
+   segment showing the board's full vault-relative path (e.g. "Prova/Prova 2 rinominata"),
+   styled like the existing note-reference button. Clicking it switches to the Workspace pane and
+   opens that board.
+3. **Expanded row, task assigned to a Workspace, ambiguous (two+ boards share the file name).**
+   Second line shows the bare board name only (no path), not clickable as a board-open action;
+   clicking it opens `WorkspacePicker` for that task instead, so the user can clarify/reassign.
+4. **Expanded row, task assigned to a Workspace, orphaned (no board on disk has that name any
+   more).** Second line shows the bare name written in the marker, as plain text, not clickable.
+5. **Expanded row, task with both `>scheduled` and `!due`.** Trailing area shows both markers
+   (today shows only `!due` when both are present).
+6. **Expanded row, task with tags.** Second/third line gains one chip per tag, single neutral
+   design-system color, `#namespace-value` text.
+7. **Attività, grouping menu.** A sixth entry "Per Workspace" (icon `rectangle.3.group`) appears
+   alongside the existing five. Selecting it groups the current view's tasks by resolved board
+   path (unambiguous) or bare board name (ambiguous), with unassigned tasks under "Nessun
+   Workspace".
+
+## Edge cases
+
+- Ambiguous board name (two folders, same board file name): row shows name-only, not clickable as
+  open-board; grouping heading shows name-only too, and two differently-located same-named boards
+  collapse into one grouping bucket (documented limitation, consistent with the ambiguity itself
+  being unresolvable without more context — same limitation ADR-0022 §D8 already accepts for the
+  marker-rewrite case).
+- Orphaned board reference (marker points to a file that no longer exists): row shows the raw
+  name from the marker, not clickable, no error state — mirrors how an ordinary wikilink to a
+  missing note already renders in this app.
+- Task with no Workspace assignment: no icon in compact, no Workspace segment in expanded, lands
+  in "Nessun Workspace" when grouped by Workspace.
+- Task with neither `>scheduled` nor `!due`: trailing area unchanged (nothing shown there today,
+  nothing shown there after this feature).
+- Task with no tags: no chip row, no layout gap.
+- Empty vault / no boards at all: "Per Workspace" grouping shows a single "Nessun Workspace"
+  bucket with every task in it — no crash, no special-cased empty state beyond that.
+
+## Success criteria
+
+- [x] R-01 — The task row's expanded density shows the assigned Workspace board's full
+      vault-relative path when the board name resolves to exactly one board on disk.
+- [x] R-02 — The Workspace name shown on the row is clickable and switches to the Workspace pane,
+      opening the resolved board, when resolution is unambiguous.
+- [x] R-03 — When board-name resolution is ambiguous (multiple boards share the file name), the
+      row shows the bare board name only (no path), and clicking it opens `WorkspacePicker` for
+      that task instead of attempting to open a board.
+- [x] R-04 — When the stored board name matches no board on disk (orphaned reference), the row
+      shows the raw name as plain, non-clickable text.
+- [x] R-05 — The task row's compact density shows a minimal Workspace-assignment icon
+      (`rectangle.3.group`) when the task is assigned to a Workspace, and shows nothing extra
+      when it is not.
+- [x] R-06 — When a task has both a scheduled date (`>date`) and a deadline (`!date`), the
+      expanded row shows both, not only the deadline as today.
+- [x] R-07 — The task row's expanded density shows one chip per tag the task carries, using a
+      single neutral design-system color token (no per-namespace differentiation in this cycle).
+- [x] R-08 — `TaskGrouping` gains a sixth case "Per Workspace" (icon `rectangle.3.group`) that
+      groups the current view's tasks by resolved assigned-board path (or bare name when
+      ambiguous), with unassigned tasks grouped under "Nessun Workspace".
+- [x] R-09 — A single shared helper resolves a task's `workspacePath` to a board's full path (or
+      reports ambiguous/not-found), and replaces the two pre-existing independent
+      implementations of that same comparison in `IndexSnapshot.tasks(assignedToWorkspace:)` and
+      `WorkspacePicker.row` — no third duplicate copy exists after this feature (closes `PG-038`).
+- [x] R-10 — No view touched by this feature introduces a hardcoded color; every color used goes
+      through an existing design-system token (SPEC binding rule, CLAUDE.md).
+- [x] R-11 — Unit tests cover: the new `.workspace` case of `TaskArrangement.groups(...)`
+      (unambiguous, ambiguous, and unassigned-to-"Nessun Workspace" cases), the shared resolver
+      helper (unique match, ambiguous match, no match), and the row logic that shows both
+      scheduled date and deadline when both are present.
+- [x] R-12 (no-test: this is a manual QA pass over the running app, not something a unit test
+      asserts) — Manual verification on the running app: compact row shows the Workspace icon
+      only when assigned, expanded row shows note/Workspace/tags/both-dates together correctly,
+      clicking the Workspace name opens the correct board, and the new "Per Workspace" grouping
+      populates "Nessun Workspace" correctly for unassigned tasks.
+
+## Trade-offs (recorded from interview)
+
+- **Full path over bare name for the Workspace display**, chosen despite the extra row width,
+  because the user explicitly wants precision over compactness for this specific piece of
+  information — reconsider if it proves visually cramped during manual QA.
+- **Single neutral tag-chip color, not per-namespace**, because no color token for any of the 8
+  tag namespaces (SPEC §4.4) exists in `Resources/Themes/*.json` today, and CLAUDE.md requires an
+  approved mockup before a new design token is introduced. Per-namespace color is explicitly
+  deferred to its own future chain, not dropped.
+- **"Nessun Workspace" rather than the shared `TaskArrangement.noneTitle` ("Senza")** for this
+  grouping's empty bucket — a deliberate one-grouping exception, chosen in interview over
+  consistency with the other five groupings' shared empty-label constant.
