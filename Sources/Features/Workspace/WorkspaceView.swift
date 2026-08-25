@@ -60,21 +60,30 @@ struct WorkspaceView: View {
                 // its editor. Hidden in concentrazione, alongside the app sidebar and
                 // the tray, so the board keeps the width they gave up.
                 if !navigation.isWorkspaceFocused {
-                    WorkspaceBrowser(openBoardPath: openBoardPath, actions: folderActions) { path in
-                        workspace.open(folder: (path as NSString).deletingLastPathComponent)
-                    }
+                    WorkspaceBrowser(
+                        openBoardPath: openBoardPath,
+                        actions: folderActions,
+                        onOpen: { path in
+                            workspace.open(folder: (path as NSString).deletingLastPathComponent)
+                        },
+                        onDeselect: { workspace.closeBoard() }
+                    )
                     .frame(width: CGFloat(browserWidth))
                     WorkspacePaneDivider(width: Binding(
                         get: { CGFloat(browserWidth) },
                         set: { browserWidth = Double($0) }
                     ))
                 }
-                BoardToolbar(workspace: workspace)
-                Divider()
-                board
-                if navigation.isShowingTray && !navigation.isWorkspaceFocused {
+                if workspace.hasOpenBoard {
+                    BoardToolbar(workspace: workspace)
                     Divider()
-                    BoardTray(workspace: workspace)
+                    board
+                    if navigation.isShowingTray && !navigation.isWorkspaceFocused {
+                        Divider()
+                        BoardTray(workspace: workspace)
+                    }
+                } else {
+                    emptyState
                 }
             }
         }
@@ -119,7 +128,7 @@ struct WorkspaceView: View {
             // which is where it already lives on disk.
             guard let pending = pending ?? nil else { return }
             let folder = (pending as NSString).deletingLastPathComponent
-            if workspace.folder != folder { workspace.open(folder: folder) }
+            if !workspace.hasOpenBoard || workspace.folder != folder { workspace.open(folder: folder) }
             if !workspace.document.nodes.contains(where: {
                 if case .file(let path, _) = $0.kind { return path == pending } else { return false }
             }) {
@@ -155,8 +164,23 @@ struct WorkspaceView: View {
     /// as the selected one. A board is named after its folder (`boardPath(forFolder:)`
     /// is the whole of that mapping), so the folder the controller holds is enough.
     private var openBoardPath: String? {
-        guard let root = vault.root else { return nil }
+        guard workspace.hasOpenBoard, let root = vault.root else { return nil }
         return CanvasStore(root: root).boardPath(forFolder: workspace.folder)
+    }
+
+    /// What the board area shows before anything has been chosen - the same shape as
+    /// `EditorColumnView.emptyState`, so an empty Workspace and an empty editor column
+    /// read as the same idea rather than two different ones.
+    private var emptyState: some View {
+        VStack(spacing: theme.spacing(.s)) {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 32))
+                .foregroundStyle(theme.color(.textTertiary))
+            Text("Nessuna board aperta").themedText(.body, color: .textSecondary)
+            Text("Seleziona una board dall'elenco a sinistra").themedText(.caption, color: .textTertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.color(.backgroundPrimary))
     }
 
     // MARK: Folder verbs
@@ -206,6 +230,9 @@ struct WorkspaceView: View {
     private func renameWorkspace(_ folder: String, to newName: String) {
         flushBoard()
         guard vault.renameFolder(at: folder, to: newName) else { return }
+        // "Keeps the open board on it" only means something if a board is actually
+        // open - with nothing chosen there is nothing to land somewhere else.
+        guard workspace.hasOpenBoard else { return }
 
         // The destination `FolderFileOperations.renamePlan` computed for itself: a rename
         // is a new last component under the same parent, never a move (SPEC, out of scope).
@@ -228,6 +255,7 @@ struct WorkspaceView: View {
     private func deleteWorkspace(_ folder: String) {
         flushBoard()
         guard vault.trashFolder(at: folder) else { return }
+        guard workspace.hasOpenBoard else { return }
 
         let landing = WorkspaceFolderActions.folderAfterDelete(
             open: workspace.folder, deleted: folder

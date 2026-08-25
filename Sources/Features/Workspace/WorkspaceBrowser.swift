@@ -22,6 +22,12 @@ struct WorkspaceBrowser: View {
     var actions: WorkspaceFolderActions
     /// Vault-relative path of the board the user picked.
     var onOpen: (String) -> Void
+    /// Fired by a click on the tree's own empty space, below every row - the same
+    /// "click blank space to deselect" a Finder list gives you for free through
+    /// `NSTableView`, reproduced here because `List` with no `selection:` binding does
+    /// not do it on its own (this tree drives its highlight from `openBoardPath`
+    /// instead, so it never had that behaviour to lose).
+    var onDeselect: () -> Void
 
     @State private var filter = ""
     /// The folders currently open, by path. View state rather than a preference, for
@@ -201,6 +207,9 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-tree")
+        // Fires only on the blank area below the last row: a tap on a row is already
+        // consumed by that row's own gesture before it would reach the List itself.
+        .onTapGesture { selectedFolder = nil; onDeselect() }
         .contextMenu {
             Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
             Button("Comprimi tutto") { expanded = [] }
@@ -232,6 +241,7 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-flat-list")
+        .onTapGesture { selectedFolder = nil; onDeselect() }
     }
 
     private var filteredBoards: [String] {

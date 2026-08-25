@@ -73,6 +73,11 @@ final class WorkspaceController {
     static let zoomRange: ClosedRange<CGFloat> = 0.05...4.0
 
     private(set) var folder = ""
+    /// Whether a board has actually been chosen, as opposed to merely being loaded and
+    /// ready. `attach` prepares the root board's document the moment a vault opens, but
+    /// that is readiness, not a choice - `openBoardPath` in `WorkspaceView` reads this,
+    /// not `folder`, so nothing in the browser looks selected until something is.
+    private(set) var hasOpenBoard = false
     private(set) var document = CanvasDocument.empty
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
     private(set) var problems: [String] = []
@@ -123,7 +128,9 @@ final class WorkspaceController {
     func attach(to store: CanvasStore, thumbnails: ThumbnailStore? = nil) {
         self.store = store
         self.thumbnails = thumbnails
-        open(folder: "")
+        // Loaded, not opened: the root board is ready the instant a vault attaches, but
+        // that is not the same as the user having chosen it.
+        open(folder: "", markOpen: false)
     }
 
     func detach() {
@@ -138,6 +145,7 @@ final class WorkspaceController {
         document = .empty
         contents = .init(subfolders: [], unplaced: [])
         folder = ""
+        hasOpenBoard = false
         selection = []
     }
 
@@ -152,7 +160,11 @@ final class WorkspaceController {
         return trail
     }
 
-    func open(folder newFolder: String) {
+    /// `markOpen` is `false` only from `attach`, which loads the root board so it is
+    /// ready the instant it is chosen without that load itself counting as the choice.
+    /// Every other caller - a row click, the breadcrumb, a new board, a hand-off from
+    /// the editor - wants the default.
+    func open(folder newFolder: String, markOpen: Bool = true) {
         guard let store else { return }
         // Navigating away confirms an open crop the same way a click outside the card
         // would (ADR-0020 D5), rather than silently discarding it.
@@ -161,6 +173,7 @@ final class WorkspaceController {
         flushPendingSave()
 
         folder = newFolder
+        hasOpenBoard = markOpen
         selection = []
         pan = .zero
         zoom = 1
@@ -175,6 +188,18 @@ final class WorkspaceController {
         // Each board has its own history: undoing on one board must never reach back
         // into a change made on another.
         history.reset()
+    }
+
+    /// Marks no board as chosen any more, the same empty state `attach` starts in -
+    /// fired by a click on the tree's own blank space (`WorkspaceBrowser.onDeselect`).
+    /// `document`/`folder` are left as they are: nothing here needs to reload should the
+    /// same board be picked again, only `hasOpenBoard` drives what the pane shows.
+    func closeBoard() {
+        guard hasOpenBoard else { return }
+        endCrop(confirm: true)
+        flushPendingSave()
+        hasOpenBoard = false
+        selection = []
     }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
