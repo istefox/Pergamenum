@@ -128,7 +128,11 @@ struct WorkspaceBrowser: View {
         expanded.formUnion(NoteTree.ancestors(of: path))
     }
 
-    private static func allFolders(in nodes: [NoteTree.Node]) -> Set<String> {
+    // Widened from `private` to the file's default (internal) access, additive and
+    // signature-preserving, so `Tests/WorkspaceBrowserToolbarTests.swift` can reach it
+    // through `@testable import Pergamenum` (ADR-0022, plan Task 5, R-01). No behaviour
+    // changed - same body, same call sites, only visibility.
+    static func allFolders(in nodes: [NoteTree.Node]) -> Set<String> {
         var result: Set<String> = []
         for node in nodes where node.kind == .folder {
             result.insert(node.id)
