@@ -257,6 +257,13 @@ move the previous copy aside rather than deleting it.
   launch; `-recentVaults '("/path")'` works. The launch argument outranks the persistent
   domain, so a throwaway vault reaches a Debug build without touching what the installed
   app opens.
+- **Finding the latest Debug build under DerivedData needs `-t`, not plain `ls -d`.** `tuist
+  generate` stamps a fresh `Pergamenum-<hash>` DerivedData folder on each regeneration, and
+  stale ones accumulate. `ls -d .../Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1`
+  sorts alphabetically by hash, not by build time, and can silently hand you a stale build that
+  still shows an already-fixed regression. Use `ls -dt .../Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1`
+  (or `APP=$(ls -dt ... | head -1)`) to get the most recently built bundle before an `open -n`
+  hand-check launch.
 - Build and tests must pass before committing. A change that does not build is not done.
 - Keep commits small and atomic, one logical change each.
 - Never disable or delete a test to make a suite pass.
