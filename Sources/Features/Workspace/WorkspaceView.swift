@@ -1,11 +1,18 @@
 import SwiftUI
 
 /// The Workspace: a spatial view of one folder, with the board hierarchy above it.
+///
+/// Split across four files along the seams the `// MARK:` comments already marked -
+/// this one keeps the view's state, its body and the board itself, while the drawing
+/// overlay, the sidebar's folder verbs and item creation live in `WorkspaceView+Drawing`,
+/// `WorkspaceView+FolderVerbs` and `WorkspaceView+Creation`. A member read by one of
+/// those extensions is internal rather than `private` for that reason alone: `private`
+/// is file scope, so an extension in another file cannot see it.
 struct WorkspaceView: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
+    @Environment(\.theme) var theme
+    @Environment(VaultController.self) var vault
     @Environment(Navigation.self) private var navigation
-    @State private var workspace = WorkspaceController()
+    @State var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
     /// Shift and Option as they are held right now. `DragGesture` carries no modifier
     /// information, so the board has to track them itself to tell a marquee from a
@@ -14,40 +21,17 @@ struct WorkspaceView: View {
     /// The zoom a pinch started from, so the magnification is applied to it once
     /// rather than compounding on every frame of the gesture.
     @State private var pinchOrigin: CGFloat?
-    @State private var newItemDraft: NewItemDraft?
+    @State var newItemDraft: NewItemDraft?
     @State private var isShowingQuickLook = false
-    @State private var importProposals: [WorkspaceController.ImportProposal] = []
+    @State var importProposals: [WorkspaceController.ImportProposal] = []
     /// Pen settings for the Disegno tool (SPEC §6.4, tool 10).
-    @State private var penColor: ColorToken = .textPrimary
-    @State private var penWidth: CGFloat = 2
-    @State private var isErasing = false
+    @State var penColor: ColorToken = .textPrimary
+    @State var penWidth: CGFloat = 2
+    @State var isErasing = false
     /// The board list's width, dragged with `WorkspacePaneDivider`. Machine-local
     /// (`@AppStorage`, not `VaultSettings`): it describes the screen, not the vault
     /// (ADR-0012 §D10).
     @AppStorage("workspaceBrowserWidth") private var browserWidth: Double = 200
-    /// Raised on leaving concentrazione, consumed once the board's `GeometryReader`
-    /// settles on the size it grew back into - `zoomToFit` needs that size, and at the
-    /// moment of the click it is still the narrow one.
-    @State private var needsRefit = false
-    /// The entering counterpart to `needsRefit`: raised on entering concentrazione,
-    /// consumed the same way once the board's widened viewport is known.
-    @State private var needsActualSizeZoom = false
-    /// `NavigationSplitView` animates `columnVisibility`, so toggling concentrazione
-    /// reports several intermediate `geometry.size` values before the panels finish
-    /// sliding in or out - fitting against the first one undercorrects and leaves part
-    /// of the content behind the tray or the board list once the layout keeps moving.
-    /// Debounced instead of one-shot: every intermediate size reschedules this, so only
-    /// the size the layout actually settles on ever reaches `zoomToFit`/`zoomToActualSize`.
-    @State private var pendingFitTask: Task<Void, Never>?
-
-    /// What the user is about to create, once they have typed its name or URL.
-    private struct NewItemDraft: Identifiable {
-        enum Kind { case folder, link, note }
-        let id = UUID()
-        var kind: Kind
-        var point: CGPoint
-        var value = ""
-    }
 
     var body: some View {
         // Split into `mainContent` plus two modifier stages: the single-expression
@@ -76,17 +60,16 @@ struct WorkspaceView: View {
             content
                 .quickLook(urls: previewURLs, isPresented: $isShowingQuickLook)
                 .onChange(of: vault.isShowingQuickLook) { _, requested in
-                    guard requested else { return }
-                    isShowingQuickLook = true
-                    vault.isShowingQuickLook = false
+                    consumeQuickLookRequest(requested)
                 }
                 // Entering shows the content at its actual size - concentrazione is for
                 // working on the board, not for reading it at whatever scale it happened
                 // to be left at. Leaving hands the width back to the app sidebar, the
                 // board list and the tray, so the fit has to catch up with the viewport
-                // they take back.
+                // they take back. Both are owed rather than done: the viewport they need
+                // is the one the layout has not finished animating to yet.
                 .onChange(of: navigation.isWorkspaceFocused) { _, focused in
-                    if focused { needsActualSizeZoom = true } else { needsRefit = true }
+                    workspace.requestRefit(focused ? .actualSize : .fit)
                 }
                 .onAppear {
                     attachWorkspace()
@@ -114,13 +97,7 @@ struct WorkspaceView: View {
                 checkPendingNewBoard()
             }
             .onChange(of: vault.pendingWorkspacePlacement) { _, pending in placePendingNote(pending) }
-            .onChange(of: vault.root) { _, newRoot in
-                workspace.detach()
-                guard let newRoot else { return }
-                workspace.attach(
-                    to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails, vault: vault
-                )
-            }
+            .onChange(of: vault.root) { _, newRoot in reattachWorkspace(to: newRoot) }
             .sheet(item: $newItemDraft) { draft in newItemSheet(draft) }
             .sheet(isPresented: Binding(
                 get: { !importProposals.isEmpty },
@@ -178,6 +155,23 @@ struct WorkspaceView: View {
         workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails, vault: vault)
     }
 
+    /// Points the board at the vault that has just opened, letting go of the previous one.
+    private func reattachWorkspace(to newRoot: URL?) {
+        workspace.detach()
+        guard let newRoot else { return }
+        workspace.attach(
+            to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails, vault: vault
+        )
+    }
+
+    /// Takes the Quick Look request the vault parked, and puts it down again so the next
+    /// one is a change this view can see.
+    private func consumeQuickLookRequest(_ requested: Bool) {
+        guard requested else { return }
+        isShowingQuickLook = true
+        vault.isShowingQuickLook = false
+    }
+
     /// A note sent here from the editor lands on the board of its own folder, which is
     /// where it already lives on disk.
     private func placePendingNote(_ pending: String??) {
@@ -205,100 +199,6 @@ struct WorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.color(.backgroundPrimary))
-    }
-
-    // MARK: Folder verbs
-
-    /// The sidebar's three verbs, performed here rather than in the browser because all
-    /// three need this view's `WorkspaceController` (ADR-0022 §D10).
-    ///
-    /// Each one is the same three steps in the same order, and the order is the whole of
-    /// the decision: **flush first** - the board autosaves about a second after a change
-    /// and that write would otherwise land on the old path, recreating the directory the
-    /// rename moved or the delete trashed (§F10) - then the vault call, then the
-    /// navigation rule that says where the open board goes next.
-    private var folderActions: WorkspaceFolderActions {
-        WorkspaceFolderActions(
-            create: { name, parent in createWorkspace(named: name, in: parent) },
-            rename: { folder, newName in renameWorkspace(folder, to: newName) },
-            delete: { folder in deleteWorkspace(folder) },
-            recordDesync: { message in workspace.recordProblem(message) }
-        )
-    }
-
-    /// Creates the folder, gives it its board, and opens it (R-02).
-    ///
-    /// `CanvasStore.createFolder(named:in:)` unchanged: it refuses a name that is taken
-    /// and does not create intermediate directories, and the sheet has already blocked on
-    /// both. The board file is written straight after because a workspace is a folder
-    /// *with a board* - the sidebar tree is built from `allBoards()`, so a folder created
-    /// without one would not appear in the pane it was created from. Empty, so it holds
-    /// exactly what `load(folder:)` would have returned had the file stayed missing.
-    private func createWorkspace(named name: String, in parent: String) {
-        guard let root = vault.root else { return }
-        flushBoard()
-        do {
-            let store = CanvasStore(root: root)
-            let created = try store.createFolder(named: name, in: parent)
-            try store.save(.empty, folder: created)
-            workspace.open(folder: created)
-            Task { await vault.rescan() }
-        } catch {
-            // The board is still usable and the name can be retried, so this is a line in
-            // the problem list rather than a modal - the same treatment the "Cartella"
-            // tool gives a rejected name.
-            vault.recordProblem("nuova workspace: \(error)")
-        }
-    }
-
-    /// Renames the folder and keeps the open board on it (R-05, R-08).
-    private func renameWorkspace(_ folder: String, to newName: String) {
-        flushBoard()
-        guard vault.renameFolder(at: folder, to: newName) else { return }
-        // "Keeps the open board on it" only means something if a board is actually
-        // open - with nothing chosen there is nothing to land somewhere else.
-        guard workspace.isShowingBoard else { return }
-
-        // The destination `FolderFileOperations.renamePlan` computed for itself: a rename
-        // is a new last component under the same parent, never a move (SPEC, out of scope).
-        let parent = (folder as NSString).deletingLastPathComponent
-        let newPath = parent.isEmpty ? newName : "\(parent)/\(newName)"
-        let landing = WorkspaceFolderActions.folderAfterRename(
-            open: workspace.folder, renamed: folder, to: newPath
-        )
-        guard landing != workspace.folder else { return }
-        // Reopened rather than renamed in place: the document on screen was read from a
-        // file that has moved, and `open(folder:)` is what re-reads it, refreshes the
-        // folder's contents and redraws the breadcrumb from `workspace.folder`.
-        workspace.open(folder: landing)
-    }
-
-    /// Trashes the folder and lands on its parent when what went was underfoot (R-11, R-12).
-    ///
-    /// The confirmation happened in the browser, which is where the counts are; by the
-    /// time this runs the question has been answered.
-    private func deleteWorkspace(_ folder: String) {
-        flushBoard()
-        guard vault.trashFolder(at: folder) else { return }
-        guard workspace.isShowingBoard else { return }
-
-        let landing = WorkspaceFolderActions.folderAfterDelete(
-            open: workspace.folder, deleted: folder
-        )
-        guard landing != workspace.folder else { return }
-        workspace.open(folder: landing)
-    }
-
-    /// Everything the board still owes the disk, written now.
-    ///
-    /// The crop is ended before the flush rather than left to `open(folder:)`, which ends
-    /// it on the way out (ADR-0020 §D5): confirming a crop is a `mutate`, and a `mutate`
-    /// after the folder has moved is a write to a path that is no longer there - the
-    /// autosave problem of §F10 arriving through the other door. Ended here, its write
-    /// goes to the folder that still exists.
-    private func flushBoard() {
-        workspace.endCrop(confirm: true)
-        workspace.flushPendingSave()
     }
 
     private func openPendingCanvas() {
@@ -381,35 +281,8 @@ struct WorkspaceView: View {
     private var board: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
-                theme.color(.canvasBackground)
-                    .contentShape(Rectangle())
-                    .onTapGesture { location in
-                        // A click outside the card confirms an open crop (ADR-0020 D5)
-                        // rather than acting on whatever tool is selected.
-                        if workspace.croppingNodeID != nil {
-                            workspace.endCrop(confirm: true)
-                        } else {
-                            handleTap(at: canvasPoint(from: location, in: geometry.size))
-                        }
-                    }
-                    // Attached to the background alone. On the whole board it also
-                    // fired while a card was being dragged, and the two gestures moved
-                    // the same content against each other.
-                    .gesture(backgroundGesture(in: geometry.size))
-
-                // Esc cancels an open crop, Enter confirms it (ADR-0020 D5). Hidden
-                // buttons rather than an `onKeyPress`: the board hosts no first
-                // responder of its own, and a keyboard shortcut on a button reaches the
-                // window regardless of what has focus, the same way Annulla/Ripeti do
-                // in the toolbar above.
-                if workspace.croppingNodeID != nil {
-                    Button("") { workspace.endCrop(confirm: false) }
-                        .keyboardShortcut(.escape, modifiers: [])
-                        .hidden()
-                    Button("") { workspace.endCrop(confirm: true) }
-                        .keyboardShortcut(.return, modifiers: [])
-                        .hidden()
-                }
+                boardBackground(in: geometry.size)
+                cropKeyboardShortcuts
 
                 if workspace.showsGrid { grid }
 
@@ -431,43 +304,13 @@ struct WorkspaceView: View {
                     drawingLayer(in: geometry.size)
                 }
 
-                VStack(alignment: .trailing, spacing: theme.spacing(.xs)) {
-                    // Above the pen row, so the zoom controls stay where a person has
-                    // learned to find them when the bar appears and disappears with the
-                    // selection (ADR-0023 §D7).
-                    if BoardCardControls.isShown(selection: workspace.selection) {
-                        BoardCardControls(workspace: workspace)
-                    }
-                    if workspace.tool == .drawing {
-                        BoardPenControls(
-                            workspace: workspace,
-                            penColor: $penColor,
-                            penWidth: $penWidth,
-                            isErasing: $isErasing
-                        )
-                    }
-                    BoardZoomControls(workspace: workspace, viewportSize: viewportSize)
-                }
-                .padding(theme.spacing(.m))
+                floatingControls
             }
             .clipped()
-            // SPEC §6.1: pinch zooms. Relative to the zoom the gesture started at, so
-            // the magnification is not applied again on every frame.
-            .gesture(
-                MagnifyGesture()
-                    .onChanged { value in
-                        let origin = pinchOrigin ?? workspace.zoom
-                        pinchOrigin = origin
-                        workspace.setZoom(origin * value.magnification)
-                    }
-                    .onEnded { _ in pinchOrigin = nil }
-            )
+            .gesture(pinchGesture)
             .onModifierKeysChanged(mask: [.shift, .option]) { _, held in modifiers = held }
             .dropDestination(for: URL.self) { urls, location in
-                importProposals = workspace.importFiles(
-                    urls, at: canvasPoint(from: location, in: geometry.size)
-                )
-                return !importProposals.isEmpty
+                propose(import: urls, at: canvasPoint(from: location, in: geometry.size))
             }
             .onAppear {
                 viewportSize = geometry.size
@@ -475,31 +318,94 @@ struct WorkspaceView: View {
                 applyBoardSettings()
             }
             .onChange(of: vault.settings) { _, _ in applyBoardSettings() }
+            // Every intermediate size the concentrazione animation reports lands here and
+            // reschedules the reframing it owes; only the size the layout settles on ever
+            // reaches `zoomToFit`/`zoomToActualSize` (`WorkspaceController+Viewport`).
             .onChange(of: geometry.size) { _, size in
                 viewportSize = size
-                guard needsActualSizeZoom || needsRefit else { return }
-                let actualSize = needsActualSizeZoom
-                pendingFitTask?.cancel()
-                pendingFitTask = Task {
-                    // Long enough to land after the columnVisibility animation's last
-                    // intermediate frame, short enough that the fit still reads as
-                    // immediate once the panels stop moving.
-                    try? await Task.sleep(for: .milliseconds(350))
-                    guard !Task.isCancelled else { return }
-                    if actualSize {
-                        workspace.zoomToActualSize(in: size)
-                    } else {
-                        workspace.zoomToFit(in: size)
-                    }
-                    needsActualSizeZoom = false
-                    needsRefit = false
-                }
+                workspace.applyPendingRefit(in: size)
             }
             .onChange(of: workspace.folder) { _, _ in
                 // A board opens over its content, not over the origin.
                 workspace.zoomToFit(in: viewportSize)
             }
         }
+    }
+
+    /// The empty board under everything: what a click that hits no card lands on.
+    private func boardBackground(in size: CGSize) -> some View {
+        theme.color(.canvasBackground)
+            .contentShape(Rectangle())
+            .onTapGesture { location in
+                // A click outside the card confirms an open crop (ADR-0020 D5)
+                // rather than acting on whatever tool is selected.
+                if workspace.croppingNodeID != nil {
+                    workspace.endCrop(confirm: true)
+                } else {
+                    handleTap(at: canvasPoint(from: location, in: size))
+                }
+            }
+            // Attached to the background alone. On the whole board it also fired while a
+            // card was being dragged, and the two gestures moved the same content against
+            // each other.
+            .gesture(backgroundGesture(in: size))
+    }
+
+    /// Esc cancels an open crop, Enter confirms it (ADR-0020 D5).
+    ///
+    /// Hidden buttons rather than an `onKeyPress`: the board hosts no first responder of
+    /// its own, and a keyboard shortcut on a button reaches the window regardless of what
+    /// has focus, the same way Annulla/Ripeti do in the toolbar.
+    @ViewBuilder
+    private var cropKeyboardShortcuts: some View {
+        if workspace.croppingNodeID != nil {
+            Button("") { workspace.endCrop(confirm: false) }
+                .keyboardShortcut(.escape, modifiers: [])
+                .hidden()
+            Button("") { workspace.endCrop(confirm: true) }
+                .keyboardShortcut(.return, modifiers: [])
+                .hidden()
+        }
+    }
+
+    /// The capsules that float over the board's bottom-trailing corner.
+    private var floatingControls: some View {
+        VStack(alignment: .trailing, spacing: theme.spacing(.xs)) {
+            // Above the pen row, so the zoom controls stay where a person has learned to
+            // find them when the bar appears and disappears with the selection
+            // (ADR-0023 §D7).
+            if BoardCardControls.isShown(selection: workspace.selection) {
+                BoardCardControls(workspace: workspace)
+            }
+            if workspace.tool == .drawing {
+                BoardPenControls(
+                    workspace: workspace,
+                    penColor: $penColor,
+                    penWidth: $penWidth,
+                    isErasing: $isErasing
+                )
+            }
+            BoardZoomControls(workspace: workspace, viewportSize: viewportSize)
+        }
+        .padding(theme.spacing(.m))
+    }
+
+    /// SPEC §6.1: pinch zooms. Relative to the zoom the gesture started at, so the
+    /// magnification is not applied again on every frame.
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let origin = pinchOrigin ?? workspace.zoom
+                pinchOrigin = origin
+                workspace.setZoom(origin * value.magnification)
+            }
+            .onEnded { _ in pinchOrigin = nil }
+    }
+
+    /// Offers the dropped files as import proposals, answering whether any was accepted.
+    private func propose(import urls: [URL], at point: CGPoint) -> Bool {
+        importProposals = workspace.importFiles(urls, at: point)
+        return !importProposals.isEmpty
     }
 
     /// Carries the vault's canvas preferences into the board (SPEC §12).
@@ -561,141 +467,13 @@ struct WorkspaceView: View {
             }
     }
 
-    // MARK: Drawing
-
-    /// Captures pen strokes over the board and previews them live.
-    private func drawingLayer(in size: CGSize) -> some View {
-        Canvas { context, _ in
-            for stroke in workspace.activeDrawing.strokes {
-                guard stroke.points.count > 1 else { continue }
-                var path = Path()
-                path.move(to: viewPoint(stroke.points[0]))
-                for point in stroke.points.dropFirst() { path.addLine(to: viewPoint(point)) }
-
-                context.stroke(
-                    path,
-                    with: .color(Color(hex: stroke.color).opacity(stroke.opacity)),
-                    style: StrokeStyle(
-                        lineWidth: stroke.width * workspace.zoom, lineCap: .round, lineJoin: .round
-                    )
-                )
-            }
-        }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    let point = canvasPoint(from: value.location, in: size)
-                    if isErasing {
-                        workspace.eraseStrokes(near: point, radius: max(8, penWidth * 3))
-                        return
-                    }
-                    if value.translation == .zero {
-                        workspace.beginStroke(
-                            at: point,
-                            color: theme.hexValue(penColor),
-                            width: penWidth,
-                            // A highlighter is a wide, translucent stroke; the pen is
-                            // neither (SPEC §6.4, tool 10).
-                            opacity: penWidth >= 10 ? 0.4 : 1
-                        )
-                    } else {
-                        workspace.extendStroke(to: point)
-                    }
-                }
-                .onEnded { _ in }
-        )
-    }
-
-    /// Board point to view point, the forward direction of `canvasPoint`.
-    private func viewPoint(_ point: CGPoint) -> CGPoint {
-        CGPoint(
-            x: point.x * workspace.zoom + workspace.pan.width,
-            y: point.y * workspace.zoom + workspace.pan.height
-        )
-    }
-
-    // MARK: Creation
-
     /// Converts a point in the view to a point on the board, inverting
     /// `p * zoom + pan`.
-    private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
+    func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
         CGPoint(
             x: (location.x - workspace.pan.width) / workspace.zoom,
             y: (location.y - workspace.pan.height) / workspace.zoom
         )
     }
 
-    private func handleTap(at point: CGPoint) {
-        switch workspace.tool {
-        case .select:
-            workspace.selection = []
-        case .note:
-            _ = workspace.addStickyNote("", at: point)
-        case .text:
-            _ = workspace.addFreeText("", at: point)
-        case .folder:
-            newItemDraft = NewItemDraft(kind: .folder, point: point)
-        case .link:
-            newItemDraft = NewItemDraft(kind: .link, point: point)
-        case .document:
-            newItemDraft = NewItemDraft(kind: .note, point: point)
-        case .todo:
-            _ = workspace.addStickyNote("- [ ] ", at: point)
-        case .image:
-            if let urls = VaultOpenPanel.chooseFiles(
-                title: "Importa immagini",
-                message: "Le immagini vengono copiate nella cartella della board."
-            ) {
-                importProposals = workspace.importFiles(urls, at: point)
-            }
-        case .drawing:
-            // The drawing layer takes over the board while this tool is active.
-            break
-        case .arrow, .forms:
-            // The arrow is drawn by dragging between two cards; forms is v2.
-            break
-        }
-        // Back to Seleziona after one use (SPEC §6.4), except for the two tools that
-        // are used by dragging rather than by tapping: resetting those would end the
-        // gesture the user is in the middle of.
-        if workspace.tool != .drawing, workspace.tool != .arrow {
-            workspace.finishToolUse()
-        }
-    }
-
-    private func newItemSheet(_ draft: NewItemDraft) -> some View {
-        NewCanvasItemSheet(
-            kind: draft.kind == .folder ? .folder : (draft.kind == .link ? .link : .note),
-            onCancel: { newItemDraft = nil },
-            onConfirm: { value in
-                create(draft.kind, value: value, at: draft.point)
-                newItemDraft = nil
-            }
-        )
-    }
-
-    private func create(_ kind: NewItemDraft.Kind, value: String, at point: CGPoint) {
-        switch kind {
-        case .folder:
-            do {
-                _ = try workspace.createFolder(named: value, at: point)
-            } catch {
-                // Reported through the workspace's own problem list rather than a
-                // modal: the board is still usable and the name can be retried.
-                workspace.recordProblem("\(error)")
-            }
-        case .link:
-            _ = workspace.addLink(value, at: point)
-        case .note:
-            do {
-                let path = try vault.createNote(
-                    title: value, in: workspace.folder, date: .today
-                )
-                _ = workspace.placeFile(path, at: point, creatingOnDisk: path)
-            } catch {
-                workspace.recordProblem(ConformanceText.creationFailure(error))
-            }
-        }
-    }
 }

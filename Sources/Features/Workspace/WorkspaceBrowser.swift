@@ -35,12 +35,15 @@ struct WorkspaceBrowser: View {
     /// The folders currently open, by path. View state rather than a preference, for
     /// the same reason the note tree's is.
     @State private var expanded: Set<String> = []
-    @State private var tree: [NoteTree.Node] = []
-    /// The same boards folded one row per folder - what the rows below are drawn from,
-    /// and what the selection binding resolves a clicked id against (ADR-0024 §D2).
-    /// Kept beside `tree` rather than replacing it: `tree` is still what
-    /// `allFolders(in:)` walks for "Espandi tutto". Nothing else reads it - the
-    /// stale-selection drop asks this tree instead (ADR-0024 §D7).
+    /// The boards folded one row per folder - what the rows below are drawn from, what the
+    /// selection binding resolves a clicked id against (ADR-0024 §D2), what the
+    /// stale-selection drop is asked (§D7), and what "Espandi tutto" expands.
+    ///
+    /// The only tree this view holds. The `NoteTree` that used to sit beside it existed
+    /// solely so a `NoteTree`-shaped `allFolders(in:)` could walk it for the expand-all
+    /// set, and `WorkspaceTree.folders(in:)` answers that from the rows actually drawn -
+    /// one tree, so the set of expandable ids cannot be a different set from the ids the
+    /// rows carry.
     @State private var workspaceTree: [WorkspaceTree.Node] = []
     /// What `flatList` draws: the matches for the filter as it stands, computed once per
     /// change of an input rather than once per `body` evaluation. `rows(matching:in:)`
@@ -155,7 +158,7 @@ struct WorkspaceBrowser: View {
             onDelete: { confirmDelete(of: targetFolder) },
             // The same `expanded` binding the tree's context menu drives: two places to
             // reach one piece of state, never two pieces of state (ADR-0022 §D8).
-            onExpandAll: { expanded = Self.allFolders(in: tree) },
+            onExpandAll: { expanded = expandableFolders },
             onCollapseAll: { expanded = [] }
         )
     }
@@ -322,7 +325,7 @@ struct WorkspaceBrowser: View {
         // the gesture that used to stand in for it was written when this list had no
         // selection binding at all.
         .contextMenu {
-            Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
+            Button("Espandi tutto") { expanded = expandableFolders }
             Button("Comprimi tutto") { expanded = [] }
         }
     }
@@ -370,7 +373,6 @@ struct WorkspaceBrowser: View {
         // decides rather than on every access (see the declaration).
         folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         boards = store?.allBoards() ?? []
-        tree = NoteTree.build(fromPaths: boards)
         // The folder↔board naming rule is asked, never restated (ADR-0024 §D2): the
         // closure handed in is `CanvasStore.boardPath(forFolder:)` itself, the same rule
         // the controller loads a board by, so the fold cannot drift from it. With no
@@ -385,9 +387,9 @@ struct WorkspaceBrowser: View {
         // local state - there no longer is any to assign.
         //
         // Asked of the tree the rows are actually drawn from, and that is the whole of
-        // it: `Self.allFolders(in:)` below walks `NoteTree`, which has no node for the
-        // vault root (ADR-0024 F7), so a root board's selection - spelled `""` - would
-        // be found missing and dropped on every single rescan (§D7).
+        // it: `NoteTree` has no node for the vault root (ADR-0024 F7), so a check made
+        // against a `NoteTree` walk would find a root board's selection - spelled `""` -
+        // missing and drop it on every single rescan (§D7).
         if let selectedFolder, !WorkspaceTree.folders(in: workspaceTree).contains(selectedFolder) {
             onSelect(nil)
         }
@@ -424,17 +426,17 @@ struct WorkspaceBrowser: View {
         expanded.formUnion(NoteTree.ancestors(of: path))
     }
 
-    // Widened from `private` to the file's default (internal) access, additive and
-    // signature-preserving, so `Tests/WorkspaceBrowserToolbarTests.swift` can reach it
-    // through `@testable import Pergamenum` (ADR-0022, plan Task 5, R-01). No behaviour
-    // changed - same body, same call sites, only visibility.
-    static func allFolders(in nodes: [NoteTree.Node]) -> Set<String> {
-        var result: Set<String> = []
-        for node in nodes where node.kind == .folder {
-            result.insert(node.id)
-            result.formUnion(allFolders(in: node.children ?? []))
-        }
-        return result
+    /// What "Espandi tutto" opens, from both surfaces that offer it (the toolbar button
+    /// and the tree's context menu, ADR-0022 §D8): every `.workspace` row's id of the tree
+    /// the rows are drawn from.
+    ///
+    /// Asked of `WorkspaceTree.folders(in:)` rather than of a walk of this view's own -
+    /// the fold already answers "which ids are folder rows" for the stale-selection drop
+    /// and the selection setter, and an expand-all built on a second walk is a second
+    /// answer to the same question. The root row (`""`) is in the set and its being there
+    /// draws nothing: `WorkspaceTree.build` synthesises it with no children.
+    private var expandableFolders: Set<String> {
+        Set(WorkspaceTree.folders(in: workspaceTree))
     }
 
     /// The filtered list's input (ADR-0024 Task 3, R-09): every `.workspace` row of

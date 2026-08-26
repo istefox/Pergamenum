@@ -86,7 +86,7 @@ final class WorkspaceController {
     /// True only while a board is drawn, derived from `current` rather than stored
     /// separately (ADR-0024 §D4) - answering "is a board on screen" can never disagree
     /// with "which row is lit" because both read the same value.
-    var isShowingBoard: Bool { if case .board = current { true } else { false } }
+    var isShowingBoard: Bool { current?.hasBoard ?? false }
     private(set) var document = CanvasDocument.empty
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
     /// `contents.subfolders` in the shape the "is this path a folder" question needs.
@@ -140,6 +140,15 @@ final class WorkspaceController {
     private var saveTask: Task<Void, Never>?
     /// Autosave delay of SPEC §6.1.
     private let autosaveDelay = Duration.seconds(1)
+    /// The reframing owed to a viewport that is still changing size, and the debounce
+    /// waiting for it to settle. Stored here rather than as three `@State` flags in the
+    /// view because it is viewport-framing policy; the behaviour lives in
+    /// `WorkspaceController+Viewport`, which as an extension cannot hold state.
+    ///
+    /// One optional rather than a flag per mode: the two modes are mutually exclusive
+    /// and this is what makes them unable to be raised together.
+    var pendingRefit: RefitMode?
+    var refitTask: Task<Void, Never>?
 
     // MARK: Navigation
 
@@ -349,7 +358,10 @@ final class WorkspaceController {
             refreshContents()
             return true
         case .blocked(let name):
-            recordProblem("«\(name)» è stata creata su disco: annullare toglierebbe la card e lascerebbe il file. Eliminalo dal Finder se non lo vuoi.")
+            recordProblem(
+                "«\(name)» è stata creata su disco: annullare toglierebbe la card e lascerebbe il file. "
+                + "Eliminalo dal Finder se non lo vuoi."
+            )
             return false
         case .nothingToDo:
             return false
@@ -393,8 +405,6 @@ final class WorkspaceController {
     /// The marquee being dragged, in board units (SPEC §6.3).
     var marqueeStart: CGPoint?
     var marqueeRect: CGRect?
-
-
 
     func move(nodeIDs: Set<String>, by delta: CGSize) {
         guard !delta.width.isZero || !delta.height.isZero else { return }
@@ -657,6 +667,4 @@ final class WorkspaceController {
             recordProblem("salvataggio di \(folder): \(error)")
         }
     }
-
-
 }
