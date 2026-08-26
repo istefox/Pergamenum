@@ -16,16 +16,20 @@ struct BoardTopBar: View {
     let workspace: WorkspaceController
 
     var body: some View {
-        HStack(spacing: theme.spacing(.xs)) {
+        // Read once per redraw: `breadcrumb` is computed - it splits the folder path and
+        // allocates a fresh array on every access - so reading it inside the `ForEach`
+        // body cost one more array construction per segment on top of the enumeration.
+        let crumbs = workspace.breadcrumb
+        return HStack(spacing: theme.spacing(.xs)) {
             Circle()
                 .fill(theme.color(workspace.hasUnsavedChanges ? .taskScheduled : .accentPrimary))
                 .frame(width: 8, height: 8)
 
-            ForEach(Array(workspace.breadcrumb.enumerated()), id: \.offset) { index, crumb in
+            ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
                 if index > 0 {
                     Text("›").themedText(.body, color: .textTertiary)
                 }
-                if index == workspace.breadcrumb.count - 1 {
+                if index == crumbs.count - 1 {
                     // The last segment is where you already are, so it is not a link
                     // (ADR-0024 §D8.2): as a `Button` it re-ran `open(folder:)` on the
                     // open folder, which resets the board's zoom and pan for a click
@@ -191,6 +195,39 @@ struct BoardTray: View {
     @Environment(VaultController.self) private var vault
     let workspace: WorkspaceController
 
+    /// The tasks assigned to this board, and how many of them are still open.
+    ///
+    /// Held rather than queried per draw: `index.tasks(assignedToWorkspace:)` sorts every
+    /// note in the vault and flat-maps every task out of it, and this tray redraws on every
+    /// observable change it reads - a card dragged across the board included. Refreshed on
+    /// `taskGeneration`, the same counter `TasksView` and `TodayView` watch, which every
+    /// completed scan and every task line the app writes bumps.
+    @State private var assigned = AssignedTasks()
+
+    /// The notes this board carries, held rather than derived per draw.
+    ///
+    /// `WorkspaceReferences.notes(in:)` walks every node and runs `WikilinkParser.links`
+    /// over the text of every text card, so computing it inside `body` re-parsed the whole
+    /// board on every observable change this tray reads - a card dragged across it
+    /// included. Refreshed on the document itself, which is `Equatable`: a board's
+    /// references cannot change without it changing, and a drag stays transient until it
+    /// commits, so this recomputes once per real mutation rather than once per redraw.
+    @State private var references: [String] = []
+
+    /// What `assigned` was computed from. A type rather than an interpolated string so the
+    /// two parts of the key cannot run into each other.
+    private struct AssignedKey: Equatable {
+        let generation: Int
+        let board: String
+    }
+
+    /// The count comes out of the same pass that collects the tasks: a second `filter` over
+    /// the result was another array allocated per draw for a number.
+    private struct AssignedTasks {
+        var tasks: [TaskItem] = []
+        var open = 0
+    }
+
     var body: some View {
         // Four sections do not fit a 200-point column, and the one that overflows is
         // whichever happens to be last rather than the least important.
@@ -226,30 +263,42 @@ struct BoardTray: View {
     /// assignment marker is removed from `TaskItem.links`, so a task appears in exactly
     /// one of the two sections and the pair is not a duplicate list.
     private var assignedTasks: some View {
-        let tasks = vault.index.tasks(assignedToWorkspace: boardFileName)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             HStack(spacing: theme.spacing(.xs)) {
                 Text("TASK ASSEGNATI").themedText(.caption, color: .textTertiary)
-                if !tasks.isEmpty {
-                    Text("\(tasks.filter { $0.state != .done }.count)/\(tasks.count)")
+                if !assigned.tasks.isEmpty {
+                    Text("\(assigned.open)/\(assigned.tasks.count)")
                         .themedText(.caption, color: .textTertiary)
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Task assegnati a questa board: \(tasks.count)")
+            .accessibilityLabel("Task assegnati a questa board: \(assigned.tasks.count)")
             .accessibilityIdentifier("board-assigned-tasks-header")
 
-            if tasks.isEmpty {
+            if assigned.tasks.isEmpty {
                 Text("nessun task assegnato a questa board")
                     .themedText(.caption, color: .textTertiary)
             } else {
-                ForEach(tasks) { task in
+                ForEach(assigned.tasks) { task in
                     TaskPanelRow(task: task, identifierPrefix: "assigned-task")
                 }
             }
         }
+        .task(id: AssignedKey(generation: vault.taskGeneration, board: boardFileName)) {
+            refreshAssignedTasks()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board-assigned-tasks")
+    }
+
+    private func refreshAssignedTasks() {
+        let tasks = vault.index.tasks(assignedToWorkspace: boardFileName)
+        assigned = AssignedTasks(
+            tasks: tasks,
+            open: tasks.reduce(into: 0) { count, task in
+                if task.state != .done { count += 1 }
+            }
+        )
     }
 
     /// R-06: the notes this board carries, read from the open document and never from
@@ -257,29 +306,35 @@ struct BoardTray: View {
     /// board", which is a different question and wrong for a card placed and never
     /// linked.
     private var referencedNotes: some View {
-        let notes = WorkspaceReferences.notes(in: workspace.document)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             HStack(spacing: theme.spacing(.xs)) {
                 Text("NOTE REFERENZIATE").themedText(.caption, color: .textTertiary)
-                if !notes.isEmpty {
-                    Text("\(notes.count)").themedText(.caption, color: .textTertiary)
+                if !references.isEmpty {
+                    Text("\(references.count)").themedText(.caption, color: .textTertiary)
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Note referenziate da questa board: \(notes.count)")
+            .accessibilityLabel("Note referenziate da questa board: \(references.count)")
             .accessibilityIdentifier("board-referenced-notes-header")
 
-            if notes.isEmpty {
+            if references.isEmpty {
                 Text("nessuna nota su questa board")
                     .themedText(.caption, color: .textTertiary)
             } else {
-                ForEach(notes, id: \.self) { reference in
+                ForEach(references, id: \.self) { reference in
                     noteRow(reference)
                 }
             }
         }
+        .task(id: workspace.document) {
+            refreshReferencedNotes()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board-referenced-notes")
+    }
+
+    private func refreshReferencedNotes() {
+        references = WorkspaceReferences.notes(in: workspace.document)
     }
 
     private func noteRow(_ reference: String) -> some View {
@@ -287,14 +342,21 @@ struct BoardTray: View {
         // title, resolved through the index for display and left exactly as written
         // when it resolves to nothing (D8) - an unresolved link is still a fact about
         // the board.
+        //
+        // The name is bound once because the row writes it twice, as the label and as
+        // the accessibility label: computed at each of them, every redraw of the tray
+        // paid a second NSString bridge and a second `NoteName.title(fromFileName:)`
+        // for every row - and this tray redraws on every observable change it reads, a
+        // card dragged across the board included.
         let path = resolvedPath(for: reference)
+        let name = displayName(for: reference, path: path)
         return Button {
             if let path { vault.openNote(at: path) }
         } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: path == nil ? "questionmark.square.dashed" : "doc.text")
                     .foregroundStyle(theme.color(path == nil ? .textTertiary : .textSecondary))
-                Text(displayName(for: reference, path: path))
+                Text(name)
                     .themedText(.caption, color: path == nil ? .textTertiary : .textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -304,7 +366,7 @@ struct BoardTray: View {
         .buttonStyle(.plain)
         .disabled(path == nil)
         .help(path ?? "nota non trovata nel vault")
-        .accessibilityLabel("Nota \(displayName(for: reference, path: path))")
+        .accessibilityLabel("Nota \(name)")
         .accessibilityIdentifier("board-referenced-note-\(reference)")
     }
 
@@ -321,11 +383,17 @@ struct BoardTray: View {
     }
 
     /// The board's own file name, as a wikilink would write it.
-
+    ///
+    /// Read from the store the controller already holds rather than from a fresh one:
+    /// `CanvasStore.init` calls `resolvingSymlinksInPath().standardizedFileURL`, so
+    /// building a store here charged the tray a filesystem syscall per access - twice
+    /// per draw, on a view that redraws for every observable change it reads, a card
+    /// dragged across the board included. The value is the same: the store is attached
+    /// from the same `vault.root` (`WorkspaceView.attachWorkspace`), and a board is only
+    /// ever on screen when `load(folder:)` found one, which needs the store anyway.
     private var boardFileName: String {
-        guard let root = vault.root else { return "" }
-        return (CanvasStore(root: root).boardPath(forFolder: workspace.folder) as NSString)
-            .lastPathComponent
+        guard let store = workspace.store else { return "" }
+        return (store.boardPath(forFolder: workspace.folder) as NSString).lastPathComponent
     }
 
     private var newItems: some View {
@@ -342,7 +410,7 @@ struct BoardTray: View {
                         _ = workspace.placeFile(path, at: CGPoint(x: 60, y: 60))
                     } label: {
                         HStack(spacing: theme.spacing(.xs)) {
-                            Image(systemName: workspace.contents.subfolders.contains(path)
+                            Image(systemName: workspace.subfolderSet.contains(path)
                                   ? "folder" : "doc")
                             Text((path as NSString).lastPathComponent)
                                 .themedText(.caption)

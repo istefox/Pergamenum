@@ -58,14 +58,23 @@ struct WorkspaceView: View {
         // chain is checked as one expression regardless of which piece is heaviest.
         // Splitting the CHAIN across separate declarations, not just extracting closure
         // bodies, is what actually bounds each piece's inference on its own.
-        lifecycleModifiers(mainContent)
+        //
+        // `selectedFileURLs` is derived once here and handed down rather than asked for
+        // by each reader: it filters every node in the document and stats each selected
+        // file, and its two readers - the Quick Look target below and the toolbar's
+        // Anteprima button - are evaluated in the same body pass, so asking twice paid
+        // that walk and those syscalls twice on every redraw of the board.
+        let previewURLs = workspace.selectedFileURLs
+        return lifecycleModifiers(
+            mainContent(previewURLs: previewURLs), previewURLs: previewURLs
+        )
     }
 
     @ViewBuilder
-    private func lifecycleModifiers(_ content: some View) -> some View {
+    private func lifecycleModifiers(_ content: some View, previewURLs: [URL]) -> some View {
         routingModifiers(
             content
-                .quickLook(urls: workspace.selectedFileURLs, isPresented: $isShowingQuickLook)
+                .quickLook(urls: previewURLs, isPresented: $isShowingQuickLook)
                 .onChange(of: vault.isShowingQuickLook) { _, requested in
                     guard requested else { return }
                     isShowingQuickLook = true
@@ -125,7 +134,7 @@ struct WorkspaceView: View {
             }
     }
 
-    private var mainContent: some View {
+    private func mainContent(previewURLs: [URL]) -> some View {
         VStack(spacing: 0) {
             BoardTopBar(workspace: workspace)
             Divider()
@@ -161,7 +170,7 @@ struct WorkspaceView: View {
             }
         }
         .background(theme.color(.backgroundPrimary))
-        .toolbar { toolbar }
+        .toolbar { toolbar(previewURLs: previewURLs) }
     }
 
     private func attachWorkspace() {
@@ -321,7 +330,7 @@ struct WorkspaceView: View {
     /// Ripeti, they do not reach the board, and reconciling the two is a change to
     /// the undo architecture rather than to a toolbar.
     @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
+    private func toolbar(previewURLs: [URL]) -> some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
             Button { workspace.undo() } label: {
                 Label("Annulla", systemImage: "arrow.uturn.backward")
@@ -343,7 +352,7 @@ struct WorkspaceView: View {
                 Label("Anteprima", systemImage: "eye")
             }
             .help("Anteprima rapida del file selezionato (barra spaziatrice)")
-            .disabled(workspace.selectedFileURLs.isEmpty)
+            .disabled(previewURLs.isEmpty)
 
             // The same state the Vista menu's «Pannello Workspace» drives, now that it
             // lives on `Navigation`: one toggle, two places to reach it.

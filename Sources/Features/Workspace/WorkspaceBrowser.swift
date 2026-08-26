@@ -42,7 +42,31 @@ struct WorkspaceBrowser: View {
     /// `allFolders(in:)` walks for "Espandi tutto". Nothing else reads it - the
     /// stale-selection drop asks this tree instead (ADR-0024 §D7).
     @State private var workspaceTree: [WorkspaceTree.Node] = []
+    /// What `flatList` draws: the matches for the filter as it stands, computed once per
+    /// change of an input rather than once per `body` evaluation. `rows(matching:in:)`
+    /// walks the whole tree and runs two locale-aware comparisons on every node of it,
+    /// and a body is re-evaluated by a scroll and by a selection, neither of which can
+    /// change the answer. Kept current by `refreshFilteredRows()`, called where each of
+    /// the two inputs changes: `filter` (`.onChange` on the body) and `workspaceTree`
+    /// (the end of `rebuild()`).
+    ///
+    /// The rows arrive **detached** (`children: []`), which is what lets the list draw
+    /// every one of them at depth 0.
+    @State private var filteredRows: [WorkspaceTree.Node] = []
     @State private var boards: [String] = []
+    /// The folder rules over the open vault's root, built once per scan rather than once
+    /// per call. `NoteStore.init` resolves symlinks and standardizes the URL - filesystem
+    /// syscalls, not string work - and `nameIsAvailable` is asked live, on every keystroke
+    /// of both sheets, so deriving this in a getter spent a symlink resolution and an
+    /// allocation per typed character on top of the `fileExists` the check is actually
+    /// for. Nil with no vault open, which is also when the toolbar has nothing to act on.
+    ///
+    /// Assigned in `rebuild()`, whose trigger is `vault.scanGeneration`, and the root is
+    /// this value's only input: a vault switch bumps that counter (`VaultController.open`
+    /// awaits `rescan()`), and a close takes this whole view down rather than leaving it
+    /// on screen (`RootView.workspacePane` draws it only with a root), so the stored
+    /// value cannot outlive the root it was built from.
+    @State private var folderOperations: FolderFileOperations?
     @State private var isCreatingWorkspace = false
     /// The rename waiting for its sheet, carrying the folder it is about - `pendingDelete`'s
     /// shape below, for the same reason. Whoever asks names the folder: the row's context
@@ -73,6 +97,8 @@ struct WorkspaceBrowser: View {
         // files on disk, and a board list is tens of entries beside it.
         .task(id: vault.scanGeneration) { rebuild() }
         .onChange(of: selectedFolder) { _, path in reveal(path) }
+        // The filter's other input is the tree, refreshed at the end of `rebuild()`.
+        .onChange(of: filter) { _, _ in refreshFilteredRows() }
         .sheet(isPresented: $isCreatingWorkspace) {
             NewWorkspaceSheet(
                 parents: WorkspaceFolderSheets.parentOptions(from: boards),
@@ -173,12 +199,6 @@ struct WorkspaceBrowser: View {
     /// second spelling of the rule for the sheet to disagree with.
     private func nameIsAvailable(_ name: String, in parent: String) -> Bool {
         folderOperations?.nameIsAvailable(name, in: parent) ?? true
-    }
-
-    /// The folder rules, over the open vault's root. Nil with no vault open, which is
-    /// also when the toolbar has nothing to act on.
-    private var folderOperations: FolderFileOperations? {
-        vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
     }
 
     // MARK: Verbs
@@ -313,14 +333,16 @@ struct WorkspaceBrowser: View {
     ///
     /// The same row view and the same binding as the tree above, which is R-09 read as
     /// "not a second implementation". `rows(matching:in:)` hands back detached rows, so
-    /// `flattened` is a straight walk at depth 0 rather than a re-nesting of matches.
+    /// every match is drawn at depth 0 - there is no nesting left to flatten, and asking
+    /// `WorkspaceTree.flattened` about it (as this did) was a second recursion whose only
+    /// possible answer was the list it was handed, at depth 0, in a fresh tuple array.
+    ///
+    /// The matching itself happens in `refreshFilteredRows()`, not here: a `body` is
+    /// evaluated far more often than the filter is typed into.
     private var flatList: some View {
         List(selection: treeSelection) {
-            ForEach(
-                WorkspaceTree.flattened(Self.rows(matching: filter, in: workspaceTree)),
-                id: \.node.id
-            ) { match in
-                row(match.node, depth: match.depth)
+            ForEach(filteredRows, id: \.id) { node in
+                row(node, depth: 0)
             }
         }
         .scrollContentBackground(.hidden)
@@ -344,6 +366,9 @@ struct WorkspaceBrowser: View {
 
     private func rebuild() {
         let store = vault.root.map { CanvasStore(root: $0) }
+        // The folder verbs' file rules, rebuilt here with the rest of what the root
+        // decides rather than on every access (see the declaration).
+        folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         boards = store?.allBoards() ?? []
         tree = NoteTree.build(fromPaths: boards)
         // The folder↔board naming rule is asked, never restated (ADR-0024 §D2): the
@@ -367,6 +392,23 @@ struct WorkspaceBrowser: View {
             onSelect(nil)
         }
         reveal(selectedFolder)
+        // Last, because it reads `workspaceTree`: a rescan that added, renamed or removed
+        // a board changes what the filter matches, and the filtered list is not redrawn
+        // from the tree - it is redrawn from `filteredRows`.
+        refreshFilteredRows()
+    }
+
+    /// Recomputes what `flatList` draws, from the filter and the tree it matches against.
+    /// One place, called from the two events that can change either - never from a `body`,
+    /// which is the point of the cache.
+    ///
+    /// An empty filter short-circuits to nothing rather than walking the tree: `flatList`
+    /// is not on screen then (the body draws `folderTree` instead), and
+    /// `rows(matching: "", in:)` answers `[]` regardless, because
+    /// `localizedCaseInsensitiveContains("")` is `false` - so this is the same value for
+    /// less work, not a different one.
+    private func refreshFilteredRows() {
+        filteredRows = filter.isEmpty ? [] : Self.rows(matching: filter, in: workspaceTree)
     }
 
     /// Opens the folders above a selected **folder**, so a board opened from somewhere

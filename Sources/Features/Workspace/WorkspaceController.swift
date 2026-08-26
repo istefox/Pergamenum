@@ -89,6 +89,14 @@ final class WorkspaceController {
     var isShowingBoard: Bool { if case .board = current { true } else { false } }
     private(set) var document = CanvasDocument.empty
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
+    /// `contents.subfolders` in the shape the "is this path a folder" question needs.
+    ///
+    /// That question is asked once per node while the board draws (`subfolder(for:)`,
+    /// `selectedFileURLs`) and once per tray row (`BoardChrome`), so answering it by
+    /// scanning the array cost O(nodes x subfolders) per redraw. `contents.subfolders`
+    /// stays an ordered array because display order is its other job; this is the same
+    /// data indexed for lookup, written only by `setContents` so the two cannot drift.
+    private(set) var subfolderSet: Set<String> = []
 
     var tool: Tool = .select
     /// True when a tool stays active after one use (double click on the tool).
@@ -168,7 +176,7 @@ final class WorkspaceController {
         vault = nil
         emailHeaders = [:]
         document = .empty
-        contents = .init(subfolders: [], unplaced: [])
+        setContents(.init(subfolders: [], unplaced: []))
         folder = ""
         current = nil
         selection = []
@@ -270,9 +278,31 @@ final class WorkspaceController {
         vault?.recordProblem(message)
     }
 
+    /// Re-reads the folder from disk and re-splits it into what the board shows and what
+    /// it does not.
+    ///
+    /// The directory listing is deliberately **not** cached, even though every caller but
+    /// `load` changes only the placed set and leaves the folder itself untouched. This
+    /// re-read is the tray's entire freshness mechanism: SPEC §6.1 has a file dropped into
+    /// the folder from Finder appear under "Nuovi elementi", no view ever calls this, and
+    /// `scanGeneration` cannot stand in for the invalidation because
+    /// `VaultWatcher.handle(absolutePaths:)` discards every path that is not `.md` - which
+    /// is exactly the pdf, image and eml the tray exists for. A listing held until the next
+    /// `load` would leave a dropped file invisible until the user navigated away and back,
+    /// which is a worse trade than one directory enumeration per card.
+    ///
+    /// What is worth removing is a *second* call inside one mutation, where the first has
+    /// already read the same document against the same disk - see `createFolder`.
     func refreshContents() {
         guard let store else { return }
-        contents = store.contents(ofFolder: folder, board: document)
+        setContents(store.contents(ofFolder: folder, board: document))
+    }
+
+    /// The only writer of `contents`, so `subfolderSet` is refilled with it every time
+    /// and no future caller can update one and forget the other.
+    private func setContents(_ new: CanvasStore.FolderContents) {
+        contents = new
+        subfolderSet = Set(new.subfolders)
     }
 
     // MARK: Editing
@@ -309,8 +339,11 @@ final class WorkspaceController {
             endCrop(confirm: false)
             document = restored
             // A card that no longer exists must not stay selected: the toolbar would
-            // offer actions on nothing.
-            selection = selection.filter { id in document.nodes.contains { $0.id == id } }
+            // offer actions on nothing. The ids are hashed once rather than scanned per
+            // selected card, so holding Cmd+Z on a board with a large marquee selection
+            // stays linear instead of costing selection × nodes comparisons a step.
+            let liveIDs = Set(document.nodes.map(\.id))
+            selection = selection.intersection(liveIDs)
             hasUnsavedChanges = true
             scheduleSave()
             refreshContents()
@@ -510,9 +543,11 @@ final class WorkspaceController {
     func createFolder(named name: String, at point: CGPoint) throws -> String {
         guard let store else { throw CanvasStore.StoreError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try store.createFolder(named: name, in: folder)
-        let id = placeFile(relativePath, at: point, creatingOnDisk: relativePath)
-        refreshContents()
-        return id
+        // No second `refreshContents()` here. The directory exists before `placeFile` runs,
+        // and `placeFile` -> `addNode` already refreshed against this same document and this
+        // same disk, so a call on the way out enumerated the folder twice for one new card
+        // and could only ever recompute the value already in `contents`.
+        return placeFile(relativePath, at: point, creatingOnDisk: relativePath)
     }
 
     /// Absolute URL of the file a node points at, when it points at one.
@@ -522,8 +557,13 @@ final class WorkspaceController {
     }
 
     /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).
+    ///
+    /// The empty-selection exit is not tidiness: this walks every node in the document
+    /// and stats each file it keeps, and the board redraws far more often than anything
+    /// is selected. Nothing selected can only ever produce an empty list anyway.
     var selectedFileURLs: [URL] {
-        document.nodes
+        guard !selection.isEmpty else { return [] }
+        return document.nodes
             .filter { selection.contains($0.id) }
             .compactMap { node in
                 // A folder card previews as a folder, which Quick Look renders as an
@@ -536,24 +576,50 @@ final class WorkspaceController {
     /// Reads and memoises the headers of an `.eml` card.
     ///
     /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
-    /// cheap even for a message with a large attachment.
+    /// cheap even for a message with a large attachment: the file is mapped rather than
+    /// copied, and only the bytes before the blank line are decoded.
     func loadEmailHeaders(for relativePath: String) {
         guard let store, emailHeaders[relativePath] == nil else { return }
         let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return }
+        let headerBytes = Self.headerBlock(of: data)
 
         // Latin-1 as the fallback: an .eml whose headers are not UTF-8 still has
         // readable ASCII field names, and refusing the file would leave the card blank.
-        let text = String(data: data, encoding: .utf8)
-            ?? String(data: data, encoding: .isoLatin1)
+        let text = String(data: headerBytes, encoding: .utf8)
+            ?? String(data: headerBytes, encoding: .isoLatin1)
             ?? ""
         emailHeaders[relativePath] = EmailHeaderParser.parse(text)
+    }
+
+    /// The bytes up to the blank line that ends an `.eml`'s header block.
+    ///
+    /// `EmailHeaderParser` stops at that line anyway, but only after the whole message
+    /// has been decoded into a `String` - which for a base64 attachment is megabytes of
+    /// UTF-8 validation done to be thrown away. Cutting at the boundary in bytes keeps
+    /// the cost proportional to the headers.
+    ///
+    /// The search is capped: a file with no blank line in its first 64 KB is not a
+    /// message these cards can describe, and the fallback cut lands on the last newline
+    /// so a multi-byte character is never split - half a character fails UTF-8 and
+    /// silently lands in the Latin-1 fallback as mojibake.
+    private static func headerBlock(of data: Data) -> Data {
+        let limit = min(data.count, 64 * 1024)
+        let window = data[data.startIndex..<data.index(data.startIndex, offsetBy: limit)]
+
+        let separators = [Data([0x0A, 0x0A]), Data([0x0D, 0x0A, 0x0D, 0x0A])]
+        if let end = separators.compactMap({ window.range(of: $0)?.lowerBound }).min() {
+            return window[window.startIndex..<end]
+        }
+        // Headers-only file shorter than the cap: nothing was truncated, keep it whole.
+        guard limit < data.count, let lastNewline = window.lastIndex(of: 0x0A) else { return window }
+        return window[window.startIndex..<lastNewline]
     }
 
     /// The folder a card points at, when it points at one.
     func subfolder(for node: CanvasNode) -> String? {
         guard case .file(let path, _) = node.kind else { return nil }
-        return contents.subfolders.contains(path) ? path : nil
+        return subfolderSet.contains(path) ? path : nil
     }
 
     // MARK: Saving
