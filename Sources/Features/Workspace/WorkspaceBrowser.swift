@@ -543,7 +543,30 @@ private struct WorkspaceRow: View {
         }
         .padding(.leading, CGFloat(depth) * Self.indent)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
+        // `.contain`, never `.combine`, and the difference is the whole of R-02/R-03.
+        // `.combine` folds the row's texts into a single element whose macOS role is
+        // `StaticText`, and a `StaticText` carries its words in `AXValue`: the label
+        // below arrived in XCUITest's `value` while its `label` stayed empty, so no
+        // assertion on the ", aperta"/", selezionata" suffix could ever match. Read out
+        // of a failing run's exported UI hierarchy rather than guessed - `StaticText,
+        // identifier: 'workspace-board-…', value: Workspace Dettagli…, Selected` - and
+        // it is the same trap `UITests/WorkspaceIntegrationUITests.swift:176-181` already
+        // wrote down for a plain `Text`. `.contain` makes the row a `Group`, which is the
+        // shape that puts the words in `label`: `TaskPanelRow` (`LinkedTasksPanel.swift`)
+        // and this pane's own `workspace-browser-header` are both already that.
+        //
+        // The second half costs more than the label and is the reason this is not a
+        // cosmetic choice: `.combine` swallowed the chevron's own `.onTapGesture` into
+        // the one merged element, and the merged element's activation point became the
+        // triangle's - so a click on a row *with children* landed on the triangle and
+        // expanded the folder instead of selecting it, while a childless row selected
+        // normally. Measured, not inferred: the failing run's synthesized event drove the
+        // pointer to x=218 (the triangle) on `Progetti`, against x=319 (the row's centre)
+        // on the root board's row one click earlier. Under `.contain` the triangle is an
+        // element of its own again and the row's hit point is the row's - which is
+        // «the triangle expands, the row selects» (ADR-0024 §D5) holding for the
+        // accessibility tree, not only for a mouse aimed by a person.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         // Belt and braces beside the label: whether this trait reaches XCUITest's
         // `isSelected` for custom `List` row content on macOS is unverified here, so the
