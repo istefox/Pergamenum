@@ -25,12 +25,19 @@ struct BoardTopBar: View {
                 if index > 0 {
                     Text("›").themedText(.body, color: .textTertiary)
                 }
-                Button(crumb.title) { workspace.open(folder: crumb.folder) }
-                    .buttonStyle(.plain)
-                    .themedText(
-                        .body,
-                        color: index == workspace.breadcrumb.count - 1 ? .textPrimary : .textSecondary
-                    )
+                if index == workspace.breadcrumb.count - 1 {
+                    // The last segment is where you already are, so it is not a link
+                    // (ADR-0024 §D8.2): as a `Button` it re-ran `open(folder:)` on the
+                    // open folder, which resets the board's zoom and pan for a click
+                    // that was meant to go nowhere. Emphasis carries "you are here" -
+                    // the tree says it with the system's row fill and this pane's
+                    // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
+                    Text(crumb.title).themedText(.body, color: .textPrimary)
+                } else {
+                    Button(crumb.title) { workspace.open(folder: crumb.folder) }
+                        .buttonStyle(.plain)
+                        .themedText(.body, color: .textSecondary)
+                }
             }
 
             Spacer()
