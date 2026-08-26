@@ -1,179 +1,161 @@
-# SPEC — Workspace board tree single selection model
+# Workspace folder/board separation (Finder/Obsidian model)
 
-**Topic slug:** workspace-board-tree-single-selection
+**Topic slug:** workspace-folder-board-separation
 
-## Objectives
+## Objective
 
-The Workspace sidebar tree (`WorkspaceBrowser.swift`) conflates two distinct selection concepts —
-`selectedFolder` (the toolbar's Rinomina/Elimina target, ADR-0022 §D9) and `openBoardPath` (the
-board currently shown) — and renders both with the identical `.accentPrimary` color token, with no
-other visual differentiator. The result, confirmed by user report and screenshot: three rows can be
-lit simultaneously with no discernible meaning, because opening a board writes both state
-variables at once.
+Separate the folder-container concept from the board-file concept in the Workspace, replacing
+the current "one board per folder, named after it" rule with a Finder/Obsidian model: a folder
+is always a pure container, never directly openable as a board, and a `.canvas` file is a free
+document — any name, any folder, any count.
 
-This feature replaces the two-variable model with **one derived selection**, following the
-reference pattern already in the codebase (`NoteListPane.swift`): a `List(selection:)` bound to a
-value derived from the controller, native system-drawn row highlighting, and folder rows that are
-structurally incapable of being confused with the open board.
+## Context / current state
 
-This work explicitly **supersedes ADR-0022 §D9** (which introduced `selectedFolder` as state
-separate from the open board). The new ADR must say so.
+`CanvasStore.boardPath(forFolder:)` derives a board's file path from its containing folder's
+name (`prova/prova.canvas`), so every folder that owns a board is indistinguishable from a
+"file": it can be both entered as a container and opened/written to as a board. This is codified
+by SPEC §6.1 (docs/20260811_Pergamenum_SpecApp.md, lines 189-190: "il Workspace è organizzato in
+board, una per cartella"), ADR-0022, and ADR-0024 §D2/§D3.
 
 ## Scope
 
-In scope:
-- `Sources/Features/Workspace/WorkspaceBrowser.swift` — tree rendering, row model, selection state.
-- `Sources/Features/Workspace/WorkspaceController.swift` — `hasOpenBoard`/`closeBoard()` folded
-  into the new derived-selection model.
-- `Sources/Features/Workspace/WorkspaceView.swift` — call site wiring.
-- `Sources/Features/Workspace/WorkspaceBrowserToolbar.swift` — `targetFolder` derives from the
-  unified selection, no more divergent fallback.
-- `Sources/Features/Workspace/BoardChrome.swift` — breadcrumb color aligned to the same convention
-  (locked with the user: yes, in this same pass).
-- `Tests/WorkspaceOpenStateTests.swift`, `UITests/WorkspaceOpenStateUITests.swift` — rewritten onto
-  the new model (both created this session for the now-superseded `hasOpenBoard` flag).
+In scope: `Sources/Vault/CanvasStore.swift`, `Sources/Features/Workspace/WorkspaceTree.swift`,
+`Sources/Features/Workspace/WorkspaceSelection.swift`, `Sources/Features/Workspace/WorkspaceBrowser.swift`,
+`Sources/Features/Workspace/WorkspaceBrowserToolbar.swift`,
+`Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift`, `WorkspaceController`, `BoardTopBar`
+breadcrumb, unit tests for `WorkspaceTree`/`CanvasStore`/selection, UI test identifiers touching
+`workspace-board-*`/`workspace-foreign-board-*`.
 
-Out of scope:
-- Any change to `NoteListPane.swift` itself (it is the reference, not a target).
-- Any change to what a board *is* on disk (`.canvas` files, `CanvasStore`) — this is a selection/
-  rendering redesign only, no persistence schema change.
-- Adding a "create board" affordance to a board-less folder's click (locked: out of scope, see
-  Decisions).
+Out of scope: `perg`/`pergamenum-mcp` CLI connectors (boards are not exposed there — unaffected),
+`pergamenum://` URL scheme semantics (already addressed by file path), vault data migration
+(none needed — see Data model below).
 
-## Decisions (locked with the user before/during interview)
+## Stack
 
-1. **One merged row per folder+board.** The disclosure triangle expands/collapses subfolders;
-   clicking the row's name opens that folder's board if it has one. The separate child "board" row
-   disappears — SPEC §6.2 already treats a board as a folder, so the tree showing them as two rows
-   was itself a defect against the app's own spec.
-2. **Single selection across the whole tree.** Exactly one thing is selected at a time. Selecting a
-   folder closes the currently open board, mirroring `NoteListPane`'s single-derived-binding model.
-3. **A folder with no board of its own** (e.g. a pure grouping folder like "Progetti") only
-   expands/collapses on click — no "create board" prompt. Its row can still be selected (for
-   Rinomina/Elimina) without opening anything, since it has nothing to open.
-4. **`hasOpenBoard`/`closeBoard()` fold into the derived-selection binding.** No separate boolean
-   state survives: `hasOpenBoard` becomes `selection != nil`-equivalent, `closeBoard()` becomes the
-   side effect of writing the derived binding to `nil`.
-5. **`BoardChrome.swift`'s breadcrumb is aligned** to the same single color convention as the tree
-   in this same pass, closing the third inconsistent color usage the diagnosis found.
-6. **Native keyboard navigation is kept.** `List(selection:)` gives arrow-key row navigation for
-   free (as `NoteListPane` already has); nothing suppresses it.
-7. **No board-open persistence across app relaunch (correction, ADR-0024).** The interview's
-   premise was wrong: no such persistence exists in the codebase — `VaultSettings` saves no board
-   path, and `5041d5c` (committed this session) already shipped the opposite, "no board open until
-   chosen", with a green UI test (`testLeavingAndReturningToTheWorkspacePaneForgetsTheOpenBoard`)
-   asserting exactly that. Confirmed with the user at Gate 2: the app relaunches with no board open,
-   same as today post-`5041d5c` — this is not a regression to fix, it is the real current state.
+Swift 6, SwiftUI, macOS 26. No new dependency. Same layering as the rest of the Workspace
+feature (Vault → Controller → View).
 
 ## Architecture
 
-**Reference model** (`NoteListPane.swift`):
-- `List(selection: selectedPath)` (`:156`) where `selectedPath` is a `Binding<String?>` derived
-  from the controller (`:221-232`): `get` reads `vault.openNote?.relativePath`, `set` calls
-  `vault.openNote(at:)` or `vault.leaveComposer()`.
-- Folder rows carry no `.tag`, so they are structurally excluded from ever being the `List`'s
-  selected value (`:290-309`) — expand/collapse only, never highlighted.
-- Highlighting, click-to-select, and click-blank-space-to-deselect are all system-drawn; no
-  hand-rolled `onTapGesture` substitute.
+### Data model
 
-**Target model for `WorkspaceBrowser`:**
-- Replace the hand-rolled `List` (`:191`, no `selection:`) with `List(selection: <derived binding>)`
-  in both `folderTree` and `flatList` (the filtered/search view, shown when the filter text is
-  non-empty — it must get the same treatment, not be left on the old model).
-- The derived binding's `get` reads the currently open board path from `WorkspaceController`
-  (replacing `openBoardPath`/`hasOpenBoard` as independently-read state); its `set`:
-  - non-nil path with a board → `onOpen(path)`.
-  - non-nil path with no board (a board-less folder was `.tag`ged so it can still be selected for
-    the toolbar, per Decision 3) → record it as the toolbar target only, no `onOpen` call.
-  - `nil` → the equivalent of today's `closeBoard()`.
-- `selectedFolder` as independent `@State` is removed. `targetFolder` (`WorkspaceBrowser.swift:
-  131-135`) becomes a direct read of the unified selection — no fallback branch, because the
-  selection is never absent while something is open (Decision 7) and is explicitly `nil` only when
-  nothing is open or selected.
-- One row per folder+board (Decision 1): `WorkspaceTreeRow`'s current split between a folder row
-  (`:365-373`) and a separate `boardRow` (`:419-437`) merges into a single row view. The disclosure
-  chevron (if the folder has children) and the row's `.tag` (if it has a board) become independent
-  affordances on the same row, not two rows.
-- Icon and text color (defects 1 and 2 in the diagnosis) stop being manually conditioned on
-  `selectedFolder`/`openBoardPath` — `List(selection:)`'s native row-fill highlighting is the only
-  selection signal; the folder icon is no longer unconditionally `.accentPrimary`.
-- AX labels (`WorkspaceBrowser.swift:379`, `:439`) gain a selected/open state, consistent with
-  `List(selection:)`'s own accessibility behavior — VoiceOver must be able to tell which row is
-  selected without relying on the removed manual color logic.
-- `WorkspaceController.hasOpenBoard`/`closeBoard()` (added this session, `5041d5c`) fold into the
-  new derived-selection model per Decision 4 — the flag is not kept as parallel state.
-- `BoardChrome.swift`'s breadcrumb (per Decision 5) reads the same color token / condition the tree
-  now uses for "this is the open board", replacing its own third convention.
+- A folder is a pure container. It never has an implicit board.
+- A `.canvas` file is addressed by its own file path, not derived from any folder name.
+- A folder and a `.canvas` file may share a name in the same parent directory (Finder
+  semantics — folders and files live in separate namespaces). This is required for backward
+  compatibility: `prova/prova.canvas` remains valid, now read simply as "the board named
+  `prova`, inside the folder `prova`" — no conversion, no migration script, no data rewrite.
+- `CanvasStore.boardPath`/`url`/`load`/`save` become addressed by the board's own file path
+  instead of by its containing folder. `contents(ofFolder:board:)` keeps deriving the containing
+  folder from the board's path (`deletingLastPathComponent`), used for file-drop placement
+  (unchanged: a dropped file lands beside the open board, in its containing folder).
+- New: `CanvasStore.createBoard(named:in:)` writes an empty `.canvas` with a user-chosen name in
+  a chosen folder, rejecting a name already taken by another `.canvas` in that same folder.
+  `createFolder(named:in:)` is unchanged and no longer implicitly calls `save(.empty, folder:)`
+  after it — creating a folder never creates a board.
+
+### Tree model
+
+- `WorkspaceTree.Node.Kind` becomes `.folder` and `.board(path:)`, replacing
+  `.workspace(board:)` and `.foreignBoard(path:)`. The `.foreignBoard` case and its
+  non-selectability rule (ADR-0024 §D3) are removed entirely — every `.canvas` is a legitimate,
+  openable board now.
+- The tree is built from folders **plus** `.canvas` files, not from `allBoards()` alone: a
+  folder with no board must still appear in the tree (this is what unblocks the deferred "new
+  folder" toolbar button).
+- The root's special-cased synthesis in `build(boards:boardPath:)` is removed — the vault root
+  is an ordinary folder like any other, and any `.canvas` at its top level (e.g.
+  `Pergamena.canvas`) is an ordinary board file inside it, not a synthesized root board.
+
+### Selection
+
+- `WorkspaceSelection.board(folder:)` becomes `.board(path:)`. This deliberately reverses
+  ADR-0024 §D2 ("the selection tag is always the folder path, never the board path"), which is
+  why this feature's ADR must explicitly supersede that decision rather than silently diverge
+  from it.
+
+### Controller / views
+
+- `WorkspaceController.open(folder:)` becomes `open(board:)`; its `folder` property is derived
+  from the open board's path (`deletingLastPathComponent`) rather than being the identity itself.
+- `BoardTopBar` breadcrumb shows the containing folder's path plus the board's own file name.
+- `WorkspaceBrowser.identifier(for:)` drops the `workspace-foreign-board-*` form.
+  `selection(for:)` drops the branch that returns `nil` for a foreign board (nothing is
+  unselectable anymore). `WorkspaceRow.icon` switches from "does this folder own a board" to a
+  direct `Kind` switch: `folder`/`folder.fill` for `.folder`, `rectangle.3.group` for `.board`.
+- `WorkspaceBrowserToolbar`: the existing `+` becomes "Nuova board" and prompts for a name; a
+  new "Nuova cartella" button (`folder.badge.plus`, identifier `workspace-new-folder`) sits
+  beside it and calls `createFolder(named:in:)` alone, with no board side effect.
+- `WorkspaceView+FolderVerbs.swift`: `createWorkspace(named:in:)` splits into `createBoard`
+  (writes a `.canvas`, does not touch folders) and `createFolder` (writes a directory only).
+  Folder rename/delete simplify: the "ambiguous board file name" case in ADR-0022 (two folders
+  sharing a name → board-marker rewrite skipped) is removed, since there is no more one board
+  per folder to disambiguate.
+- A board row gets its own Rinomina/Elimina (toolbar + context menu, same pattern as ADR-0023's
+  other command clusters), operating on the `.canvas` file directly rather than through a
+  folder-rename side effect. This did not exist before because a board's name was always its
+  folder's name.
 
 ## UI flows
 
-1. **Open a board by clicking its row.** One row lights up (system highlight), no other row is
-   affected. The toolbar's Rinomina/Elimina target updates to that folder.
-2. **Select a folder (with or without a board) by clicking its row.** If a board was open, it
-   closes (empty-state pane shown, per the `hasOpenBoard` behavior already shipped this session).
-   The clicked folder's row lights up. The toolbar target updates.
-3. **Click a board-less folder's disclosure triangle.** Expands/collapses only; does not change
-   selection (matches `NoteListPane`'s folder-row behavior, `:290-309`).
-4. **Click blank space below the last row.** Deselects — free from `List(selection:)`, no
-   hand-rolled `onDeselect`/`onTapGesture` needed any more (the ones added this session for the
-   `hasOpenBoard` feature are removed as part of this redesign, superseded by the native behavior).
-5. **Arrow-key navigation.** Up/Down move the highlighted row, matching `NoteListPane`.
-6. **App relaunch with a previously-open board.** The derived selection binding reflects the
-   restored open board on first render — one row lit, same as flow 1, no regression from today.
-7. **Filtered/search view (`flatList`, filter non-empty).** Same single-selection, same
-   `List(selection:)` binding — not a second, divergent selection model for the filtered case.
+- **Create board**: click "Nuova board" → name prompt → file created. If a tree row is
+  selected, the board is created in that folder; if nothing is selected, it is created at the
+  vault root (same fallback `targetFolder` already uses today for nothing-selected, per
+  ADR-0024 §D5).
+- **Create folder**: click "Nuova cartella" (next to "Nuova board") → name prompt → empty
+  directory created, no board, appears immediately in the tree.
+- **Open a board**: single click on a board row (unchanged mechanism, now driven by
+  `.board(path:)` instead of `.board(folder:)`).
+- **Double-click on a folder row**, including one holding exactly one board: expands/collapses
+  the row. It never opens a board implicitly — opening a board always requires an explicit
+  click on the board's own row. This keeps the model consistent (a folder is always just a
+  container) rather than adding a single-board shortcut exception.
+- **"Nuovi elementi" tray**: continues to exclude only the file of the currently-open board.
+  Sibling `.canvas` files in the same folder are NOT surfaced as tray cards — the tray shows
+  unplaced items, not a board switcher.
+- **Rename/Delete a board row**: new Rinomina + Elimina, acting on the `.canvas` file alone.
+- **Rename/Delete a folder row**: acts on the directory alone; no longer touches any board
+  marker rewrite tied to a same-named board file.
 
 ## Edge cases
 
-- Opening a board via a source outside the tree (breadcrumb, wikilink, restore-at-launch) must
-  still result in the tree showing exactly that board's row as selected — the diagnosis's defect 5
-  (tree and toolbar disagreeing) must not have a new equivalent under the derived-selection model.
-- Renaming or deleting the currently selected/open folder: existing `WorkspaceFolderActions`
-  behavior is unchanged by this feature; only what row is highlighted before/after is in scope.
-- Filtering the tree text while a board is open: the open board's row, if visible in the filtered
-  results, must still show as selected.
+- Root-level `.canvas` (`Pergamena.canvas`): ordinary board row at the top level of the tree,
+  no special synthesis.
+- Folder and `.canvas` sharing a name in the same parent (`prova/` + `prova.canvas` inside
+  its parent, or `prova/prova.canvas` where `prova.canvas` sits *inside* folder `prova`):
+  both are valid, addressed independently by path — this is the existing vault shape and must
+  keep working with zero data migration.
+- Empty folder (no boards, no children): appears in the tree as a plain expandable/collapsible
+  row with no board icon underneath.
+- `^[[name.canvas]]` markers (ADR-0021): continue to resolve by file path; become less ambiguous
+  since a `.canvas` is no longer implicitly tied to one specific folder name.
+- Deleting a folder still moves the whole folder (and any boards inside it) to the Trash via
+  `FileManager.trashItem`, unchanged mechanism (ADR-0022 §D... delete-via-Trash convention).
+
+## Non-goals
+
+- No automatic migration or rewrite of existing vault files. `prova/prova.canvas` needs no
+  change on disk — only how the tree interprets and displays it changes.
+- No change to `perg`/`pergamenum-mcp` connectors.
+- No change to `pergamenum://` URL scheme handling.
 
 ## Success criteria
 
-- [ ] R-01 — The Workspace tree renders exactly one row per folder-that-has-a-board, never a
-      separate child row for the board (Decision 1).
-- [ ] R-02 — Exactly one row in the tree is ever visually highlighted as selected at a time, using
-      native `List(selection:)` row-fill highlighting, not a manually-colored icon or text.
-- [ ] R-03 — Opening a board highlights only that board's own row — no ancestor folder row is
-      simultaneously highlighted as a second, differently-meaning selection.
-- [ ] R-04 — Selecting a folder while a board is open closes the open board (Decision 2); exactly
-      one thing is selected across the whole tree at any time.
-- [ ] R-05 — Clicking a board-less folder's name/row only expands or collapses it — no board is
-      created and no creation prompt appears (Decision 3).
-- [ ] R-06 — `WorkspaceBrowserToolbar`'s Rinomina/Elimina target always matches the tree's visually
-      selected row, with no fallback branch that can diverge from what is shown on screen (fixes
-      diagnosis defect 5).
-- [ ] R-07 — Clicking the blank area below the tree's last row deselects, using `List(selection:)`'s
-      native behavior — no hand-rolled `onTapGesture`/`onDeselect` gesture remains in
-      `WorkspaceBrowser.swift`.
-- [ ] R-08 — Arrow-key (Up/Down) navigation moves the tree's selection natively, matching
-      `NoteListPane`'s existing keyboard behavior.
-- [ ] R-09 — The filtered/search list (`flatList`, shown when the filter is non-empty) uses the same
-      single derived-selection `List(selection:)` binding as the unfiltered tree — not a second,
-      divergent implementation.
-- [ ] R-10 — Relaunching the app shows no board open (matching `5041d5c`'s existing "no board open
-      until chosen" behavior — corrected at Gate 2, ADR-0024: no persisted board path exists to
-      restore). A board opened from outside the tree (breadcrumb, wikilink, restore-from-state)
-      still lights its own row, per R-06.
-- [ ] R-11 — `WorkspaceController.hasOpenBoard` and `closeBoard()` are removed as independent state;
-      their behavior is fully expressed through the new derived-selection binding (Decision 4).
-- [ ] R-12 — `BoardChrome.swift`'s breadcrumb uses the same color convention as the tree's selection
-      highlighting for "this is the open board", replacing its previous third, inconsistent
-      convention (Decision 5).
-- [ ] R-13 — VoiceOver can distinguish a selected/open row from an unselected one through its
-      accessibility label or trait, not only through color (fixes diagnosis defect 6).
-- [ ] R-14 — `Tests/WorkspaceOpenStateTests.swift` and `UITests/WorkspaceOpenStateUITests.swift` are
-      updated to assert against the new single-selection model, with no assertions left referring to
-      the removed `selectedFolder`/`hasOpenBoard` two-variable model.
-- [ ] R-15 — A new ADR is written that explicitly records superseding ADR-0022 §D9
-      (no-test: this is a documentation deliverable, verified by its presence in `docs/adr/` and
-      its cross-reference from ADR-0022, not by an executable assertion).
-- [ ] R-16 — `tuist generate` + build succeed, the full unit suite passes via `.claude/test-cmd`, and
-      `scripts/uitests.sh` passes before merge, per this project's standing CLAUDE.md working
-      agreement (no-test: the last clause is a process obligation confirmed by running the script,
-      not something a unit test can assert on its own).
+- [ ] R-01 — Creating a folder via "Nuova cartella" produces no `.canvas` file and the folder appears in the Workspace tree as an expandable container with no board underneath.
+- [ ] R-02 — Creating a board via "Nuova board" writes a `.canvas` file with the chosen name in the chosen folder (or vault root when nothing is selected) and does not create or require a same-named folder.
+- [ ] R-03 — Two `.canvas` files can coexist in the same folder with different names, and both appear as separate, independently openable board rows in the tree.
+- [ ] R-04 — A folder and a `.canvas` file sharing the same name in the same parent directory (e.g. `prova/` and a sibling `prova.canvas`, or the pre-existing `prova/prova.canvas` shape) both resolve correctly with no data loss and no crash.
+- [ ] R-05 — Double-clicking a folder row, including one containing exactly one board, expands or collapses that row and never opens a board.
+- [ ] R-06 — Single-clicking a board row opens that board, addressed by its own file path rather than by any folder identity.
+- [ ] R-07 — The "Nuovi elementi" tray excludes only the file of the currently-open board; sibling `.canvas` files in the same folder do not appear as tray cards.
+- [ ] R-08 — A board row exposes its own Rinomina and Elimina commands (toolbar + context menu), acting on the `.canvas` file independently of any folder.
+- [ ] R-09 — Renaming or deleting a folder never rewrites or otherwise touches an unrelated same-named `.canvas` file, and never hits the "ambiguous board file name" skip case from ADR-0022 (that case no longer applies).
+- [ ] R-10 — An empty folder (no boards, no children) is visible in the tree as a plain container row.
+- [ ] R-11 — A root-level `.canvas` file (e.g. `Pergamena.canvas`) appears as an ordinary board row at the top of the tree, with no special-cased root synthesis.
+- [ ] R-12 — `^[[name.canvas]]` markers (ADR-0021) continue to resolve correctly to the target board by file path after this change.
+- [ ] R-13 — The existing vault at `~/Library/Mobile Documents/com~apple~CloudDocs/Vaults/Pergamena` (verified on a disposable COPY, never the original) opens with all existing boards and folders intact and correctly distinguished, requiring no conversion step. (no-test: manual verification against a copied vault is required because it depends on real iCloud-synced user data that cannot be part of the automated test suite)
+- [ ] R-14 — The full unit test suite passes with `WorkspaceTree`, `CanvasStore`, and selection tests rewritten (not disabled) for the new model.
+- [ ] R-15 — `perg` and `pergamenum-mcp` command-line targets continue to build (ADR-0001 §D1 conformance).
+- [ ] R-16 — `scripts/uitests.sh` passes in full before merge, with `workspace-board-*`/`workspace-foreign-board-*` identifiers updated to match the new tree model. (no-test: full confirmation of this requires the human-run UI suite per CLAUDE.md's binding merge rule, run deliberately by hand rather than by an automated agent)
+- [ ] R-17 — SPEC §6.1 (lines 189-190) and §6.4 tool 4 (Cartella) in docs/20260811_Pergamenum_SpecApp.md are amended to describe the new folder/board model. (no-test: a documentation amendment has no executable assertion; it is verified by human review of the diff)
+- [ ] R-18 — A new ADR is written that explicitly supersedes ADR-0024 §D2/§D3 and the relevant part of ADR-0022, and CLAUDE.md's chain decision index is updated to reference it. (no-test: an ADR and a documentation index entry are process artifacts verified by human review, not by an automated assertion)

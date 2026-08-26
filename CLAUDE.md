@@ -398,6 +398,42 @@ Key architectural decisions:
 
 Detail: `docs/adr/0024-workspace-board-tree-single-selection.md`.
 
+## Decisions from the Workspace folder/board separation chain (ADR-0025)
+
+Separates the folder-container concept from the board-file concept in the Workspace, moving from
+"one board per folder, named after it" to a Finder/Obsidian model: `docs/adr/0025-workspace-folder-board-separation.md`.
+Supersedes ADR-0024 §D2/§D3 and relocates ADR-0022 §D4's ambiguity guard from folder rename to
+board rename.
+
+Key architectural decisions:
+- **A board is addressed by its own file path, never derived from a folder name** —
+  `CanvasStore.boardPath(forFolder:)` is deleted outright, not kept as a fallback. `load(board:)`
+  throws where `load(folder:)` used to return `.empty`: every silent-blank-board defect this repo
+  has had (ADR-0022 F1, ADR-0024 F6) traced back to that folder→board derivation, and a throwing
+  read on a path that a walk found or `createBoard` just wrote turns a missed file into a reported
+  error instead of a quiet empty board.
+- **The tree is built from folders *and* boards as distinct rows, and the vault root is the list
+  itself** — no synthesized root row (matching `NoteTree`, which makes none either), so an empty
+  folder is visible for the first time and a `.canvas` can live anywhere, any name, any count.
+- **One resolution enum answers both "which board does this marker name" and "which board does
+  this folder mean"** — `WorkspaceBoardResolver` gains `board(inFolder:among:)` returning the same
+  `.unique`/`.ambiguous`/`.notFound` it already used for `^[[x.canvas]]` markers, so every new
+  folder→board navigation path (breadcrumb, double-click, editor hand-off) shares one rule instead
+  of each guessing separately.
+- **ADR-0022 §D4's ambiguity guard is relocated, not deleted** — the SPEC's premise that it
+  disappears was wrong: the ambiguity belongs to the marker's bare-file-name grammar, which this
+  chain makes *more* reachable (duplicate board names across folders are now legal), so the guard
+  moves from folder rename (which no longer touches any `.canvas`) to board rename.
+- **Double-click on a folder row always toggles it, never opens a board** — even a folder holding
+  exactly one board. Implemented as `.simultaneousGesture(TapGesture(count: 2))` ahead of `.tag`,
+  never `.onTapGesture`, which starves the `List(selection:)` binding — untested territory for
+  this repo's SwiftUI patterns, verified manually rather than by unit test.
+- **`IndexSnapshot.tasks(assignedToWorkspace:)`'s file-name-only comparison is explicitly left
+  unchanged** — fixing it would rewrite task-line markers in every note, which Non-goals forbids;
+  the resulting ambiguity is reported (`.ambiguous`), never guessed.
+
+Detail: `docs/adr/0025-workspace-folder-board-separation.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
@@ -406,3 +442,4 @@ Detail: `docs/adr/0024-workspace-board-tree-single-selection.md`.
 - **ADR-0022** — Workspace sidebar toolbar, folder-backed board creation/rename/delete, no journal, no connector exposure → `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`
 - **ADR-0023** — Toolbar/context-menu command parity across six clusters + Duplica card, one catalogue per cluster shared by both surfaces → `docs/adr/0023-universal-command-surface-parity.md`
 - **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`
+- **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
