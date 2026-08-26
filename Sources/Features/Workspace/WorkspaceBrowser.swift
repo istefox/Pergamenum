@@ -309,6 +309,14 @@ struct WorkspaceBrowser: View {
             return board == nil ? .folder(node.id) : .board(folder: node.id)
         case .foreignBoard:
             return nil
+        // TODO(ADR-0025 Task 2): placeholder exhaustiveness arm for the two new `Kind`
+        // cases (ADR-0024's `.workspace`/`.foreignBoard` are superseded but kept for now,
+        // see `WorkspaceTree.Node.Kind`'s doc comment). The coder's GREEN phase re-cases
+        // this whole function; `nil` here is a deliberately wrong placeholder, not a
+        // considered answer - this branch is unreachable in RED, since `workspaceTree` is
+        // only ever built through the old `build(boards:boardPath:)` until then.
+        case .folder, .board:
+            return nil
         }
     }
 
@@ -513,6 +521,12 @@ struct WorkspaceBrowser: View {
             return "workspace-folder-\(node.id)"
         case .foreignBoard(let path):
             return "workspace-foreign-board-\(path)"
+        // TODO(ADR-0025 Task 2): placeholder exhaustiveness arm, same reasoning as
+        // `selection(for:)` above. GREEN re-cases this to `workspace-board-<path>` for
+        // `.board` and `workspace-folder-<path>` for `.folder`, with no third spelling -
+        // `""` here is deliberately wrong, not that answer.
+        case .folder, .board:
+            return ""
         }
     }
 }
@@ -623,6 +637,12 @@ private struct WorkspaceRow: View {
         switch node.kind {
         case .workspace: content.tag(node.id)
         case .foreignBoard: content
+        // TODO(ADR-0025 Task 5): placeholder exhaustiveness arm for the two new `Kind`
+        // cases - this view still draws exclusively from the old `.workspace`/
+        // `.foreignBoard` tree (`rebuild()`'s temporary `build(boards:boardPath:)` call),
+        // so this branch is unreachable until Task 5's rewrite, which is where every row
+        // gets a `.tag` (nothing is unselectable any more).
+        case .folder, .board: content
         }
     }
 
@@ -691,6 +711,10 @@ private struct WorkspaceRow: View {
             return isSelected ? "\(base), selezionata" : base
         case .foreignBoard:
             return "Board \(node.name), non apribile da Pergamenum"
+        // TODO(ADR-0025 Task 5): placeholder exhaustiveness arm, same reasoning as
+        // `taggedRow` above - unreachable until Task 5's rewrite.
+        case .folder, .board:
+            return ""
         }
     }
 
@@ -702,6 +726,10 @@ private struct WorkspaceRow: View {
         case .workspace(let board):
             return board == nil ? (isExpanded ? "folder" : "folder.fill") : "rectangle.3.group"
         case .foreignBoard:
+            return "rectangle.3.group"
+        // TODO(ADR-0025 Task 5): placeholder exhaustiveness arm, same reasoning as
+        // `taggedRow` above - unreachable until Task 5's rewrite.
+        case .folder, .board:
             return "rectangle.3.group"
         }
     }

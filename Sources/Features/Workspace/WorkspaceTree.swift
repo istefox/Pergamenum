@@ -7,13 +7,33 @@ import Foundation
 /// checked directly rather than through a view only a person can look at (ADR-0024 §D1).
 enum WorkspaceTree {
     struct Node {
+        /// `.workspace` and `.foreignBoard` are ADR-0024's cases, superseded by ADR-0025
+        /// §D2 but kept here **alongside** the two new ones below rather than removed:
+        /// `WorkspaceBrowser.swift`'s five exhaustive switches over `Kind` (`selection`,
+        /// `identifier`, `taggedRow`, `accessibilityLabel`, `icon`) and the whole of
+        /// `WorkspaceController.swift` still build a tree through the old
+        /// `build(boards:boardPath:)` below and read only these two cases; deleting them
+        /// now would break every one of those call sites, which Tasks 3 and 5 own, not
+        /// Task 2. `.folder`/`.board(path:)` are additive placeholders reachable only
+        /// through the new `build(folders:boards:)` overload this task's tests exercise.
+        /// The coder's GREEN phase (this task) re-cases `identifier(for:)`/
+        /// `selection(for:)`; Task 5 re-cases the other three switches and this whole
+        /// doc comment is rewritten once `.workspace`/`.foreignBoard` are finally deleted.
+        ///
         /// `.workspace` is an ordinary folder row, with or without a board of its own
         /// (`board == nil` for a folder that only groups, ADR-0024 §D5/R-05).
         /// `.foreignBoard` is a `.canvas` not named after the folder holding it - drawn,
         /// but carrying no `.tag`, so it is structurally unselectable (ADR-0024 §D3).
+        ///
+        /// ADR-0025 §D2's real shape: `.folder` is an ordinary folder row (a board it
+        /// owns is now a sibling `.board` row of its own, never drawn on it); `.board`
+        /// carries the board file's own path, and is an ordinary row whoever wrote the
+        /// file - there is no more "foreign" board (ADR-0024 §D3 superseded in full).
         enum Kind: Equatable {
             case workspace(board: String?)
             case foreignBoard(path: String)
+            case folder
+            case board(path: String)
         }
 
         /// The folder path for a `.workspace` node, `""` for the vault root; the board
@@ -72,6 +92,20 @@ enum WorkspaceTree {
             )
         }
         return rows
+    }
+
+    /// ADR-0025 §D2's real builder (Task 2, RED: placeholder). Folders and boards are
+    /// two flat lists here, not one `NoteTree` fold: `NoteTree.build(fromPaths:)` makes a
+    /// folder node only from a leaf's path components, so an empty folder (R-10) would
+    /// vanish, which is why this does not call it (§D2's fourth bullet). GREEN walks both
+    /// lists into one nested structure, folders first then leaves at every depth by
+    /// `localizedStandardCompare`, with **no synthesized root row** - the top level is
+    /// simply the vault root's own contents (R-11).
+    ///
+    /// Placeholder body only: returns `[]` regardless of input, so every test built on
+    /// top of it is red on its `#expect`/`#require`, never on a build error.
+    static func build(folders: [String], boards: [String]) -> [Node] {
+        []
     }
 
     /// One `NoteTree` node folded into a row.

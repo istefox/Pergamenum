@@ -2,185 +2,230 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0024: One selection, one row, one meaning.
-// Plan: docs/superpowers/plans/2026-08-25-workspace-board-tree-single-selection.md, Task 1.
+// ADR-0025: A folder is a container, a board is a file, and neither is named after the
+// other.
+// Plan: docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md, Task 2.
 //
-// The two pure types this feature is built from, neither importing SwiftUI so a test can
-// ask them directly: the single selection value (ADR-0024 §D4, R-04/R-05) and the fold
-// that turns `NoteTree.build(fromPaths:)`'s output into one row per folder, the board it
-// owns drawn on that row rather than beside it (ADR-0024 §D2/§D3, R-01/R-03/R-05).
+// This file REPLACES ADR-0024 §D2/§D3's fold tests (the ones that asserted a folder and
+// the `.canvas` named after it collapse into one row, and that a `.canvas` not named
+// after its folder is drawn inert as `.foreignBoard`). Under ADR-0025 a folder and a
+// board are always two rows - the fold is gone, and so is the whole notion of a
+// "foreign" board: every `.canvas` is an ordinary, openable row wherever it lives
+// (R-01, R-03, R-04, R-10, R-11).
 //
-// RED: `WorkspaceSelection.folder`/`.hasBoard` are trivial and already correct (given
-// verbatim by the plan, so those two assertions are not expected to fail). Everything
-// against `WorkspaceTree.build`/`.folders(in:)`/`.flattened(_:)`/`.node(withID:in:)` is
-// red on its assertions: the four functions are placeholders returning `[]`/`nil`, never
-// a `fatalError()` or a force-unwrap, so the target still builds.
+// RED: `WorkspaceTree.build(folders:boards:)` is a placeholder returning `[]`
+// unconditionally, so every assertion built on top of it is red on its
+// `#expect`/`#require`, never on a build error - the same discipline the ADR-0024
+// predecessor of this file used for its own placeholders. `WorkspaceTree.Node.Kind`'s
+// two new cases (`.folder`, `.board(path:)`) exist **alongside** ADR-0024's
+// `.workspace`/`.foreignBoard`, which is why `WorkspaceBrowser.swift`'s five exhaustive
+// switches over `Kind` needed a placeholder arm each to keep compiling - they are not
+// this task's rewrite (`identifier(for:)`/`selection(for:)` are Task 2's GREEN; the
+// other three are Task 5's), so those arms return a value that is deliberately wrong
+// rather than the coder's answer. `WorkspaceSelection.board(path:)` is a placeholder
+// **constructor**, not a real third enum case: Swift resolves `Type.board(label:)` calls
+// by argument label like an overloaded function, but a `case .board` *pattern match*
+// becomes ambiguous the instant two cases share the base name "board" with different
+// labels (confirmed with `swiftc -typecheck` before writing this) - and
+// `WorkspaceController.swift` plus `Tests/WorkspaceOpenStateTests.swift`/
+// `Tests/WorkspaceBrowserToolbarTests.swift` still construct and pattern-match the
+// ADR-0024 `.board(folder:)` case today, unmodified, because they belong to Tasks 3 and
+// 5. `WorkspaceSelection.swift`'s doc comment carries the full explanation.
+
+// MARK: - Fixture shared by every WorkspaceTree.build(folders:boards:) test below
 //
-// Extended for Task 3 (the two pure functions its view-level rewrite reads, R-09 and
-// ADR-0024 §D10): `WorkspaceBrowser.rows(matching:in:)` and `WorkspaceBrowser
-// .identifier(for:)` are likewise placeholders (`[]` and `""`), red on their
-// assertions rather than on a build error.
+// Deliberately the shapes R-01, R-03, R-04, R-10 and R-11 name: a root-level board with
+// no folder above it (R-11), a folder that owns a board named after itself - now a row
+// beside its sibling folders rather than folded into them (R-01) - a folder holding two
+// boards, neither special (R-03), an empty folder nested two deep (R-10), and a folder
+// whose single board shares no name with it at all (R-04).
 
-// MARK: - WorkspaceSelection (R-01, R-03, R-05)
-
-@Test func workspaceSelectionFolderReturnsTheAssociatedPathForBothCases() {
-    #expect(WorkspaceSelection.board(folder: "01 Progetti").folder == "01 Progetti")
-    #expect(WorkspaceSelection.folder("01 Progetti").folder == "01 Progetti")
-}
-
-@Test func workspaceSelectionHasBoardIsTrueOnlyForTheBoardCase() {
-    #expect(WorkspaceSelection.board(folder: "01 Progetti").hasBoard)
-    #expect(!WorkspaceSelection.folder("01 Progetti").hasBoard)
-}
-
-// MARK: - Fixture shared by every WorkspaceTree test below
-
-// ADR-0024 §D2/§D3's four cases in one vault: a root board, a folder whose own board is
-// named after it (with two sub-folders under it), a folder that only groups (no board of
-// its own) and a folder holding a `.canvas` that is *not* named after it - the "foreign
-// board" case §D3 exists for.
-private let fixtureBoards = [
-    "Labs.canvas",
-    "01 Progetti/01 Progetti.canvas",
-    "01 Progetti/a/a.canvas",
-    "01 Progetti/b/b.canvas",
-    "01 Progetti/b/altro.canvas",
-    "Vuota/dentro/dentro.canvas",
+private let fixtureFolders = [
+    "01 Progetti", "01 Progetti/a", "01 Progetti/b", "Vuota", "Vuota/dentro", "prova",
 ]
 
-// The real rule (`CanvasStore.boardPath(forFolder:)`), stubbed rather than reached
-// through a `CanvasStore`/vault on disk - `boardPath` is a closure asked, never restated
-// (ADR-0024 §D2), so the transform under test never restates it either.
-private func fixtureBoardPath(_ folder: String) -> String {
-    folder.isEmpty
-        ? "Labs.canvas"
-        : "\(folder)/\((folder as NSString).lastPathComponent).canvas"
+private let fixtureBoards = [
+    "Pergamena.canvas",
+    "01 Progetti/01 Progetti.canvas",
+    "01 Progetti/a/a.canvas",
+    "01 Progetti/b/b.canvas", "01 Progetti/b/altro.canvas",
+    "prova/prova.canvas",
+]
+
+// MARK: - WorkspaceTree.build(folders:boards:) (R-01, R-03, R-04, R-10, R-11)
+
+@Test func buildHasNoRootRowAndOrdersFoldersBeforeLeavesAtTheTopLevel() {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
+
+    // No synthesized root: the top level is the vault root's own contents, folders
+    // first then leaves - `NoteTree`'s own order (R-11).
+    #expect(tree.map(\.id) == ["01 Progetti", "Vuota", "prova", "Pergamena.canvas"])
+
+    // No node with id == "" anywhere in the tree - not only at the top level.
+    func walk(_ nodes: [WorkspaceTree.Node]) -> Bool {
+        nodes.contains { $0.id.isEmpty || walk($0.children) }
+    }
+    #expect(!walk(tree))
 }
 
-// MARK: - WorkspaceTree.build(boards:boardPath:) (R-01, R-03, R-05)
+@Test func aRootLevelBoardIsAnOrdinaryTopLevelBoardRowWithNoSynthesis() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
 
-@Test func buildFoldsAFolderAndItsOwnBoardIntoOneNodeOverTheADR0024Fixture() throws {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
+    let pergamena = try #require(tree.first { $0.id == "Pergamena.canvas" })
 
-    // Top level: folders first, then leaves - NoteTree's own order - and the root board
-    // is the row for folder "" (F7: NoteTree emits no root node, so this synthesizes it).
-    #expect(tree.map(\.id) == ["01 Progetti", "Vuota", ""])
-    let root = try #require(tree.first { $0.id == "" })
-    #expect(root.name == "Labs")
+    #expect(pergamena.kind == .board(path: "Pergamena.canvas"))
+    #expect(pergamena.name == "Pergamena")
+    #expect(pergamena.children.isEmpty)
+}
 
-    // "01 Progetti" carries its own board, and the board's leaf is not a separate child
-    // row among its children.
+@Test func aFolderAndTheBoardNamedAfterItAreTwoSiblingRowsNotOneFoldedRow() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
+
     let progetti = try #require(tree.first { $0.id == "01 Progetti" })
-    #expect(progetti.kind == .workspace(board: "01 Progetti/01 Progetti.canvas"))
-    #expect(progetti.children.map(\.id) == ["01 Progetti/a", "01 Progetti/b"])
 
-    // "Vuota" owns no board of its own - a board-less folder is a node, not an omission
-    // (R-05, Decision 3).
-    let vuota = try #require(tree.first { $0.id == "Vuota" })
-    #expect(vuota.kind == .workspace(board: nil))
-    #expect(vuota.children.map(\.id) == ["Vuota/dentro"])
-
-    // "01 Progetti/b/altro.canvas" is not named after the folder holding it - it survives
-    // as a `.foreignBoard` node of its own, the only child "01 Progetti/b" has.
-    let b = try #require(progetti.children.first { $0.id == "01 Progetti/b" })
-    #expect(b.children.map(\.kind) == [.foreignBoard(path: "01 Progetti/b/altro.canvas")])
-
-    // boardCount is NoteTree.Node.noteCount carried through unchanged: a (1) + b (b.canvas
-    // + altro.canvas = 2) + "01 Progetti"'s own board leaf (1) = 4.
-    #expect(progetti.boardCount == 4)
+    #expect(progetti.kind == .folder)
+    // The board this folder owns is a row of its own, beside its sibling folders - the
+    // reversal of ADR-0024 §D2, not a child dropped from the list.
+    #expect(progetti.children.map(\.id) == [
+        "01 Progetti/a", "01 Progetti/b", "01 Progetti/01 Progetti.canvas",
+    ])
 }
 
-// MARK: - WorkspaceTree.folders(in:) (R-01, R-03, R-05)
+@Test func aFolderWithTwoBoardsHasTwoIndistinguishableBoardChildren() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
 
-@Test func foldersInIncludesTheRootAndExcludesEveryForeignBoardPath() {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
+    let progetti = try #require(tree.first { $0.id == "01 Progetti" })
+    let b = try #require(progetti.children.first { $0.id == "01 Progetti/b" })
+
+    #expect(b.kind == .folder)
+    // Both are `.board`, in the same way - "altro.canvas" is no longer special in any
+    // way, which is ADR-0024 §D3's supersession stated as a test.
+    #expect(Set(b.children.map(\.id)) == ["01 Progetti/b/b.canvas", "01 Progetti/b/altro.canvas"])
+    #expect(b.children.allSatisfy {
+        if case .board = $0.kind { true } else { false }
+    })
+}
+
+@Test func anEmptyNestedFolderExistsAsAFolderNodeWithNoChildren() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
+
+    let vuota = try #require(tree.first { $0.id == "Vuota" })
+    let dentro = try #require(vuota.children.first { $0.id == "Vuota/dentro" })
+
+    // The assertion that proves the tree is not built from `allBoards()` alone - a
+    // folder with no `.canvas` anywhere under it still gets a row (R-10).
+    #expect(dentro.kind == .folder)
+    #expect(dentro.children.isEmpty)
+}
+
+@Test func aFolderAndItsUnrelatedlyNamedBoardCarryDifferentIdsAndBothResolve() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
+
+    let prova = try #require(tree.first { $0.id == "prova" })
+    let board = try #require(prova.children.first { $0.id == "prova/prova.canvas" })
+
+    #expect(prova.kind == .folder)
+    #expect(board.kind == .board(path: "prova/prova.canvas"))
+    #expect(prova.id != board.id)
+}
+
+@Test func boardCountCountsEveryBoardAtOrBelowAFolderAndIsZeroForAnEmptyOne() throws {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
+
+    let progetti = try #require(tree.first { $0.id == "01 Progetti" })
+    let vuota = try #require(tree.first { $0.id == "Vuota" })
+
+    // "01 Progetti": its own board (1) + "a"'s board (1) + "b"'s two boards (2) = 4.
+    #expect(progetti.boardCount == 4)
+    #expect(vuota.boardCount == 0)
+}
+
+@Test func numericOrderingPlacesNineBeforeTenAndFoldersBeforeLeavesAtTheSameLevel() {
+    // `localizedStandardCompare` (`NoteTree.swift:123, 129`), replicated by
+    // `WorkspaceTree.build` rather than restated: "9 Note" sorts before "10 Note", and
+    // both folders sort ahead of the leaf at the same level - given deliberately out of
+    // order to prove the builder sorts rather than merely preserving input order.
+    let tree = WorkspaceTree.build(
+        folders: ["10 Note", "9 Note"],
+        boards: ["1 Leaf.canvas"]
+    )
+
+    #expect(tree.map(\.id) == ["9 Note", "10 Note", "1 Leaf.canvas"])
+}
+
+// MARK: - WorkspaceTree.folders(in:) (R-01)
+
+@Test func foldersInReturnsFolderIdsOnlyAndNoBoardPath() {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
 
     let folders = WorkspaceTree.folders(in: tree)
 
     #expect(Set(folders) == Set([
-        "", "01 Progetti", "01 Progetti/a", "01 Progetti/b", "Vuota", "Vuota/dentro",
+        "01 Progetti", "01 Progetti/a", "01 Progetti/b", "Vuota", "Vuota/dentro", "prova",
     ]))
-    #expect(!folders.contains("01 Progetti/b/altro.canvas"))
+    #expect(!folders.contains { $0.hasSuffix(".canvas") })
 }
 
-// MARK: - WorkspaceTree.flattened(_:) (R-01, R-03, R-05)
+// MARK: - WorkspaceTree.node(withID:in:) (R-01, R-03, R-04)
 
-@Test func flattenedWalksDepthFirstWithDepthAndIncludesTheRootRow() {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
+@Test func nodeWithIDFindsAFolderAndABoardAndReturnsNilForAnUnknownID() {
+    let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
 
-    let flat = WorkspaceTree.flattened(tree)
+    let folder = WorkspaceTree.node(withID: "01 Progetti/b", in: tree)
+    let board = WorkspaceTree.node(withID: "01 Progetti/b/altro.canvas", in: tree)
+    let missing = WorkspaceTree.node(withID: "nope", in: tree)
 
-    #expect(flat.map(\.node.id) == [
-        "01 Progetti", "01 Progetti/a", "01 Progetti/b", "01 Progetti/b/altro.canvas",
-        "Vuota", "Vuota/dentro",
-        "",
-    ])
-    #expect(flat.map(\.depth) == [0, 1, 1, 2, 0, 1, 0])
+    #expect(folder?.kind == .folder)
+    #expect(board?.kind == .board(path: "01 Progetti/b/altro.canvas"))
+    #expect(missing == nil)
 }
 
-// MARK: - WorkspaceTree.node(withID:in:) (R-01, R-03, R-05)
+// MARK: - WorkspaceSelection (ADR-0025 §D3)
 
-@Test func nodeWithIDFindsTheRootAndANestedFolderAndReturnsNilForAForeignBoardPath() throws {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
-
-    let root = try #require(WorkspaceTree.node(withID: "", in: tree))
-    #expect(root.name == "Labs")
-
-    let nested = try #require(WorkspaceTree.node(withID: "01 Progetti/b", in: tree))
-    #expect(nested.kind == .workspace(board: "01 Progetti/b/b.canvas"))
-
-    #expect(WorkspaceTree.node(withID: "01 Progetti/b/altro.canvas", in: tree) == nil)
+@Test func boardSelectionsPathIsTheBoardsOwnFileAndFolderIsItsContainingFolder() {
+    #expect(WorkspaceSelection.board(path: "A/x.canvas").path == "A/x.canvas")
+    #expect(WorkspaceSelection.board(path: "A/x.canvas").folder == "A")
 }
 
-// MARK: - WorkspaceBrowser.rows(matching:in:) (R-09)
+@Test func aRootLevelBoardSelectionsFolderIsEmpty() {
+    #expect(WorkspaceSelection.board(path: "x.canvas").folder == "")
+}
+
+@Test func folderSelectionsPathAndFolderAreBothTheFolderItself() {
+    #expect(WorkspaceSelection.folder("A/b").path == "A/b")
+    #expect(WorkspaceSelection.folder("A/b").folder == "A/b")
+}
+
+@Test func hasBoardIsTrueOnlyForTheBoardCase() {
+    #expect(WorkspaceSelection.board(path: "A/x.canvas").hasBoard)
+    #expect(!WorkspaceSelection.folder("A").hasBoard)
+}
+
+// MARK: - WorkspaceBrowser.identifier(for:) (ADR-0025, no "workspace-foreign-board-" left)
 //
-// ADR-0024 Task 3: the filtered list's input. `WorkspaceBrowser.rows(matching:in:)` is
-// a placeholder returning `[]`, so both assertions below are red on their expectations,
-// never on a build error.
+// Built directly rather than through `WorkspaceTree.build(folders:boards:)`, which is a
+// placeholder that never produces a `.folder`/`.board` node in RED - `identifier(for:)`
+// is asked in isolation, the way ADR-0024's predecessor test asked it before any fold
+// existed to build the node for it either.
 
-@Test func rowsMatchingReturnsWorkspaceRowsByIdOrNameCaseInsensitivelyAndFindsTheRootByName() throws {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
-
-    // "a" over the ADR-0024 fixture: "01 Progetti/a" (id ends in "a"), "Vuota" and
-    // "Vuota/dentro" (both paths carry "Vuota", which contains "a") and the root, whose
-    // id is "" - never a match on its own - reachable only because its name "Labs" is.
-    // "01 Progetti" and "01 Progetti/b" contain no "a" in either id or name and are
-    // excluded, and the `.foreignBoard` "01 Progetti/b/altro.canvas" is excluded even
-    // though its path contains "a", because only `.workspace` rows are ever selectable
-    // (ADR-0024 §D3) and a search result a click cannot act on is not a result.
-    let matches = WorkspaceBrowser.rows(matching: "a", in: tree)
-
-    #expect(Set(matches.map(\.id)) == Set(["01 Progetti/a", "Vuota", "Vuota/dentro", ""]))
-    #expect(!matches.contains { if case .foreignBoard = $0.kind { true } else { false } })
-
-    let root = try #require(matches.first { $0.id == "" })
-    #expect(root.name == "Labs")
-}
-
-// MARK: - WorkspaceBrowser.identifier(for:) (ADR-0024 §D10)
-//
-// `WorkspaceBrowser.identifier(for:)` is a placeholder returning `""`, so every
-// assertion below is red on its expectation, never on a build error.
-
-@Test func identifierForSpellsTheThreeADR0024IdentifierFormsAndTheRootIsWorkspaceBoardLabs() throws {
-    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
-
-    // The root row owns the vault's board, so it gets the board form - and it is the
-    // exact string `UITests/WorkspaceOpenStateUITests.swift:39` already builds today
-    // (ADR-0024 §D10 preserves it byte-identical).
-    let root = try #require(WorkspaceTree.node(withID: "", in: tree))
-    #expect(WorkspaceBrowser.identifier(for: root) == "workspace-board-Labs.canvas")
-
-    // "Vuota" owns no board of its own - the folder form.
-    let vuota = try #require(WorkspaceTree.node(withID: "Vuota", in: tree))
-    #expect(WorkspaceBrowser.identifier(for: vuota) == "workspace-folder-Vuota")
-
-    // "01 Progetti/b/altro.canvas" is a `.foreignBoard` - the third form, distinct from
-    // both, so a test can tell "unopenable by design" from "missing" (ADR-0024 §D10).
-    let progetti = try #require(WorkspaceTree.node(withID: "01 Progetti", in: tree))
-    let b = try #require(progetti.children.first { $0.id == "01 Progetti/b" })
-    let foreign = try #require(
-        b.children.first { if case .foreignBoard = $0.kind { true } else { false } }
+@Test func identifierForABoardIsTheWorkspaceBoardSpellingOverItsOwnPath() {
+    let node = WorkspaceTree.Node(
+        id: "A/x.canvas", name: "x", kind: .board(path: "A/x.canvas"), children: [], boardCount: 0
     )
-    #expect(WorkspaceBrowser.identifier(for: foreign) == "workspace-foreign-board-01 Progetti/b/altro.canvas")
+
+    #expect(WorkspaceBrowser.identifier(for: node) == "workspace-board-A/x.canvas")
 }
+
+@Test func identifierForAFolderIsTheWorkspaceFolderSpellingOverItsOwnPath() {
+    let node = WorkspaceTree.Node(
+        id: "Vuota", name: "Vuota", kind: .folder, children: [], boardCount: 0
+    )
+
+    #expect(WorkspaceBrowser.identifier(for: node) == "workspace-folder-Vuota")
+}
+
+// ADR-0024 §D3's `.foreignBoard` and its `workspace-…-board-` third identifier form are
+// gone, not merely untested: the two assertions above are this file's only calls to
+// `identifier(for:)`, and neither node is that kind - there is no third spelling because
+// nothing here constructs the case that used to produce one (its own assertion at the
+// predecessor file's line 185 is deleted, not inverted, since the concept itself is gone).
