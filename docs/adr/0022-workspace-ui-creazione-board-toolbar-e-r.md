@@ -224,6 +224,11 @@ menu would be a regression nobody asked for.
 
 ### D9. Selection is a folder path, defaulting to the open board's folder; the root disables both verbs
 
+**Superseded by ADR-0024** (`docs/adr/0024-workspace-board-tree-single-selection.md`): the
+`selectedFolder ?? openFolder` fallback this section describes is deliberately removed — with
+nothing selected, the toolbar now targets nothing and «Rinomina»/«Elimina» are disabled, rather
+than aiming at whatever board happens to be open.
+
 The browser gains `@State private var selectedFolder: String?`. A board row's click selects its
 parent folder and opens it, as it does today; a folder row's label click selects that folder
 without toggling its disclosure. The verbs act on `selectedFolder ?? openFolder`, so the toolbar is
