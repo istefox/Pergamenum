@@ -139,6 +139,17 @@ struct WorkspaceBrowser: View {
     /// compiling, not that expression.
     private var targetFolder: String { selectedFolder ?? "" }
 
+    /// ADR-0024 §D7 / R-06, Task 4 (tester): the toolbar's target read as one
+    /// expression, with no branch on which case the selection is - the whole content
+    /// of "the toolbar cannot aim anywhere the visible row is not."
+    ///
+    /// Placeholder for Task 4's coder: returns `""` unconditionally. That happens to
+    /// be right for the `nil` case and wrong for `.folder`/`.board` - a build-clean
+    /// stand-in, not the real one-expression logic (ADR-0155 §D1).
+    static func target(for selection: WorkspaceSelection?) -> String {
+        ""
+    }
+
     /// The collision predicate both sheets block on, live, so a name that is already
     /// taken is refused before anything is created rather than reported afterwards
     /// (ADR-0022 §D11, R-03).
