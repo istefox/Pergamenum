@@ -135,6 +135,63 @@ struct CanvasStore: Sendable {
         return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    // MARK: - Path-addressing API (ADR-0025 §D1)
+    //
+    // A board is told its own path instead of deriving it from a folder - the decision
+    // ADR-0025 exists to make. Plan
+    // `docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md`, Task 1.
+    //
+    // This sits alongside the folder-derived API above rather than replacing it, and
+    // only for this task's RED step: `boardPath(forFolder:)`/`url(forFolder:)`/
+    // `load(folder:)`/`save(_:folder:)`/`contents(ofFolder:board:)` are deleted or
+    // re-signed in place by the coder's GREEN-phase work, which also migrates every
+    // caller of the old shape - `BoardTray`, `BoardCardMenu`, `WorkspaceBrowser` and
+    // `FolderFileOperations` - in the same batch ("a removal has no placeholder").
+    // Those four files sit outside this task's write scope, so the old members stay so
+    // the whole target keeps building.
+    //
+    // Every body below is a placeholder, never real logic: `load(board:)` always
+    // throws `.missing`, the rest return the emptiest value that still type-checks.
+    // `url(forBoard:)` is the one exception - a plain path join with no judgment call,
+    // exactly like `url(forFolder:)` above.
+
+    func url(forBoard board: String) -> URL {
+        root.appending(path: board, directoryHint: .notDirectory)
+    }
+
+    /// Placeholder: always throws `.missing`. The real body loads the file at
+    /// `url(forBoard:)` when it exists and throws only when it does not (ADR-0025
+    /// §D1, F2) - the coder's GREEN-phase work.
+    func load(board: String) throws -> CanvasDocument {
+        throw StoreError.missing(board)
+    }
+
+    /// Placeholder: writes nothing, returns an empty hash.
+    @discardableResult
+    func save(_ document: CanvasDocument, board: String) throws -> String {
+        ""
+    }
+
+    /// Placeholder: reports no entries at all.
+    func contents(ofBoard board: String, document: CanvasDocument) -> FolderContents {
+        FolderContents(subfolders: [], unplaced: [])
+    }
+
+    /// Placeholder: creates nothing, returns an empty path.
+    func createBoard(named name: String, in parent: String) throws -> String {
+        ""
+    }
+
+    /// Placeholder: always reports the name as taken.
+    func boardNameIsAvailable(_ name: String, in parent: String) -> Bool {
+        false
+    }
+
+    /// Placeholder: reports no folders.
+    func allFolders() -> [String] {
+        []
+    }
+
     /// Creates a real directory for a folder card (SPEC §6.4, tool 4).
     func createFolder(named name: String, in parent: String) throws -> String {
         let relativePath = parent.isEmpty ? name : "\(parent)/\(name)"
@@ -148,10 +205,15 @@ struct CanvasStore: Sendable {
 
     enum StoreError: Error, CustomStringConvertible {
         case alreadyExists(String)
+        /// ADR-0025 §D1: a `load(board:)` whose file is not there fails loudly instead
+        /// of silently returning `.empty` (F2 - "the single most damaging failure
+        /// mode of the feature").
+        case missing(String)
 
         var description: String {
             switch self {
             case .alreadyExists(let path): "\(path) esiste già"
+            case .missing(let path): "\(path) non esiste"
             }
         }
     }
