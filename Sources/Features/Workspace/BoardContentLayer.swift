@@ -38,6 +38,10 @@ struct BoardContentLayer: View {
         let frame = workspace.displayFrame(for: node)
 
         cardBody(node)
+            // Stable regardless of render state: the placeholder branch below carries
+            // no Text, so a UI test that only knows the node's title cannot find a card
+            // once `drawsPlaceholder` switches it in at low zoom.
+            .accessibilityIdentifier("canvas-node-\(node.id)")
             .frame(width: frame.width, height: frame.height)
             .overlay(
                 RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)

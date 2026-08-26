@@ -24,6 +24,13 @@ struct WorkspaceFolderActions {
     /// (R-11, R-12).
     let delete: (_ folder: String) -> Void
 
+    /// Records a non-modal problem the browser found on its own, the same visible channel
+    /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -
+    /// so a tree/click desync (a `.tag`ed id the tree no longer resolves, e.g. a rescan
+    /// racing the click) leaves a trace instead of silently reading as an ordinary
+    /// board-less folder (ADR-0024 Gate 5.06 finding).
+    let recordDesync: (_ message: String) -> Void
+
     /// Where the open board should point once `renamed` has become `to`: unchanged
     /// outside the renamed subtree, exact-substituted when `open` *is* `renamed`, and
     /// prefix-substituted when it sits inside it (R-08, ADR-0022 §D10 - "`workspace.folder`

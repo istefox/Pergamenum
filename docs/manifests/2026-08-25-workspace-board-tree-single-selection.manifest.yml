@@ -1,38 +1,38 @@
 manifest_schema_version: "1.3"
-topic: "universal-command-surface-parity"
-topic_full_title: "Universal command surface parity: toolbar and context menu for every command (PG-042)"
+topic: "workspace-board-tree-single-selection"
+topic_full_title: "Workspace board tree single selection model"
 project_root: "/Users/stefer/Developer/Pergamenum"
 mode: "greenfield"
 anonymize: false
 chain_path: "standard"
-created_at: "2026-08-25T13:34:54+00:00"
-last_updated_at: "2026-08-26T19:14:17+00:00"
+created_at: "2026-08-25T19:50:15+00:00"
+last_updated_at: "2026-08-26T19:02:14+00:00"
 current_step: "completed"
 status: "completed"
 
 # Gate 0 routing result (ADR-0017)
 gate0:
-  decision: null
+  decision: "standard"
   chain_path: "standard"
-  auto_detect_reason: "file_estimate=641,file_vote=standard,keyword_vote=express,spec_adr=false -> orchestrator override to standard (multi-layer, 6+ files across 5 areas, ADR-0022 revisit)"
+  auto_detect_reason: "explicit:standard"
   criteria_spec_adr_exist: false
   decided_at: null
 
 # test-cmd tracking (ADR-0014)
 test_cmd_placeholder: false
-test_cmd_candidate: "xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath \"/Users/stefer/Developer/Pergamenum/.build/DerivedData\" -only-testing:PergamenumTests test"
+test_cmd_candidate: null
 test_cmd_provisional: false
-coder_model: "opus"
+coder_model: null
 
 # Autopilot mode (project-conductor): all HITL gates auto-select safe defaults
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: true
-step5_mode: "agent_batch"
+hook_verified: false
+step5_mode: null
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
-recovery_baseline_sha: "3881c1d60ed7190e03e91fe45f3c63a19565a89b"
+recovery_baseline_sha: "ebcec59870bbec2aa8732e1f0f9a79449b0d3b69"
 
 # Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
@@ -49,7 +49,7 @@ worktree_merges: []
 # here, not inert (inverts the ADR-0052/0053/0054 pattern) — see concept-to-code/SKILL.md
 # section '#### Proportional audit depth' for the resolution rule and the §D4 floor.
 risk: null
-task_type: "glue"
+task_type: null
 
 # External dependencies (ADR-0060 G13). Empty list means nobody declared any — NOT that
 # none exist (§D5); the gate is inert on an empty list. This is the OPPOSITE default
@@ -80,48 +80,48 @@ tracer_bullet_abort_reason: null
 git_init: true
 git_visibility: "private"
 license: "None"
-xcode_project: false
+xcode_project: true
 initial_commit_push: "commit"
 git_remote_url: "https://github.com/istefox/Pergamenum.git"
-step6_mode: null
+step6_mode: "skill_fallback"
 
 # Artifacts (absolute paths, populated as steps complete)
 artifacts:
-  spec: "SPEC.md"
+  spec: "/Users/stefer/Developer/Pergamenum/docs/specs/workspace-board-tree-single-selection.spec.md"
   brainstorm: null
   ux_blueprint: null
-  adr: "docs/adr/0023-universal-command-surface-parity.md"
+  adr: "/Users/stefer/Developer/Pergamenum/docs/adr/0024-workspace-board-tree-single-selection.md"
   arch: null
-  plan: "docs/superpowers/plans/2026-08-25-universal-command-surface-parity.md"
+  plan: "/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-08-25-workspace-board-tree-single-selection.md"
   project_claude_md: null
 
 # HITL gates audit trail
 hitl_gates:
   - gate: 1
     label: "spec_review"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-08-26T07:22:13+00:00"
+    notes: "SPEC.md approved"
   - gate: 2
     label: "architecture_review"
     status: "approved"
-    approved_at: "2026-08-25T14:04:48+00:00"
-    notes: "architecture accepted"
+    approved_at: "2026-08-26T07:22:13+00:00"
+    notes: "ADR-0024 approved; R-10 persistence premise corrected; targetFolder fallback removal confirmed"
   - gate: 3
     label: "project_memory_review"
     status: "approved"
-    approved_at: "2026-08-25T14:06:25+00:00"
-    notes: "CLAUDE.md updated"
+    approved_at: "2026-08-26T07:25:41+00:00"
+    notes: "CLAUDE.md updated (401 lines)"
   - gate: 4
     label: "implementation_mode"
     status: "approved"
-    approved_at: "2026-08-25T14:09:13+00:00"
+    approved_at: "2026-08-26T07:27:07+00:00"
     notes: "Confirmed — I will /clear and resume"
   - gate: 5
     label: "review_cycle_decision"
     status: "approved"
-    approved_at: "2026-08-25T16:54:46+00:00"
-    notes: "skip review"
+    approved_at: "2026-08-26T11:41:14+00:00"
+    notes: "Run review-triage-fix"
 
 # Session boundary tracking
 session_boundary:
@@ -137,4 +137,4 @@ failure:
   partial_artifacts: []
 
 # Hint for next action (UX)
-next_action: "Run /skill concept-to-code universal-command-surface-parity to start Step 1 interview"
+next_action: "Run /skill concept-to-code workspace-board-tree-single-selection to start Step 1 interview"

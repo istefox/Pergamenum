@@ -56,6 +56,16 @@ struct RootView: View {
         WindowPlace(navigation: navigation, vault: vault, day: day)
     }
 
+    /// Collapsed only for concentrazione on the Workspace pane. Derived rather than
+    /// stored beside `isWorkspaceFocused`, the same reasoning as `currentItem` above:
+    /// two copies of "is the sidebar open" can disagree, one copy cannot.
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { navigation.isWorkspaceFocused && pane == .workspace ? .detailOnly : .all },
+            set: { if $0 == .all { navigation.isWorkspaceFocused = false } }
+        )
+    }
+
     /// What a row does when it is chosen. Two of them are not destinations, and land on
     /// the Note pane, which is where what they open ends up.
     private func choose(_ item: SidebarItem) {
@@ -120,7 +130,7 @@ struct RootView: View {
     }
 
     private var content: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: sidebarVisibility) {
             sidebar
         } detail: {
             detail

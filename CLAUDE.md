@@ -187,6 +187,12 @@ move the previous copy aside rather than deleting it.
 
 ## Working agreements
 
+- **A `SwiftUI` tree that must participate in `List(selection:)` cannot use `DisclosureGroup`.** A
+  `DisclosureGroup`'s label is not a row of the enclosing `List`, so a `.tag` on it satisfies no
+  binding — the list lights nothing and swallows every click, and it fails silently (`RootView.swift`
+  §D-noted trap: a `.badge` applied after `.tag` drops the tag the same way). Use flat recursive rows
+  instead (`NoteListPane.swift`'s shape: a `@ViewBuilder` row plus, as a sibling, `if isExpanded {
+  ForEach(children) {...} }`, chevron and depth drawn by hand) — see ADR-0024.
 - Verify every change against `docs/20260811_Pergamenum_SpecApp.md`. If the spec and
   an instruction disagree, say so before writing code.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
@@ -357,6 +363,34 @@ Key architectural decisions:
 
 Detail: `docs/adr/0023-universal-command-surface-parity.md`.
 
+## Decisions from the Workspace board tree single selection chain (ADR-0024)
+
+One derived selection for the Workspace sidebar tree, replacing the two-variable
+`selectedFolder`/`openBoardPath` model: `docs/adr/0024-workspace-board-tree-single-selection.md`.
+
+Key architectural decisions:
+- **The tree stops being a `DisclosureGroup` and becomes flat recursive rows with `.tag`**, matching
+  `NoteListPane`'s reference shape — a `DisclosureGroup`'s label is not a row of the enclosing
+  `List`, so `List(selection:)` cannot select it; copying the reference model's binding without its
+  row structure produces a binding nothing can satisfy.
+- **One `WorkspaceSelection` enum (`.board(folder:)` / `.folder(_)`) replaces `hasOpenBoard`,
+  `closeBoard()` and `selectedFolder`** — the lit row and whether a board is drawn are the same
+  value, never two variables that must be kept in sync.
+- **The selection tag is always the folder path, never the board path** — a board opened from
+  outside the tree (breadcrumb, route, card, editor) lights exactly that folder's row whether or
+  not a `.canvas` file exists there yet, closing the tree/toolbar divergence ADR-0022 §D9's
+  fallback used to paper over.
+- **A `.canvas` not named after its folder gets a row with no `.tag`** — structurally unselectable,
+  the same mechanism the Note sidebar uses for folder rows, rather than a disabled state anyone has
+  to remember to apply.
+- **`targetFolder`'s fallback is deleted, not preserved** — with nothing selected, Rinomina/Elimina
+  are now disabled rather than aiming at the open board's folder (reverses ADR-0022 A7 deliberately:
+  a destructive verb with no visible target is worse than one that asks for a click first).
+- **No open-board persistence exists or is added** — corrects the interview's mistaken premise;
+  `5041d5c` already shipped "no board open until chosen" and this chain does not reopen it.
+
+Detail: `docs/adr/0024-workspace-board-tree-single-selection.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
@@ -364,3 +398,4 @@ Detail: `docs/adr/0023-universal-command-surface-parity.md`.
 - **ADR-0021** — Workspace browser + Task↔Workspace/Note relations + project sub-tasks, entirely as new task-line caret markers, no new storage → `docs/adr/0021-workspace-tasks-notes-integration.md`
 - **ADR-0022** — Workspace sidebar toolbar, folder-backed board creation/rename/delete, no journal, no connector exposure → `docs/adr/0022-workspace-ui-creazione-board-toolbar-e-r.md`
 - **ADR-0023** — Toolbar/context-menu command parity across six clusters + Duplica card, one catalogue per cluster shared by both surfaces → `docs/adr/0023-universal-command-surface-parity.md`
+- **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`

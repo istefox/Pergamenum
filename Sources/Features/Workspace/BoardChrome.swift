@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The Workspace's chrome: the bar above the board, the tool column beside it, the
-/// zoom controls, the pen controls and the tray.
+/// zoom controls and the pen controls. The tray is a panel rather than furniture and
+/// lives in `BoardTray.swift`.
 ///
 /// Lifted out of `WorkspaceView` so that file holds the board itself. Each view takes
 /// exactly what it needs, which is also what makes it readable on its own.
@@ -16,21 +17,32 @@ struct BoardTopBar: View {
     let workspace: WorkspaceController
 
     var body: some View {
-        HStack(spacing: theme.spacing(.xs)) {
+        // Read once per redraw: `breadcrumb` is computed - it splits the folder path and
+        // allocates a fresh array on every access - so reading it inside the `ForEach`
+        // body cost one more array construction per segment on top of the enumeration.
+        let crumbs = workspace.breadcrumb
+        return HStack(spacing: theme.spacing(.xs)) {
             Circle()
                 .fill(theme.color(workspace.hasUnsavedChanges ? .taskScheduled : .accentPrimary))
                 .frame(width: 8, height: 8)
 
-            ForEach(Array(workspace.breadcrumb.enumerated()), id: \.offset) { index, crumb in
+            ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
                 if index > 0 {
                     Text("›").themedText(.body, color: .textTertiary)
                 }
-                Button(crumb.title) { workspace.open(folder: crumb.folder) }
-                    .buttonStyle(.plain)
-                    .themedText(
-                        .body,
-                        color: index == workspace.breadcrumb.count - 1 ? .textPrimary : .textSecondary
-                    )
+                if index == crumbs.count - 1 {
+                    // The last segment is where you already are, so it is not a link
+                    // (ADR-0024 §D8.2): as a `Button` it re-ran `open(folder:)` on the
+                    // open folder, which resets the board's zoom and pan for a click
+                    // that was meant to go nowhere. Emphasis carries "you are here" -
+                    // the tree says it with the system's row fill and this pane's
+                    // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
+                    Text(crumb.title).themedText(.body, color: .textPrimary)
+                } else {
+                    Button(crumb.title) { workspace.open(folder: crumb.folder) }
+                        .buttonStyle(.plain)
+                        .themedText(.body, color: .textSecondary)
+                }
             }
 
             Spacer()
@@ -102,11 +114,11 @@ struct BoardZoomControls: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            Button { workspace.zoom(by: 1 / 1.25) } label: { Image(systemName: "minus") }
+            Button { workspace.zoom(by: 1 / 1.25, in: viewportSize) } label: { Image(systemName: "minus") }
             Button { workspace.resetZoom() } label: {
                 Text("\(Int(workspace.zoom * 100))%").themedText(.caption)
             }
-            Button { workspace.zoom(by: 1.25) } label: { Image(systemName: "plus") }
+            Button { workspace.zoom(by: 1.25, in: viewportSize) } label: { Image(systemName: "plus") }
             Divider().frame(height: 12)
             Button { workspace.zoomToFit(in: viewportSize) } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -169,184 +181,5 @@ struct BoardPenControls: View {
         .background(theme.color(.surfaceRaised))
         .clipShape(Capsule())
         .themedShadow(.card)
-    }
-}
-
-/// The right-hand column: items in the folder not yet on the board, the tasks that
-/// link to this board, and the board's dashboard - the tasks assigned to it and the
-/// notes it carries (SPEC §6.1, §7.2; ADR-0021 §D7, §D8).
-///
-/// The dashboard goes here rather than into a second trailing column, which is the
-/// whole of D7: this column is the structural slot the UX blueprint points at, and a
-/// board with two inspectors would be the second mechanism it asks us not to build.
-struct BoardTray: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
-    let workspace: WorkspaceController
-
-    var body: some View {
-        // Four sections do not fit a 200-point column, and the one that overflows is
-        // whichever happens to be last rather than the least important.
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-                if !workspace.contents.unplaced.isEmpty {
-                    newItems
-                }
-                // SPEC §7.2: the board shows the tasks that link to it, exactly as a note
-                // does. The link target is the `.canvas` file name, which is how a
-                // wikilink names a board.
-                LinkedTasksPanel(
-                    title: boardFileName,
-                    emptyText: "nessun task linka questa board"
-                )
-                assignedTasks
-                referencedNotes
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(theme.spacing(.s))
-        }
-        .frame(width: 200)
-        .background(theme.color(.backgroundSecondary))
-        .accessibilityIdentifier("board-tray")
-    }
-
-    // MARK: Dashboard
-
-    /// R-05: the tasks that named this board with `^[[…]]`, completable where they are
-    /// shown. `vault.toggle` writes the task's own note, never a copy.
-    ///
-    /// Deliberately disjoint from "TASK COLLEGATI" above it (ADR-0021 §D1): the
-    /// assignment marker is removed from `TaskItem.links`, so a task appears in exactly
-    /// one of the two sections and the pair is not a duplicate list.
-    private var assignedTasks: some View {
-        let tasks = vault.index.tasks(assignedToWorkspace: boardFileName)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Text("TASK ASSEGNATI").themedText(.caption, color: .textTertiary)
-                if !tasks.isEmpty {
-                    Text("\(tasks.filter { $0.state != .done }.count)/\(tasks.count)")
-                        .themedText(.caption, color: .textTertiary)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Task assegnati a questa board: \(tasks.count)")
-            .accessibilityIdentifier("board-assigned-tasks-header")
-
-            if tasks.isEmpty {
-                Text("nessun task assegnato a questa board")
-                    .themedText(.caption, color: .textTertiary)
-            } else {
-                ForEach(tasks) { task in
-                    TaskPanelRow(task: task, identifierPrefix: "assigned-task")
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("board-assigned-tasks")
-    }
-
-    /// R-06: the notes this board carries, read from the open document and never from
-    /// the index (ADR-0021 §D8) - the index would answer "which notes mention this
-    /// board", which is a different question and wrong for a card placed and never
-    /// linked.
-    private var referencedNotes: some View {
-        let notes = WorkspaceReferences.notes(in: workspace.document)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Text("NOTE REFERENZIATE").themedText(.caption, color: .textTertiary)
-                if !notes.isEmpty {
-                    Text("\(notes.count)").themedText(.caption, color: .textTertiary)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Note referenziate da questa board: \(notes.count)")
-            .accessibilityIdentifier("board-referenced-notes-header")
-
-            if notes.isEmpty {
-                Text("nessuna nota su questa board")
-                    .themedText(.caption, color: .textTertiary)
-            } else {
-                ForEach(notes, id: \.self) { reference in
-                    noteRow(reference)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("board-referenced-notes")
-    }
-
-    private func noteRow(_ reference: String) -> some View {
-        // A `.file` card carries a vault path; a wikilink inside a text card carries a
-        // title, resolved through the index for display and left exactly as written
-        // when it resolves to nothing (D8) - an unresolved link is still a fact about
-        // the board.
-        let path = resolvedPath(for: reference)
-        return Button {
-            if let path { vault.openNote(at: path) }
-        } label: {
-            HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: path == nil ? "questionmark.square.dashed" : "doc.text")
-                    .foregroundStyle(theme.color(path == nil ? .textTertiary : .textSecondary))
-                Text(displayName(for: reference, path: path))
-                    .themedText(.caption, color: path == nil ? .textTertiary : .textPrimary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(path == nil)
-        .help(path ?? "nota non trovata nel vault")
-        .accessibilityLabel("Nota \(displayName(for: reference, path: path))")
-        .accessibilityIdentifier("board-referenced-note-\(reference)")
-    }
-
-    private func resolvedPath(for reference: String) -> String? {
-        if vault.index.notes[reference] != nil { return reference }
-        let title = ((reference as NSString).lastPathComponent as NSString)
-            .deletingPathExtension
-        return vault.index.resolve(title: title).first
-    }
-
-    private func displayName(for reference: String, path: String?) -> String {
-        guard let path else { return reference }
-        return NoteName.title(fromFileName: (path as NSString).lastPathComponent)
-    }
-
-    /// The board's own file name, as a wikilink would write it.
-
-    private var boardFileName: String {
-        guard let root = vault.root else { return "" }
-        return (CanvasStore(root: root).boardPath(forFolder: workspace.folder) as NSString)
-            .lastPathComponent
-    }
-
-    private var newItems: some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("NUOVI ELEMENTI").themedText(.caption, color: .textTertiary)
-            Text("Trascina o clicca per posare sulla board.")
-                .themedText(.caption, color: .textTertiary)
-
-            // No `ScrollView` of its own any more: the tray scrolls as one column, and
-            // a vertical scroll view nested in another has no height to work with.
-            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                ForEach(workspace.contents.unplaced, id: \.self) { path in
-                    Button {
-                        _ = workspace.placeFile(path, at: CGPoint(x: 60, y: 60))
-                    } label: {
-                        HStack(spacing: theme.spacing(.xs)) {
-                            Image(systemName: workspace.contents.subfolders.contains(path)
-                                  ? "folder" : "doc")
-                            Text((path as NSString).lastPathComponent)
-                                .themedText(.caption)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
     }
 }

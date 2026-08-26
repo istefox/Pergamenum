@@ -73,9 +73,30 @@ final class WorkspaceController {
     static let zoomRange: ClosedRange<CGFloat> = 0.05...4.0
 
     private(set) var folder = ""
+    /// The single value that says both which row of the Workspace tree is lit and
+    /// whether a board is drawn (ADR-0024 §D4). Replaces the former `hasOpenBoard`
+    /// flag: `attach` prepares the root board's document the moment a vault opens, but
+    /// that is readiness, not a choice, so `current` stays `nil` until something is
+    /// actually selected.
+    ///
+    /// Written in exactly four places, all in this file: `attach` (`nil`),
+    /// `open(folder:)` (`.board`), `select(_:)` (whatever the tree asked for) and
+    /// `detach` (`nil`). Everything else reads it.
+    private(set) var current: WorkspaceSelection?
+    /// True only while a board is drawn, derived from `current` rather than stored
+    /// separately (ADR-0024 §D4) - answering "is a board on screen" can never disagree
+    /// with "which row is lit" because both read the same value.
+    var isShowingBoard: Bool { current?.hasBoard ?? false }
     private(set) var document = CanvasDocument.empty
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
-    private(set) var problems: [String] = []
+    /// `contents.subfolders` in the shape the "is this path a folder" question needs.
+    ///
+    /// That question is asked once per node while the board draws (`subfolder(for:)`,
+    /// `selectedFileURLs`) and once per tray row (`BoardChrome`), so answering it by
+    /// scanning the array cost O(nodes x subfolders) per redraw. `contents.subfolders`
+    /// stays an ordered array because display order is its other job; this is the same
+    /// data indexed for lookup, written only by `setContents` so the two cannot drift.
+    private(set) var subfolderSet: Set<String> = []
 
     var tool: Tool = .select
     /// True when a tool stays active after one use (double click on the tool).
@@ -95,6 +116,14 @@ final class WorkspaceController {
     var canRedo: Bool { history.canRedo }
 
     var store: CanvasStore?
+    /// The vault this board belongs to, handed over by `attach` beside the store and the
+    /// thumbnail cache. It exists for `recordProblem` alone: the Workspace draws no
+    /// problem list of its own, so a recoverable failure is reported where the app
+    /// already shows them (Impostazioni → Problemi, `SettingsView`).
+    ///
+    /// Weak and observation-ignored: the vault outlives the board and nothing redraws
+    /// when it changes.
+    @ObservationIgnored private weak var vault: VaultController?
 
     /// Strokes being drawn right now, before they are written to their SVG, and the
     /// node whose SVG is being edited when a drawing was reopened (SPEC §6.2).
@@ -111,19 +140,38 @@ final class WorkspaceController {
     private var saveTask: Task<Void, Never>?
     /// Autosave delay of SPEC §6.1.
     private let autosaveDelay = Duration.seconds(1)
-
-    /// Hashes written by this controller, for the vault watcher to recognise as its
-    /// own rather than reloading the board under the user (ADR-0001 §D3).
-    private(set) var lastWrittenHash: [String: String] = [:]
+    /// The reframing owed to a viewport that is still changing size, and the debounce
+    /// waiting for it to settle. Stored here rather than as three `@State` flags in the
+    /// view because it is viewport-framing policy; the behaviour lives in
+    /// `WorkspaceController+Viewport`, which as an extension cannot hold state.
+    ///
+    /// One optional rather than a flag per mode: the two modes are mutually exclusive
+    /// and this is what makes them unable to be raised together.
+    var pendingRefit: RefitMode?
+    var refitTask: Task<Void, Never>?
 
     // MARK: Navigation
 
     /// `thumbnails` comes from the vault, which owns the cache. Nil is a board with no
     /// renderer: cards fall back to their symbols, which is what the tests exercise.
-    func attach(to store: CanvasStore, thumbnails: ThumbnailStore? = nil) {
+    ///
+    /// `vault` is nil for the same reason and with the same effect on `recordProblem`:
+    /// a board attached without one still works, its failures simply have nobody to
+    /// report to.
+    func attach(
+        to store: CanvasStore,
+        thumbnails: ThumbnailStore? = nil,
+        vault: VaultController? = nil
+    ) {
         self.store = store
         self.thumbnails = thumbnails
-        open(folder: "")
+        self.vault = vault
+        // Loaded, not opened: the root board is ready the instant a vault attaches, but
+        // that is not the same as the user having chosen it. This is the one caller that
+        // wants the load without the selection `open(folder:)` sets (ADR-0024 §D4), and
+        // it is the whole reason `load` is a function of its own.
+        load(folder: "")
+        current = nil
     }
 
     func detach() {
@@ -134,26 +182,40 @@ final class WorkspaceController {
         saveTask = nil
         store = nil
         thumbnails = nil
+        vault = nil
         emailHeaders = [:]
         document = .empty
-        contents = .init(subfolders: [], unplaced: [])
+        setContents(.init(subfolders: [], unplaced: []))
         folder = ""
+        current = nil
         selection = []
     }
 
     /// The breadcrumb of SPEC §6.1: each segment is a folder the user can jump to.
+    ///
+    /// It walks the **selection**, not the loaded document (ADR-0024 §D8.1). `folder`
+    /// names the last board `load` read, and a `.folder(F)` selection loads nothing, so
+    /// deriving from `folder` would leave the previous board's trail on screen while the
+    /// tree showed `F`. With nothing selected the trail is `["Workspace"]` alone.
     var breadcrumb: [(title: String, folder: String)] {
         var trail: [(String, String)] = [("Workspace", "")]
         var accumulated = ""
-        for component in folder.split(separator: "/") {
+        for component in (current?.folder ?? "").split(separator: "/") {
             accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
             trail.append((String(component), accumulated))
         }
         return trail
     }
 
-    func open(folder newFolder: String) {
-        guard let store else { return }
+    /// Reads a folder's board into this controller and says nothing about whether it is
+    /// the selection - that is `open(folder:)`'s decision, or `attach`'s (ADR-0024 §D4).
+    ///
+    /// Returns false when there is no store to read from, which is the one case
+    /// `open(folder:)` must not follow with a selection: a board nothing could load is
+    /// not a board on screen.
+    @discardableResult
+    private func load(folder newFolder: String) -> Bool {
+        guard let store else { return false }
         // Navigating away confirms an open crop the same way a click outside the card
         // would (ADR-0020 D5), rather than silently discarding it.
         endCrop(confirm: true)
@@ -168,24 +230,88 @@ final class WorkspaceController {
             document = try store.load(folder: newFolder)
         } catch {
             document = .empty
-            problems.append("\(newFolder): \(error)")
+            recordProblem("\(newFolder): \(error)")
         }
         refreshContents()
         hasUnsavedChanges = false
         // Each board has its own history: undoing on one board must never reach back
         // into a change made on another.
         history.reset()
+        return true
+    }
+
+    /// Loads a folder's board and makes it the selection. Every caller outside the tree
+    /// - the breadcrumb, a folder card, a `pergamenum://canvas` route, a new board, a
+    /// note handed over from the editor - means "this is now the selected board"
+    /// (ADR-0024 §D4, F10), so there is no `markOpen:` left to say otherwise: `attach`
+    /// was its only `false` and it now calls `load` directly.
+    func open(folder newFolder: String) {
+        guard load(folder: newFolder) else { return }
+        current = .board(folder: newFolder)
+    }
+
+    /// Writes the tree's selection (ADR-0024 §D4), replacing the removed
+    /// `closeBoard()`: `select(nil)` is what `closeBoard()` was, `select(.board(f))`
+    /// is what a row click on a board does, `select(.folder(f))` is what a row click
+    /// on a board-less folder does.
+    ///
+    /// The guard is why this is not simply a setter. ADR-0023 §D4 has the context menu
+    /// set the selection before it raises a sheet, so without it a right-click on the
+    /// board already on screen would re-`open` it and reset the zoom and pan of the very
+    /// thing the user was looking at (ADR-0024 §D4).
+    func select(_ new: WorkspaceSelection?) {
+        guard new != current else { return }
+        if case .board(let folder) = new {
+            open(folder: folder)
+            return
+        }
+        // Selecting a board-less folder, or nothing at all, is still leaving whatever
+        // board was on screen, so it owes the same two obligations `load` discharges
+        // before replacing a document (ADR-0020 D5). What it does not do is load:
+        // `folder` and `document` stay as they are, unread until something is opened.
+        endCrop(confirm: true)
+        flushPendingSave()
+        selection = []
+        current = new
     }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
     /// board being usable: a rejected folder name can simply be retyped.
+    ///
+    /// Reported on the vault, not kept here. The Workspace has no surface that draws a
+    /// problem list, so a list of its own would be a sink nothing empties and nobody
+    /// reads. `VaultController.problems` is the one place the app already shows these
+    /// (Impostazioni → Problemi), the same door `DayController` and the editor report
+    /// their own recoverable failures through.
     func recordProblem(_ message: String) {
-        problems.append(message)
+        vault?.recordProblem(message)
     }
 
+    /// Re-reads the folder from disk and re-splits it into what the board shows and what
+    /// it does not.
+    ///
+    /// The directory listing is deliberately **not** cached, even though every caller but
+    /// `load` changes only the placed set and leaves the folder itself untouched. This
+    /// re-read is the tray's entire freshness mechanism: SPEC §6.1 has a file dropped into
+    /// the folder from Finder appear under "Nuovi elementi", no view ever calls this, and
+    /// `scanGeneration` cannot stand in for the invalidation because
+    /// `VaultWatcher.handle(absolutePaths:)` discards every path that is not `.md` - which
+    /// is exactly the pdf, image and eml the tray exists for. A listing held until the next
+    /// `load` would leave a dropped file invisible until the user navigated away and back,
+    /// which is a worse trade than one directory enumeration per card.
+    ///
+    /// What is worth removing is a *second* call inside one mutation, where the first has
+    /// already read the same document against the same disk - see `createFolder`.
     func refreshContents() {
         guard let store else { return }
-        contents = store.contents(ofFolder: folder, board: document)
+        setContents(store.contents(ofFolder: folder, board: document))
+    }
+
+    /// The only writer of `contents`, so `subfolderSet` is refilled with it every time
+    /// and no future caller can update one and forget the other.
+    private func setContents(_ new: CanvasStore.FolderContents) {
+        contents = new
+        subfolderSet = Set(new.subfolders)
     }
 
     // MARK: Editing
@@ -222,14 +348,20 @@ final class WorkspaceController {
             endCrop(confirm: false)
             document = restored
             // A card that no longer exists must not stay selected: the toolbar would
-            // offer actions on nothing.
-            selection = selection.filter { id in document.nodes.contains { $0.id == id } }
+            // offer actions on nothing. The ids are hashed once rather than scanned per
+            // selected card, so holding Cmd+Z on a board with a large marquee selection
+            // stays linear instead of costing selection × nodes comparisons a step.
+            let liveIDs = Set(document.nodes.map(\.id))
+            selection = selection.intersection(liveIDs)
             hasUnsavedChanges = true
             scheduleSave()
             refreshContents()
             return true
         case .blocked(let name):
-            recordProblem("«\(name)» è stata creata su disco: annullare toglierebbe la card e lascerebbe il file. Eliminalo dal Finder se non lo vuoi.")
+            recordProblem(
+                "«\(name)» è stata creata su disco: annullare toglierebbe la card e lascerebbe il file. "
+                + "Eliminalo dal Finder se non lo vuoi."
+            )
             return false
         case .nothingToDo:
             return false
@@ -273,8 +405,6 @@ final class WorkspaceController {
     /// The marquee being dragged, in board units (SPEC §6.3).
     var marqueeStart: CGPoint?
     var marqueeRect: CGRect?
-
-
 
     func move(nodeIDs: Set<String>, by delta: CGSize) {
         guard !delta.width.isZero || !delta.height.isZero else { return }
@@ -423,9 +553,11 @@ final class WorkspaceController {
     func createFolder(named name: String, at point: CGPoint) throws -> String {
         guard let store else { throw CanvasStore.StoreError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try store.createFolder(named: name, in: folder)
-        let id = placeFile(relativePath, at: point, creatingOnDisk: relativePath)
-        refreshContents()
-        return id
+        // No second `refreshContents()` here. The directory exists before `placeFile` runs,
+        // and `placeFile` -> `addNode` already refreshed against this same document and this
+        // same disk, so a call on the way out enumerated the folder twice for one new card
+        // and could only ever recompute the value already in `contents`.
+        return placeFile(relativePath, at: point, creatingOnDisk: relativePath)
     }
 
     /// Absolute URL of the file a node points at, when it points at one.
@@ -435,8 +567,13 @@ final class WorkspaceController {
     }
 
     /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).
+    ///
+    /// The empty-selection exit is not tidiness: this walks every node in the document
+    /// and stats each file it keeps, and the board redraws far more often than anything
+    /// is selected. Nothing selected can only ever produce an empty list anyway.
     var selectedFileURLs: [URL] {
-        document.nodes
+        guard !selection.isEmpty else { return [] }
+        return document.nodes
             .filter { selection.contains($0.id) }
             .compactMap { node in
                 // A folder card previews as a folder, which Quick Look renders as an
@@ -449,24 +586,50 @@ final class WorkspaceController {
     /// Reads and memoises the headers of an `.eml` card.
     ///
     /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
-    /// cheap even for a message with a large attachment.
+    /// cheap even for a message with a large attachment: the file is mapped rather than
+    /// copied, and only the bytes before the blank line are decoded.
     func loadEmailHeaders(for relativePath: String) {
         guard let store, emailHeaders[relativePath] == nil else { return }
         let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return }
+        let headerBytes = Self.headerBlock(of: data)
 
         // Latin-1 as the fallback: an .eml whose headers are not UTF-8 still has
         // readable ASCII field names, and refusing the file would leave the card blank.
-        let text = String(data: data, encoding: .utf8)
-            ?? String(data: data, encoding: .isoLatin1)
+        let text = String(data: headerBytes, encoding: .utf8)
+            ?? String(data: headerBytes, encoding: .isoLatin1)
             ?? ""
         emailHeaders[relativePath] = EmailHeaderParser.parse(text)
+    }
+
+    /// The bytes up to the blank line that ends an `.eml`'s header block.
+    ///
+    /// `EmailHeaderParser` stops at that line anyway, but only after the whole message
+    /// has been decoded into a `String` - which for a base64 attachment is megabytes of
+    /// UTF-8 validation done to be thrown away. Cutting at the boundary in bytes keeps
+    /// the cost proportional to the headers.
+    ///
+    /// The search is capped: a file with no blank line in its first 64 KB is not a
+    /// message these cards can describe, and the fallback cut lands on the last newline
+    /// so a multi-byte character is never split - half a character fails UTF-8 and
+    /// silently lands in the Latin-1 fallback as mojibake.
+    private static func headerBlock(of data: Data) -> Data {
+        let limit = min(data.count, 64 * 1024)
+        let window = data[data.startIndex..<data.index(data.startIndex, offsetBy: limit)]
+
+        let separators = [Data([0x0A, 0x0A]), Data([0x0D, 0x0A, 0x0D, 0x0A])]
+        if let end = separators.compactMap({ window.range(of: $0)?.lowerBound }).min() {
+            return window[window.startIndex..<end]
+        }
+        // Headers-only file shorter than the cap: nothing was truncated, keep it whole.
+        guard limit < data.count, let lastNewline = window.lastIndex(of: 0x0A) else { return window }
+        return window[window.startIndex..<lastNewline]
     }
 
     /// The folder a card points at, when it points at one.
     func subfolder(for node: CanvasNode) -> String? {
         guard case .file(let path, _) = node.kind else { return nil }
-        return contents.subfolders.contains(path) ? path : nil
+        return subfolderSet.contains(path) ? path : nil
     }
 
     // MARK: Saving
@@ -491,15 +654,17 @@ final class WorkspaceController {
     private func save() {
         guard let store, hasUnsavedChanges else { return }
         do {
-            let hash = try store.save(document, folder: folder)
-            lastWrittenHash[store.boardPath(forFolder: folder)] = hash
+            // The hash is deliberately dropped rather than recorded as a self-write:
+            // `VaultWatcher` reports only `.md` paths, so a `.canvas` write never
+            // reaches `VaultSession.reconcile` and there is nothing for a recorded hash
+            // to be recognised against. The board cannot be reloaded under the user by
+            // the watcher because the watcher never hears about it.
+            try store.save(document, folder: folder)
             hasUnsavedChanges = false
         } catch {
             // Left dirty on purpose: an indicator still showing unsaved changes is
             // the truth, and the next edit will retry.
-            problems.append("salvataggio di \(folder): \(error)")
+            recordProblem("salvataggio di \(folder): \(error)")
         }
     }
-
-
 }

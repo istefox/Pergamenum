@@ -79,7 +79,9 @@ final class WorkspaceBoardUITests: XCTestCase {
     func testACornerGripCanStillBeGrabbedWhenZoomedOut() throws {
         zoomOutWithTheControl(times: 6)
 
-        let card = try element(labelled: "CARD A")
+        // Below `BoardGeometry.placeholderZoom` the card draws no Text at all (perf:
+        // see `BoardContentLayer.cardBody`), so it can no longer be found by its label.
+        let card = try element(nodeID: "aaaa000000000001")
         card.click()
         let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
         corner.press(
@@ -199,7 +201,10 @@ final class WorkspaceBoardUITests: XCTestCase {
     }
     """
 
-    /// Brings the Workspace pane up, whichever pane the app happened to open on.
+    /// Brings the Workspace pane up, whichever pane the app happened to open on,
+    /// then explicitly selects the vault's root board. Since ADR-0024 (and 5041d5c
+    /// before it) no board opens on its own - the pane lands on the browser/tree and
+    /// a row must be clicked, so this can no longer assume `CARD A` appears for free.
     private func openWorkspace() throws {
         let board = app.staticTexts["CARD A"]
         if board.waitForExistence(timeout: 5) { return }
@@ -209,6 +214,13 @@ final class WorkspaceBoardUITests: XCTestCase {
             candidate.click()
             break
         }
+
+        let rootBoardID = "workspace-board-\(vault.lastPathComponent).canvas"
+        let row = app.descendants(matching: .any).matching(identifier: rootBoardID).firstMatch
+        if row.waitForExistence(timeout: 10) {
+            row.click()
+        }
+
         XCTAssertTrue(board.waitForExistence(timeout: 10), "la board non si è aperta")
     }
 
@@ -217,6 +229,16 @@ final class WorkspaceBoardUITests: XCTestCase {
     private func element(labelled label: String) throws -> XCUIElement {
         let element = app.staticTexts[label]
         XCTAssertTrue(element.waitForExistence(timeout: 10), "elemento «\(label)» assente")
+        return element
+    }
+
+    /// Same as `element(labelled:)`, anchored on the card's `accessibilityIdentifier`
+    /// instead of its visible label - the only lookup that still works once the card
+    /// is below `BoardGeometry.placeholderZoom` and draws no Text.
+    private func element(nodeID: String) throws -> XCUIElement {
+        let element = app.descendants(matching: .any)
+            .matching(identifier: "canvas-node-\(nodeID)").firstMatch
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "elemento con id «\(nodeID)» assente")
         return element
     }
 
