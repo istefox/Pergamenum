@@ -78,12 +78,10 @@ extension WorkspaceController {
     @discardableResult
     func openRoute(_ route: (path: String, nodeID: String?), viewport: CGSize) -> String? {
         let folder = (route.path as NSString).deletingLastPathComponent
-        // ADR-0024 §D6: with a board-less folder selected, `self.folder` still names
-        // the last *loaded* board, so comparing against it (as the old guard did)
-        // would decline to open the board this route names. Comparing against
-        // `current` fixes that - though `open(folder:)` does not yet write `current`
-        // (Task 2's placeholder, `Tests/WorkspaceOpenStateTests.swift`), so this guard
-        // opens on every route hit until the coder's GREEN pass lands.
+        // ADR-0024 §D4: with a board-less folder selected, `self.folder` still names the
+        // last *loaded* board, so comparing against it (as the old guard did) would
+        // decline to open the board this route names and the link would silently do
+        // nothing. `current` is the value that answers "is this board on screen".
         if current != .board(folder: folder) { open(folder: folder) }
 
         guard let nodeID = route.nodeID else { return nil }

@@ -79,9 +79,9 @@ final class WorkspaceController {
     /// that is readiness, not a choice, so `current` stays `nil` until something is
     /// actually selected.
     ///
-    /// ADR-0024 Task 2 GREEN (coder): every write to `current` - `attach`'s `nil`,
-    /// `open(folder:)`'s `.board(folder:)`, `select(_:)`'s dispatch, `detach`'s `nil`
-    /// - is still a placeholder at this point in the task; see `select(_:)` below.
+    /// Written in exactly four places, all in this file: `attach` (`nil`),
+    /// `open(folder:)` (`.board`), `select(_:)` (whatever the tree asked for) and
+    /// `detach` (`nil`). Everything else reads it.
     private(set) var current: WorkspaceSelection?
     /// True only while a board is drawn, derived from `current` rather than stored
     /// separately (ADR-0024 §D4) - answering "is a board on screen" can never disagree
@@ -138,11 +138,11 @@ final class WorkspaceController {
         self.store = store
         self.thumbnails = thumbnails
         // Loaded, not opened: the root board is ready the instant a vault attaches, but
-        // that is not the same as the user having chosen it. `open(folder:)` still
-        // does the loading; `current` is left as its default (`nil`) here rather than
-        // explicitly reasserted, which is ADR-0024 Task 2's `attach`/`load(folder:)`
-        // split - a placeholder for this task, left for the GREEN pass.
-        open(folder: "")
+        // that is not the same as the user having chosen it. This is the one caller that
+        // wants the load without the selection `open(folder:)` sets (ADR-0024 §D4), and
+        // it is the whole reason `load` is a function of its own.
+        load(folder: "")
+        current = nil
     }
 
     func detach() {
@@ -157,39 +157,35 @@ final class WorkspaceController {
         document = .empty
         contents = .init(subfolders: [], unplaced: [])
         folder = ""
-        // ADR-0024 Task 2 GREEN (coder): `current = nil` belongs here, replacing the
-        // removed `hasOpenBoard = false`. Left as a placeholder for this task - see
-        // `Tests/WorkspaceOpenStateTests.swift`'s `detachClearsTheSelection`.
+        current = nil
         selection = []
     }
 
     /// The breadcrumb of SPEC §6.1: each segment is a folder the user can jump to.
     ///
-    /// ADR-0024 Task 2 GREEN (coder): this must walk `current?.folder ?? ""`, not
-    /// `folder` - `folder` names the last *loaded* document, and a `.folder(F)`
-    /// selection loads nothing, so the breadcrumb would keep showing the previous
-    /// board's trail while the tree showed `F` selected (§D8.1). Left unchanged here as
-    /// this task's placeholder; `Tests/WorkspaceOpenStateTests.swift`'s
-    /// `breadcrumbFollowsTheSelectionNotTheLoadedDocument` is the assertion this is
-    /// still failing.
+    /// It walks the **selection**, not the loaded document (ADR-0024 §D8.1). `folder`
+    /// names the last board `load` read, and a `.folder(F)` selection loads nothing, so
+    /// deriving from `folder` would leave the previous board's trail on screen while the
+    /// tree showed `F`. With nothing selected the trail is `["Workspace"]` alone.
     var breadcrumb: [(title: String, folder: String)] {
         var trail: [(String, String)] = [("Workspace", "")]
         var accumulated = ""
-        for component in folder.split(separator: "/") {
+        for component in (current?.folder ?? "").split(separator: "/") {
             accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
             trail.append((String(component), accumulated))
         }
         return trail
     }
 
-    /// Loads a folder's board. Every caller - a row click, the breadcrumb, a new
-    /// board, a hand-off from the editor - means "this is now the selected board"
-    /// (ADR-0024 §D4); `attach` is the one caller that wants the load without the
-    /// selection, which is `WorkspaceController.attach`/`load(folder:)`'s split
-    /// (ADR-0024 Task 2 GREEN, coder) - not yet done here, so `current` is not
-    /// touched by this function at this point in the task.
-    func open(folder newFolder: String) {
-        guard let store else { return }
+    /// Reads a folder's board into this controller and says nothing about whether it is
+    /// the selection - that is `open(folder:)`'s decision, or `attach`'s (ADR-0024 §D4).
+    ///
+    /// Returns false when there is no store to read from, which is the one case
+    /// `open(folder:)` must not follow with a selection: a board nothing could load is
+    /// not a board on screen.
+    @discardableResult
+    private func load(folder newFolder: String) -> Bool {
+        guard let store else { return false }
         // Navigating away confirms an open crop the same way a click outside the card
         // would (ADR-0020 D5), rather than silently discarding it.
         endCrop(confirm: true)
@@ -211,6 +207,17 @@ final class WorkspaceController {
         // Each board has its own history: undoing on one board must never reach back
         // into a change made on another.
         history.reset()
+        return true
+    }
+
+    /// Loads a folder's board and makes it the selection. Every caller outside the tree
+    /// - the breadcrumb, a folder card, a `pergamenum://canvas` route, a new board, a
+    /// note handed over from the editor - means "this is now the selected board"
+    /// (ADR-0024 §D4, F10), so there is no `markOpen:` left to say otherwise: `attach`
+    /// was its only `false` and it now calls `load` directly.
+    func open(folder newFolder: String) {
+        guard load(folder: newFolder) else { return }
+        current = .board(folder: newFolder)
     }
 
     /// Writes the tree's selection (ADR-0024 §D4), replacing the removed
@@ -218,12 +225,25 @@ final class WorkspaceController {
     /// is what a row click on a board does, `select(.folder(f))` is what a row click
     /// on a board-less folder does.
     ///
-    /// ADR-0024 Task 2 GREEN (coder): the real dispatch - `guard new != current else
-    /// { return }`, `.board(f)` → `open(folder: f)`, `.folder`/`nil` → `endCrop`,
-    /// `flushPendingSave`, `selection = []`, `current = new` - is this task's
-    /// placeholder. `Tests/WorkspaceOpenStateTests.swift` carries every assertion this
-    /// still owes.
-    func select(_ new: WorkspaceSelection?) {}
+    /// The guard is why this is not simply a setter. ADR-0023 §D4 has the context menu
+    /// set the selection before it raises a sheet, so without it a right-click on the
+    /// board already on screen would re-`open` it and reset the zoom and pan of the very
+    /// thing the user was looking at (ADR-0024 §D4).
+    func select(_ new: WorkspaceSelection?) {
+        guard new != current else { return }
+        if case .board(let folder) = new {
+            open(folder: folder)
+            return
+        }
+        // Selecting a board-less folder, or nothing at all, is still leaving whatever
+        // board was on screen, so it owes the same two obligations `load` discharges
+        // before replacing a document (ADR-0020 D5). What it does not do is load:
+        // `folder` and `document` stay as they are, unread until something is opened.
+        endCrop(confirm: true)
+        flushPendingSave()
+        selection = []
+        current = new
+    }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
     /// board being usable: a rejected folder name can simply be retyped.
