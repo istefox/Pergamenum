@@ -42,7 +42,7 @@ struct WorkspaceView: View {
 
     /// What the user is about to create, once they have typed its name or URL.
     private struct NewItemDraft: Identifiable {
-        enum Kind { case folder, link, note, text }
+        enum Kind { case folder, link, note }
         let id = UUID()
         var kind: Kind
         var point: CGPoint
@@ -50,6 +50,82 @@ struct WorkspaceView: View {
     }
 
     var body: some View {
+        // Split into `mainContent` plus two modifier stages: the single-expression
+        // modifier chain this used to be tipped the whole-body type-check over its
+        // budget the moment `attach(...)` grew a third argument ("the compiler is
+        // unable to type-check this expression in reasonable time"), and the failure
+        // point moved to a different modifier each time one was pulled out - the whole
+        // chain is checked as one expression regardless of which piece is heaviest.
+        // Splitting the CHAIN across separate declarations, not just extracting closure
+        // bodies, is what actually bounds each piece's inference on its own.
+        lifecycleModifiers(mainContent)
+    }
+
+    @ViewBuilder
+    private func lifecycleModifiers(_ content: some View) -> some View {
+        routingModifiers(
+            content
+                .quickLook(urls: workspace.selectedFileURLs, isPresented: $isShowingQuickLook)
+                .onChange(of: vault.isShowingQuickLook) { _, requested in
+                    guard requested else { return }
+                    isShowingQuickLook = true
+                    vault.isShowingQuickLook = false
+                }
+                // Entering shows the content at its actual size - concentrazione is for
+                // working on the board, not for reading it at whatever scale it happened
+                // to be left at. Leaving hands the width back to the app sidebar, the
+                // board list and the tray, so the fit has to catch up with the viewport
+                // they take back.
+                .onChange(of: navigation.isWorkspaceFocused) { _, focused in
+                    if focused { needsActualSizeZoom = true } else { needsRefit = true }
+                }
+                .onAppear {
+                    attachWorkspace()
+                    checkPendingNewBoard()
+                }
+                .onDisappear { workspace.flushPendingSave() }
+                // `pergamenum://canvas?file=…&node=…` parks its target on the controller,
+                // and this is what acts on it. Nothing did before: the route reported
+                // success and opened nothing at all. Checked on appear too, because a
+                // link that launches the app arrives before this view exists.
+                .task { openPendingCanvas() }
+                .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
+        )
+    }
+
+    @ViewBuilder
+    private func routingModifiers(_ content: some View) -> some View {
+        content
+            // File → "Nuova board" (SPEC §10): set before this view existed this session
+            // (checked on appear, above) or while it is already showing (checked here) -
+            // the same double registration `openPendingCanvas` needs and for the same
+            // reason.
+            .onChange(of: vault.pendingNewBoard) { _, isPending in
+                guard isPending else { return }
+                checkPendingNewBoard()
+            }
+            .onChange(of: vault.pendingWorkspacePlacement) { _, pending in placePendingNote(pending) }
+            .onChange(of: vault.root) { _, newRoot in
+                workspace.detach()
+                guard let newRoot else { return }
+                workspace.attach(
+                    to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails, vault: vault
+                )
+            }
+            .sheet(item: $newItemDraft) { draft in newItemSheet(draft) }
+            .sheet(isPresented: Binding(
+                get: { !importProposals.isEmpty },
+                set: { if !$0 { importProposals = [] } }
+            )) {
+                ImportSheet(
+                    proposals: $importProposals,
+                    onCancel: { importProposals = [] },
+                    onConfirm: { confirmed in confirmImports(confirmed) }
+                )
+            }
+    }
+
+    private var mainContent: some View {
         VStack(spacing: 0) {
             BoardTopBar(workspace: workspace)
             Divider()
@@ -86,75 +162,25 @@ struct WorkspaceView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { toolbar }
-        .quickLook(urls: workspace.selectedFileURLs, isPresented: $isShowingQuickLook)
-        .onChange(of: vault.isShowingQuickLook) { _, requested in
-            guard requested else { return }
-            isShowingQuickLook = true
-            vault.isShowingQuickLook = false
+    }
+
+    private func attachWorkspace() {
+        guard let root = vault.root else { return }
+        workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails, vault: vault)
+    }
+
+    /// A note sent here from the editor lands on the board of its own folder, which is
+    /// where it already lives on disk.
+    private func placePendingNote(_ pending: String??) {
+        guard let pendingOuter = pending, let pending = pendingOuter else { return }
+        let folder = (pending as NSString).deletingLastPathComponent
+        workspace.select(.board(folder: folder))
+        if !workspace.document.nodes.contains(where: {
+            if case .file(let path, _) = $0.kind { return path == pending } else { return false }
+        }) {
+            _ = workspace.placeFile(pending, at: CGPoint(x: 60, y: 60))
         }
-        // Entering shows the content at its actual size - concentrazione is for working
-        // on the board, not for reading it at whatever scale it happened to be left at.
-        // Leaving hands the width back to the app sidebar, the board list and the tray,
-        // so the fit has to catch up with the viewport they take back.
-        .onChange(of: navigation.isWorkspaceFocused) { _, focused in
-            if focused { needsActualSizeZoom = true } else { needsRefit = true }
-        }
-        .onAppear {
-            if let root = vault.root {
-                workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails)
-            }
-            checkPendingNewBoard()
-        }
-        .onDisappear { workspace.flushPendingSave() }
-        // `pergamenum://canvas?file=…&node=…` parks its target on the controller, and
-        // this is what acts on it. Nothing did before: the route reported success and
-        // opened nothing at all. Checked on appear too, because a link that launches
-        // the app arrives before this view exists.
-        .task { openPendingCanvas() }
-        .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
-        // File → "Nuova board" (SPEC §10): set before this view existed this session
-        // (checked on appear, above) or while it is already showing (checked here) -
-        // the same double registration `openPendingCanvas` needs and for the same
-        // reason.
-        .onChange(of: vault.pendingNewBoard) { _, isPending in
-            guard isPending else { return }
-            checkPendingNewBoard()
-        }
-        .onChange(of: vault.pendingWorkspacePlacement) { _, pending in
-            // A note sent here from the editor lands on the board of its own folder,
-            // which is where it already lives on disk.
-            guard let pending = pending ?? nil else { return }
-            let folder = (pending as NSString).deletingLastPathComponent
-            workspace.select(.board(folder: folder))
-            if !workspace.document.nodes.contains(where: {
-                if case .file(let path, _) = $0.kind { return path == pending } else { return false }
-            }) {
-                _ = workspace.placeFile(pending, at: CGPoint(x: 60, y: 60))
-            }
-            _ = vault.consumePendingWorkspacePlacement()
-        }
-        .onChange(of: vault.root) { _, newRoot in
-            workspace.detach()
-            if let newRoot {
-                workspace.attach(to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails)
-            }
-        }
-        .sheet(item: $newItemDraft) { draft in
-            newItemSheet(draft)
-        }
-        .sheet(isPresented: Binding(
-            get: { !importProposals.isEmpty },
-            set: { if !$0 { importProposals = [] } }
-        )) {
-            ImportSheet(
-                proposals: $importProposals,
-                onCancel: { importProposals = [] },
-                onConfirm: { confirmed in
-                    for proposal in confirmed { _ = workspace.commitImport(proposal) }
-                    importProposals = []
-                }
-            )
-        }
+        _ = vault.consumePendingWorkspacePlacement()
     }
 
     /// What the board area shows before anything has been chosen - the same shape as
@@ -186,7 +212,8 @@ struct WorkspaceView: View {
         WorkspaceFolderActions(
             create: { name, parent in createWorkspace(named: name, in: parent) },
             rename: { folder, newName in renameWorkspace(folder, to: newName) },
-            delete: { folder in deleteWorkspace(folder) }
+            delete: { folder in deleteWorkspace(folder) },
+            recordDesync: { message in workspace.recordProblem(message) }
         )
     }
 
@@ -278,6 +305,13 @@ struct WorkspaceView: View {
     private func checkPendingNewBoard() {
         guard vault.consumePendingNewBoard() else { return }
         newItemDraft = NewItemDraft(kind: .folder, point: CGPoint(x: 60, y: 60))
+    }
+
+    /// Named out of the `ImportSheet` closure: an inline `for` loop there pushed the
+    /// whole `body` modifier chain over the type-checker's per-expression budget.
+    private func confirmImports(_ proposals: [WorkspaceController.ImportProposal]) {
+        for proposal in proposals { _ = workspace.commitImport(proposal) }
+        importProposals = []
     }
 
     /// The board's window-level commands.
@@ -518,21 +552,6 @@ struct WorkspaceView: View {
             }
     }
 
-    private var panGesture: some Gesture {
-        // `.global`, not a named space: a named space that fails to resolve falls back
-                // to `.local`, which sits inside the board's `scaleEffect`, so a 100-point
-                // mouse move was reported as 170 units and then divided by the zoom again.
-                DragGesture(minimumDistance: 3, coordinateSpace: .global)
-            .onChanged { value in
-                guard workspace.tool == .select, !workspace.isDragging else { return }
-                workspace.beginPan()
-                // Absolute, from the pan the gesture started at: a gesture reports its
-                // total translation, so adding it each frame compounds it.
-                workspace.updatePan(translation: value.translation)
-            }
-            .onEnded { _ in workspace.endPan() }
-    }
-
     // MARK: Drawing
 
     /// Captures pen strokes over the board and previews them live.
@@ -668,8 +687,6 @@ struct WorkspaceView: View {
             } catch {
                 workspace.recordProblem(ConformanceText.creationFailure(error))
             }
-        case .text:
-            _ = workspace.addFreeText(value, at: point)
         }
     }
 }

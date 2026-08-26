@@ -1,5 +1,3 @@
-import Foundation
-
 /// The single value that says both which row of the Workspace tree is lit and whether a
 /// board is drawn (ADR-0024 §D4).
 ///

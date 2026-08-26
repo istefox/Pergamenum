@@ -44,7 +44,12 @@ struct WorkspaceBrowser: View {
     @State private var workspaceTree: [WorkspaceTree.Node] = []
     @State private var boards: [String] = []
     @State private var isCreatingWorkspace = false
-    @State private var isRenamingWorkspace = false
+    /// The rename waiting for its sheet, carrying the folder it is about - `pendingDelete`'s
+    /// shape below, for the same reason. Whoever asks names the folder: the row's context
+    /// menu knows which one was right-clicked, while the selection it also sets travels up
+    /// to the controller and back down as a prop, so seeding the sheet from `targetFolder`
+    /// made it depend on that round trip having landed first.
+    @State private var renameTarget: PendingFolderRename?
     /// The delete waiting to be confirmed, with its counts already read (R-10).
     @State private var pendingDelete: PendingFolderDelete?
 
@@ -80,15 +85,15 @@ struct WorkspaceBrowser: View {
                 onCancel: { isCreatingWorkspace = false }
             )
         }
-        .sheet(isPresented: $isRenamingWorkspace) {
+        .sheet(item: $renameTarget) { pending in
             RenameWorkspaceSheet(
-                folder: targetFolder,
+                folder: pending.folder,
                 isNameAvailable: nameIsAvailable,
                 onConfirm: { newName in
-                    isRenamingWorkspace = false
-                    actions.rename(targetFolder, newName)
+                    renameTarget = nil
+                    actions.rename(pending.folder, newName)
                 },
-                onCancel: { isRenamingWorkspace = false }
+                onCancel: { renameTarget = nil }
             )
         }
         // Neither verb is journalled (ADR-0022 §D6), so this dialog is the whole of the
@@ -120,7 +125,7 @@ struct WorkspaceBrowser: View {
         WorkspaceBrowserToolbar(
             target: targetFolder,
             onNew: { isCreatingWorkspace = true },
-            onRename: { isRenamingWorkspace = true },
+            onRename: { requestRename(of: targetFolder) },
             onDelete: { confirmDelete(of: targetFolder) },
             // The same `expanded` binding the tree's context menu drives: two places to
             // reach one piece of state, never two pieces of state (ADR-0022 §D8).
@@ -180,9 +185,16 @@ struct WorkspaceBrowser: View {
     //
     // The browser decides, `WorkspaceView` performs (ADR-0022 §D10): create and rename
     // hand the sheet's answer straight to `actions`, which is where `flushPendingSave()`
-    // and `open(folder:)` bracket the vault call. Delete is the one that stops here
-    // first, because what it needs before it can ask - how much is inside - is a walk of
-    // the folder rather than a decision.
+    // and `open(folder:)` bracket the vault call. Rename and delete both stop here first,
+    // and for the folder each one is about rather than for a decision - delete because
+    // how much is inside is a walk of the subtree, rename because the folder is whatever
+    // the click named.
+
+    /// Opens the rename sheet on the folder the caller names - the toolbar's target, or
+    /// the row a context menu was opened on. Nothing here reads the selection back.
+    private func requestRename(of folder: String) {
+        renameTarget = PendingFolderRename(folder: folder)
+    }
 
     /// Reads the counts once, at the click, and shows the dialog (R-10). Once, rather
     /// than in the dialog's own body: `contentCounts` enumerates the whole subtree and a
@@ -234,13 +246,24 @@ struct WorkspaceBrowser: View {
             get: { selectedFolder },
             set: { id in
                 guard let id else { return onSelect(nil) }
-                // An id the tree cannot resolve came from no row this view drew, so it
-                // is read as `.folder` - the case that opens nothing - rather than
-                // dropped, which would leave the `List` lit on a row `selectedFolder`
-                // does not name.
-                guard let node = WorkspaceTree.node(withID: id, in: workspaceTree),
-                      let picked = Self.selection(for: node)
-                else { return onSelect(.folder(id)) }
+                // A `.tag`ed row only ever hands this setter an id it drew itself, so a
+                // miss here means the tree and the click disagree - almost always a
+                // rebuild (rename/delete/rescan) racing the click - not an ordinary
+                // click. Recorded, not silent: without this the row still resolves as
+                // `.folder`, so a desync reads identically to a legitimate board-less
+                // folder and leaves no trace to find it by (ADR-0024 Gate 5.06 finding).
+                guard let node = WorkspaceTree.node(withID: id, in: workspaceTree) else {
+                    actions.recordDesync("workspace-tree: selected id \(id) resolved to no row")
+                    return onSelect(.folder(id))
+                }
+                // `Self.selection(for:)` returns `nil` only for `.foreignBoard`, which
+                // carries no `.tag` (§D3) and so cannot reach this setter through a click
+                // at all - reachable only if that invariant regresses, which is worth
+                // recording rather than silently opening nothing.
+                guard let picked = Self.selection(for: node) else {
+                    actions.recordDesync("workspace-tree: selected id \(id) resolved to a foreignBoard row")
+                    return onSelect(.folder(id))
+                }
                 onSelect(picked)
             }
         )
@@ -312,7 +335,7 @@ struct WorkspaceBrowser: View {
             expanded: $expanded,
             selectedFolder: selectedFolder,
             onSelect: onSelect,
-            onRename: { _ in isRenamingWorkspace = true },
+            onRename: { requestRename(of: $0) },
             onDelete: { confirmDelete(of: $0) }
         )
     }
@@ -428,6 +451,19 @@ struct WorkspaceBrowser: View {
             return "workspace-foreign-board-\(path)"
         }
     }
+}
+
+/// A folder waiting for its rename sheet.
+///
+/// A wrapper rather than a bare `String` because `.sheet(item:)` asks for `Identifiable`,
+/// and `.sheet(item:)` rather than `.sheet(isPresented:)` because the sheet is about one
+/// named folder: `RenameWorkspaceSheet` seeds its text field from `folder` at init, so a
+/// presentation that had to read the folder back out of the selection would seed it from
+/// whatever was selected when the sheet's body happened to be evaluated.
+private struct PendingFolderRename: Identifiable {
+    let folder: String
+
+    var id: String { folder }
 }
 
 /// A folder waiting for its delete to be confirmed, and what the dialog says about it.
@@ -643,10 +679,11 @@ private struct WorkspaceRow: View {
         // asked in the second place it is rendered (ADR-0023 §D1, §D3).
         if let picked = WorkspaceBrowser.selection(for: node),
            WorkspaceBrowserToolbar.canMutate(folder: node.id) {
-            // The selection first: both sheets are seeded from
-            // `WorkspaceBrowser.targetFolder`, which reads it, and a secondary click
-            // selects nothing by itself - so without this the verb would act on whatever
-            // was selected before the right-click (ADR-0023 §D4).
+            // The selection first, now for what it shows rather than for what it seeds:
+            // both verbs hand `node.id` on and neither reads the selection back, but a
+            // secondary click selects nothing by itself, and a sheet or a dialog opened
+            // over a row the list has not lit reads as acting on another one
+            // (ADR-0023 §D4).
             Button("Rinomina…") {
                 onSelect(picked)
                 onRename(node.id)

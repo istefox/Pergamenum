@@ -89,7 +89,6 @@ final class WorkspaceController {
     var isShowingBoard: Bool { if case .board = current { true } else { false } }
     private(set) var document = CanvasDocument.empty
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
-    private(set) var problems: [String] = []
 
     var tool: Tool = .select
     /// True when a tool stays active after one use (double click on the tool).
@@ -109,6 +108,14 @@ final class WorkspaceController {
     var canRedo: Bool { history.canRedo }
 
     var store: CanvasStore?
+    /// The vault this board belongs to, handed over by `attach` beside the store and the
+    /// thumbnail cache. It exists for `recordProblem` alone: the Workspace draws no
+    /// problem list of its own, so a recoverable failure is reported where the app
+    /// already shows them (Impostazioni → Problemi, `SettingsView`).
+    ///
+    /// Weak and observation-ignored: the vault outlives the board and nothing redraws
+    /// when it changes.
+    @ObservationIgnored private weak var vault: VaultController?
 
     /// Strokes being drawn right now, before they are written to their SVG, and the
     /// node whose SVG is being edited when a drawing was reopened (SPEC §6.2).
@@ -126,17 +133,22 @@ final class WorkspaceController {
     /// Autosave delay of SPEC §6.1.
     private let autosaveDelay = Duration.seconds(1)
 
-    /// Hashes written by this controller, for the vault watcher to recognise as its
-    /// own rather than reloading the board under the user (ADR-0001 §D3).
-    private(set) var lastWrittenHash: [String: String] = [:]
-
     // MARK: Navigation
 
     /// `thumbnails` comes from the vault, which owns the cache. Nil is a board with no
     /// renderer: cards fall back to their symbols, which is what the tests exercise.
-    func attach(to store: CanvasStore, thumbnails: ThumbnailStore? = nil) {
+    ///
+    /// `vault` is nil for the same reason and with the same effect on `recordProblem`:
+    /// a board attached without one still works, its failures simply have nobody to
+    /// report to.
+    func attach(
+        to store: CanvasStore,
+        thumbnails: ThumbnailStore? = nil,
+        vault: VaultController? = nil
+    ) {
         self.store = store
         self.thumbnails = thumbnails
+        self.vault = vault
         // Loaded, not opened: the root board is ready the instant a vault attaches, but
         // that is not the same as the user having chosen it. This is the one caller that
         // wants the load without the selection `open(folder:)` sets (ADR-0024 §D4), and
@@ -153,6 +165,7 @@ final class WorkspaceController {
         saveTask = nil
         store = nil
         thumbnails = nil
+        vault = nil
         emailHeaders = [:]
         document = .empty
         contents = .init(subfolders: [], unplaced: [])
@@ -200,7 +213,7 @@ final class WorkspaceController {
             document = try store.load(folder: newFolder)
         } catch {
             document = .empty
-            problems.append("\(newFolder): \(error)")
+            recordProblem("\(newFolder): \(error)")
         }
         refreshContents()
         hasUnsavedChanges = false
@@ -247,8 +260,14 @@ final class WorkspaceController {
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
     /// board being usable: a rejected folder name can simply be retyped.
+    ///
+    /// Reported on the vault, not kept here. The Workspace has no surface that draws a
+    /// problem list, so a list of its own would be a sink nothing empties and nobody
+    /// reads. `VaultController.problems` is the one place the app already shows these
+    /// (Impostazioni → Problemi), the same door `DayController` and the editor report
+    /// their own recoverable failures through.
     func recordProblem(_ message: String) {
-        problems.append(message)
+        vault?.recordProblem(message)
     }
 
     func refreshContents() {
@@ -559,13 +578,17 @@ final class WorkspaceController {
     private func save() {
         guard let store, hasUnsavedChanges else { return }
         do {
-            let hash = try store.save(document, folder: folder)
-            lastWrittenHash[store.boardPath(forFolder: folder)] = hash
+            // The hash is deliberately dropped rather than recorded as a self-write:
+            // `VaultWatcher` reports only `.md` paths, so a `.canvas` write never
+            // reaches `VaultSession.reconcile` and there is nothing for a recorded hash
+            // to be recognised against. The board cannot be reloaded under the user by
+            // the watcher because the watcher never hears about it.
+            try store.save(document, folder: folder)
             hasUnsavedChanges = false
         } catch {
             // Left dirty on purpose: an indicator still showing unsaved changes is
             // the truth, and the next edit will retry.
-            problems.append("salvataggio di \(folder): \(error)")
+            recordProblem("salvataggio di \(folder): \(error)")
         }
     }
 
