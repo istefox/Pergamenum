@@ -15,19 +15,19 @@ struct WorkspaceBrowser: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
-    /// The board the Workspace is currently showing, drawn as the selected row.
-    var openBoardPath: String?
+    /// The folder currently selected in the tree - the lit row, and (through
+    /// `WorkspaceTree.node(withID:in:)`) whether a board is drawn on it (ADR-0024 §D6).
+    /// Owned by `WorkspaceController.current`, handed down as a value: this view no
+    /// longer keeps a selection of its own that could drift from it (ADR-0024 §D4/F1).
+    var selectedFolder: String?
     /// The three verbs, performed by `WorkspaceView` because all three need the
     /// `WorkspaceController` this view has no business holding (ADR-0022 §D10).
     var actions: WorkspaceFolderActions
-    /// Vault-relative path of the board the user picked.
-    var onOpen: (String) -> Void
-    /// Fired by a click on the tree's own empty space, below every row - the same
-    /// "click blank space to deselect" a Finder list gives you for free through
-    /// `NSTableView`, reproduced here because `List` with no `selection:` binding does
-    /// not do it on its own (this tree drives its highlight from `openBoardPath`
-    /// instead, so it never had that behaviour to lose).
-    var onDeselect: () -> Void
+    /// Fired with the new selection - `nil` for "nothing selected" (what `onDeselect`
+    /// used to mean), `.folder`/`.board` for a row the tree's own binding resolved
+    /// (ADR-0024 §D6). Replaces `onOpen`/`onDeselect`: which case a click means is
+    /// decided against this view's own tree, because only this view holds it.
+    var onSelect: (WorkspaceSelection?) -> Void
 
     @State private var filter = ""
     /// The folders currently open, by path. View state rather than a preference, for
@@ -35,11 +35,6 @@ struct WorkspaceBrowser: View {
     @State private var expanded: Set<String> = []
     @State private var tree: [NoteTree.Node] = []
     @State private var boards: [String] = []
-    /// The row the toolbar's verbs act on, as a folder path (ADR-0022 §D9). Nil until
-    /// something is clicked, which is not the same as the vault root: `targetFolder`
-    /// falls back to the open board's folder so the toolbar is never inert for lack of a
-    /// click.
-    @State private var selectedFolder: String?
     @State private var isCreatingWorkspace = false
     @State private var isRenamingWorkspace = false
     /// The delete waiting to be confirmed, with its counts already read (R-10).
@@ -64,7 +59,7 @@ struct WorkspaceBrowser: View {
         // The same trigger the note tree rebuilds on: a scan is what changes the set of
         // files on disk, and a board list is tens of entries beside it.
         .task(id: vault.scanGeneration) { rebuild() }
-        .onChange(of: openBoardPath) { _, path in reveal(path) }
+        .onChange(of: selectedFolder) { _, path in reveal(path) }
         .sheet(isPresented: $isCreatingWorkspace) {
             NewWorkspaceSheet(
                 parents: WorkspaceFolderSheets.parentOptions(from: boards),
@@ -126,13 +121,16 @@ struct WorkspaceBrowser: View {
         )
     }
 
-    /// The folder the toolbar's verbs act on: the selected row, or the open board's own
-    /// folder when nothing has been clicked (ADR-0022 §D9).
-    private var targetFolder: String {
-        if let selectedFolder { return selectedFolder }
-        guard let openBoardPath else { return "" }
-        return (openBoardPath as NSString).deletingLastPathComponent
-    }
+    /// The folder the toolbar's verbs act on: the selected row, with no fallback
+    /// (ADR-0024 §D7 withdraws ADR-0022 §D9's fallback onto the open board's folder -
+    /// with nothing selected, Rinomina/Elimina are now disabled rather than aiming at a
+    /// row the user cannot see).
+    ///
+    /// ADR-0024 Task 4 (coder): replace with `Self.target(for:)` reading a
+    /// `WorkspaceSelection` directly, "one expression, no branch on which case it is"
+    /// (R-06) - this is the minimal form Task 3's removal of the fallback leaves
+    /// compiling, not that expression.
+    private var targetFolder: String { selectedFolder ?? "" }
 
     /// The collision predicate both sheets block on, live, so a name that is already
     /// taken is refused before anything is created rather than reported afterwards
@@ -190,58 +188,28 @@ struct WorkspaceBrowser: View {
     }
 
     // MARK: Rows
+    //
+    // ADR-0024 Task 3 GREEN (coder): rebuild as List(selection:) with WorkspaceRow flat
+    // recursive rows. The tester's batch (this one) only removes what compilation
+    // forces it to - `selectedFolder`'s promotion from `@State` to a handed-down value,
+    // `onOpen`/`onDeselect` folding into `onSelect` - and cannot build the derived
+    // `Binding<String?>` (getter `selectedFolder`, setter resolving through
+    // `WorkspaceTree.node(withID:in:)` into `onSelect`), the two `List(selection:)`
+    // trees, the `WorkspaceTreeRow` → `WorkspaceRow` flat-recursive rewrite, `.tag`,
+    // the accessibility labels, or the context-menu relocation - all real view code
+    // with no unit-level red, whose red lives in Task 6's UI suite (plan, Task 3).
+    // `WorkspaceTreeRow` below is left exactly as it was and is unused by these stubs;
+    // do not delete it, the coder's rewrite reads it as the shape to replace.
 
     private var folderTree: some View {
-        List {
-            ForEach(tree) { node in
-                WorkspaceTreeRow(
-                    node: node,
-                    expanded: $expanded,
-                    selected: $selectedFolder,
-                    openBoardPath: openBoardPath,
-                    onOpen: onOpen,
-                    onRename: { _ in isRenamingWorkspace = true },
-                    onDelete: { confirmDelete(of: $0) }
-                )
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .accessibilityIdentifier("workspace-tree")
-        // Fires only on the blank area below the last row: a tap on a row is already
-        // consumed by that row's own gesture before it would reach the List itself.
-        .onTapGesture { selectedFolder = nil; onDeselect() }
-        .contextMenu {
-            Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
-            Button("Comprimi tutto") { expanded = [] }
-        }
+        EmptyView()
     }
 
     /// Every board in one list while a filter is typed: a match three folders down is
     /// easier to see flat than as a tree opened around it - the note sidebar's rule,
     /// and the reason the filter field behaves the same in both places.
     private var flatList: some View {
-        List {
-            ForEach(filteredBoards, id: \.self) { path in
-                WorkspaceTreeRow(
-                    node: NoteTree.Node(
-                        id: path,
-                        name: ((path as NSString).lastPathComponent as NSString).deletingPathExtension,
-                        kind: .note,
-                        children: nil,
-                        noteCount: 1
-                    ),
-                    expanded: $expanded,
-                    selected: $selectedFolder,
-                    openBoardPath: openBoardPath,
-                    onOpen: onOpen,
-                    onRename: { _ in isRenamingWorkspace = true },
-                    onDelete: { confirmDelete(of: $0) }
-                )
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .accessibilityIdentifier("workspace-flat-list")
-        .onTapGesture { selectedFolder = nil; onDeselect() }
+        EmptyView()
     }
 
     private var filteredBoards: [String] {
@@ -255,13 +223,18 @@ struct WorkspaceBrowser: View {
         tree = NoteTree.build(fromPaths: boards)
         // A selection is a path, and a rename or a delete has just moved or removed the
         // folder it names - this runs on `scanGeneration`, which both of them bump.
-        // Dropping a selection the tree no longer has falls the toolbar back to the open
-        // board's own folder (ADR-0022 §D9), rather than leaving «Rinomina» and «Elimina»
-        // enabled and pointed at something that is not there.
+        // `selectedFolder` is owned by the controller now (ADR-0024 §D6), so dropping a
+        // stale one means asking for `nil` through `onSelect` rather than assigning
+        // local state - there no longer is any to assign.
+        //
+        // ADR-0024 Task 4 (coder): retarget the stale-selection check itself against
+        // `WorkspaceTree.folders(in:)`, which is the set that actually includes the
+        // root (`""`); `Self.allFolders(in:)` below is `NoteTree`-based and does not
+        // (ADR-0024 §D7, plan Task 4).
         if let selectedFolder, !Self.allFolders(in: tree).contains(selectedFolder) {
-            self.selectedFolder = nil
+            onSelect(nil)
         }
-        reveal(openBoardPath)
+        reveal(selectedFolder)
     }
 
     /// Opens the folders above a board, so one opened from somewhere that is not this
@@ -282,6 +255,37 @@ struct WorkspaceBrowser: View {
             result.formUnion(allFolders(in: node.children ?? []))
         }
         return result
+    }
+
+    /// The filtered list's input (ADR-0024 Task 3, R-09): every `.workspace` row of
+    /// `tree` whose `id` or `name` contains `filter`, case-insensitively. `.workspace`
+    /// only - a `.foreignBoard` carries no `.tag` and can never be a search result a
+    /// click could act on (ADR-0024 §D3).
+    ///
+    /// Matching on `id` alone is a path-only filter and loses the root: its `id` is
+    /// `""`, which never contains a non-empty `filter`. `name` is what makes the root
+    /// row ("Labs" today) reachable while a filter is typed.
+    ///
+    /// STUB (ADR-0024 Task 3, tester's batch): returns `[]` unconditionally, never
+    /// `fatalError()` or a force-unwrap, so `Tests/WorkspaceTreeTests.swift`'s two new
+    /// assertions are red on their expectations rather than on a build error. The
+    /// coder's GREEN implements the real fold, `static` and internal, the same
+    /// visibility `allFolders(in:)` above already has.
+    static func rows(matching filter: String, in tree: [WorkspaceTree.Node]) -> [WorkspaceTree.Node] {
+        []
+    }
+
+    /// The three identifier spellings a row can carry, and the only place they are
+    /// spelled (ADR-0024 §D10): `workspace-board-<boardPath>` for a `.workspace` that
+    /// owns a board, `workspace-folder-<id>` for one that does not,
+    /// `workspace-foreign-board-<path>` for a `.foreignBoard`.
+    ///
+    /// STUB (ADR-0024 Task 3, tester's batch): returns `""` unconditionally, never
+    /// `fatalError()` or a force-unwrap, so `Tests/WorkspaceTreeTests.swift`'s new
+    /// assertions are red on their expectations rather than on a build error. The
+    /// coder's GREEN implements the real spelling.
+    static func identifier(for node: WorkspaceTree.Node) -> String {
+        ""
     }
 }
 

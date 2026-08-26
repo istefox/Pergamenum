@@ -61,12 +61,9 @@ struct WorkspaceView: View {
                 // the tray, so the board keeps the width they gave up.
                 if !navigation.isWorkspaceFocused {
                     WorkspaceBrowser(
-                        openBoardPath: openBoardPath,
+                        selectedFolder: workspace.current?.folder,
                         actions: folderActions,
-                        onOpen: { path in
-                            workspace.open(folder: (path as NSString).deletingLastPathComponent)
-                        },
-                        onDeselect: { workspace.select(nil) }
+                        onSelect: { workspace.select($0) }
                     )
                     .frame(width: CGFloat(browserWidth))
                     WorkspacePaneDivider(width: Binding(
@@ -158,14 +155,6 @@ struct WorkspaceView: View {
                 }
             )
         }
-    }
-
-    /// The board on screen, as a vault-relative path, so the browser can draw its row
-    /// as the selected one. A board is named after its folder (`boardPath(forFolder:)`
-    /// is the whole of that mapping), so the folder the controller holds is enough.
-    private var openBoardPath: String? {
-        guard workspace.isShowingBoard, let root = vault.root else { return nil }
-        return CanvasStore(root: root).boardPath(forFolder: workspace.folder)
     }
 
     /// What the board area shows before anything has been chosen - the same shape as

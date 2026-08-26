@@ -15,6 +15,11 @@ import Testing
 // against `WorkspaceTree.build`/`.folders(in:)`/`.flattened(_:)`/`.node(withID:in:)` is
 // red on its assertions: the four functions are placeholders returning `[]`/`nil`, never
 // a `fatalError()` or a force-unwrap, so the target still builds.
+//
+// Extended for Task 3 (the two pure functions its view-level rewrite reads, R-09 and
+// ADR-0024 §D10): `WorkspaceBrowser.rows(matching:in:)` and `WorkspaceBrowser
+// .identifier(for:)` are likewise placeholders (`[]` and `""`), red on their
+// assertions rather than on a build error.
 
 // MARK: - WorkspaceSelection (R-01, R-03, R-05)
 
@@ -125,4 +130,57 @@ private func fixtureBoardPath(_ folder: String) -> String {
     #expect(nested.kind == .workspace(board: "01 Progetti/b/b.canvas"))
 
     #expect(WorkspaceTree.node(withID: "01 Progetti/b/altro.canvas", in: tree) == nil)
+}
+
+// MARK: - WorkspaceBrowser.rows(matching:in:) (R-09)
+//
+// ADR-0024 Task 3: the filtered list's input. `WorkspaceBrowser.rows(matching:in:)` is
+// a placeholder returning `[]`, so both assertions below are red on their expectations,
+// never on a build error.
+
+@Test func rowsMatchingReturnsWorkspaceRowsByIdOrNameCaseInsensitivelyAndFindsTheRootByName() throws {
+    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
+
+    // "a" over the ADR-0024 fixture: "01 Progetti/a" (id ends in "a"), "Vuota" and
+    // "Vuota/dentro" (both paths carry "Vuota", which contains "a") and the root, whose
+    // id is "" - never a match on its own - reachable only because its name "Labs" is.
+    // "01 Progetti" and "01 Progetti/b" contain no "a" in either id or name and are
+    // excluded, and the `.foreignBoard` "01 Progetti/b/altro.canvas" is excluded even
+    // though its path contains "a", because only `.workspace` rows are ever selectable
+    // (ADR-0024 §D3) and a search result a click cannot act on is not a result.
+    let matches = WorkspaceBrowser.rows(matching: "a", in: tree)
+
+    #expect(Set(matches.map(\.id)) == Set(["01 Progetti/a", "Vuota", "Vuota/dentro", ""]))
+    #expect(!matches.contains { if case .foreignBoard = $0.kind { true } else { false } })
+
+    let root = try #require(matches.first { $0.id == "" })
+    #expect(root.name == "Labs")
+}
+
+// MARK: - WorkspaceBrowser.identifier(for:) (ADR-0024 §D10)
+//
+// `WorkspaceBrowser.identifier(for:)` is a placeholder returning `""`, so every
+// assertion below is red on its expectation, never on a build error.
+
+@Test func identifierForSpellsTheThreeADR0024IdentifierFormsAndTheRootIsWorkspaceBoardLabs() throws {
+    let tree = WorkspaceTree.build(boards: fixtureBoards, boardPath: fixtureBoardPath)
+
+    // The root row owns the vault's board, so it gets the board form - and it is the
+    // exact string `UITests/WorkspaceOpenStateUITests.swift:39` already builds today
+    // (ADR-0024 §D10 preserves it byte-identical).
+    let root = try #require(WorkspaceTree.node(withID: "", in: tree))
+    #expect(WorkspaceBrowser.identifier(for: root) == "workspace-board-Labs.canvas")
+
+    // "Vuota" owns no board of its own - the folder form.
+    let vuota = try #require(WorkspaceTree.node(withID: "Vuota", in: tree))
+    #expect(WorkspaceBrowser.identifier(for: vuota) == "workspace-folder-Vuota")
+
+    // "01 Progetti/b/altro.canvas" is a `.foreignBoard` - the third form, distinct from
+    // both, so a test can tell "unopenable by design" from "missing" (ADR-0024 §D10).
+    let progetti = try #require(WorkspaceTree.node(withID: "01 Progetti", in: tree))
+    let b = try #require(progetti.children.first { $0.id == "01 Progetti/b" })
+    let foreign = try #require(
+        b.children.first { if case .foreignBoard = $0.kind { true } else { false } }
+    )
+    #expect(WorkspaceBrowser.identifier(for: foreign) == "workspace-foreign-board-01 Progetti/b/altro.canvas")
 }
