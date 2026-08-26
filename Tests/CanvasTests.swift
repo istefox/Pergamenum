@@ -140,7 +140,12 @@ func rejectsInvalidColours(_ raw: String) {
     #expect((node?["count"] as? NSNumber)?.doubleValue == 1)
 }
 
-// MARK: - Board / folder mapping
+// MARK: - Folder creation, and the fixture every store test builds on
+//
+// The five tests that pinned the folder→board mapping (`boardPath(forFolder:)`,
+// `load(folder:)`, `save(_:folder:)`, `contents(ofFolder:board:)`) are gone with the API
+// they exercised - ADR-0025 §D1 deletes it rather than deprecating it. Their subject is
+// re-asserted against the path-addressing shape below.
 
 private struct TemporaryRoot: ~Copyable {
     let url: URL
@@ -167,71 +172,6 @@ private struct TemporaryRoot: ~Copyable {
         )
         try Data(contents.utf8).write(to: fileURL)
     }
-}
-
-@Test func mapsAFolderToTheBoardFileInsideIt() throws {
-    let root = try TemporaryRoot()
-    let store = CanvasStore(root: root.url)
-    // SPEC §6.1: the board lives inside the folder it describes, named after it.
-    #expect(store.boardPath(forFolder: "01 Progetti/vibrofer-emea") == "01 Progetti/vibrofer-emea/vibrofer-emea.canvas")
-    // The root board is named after the vault so it cannot collide with a note.
-    #expect(store.boardPath(forFolder: "") == "\(root.url.lastPathComponent).canvas")
-    #expect(store.boardPath(forFolder: "/01 Progetti/") == "01 Progetti/01 Progetti.canvas")
-}
-
-@Test func readingAFolderWithNoBoardDoesNotCreateOne() throws {
-    let root = try TemporaryRoot()
-    try root.makeDirectory("01 Progetti")
-    let store = CanvasStore(root: root.url)
-
-    let board = try store.load(folder: "01 Progetti")
-    #expect(board.nodes.isEmpty)
-    // Merely looking into a folder must not litter the vault with canvas files.
-    #expect(!FileManager.default.fileExists(
-        atPath: store.url(forFolder: "01 Progetti").path(percentEncoded: false)
-    ))
-}
-
-@Test func savesAndReloadsABoard() throws {
-    let root = try TemporaryRoot()
-    let store = CanvasStore(root: root.url)
-    var board = CanvasDocument()
-    board.nodes.append(CanvasNode(id: "a", kind: .text("ciao"), x: 10, y: 20, width: 200, height: 100))
-
-    try store.save(board, folder: "01 Progetti")
-    let reloaded = try store.load(folder: "01 Progetti")
-    #expect(reloaded == board)
-}
-
-@Test func listsFolderContentsSplitByWhetherTheBoardShowsThem() throws {
-    let root = try TemporaryRoot()
-    try root.makeDirectory("01 Progetti/sotto")
-    try root.makeFile("01 Progetti/piazzato.md")
-    try root.makeFile("01 Progetti/nuovo.pdf")
-    try root.makeFile("01 Progetti/.nascosto")
-
-    let store = CanvasStore(root: root.url)
-    var board = CanvasDocument()
-    board.nodes.append(CanvasNode(
-        id: "a", kind: .file(path: "01 Progetti/piazzato.md", subpath: nil),
-        x: 0, y: 0, width: 10, height: 10
-    ))
-
-    let contents = store.contents(ofFolder: "01 Progetti", board: board)
-    #expect(contents.subfolders == ["01 Progetti/sotto"])
-    // Already on the board, so not in the tray; the hidden file is never listed.
-    #expect(contents.unplaced == ["01 Progetti/nuovo.pdf", "01 Progetti/sotto"])
-}
-
-@Test func doesNotListTheBoardsOwnFileAsAnItem() throws {
-    let root = try TemporaryRoot()
-    try root.makeDirectory("Area")
-    let store = CanvasStore(root: root.url)
-    try store.save(CanvasDocument(), folder: "Area")
-
-    let board = try store.load(folder: "Area")
-    let contents = store.contents(ofFolder: "Area", board: board)
-    #expect(contents.unplaced.isEmpty)
 }
 
 @Test func createsARealDirectoryForAFolderCard() throws {
@@ -279,18 +219,13 @@ private struct TemporaryRoot: ~Copyable {
 // board is a file, and neither is named after the other").
 // Plan `docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md`, Task 1.
 //
-// RED: `CanvasStore` gains `load(board:)`, `save(_:board:)`, `contents(ofBoard:document:)`,
-// `createBoard(named:in:)`, `boardNameIsAvailable(_:in:)`, `allFolders()` and
-// `StoreError.missing(String)` alongside the existing folder-derived API, which this
-// task's write scope leaves untouched (`BoardTray`, `BoardCardMenu`, `WorkspaceBrowser`
-// and `FolderFileOperations` still call the old shape and are outside this task's
-// files). `load(board:)`'s placeholder always throws `.missing`, so
-// `loadingAMissingBoardThrowsRatherThanReturningEmpty` and
-// `createFolderStillCreatesADirectoryAndNoBoard` below pass immediately - the first
-// because an unconditional throw already satisfies "throws for a missing file", the
-// second because `createFolder` is unchanged. Every other assertion below fails on its
-// `#expect`, not on a build error, because the rest of the new API returns the emptiest
-// value that still type-checks.
+// `CanvasStore` is told a board's own path: `url(forBoard:)`, `load(board:)`,
+// `save(_:board:)`, `contents(ofBoard:document:)`, `createBoard(named:in:)`,
+// `boardNameIsAvailable(_:in:)`, `allFolders()` and `StoreError.missing(String)`. The
+// folder-derived API these replace - `boardPath(forFolder:)`, `url(forFolder:)`,
+// `load(folder:)`, `save(_:folder:)`, `contents(ofFolder:board:)` - is deleted, not
+// deprecated: a rule that still exists is a rule a caller can still ask, and the failure
+// it produces is a board that opens the wrong file, silently.
 
 @Test func loadingAMissingBoardThrowsRatherThanReturningEmpty() throws {
     let root = try TemporaryRoot()
@@ -581,7 +516,9 @@ private struct TemporaryRoot: ~Copyable {
 
     // Navigating away must not lose the edit while the debounce is still pending.
     controller.open(folder: "B")
-    let saved = try store.load(folder: "A")
+    // The path `open(folder:)` still derives while ADR-0025 Task 3 is outstanding; from
+    // Task 3 the controller is handed a board path and this reads it back verbatim.
+    let saved = try store.load(board: "A/A.canvas")
     #expect(saved.nodes.count == 1)
     controller.detach()
 }

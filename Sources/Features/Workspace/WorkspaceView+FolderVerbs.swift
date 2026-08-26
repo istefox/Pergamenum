@@ -18,8 +18,13 @@ extension WorkspaceView {
     /// and does not create intermediate directories, and the sheet has already blocked on
     /// both. The board file is written straight after because a workspace is a folder
     /// *with a board* - the sidebar tree is built from `allBoards()`, so a folder created
-    /// without one would not appear in the pane it was created from. Empty, so it holds
-    /// exactly what `load(folder:)` would have returned had the file stayed missing.
+    /// without one would not appear in the pane it was created from.
+    ///
+    /// TODO(ADR-0025 Task 6): that second write is R-01's whole subject and Task 6
+    /// **deletes** it, splitting this verb into "nuova board" and "nuova cartella"
+    /// (§D7). Until then it is expressed as `createBoard(named:in:)` - the same file at
+    /// the same path as the deleted `save(.empty, folder: created)` wrote, refusing
+    /// rather than overwriting.
     ///
     /// Not expressed through `performFolderVerb` below: creation opens the folder it has
     /// just made, where the other two only follow the one that moved out from under them.
@@ -29,7 +34,7 @@ extension WorkspaceView {
         do {
             let store = CanvasStore(root: root)
             let created = try store.createFolder(named: name, in: parent)
-            try store.save(.empty, folder: created)
+            _ = try store.createBoard(named: name, in: created)
             workspace.open(folder: created)
             Task { await vault.rescan() }
         } catch {

@@ -166,7 +166,9 @@ import Testing
         let id = controller.placeFile("foto.png", at: .zero)
         controller.flushPendingSave()
 
-        let canvasURL = store.url(forFolder: "")
+        // Addressed by its own path (ADR-0025 §D1): the root board is the `.canvas`
+        // named after the vault, which is the path the controller opened.
+        let canvasURL = store.url(forBoard: "\(root.url.lastPathComponent).canvas")
         let namesBefore = try FileManager.default
             .contentsOfDirectory(atPath: root.url.path(percentEncoded: false)).sorted()
         let bytesBefore = try Data(contentsOf: canvasURL)
@@ -223,7 +225,7 @@ import Testing
         controller.flushPendingSave()
         controller.detach()
 
-        let reloaded = try store.load(folder: "")
+        let reloaded = try store.load(board: "\(root.url.lastPathComponent).canvas")
         #expect(reloaded.nodes.count == 2)
         #expect(Set(reloaded.nodes.map(\.id)).count == 2)
         let paths = reloaded.nodes.compactMap { node -> String? in

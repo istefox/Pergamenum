@@ -373,12 +373,19 @@ struct WorkspaceBrowser: View {
         // decides rather than on every access (see the declaration).
         folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         boards = store?.allBoards() ?? []
-        // The folder↔board naming rule is asked, never restated (ADR-0024 §D2): the
-        // closure handed in is `CanvasStore.boardPath(forFolder:)` itself, the same rule
-        // the controller loads a board by, so the fold cannot drift from it. With no
-        // vault open there is no rule to ask and nothing to draw.
-        workspaceTree = store.map {
-            WorkspaceTree.build(boards: boards, boardPath: $0.boardPath(forFolder:))
+        // TODO(ADR-0025 Task 2): temporary. The folder↔board naming rule used to be
+        // asked of `CanvasStore.boardPath(forFolder:)` (ADR-0024 §D2), which ADR-0025
+        // §D1 deletes; it is reproduced here, locally and only until Task 2 replaces
+        // this whole call with `WorkspaceTree.build(folders:boards:)` and the fold stops
+        // needing a rule at all. Not a helper on `CanvasStore` - that is the thing being
+        // deleted. With no vault open there is nothing to draw.
+        workspaceTree = store.map { canvas in
+            WorkspaceTree.build(
+                boards: boards,
+                boardPath: {
+                    Self.temporaryBoardPath(forFolder: $0, vaultName: canvas.root.lastPathComponent)
+                }
+            )
         } ?? []
         // A selection is a path, and a rename or a delete has just moved or removed the
         // folder it names - this runs on `scanGeneration`, which both of them bump.
@@ -398,6 +405,19 @@ struct WorkspaceBrowser: View {
         // a board changes what the filter matches, and the filtered list is not redrawn
         // from the tree - it is redrawn from `filteredRows`.
         refreshFilteredRows()
+    }
+
+    /// TODO(ADR-0025 Task 2): temporary, and used only by `rebuild()` above. The rule
+    /// `CanvasStore.boardPath(forFolder:)` carried until ADR-0025 §D1 deleted it: a
+    /// folder's board is the `.canvas` inside it named after it, the vault root's being
+    /// named after the vault so it cannot collide with a note. It survives here, in the
+    /// one caller that still needs it, rather than on the store, because the store is
+    /// where it must not be askable any more. Task 2 removes it with the fold it feeds.
+    private static func temporaryBoardPath(forFolder folder: String, vaultName: String) -> String {
+        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty else { return "\(vaultName).\(CanvasStore.fileExtension)" }
+        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        return "\(trimmed)/\(name).\(CanvasStore.fileExtension)"
     }
 
     /// Recomputes what `flatList` draws, from the filter and the tree it matches against.

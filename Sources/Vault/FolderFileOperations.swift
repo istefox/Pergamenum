@@ -11,11 +11,12 @@ import Foundation
 struct FolderFileOperations {
     let store: NoteStore
 
-    /// Built here rather than injected: `CanvasStore` is a value over the same root,
-    /// and the two things this file needs from it - `boardPath(forFolder:)` and
-    /// `allBoards()` - are the definition of "which file backs this folder" (F1) and
-    /// "every board in the vault" (F4). Deriving either by hand would be a second
-    /// spelling of a mapping that already has one.
+    /// Built here rather than injected: `CanvasStore` is a value over the same root, and
+    /// what this file needs from it - `allBoards()`, "every board in the vault" (F4) -
+    /// is a walk with exclusion rules that would be a second spelling of an enumeration
+    /// that already has one. It no longer asks which file backs a folder: ADR-0025 §D1
+    /// deleted that rule, and the last caller of it here goes with the name-level pass
+    /// Task 7 removes.
     private var canvas: CanvasStore { CanvasStore(root: store.root) }
 
     enum OperationError: Error, CustomStringConvertible {
@@ -158,9 +159,9 @@ struct FolderFileOperations {
         // The board file: named after its folder (F1), so exactly one of them changes
         // name, and only if it is there at all. A folder with no board has no marker
         // pointing at it either - `WorkspacePicker` lists real files (§D5).
-        let oldBoardPath = canvas.boardPath(forFolder: oldFolder)
+        let oldBoardPath = Self.temporaryBoardPath(forFolder: oldFolder)
         let oldBoardName = (oldBoardPath as NSString).lastPathComponent
-        let newBoardName = (canvas.boardPath(forFolder: newFolder) as NSString).lastPathComponent
+        let newBoardName = (Self.temporaryBoardPath(forFolder: newFolder) as NSString).lastPathComponent
         let hasBoard = exists(oldBoardPath)
         if hasBoard {
             plan.boardRename = (from: "\(newFolder)/\(oldBoardName)", to: "\(newFolder)/\(newBoardName)")
@@ -202,6 +203,20 @@ struct FolderFileOperations {
         plan.boardChanges = boards.changes
         plan.failures.append(contentsOf: boards.failures)
         return plan
+    }
+
+    /// TODO(ADR-0025 Task 7): temporary, and used only by the name-level pass in
+    /// `renamePlan` above. The rule `CanvasStore.boardPath(forFolder:)` carried until
+    /// ADR-0025 §D1 deleted it. It lives here rather than on the store because a folder
+    /// rename must stop renaming any `.canvas` at all (§D6, R-09), and Task 7 removes
+    /// that whole pass - this derivation with it. The vault root is refused earlier in
+    /// `renamePlan`, so the empty-folder case is unreachable here; it is spelled out
+    /// anyway rather than left to a force-unwrap.
+    private static func temporaryBoardPath(forFolder folder: String) -> String {
+        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        guard !name.isEmpty else { return "" }
+        return "\(trimmed)/\(name).\(CanvasStore.fileExtension)"
     }
 
     /// What repointing every board's cards would change, read rather than written.

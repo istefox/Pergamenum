@@ -73,6 +73,29 @@ final class WorkspaceController {
     static let zoomRange: ClosedRange<CGFloat> = 0.05...4.0
 
     private(set) var folder = ""
+
+    /// The open board's own vault-relative path, which is what `CanvasStore` is now told
+    /// (ADR-0025 §D1).
+    ///
+    /// TODO(ADR-0025 Task 3): temporary. It reproduces here, and only here, the
+    /// folder→board rule §D1 deleted from `CanvasStore` - so that this task's batch
+    /// builds with the rule living nowhere reusable. Task 3 inverts the pair: `board`
+    /// becomes the stored value `open(board:)` is handed, and `folder` becomes
+    /// `deletingLastPathComponent` of it (§D4). Its readers - `BoardTray`,
+    /// `BoardCardMenu` and the three store calls below - are already written against
+    /// the shape that survives.
+    ///
+    /// Empty with no store attached, the same answer `BoardTray.boardFileName` gave
+    /// before it stopped building a store of its own.
+    var board: String {
+        guard let store else { return "" }
+        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty else {
+            return "\(store.root.lastPathComponent).\(CanvasStore.fileExtension)"
+        }
+        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        return "\(trimmed)/\(name).\(CanvasStore.fileExtension)"
+    }
     /// The single value that says both which row of the Workspace tree is lit and
     /// whether a board is drawn (ADR-0024 §D4). Replaces the former `hasOpenBoard`
     /// flag: `attach` prepares the root board's document the moment a vault opens, but
@@ -227,7 +250,15 @@ final class WorkspaceController {
         pan = .zero
         zoom = 1
         do {
-            document = try store.load(folder: newFolder)
+            document = try store.load(board: board)
+        } catch CanvasStore.StoreError.missing {
+            // TODO(ADR-0025 Task 3): temporary, and the only place this task keeps the
+            // silent `.empty` §D1 exists to remove. `load(folder:)` returned it for a
+            // board file that was never created, which is still the normal case while
+            // `attach` opens the root board and the tree opens folders (F2). Task 3
+            // makes every caller name a board that exists, and deletes this catch with
+            // them - reporting a missing file rather than drawing it blank.
+            document = .empty
         } catch {
             document = .empty
             recordProblem("\(newFolder): \(error)")
@@ -304,7 +335,7 @@ final class WorkspaceController {
     /// already read the same document against the same disk - see `createFolder`.
     func refreshContents() {
         guard let store else { return }
-        setContents(store.contents(ofFolder: folder, board: document))
+        setContents(store.contents(ofBoard: board, document: document))
     }
 
     /// The only writer of `contents`, so `subfolderSet` is refilled with it every time
@@ -659,12 +690,12 @@ final class WorkspaceController {
             // reaches `VaultSession.reconcile` and there is nothing for a recorded hash
             // to be recognised against. The board cannot be reloaded under the user by
             // the watcher because the watcher never hears about it.
-            try store.save(document, folder: folder)
+            try store.save(document, board: board)
             hasUnsavedChanges = false
         } catch {
             // Left dirty on purpose: an indicator still showing unsaved changes is
             // the truth, and the next edit will retry.
-            recordProblem("salvataggio di \(folder): \(error)")
+            recordProblem("salvataggio di \(board): \(error)")
         }
     }
 }

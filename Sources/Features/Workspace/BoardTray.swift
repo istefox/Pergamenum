@@ -223,16 +223,14 @@ struct BoardTray: View {
 
     /// The board's own file name, as a wikilink would write it.
     ///
-    /// Read from the store the controller already holds rather than from a fresh one:
-    /// `CanvasStore.init` calls `resolvingSymlinksInPath().standardizedFileURL`, so
-    /// building a store here charged the tray a filesystem syscall per access - twice
-    /// per draw, on a view that redraws for every observable change it reads, a card
-    /// dragged across the board included. The value is the same: the store is attached
-    /// from the same `vault.root` (`WorkspaceView.attachWorkspace`), and a board is only
-    /// ever on screen when `load(folder:)` found one, which needs the store anyway.
+    /// The last component of the path the controller opened (ADR-0025 §D1), so the tray
+    /// names the board that is actually on screen whatever it is called. No store and no
+    /// naming rule are involved any more: this used to build a `CanvasStore` per access -
+    /// twice per draw, on a view that redraws for every observable change it reads, a
+    /// card dragged across the board included - and then ask it to derive the file name
+    /// from the folder.
     private var boardFileName: String {
-        guard let store = workspace.store else { return "" }
-        return (store.boardPath(forFolder: workspace.folder) as NSString).lastPathComponent
+        (workspace.board as NSString).lastPathComponent
     }
 
     private var newItems: some View {

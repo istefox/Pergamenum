@@ -190,7 +190,9 @@ import Testing
         controller.flushPendingSave()
         controller.detach()
 
-        let reloaded = try store.load(folder: "")
+        // Addressed by its own path (ADR-0025 §D1): the root board is the `.canvas`
+        // named after the vault, which is the path the controller opened.
+        let reloaded = try store.load(board: "\(root.lastPathComponent).canvas")
         let node = try #require(reloaded.node(id: id))
         #expect(CanvasCrop.read(from: node) == expectedCrop)
         #expect(node.x == 30)
@@ -210,7 +212,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try Self.writeImage(named: "foto.png", in: root)
         let store = CanvasStore(root: root)
-        try store.save(try CanvasDocument(data: Data(canvas.utf8)), folder: "")
+        try store.save(
+            try CanvasDocument(data: Data(canvas.utf8)), board: "\(root.lastPathComponent).canvas"
+        )
 
         let controller = WorkspaceController()
         controller.attach(to: store)

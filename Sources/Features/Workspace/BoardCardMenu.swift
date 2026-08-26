@@ -104,9 +104,9 @@ struct BoardCardActions {
     /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card can be
     /// linked to from Obsidian, DEVONthink or Mail (SPEC §9).
     func copyLink(to node: CanvasNode) {
-        guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }
-        let boardPath = store.boardPath(forFolder: workspace.folder)
-        guard let url = PergamenumLink.canvas(path: boardPath, nodeID: node.id) else { return }
+        // The path of the board actually open, not one derived from its folder
+        // (ADR-0025 §D1) - so the link reopens this `.canvas` whatever it is called.
+        guard let url = PergamenumLink.canvas(path: workspace.board, nodeID: node.id) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
