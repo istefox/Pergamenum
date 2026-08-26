@@ -66,7 +66,7 @@ struct WorkspaceView: View {
                         onOpen: { path in
                             workspace.open(folder: (path as NSString).deletingLastPathComponent)
                         },
-                        onDeselect: { workspace.closeBoard() }
+                        onDeselect: { workspace.select(nil) }
                     )
                     .frame(width: CGFloat(browserWidth))
                     WorkspacePaneDivider(width: Binding(
@@ -74,7 +74,7 @@ struct WorkspaceView: View {
                         set: { browserWidth = Double($0) }
                     ))
                 }
-                if workspace.hasOpenBoard {
+                if workspace.isShowingBoard {
                     BoardToolbar(workspace: workspace)
                     Divider()
                     board
@@ -128,7 +128,7 @@ struct WorkspaceView: View {
             // which is where it already lives on disk.
             guard let pending = pending ?? nil else { return }
             let folder = (pending as NSString).deletingLastPathComponent
-            if !workspace.hasOpenBoard || workspace.folder != folder { workspace.open(folder: folder) }
+            workspace.select(.board(folder: folder))
             if !workspace.document.nodes.contains(where: {
                 if case .file(let path, _) = $0.kind { return path == pending } else { return false }
             }) {
@@ -164,7 +164,7 @@ struct WorkspaceView: View {
     /// as the selected one. A board is named after its folder (`boardPath(forFolder:)`
     /// is the whole of that mapping), so the folder the controller holds is enough.
     private var openBoardPath: String? {
-        guard workspace.hasOpenBoard, let root = vault.root else { return nil }
+        guard workspace.isShowingBoard, let root = vault.root else { return nil }
         return CanvasStore(root: root).boardPath(forFolder: workspace.folder)
     }
 
@@ -232,7 +232,7 @@ struct WorkspaceView: View {
         guard vault.renameFolder(at: folder, to: newName) else { return }
         // "Keeps the open board on it" only means something if a board is actually
         // open - with nothing chosen there is nothing to land somewhere else.
-        guard workspace.hasOpenBoard else { return }
+        guard workspace.isShowingBoard else { return }
 
         // The destination `FolderFileOperations.renamePlan` computed for itself: a rename
         // is a new last component under the same parent, never a move (SPEC, out of scope).
@@ -255,7 +255,7 @@ struct WorkspaceView: View {
     private func deleteWorkspace(_ folder: String) {
         flushBoard()
         guard vault.trashFolder(at: folder) else { return }
-        guard workspace.hasOpenBoard else { return }
+        guard workspace.isShowingBoard else { return }
 
         let landing = WorkspaceFolderActions.folderAfterDelete(
             open: workspace.folder, deleted: folder
