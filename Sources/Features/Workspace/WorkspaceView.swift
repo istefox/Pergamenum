@@ -121,7 +121,7 @@ struct WorkspaceView: View {
                 // you can do - the same split the note pane makes between its list and
                 // its editor. Hidden in concentrazione, alongside the app sidebar and
                 // the tray, so the board keeps the width they gave up.
-                if !navigation.isWorkspaceFocused {
+                if !navigation.isWorkspaceFocused && !navigation.isWorkspaceTreeCollapsed {
                     WorkspaceBrowser(
                         selectedFolder: workspace.current?.folder,
                         actions: folderActions,
@@ -273,6 +273,17 @@ struct WorkspaceView: View {
             }
             .help("Nasconde la sidebar, l'elenco board e il tray per lasciare più spazio alla board")
             .accessibilityIdentifier("workspace-focus-toggle")
+
+            // Same reach pattern again, one pane narrower: only the board-list tree,
+            // never the tray. Independent of «Concentrazione» above - the two flags
+            // are read with `&&` at the call site, so either one hides the tree.
+            // Named for what checking it does (MenuCommands.swift carries the same
+            // reasoning), not for a shown/hidden state.
+            Toggle(isOn: Bindable(navigation).isWorkspaceTreeCollapsed) {
+                Label("Nascondi albero", systemImage: "sidebar.left")
+            }
+            .help("Nasconde l'albero delle cartelle e delle board")
+            .accessibilityIdentifier("workspace-tree-toggle")
         }
     }
 

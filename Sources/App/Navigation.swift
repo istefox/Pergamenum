@@ -109,6 +109,15 @@ final class Navigation {
     /// on, so leaving the mode returns the tray to whatever state it was actually in.
     var isWorkspaceFocused = false
 
+    /// Whether the Workspace hides just its board-list pane (`WorkspaceBrowser`, the
+    /// folder/board tree), leaving the tray and the rest of the chrome untouched.
+    ///
+    /// A pane of its own rather than folded into `isWorkspaceFocused`: that flag hides the
+    /// tray along with the tree, and collapsing only the tree to free up board width is a
+    /// narrower ask than "concentrazione" already covers. Here for the same reason
+    /// `isShowingTray` is: the menu bar's Vista entry needs to reach it.
+    var isWorkspaceTreeCollapsed = false
+
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,

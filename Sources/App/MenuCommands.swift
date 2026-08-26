@@ -59,6 +59,12 @@ struct ViewCommands: Commands {
             // room on the board itself. Same keyless precedent as the toggle above.
             Toggle("Concentrazione", isOn: Bindable(navigation).isWorkspaceFocused)
                 .disabled(navigation.pane != .workspace)
+            // Narrower than «Concentrazione»: only the board-list tree, tray untouched.
+            // Named for what checking it does, not for a shown/hidden state - "Albero
+            // Workspace" would read backwards next to "Pannello Workspace" above, where
+            // checked means shown rather than hidden.
+            Toggle("Nascondi albero Workspace", isOn: Bindable(navigation).isWorkspaceTreeCollapsed)
+                .disabled(navigation.pane != .workspace)
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere
