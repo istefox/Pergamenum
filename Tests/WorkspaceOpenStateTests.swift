@@ -139,3 +139,39 @@ private func makeTempRoot() throws -> URL {
 
     #expect(controller.breadcrumb.map(\.title) == ["Workspace", "01 Progetti", "a"])
 }
+
+// MARK: - breadcrumb (Task 5, R-12 - "you are here" the way the tree now says it)
+
+@MainActor
+@Test func breadcrumbWithNothingSelectedIsExactlyTheRootAndNothingMore() throws {
+    // `navigatesTheBoardHierarchyWithABreadcrumb` (Tests/CanvasTests.swift:357) already
+    // pins the *title* half of this ("Workspace" alone after `attach`). This pins the
+    // whole tuple - title AND folder - and the count, so a future change that appends an
+    // empty second segment (or renames the root's folder path away from `""`) fails here
+    // even though it would slip past a title-only assertion.
+    let root = try makeTempRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root))
+
+    #expect(controller.current == nil)
+    let trail = controller.breadcrumb
+    #expect(trail.count == 1)
+    #expect(trail.map(\.title) == ["Workspace"])
+    #expect(trail.map(\.folder) == [""])
+}
+
+@MainActor
+@Test func breadcrumbMovesForABoardlessFolderSelectionWithNoBoardOnScreen() throws {
+    // The half the old `openBoardPath`-only model could not express (ADR-0024 §D8.1,
+    // plan Task 5): selecting a board-less folder opens nothing (`isShowingBoard` stays
+    // false, §D5), yet the breadcrumb still moves to name it, because it walks `current`
+    // rather than the last-loaded document.
+    let root = try makeTempRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root))
+
+    controller.select(.folder("Vuota"))
+
+    #expect(controller.isShowingBoard == false)
+    #expect(controller.breadcrumb.map(\.title) == ["Workspace", "Vuota"])
+}
