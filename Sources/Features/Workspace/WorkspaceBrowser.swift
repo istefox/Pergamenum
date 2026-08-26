@@ -9,8 +9,10 @@ import SwiftUI
 /// blueprint's *"reuse the existing folder-tree view component ... not a parallel tree
 /// implementation"* made true at the level of the code.
 ///
-/// `NoteTree.Node.Kind` is not extended for boards (D10): every leaf in this tree is a
-/// board, so the icon is this view's business and the enum stays as it is.
+/// `NoteTree.Node.Kind` is not extended for boards (D10). What the sidebar draws is one
+/// fold further on: `WorkspaceTree.build(boards:boardPath:)` turns that tree into one row
+/// per folder, with the board named after a folder drawn *on* that folder's row rather
+/// than beside it (ADR-0024 §D2). This view renders the fold; it does not decide it.
 struct WorkspaceBrowser: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
@@ -34,6 +36,11 @@ struct WorkspaceBrowser: View {
     /// the same reason the note tree's is.
     @State private var expanded: Set<String> = []
     @State private var tree: [NoteTree.Node] = []
+    /// The same boards folded one row per folder - what the rows below are drawn from,
+    /// and what the selection binding resolves a clicked id against (ADR-0024 §D2).
+    /// Kept beside `tree` rather than replacing it: `tree` is still what
+    /// `allFolders(in:)` walks for "Espandi tutto" and for the stale-selection drop.
+    @State private var workspaceTree: [WorkspaceTree.Node] = []
     @State private var boards: [String] = []
     @State private var isCreatingWorkspace = false
     @State private var isRenamingWorkspace = false
@@ -189,38 +196,120 @@ struct WorkspaceBrowser: View {
 
     // MARK: Rows
     //
-    // ADR-0024 Task 3 GREEN (coder): rebuild as List(selection:) with WorkspaceRow flat
-    // recursive rows. The tester's batch (this one) only removes what compilation
-    // forces it to - `selectedFolder`'s promotion from `@State` to a handed-down value,
-    // `onOpen`/`onDeselect` folding into `onSelect` - and cannot build the derived
-    // `Binding<String?>` (getter `selectedFolder`, setter resolving through
-    // `WorkspaceTree.node(withID:in:)` into `onSelect`), the two `List(selection:)`
-    // trees, the `WorkspaceTreeRow` → `WorkspaceRow` flat-recursive rewrite, `.tag`,
-    // the accessibility labels, or the context-menu relocation - all real view code
-    // with no unit-level red, whose red lives in Task 6's UI suite (plan, Task 3).
-    // `WorkspaceTreeRow` below is left exactly as it was and is unused by these stubs;
-    // do not delete it, the coder's rewrite reads it as the shape to replace.
+    // Flat recursive rows inside `List(selection:)`, `NoteListPane`'s shape rather than a
+    // `DisclosureGroup` tree (ADR-0024 §D1): a `DisclosureGroup`'s label is not a row of
+    // the enclosing `List`, so a `.tag` on it satisfies no binding - the list lights
+    // nothing and swallows every click, silently, which is what `RootView.swift:205-208`
+    // records this repository having already paid twenty minutes for once.
+
+    /// The `List`'s selection: derived from the value handed down, never stored beside it
+    /// (ADR-0024 §D6).
+    ///
+    /// The setter resolves the clicked id against this view's own tree, which is the only
+    /// place that knows whether a folder owns a board and therefore whether the click
+    /// means `.board` or `.folder`. A `.foreignBoard` row carries no `.tag` (§D3), so the
+    /// lookup cannot land on one.
+    private var treeSelection: Binding<String?> {
+        Binding(
+            get: { selectedFolder },
+            set: { id in
+                guard let id else { return onSelect(nil) }
+                // An id the tree cannot resolve came from no row this view drew, so it
+                // is read as `.folder` - the case that opens nothing - rather than
+                // dropped, which would leave the `List` lit on a row `selectedFolder`
+                // does not name.
+                guard let node = WorkspaceTree.node(withID: id, in: workspaceTree),
+                      let picked = Self.selection(for: node)
+                else { return onSelect(.folder(id)) }
+                onSelect(picked)
+            }
+        )
+    }
+
+    /// Which case a row means: `.board` when the folder owns one, `.folder` when it only
+    /// groups (ADR-0024 §D5), `nil` for a `.foreignBoard`, which is not in the selection's
+    /// namespace at all (§D3).
+    ///
+    /// One expression, read by the `List`'s binding above and by the row's context menu,
+    /// so a click and a right-click cannot disagree about what was selected (ADR-0023 §D4).
+    ///
+    /// `nonisolated` for the reason spelled out at `rows(matching:in:)`: these three
+    /// statics are pure functions of their arguments, and a pure function that carries
+    /// the view's actor isolation is a trap waiting for the first caller that is not on
+    /// the main actor.
+    nonisolated static func selection(for node: WorkspaceTree.Node) -> WorkspaceSelection? {
+        switch node.kind {
+        case .workspace(let board):
+            return board == nil ? .folder(node.id) : .board(folder: node.id)
+        case .foreignBoard:
+            return nil
+        }
+    }
 
     private var folderTree: some View {
-        EmptyView()
+        List(selection: treeSelection) {
+            ForEach(workspaceTree, id: \.id) { node in
+                row(node, depth: 0)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("workspace-tree")
+        // No `.onTapGesture` here any more: deselecting by clicking the blank area below
+        // the last row is `List(selection:)`'s own behaviour under ADR-0024 §D7/R-07, and
+        // the gesture that used to stand in for it was written when this list had no
+        // selection binding at all.
+        .contextMenu {
+            Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
+            Button("Comprimi tutto") { expanded = [] }
+        }
     }
 
-    /// Every board in one list while a filter is typed: a match three folders down is
-    /// easier to see flat than as a tree opened around it - the note sidebar's rule,
+    /// Every matching row in one list while a filter is typed: a match three folders down
+    /// is easier to see flat than as a tree opened around it - the note sidebar's rule,
     /// and the reason the filter field behaves the same in both places.
+    ///
+    /// The same row view and the same binding as the tree above, which is R-09 read as
+    /// "not a second implementation". `rows(matching:in:)` hands back detached rows, so
+    /// `flattened` is a straight walk at depth 0 rather than a re-nesting of matches.
     private var flatList: some View {
-        EmptyView()
+        List(selection: treeSelection) {
+            ForEach(
+                WorkspaceTree.flattened(Self.rows(matching: filter, in: workspaceTree)),
+                id: \.node.id
+            ) { match in
+                row(match.node, depth: match.depth)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("workspace-flat-list")
     }
 
-    private var filteredBoards: [String] {
-        boards.filter { $0.localizedCaseInsensitiveContains(filter) }
+    /// One row, wired the same way in both lists.
+    private func row(_ node: WorkspaceTree.Node, depth: Int) -> some View {
+        WorkspaceRow(
+            node: node,
+            depth: depth,
+            expanded: $expanded,
+            selectedFolder: selectedFolder,
+            onSelect: onSelect,
+            onRename: { _ in isRenamingWorkspace = true },
+            onDelete: { confirmDelete(of: $0) }
+        )
     }
 
     // MARK: Tree state
 
     private func rebuild() {
-        boards = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+        let store = vault.root.map { CanvasStore(root: $0) }
+        boards = store?.allBoards() ?? []
         tree = NoteTree.build(fromPaths: boards)
+        // The folder↔board naming rule is asked, never restated (ADR-0024 §D2): the
+        // closure handed in is `CanvasStore.boardPath(forFolder:)` itself, the same rule
+        // the controller loads a board by, so the fold cannot drift from it. With no
+        // vault open there is no rule to ask and nothing to draw.
+        workspaceTree = store.map {
+            WorkspaceTree.build(boards: boards, boardPath: $0.boardPath(forFolder:))
+        } ?? []
         // A selection is a path, and a rename or a delete has just moved or removed the
         // folder it names - this runs on `scanGeneration`, which both of them bump.
         // `selectedFolder` is owned by the controller now (ADR-0024 §D6), so dropping a
@@ -237,8 +326,14 @@ struct WorkspaceBrowser: View {
         reveal(selectedFolder)
     }
 
-    /// Opens the folders above a board, so one opened from somewhere that is not this
-    /// list is visible in it rather than merely selected inside a closed folder.
+    /// Opens the folders above a selected **folder**, so a board opened from somewhere
+    /// that is not this list - the breadcrumb, a route, a folder card, the editor - is
+    /// visible here rather than merely selected inside a closed folder.
+    ///
+    /// The path is a folder now rather than a board file (ADR-0024 §D2), and
+    /// `NoteTree.ancestors(of:)` is already right for it: it drops the last component,
+    /// which for a folder is the folder itself, leaving its strict ancestors - the set to
+    /// open, without opening the selected row itself.
     private func reveal(_ path: String?) {
         guard let path else { return }
         expanded.formUnion(NoteTree.ancestors(of: path))
@@ -266,13 +361,33 @@ struct WorkspaceBrowser: View {
     /// `""`, which never contains a non-empty `filter`. `name` is what makes the root
     /// row ("Labs" today) reachable while a filter is typed.
     ///
-    /// STUB (ADR-0024 Task 3, tester's batch): returns `[]` unconditionally, never
-    /// `fatalError()` or a force-unwrap, so `Tests/WorkspaceTreeTests.swift`'s two new
-    /// assertions are red on their expectations rather than on a build error. The
-    /// coder's GREEN implements the real fold, `static` and internal, the same
-    /// visibility `allFolders(in:)` above already has.
-    static func rows(matching filter: String, in tree: [WorkspaceTree.Node]) -> [WorkspaceTree.Node] {
-        []
+    /// The rows come back **detached** - each one's `children` emptied - because they are
+    /// drawn flat: a folder and a descendant of it can both match, and a match kept with
+    /// its subtree would draw that descendant twice, once on its own and once under its
+    /// parent.
+    ///
+    /// `nonisolated`, and that word is load-bearing rather than tidy: a `View` is
+    /// `@MainActor`, so a static member of one is too, and the closure below would be
+    /// handed to `compactMap` as an isolated closure converted to a non-isolated function
+    /// type - which the concurrency runtime checks at the call rather than at compile
+    /// time. Called from a test (a nonisolated synchronous context) that check is a
+    /// `dispatch_assert_queue` **trap**, not a warning: the whole test process dies mid
+    /// run and the suite reports a crashed test with no assertion to read.
+    /// `identifier(for:)` beside it never crashed because it passes no closure anywhere.
+    nonisolated static func rows(matching filter: String, in tree: [WorkspaceTree.Node]) -> [WorkspaceTree.Node] {
+        WorkspaceTree.flattened(tree).compactMap { row in
+            guard case .workspace = row.node.kind else { return nil }
+            guard row.node.id.localizedCaseInsensitiveContains(filter)
+                || row.node.name.localizedCaseInsensitiveContains(filter)
+            else { return nil }
+            return WorkspaceTree.Node(
+                id: row.node.id,
+                name: row.node.name,
+                kind: row.node.kind,
+                children: [],
+                boardCount: row.node.boardCount
+            )
+        }
     }
 
     /// The three identifier spellings a row can carry, and the only place they are
@@ -280,12 +395,18 @@ struct WorkspaceBrowser: View {
     /// owns a board, `workspace-folder-<id>` for one that does not,
     /// `workspace-foreign-board-<path>` for a `.foreignBoard`.
     ///
-    /// STUB (ADR-0024 Task 3, tester's batch): returns `""` unconditionally, never
-    /// `fatalError()` or a force-unwrap, so `Tests/WorkspaceTreeTests.swift`'s new
-    /// assertions are red on their expectations rather than on a build error. The
-    /// coder's GREEN implements the real spelling.
-    static func identifier(for node: WorkspaceTree.Node) -> String {
-        ""
+    /// The board form is spelled from the **board path**, byte-identical to what the row
+    /// carried before the fold, so the two existing UI call sites keep resolving; the
+    /// folder form is spelled from the folder path, and only a folder that owns no board
+    /// gets it, which is R-01 stated as an identifier.
+    nonisolated static func identifier(for node: WorkspaceTree.Node) -> String {
+        switch node.kind {
+        case .workspace(let board):
+            if let board { return "workspace-board-\(board)" }
+            return "workspace-folder-\(node.id)"
+        case .foreignBoard(let path):
+            return "workspace-foreign-board-\(path)"
+        }
     }
 }
 
@@ -313,134 +434,192 @@ private struct PendingFolderDelete {
 
 /// One row of the Workspace tree, and its subtree.
 ///
-/// A `DisclosureGroup` bound to the shared `expanded` set rather than one owning its
-/// own state: "Espandi tutto" and a board revealed from outside both have to be able to
-/// open a folder this row did not open itself.
-private struct WorkspaceTreeRow: View {
+/// Flat and recursive, `NoteTreeRow`'s shape (`NoteListPane.swift:290-322`): the row, and
+/// then - as a **sibling**, never as its content - the expanded children (ADR-0024 §D1).
+/// The chevron is drawn by hand and the depth is paid for in padding, so every row of the
+/// tree is a row of the one enclosing `List` and can carry a `.tag` the selection binding
+/// is able to satisfy. A `DisclosureGroup`'s label is not such a row, which is why there
+/// is none left in this file.
+///
+/// `expanded` is the browser's shared set rather than state of this row's own: "Espandi
+/// tutto" and a board revealed from outside both have to be able to open a folder this row
+/// did not open itself.
+private struct WorkspaceRow: View {
     @Environment(\.theme) private var theme
 
-    let node: NoteTree.Node
+    let node: WorkspaceTree.Node
+    let depth: Int
     @Binding var expanded: Set<String>
-    /// The folder the toolbar acts on. A row writes to it; nothing here reads it except
-    /// to draw itself as the selected one (ADR-0022 §D9).
-    @Binding var selected: String?
-    let openBoardPath: String?
-    let onOpen: (String) -> Void
+    /// The lit row, read one way only (ADR-0024 §D9). Nothing drawn here is conditioned
+    /// on it - the system draws the selected row's fill - except what VoiceOver is told.
+    let selectedFolder: String?
+    let onSelect: (WorkspaceSelection?) -> Void
     /// The two folder verbs, by folder path. The row does not perform them: it hands the
     /// path to the same closures the toolbar's buttons call, so the context menu is a
     /// second entry point rather than a second code path (ADR-0023 §D4).
     let onRename: (String) -> Void
     let onDelete: (String) -> Void
 
+    /// One indent step. The rows are drawn flat inside a `List`, so the depth has to be
+    /// paid for in padding rather than by nesting the views - `NoteTreeRow`'s constant,
+    /// because the two sidebars indent by the same amount or they read as two designs.
+    private static let indent: CGFloat = 14
+
+    private var isExpanded: Bool { expanded.contains(node.id) }
+    private var isSelected: Bool { selectedFolder == node.id }
+    private var hasChildren: Bool { !node.children.isEmpty }
+    private var isForeign: Bool {
+        if case .foreignBoard = node.kind { true } else { false }
+    }
+
+    @ViewBuilder
     var body: some View {
-        switch node.kind {
-        case .folder: folderRow
-        case .note: boardRow
-        }
-    }
-
-    private var isExpanded: Binding<Bool> {
-        Binding(
-            get: { expanded.contains(node.id) },
-            set: { isOpen in
-                if isOpen {
-                    expanded.insert(node.id)
-                } else {
-                    expanded.remove(node.id)
-                }
-            }
-        )
-    }
-
-    private var folderRow: some View {
-        DisclosureGroup(isExpanded: isExpanded) {
-            ForEach(node.children ?? []) { child in
-                WorkspaceTreeRow(
+        taggedRow
+        if isExpanded {
+            ForEach(node.children, id: \.id) { child in
+                WorkspaceRow(
                     node: child,
+                    depth: depth + 1,
                     expanded: $expanded,
-                    selected: $selected,
-                    openBoardPath: openBoardPath,
-                    onOpen: onOpen,
+                    selectedFolder: selectedFolder,
+                    onSelect: onSelect,
                     onRename: onRename,
                     onDelete: onDelete
                 )
             }
-        } label: {
-            HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: isExpanded.wrappedValue ? "folder" : "folder.fill")
-                    .foregroundStyle(theme.color(.accentPrimary))
-                Text(node.name)
-                    .themedText(.body, color: selected == node.id ? .accentPrimary : .textPrimary)
-                    .lineLimit(1)
-                Spacer(minLength: theme.spacing(.xs))
-                Text("\(node.noteCount)").themedText(.caption, color: .textTertiary)
+        }
+    }
+
+    /// `.tag` **last in the chain**, and only on a `.workspace` node.
+    ///
+    /// Last, because a modifier applied after it drops it and the failure is silent - the
+    /// list lights nothing and swallows every click (`RootView.swift:205-208`). Only on a
+    /// `.workspace`, because a `.canvas` not named after the folder holding it is not
+    /// something this app can open at all: no tag makes its row structurally
+    /// unselectable rather than disabled by a rule somebody has to remember to apply
+    /// (ADR-0024 §D3).
+    @ViewBuilder
+    private var taggedRow: some View {
+        switch node.kind {
+        case .workspace: content.tag(node.id)
+        case .foreignBoard: content
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: theme.spacing(.xs)) {
+            chevron
+            Image(systemName: icon)
+                .foregroundStyle(theme.color(isForeign ? .textTertiary : .textSecondary))
+            Text(node.name)
+                .themedText(.body, color: isForeign ? .textSecondary : .textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: theme.spacing(.xs))
+            // Only where one was shown before the fold: the rows that have something
+            // under them (ADR-0024 §D2).
+            if hasChildren {
+                Text("\(node.boardCount)").themedText(.caption, color: .textTertiary)
             }
-            .contentShape(Rectangle())
-            // Selects the folder without toggling its disclosure (ADR-0022 §D9): the
-            // triangle opens it, the label says which folder the toolbar's verbs mean.
-            .onTapGesture { selected = node.id }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Cartella \(node.name), \(node.noteCount) Workspace")
-            // On macOS an `.accessibilityIdentifier` on the `DisclosureGroup` itself
-            // propagates onto every descendant AX element - including the disclosed
-            // ForEach rows below, overriding each one's own identifier (confirmed the
-            // same way the TasksView.swift `task-project-group` fix was: an exported
-            // UI-hierarchy attachment). `label:` and the disclosed content are siblings
-            // under the `DisclosureGroup`, never one containing the other, so putting the
-            // identifier here - on this label's own combined element, which has no
-            // pre-existing identifier of its own to clobber - never touches them.
-            .accessibilityIdentifier("workspace-folder-\(node.id)")
-            // On this label and never on the `DisclosureGroup` above it, for the reason
-            // the note beside the identifier gives: a modifier there reaches every
-            // disclosed descendant, so the parent folder's «Elimina» would hang off every
-            // board row nested inside it - right-clicking a board would offer to delete
-            // the folder it lives in (ADR-0023 §D2).
-            //
-            // Plain titles, no SF Symbols: the toolbar keeps its `pencil`/`trash` and this
-            // menu keeps the absence of one, which is what «the same symbol» means for a
-            // surface that draws none (ADR-0023 §D1).
-            .contextMenu {
-                // The same rule the toolbar's two buttons are enabled by, asked in the
-                // second place it is rendered rather than restated (ADR-0023 §D1, §D3).
-                if WorkspaceBrowserToolbar.canMutate(folder: node.id) {
-                    // The selection first: both sheets are seeded from
-                    // `WorkspaceBrowser.targetFolder`, which reads it, and a secondary
-                    // click fires no `onTapGesture` - so without this the verb would act
-                    // on whatever was clicked before the right-click (ADR-0023 §D4).
-                    Button("Rinomina…") {
-                        selected = node.id
-                        onRename(node.id)
-                    }
-                    Button("Elimina…", role: .destructive) {
-                        selected = node.id
-                        onDelete(node.id)
-                    }
-                }
+        }
+        .padding(.leading, CGFloat(depth) * Self.indent)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        // Belt and braces beside the label: whether this trait reaches XCUITest's
+        // `isSelected` for custom `List` row content on macOS is unverified here, so the
+        // label above carries the state in words and is what a test may depend on
+        // (ADR-0024 §D9, R-13).
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityIdentifier(WorkspaceBrowser.identifier(for: node))
+        // Outside the combined accessibility element, the order the row carried before
+        // this rewrite - and still ahead of the `.tag` that `taggedRow` applies last of
+        // all, which is the one modifier nothing may follow.
+        .contextMenu { menu }
+    }
+
+    /// The state said in words, because the colour that used to say it is gone (R-02) and
+    /// was never something a screen reader could read anyway (ADR-0024 §D9).
+    private var accessibilityLabel: String {
+        switch node.kind {
+        case .workspace(let board) where board != nil:
+            return isSelected ? "Workspace \(node.name), aperta" : "Workspace \(node.name)"
+        case .workspace:
+            let base = "Cartella \(node.name), \(node.boardCount) Workspace"
+            return isSelected ? "\(base), selezionata" : base
+        case .foreignBoard:
+            return "Board \(node.name), non apribile da Pergamenum"
+        }
+    }
+
+    /// A board on a row that owns one, a folder on a row that does not, and the board
+    /// symbol dimmed for a `.canvas` this app cannot open. Nothing here is conditioned on
+    /// the selection (R-02).
+    private var icon: String {
+        switch node.kind {
+        case .workspace(let board):
+            return board == nil ? (isExpanded ? "folder" : "folder.fill") : "rectangle.3.group"
+        case .foreignBoard:
+            return "rectangle.3.group"
+        }
+    }
+
+    /// Its own hit target, which is what keeps «the triangle expands, the row selects»
+    /// implementable at all (ADR-0024 §D5). A row with nothing under it keeps the space
+    /// so the names line up.
+    @ViewBuilder
+    private var chevron: some View {
+        if hasChildren {
+            triangle
+                .contentShape(Rectangle())
+                .onTapGesture { toggle() }
+        } else {
+            triangle.hidden()
+        }
+    }
+
+    private var triangle: some View {
+        Image(systemName: "chevron.right")
+            .rotationEffect(.degrees(isExpanded && hasChildren ? 90 : 0))
+            .themedText(.caption, color: .textTertiary)
+    }
+
+    /// On the row's own `HStack`, where ADR-0023 §D2 put it - and §D2's warning now has
+    /// nothing left to warn about: there is no `DisclosureGroup` in this file for a
+    /// modifier to leak out of onto every disclosed descendant, so its conclusion holds by
+    /// construction rather than by care (ADR-0024 §D1).
+    ///
+    /// Plain titles, no SF Symbols: the toolbar keeps its `pencil`/`trash` and this menu
+    /// keeps the absence of one, which is what «the same symbol» means for a surface that
+    /// draws none (ADR-0023 §D1).
+    @ViewBuilder
+    private var menu: some View {
+        // Two gates, neither of them restated here: `selection(for:)` is nil for a
+        // `.foreignBoard`, whose id is a file path rather than a folder and which the
+        // folder verbs have no business acting on (ADR-0024 §D3), and
+        // `canMutate(folder:)` is the same rule the toolbar's two buttons are enabled by,
+        // asked in the second place it is rendered (ADR-0023 §D1, §D3).
+        if let picked = WorkspaceBrowser.selection(for: node),
+           WorkspaceBrowserToolbar.canMutate(folder: node.id) {
+            // The selection first: both sheets are seeded from
+            // `WorkspaceBrowser.targetFolder`, which reads it, and a secondary click
+            // selects nothing by itself - so without this the verb would act on whatever
+            // was selected before the right-click (ADR-0023 §D4).
+            Button("Rinomina…") {
+                onSelect(picked)
+                onRename(node.id)
+            }
+            Button("Elimina…", role: .destructive) {
+                onSelect(picked)
+                onDelete(node.id)
             }
         }
     }
 
-    private var boardRow: some View {
-        let isOpen = node.id == openBoardPath
-        return Button {
-            // A board is named after its folder, so "the selected workspace" is that
-            // folder - clicking a board selects it and opens the board, as it always did
-            // (ADR-0022 §D9).
-            selected = (node.id as NSString).deletingLastPathComponent
-            onOpen(node.id)
-        } label: {
-            HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: "rectangle.3.group")
-                    .foregroundStyle(theme.color(isOpen ? .accentPrimary : .textTertiary))
-                Text(node.name)
-                    .themedText(.body, color: isOpen ? .accentPrimary : .textPrimary)
-                    .lineLimit(1)
-                Spacer()
-            }
-            .contentShape(Rectangle())
+    private func toggle() {
+        if isExpanded {
+            expanded.remove(node.id)
+        } else {
+            expanded.insert(node.id)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Workspace \(node.name)")
-        .accessibilityIdentifier("workspace-board-\(node.id)")
     }
 }
