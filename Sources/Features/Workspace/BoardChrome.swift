@@ -114,11 +114,11 @@ struct BoardZoomControls: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            Button { workspace.zoom(by: 1 / 1.25) } label: { Image(systemName: "minus") }
+            Button { workspace.zoom(by: 1 / 1.25, in: viewportSize) } label: { Image(systemName: "minus") }
             Button { workspace.resetZoom() } label: {
                 Text("\(Int(workspace.zoom * 100))%").themedText(.caption)
             }
-            Button { workspace.zoom(by: 1.25) } label: { Image(systemName: "plus") }
+            Button { workspace.zoom(by: 1.25, in: viewportSize) } label: { Image(systemName: "plus") }
             Divider().frame(height: 12)
             Button { workspace.zoomToFit(in: viewportSize) } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")

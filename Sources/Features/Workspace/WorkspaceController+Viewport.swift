@@ -3,8 +3,26 @@ import Foundation
 
 /// Where the board is looked at from: zoom, and the two ways of framing content.
 extension WorkspaceController {
-    func zoom(by factor: CGFloat) {
-        zoom = min(max(zoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+    /// Steps the zoom by `factor`. With a real `viewport`, recenters around its middle so
+    /// the board shrinks or grows in place rather than drifting - `p * zoom + pan` moves p
+    /// toward the pan origin as zoom shrinks unless pan is corrected for the same change.
+    /// `viewport == .zero` (the default) skips the correction: only the two unit tests in
+    /// `CanvasTests.swift` call this without a real viewport, and they assert on the
+    /// clamped `zoom` value alone.
+    func zoom(by factor: CGFloat, in viewport: CGSize = .zero) {
+        let oldZoom = zoom
+        let newZoom = min(max(oldZoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        guard viewport != .zero else {
+            zoom = newZoom
+            return
+        }
+        let actualFactor = newZoom / oldZoom
+        let mid = CGPoint(x: viewport.width / 2, y: viewport.height / 2)
+        pan = CGSize(
+            width: mid.x - (mid.x - pan.width) * actualFactor,
+            height: mid.y - (mid.y - pan.height) * actualFactor
+        )
+        zoom = newZoom
     }
 
     /// Sets the zoom directly, clamped to the range of SPEC §6.1. Used by the pinch
