@@ -39,7 +39,8 @@ struct WorkspaceBrowser: View {
     /// The same boards folded one row per folder - what the rows below are drawn from,
     /// and what the selection binding resolves a clicked id against (ADR-0024 §D2).
     /// Kept beside `tree` rather than replacing it: `tree` is still what
-    /// `allFolders(in:)` walks for "Espandi tutto" and for the stale-selection drop.
+    /// `allFolders(in:)` walks for "Espandi tutto". Nothing else reads it - the
+    /// stale-selection drop asks this tree instead (ADR-0024 §D7).
     @State private var workspaceTree: [WorkspaceTree.Node] = []
     @State private var boards: [String] = []
     @State private var isCreatingWorkspace = false
@@ -133,21 +134,29 @@ struct WorkspaceBrowser: View {
     /// with nothing selected, Rinomina/Elimina are now disabled rather than aiming at a
     /// row the user cannot see).
     ///
-    /// ADR-0024 Task 4 (coder): replace with `Self.target(for:)` reading a
-    /// `WorkspaceSelection` directly, "one expression, no branch on which case it is"
-    /// (R-06) - this is the minimal form Task 3's removal of the fallback leaves
-    /// compiling, not that expression.
-    private var targetFolder: String { selectedFolder ?? "" }
-
-    /// ADR-0024 §D7 / R-06, Task 4 (tester): the toolbar's target read as one
-    /// expression, with no branch on which case the selection is - the whole content
-    /// of "the toolbar cannot aim anywhere the visible row is not."
+    /// The rule is asked here rather than restated: `selectedFolder ?? ""` would be a
+    /// second spelling of `target(for:)` below, and two spellings of one rule are what
+    /// R-06 is about in the first place.
     ///
-    /// Placeholder for Task 4's coder: returns `""` unconditionally. That happens to
-    /// be right for the `nil` case and wrong for `.folder`/`.board` - a build-clean
-    /// stand-in, not the real one-expression logic (ADR-0155 §D1).
+    /// Constructing `.folder` is not a claim that no board is drawn on that row. This
+    /// view is handed the folder path rather than the selection (§D6), and
+    /// `target(for:)` does not branch on the case - so recovering the case from this
+    /// view's own tree would be a walk whose answer the toolbar immediately discards.
+    private var targetFolder: String {
+        Self.target(for: selectedFolder.map { WorkspaceSelection.folder($0) })
+    }
+
+    /// ADR-0024 §D7 / R-06: the toolbar's target read as one expression, with no branch
+    /// on which case the selection is - the whole content of "the toolbar cannot aim
+    /// anywhere the visible row is not."
+    ///
+    /// `""` for nothing selected is what leaves «Rinomina» and «Elimina» disabled, and
+    /// it leaves them disabled through the enablement rule that already exists rather
+    /// than through a second one: `WorkspaceBrowserToolbar.canMutate(folder:)` refuses
+    /// the vault root, and nothing selected reads as the root here (ADR-0023 §D1, one
+    /// rule and two surfaces).
     static func target(for selection: WorkspaceSelection?) -> String {
-        ""
+        selection?.folder ?? ""
     }
 
     /// The collision predicate both sheets block on, live, so a name that is already
@@ -327,11 +336,11 @@ struct WorkspaceBrowser: View {
         // stale one means asking for `nil` through `onSelect` rather than assigning
         // local state - there no longer is any to assign.
         //
-        // ADR-0024 Task 4 (coder): retarget the stale-selection check itself against
-        // `WorkspaceTree.folders(in:)`, which is the set that actually includes the
-        // root (`""`); `Self.allFolders(in:)` below is `NoteTree`-based and does not
-        // (ADR-0024 §D7, plan Task 4).
-        if let selectedFolder, !Self.allFolders(in: tree).contains(selectedFolder) {
+        // Asked of the tree the rows are actually drawn from, and that is the whole of
+        // it: `Self.allFolders(in:)` below walks `NoteTree`, which has no node for the
+        // vault root (ADR-0024 F7), so a root board's selection - spelled `""` - would
+        // be found missing and dropped on every single rescan (§D7).
+        if let selectedFolder, !WorkspaceTree.folders(in: workspaceTree).contains(selectedFolder) {
             onSelect(nil)
         }
         reveal(selectedFolder)
