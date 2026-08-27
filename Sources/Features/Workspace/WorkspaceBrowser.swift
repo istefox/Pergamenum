@@ -581,6 +581,45 @@ struct WorkspaceBrowser: View {
         case .folder: return "workspace-folder-\(node.id)"
         }
     }
+
+    /// ADR-0026 §D4's collapse rule, read by the `Binding<Set<String>>` `treeSelection`
+    /// becomes in the code step: what AppKit's own Cmd/Shift-click resolves `new` to,
+    /// answered against `currently` (what is open today) rather than against `old`. The
+    /// double optional is the vocabulary the ADR names: `.none` (the outer case) means
+    /// "leave `currently` alone" - the answer for a set of two-or-more ids (R-10) and for
+    /// a set of exactly one id that is already the open one (the Note pane's
+    /// `leaveComposer()` case, preserved verbatim in shape though this tree has no
+    /// composer); `.some(nil)` means deselect - the answer for an empty set; `.some(.some(
+    /// x))` means open `x` - the answer for exactly one id different from what is open,
+    /// resolved against `tree` the way `treeSelection`'s setter resolves a click today.
+    ///
+    /// RED placeholder (Task 5 test step): returns `.none` unconditionally, so the two
+    /// rows whose answer is "leave `currently` alone" (a repeated single id, two-or-more
+    /// ids/R-10) pass by construction while the "opens a different row" and "deselects on
+    /// empty" tests in `Tests/WorkspaceMultiSelectionTests.swift` are red on their
+    /// `#expect`, never on a build error. `nonisolated` for the reason `rows(matching:in:)`
+    /// above is (`:543-550`): a pure function of its arguments, callable from a test's
+    /// nonisolated, synchronous context with no `@MainActor` hop to trap.
+    nonisolated static func opening(
+        from old: Set<String>, to new: Set<String>, currently: WorkspaceSelection?,
+        in tree: [WorkspaceTree.Node]
+    ) -> WorkspaceSelection?? {
+        .none
+    }
+
+    /// ADR-0026 §D5's cycle rule for a folder row's own drop highlight: pure string
+    /// arithmetic against the drag set the source stored at drag start, asked on every
+    /// hover with no filesystem read - `VaultMoveBatch.plan`'s step 3 asks the same
+    /// question, once, after the drop has already happened; this is the same rule asked
+    /// before it, for the affordance rather than the write.
+    ///
+    /// RED placeholder (Task 5 test step): refuses every folder unconditionally, so
+    /// `canDropAcceptsASiblingFolder...` in `Tests/WorkspaceMultiSelectionTests.swift` is
+    /// red on its `#expect` while the two refusal tests pass by accident - `false` is also
+    /// §D5's own answer for a cycle.
+    nonisolated static func canDrop(_ dragging: [VaultItemRef], onFolder folder: String) -> Bool {
+        false
+    }
 }
 
 /// A board or a folder waiting for its rename sheet.

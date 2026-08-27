@@ -84,8 +84,12 @@ import Testing
 
 // MARK: - WorkspaceBrowser.rows(matching:in:) (R-01, R-03)
 
-private let workspaceFolders = ["01 Progetti", "01 Progetti/a", "01 Progetti/b"]
-private let workspaceBoards = [
+// ADR-0026, Task 5: not `private` any more. `Tests/WorkspaceMultiSelectionTests.swift`
+// builds its `opening(from:to:currently:in:)`/`canDrop(_:onFolder:)` fixtures out of the
+// same folder/board layout rather than a second, drifting copy of these two arrays - one
+// vault shape, read by both files.
+let workspaceFolders = ["01 Progetti", "01 Progetti/a", "01 Progetti/b"]
+let workspaceBoards = [
     "Pergamena.canvas",
     "01 Progetti/a/a.canvas",
     "01 Progetti/b/b.canvas",
