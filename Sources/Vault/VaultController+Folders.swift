@@ -15,7 +15,10 @@ extension VaultController {
     /// and refuses for the same reason: moving a file out from under the editor would
     /// either lose the buffer or raise the external-change prompt for a change the app
     /// itself made. Asking the user to save first is the honest version of both.
-    private func canOperateOnFolder(_ relativePath: String) -> Bool {
+    ///
+    /// Not `private`, since ADR-0026 §D10: "a folder move reuses `canOperateOnFolder`,
+    /// whose guard is already written for exactly this".
+    func canOperateOnFolder(_ relativePath: String) -> Bool {
         let folder = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let note = openNote, note.hasUnsavedChanges,
               note.relativePath == folder || note.relativePath.hasPrefix("\(folder)/")

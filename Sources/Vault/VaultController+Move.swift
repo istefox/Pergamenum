@@ -8,12 +8,147 @@ import Foundation
 /// re-registers itself with the arguments swapped, which is how `UndoManager` produces
 /// redo with no custom redo code.
 ///
-/// `Tests/VaultMoveTests.swift` (ADR-0026, this plan's Task 3) owns this signature; the
-/// body here is a placeholder so the target builds - the real dispatch and the undo
-/// registration are the code step's, not the test step's.
+/// `Tests/VaultMoveTests.swift` (ADR-0026, this plan's Task 3) owns this signature.
 extension VaultController {
+    /// Moves `items` into `destination` and registers the whole batch as one undo step
+    /// (R-01 … R-05, R-12).
+    ///
+    /// `true` when something moved. `false` when the batch was refused, when a guard
+    /// stopped it, or when an operation threw - in every one of those the reason is on
+    /// `problems`, because a drop that does nothing and says nothing is the failure mode
+    /// this repository keeps writing ADR sections about.
     @discardableResult
     func moveItems(_ items: [VaultItemRef], into destination: String, undo: UndoManager?) -> Bool {
-        false
+        guard let session, canOperate(onAll: items) else { return false }
+
+        let outcome: VaultSession.MoveBatchOutcome
+        do {
+            outcome = try session.moveItems(items, into: destination)
+        } catch {
+            recordProblem("spostamento: \(error)")
+            return false
+        }
+
+        for refusal in outcome.refusals {
+            recordProblem("spostamento rifiutato - \(refusal)")
+        }
+        guard !outcome.moves.isEmpty else { return false }
+
+        follow(outcome)
+
+        guard let undo else {
+            // Degrading silently is what §D8 refuses: the move happened and it cannot be
+            // taken back, and only the person who made it can decide what to do about it.
+            recordProblem("spostamento non annullabile: nessun gestore di undo disponibile")
+            return true
+        }
+        undo.setActionName("Sposta")
+        undo.registerUndo(withTarget: self) { controller in
+            controller.moveInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
+        }
+        return true
+    }
+
+    /// Performs `moves` and, only if all of them landed, re-registers their own inverse -
+    /// which is the redo, and the whole of it (ADR-0026 §D8: "the handler performs the
+    /// inverse batch and re-registers itself with the arguments swapped, which is how
+    /// `NSUndoManager` produces redo - there is no custom redo code").
+    ///
+    /// Called from inside an `UndoManager` handler, so the registration it makes lands on
+    /// the redo stack; called again from that redo's handler, so the recursion alternates
+    /// for as long as Cmd+Z and Cmd+Shift+Z do.
+    func moveInverse(_ moves: [VaultMove], undo: UndoManager?) {
+        guard let session, !moves.isEmpty else { return }
+
+        // Where each item sits *now*: inside `from`, under its own name, because a move
+        // never renames (§D5). `VaultMove.item.path` names the row as it was before the
+        // forward move, so it cannot be used as-is - `VaultMoveBatch.inverse`'s own note
+        // says the caller re-derives this.
+        let current = moves.map {
+            (destination: $0.to, ref: VaultItemRef(path: Self.path(of: $0.item.path, in: $0.from), kind: $0.item.kind))
+        }
+
+        // The race §D8 names, "a later rename moved it", asked for the whole batch before
+        // one item is dispatched: a partial inverse is an undo step that puts back some of
+        // what the user sees and not the rest (§D6). Nothing is written and nothing is
+        // re-registered - a redo of an undo that did not happen is worse than no redo.
+        let missing = current.filter { !session.exists($0.ref.path) }
+        guard missing.isEmpty else {
+            recordProblem(
+                "annulla spostamento: \(missing.map(\.ref.path).joined(separator: ", ")) non è più dove si trovava"
+            )
+            return
+        }
+        guard canOperate(onAll: current.map(\.ref)) else { return }
+
+        // One call per landing folder, because an inverse is the only batch whose items
+        // can be going to different places: they return to wherever each came from.
+        // First-appearance order rather than `Dictionary(grouping:)`'s, which has none.
+        var destinations: [String] = []
+        for entry in current where !destinations.contains(entry.destination) {
+            destinations.append(entry.destination)
+        }
+
+        var failures: [String] = []
+        for destination in destinations {
+            let group = current.filter { $0.destination == destination }.map(\.ref)
+            do {
+                let outcome = try session.moveItems(group, into: destination)
+                failures.append(contentsOf: outcome.refusals)
+                if outcome.moves.count != group.count {
+                    failures.append("«\(destination)»: \(group.count - outcome.moves.count) elementi non spostati")
+                }
+                follow(outcome)
+            } catch {
+                failures.append("«\(destination)»: \(error)")
+            }
+        }
+
+        guard failures.isEmpty else {
+            for failure in failures {
+                recordProblem("annulla spostamento: \(failure)")
+            }
+            return
+        }
+
+        undo?.setActionName("Sposta")
+        undo?.registerUndo(withTarget: self) { controller in
+            controller.moveInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
+        }
+    }
+
+    // MARK: - The window's half
+
+    /// Refuses the whole batch while any note it would carry has unsaved edits, before
+    /// anything touches disk (ADR-0026 §D10).
+    ///
+    /// The two guards that already exist, each asked of the kind it was written for: a
+    /// note by its own path, a folder by the subtree it holds. A board is neither - the
+    /// editor cannot have a `.canvas` open with unsaved edits - so it is not asked.
+    private func canOperate(onAll items: [VaultItemRef]) -> Bool {
+        items.allSatisfy { item in
+            switch item.kind {
+            case .note: canOperate(on: item.path)
+            case .folder: canOperateOnFolder(item.path)
+            case .board: true
+            }
+        }
+    }
+
+    /// Follows every note the batch carried into the tabs and RECENTI that were showing
+    /// it, then rebuilds the index - `renameFolder`'s two follow-ups, for a batch.
+    private func follow(_ outcome: VaultSession.MoveBatchOutcome) {
+        for moved in outcome.movedNotes {
+            movedNote(from: moved.old, to: moved.new)
+        }
+        Task { await rescan() }
+    }
+
+    /// `path`'s own last component inside `folder`, the vault root spelled `""` - the
+    /// landing rule `VaultMoveBatch` applies when it plans a move, applied here to read
+    /// back where a completed one put things.
+    private static func path(of path: String, in folder: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        return folder.isEmpty ? name : "\(folder)/\(name)"
     }
 }

@@ -114,10 +114,24 @@ struct WorkspaceFolderActions {
     ///
     /// A pure function over `[VaultMove]` rather than one move, because a batch can carry
     /// several items in one drop and the open board only ever matches at most one of
-    /// them. `Tests/VaultMoveTests.swift` (ADR-0026, this plan's Task 3) owns this
-    /// signature; the body here is a placeholder that returns `open` unchanged so the
-    /// target builds - the real rule is the code step's, not the test step's.
+    /// them - the first match answers, and looking further would be looking for a second
+    /// one that cannot exist (an item and its own ancestor are never both in a batch,
+    /// `VaultMoveBatch.plan` rule 1).
+    ///
+    /// The prefix tested is `<moved>/` and never `<moved>`, `folderAfterRename`'s rule
+    /// above and `FolderFileOperations.repointing`'s: a sibling called `a-altro` starts
+    /// with the same characters as `a` and has nothing to do with this move.
     static func boardAfterMove(open: String, moves: [VaultMove]) -> String {
-        open
+        for move in moves {
+            // Where this item landed: its own last component inside `move.to`, because a
+            // move never renames (ADR-0026 §D5, "reject means reject").
+            let name = (move.item.path as NSString).lastPathComponent
+            let moved = move.to.isEmpty ? name : "\(move.to)/\(name)"
+            if open == move.item.path { return moved }
+            if open.hasPrefix("\(move.item.path)/") {
+                return moved + String(open.dropFirst(move.item.path.count))
+            }
+        }
+        return open
     }
 }

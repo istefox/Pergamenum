@@ -11,7 +11,11 @@ extension VaultController {
     /// Moving a file out from under the editor would either lose the buffer or raise
     /// the external-change prompt for a change the app itself made. Asking the user to
     /// save first is the honest version of both.
-    private func canOperate(on relativePath: String) -> Bool {
+    ///
+    /// Not `private`, since ADR-0026 §D10: `VaultController+Move`'s batch move asks the
+    /// same question of every note it is about to carry, and a second copy of the guard
+    /// is a second place for it to stop matching the editor's actual state.
+    func canOperate(on relativePath: String) -> Bool {
         guard let note = openNote, note.relativePath == relativePath, note.hasUnsavedChanges
         else { return true }
         recordProblem("salva la nota prima di rinominarla, spostarla o eliminarla")
