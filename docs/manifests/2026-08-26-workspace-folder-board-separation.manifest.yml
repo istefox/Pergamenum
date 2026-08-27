@@ -6,8 +6,8 @@ mode: "greenfield"
 anonymize: false
 chain_path: "standard"
 created_at: "2026-08-26T21:51:05+00:00"
-last_updated_at: "2026-08-26T22:44:37+00:00"
-current_step: "ready_for_implementation"
+last_updated_at: "2026-08-27T08:02:52+00:00"
+current_step: "step_6_review"
 status: "in_progress"
 
 # Gate 0 routing result (ADR-0017)
@@ -28,7 +28,7 @@ coder_model: "opus"
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: false
+hook_verified: true
 step5_mode: null
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
