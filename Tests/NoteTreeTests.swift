@@ -165,3 +165,142 @@ private func note(_ path: String) -> NoteRecord {
     let tree = NoteTree.build(fromPaths: ["Board.canvas"])
     #expect(tree.map(\.kind) == [.note])
 }
+
+// MARK: - NoteListPane.opening(from:to:currentlyOpen:isComposingNote:) (ADR-0026 §D4)
+// Plan `docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md`,
+// Task 6: the Note pane's own collapse rule, extracted as a RED-placeholder
+// `nonisolated static` on `NoteListPane` (`Sources/Features/Editor/NoteListPane.swift`,
+// beside `selectedPath`) by this test step, per Task 6's dispatch brief - the code step
+// wires the real body into the `Binding<Set<String>>` `selectedPath` becomes.
+//
+// Adapted from `WorkspaceBrowser.opening(from:to:currently:in:)` (Task 5,
+// `Tests/WorkspaceMultiSelectionTests.swift`): no `WorkspaceSelection` and no tree
+// lookup here (a `Set<String>` member already *is* the note's own vault-relative path),
+// and one extra fact Workspace's boards/folders have no equivalent of -
+// `isComposingNote` - because the same "one id, already open" case means two different
+// things here depending on it: `.leaveComposer` or nothing, never a bare `String?`
+// return (the shape a caller could not use to tell those two apart without redoing the
+// comparison the rule already made).
+//
+// RED: the placeholder returns `nil` unconditionally - "do nothing" - which is the
+// *correct* answer for §D4's two-or-more-ids row, its empty-set row, and a re-clicked
+// already-visible row (composer not covering), so
+// `openingLeavesTheOpenNoteAloneForTwoOrMoreSelectedIds_R10`,
+// `openingDoesNothingOnAnEmptySet_D4Row4` and
+// `openingDoesNothingForAnAlreadyVisibleRowReclickedWithNoComposerToLeave` pass by
+// accident, while the two "opens a different note" tests and the two composer tests are
+// red on their `#expect`, never on a build error.
+
+// §D4 Row 1: exactly one id, different from what is open - that note opens.
+
+@Test func openingOpensADifferentNote_D4Row1() {
+    let result = NoteListPane.opening(
+        from: [], to: ["01 Progetti/Brief.md"], currentlyOpen: nil, isComposingNote: false
+    )
+
+    #expect(result == .open("01 Progetti/Brief.md"))
+}
+
+@Test func openingOpensADifferentNoteWhileAnotherIsAlreadyOpen_D4Row1() {
+    let result = NoteListPane.opening(
+        from: ["Appunti.md"], to: ["01 Progetti/Brief.md"],
+        currentlyOpen: "Appunti.md", isComposingNote: false
+    )
+
+    #expect(result == .open("01 Progetti/Brief.md"))
+}
+
+// §D4 Row 2, the two behaviours the plan's Test step calls out as not cosmetic
+// (`NoteListPane.swift:215-220`): the same single id as what is open means
+// `.leaveComposer` while the composer covers it, and nothing at all while it does not.
+
+// Behaviour (b): re-selecting the note underneath calls `leaveComposer()` rather than
+// re-reading the note and discarding unsaved text. Asserted as a *distinct* signal, not
+// as `.open(path)` for the same path - the whole reason this rule returns a
+// `SelectionOutcome` instead of a bare `String?`: collapsing both branches into "the
+// path that should now read as open" would erase exactly this distinction and silently
+// turn a `leaveComposer()` back into a discarding re-read.
+@Test func openingCallsLeaveComposerWhenTheCoveredNoteIsReselected() {
+    let result = NoteListPane.opening(
+        from: [], to: ["01 Progetti/Brief.md"],
+        currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
+    )
+
+    #expect(result == .leaveComposer)
+    // Never this - the bug the composer comment exists to prevent.
+    #expect(result != .open("01 Progetti/Brief.md"))
+}
+
+// Behaviour (a): nothing is selected while the composer is up. That masking is
+// `selectedPath`'s *get* side (`:216-220`), not this rule's - but it is what makes
+// `from` read `[]` (rather than already containing this id) at the call site above, so
+// the click reaches this rule as a *change* at all instead of being swallowed by
+// `List` as a no-op before the setter ever runs. `old` is deliberately unread by this
+// rule (mirroring `WorkspaceBrowser.opening` verbatim), so the masking's effect is
+// visible only through that precondition, never through an argument this rule reads -
+// asserted here by holding `to`/`currentlyOpen`/`isComposingNote` fixed at the values
+// above and varying only `old`/`from`, which the previous test already set to the
+// masked `[]`. A second `from` value - what an *unmasked* read would have produced,
+// already containing this id - must answer identically, because this rule does not
+// look at `from` at all.
+@Test func openingIgnoresTheOldSetEntirely_R04() {
+    let masked = NoteListPane.opening(
+        from: [], to: ["01 Progetti/Brief.md"],
+        currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
+    )
+    let unmasked = NoteListPane.opening(
+        from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
+        currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
+    )
+
+    #expect(masked == unmasked)
+    #expect(masked == .leaveComposer)
+}
+
+@Test func openingDoesNothingForAnAlreadyVisibleRowReclickedWithNoComposerToLeave() {
+    // Unreachable through the real binding while the composer is not up - `get` would
+    // already read this id as selected, so `List` would report no change and the
+    // setter would never run - answered anyway, defensively, for a function that has
+    // to answer every input it can be given.
+    let result = NoteListPane.opening(
+        from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
+        currentlyOpen: "01 Progetti/Brief.md", isComposingNote: false
+    )
+
+    #expect(result == nil)
+}
+
+// §D4 Row 3: two or more ids - nothing. The open note stays open (R-10), tested here as
+// the general rule.
+
+@Test func openingLeavesTheOpenNoteAloneForTwoOrMoreSelectedIds_R10() {
+    let result = NoteListPane.opening(
+        from: ["01 Progetti"], to: ["01 Progetti/Brief.md", "Appunti.md"],
+        currentlyOpen: "Appunti.md", isComposingNote: false
+    )
+
+    #expect(result == nil)
+}
+
+@Test func openingLeavesTheOpenNoteOpenWhenTwoRowsAreSelectedWhileComposerIsUp_R10() {
+    // The composer stays exactly where it is too - two rows lit answers only "what
+    // would a drag carry" and never touches what is open (§D4).
+    let result = NoteListPane.opening(
+        from: [], to: ["01 Progetti/Brief.md", "Appunti.md"],
+        currentlyOpen: "Appunti.md", isComposingNote: true
+    )
+
+    #expect(result == nil)
+}
+
+// §D4 Row 4: empty - nothing. `selectedPath`'s current setter already does nothing on
+// deselect (`guard let path else { return }`, `:225`); this rule preserves that rather
+// than introducing a "close the note" action that never existed.
+
+@Test func openingDoesNothingOnAnEmptySet_D4Row4() {
+    let result = NoteListPane.opening(
+        from: ["Appunti.md"], to: [], currentlyOpen: "Appunti.md", isComposingNote: false
+    )
+
+    #expect(result == nil)
+}

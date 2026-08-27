@@ -231,6 +231,61 @@ struct NoteListPane: View {
         )
     }
 
+    // MARK: Selection collapse rule (ADR-0026 §D4, adapted from `WorkspaceBrowser.opening`)
+
+    /// What a change to the sidebar's `Set<String>` selection means for the note open in
+    /// the editor: one of the two calls `selectedPath`'s single-value setter already makes
+    /// above (`vault.openNote(at:)` / `vault.leaveComposer()`, `:224-230`), or nothing.
+    /// Never a bare `String?` - the two calls differ in whether the note is re-read from
+    /// disk, and collapsing them into "the path that should now read as open" would push
+    /// that distinction back out to every caller instead of answering it once, here.
+    enum SelectionOutcome: Equatable {
+        /// Read `path` from disk and show it - a different note than whatever is open
+        /// today, or no note at all.
+        case open(String)
+        /// The row clicked is the note already open, currently covered by the composer:
+        /// step out of it (`VaultController.leaveComposer()`) rather than re-reading the
+        /// file and discarding whatever is unsaved in it (the comment above, `:215-220`).
+        case leaveComposer
+    }
+
+    /// ADR-0026 §D4's collapse rule, adapted from `WorkspaceBrowser.opening(from:to:
+    /// currently:in:)` (`WorkspaceBrowser.swift:758-780`) to the Note pane's own model:
+    /// there is no `WorkspaceSelection` and no tree lookup here, because a `Set<String>`'s
+    /// only member, once this rule reaches the "one id" case, already *is* the note's own
+    /// vault-relative path - nothing to resolve it against.
+    ///
+    /// `currentlyOpen` is `vault.openNote?.relativePath`, read raw and never masked -
+    /// masking that value is `:216-220`'s job for what `List` reads as selected, not this
+    /// rule's. `isComposingNote` is the second fact `:216-220` needs and
+    /// `WorkspaceBrowser.opening` has no equivalent of: the same "one id, already open"
+    /// case means two different things depending on it - step out of the composer, or
+    /// nothing at all (an already-selected row producing no change for `List` to report in
+    /// the first place, answered anyway for a function that has to answer every input it
+    /// is given).
+    ///
+    /// `nil` is "do nothing": for two-or-more ids (R-10, the open note stays open exactly
+    /// as `WorkspaceBrowser.opening`'s row 3 leaves the open board), for an empty set
+    /// (today's setter already does nothing on deselect, `:225`), and for a single id
+    /// already open with nothing covering it.
+    ///
+    /// `old` stays in the signature and stays unread, for the reason
+    /// `WorkspaceBrowser.opening` gives verbatim: what a new set means is a question about
+    /// what is open, not about what was lit a moment ago.
+    ///
+    /// `nonisolated`, matching `WorkspaceBrowser.opening`: a pure function of its
+    /// arguments, callable from a test's synchronous, non-actor context.
+    nonisolated static func opening(
+        from old: Set<String>, to new: Set<String>,
+        currentlyOpen: String?, isComposingNote: Bool
+    ) -> SelectionOutcome? {
+        // Placeholder (RED body): "do nothing", always. Correct by construction for the
+        // two-or-more-ids row, the empty-set row, and a re-clicked already-visible row;
+        // wrong, and left red on its `#expect` rather than on a build error, for every row
+        // that should open a note or step out of the composer.
+        nil
+    }
+
     // MARK: Tree state
 
     /// Rebuilt when the index changes rather than in `body`: sorting every note on
