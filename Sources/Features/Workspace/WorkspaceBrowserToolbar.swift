@@ -92,4 +92,19 @@ struct WorkspaceBrowserToolbar: View {
     static func canMutate(folder: String) -> Bool {
         !folder.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
     }
+
+    /// ADR-0025 §D8: `canMutate(folder:)`'s replacement, asked of the selection itself
+    /// rather than of a bare folder string, so a **board** row is mutable too (R-08) -
+    /// not only a folder's.
+    ///
+    /// TODO(ADR-0025 Task 5): placeholder, always `false` - a new overload rather than a
+    /// rewrite of `canMutate(folder:)` above, so this view's own buttons and
+    /// `WorkspaceRow.menu` (`WorkspaceBrowser.swift`) keep compiling against the old one
+    /// until the coder rewires both call sites to this one and removes it. The coder's
+    /// GREEN section is `nil` → `false`; `.board` → `true` (never the vault root);
+    /// `.folder(f)` → the same trimmed-slash root exemption `canMutate(folder:)` already
+    /// makes.
+    static func canMutate(_ selection: WorkspaceSelection?) -> Bool {
+        false
+    }
 }
