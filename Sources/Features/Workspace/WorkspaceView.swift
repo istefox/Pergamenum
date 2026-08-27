@@ -173,17 +173,39 @@ struct WorkspaceView: View {
     }
 
     /// A note sent here from the editor lands on the board of its own folder, which is
-    /// where it already lives on disk.
+    /// where it already lives on disk - if that folder means exactly one board (§D5).
+    ///
+    /// The only one of §D5's three navigations that also **reports**: the other two are
+    /// navigation, this one is a gesture whose note would otherwise land nowhere. It used
+    /// to open a board named after the folder, writing one where none existed - the last
+    /// door through which the app created a `.canvas` nobody asked for (ADR-0025 §F8).
     private func placePendingNote(_ pending: String??) {
         guard let pendingOuter = pending, let pending = pendingOuter else { return }
+        defer { _ = vault.consumePendingWorkspacePlacement() }
         let folder = (pending as NSString).deletingLastPathComponent
-        workspace.select(.board(folder: folder))
+        // Read in the hand-off, never in `body`: `allBoards()` walks the vault uncached.
+        let resolution = WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        )
+        guard case .unique(let path) = resolution else {
+            workspace.select(folder.isEmpty ? nil : .folder(folder))
+            let container = folder.isEmpty ? "la radice del vault" : "«\(folder)»"
+            vault.recordProblem(
+                resolution == .ambiguous
+                ? "\(pending): \(container) contiene più di una board, aprine una e riprova"
+                : "\(pending): \(container) non contiene nessuna board, creane una e riprova"
+            )
+            return
+        }
+        workspace.select(.board(path: path))
+        // A board that could not be read leaves the previous one on screen (ADR-0025 §D4),
+        // and the note must not be placed on it.
+        guard workspace.current == .board(path: path) else { return }
         if !workspace.document.nodes.contains(where: {
             if case .file(let path, _) = $0.kind { return path == pending } else { return false }
         }) {
             _ = workspace.placeFile(pending, at: CGPoint(x: 60, y: 60))
         }
-        _ = vault.consumePendingWorkspacePlacement()
     }
 
     /// What the board area shows before anything has been chosen - the same shape as

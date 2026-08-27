@@ -115,12 +115,7 @@ struct BoardCardActions {
     /// at.
     func open(_ node: CanvasNode) {
         if let subfolder = workspace.subfolder(for: node) {
-            // TODO(ADR-0025 Task 4): the resolver decides which board this folder means -
-            // `.unique` opens it, `.ambiguous` and `.notFound` stop here (§D5). Selecting
-            // is that rule's safe half and all this task needs: a folder no longer
-            // implies a board file, so opening one by name would open a board that may
-            // not exist.
-            workspace.select(.folder(subfolder))
+            enter(subfolder)
             return
         }
         switch node.kind {
@@ -137,6 +132,20 @@ struct BoardCardActions {
             if let target = URL(string: url) { NSWorkspace.shared.open(target) }
         case .text, .group, .unknown:
             break
+        }
+    }
+
+    /// A folder card, under the one rule §D5 gives every folder→board navigation: the
+    /// resolver decides which board the folder means, `.unique` opens it, and
+    /// `.ambiguous`/`.notFound` selects the folder rather than guessing at a board named
+    /// after it (§D1). The board list is read in the gesture, never in a `body`, because
+    /// `allBoards()` walks the whole vault uncached.
+    private func enter(_ folder: String) {
+        switch WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        ) {
+        case .unique(let path): workspace.select(.board(path: path))
+        case .ambiguous, .notFound: workspace.select(.folder(folder))
         }
     }
 }

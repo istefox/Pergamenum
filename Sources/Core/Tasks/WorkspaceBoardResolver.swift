@@ -44,11 +44,25 @@ enum WorkspaceBoardResolver {
     /// counterpart to `resolve(_:in:)`'s «which board does this marker name», sharing the same
     /// `WorkspaceBoardResolution` (one enum, two questions).
     ///
-    /// RED-phase placeholder (plan `docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md`,
-    /// Task 4): returns `.notFound` unconditionally. The GREEN implementation matches on
-    /// `deletingLastPathComponent`, never `hasPrefix`, so a board in a subfolder is not this
-    /// folder's board.
+    /// The match is on the board's **containing folder**, never on `hasPrefix`: `A/b/x.canvas`
+    /// is `A/b`'s board and not `A`'s, and a prefix test would hand a folder every board
+    /// nested anywhere beneath it. The vault root is an ordinary folder here (`""`), with no
+    /// case of its own - `deletingLastPathComponent` answers `""` for a bare file name.
     static func board(inFolder folder: String, among boards: [String]) -> WorkspaceBoardResolution {
-        .notFound
+        let target = normalized(folder)
+        let hits = boards.filter { normalized(($0 as NSString).deletingLastPathComponent) == target }
+        switch hits.count {
+        case 0: return .notFound
+        case 1: return .unique(hits[0])
+        default: return .ambiguous
+        }
+    }
+
+    /// One spelling of "the vault root", `""`. Callers write it `""`, `"/"` (the spelling
+    /// `WorkspaceBrowserToolbar.canMutate` exempts) or `"."`, and folding them here is what
+    /// keeps a root-level board from being invisible to whichever one asked.
+    private static func normalized(_ folder: String) -> String {
+        let trimmed = folder.hasSuffix("/") ? String(folder.dropLast()) : folder
+        return trimmed == "." ? "" : trimmed
     }
 }

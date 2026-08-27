@@ -39,16 +39,7 @@ struct BoardTopBar: View {
                     // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
                     Text(crumb.title).themedText(.body, color: .textPrimary)
                 } else {
-                    // TODO(ADR-0025 Task 4): an ancestor segment selects its folder and
-                    // opens nothing, which is the `.ambiguous`/`.notFound` branch of the
-                    // one rule §D5 gives every folder→board navigation; Task 4 adds the
-                    // resolver that lets `.unique` open the board instead. Selecting is
-                    // the safe half to have first: it can never open a board that is not
-                    // there. The root segment is `select(nil)`, the only spelling of
-                    // "nothing selected" - `.folder("")` is never produced (§D3).
-                    Button(crumb.title) {
-                        workspace.select(crumb.folder.isEmpty ? nil : .folder(crumb.folder))
-                    }
+                    Button(crumb.title) { open(ancestor: crumb.folder) }
                     .buttonStyle(.plain)
                     .themedText(.body, color: .textSecondary)
                 }
@@ -64,6 +55,27 @@ struct BoardTopBar: View {
         }
         .padding(.horizontal, theme.spacing(.m))
         .padding(.vertical, theme.spacing(.s))
+    }
+
+    /// An ancestor segment, under the one rule §D5 gives every folder→board navigation:
+    /// the board that folder unambiguously means is opened, and `.ambiguous`/`.notFound`
+    /// selects the folder instead - never a board derived from its name (§D1). The root
+    /// segment is `select(nil)`, the only spelling of "nothing selected": `.folder("")` is
+    /// never produced (§D3).
+    ///
+    /// The board list is read here, in the click, and never in `body`: `allBoards()` is an
+    /// uncached walk of the whole vault, as `WorkspaceBoardResolver`'s own doc comment says.
+    private func open(ancestor folder: String) {
+        guard !folder.isEmpty else {
+            workspace.select(nil)
+            return
+        }
+        switch WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        ) {
+        case .unique(let path): workspace.select(.board(path: path))
+        case .ambiguous, .notFound: workspace.select(.folder(folder))
+        }
     }
 }
 
