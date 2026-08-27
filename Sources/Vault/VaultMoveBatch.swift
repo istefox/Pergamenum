@@ -40,24 +40,89 @@ enum VaultMoveBatch {
     }
 
     /// Decides what dropping `items` into `destination` would do, without writing
-    /// anything. `exists` answers whether a given vault-relative path is already taken
+    /// anything. `destination` is a vault-relative folder path, the vault root spelled
+    /// `""` (R-05); `exists` answers whether a given vault-relative path is already taken
     /// on disk.
     ///
-    /// Placeholder body only - the five ADR-0026 §D6 rules (cycle refusal, descendant
-    /// drop, already-there drop, collision refusal, name-clash-within-batch refusal) are
-    /// implemented in the code step of Task 1.
+    /// The five ADR-0026 §D6 rules run in the order the ADR lists them - the batch is
+    /// **pruned before it is validated**, so a redundant or already-satisfied item is
+    /// never the thing that refuses the batch:
+    ///
+    /// 1. prune redundancies: an item whose ancestor folder is in the same batch moves
+    ///    with that ancestor, so planning it separately would be a contradiction rather
+    ///    than a second move - it is dropped silently, not reported;
+    /// 2. drop no-ops: an item already directly inside `destination` leaves the batch and
+    ///    is not an error, and therefore never reaches `inverse(of:)` to be "restored";
+    /// 3. refuse cycles (§D5): a folder into itself or into one of its own descendants;
+    /// 4. refuse collisions: a name the destination already holds, and two items in this
+    ///    same batch that would land on one name;
+    /// 5. answer once - `.moves` or `.refused`, never a partial commit, because a partial
+    ///    commit has a partial inverse.
     static func plan(
         _ items: [VaultItemRef], into destination: String, exists: (String) -> Bool
     ) -> Result {
-        .refused([])
+        // 1. Prune redundancies. The prefix is `"\(path)/"` and never the bare path, the
+        // rule `FolderFileOperations.repointing` already follows: `a-altro` is a sibling
+        // of `a`, not a descendant of it.
+        let ancestors = items.filter { $0.kind == .folder }.map(\.path)
+        let withoutRedundancies = items.filter { item in
+            !ancestors.contains { item.path != $0 && item.path.hasPrefix("\($0)/") }
+        }
+
+        // 2. Drop no-ops: already directly inside the destination, nothing to move.
+        let candidates = withoutRedundancies.filter { containingFolder(of: $0.path) != destination }
+
+        // 3. Refuse cycles. Only a folder can contain the destination; a file never can.
+        var reasons: [String] = []
+        for item in candidates where item.kind == .folder {
+            if destination == item.path || destination.hasPrefix("\(item.path)/") {
+                reasons.append("«\(item.path)» non può essere spostata dentro sé stessa")
+            }
+        }
+
+        // 4. Refuse collisions, on disk and within the batch itself. The conflicting name
+        // goes in the reason string: R-07 requires it to be shown, and this is where the
+        // dialog reads it from.
+        var claimed: Set<String> = []
+        for item in candidates {
+            let landing = landingPath(of: item.path, in: destination)
+            if exists(landing) {
+                reasons.append("esiste già: \(landing)")
+            }
+            if !claimed.insert(landing).inserted {
+                reasons.append("due elementi finirebbero entrambi in: \(landing)")
+            }
+        }
+
+        // 5. Answer once. Nothing moves unless every item passed.
+        guard reasons.isEmpty else { return .refused(reasons) }
+        return .moves(
+            candidates.map {
+                VaultMove(item: $0, from: containingFolder(of: $0.path), to: destination)
+            }
+        )
     }
 
     /// The undo half of a completed move (R-11/R-12): `from`/`to` swapped per move,
     /// order preserved, so applying `inverse(of:)` to a plan's own output restores the
     /// state the plan started from.
     ///
-    /// Placeholder body only - returns the input unchanged.
+    /// `item` is carried over untouched: it names the row as it was before the move, and
+    /// the caller re-derives the current path from `to` when it performs the inverse.
     static func inverse(of moves: [VaultMove]) -> [VaultMove] {
-        moves
+        moves.map { VaultMove(item: $0.item, from: $0.to, to: $0.from) }
+    }
+
+    /// The folder holding `path`, `""` for an entry sitting at the vault root - the same
+    /// `deletingLastPathComponent` spelling the file operations use.
+    private static func containingFolder(of path: String) -> String {
+        (path as NSString).deletingLastPathComponent
+    }
+
+    /// Where `path` would land inside `destination`, keeping its own last component: a
+    /// move never renames (§D5, "reject means reject").
+    private static func landingPath(of path: String, in destination: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        return destination.isEmpty ? name : "\(destination)/\(name)"
     }
 }
