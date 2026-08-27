@@ -13,6 +13,12 @@ struct NoteListPane: View {
     /// Reached for the index below the list: a click there is a request the editor
     /// consumes, and this is where such requests live (M8).
     @Environment(Navigation.self) var navigation
+    /// The **window's** undo manager, read from the environment and handed to
+    /// `VaultController.moveItems` as an argument (ADR-0026 §D8) - the same stack
+    /// `NSTextView` registers text edits on (`NoteTextView.swift`, `allowsUndo = true`),
+    /// so Cmd+Z means "undo the last thing I did in this window" whatever had focus. The
+    /// facade never reaches for `NSApp.keyWindow?.undoManager` itself.
+    @Environment(\.undoManager) private var undoManager
 
     @State private var filter = ""
     /// The folders currently open, by path. View state rather than a preference: a
@@ -20,6 +26,29 @@ struct NoteListPane: View {
     /// note you are reading hidden is not, which is what `reveal` below prevents.
     @State private var expanded: Set<String> = []
     @State private var tree: [NoteTree.Node] = []
+    /// Every lit row, which is `List(selection:)`'s own set and the whole of ADR-0026 §D4:
+    /// Cmd-click and Shift-click come from AppKit for free, so nothing here reads
+    /// `NSEvent.modifierFlags` and no recognizer is added to a row body.
+    ///
+    /// It answers **one** question, "what does a drag carry" (R-11). What is *open* stays
+    /// `vault.openNote`, derived from this set by `opening(from:to:currentlyOpen:
+    /// isComposingNote:)` - a row can be lit without being open, and two lit rows open
+    /// nothing (R-10).
+    ///
+    /// Only note rows are ever in here: a folder row of this pane carries no `.tag`, which
+    /// is the same structural unselectability it had before this chain.
+    ///
+    /// Kept in step with the editor by `syncSelectedRows()` - a note opened from a
+    /// backlink, a wikilink or the quick switcher lights exactly its own row - and pruned
+    /// of ids no row carries by `rebuild()`.
+    @State private var selectedRows: Set<String> = []
+    /// What the drag that is in flight carries, stored by the source row at drag start.
+    ///
+    /// `.dropDestination` has no payload-aware validation - its `isTargeted` closure is
+    /// handed a `Bool` and never the payload (ADR-0026 §D5) - so the only way a folder row
+    /// can decline to light up for a cycle is for the source side to have remembered what
+    /// it started dragging. Empty between drags.
+    @State private var dragging: [VaultItemRef] = []
     /// The note the rename sheet is editing. The title being typed lives inside the
     /// sheet: held here alongside it, the two were set in the same action and the
     /// sheet validated the old value while showing the new one.
@@ -46,7 +75,16 @@ struct NoteListPane: View {
         }
         .background(theme.color(.backgroundSecondary))
         .task(id: vault.scanGeneration) { rebuild() }
-        .onChange(of: vault.openNote?.relativePath) { _, path in reveal(path) }
+        .onChange(of: vault.openNote?.relativePath) { _, path in
+            reveal(path)
+            syncSelectedRows()
+        }
+        // The second half of what the old `selectedPath` getter did in one expression
+        // (ADR-0026 §D4): the composer opening or closing changes nothing about *which*
+        // note is open, so the change above never fires for it - and «nothing is selected
+        // while the composer is up» is the behaviour that would otherwise be lost, taking
+        // the `leaveComposer()` click with it.
+        .onChange(of: vault.isOpenNoteVisible) { _, _ in syncSelectedRows() }
         .sheet(item: $renaming) { note in
             RenameNoteSheet(note: note) { newTitle in
                 vault.renameNote(at: note.relativePath, to: newTitle)
@@ -153,7 +191,7 @@ struct NoteListPane: View {
     }
 
     private var folderTree: some View {
-        List(selection: selectedPath) {
+        List(selection: treeSelection) {
             starredSection
             ForEach(tree) { node in
                 NoteTreeRow(
@@ -161,12 +199,14 @@ struct NoteListPane: View {
                     depth: 0,
                     expanded: $expanded,
                     renaming: $renaming,
-                    deleting: $deleting
+                    deleting: $deleting,
+                    move: moveContext
                 )
             }
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("note-tree")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
         .contextMenu {
             Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
             Button("Comprimi tutto") { expanded = [] }
@@ -177,7 +217,7 @@ struct NoteListPane: View {
     /// what a filter falls back to: a match three folders down is easier to see in a
     /// flat list than as a tree opened around it.
     private var flatList: some View {
-        List(selection: selectedPath) {
+        List(selection: treeSelection) {
             starredSection
             ForEach(filteredNotes, id: \.relativePath) { note in
                 VStack(alignment: .leading, spacing: 1) {
@@ -191,44 +231,86 @@ struct NoteListPane: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .tag(note.relativePath)
-                // Dragged onto a task line in the editor, this becomes a wikilink
-                // (SPEC §7.2).
-                .draggable(note.title)
+                // Dragged onto a folder row this moves the file (R-03); dragged onto a
+                // task line in the editor it still becomes a wikilink (SPEC §7.2), because
+                // `VaultItemDrag` puts the title on the pasteboard as a plain `String`
+                // beside the structured payload (ADR-0026 §D3, R-09) - byte-identical to
+                // the `.draggable(note.title)` that used to be written here.
+                .draggable(beginDrag(of: note.relativePath, kind: .note, named: note.title))
+                .accessibilityIdentifier("note-row-\(note.relativePath)")
                 .contextMenu {
                     NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting)
                 }
+                // `.tag` **last in the chain**, normalised to the Workspace pane's order
+                // (ADR-0026 §D11): a modifier applied after it drops it, and the failure is
+                // silent - the list lights nothing and swallows every click
+                // (`RootView.swift:205-208`).
+                .tag(note.relativePath)
             }
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("note-flat-list")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
     }
 
     private var filteredNotes: [NoteRecord] {
         filter.isEmpty ? vault.index.allNotes : vault.index.search(filter, limit: 200)
     }
 
-    /// Reads the open note's path and opens whatever the list selects. Selection is
-    /// derived from the controller rather than duplicated in view state, so opening a
-    /// note from a backlink or the quick switcher also moves the highlight.
+    /// The `List`'s selection: the whole lit **set** since ADR-0026 §D4, not the one open
+    /// row it used to be. The tag is still the row's own id - a note's vault-relative path
+    /// - so the strings travelling through this binding are row ids and nothing has to be
+    /// derived from anything.
     ///
-    /// **Nothing is selected while the composer is up**, and that is not cosmetic: the
+    /// A set rather than a `String?` is the whole of Cmd-click and Shift-click: AppKit's
+    /// list already does both, so this repository reads no modifier flag and adds no
+    /// gesture to a row (ADR-0026 A4). What is *open* is not this set - it is derived from
+    /// it by `opening(from:to:currentlyOpen:isComposingNote:)`, whose three answers are the
+    /// two calls the single-value setter used to make and the third the ADR added: nothing.
+    ///
+    /// The `get` no longer masks anything. **Nothing is selected while the composer is
+    /// up** - which is not cosmetic, for the reason the old getter's comment gave: the
     /// setter of a selection binding runs on a *change*, so with the covered note still
-    /// reading as selected, clicking it was no change at all and the composer stayed put -
-    /// on the one note the click most obviously means "show me that again". Reading nil
-    /// makes the click a change, and leaves the list agreeing with the index and the
-    /// inspector, which say nothing while the composer covers a note.
-    private var selectedPath: Binding<String?> {
+    /// reading as selected, clicking it was no change at all and the composer stayed put,
+    /// on the one note the click most obviously means "show me that again". That masking
+    /// moved to `syncSelectedRows()`, which empties the set on the same condition and is
+    /// driven by `.onChange(of: vault.isOpenNoteVisible)` - a stored set cannot mask itself
+    /// in a getter without also un-lighting whatever else the user Cmd-clicked.
+    private var treeSelection: Binding<Set<String>> {
         Binding(
-            get: { vault.isOpenNoteVisible ? vault.openNote?.relativePath : nil },
-            set: { path in
-                guard let path else { return }
-                // Already open underneath: step out of the composer rather than read the
-                // note again, which would throw away whatever is unsaved in it.
-                guard path != vault.openNote?.relativePath else { return vault.leaveComposer() }
-                vault.openNote(at: path)
+            get: { selectedRows },
+            set: { ids in
+                let previous = selectedRows
+                selectedRows = ids
+                switch Self.opening(
+                    from: previous, to: ids,
+                    currentlyOpen: vault.openNote?.relativePath,
+                    isComposingNote: vault.isComposingNote
+                ) {
+                case .open(let path): vault.openNote(at: path)
+                case .leaveComposer: vault.leaveComposer()
+                // "Leave what is open alone" - a two-row selection must not close the note
+                // on screen (R-10), and an empty set deselects without closing anything.
+                case nil: break
+                }
             }
         )
+    }
+
+    /// The lit set follows what is open, never the other way round (ADR-0026 §D4): a note
+    /// opened from a backlink, a wikilink, a tab or the quick switcher lights exactly its
+    /// own row and drops whatever multi-row set was standing, because the one thing that is
+    /// open is also one row.
+    ///
+    /// Empty while the composer covers the note, which is where the old getter's masking
+    /// went (see `treeSelection`). Assigned to the `@State` directly and never through the
+    /// binding, so this never re-enters the setter above.
+    private func syncSelectedRows() {
+        guard vault.isOpenNoteVisible, let path = vault.openNote?.relativePath else {
+            selectedRows = []
+            return
+        }
+        selectedRows = [path]
     }
 
     // MARK: Selection collapse rule (ADR-0026 §D4, adapted from `WorkspaceBrowser.opening`)
@@ -279,11 +361,103 @@ struct NoteListPane: View {
         from old: Set<String>, to new: Set<String>,
         currentlyOpen: String?, isComposingNote: Bool
     ) -> SelectionOutcome? {
-        // Placeholder (RED body): "do nothing", always. Correct by construction for the
-        // two-or-more-ids row, the empty-set row, and a re-clicked already-visible row;
-        // wrong, and left red on its `#expect` rather than on a build error, for every row
-        // that should open a note or step out of the composer.
-        nil
+        // Two or more: nothing opens and nothing closes (§D4 row 3, R-10). The set answers
+        // "what does a drag carry" and only that - the note on screen, composer or no
+        // composer, is not what a second lit row is about.
+        guard new.count <= 1 else { return nil }
+        // Empty: nothing, which is what the single-value setter this was extracted out of
+        // already did on deselect (`guard let path else { return }`). A "close the note"
+        // action never existed here and is not introduced by turning the binding into a set
+        // (§D4 row 4).
+        guard let id = new.first else { return nil }
+        // Exactly one id, different from what is open: that note opens (§D4 row 1). The id
+        // *is* the note's vault-relative path - a `Set<String>` member here is a row's own
+        // `.tag`, so there is nothing to resolve it against, which is the whole difference
+        // from `WorkspaceBrowser.opening`'s tree lookup.
+        guard id == currentlyOpen else { return .open(id) }
+        // The same note again (§D4 row 2), and the two halves of it: step out of the
+        // composer while it covers that note, and do nothing at all while it does not.
+        // Never `.open(id)` - re-reading the file is exactly what would discard whatever is
+        // unsaved in it (`:215-220`).
+        return isComposingNote ? .leaveComposer : nil
+    }
+
+    // MARK: Move (ADR-0026)
+
+    /// Everything a row's drag, its drop and a folder row's «Sposta in» menu need, rebuilt
+    /// with the body so the lit set and the drag in flight it carries are the current ones
+    /// (ADR-0026 §D4, §D5, §D9) - `WorkspaceMoveContext`'s shape, minus its `folders`,
+    /// which the Note tree reads straight off `vault.folders` (§D9: correct *here*, because
+    /// this tree is built from note paths and shows no folder that list omits).
+    private var moveContext: NoteMoveContext {
+        NoteMoveContext(
+            dragging: dragging,
+            beginDrag: { beginDrag(of: $0, kind: $1, named: $2) },
+            perform: { performMove($0, into: $1) }
+        )
+    }
+
+    /// What a drag started on `path` carries (ADR-0026 §D4, R-11): the whole lit set when
+    /// that row is part of it, that row alone when it is not - the SPEC's own rule, and
+    /// AppKit's. The set is also remembered here, because a folder row's drop affordance is
+    /// asked of it and `isTargeted` never sees the payload (§D5).
+    ///
+    /// `name` is the row's own - a note's **title**, which is what `ProxyRepresentation(
+    /// exporting: \.dragName)` puts on the pasteboard as a plain `String` and therefore what
+    /// `CompletingTextView.performDragOperation` keeps reading, unedited (§D3, R-09).
+    private func beginDrag(
+        of path: String, kind: VaultItemKind, named name: String
+    ) -> VaultItemDrag {
+        let items = kind == .note && selectedRows.contains(path)
+            ? references(for: selectedRows)
+            : [VaultItemRef(path: path, kind: kind)]
+        dragging = items
+        return VaultItemDrag(items: items, dragName: name)
+    }
+
+    /// The notes behind a set of ids, in the index's own order - a `Set` has none, and a
+    /// batch whose order changed between two identical drags would make `VaultMoveBatch`'s
+    /// answers unrepeatable.
+    ///
+    /// Every id is a note path: a folder row of this pane carries no `.tag`, so nothing
+    /// else can be in the set. An id no note answers to is dropped rather than guessed at.
+    private func references(for ids: Set<String>) -> [VaultItemRef] {
+        vault.index.allNotes.compactMap { note in
+            ids.contains(note.relativePath)
+                ? VaultItemRef(path: note.relativePath, kind: .note)
+                : nil
+        }
+    }
+
+    /// R-05's destination, on both lists: the tree's own empty area means the vault root,
+    /// spelled `""` everywhere this feature computes a path.
+    ///
+    /// The rows sit *inside* this destination and SwiftUI hit-tests the innermost one
+    /// first, so a drop on a folder row reaches that row's and only a drop on the
+    /// background reaches this (ADR-0026 §D11) - which is also why «Sposta in ▸ (radice)»
+    /// exists as a second, certain surface for the same move.
+    private func dropOnRoot(_ drops: [VaultItemDrag]) -> Bool {
+        guard let items = drops.first?.items else { return false }
+        return performMove(items, into: "")
+    }
+
+    /// The move both surfaces call - a folder row's `.dropDestination`, the list's own
+    /// root-area destination, and «Sposta in» in a folder row's context menu (ADR-0026 §D9:
+    /// a command is named once and rendered twice).
+    ///
+    /// `false` for a refused drop, which is what `.dropDestination`'s `action` owes the
+    /// drag. The cycle is refused here as well as by the affordance, because the menu has
+    /// no hover to decline; a collision is refused inside `VaultController.moveItems` and
+    /// named on the problem list, which is where every non-modal refusal in this pane goes.
+    ///
+    /// `undoManager` is the **window's**, handed down as an argument rather than reached
+    /// for (§D8). Nil is not silently tolerated: `moveItems` records that the move cannot
+    /// be taken back.
+    private func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
+        dragging = []
+        guard !items.isEmpty,
+              WorkspaceBrowser.canDrop(items, onFolder: destination) else { return false }
+        return vault.moveItems(items, into: destination, undo: undoManager)
     }
 
     // MARK: Tree state
@@ -292,6 +466,16 @@ struct NoteListPane: View {
     /// every keystroke in the editor is work nobody asked for.
     private func rebuild() {
         tree = NoteTree.build(from: vault.index.allNotes)
+        // A move, a rename or a delete has just taken rows away, and an id kept in the lit
+        // set after its row has gone is an id a drag would still carry (ADR-0026 §D4).
+        // Asked of the very list the tree is built from, so the two cannot disagree about
+        // which ids exist.
+        let existing = Set(vault.index.allNotes.map(\.relativePath))
+        selectedRows = selectedRows.filter(existing.contains)
+        // With nothing lit, the open note's row is: this is the first scan of a pane drawn
+        // with a note already open - a vault reopened on one, or a tab restored - where no
+        // `.onChange` has fired because neither value changed.
+        if selectedRows.isEmpty { syncSelectedRows() }
         reveal(vault.openNote?.relativePath)
     }
 
@@ -314,6 +498,35 @@ struct NoteListPane: View {
 
 }
 
+/// Everything a Note-sidebar row's drag, its drop and its «Sposta in» menu need, in one
+/// value (ADR-0026 §D4, §D5, §D9) - `WorkspaceMoveContext`'s counterpart for this pane.
+///
+/// A value rather than three more parameters, because the row passes every parameter it
+/// has down its own recursion; and one value rather than a closure per surface, because
+/// the drag and the menu are two renderings of one command (ADR-0023 §D1) and must ask the
+/// same questions of the same state.
+///
+/// Smaller than `WorkspaceMoveContext` by two fields, and each absence is a fact about
+/// this pane rather than an economy. There is no `folders`: the Note tree is built from
+/// note paths, so `vault.folders` - which is derived from those same paths - omits no
+/// folder this tree draws (ADR-0026 §D9), and the row reads it from the environment it
+/// already holds. There is no `multiSelection`/`resolve` pair either: the lit set only
+/// ever holds note paths, so `beginDrag` answers "does this row carry the set or itself"
+/// in the one place that holds the set, and the row asks nothing about it.
+struct NoteMoveContext {
+    /// What the drag in flight carries, remembered by the pane at drag start. A folder
+    /// row's drop affordance is asked of this and of nothing else, because
+    /// `.dropDestination`'s `isTargeted` closure never sees the payload (§D5).
+    let dragging: [VaultItemRef]
+    /// The payload a drag from this row puts on the pasteboard, and the record of it the
+    /// folder rows read while it is in flight: the row's path, its kind, and its display
+    /// name - a note's **title**, which is the §7.2 payload (§D3).
+    let beginDrag: (String, VaultItemKind, String) -> VaultItemDrag
+    /// The move itself, performed by the pane and answered `false` when refused - which is
+    /// what a `.dropDestination`'s `action` owes the drag.
+    let perform: ([VaultItemRef], String) -> Bool
+}
+
 /// One row of the folder tree, and its subtree.
 ///
 /// Recursive rather than an `OutlineGroup`: the group owns its expansion state
@@ -328,6 +541,13 @@ private struct NoteTreeRow: View {
     @Binding var expanded: Set<String>
     @Binding var renaming: NoteRecord?
     @Binding var deleting: NoteRecord?
+    /// The move verb's half of the row, in one value (ADR-0026 §D9).
+    let move: NoteMoveContext
+
+    /// Whether something acceptable is hovering over this row right now - a folder row's
+    /// accent stroke, and nothing else in this view is conditioned on it. False on a note
+    /// row always: only a folder takes a drop (§D11).
+    @State private var isDropTarget = false
 
     /// One indent step. The rows are drawn flat inside a `List`, so the depth has to
     /// be paid for in padding rather than by nesting the views.
@@ -359,7 +579,37 @@ private struct NoteTreeRow: View {
         // The whole row, not only the label: a disclosure triangle you have to hit
         // exactly is the thing people complain about in file trees.
         .contentShape(Rectangle())
+        // Untouched by ADR-0026 and deliberately so: a folder row of this pane carries no
+        // `.tag`, so there is no `List(selection:)` recognizer here for a row-wide gesture
+        // to starve - the failure ADR-0025 §D9 and ADR-0026 A4 are about belongs to the
+        // Workspace tree, whose folder rows are selectable. `.draggable` below is not that
+        // kind of recognizer either: these rows have carried one on their note siblings
+        // since ADR-0012 and select normally.
         .onTapGesture { toggle() }
+        // `draggable(move.beginDrag(...))` rather than `draggable { ... }`: the parameter is
+        // an `@autoclosure @escaping () -> T`, so the call written this way *is* the
+        // deferred closure the drag start evaluates - a trailing closure would instead make
+        // `T` itself `() -> VaultItemDrag`, which fails to compile against `T: Transferable`
+        // with a diagnostic that names neither the modifier nor this line (R-04).
+        .draggable(move.beginDrag(node.id, .folder, node.name))
+        // `TaskDropTarget`'s own shape and the same accent token (`TaskDrag.swift:66-71`) -
+        // a second drop affordance in this app looks like the first, and no colour is
+        // written here that is not a token (CLAUDE.md's binding design-system rule).
+        .overlay(
+            RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                .stroke(isDropTarget ? theme.color(.accentPrimary) : .clear, lineWidth: 1)
+        )
+        // Lit only when the drag could actually land: a folder dragged onto itself or into
+        // its own descendant gives no affordance at all (§D5, R-06), which is pure string
+        // arithmetic against what the source stored and costs nothing per hover. The rule
+        // is `WorkspaceBrowser.canDrop` itself and not a second spelling of it - one cycle
+        // rule for both trees, or the two sidebars refuse different things.
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in
+            guard let items = drops.first?.items else { return false }
+            return move.perform(items, node.id)
+        } isTargeted: { targeted in
+            isDropTarget = targeted && WorkspaceBrowser.canDrop(move.dragging, onFolder: node.id)
+        }
         .accessibilityIdentifier("folder-\(node.id)")
         .contextMenu { folderMenu }
 
@@ -370,7 +620,8 @@ private struct NoteTreeRow: View {
                     depth: depth + 1,
                     expanded: $expanded,
                     renaming: $renaming,
-                    deleting: $deleting
+                    deleting: $deleting,
+                    move: move
                 )
             }
         }
@@ -380,6 +631,7 @@ private struct NoteTreeRow: View {
     private var folderMenu: some View {
         Button("Nuova nota qui") { vault.beginNewNote(in: node.id) }
         Button(isOpen ? "Comprimi" : "Espandi") { toggle() }
+        moveMenu
         Divider()
         Button("Rivela nel Finder") {
             guard let root = vault.root else { return }
@@ -387,6 +639,57 @@ private struct NoteTreeRow: View {
                 root.appending(path: node.id, directoryHint: .isDirectory),
             ])
         }
+    }
+
+    /// «Sposta in ▸», the second rendering of the drag (ADR-0026 §D9) - and the one that is
+    /// keyboard-reachable, VoiceOver-reachable and deterministically testable, which is why
+    /// it exists at all: no test in this repository has ever driven a `.draggable` →
+    /// `.dropDestination` pasteboard drag.
+    ///
+    /// On the **folder** rows only. The note rows have had this menu since ADR-0016
+    /// (`NoteRowMenu.swift:30-36`) and are left exactly as they are (§D9).
+    ///
+    /// The destinations are `vault.folders`, which is correct here and would not be in the
+    /// Workspace pane: that list is derived from note paths, and so is this tree, so it
+    /// omits no folder this pane draws (ADR-0022 §D11 read the other way round).
+    ///
+    /// Two things are disabled rather than hidden, so the menu's shape does not change from
+    /// row to row: the folder this row already sits in (a move that moves nothing) and any
+    /// destination the cycle rule refuses - this row and everything under it (R-06).
+    @ViewBuilder
+    private var moveMenu: some View {
+        Menu("Sposta in") {
+            Button("(radice)") { requestMove(to: "") }
+                .disabled(!canMove(to: ""))
+            ForEach(vault.folders, id: \.self) { folder in
+                Button(folder) { requestMove(to: folder) }
+                    .disabled(!canMove(to: folder))
+            }
+        }
+        .accessibilityIdentifier("note-move-menu")
+    }
+
+    /// This row's own reference. A folder row is never part of the lit set - it carries no
+    /// `.tag` - so a move started here carries this folder and nothing else, whatever else
+    /// is selected.
+    private var reference: VaultItemRef {
+        VaultItemRef(path: node.id, kind: .folder)
+    }
+
+    /// The folder this row sits in - `""` at the vault root, the same spelling every path
+    /// rule in this feature uses.
+    private var parentFolder: String {
+        (node.id as NSString).deletingLastPathComponent
+    }
+
+    private func canMove(to destination: String) -> Bool {
+        destination != parentFolder && WorkspaceBrowser.canDrop([reference], onFolder: destination)
+    }
+
+    /// The menu's move, which is the drop's move: the same reference, through the same
+    /// closure, refused for the same reasons and reported in the same place.
+    private func requestMove(to destination: String) {
+        _ = move.perform([reference], destination)
     }
 
     private var noteRow: some View {
@@ -397,13 +700,29 @@ private struct NoteTreeRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, CGFloat(depth) * Self.indent)
-        .tag(node.id)
-        .draggable(node.name)
+        // Dragged onto a folder row this moves the file (R-03); dragged onto a task line in
+        // the editor it still becomes a wikilink (SPEC §7.2), because `VaultItemDrag` puts
+        // `node.name` - which `NoteTree.build(from:)` sets from `NoteRecord.title` - on the
+        // pasteboard as a plain `String` beside the structured payload (ADR-0026 §D3,
+        // R-09). Byte-identical to the `.draggable(node.name)` that used to be here.
+        .draggable(move.beginDrag(node.id, .note, node.name))
+        // The row's own identifier, and **no** `.accessibilityElement(children: .contain)`
+        // beside it (ADR-0026 §D11): `NoteTreeAndShortcutsUITests:54-90` finds every folder
+        // and note by the words on it, and regrouping the row's children would move those
+        // words out of `staticTexts` and break eight assertions that have nothing to do
+        // with this feature. The Workspace rows already carry `.contain` and are
+        // unaffected; these rows have never paid for it and are not made to start here.
+        .accessibilityIdentifier("note-row-\(node.id)")
         .contextMenu {
             if let record = vault.index.allNotes.first(where: { $0.relativePath == node.id }) {
                 NoteRowMenu(note: record, renaming: $renaming, deleting: $deleting)
             }
         }
+        // `.tag` **last in the chain**, normalised to the Workspace pane's order (ADR-0026
+        // §D11) rather than left where it was: a modifier applied after it drops it, and
+        // the failure is silent - the list lights nothing and swallows every click
+        // (`RootView.swift:205-208`).
+        .tag(node.id)
     }
 
     private func toggle() {
