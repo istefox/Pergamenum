@@ -39,4 +39,16 @@ enum WorkspaceBoardResolver {
         default: return .ambiguous
         }
     }
+
+    /// «Which board does this folder mean» (ADR-0025 §D5) — the tree/breadcrumb/hand-off
+    /// counterpart to `resolve(_:in:)`'s «which board does this marker name», sharing the same
+    /// `WorkspaceBoardResolution` (one enum, two questions).
+    ///
+    /// RED-phase placeholder (plan `docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md`,
+    /// Task 4): returns `.notFound` unconditionally. The GREEN implementation matches on
+    /// `deletingLastPathComponent`, never `hasPrefix`, so a board in a subfolder is not this
+    /// folder's board.
+    static func board(inFolder folder: String, among boards: [String]) -> WorkspaceBoardResolution {
+        .notFound
+    }
 }

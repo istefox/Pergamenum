@@ -44,3 +44,45 @@ import Testing
 @Test func matchesIsFalseForAPlainMentionWithADifferentName() {
     #expect(!WorkspaceBoardResolver.matches("Alfa/board.canvas", workspacePath: "altro.canvas"))
 }
+
+// ADR-0025 §D5: "which board does this folder mean" shares `WorkspaceBoardResolution` with
+// "which board does this marker name" above - one enum, two questions. `board(inFolder:among:)`
+// is the resolver the breadcrumb, a folder card's double click, and the editor hand-off all call
+// instead of guessing at a folder-derived board (ADR-0025 §D1 deletes that derivation outright).
+// Plan docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md, Task 4.
+
+@Test func boardInFolderFindsTheUniqueBoardInThatFolder() {
+    let resolution = WorkspaceBoardResolver.board(inFolder: "A", among: ["A/x.canvas"])
+
+    #expect(resolution == .unique("A/x.canvas"))
+}
+
+@Test func boardInFolderIsAmbiguousWhenTwoBoardsShareTheFolder() {
+    let resolution = WorkspaceBoardResolver.board(
+        inFolder: "A", among: ["A/x.canvas", "A/y.canvas"]
+    )
+
+    #expect(resolution == .ambiguous)
+}
+
+@Test func boardInFolderIsNotFoundForABoardInASubfolder() {
+    // A board one level deeper is not this folder's board - the match is on
+    // `deletingLastPathComponent`, never `hasPrefix`.
+    let resolution = WorkspaceBoardResolver.board(inFolder: "A", among: ["A/b/x.canvas"])
+
+    #expect(resolution == .notFound)
+}
+
+@Test func boardInFolderTreatsTheVaultRootAsAnOrdinaryFolder() {
+    let resolution = WorkspaceBoardResolver.board(
+        inFolder: "", among: ["Pergamena.canvas", "A/x.canvas"]
+    )
+
+    #expect(resolution == .unique("Pergamena.canvas"))
+}
+
+@Test func boardInFolderIsNotFoundWhenTheFolderHasNoBoards() {
+    let resolution = WorkspaceBoardResolver.board(inFolder: "A", among: [])
+
+    #expect(resolution == .notFound)
+}
