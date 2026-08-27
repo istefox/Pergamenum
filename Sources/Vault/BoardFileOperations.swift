@@ -214,6 +214,37 @@ struct BoardFileOperations {
         return resulting as URL?
     }
 
+    // MARK: - ADR-0026: Move (§D1, §D7) - Task 2 test step owns this interface;
+    // placeholder bodies only, the code step fills them in.
+
+    /// What a board *move* would change: the file name is kept, only the folder it
+    /// sits in changes - the mirror of `renamePlan`, which keeps the folder and changes
+    /// the name (ADR-0026 §D1).
+    struct MovePlan {
+        var newPath: String
+        var boardChanges: [NoteFileOperations.FileChange] = []
+        var failures: [String] = []
+    }
+
+    /// Placeholder: returns the unchanged path and plans nothing, so this compiles and
+    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    func movePlan(_ relativePath: String, toFolder folder: String) throws -> MovePlan {
+        MovePlan(newPath: Self.normalized(relativePath))
+    }
+
+    /// What a board move actually did (ADR-0026 §D1).
+    struct MoveOutcome {
+        var newPath: String
+        var rewrittenPaths: [String] = []
+        var failures: [String] = []
+    }
+
+    /// Placeholder: returns the unchanged path and writes nothing, so this compiles and
+    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    func moveBoard(at relativePath: String, toFolder folder: String) throws -> MoveOutcome {
+        MoveOutcome(newPath: Self.normalized(relativePath))
+    }
+
     // MARK: - Paths
 
     /// A vault-relative path with the leading and trailing slashes a caller may have

@@ -24,6 +24,12 @@ struct FolderFileOperations {
         case alreadyExists(String)
         case missing(String)
         case failed(String)
+        /// ADR-0026 §D1/§D5 - the destination is the folder itself or one of its own
+        /// descendants (the prefix rule is `"\(folder)/"`, never `folder` -
+        /// `repointing:344-348`'s own rule, so a sibling like `a-altro` is not a
+        /// descendant of `a`). `alreadyExists` already says what a collision is and
+        /// needs no sibling for this different refusal.
+        case wouldNest(String)
 
         var description: String {
             switch self {
@@ -31,6 +37,7 @@ struct FolderFileOperations {
             case .alreadyExists(let path): "esiste già: \(path)"
             case .missing(let path): "non esiste: \(path)"
             case .failed(let reason): reason
+            case .wouldNest(let path): "\(path) non può essere spostata dentro sé stessa"
             }
         }
     }
@@ -327,6 +334,39 @@ struct FolderFileOperations {
             throw OperationError.failed("eliminazione: \(error.localizedDescription)")
         }
         return (resulting as URL?, trashedNotePaths)
+    }
+
+    // MARK: - ADR-0026: Move (§D1, §D7) - Task 2 test step owns this interface;
+    // placeholder bodies only, the code step fills them in.
+
+    /// What a folder *move* would change: the folder's own name is kept, only its
+    /// parent changes - the mirror of `renamePlan`, which keeps the parent and changes
+    /// the name (ADR-0026 §D1).
+    struct MovePlan {
+        var newPath: String
+        var boardChanges: [NoteFileOperations.FileChange] = []
+        var failures: [String] = []
+    }
+
+    /// Placeholder: returns the unchanged path and plans nothing, so this compiles and
+    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    func movePlan(_ relativePath: String, toParent parent: String) throws -> MovePlan {
+        MovePlan(newPath: Self.normalized(relativePath))
+    }
+
+    /// What a folder move actually did (ADR-0026 §D1).
+    struct MoveOutcome {
+        var newPath: String
+        var movedNotes: [(old: String, new: String)] = []
+        var rewrittenPaths: [String] = []
+        var failures: [String] = []
+    }
+
+    /// Placeholder: returns the unchanged path, moves nothing and writes nothing, so
+    /// this compiles and every Task 2 test fails on its assertions rather than on a
+    /// missing symbol.
+    func moveFolder(at relativePath: String, toParent parent: String) throws -> MoveOutcome {
+        MoveOutcome(newPath: Self.normalized(relativePath))
     }
 
     // MARK: - Paths

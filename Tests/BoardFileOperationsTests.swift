@@ -12,6 +12,16 @@ import Testing
 // on disk, delete to the Trash. RED: every body currently throws
 // `BoardFileOperations.OperationError.notImplementedYet`, so every test below fails on
 // its assertions (or on the uncaught throw), not on a missing symbol.
+//
+// ADR-0026: A row is dragged into a folder, and several rows are chosen first. §D1/§D7 -
+// a board move keeps its file name and changes only its folder, and repoints `.canvas`
+// node paths vault-wide through the same `repointBoardsPlan` loop a rename already runs.
+// Plan: docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md,
+// Task 2.
+//
+// RED (ADR-0026 section below): `movePlan`/`moveBoard` are placeholders returning the
+// unchanged path and writing nothing, so every test in that section fails on its
+// assertions, not on a missing symbol.
 
 // MARK: - Fixtures and helpers
 
@@ -225,4 +235,116 @@ private let sampleBoard = """
     #expect(throws: BoardFileOperations.OperationError.self) {
         try vault.operations.trashBoard(at: "A/mai-esistito.canvas")
     }
+}
+
+// MARK: - ADR-0026: Move keeps the file name and repoints cards (R-01, R-05, R-06, R-07, R-08, §D7)
+
+/// True only for `.unique(_)`, whatever path it carries - the payload legitimately
+/// differs before and after a move (`A/x.canvas` vs `B/x.canvas`); it is the *case* that
+/// must stay stable across the move (R-08), not the associated value.
+private func isUnique(_ resolution: WorkspaceBoardResolution) -> Bool {
+    if case .unique = resolution { return true }
+    return false
+}
+
+@Test func moveBoardMovesTheFileToTheDestinationFolderKeepingItsFileName() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+
+    let outcome = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "B")
+
+    #expect(outcome.newPath == "B/x.canvas")
+    #expect(!exists("A/x.canvas", in: vault.root))
+    #expect(exists("B/x.canvas", in: vault.root))
+    #expect(try vault.text(at: "B/x.canvas") == sampleBoard)
+}
+
+@Test func moveBoardLeavesTheTaskMarkerByteIdenticalAndKeepsWorkspaceBoardResolverUnique() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+    let markerNote = header + "- [ ] Fare ^[[x.canvas]]"
+    try vault.write(markerNote, to: "Attività.md")
+
+    let resolutionBefore = WorkspaceBoardResolver.resolve(
+        "x.canvas", in: CanvasStore(root: vault.root).allBoards()
+    )
+
+    _ = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "B")
+
+    // The marker text itself is never touched by a move (ADR-0026 §D7) - it names a
+    // bare file name, and the move changes no file name.
+    #expect(try vault.text(at: "Attività.md") == markerNote)
+    let resolutionAfter = WorkspaceBoardResolver.resolve(
+        "x.canvas", in: CanvasStore(root: vault.root).allBoards()
+    )
+    #expect(isUnique(resolutionBefore))
+    #expect(isUnique(resolutionAfter))
+    #expect(resolutionAfter == .unique("B/x.canvas"))
+}
+
+@Test func moveBoardRepointsACardOnAnotherBoardThatPointedAtItsOldPath() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+    let rootBoard = """
+    {"nodes":[\
+    {"id":"a","type":"file","file":"A/x.canvas","x":0,"y":0,"width":260,"height":180}\
+    ],"edges":[]}
+    """
+    try vault.write(rootBoard, to: "Labs.canvas")
+
+    _ = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "B")
+
+    let labsText = try vault.text(at: "Labs.canvas")
+    #expect(labsText.contains("B/x.canvas"))
+    #expect(!labsText.contains("\"A/x.canvas\""))
+}
+
+@Test func moveBoardThrowsAlreadyExistsForACollisionAndWritesNothing() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+    try vault.write("{\"nodes\":[],\"edges\":[],\"marker\":true}", to: "B/x.canvas")
+
+    do {
+        _ = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "B")
+        Issue.record("expected moveBoard to throw for a name collision at the destination")
+    } catch BoardFileOperations.OperationError.alreadyExists(let path) {
+        #expect(path.contains("x.canvas"))
+    } catch {
+        Issue.record("expected OperationError.alreadyExists, got \(error)")
+    }
+    // Nothing moved, nothing was overwritten.
+    #expect(exists("A/x.canvas", in: vault.root))
+    #expect(try vault.text(at: "B/x.canvas") == "{\"nodes\":[],\"edges\":[],\"marker\":true}")
+}
+
+@Test func moveBoardToItsCurrentFolderIsANoOpAndWritesNothing() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+
+    let outcome = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "A")
+
+    #expect(outcome.newPath == "A/x.canvas")
+    #expect(exists("A/x.canvas", in: vault.root))
+    #expect(try vault.text(at: "A/x.canvas") == sampleBoard)
+}
+
+@Test func moveBoardToTheVaultRootWorks() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+
+    let outcome = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "")
+
+    #expect(outcome.newPath == "x.canvas")
+    #expect(!exists("A/x.canvas", in: vault.root))
+    #expect(exists("x.canvas", in: vault.root))
+}
+
+@Test func boardMovePlanWritesNothing() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+
+    _ = try vault.operations.movePlan("A/x.canvas", toFolder: "B")
+
+    #expect(exists("A/x.canvas", in: vault.root))
+    #expect(!exists("B/x.canvas", in: vault.root))
 }
