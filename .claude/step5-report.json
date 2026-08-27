@@ -172,7 +172,31 @@
     "summary": "Gate 5.05: UI files detected — running ui-layout-audit... 0 issues found. accessibility/i18n — 4 pass, 3 not-applicable, 0 fail ✓"
   },
   "gate_5_06_specialized_review": {
-    "status": "pending_user_decision"
+    "status": "run",
+    "dispatched": ["pr-review-toolkit:silent-failure-hunter", "pr-review-toolkit:type-design-analyzer"],
+    "findings": {
+      "CRITICAL": [
+        {"source": "type-design-analyzer", "file": "Sources/Features/Workspace/WorkspaceController.swift", "loc": "81-102, mutation surface", "problem": "board/document/contents stay populated with the previous board's data after select(.folder(f)); mutate/addNode/delete/move/resize/setColor/setText/connect/createFolder carry no guard on current.hasBoard, enforced only by view composition not by the model."},
+        {"source": "type-design-analyzer", "file": "Sources/Vault/BoardFileOperations.swift", "loc": "103-105, renamePlan", "problem": "Re-derives the exact lowercased-lastPathComponent match rule WorkspaceBoardResolver.matches already centralizes, rather than calling the shared helper shipped in the same PR."}
+      ],
+      "IMPORTANT": [
+        {"source": "silent-failure-hunter", "file": "Sources/Vault/BoardFileOperations.swift", "loc": "renamePlan note-rewrite loop", "problem": "try? on store.read(path) discards the real error, replaced with a flat \"non leggibile\" string. Pre-existing pattern in FolderFileOperations.swift, now duplicated into a second file rather than fixed."},
+        {"source": "silent-failure-hunter", "file": "Sources/Vault/BoardFileOperations.swift", "loc": "rename/trash catch blocks", "problem": "Uses error.localizedDescription where every other error site touched by this chain interpolates the raw \\(error), losing NSError domain/code detail on FileManager failures."},
+        {"source": "type-design-analyzer", "file": "Sources/Features/Workspace/ (WorkspaceSelection.swift, WorkspaceTree.swift, WorkspaceFolderSheets.swift, WorkspaceBrowser.swift)", "loc": "multiple", "problem": "No wrapper type distinguishes a board-file path from a folder path (bare String everywhere); four independently-declared board-vs-folder discriminated unions (WorkspaceItemKind, WorkspaceTree.Node.Kind, WorkspaceSelection, PendingWorkspaceDelete) not convertible to one another."},
+        {"source": "type-design-analyzer", "file": "Sources/Vault/BoardFileOperations.swift, FolderFileOperations.swift", "loc": "OperationError, RenamePlan, RenameOutcome", "problem": "OperationError declared identically twice (same 4 cases, same wording); RenamePlan/RenameOutcome are near-identical DTOs per file-kind rather than one shared shape."},
+        {"source": "type-design-analyzer", "file": "Sources/Features/Workspace/WorkspaceController.swift", "loc": "408-486, gesture-transient state", "problem": "draggingIDs/dragTranslation/resizingNodeID/etc. are plain var not private(set); doc comment admits the invariant lives in convention, not the type system."},
+        {"source": "type-design-analyzer", "file": "Sources/Features/Workspace/WorkspaceController.swift", "loc": "81-86, board: String", "problem": "board: String uses \"\" as a sentinel for \"nothing open\" rather than String?, duplicating what current: WorkspaceSelection? already carries — the two can drift (see CRITICAL finding 1)."}
+      ],
+      "SUGGESTIONS": [
+        {"source": "silent-failure-hunter", "file": "Sources/Features/Workspace/BoardCardMenu.swift", "loc": "copyLink(to:)", "problem": "Silently returns on a PergamenumLink.canvas(...) miss with no recordProblem; pre-existing gap the chain touched (folder-derived path -> workspace.board) without fixing."},
+        {"source": "silent-failure-hunter", "file": "BoardCardMenu.swift, BoardChrome.swift, WorkspaceBrowser.swift", "loc": "?? [] / ?? true fallbacks", "problem": "allBoards() ?? [] degrades conservative, boardNameIsAvailable ?? true degrades optimistic — asymmetric defaults on a nil store, worth a shared/explicit helper."},
+        {"source": "silent-failure-hunter", "file": "Sources/Vault/BoardFileOperations.swift, Sources/Vault/VaultController+Folders.swift", "loc": "RenameOutcome.rewrittenPaths", "problem": "Computed on every successful rewrite but never consumed by VaultController.renameBoard (only .failures is read) — data computed and discarded."},
+        {"source": "type-design-analyzer", "file": "Sources/Features/Workspace/WorkspaceFolderActions.swift", "loc": "67-109", "problem": "Mixes pure static navigation-rule functions with six DI closures in one struct; a separate namespace would let the pure half be referenced/tested independently."},
+        {"source": "type-design-analyzer", "file": "Sources/Core/Tasks/WorkspaceBoardResolver.swift", "loc": "WorkspaceBoardResolution.unique(String)", "problem": "Carries a raw path, consistent with the missing-wrapper-type finding; natural first place to introduce a BoardPath wrapper before the pattern spreads further."}
+      ],
+      "positive_note": "PendingWorkspaceRename/PendingWorkspaceDelete, WorkspaceSelection and WorkspaceBoardResolution were called out by type-design-analyzer as clean, well-encapsulated sealed unions with enforced invariants (.folder(\"\") never produced, .unique/.ambiguous/.notFound covering every outcome with no nullable fallback) — the weaker spots are concentrated in the file-operations layer and the controller's mutation surface, not the new selection/resolution types themselves."
+    },
+    "verdict": "Report-only, no auto-fixes per gate contract. 2 CRITICAL, 6 IMPORTANT, 5 SUGGESTIONS — all deferred to the user's Step 7 decision; none block commit per this gate's own rules."
   },
   "interface_immutability_gate": {
     "irc": 0,
