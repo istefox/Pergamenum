@@ -407,9 +407,15 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         )
     }
 
-    /// The board `CanvasStore.boardPath(forFolder:)` expects at `Vibrofer/Vibrofer
-    /// .canvas`, carrying the two notes as `.file` cards - `WorkspaceReferences.notes
-    /// (in:)` (ADR-0021 D8) reads exactly this shape.
+    /// The board this file writes at `Vibrofer/Vibrofer.canvas` and reaches by that path
+    /// alone: since ADR-0025 §D1 a board is addressed by its own file path and nothing
+    /// derives one from the folder's name (`CanvasStore.boardPath(forFolder:)`, what this
+    /// comment used to name, is deleted). The name matching the folder's is now incidental
+    /// - the row `openBoard()` clicks is `workspace-board-Vibrofer/Vibrofer.canvas`, which
+    /// is the path, and would be the same identifier under any other file name.
+    ///
+    /// It carries the two notes as `.file` cards - `WorkspaceReferences.notes(in:)`
+    /// (ADR-0021 D8) reads exactly this shape.
     private static let canvasFixture = """
     {
       "nodes": [

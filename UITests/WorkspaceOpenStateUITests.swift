@@ -14,6 +14,16 @@ import XCTest
 /// file reads `selectedFolder` or `hasOpenBoard` - both were removed from the production
 /// code this plan's earlier tasks replaced (ADR-0024 §D4/§D6) and neither is a concept a
 /// UI test, which only ever sees rendered rows and labels, could reach even by accident.
+///
+/// ADR-0025 ("A board is a file, a folder is a container") rewrites what the rows *are*
+/// without touching how they are found: a folder and a `.canvas` are now two different
+/// rows (§D2), so a folder that owns a board has both. That is the one assertion in this
+/// file this chain deliberately reverses - the test named for §D2 below - and the five
+/// added under it cover this chain's own requirements: creating a folder makes a row and
+/// no board (R-01), two boards in one folder are two rows each opening its own (R-03), a
+/// board row's context menu offers both mutating verbs (R-08), an empty folder has a row
+/// (R-10), and a `.canvas` at the vault root has a top-level row while the root itself has
+/// none (R-11).
 final class WorkspaceOpenStateUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -21,10 +31,21 @@ final class WorkspaceOpenStateUITests: XCTestCase {
 
     // MARK: Fixture identity, named once so every step and every assertion agrees.
 
-    /// A folder with its own board, directly under the root - the R-01 target: one row,
-    /// not two.
+    /// A folder holding boards, directly under the root - since ADR-0025 §D2 the folder
+    /// and each of its boards are rows of their own, so this one accounts for three.
     private let boardFolder = "Vibrofer"
     private let boardFile = "Vibrofer/Vibrofer.canvas"
+    /// A second board in the **same** folder, under a name that is not the folder's - the
+    /// R-03 target, and the shape the old "one board per folder, named after it" rule
+    /// could not represent at all (ADR-0025 §D1).
+    private let siblingBoardFile = "Vibrofer/Altro.canvas"
+    /// A folder holding nothing whatsoever - the R-10 target: it has a row, and selecting
+    /// it neither opens nor writes a board.
+    private let emptyFolder = "Vuota"
+    /// What the R-01 test types into the creation sheet. A plain name, so
+    /// `NoteName.validate` raises nothing and the sheet's "Crea" is enabled: this test is
+    /// about what the verb creates, not about what the field refuses.
+    private let newFolderName = "Ricerca"
     /// A board nested two levels deep, inside the folder above - the R-02/R-03 target:
     /// selecting it must light exactly its own row, nowhere else in the tree.
     private let nestedBoardFile = "Vibrofer/Dettaglio/Dettaglio.canvas"
@@ -62,9 +83,15 @@ final class WorkspaceOpenStateUITests: XCTestCase {
 
     // MARK: Row lookup - every one by identifier, never by the words on it (CLAUDE.md).
 
-    /// The root board's row: named after the vault, exactly as `CanvasStore
-    /// .boardPath(forFolder:)` maps an empty folder (SPEC §6.1 - "the root board is named
-    /// after the vault").
+    /// The `.canvas` the fixture writes at the vault root. It is named after the vault
+    /// only because the fixture writes it that way: since ADR-0025 §D1 no rule derives a
+    /// board from a folder's name, and `CanvasStore.boardPath(forFolder:)` - what this
+    /// comment used to point at - no longer exists.
+    ///
+    /// So this is an **ordinary top-level board row** (§D2), not the synthesized root row
+    /// the tree used to fold a folder into: the vault root is the list itself and has no
+    /// row at all. The identifier is unchanged, `workspace-board-<boardPath>`, which is
+    /// exactly why every assertion below still resolves after that rewrite.
     private var rootBoardRow: XCUIElement {
         app.descendants(matching: .any)
             .matching(identifier: "workspace-board-\(vault.lastPathComponent).canvas").firstMatch
@@ -138,13 +165,23 @@ final class WorkspaceOpenStateUITests: XCTestCase {
                       "tornando sul pane la board aperta prima non dovrebbe essere rimasta")
     }
 
-    // MARK: New (R-01) - a folder that owns a board is one row, not two.
+    // MARK: Reversed (ADR-0025 §D2) - a folder that owns a board is a row *beside* it.
 
-    func testAFolderThatOwnsABoardIsOneRowNotTwo_R01() throws {
+    /// The one green assertion this chain deliberately inverts, and the reason it is worth
+    /// saying so here rather than only in the plan: under ADR-0024 §D2 a folder owning a
+    /// board was folded into that board's single row, so a `workspace-folder-` row for it
+    /// was proof of a bug. ADR-0025 §D2 separates the two concepts - a folder is a
+    /// container, a `.canvas` is a document - so the same folder now has a row of its own
+    /// *and* one row per board inside it. Same lookups, opposite expectation.
+    func testAFolderThatOwnsABoardIsARowBesideItsBoardsOwn_ADR0025_D2() throws {
+        XCTAssertTrue(row(identifier: "workspace-folder-\(boardFolder)").waitForExistence(timeout: 5),
+                      "«\(boardFolder)» è una cartella: deve avere una riga workspace-folder-* propria")
+
+        // Its board's row is a row of its own, one level in - visible once the folder is
+        // open, which is what a container row means.
+        app.buttons["workspace-expand-all"].click()
         XCTAssertTrue(row(identifier: "workspace-board-\(boardFile)").waitForExistence(timeout: 5),
-                      "manca la riga unica della cartella «\(boardFolder)», che possiede una board")
-        XCTAssertFalse(row(identifier: "workspace-folder-\(boardFolder)").exists,
-                        "«\(boardFolder)» possiede una board: non deve esistere anche una riga workspace-folder-*")
+                      "manca la riga della board dentro «\(boardFolder)»")
     }
 
     // MARK: New (R-02/R-03) - selecting a nested board lights exactly its own row.
@@ -189,37 +226,162 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         XCTAssertEqual(app.sheets.count, 0, "nessun foglio dovrebbe comparire per il solo click sulla riga")
     }
 
+    // MARK: New (ADR-0025 R-01) - «Nuova cartella» makes a row and nothing else.
+
+    /// R-01 read as an outcome rather than as a line of code: the deleted
+    /// `try store.save(.empty, folder: created)` is invisible to a UI test, but the folder
+    /// it used to write is not. The row appears, no board opens, and the directory on disk
+    /// holds no `.canvas` - the third assertion is the one that would still fail if the
+    /// board creation came back in some other place.
+    func testCreatingAFolderMakesARowAndNoBoard_R01() throws {
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5))
+
+        app.buttons["workspace-new-folder"].click()
+        let sheet = app.descendants(matching: .any).matching(identifier: "workspace-new-sheet").firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "il foglio di creazione non si è aperto")
+
+        // Nothing is selected at this point, so the sheet's parent picker is seeded with
+        // the vault root (`WorkspaceBrowser.target(for: nil)`) and the new folder lands at
+        // the top level, where the assertion below looks for it.
+        let field = app.textFields["workspace-new-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "manca il campo del nome nel foglio di creazione")
+        field.click()
+        // Return rather than the «Crea» button: the field's own `onSubmit` runs the same
+        // confirmation, and a UI test does not reach a control by the words on it
+        // (CLAUDE.md) - that button carries no identifier.
+        field.typeText(newFolderName + "\r")
+
+        XCTAssertTrue(row(identifier: "workspace-folder-\(newFolderName)").waitForExistence(timeout: 10),
+                      "la cartella creata non ha una riga nell'albero")
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].exists,
+                      "creare una cartella non deve aprire nessuna board")
+
+        let created = vault.appending(path: newFolderName, directoryHint: .isDirectory)
+        let contents = try FileManager.default.contentsOfDirectory(atPath: created.path(percentEncoded: false))
+        XCTAssertEqual(contents.filter { $0.hasSuffix(".canvas") }, [],
+                       "«Nuova cartella» non deve scrivere nessun .canvas dentro la cartella creata")
+    }
+
+    // MARK: New (ADR-0025 R-03) - two boards in one folder, two rows, each opening its own.
+
+    func testTwoBoardsInOneFolderAreTwoRowsAndEachOpensItsOwn_R03() throws {
+        app.buttons["workspace-expand-all"].click()
+
+        let named = row(identifier: "workspace-board-\(boardFile)")
+        let sibling = row(identifier: "workspace-board-\(siblingBoardFile)")
+        XCTAssertTrue(named.waitForExistence(timeout: 5), "manca la riga di «\(boardFile)»")
+        XCTAssertTrue(sibling.waitForExistence(timeout: 5),
+                      "manca la riga di «\(siblingBoardFile)»: una cartella può contenere più board")
+
+        named.click()
+        assertExactlyOneRowSelected(identifier: "workspace-board-\(boardFile)", suffix: ", aperta")
+
+        sibling.click()
+        assertExactlyOneRowSelected(identifier: "workspace-board-\(siblingBoardFile)", suffix: ", aperta")
+    }
+
+    // MARK: New (ADR-0025 R-10) - an empty folder is a row, and stays empty when selected.
+
+    func testAnEmptyFolderHasARowAndSelectingItWritesNothing_R10() throws {
+        let empty = row(identifier: "workspace-folder-\(emptyFolder)")
+        XCTAssertTrue(empty.waitForExistence(timeout: 5),
+                      "una cartella senza board non ha riga: prima di ADR-0025 §D2 era invisibile")
+        empty.click()
+
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+                      "selezionare una cartella vuota non deve aprire nessuna board")
+        assertExactlyOneRowSelected(identifier: "workspace-folder-\(emptyFolder)", suffix: ", selezionata")
+
+        let folder = vault.appending(path: emptyFolder, directoryHint: .isDirectory)
+        let contents = try FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))
+        XCTAssertEqual(contents.filter { $0.hasSuffix(".canvas") }, [],
+                       "selezionare una cartella vuota non deve materializzare una board dentro di essa")
+    }
+
+    // MARK: New (ADR-0025 R-11) - a .canvas at the vault root is a top-level row, and the root is not.
+
+    func testARootLevelCanvasIsATopLevelRowAndTheRootItselfHasNone_R11() throws {
+        XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5),
+                      "un .canvas nella radice del vault deve avere una riga di primo livello")
+        // The vault root is the list, not a row in it (ADR-0025 §D2): a synthesized root
+        // would carry the folder identifier of the empty path.
+        XCTAssertFalse(row(identifier: "workspace-folder-").exists,
+                       "non deve esistere nessuna riga sintetizzata per la radice del vault")
+
+        rootBoardRow.click()
+        assertExactlyOneRowSelected(identifier: "workspace-board-\(vault.lastPathComponent).canvas",
+                                    suffix: ", aperta")
+    }
+
+    // MARK: New (ADR-0025 R-08) - a board row's context menu carries both mutating verbs.
+
+    /// The menu entries are found on `app.menuItems`, by title, and that is not a lapse
+    /// from `CLAUDE.md`'s "never by the words on it": a `.contextMenu`'s entries are
+    /// `NSMenuItem`s rendered **outside** the accessibility hierarchy of the row that owns
+    /// them (ADR-0025 F11), so `descendants(matching:)` under
+    /// `workspace-board-<path>` finds nothing at all no matter what identifier the
+    /// `Button` carries. `TimeBlockUITests.insertTimeBlockFromMenu` reaches its own entry
+    /// the same way, for the same reason.
+    ///
+    /// The titles are the production strings verbatim, ellipsis character included
+    /// (`WorkspaceBrowser.swift`'s row menu: «Rinomina…», «Elimina…»).
+    func testABoardRowsContextMenuOffersRenameAndDelete_R08() throws {
+        XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5))
+        // Neither verb is in the menu bar, so an entry found after the right click was
+        // raised by the right click - without this the assertions below would pass on any
+        // menu that happened to be open.
+        XCTAssertFalse(app.menuItems["Rinomina…"].exists, "«Rinomina…» era già raggiungibile prima del click destro")
+
+        rootBoardRow.rightClick()
+
+        let rename = app.menuItems["Rinomina…"].firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5),
+                      "manca «Rinomina…» nel menu contestuale della riga board")
+        let delete = app.menuItems["Elimina…"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5),
+                      "manca «Elimina…» nel menu contestuale della riga board")
+
+        // Dismissed rather than acted on: this test is about the menu being offered, and a
+        // menu left open would still be up when the next assertion, or the next test's
+        // first click, went looking for a row underneath it.
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
     // MARK: Fixture
 
-    /// Real folders and files on disk before the app ever launches: the root board
-    /// itself (what the two ported tests click), one folder owning its own board
-    /// directly under the root (`boardFolder`), a board nested two levels inside it
-    /// (`nestedBoardFile`), and a board-less grouping folder whose only content is a
-    /// subfolder that owns a board (`groupingFolder` / `groupingChildBoardFile`) - the
-    /// shape SPEC Decision 3 and ADR-0024 §D5 both require a selectable, non-opening row
-    /// for.
+    /// Real folders and files on disk before the app ever launches: a `.canvas` in the
+    /// vault root itself (what the two ported tests click, and R-11's target), a folder
+    /// holding two boards under different names (`boardFolder`, `boardFile`,
+    /// `siblingBoardFile` - R-03), a board nested two levels inside it
+    /// (`nestedBoardFile`), a board-less grouping folder whose only content is a subfolder
+    /// that owns a board (`groupingFolder` / `groupingChildBoardFile`) - the shape SPEC
+    /// Decision 3 and ADR-0024 §D5 both require a selectable, non-opening row for - and a
+    /// folder holding nothing at all (`emptyFolder`, R-10).
     ///
-    /// The root board's own `.canvas` file is not optional here: `WorkspaceTree.build`
-    /// only folds the root into a `.workspace(board: <path>)` row - the one
-    /// `workspace-board-<vault>.canvas` identifier `rootBoardRow` looks for - when that
-    /// file actually exists on disk (`WorkspaceTree.swift`, the root-synthesis fallback).
-    /// With no such file it is `.workspace(board: nil)`, `workspace-folder-` instead, and
-    /// clicking it selects rather than opens (ADR-0024 §D5, applied to the root exactly
-    /// as to any other never-materialized folder). A vault that has genuinely never had
-    /// a root board is a real state this app supports, but it is not what
-    /// `testThePaneOpensEmptyAndFillsInOnlyAfterAClick` and
-    /// `testLeavingAndReturningToTheWorkspacePaneForgetsTheOpenBoard` are about - both
-    /// are ported unchanged in intent from `5041d5c`, where "click the root row" always
-    /// meant "open the board", so the fixture gives them a root board to open.
+    /// The root `.canvas` is not optional here, but the reason has changed with the model:
+    /// it is no longer a root row the tree synthesizes when the file happens to exist, it
+    /// is simply a board file, and a board file is a row because it is a file
+    /// (ADR-0025 §D1/§D2). Remove it and the two ported tests have no board to open -
+    /// nothing else about the tree changes, because the vault root is the list rather than
+    /// a row in it. Both tests are ported unchanged in intent from `5041d5c`, where "click
+    /// the root row" always meant "open the board", so the fixture keeps giving them one.
+    ///
+    /// The empty folder is created directly rather than as some board's parent: a folder
+    /// that exists only on disk, named by nothing, is exactly the row `CanvasStore
+    /// .allFolders()` was added to find.
     private func makeFixtureBoards() throws {
         let rootBoardFile = "\(vault.lastPathComponent).canvas"
-        for boardPath in [rootBoardFile, boardFile, nestedBoardFile, groupingChildBoardFile] {
+        for boardPath in [rootBoardFile, boardFile, siblingBoardFile, nestedBoardFile, groupingChildBoardFile] {
             let url = vault.appending(path: boardPath, directoryHint: .notDirectory)
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
             )
             try Self.emptyCanvas.write(to: url, atomically: true, encoding: .utf8)
         }
+        try FileManager.default.createDirectory(
+            at: vault.appending(path: emptyFolder, directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
     }
 
     private static let emptyCanvas = """
