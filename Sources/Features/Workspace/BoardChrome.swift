@@ -40,8 +40,8 @@ struct BoardTopBar: View {
                     Text(crumb.title).themedText(.body, color: .textPrimary)
                 } else {
                     Button(crumb.title) { open(ancestor: crumb.folder) }
-                    .buttonStyle(.plain)
-                    .themedText(.body, color: .textSecondary)
+                        .buttonStyle(.plain)
+                        .themedText(.body, color: .textSecondary)
                 }
             }
 
