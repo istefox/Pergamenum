@@ -107,4 +107,17 @@ struct WorkspaceFolderActions {
         guard open == deleted else { return .board(path: open) }
         return .folder((deleted as NSString).deletingLastPathComponent)
     }
+
+    /// Where the open board should land once a drag-move batch has completed: unchanged
+    /// when `open` is none of the moved items, exact-substituted when `open` *is* one of
+    /// them, prefix-substituted when it sits inside a moved folder (R-13, ADR-0026 §D10).
+    ///
+    /// A pure function over `[VaultMove]` rather than one move, because a batch can carry
+    /// several items in one drop and the open board only ever matches at most one of
+    /// them. `Tests/VaultMoveTests.swift` (ADR-0026, this plan's Task 3) owns this
+    /// signature; the body here is a placeholder that returns `open` unchanged so the
+    /// target builds - the real rule is the code step's, not the test step's.
+    static func boardAfterMove(open: String, moves: [VaultMove]) -> String {
+        open
+    }
 }
