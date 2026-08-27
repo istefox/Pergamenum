@@ -64,4 +64,25 @@ extension VaultController {
             return false
         }
     }
+
+    /// Renames a board file (ADR-0025 §D6, R-08).
+    ///
+    /// TODO(ADR-0025 Task 7): placeholder only - `BoardFileOperations` does not exist
+    /// yet and there is no session half to call through. Declared now so the target
+    /// builds while `Tests/BoardFileOperationsTests.swift` is red on its assertions
+    /// rather than on a missing symbol; the coder fills in the real body beside
+    /// `renameFolder` above, mirroring its `canOperate`/`recordProblem`/`rescan` shape.
+    @discardableResult
+    func renameBoard(at relativePath: String, to newName: String) -> Bool {
+        recordProblem("rinomina board: non ancora implementato (ADR-0025 Task 7)")
+        return false
+    }
+
+    /// Moves a board file to the Finder's trash (ADR-0025 §D6, R-08). TODO(ADR-0025
+    /// Task 7), see `renameBoard` above.
+    @discardableResult
+    func trashBoard(at relativePath: String) -> Bool {
+        recordProblem("eliminazione board: non ancora implementato (ADR-0025 Task 7)")
+        return false
+    }
 }

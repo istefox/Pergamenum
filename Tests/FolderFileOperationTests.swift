@@ -12,6 +12,14 @@ import Testing
 // and performing it - rename on disk, delete to the Trash (Task 3). All three tasks are
 // RED here: the type exists so the target builds, but every body currently throws or
 // returns a placeholder, so every test below fails on its assertions.
+//
+// ADR-0025 §D6, Task 7 (R-09): a folder rename stops touching boards at all - no board
+// file it holds is renamed, no marker is rewritten, and the ADR-0022 §D4 ambiguity
+// guard is gone from here (relocated to board rename,
+// `Tests/BoardFileOperationsTests.swift`). The tests below that pinned the old
+// behaviour (`FolderRenamePlan.boardRename`, the name-level marker rewrite on a folder
+// rename) are replaced by the ones in the new "ADR-0025 Task 7" section below; the
+// vault-wide `.canvas` node repoint by prefix is unchanged and its tests are untouched.
 
 // MARK: - Fixtures and helpers
 
@@ -178,44 +186,6 @@ private let sampleBoard = """
     }
 }
 
-@Test func renamePlanCarriesTheBoardRenameAtPostMovePathsWhenABoardExists() throws {
-    let vault = try FolderOpsVault()
-    try vault.write(sampleBoard, to: "01 Progetti/vecchio/vecchio.canvas")
-
-    let plan = try vault.operations.renamePlan("01 Progetti/vecchio", to: "nuovo", knownPaths: [])
-
-    #expect(plan.boardRename?.from == "01 Progetti/nuovo/vecchio.canvas")
-    #expect(plan.boardRename?.to == "01 Progetti/nuovo/nuovo.canvas")
-}
-
-@Test func renamePlanCarriesNoBoardRenameWhenTheFolderHasNoBoard() throws {
-    let vault = try FolderOpsVault()
-    try vault.write(header, to: "01 Progetti/vecchio/Nota.md")
-
-    let plan = try vault.operations.renamePlan(
-        "01 Progetti/vecchio", to: "nuovo", knownPaths: ["01 Progetti/vecchio/Nota.md"]
-    )
-
-    #expect(plan.boardRename == nil)
-}
-
-@Test func renamePlanRewritesTheTaskMarkerAndThePlainLinkToTheBoardFileName() throws {
-    let vault = try FolderOpsVault()
-    try vault.write(sampleBoard, to: "01 Progetti/vecchio/vecchio.canvas")
-    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
-    try vault.write(header + "Vedi [[vecchio.canvas]].", to: "Altra.md")
-
-    let plan = try vault.operations.renamePlan(
-        "01 Progetti/vecchio", to: "nuovo", knownPaths: ["Attività.md", "Altra.md"]
-    )
-
-    let taskChange = try #require(plan.noteChanges.first { $0.path == "Attività.md" })
-    #expect(taskChange.after.contains("^[[nuovo.canvas]]"))
-
-    let linkChange = try #require(plan.noteChanges.first { $0.path == "Altra.md" })
-    #expect(linkChange.after.contains("[[nuovo.canvas]]"))
-}
-
 // The regression that pins the SPEC correction (ADR-0022 F3, D2): a wikilink names a
 // note by title, not by path, so a folder rename rewrites no ordinary `[[Nota]]` link -
 // whatever SPEC R-06's wording says. Do not "fix" this test to expect a rewrite.
@@ -230,20 +200,6 @@ private let sampleBoard = """
     )
 
     #expect(plan.noteChanges.isEmpty)
-}
-
-@Test func renamePlanUsesThePostMovePathForANoteThatLivesInsideTheRenamedFolder() throws {
-    let vault = try FolderOpsVault()
-    try vault.write(sampleBoard, to: "01 Progetti/vecchio/vecchio.canvas")
-    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "01 Progetti/vecchio/Interna.md")
-
-    let plan = try vault.operations.renamePlan(
-        "01 Progetti/vecchio", to: "nuovo", knownPaths: ["01 Progetti/vecchio/Interna.md"]
-    )
-
-    let change = try #require(plan.noteChanges.first)
-    #expect(change.path == "01 Progetti/nuovo/Interna.md")
-    #expect(change.after.contains("^[[nuovo.canvas]]"))
 }
 
 @Test func renamePlanRepointsCanvasNodesByPrefixIncludingABoardOutsideTheRenamedFolder() throws {
@@ -286,61 +242,7 @@ private let sampleBoard = """
     #expect(!change.after.contains("01 Progetti/vecchio"))
 }
 
-@Test func renamePlanSkipsTheMarkerRewriteAndReportsAFailureWhenTheBoardNameIsAmbiguous() throws {
-    let vault = try FolderOpsVault()
-    try vault.write(sampleBoard, to: "A/x/x.canvas")
-    try vault.write(sampleBoard, to: "B/x/x.canvas")
-    try vault.write(header + "- [ ] Fare ^[[x.canvas]]", to: "Attività.md")
-    let rootBoard = """
-    {"nodes":[{"id":"a","type":"file","file":"A/x/Nota.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
-    """
-    try vault.write(rootBoard, to: "Labs.canvas")
-
-    let plan = try vault.operations.renamePlan("A/x", to: "y", knownPaths: ["Attività.md"])
-
-    #expect(plan.noteChanges.isEmpty)
-    #expect(plan.failures.contains { $0.contains("x.canvas") })
-    // The path-level repoint is unambiguous by construction and still runs.
-    #expect(plan.boardChanges.contains { $0.path == "Labs.canvas" })
-}
-
 // MARK: - Task 3: performing it - rename on disk, delete to the Trash (R-05, R-06, R-07, R-11, R-13)
-
-@Test func renameFolderMovesRenamesTheBoardAndRewritesEverythingPlanned() throws {
-    let vault = try FolderOpsVault()
-    let ownBoard = """
-    {"nodes":[{"id":"a","type":"file","file":"03 Risorse/Altro.pdf","x":0,"y":0,"width":260,"height":180}],"edges":[]}
-    """
-    try vault.write(ownBoard, to: "01 Progetti/vecchio/vecchio.canvas")
-    try vault.write(header, to: "01 Progetti/vecchio/Nota.md")
-    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
-    let rootBoard = """
-    {"nodes":[{"id":"b","type":"file","file":"01 Progetti/vecchio/Nota.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
-    """
-    try vault.write(rootBoard, to: "Labs.canvas")
-
-    let outcome = try vault.operations.renameFolder(
-        at: "01 Progetti/vecchio", to: "nuovo",
-        knownPaths: ["01 Progetti/vecchio/Nota.md", "Attività.md"]
-    )
-
-    #expect(outcome.newPath == "01 Progetti/nuovo")
-    #expect(outcome.failures.isEmpty)
-    #expect(!isDirectory("01 Progetti/vecchio", in: vault.root))
-    #expect(exists("01 Progetti/nuovo/nuovo.canvas", in: vault.root))
-    #expect(exists("01 Progetti/nuovo/Nota.md", in: vault.root))
-
-    // The old board's nodes survived the move-and-rename, decoded and re-encoded.
-    let newBoardText = try vault.text(at: "01 Progetti/nuovo/nuovo.canvas")
-    #expect(newBoardText.contains("03 Risorse/Altro.pdf"))
-
-    #expect(try vault.text(at: "Attività.md").contains("^[[nuovo.canvas]]"))
-    #expect(try vault.text(at: "Labs.canvas").contains("01 Progetti/nuovo/Nota.md"))
-
-    #expect(outcome.movedNotes.contains {
-        $0.old == "01 Progetti/vecchio/Nota.md" && $0.new == "01 Progetti/nuovo/Nota.md"
-    })
-}
 
 @Test func renameFolderWithNoBoardFileSucceedsAndRewritesNoMarker() throws {
     let vault = try FolderOpsVault()
@@ -385,4 +287,119 @@ private let sampleBoard = """
     #expect(throws: FolderFileOperations.OperationError.self) {
         try vault.operations.trashFolder(at: "01 Progetti/mai-esistita")
     }
+}
+
+// MARK: - ADR-0025 Task 7: a folder rename stops touching boards (R-09)
+//
+// The name-level pass above (board rename, marker rewrite, the ADR-0022 §D4 ambiguity
+// guard) is deleted from `FolderFileOperations` in this task's GREEN and relocated to
+// `BoardFileOperations` (`Tests/BoardFileOperationsTests.swift`). A folder rename now
+// does exactly one thing to boards: the vault-wide `.canvas` node repoint by prefix
+// (already pinned above, unchanged).
+
+@Test func renamePlanRewritesNoMarkerAnywhereEvenWhenTheFolderHasAnUnambiguousBoard() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(sampleBoard, to: "01 Progetti/vecchio/vecchio.canvas")
+    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
+    try vault.write(header + "- [ ] Interna ^[[vecchio.canvas]]", to: "01 Progetti/vecchio/Interna.md")
+
+    let plan = try vault.operations.renamePlan(
+        "01 Progetti/vecchio", to: "nuovo",
+        knownPaths: ["Attività.md", "01 Progetti/vecchio/Interna.md"]
+    )
+
+    // A folder rename renames no `.canvas` file, so there is no stale file name for any
+    // marker or link to point at - the whole name-level rewrite pass is gone, not just
+    // its ambiguous case.
+    #expect(plan.noteChanges.isEmpty)
+}
+
+@Test func renamePlanProducesNoAmbiguityFailureEvenWhenTheBoardNameIsAmbiguous() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(sampleBoard, to: "A/x/x.canvas")
+    try vault.write(sampleBoard, to: "B/x/x.canvas")
+    try vault.write(header + "- [ ] Fare ^[[x.canvas]]", to: "Attività.md")
+
+    let plan = try vault.operations.renamePlan("A/x", to: "y", knownPaths: ["Attività.md"])
+
+    // The relocated guard (ADR-0022 §D4) belongs to board rename now, not folder
+    // rename - a folder rename never touches a board's file name, so there is nothing
+    // here for it to guard. No failure line about ambiguity is produced by a folder
+    // rename at all.
+    #expect(plan.failures.isEmpty)
+}
+
+@Test func renameFolderLeavesAnUnrelatedCanvasFileBesideItByteIdentical() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("01 Progetti/A")
+    try vault.write(sampleBoard, to: "01 Progetti/A.canvas")
+
+    let outcome = try vault.operations.renameFolder(
+        at: "01 Progetti/A", to: "B", knownPaths: []
+    )
+
+    #expect(outcome.newPath == "01 Progetti/B")
+    // "01 Progetti/A.canvas" is a *sibling* of the renamed folder, not a file inside
+    // it - a coincidence of naming, not a relationship this rename should notice.
+    #expect(exists("01 Progetti/A.canvas", in: vault.root))
+    #expect(try vault.text(at: "01 Progetti/A.canvas") == sampleBoard)
+}
+
+@Test func renameFolderMovesABoardInsideItWithoutRenamingItsFileName() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(sampleBoard, to: "01 Progetti/A/A.canvas")
+    try vault.write(header, to: "01 Progetti/A/Nota.md")
+
+    let outcome = try vault.operations.renameFolder(
+        at: "01 Progetti/A", to: "B", knownPaths: ["01 Progetti/A/Nota.md"]
+    )
+
+    #expect(outcome.newPath == "01 Progetti/B")
+    #expect(!isDirectory("01 Progetti/A", in: vault.root))
+    // The board moves with the directory and keeps its own file name - it does not
+    // become "B.canvas" just because the folder became "B" (ADR-0025 §D6, R-09).
+    #expect(exists("01 Progetti/B/A.canvas", in: vault.root))
+    #expect(!exists("01 Progetti/B/B.canvas", in: vault.root))
+    #expect(try vault.text(at: "01 Progetti/B/A.canvas") == sampleBoard)
+}
+
+@Test func renameFolderMovesTheDirectoryAndRepointsCanvasNodesButRenamesNoBoardAndRewritesNoMarker() throws {
+    let vault = try FolderOpsVault()
+    let ownBoard = """
+    {"nodes":[{"id":"a","type":"file","file":"03 Risorse/Altro.pdf","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(ownBoard, to: "01 Progetti/vecchio/vecchio.canvas")
+    try vault.write(header, to: "01 Progetti/vecchio/Nota.md")
+    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
+    let rootBoard = """
+    {"nodes":[{"id":"b","type":"file","file":"01 Progetti/vecchio/Nota.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(rootBoard, to: "Labs.canvas")
+
+    let outcome = try vault.operations.renameFolder(
+        at: "01 Progetti/vecchio", to: "nuovo",
+        knownPaths: ["01 Progetti/vecchio/Nota.md", "Attività.md"]
+    )
+
+    #expect(outcome.newPath == "01 Progetti/nuovo")
+    #expect(outcome.failures.isEmpty)
+    #expect(!isDirectory("01 Progetti/vecchio", in: vault.root))
+    #expect(exists("01 Progetti/nuovo/Nota.md", in: vault.root))
+
+    // The board moved with the directory and kept its own name - a folder rename
+    // renames no `.canvas` file any more (ADR-0025 §D6, R-09).
+    #expect(exists("01 Progetti/nuovo/vecchio.canvas", in: vault.root))
+    #expect(!exists("01 Progetti/nuovo/nuovo.canvas", in: vault.root))
+    #expect(try vault.text(at: "01 Progetti/nuovo/vecchio.canvas") == ownBoard)
+
+    // No marker rewrite: the board's file name did not change, so nothing points at a
+    // stale name that needs fixing.
+    #expect(try vault.text(at: "Attività.md").contains("^[[vecchio.canvas]]"))
+
+    // The vault-wide node repoint by prefix is unchanged (ADR-0022 §D2.1).
+    #expect(try vault.text(at: "Labs.canvas").contains("01 Progetti/nuovo/Nota.md"))
+
+    #expect(outcome.movedNotes.contains {
+        $0.old == "01 Progetti/vecchio/Nota.md" && $0.new == "01 Progetti/nuovo/Nota.md"
+    })
 }
