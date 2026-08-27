@@ -155,6 +155,42 @@
     }
   ],
   "errors": [],
-  "manifest_transitioned": false,
-  "gate5_touched": false
+  "manifest_transitioned": true,
+  "gate5_touched": true,
+  "gate_5_05_ui_layout_audit": {
+    "trigger": "UI files detected in cumulative diff (b429ee6..HEAD): BoardCardMenu.swift, BoardChrome.swift, BoardTray.swift, WorkspaceBrowser.swift, WorkspaceBrowserToolbar.swift, WorkspaceFolderSheets.swift, WorkspaceView.swift, Tests/CanvasCropTests.swift",
+    "ui_layout_audit_result": "0 findings (P1: 0, P2: 0, P3: 0) — diff is almost entirely selection/verb-dispatch logic (WorkspaceSelection routing, kind-aware sheets) with no new fixed-height/fixed-size Text, no new ScrollView/List nesting, no new sheet/popover overflow risk. The one fixed .frame(width: 460) in WorkspaceFolderSheets.swift's NewWorkspaceSheet/RenameWorkspaceSheet is a pre-existing sheet-container width (constrains width only, not height; Text wraps normally, no lineLimit constraint) reused unchanged by this chain's kind-aware rewrite.",
+    "accessibility_i18n_findings": [
+      {"item": "labels", "result": "pass", "note": "Every new interactive control (workspace-new-folder toolbar button, workspace-new-sheet/-name/-parent fields, board/folder rename+delete verbs) carries an accessibilityIdentifier and/or .help()-sourced label via the existing shared toolbar-button helper."},
+      {"item": "contrast", "result": "not-applicable", "note": "No new colors introduced; all styling goes through existing theme.color(...) design tokens per CLAUDE.md's binding no-hardcoded-colors rule."},
+      {"item": "dynamic-type-or-scaling", "result": "pass", "note": "All new Text uses .themedText(...) semantic styles; no .font(.system(size:)) fixed sizes introduced."},
+      {"item": "keyboard-or-assistive-tech-reachability", "result": "pass", "note": "New sheets use standard TextField/Picker/Button with .keyboardShortcut(.cancelAction/.defaultAction), matching existing sheet conventions; new toolbar button is a standard Button reachable like its siblings."},
+      {"item": "i18n-unicode-multibyte", "result": "not-applicable", "note": "No new text-encoding-sensitive code path; reuses existing NoteName.validate and path handling."},
+      {"item": "i18n-no-english-centric-examples", "result": "pass", "note": "All new UI strings (sheet titles, explanations, dialog text) are Italian, consistent with the app's established UI language."},
+      {"item": "i18n-no-locale-formatting-assumed", "result": "not-applicable", "note": "No date/number/currency formatting introduced in this diff."}
+    ],
+    "summary": "Gate 5.05: UI files detected — running ui-layout-audit... 0 issues found. accessibility/i18n — 4 pass, 3 not-applicable, 0 fail ✓"
+  },
+  "gate_5_06_specialized_review": {
+    "status": "pending_user_decision"
+  },
+  "interface_immutability_gate": {
+    "irc": 0,
+    "result": "interface-check: 2 protected entry(s) declared, 0 violation(s)",
+    "diff_scope": "git diff --no-renames b429ee6723ed7eb964fbd9c36d11795bcb5b4c06 (through HEAD at time of check)"
+  },
+  "review_triage_fix_cycle_1": {
+    "verdict": "SAFE",
+    "resolved": ["MAJOR: no UI test for 3 resolver navigation call sites", "NIT: BoardChrome.swift indentation"],
+    "deferred_open": [
+      "MINOR: WorkspaceController.swift type_body_length pre-existing debt (373->383 vs 350 error)",
+      "MINOR: WorkspaceBrowser.swift crossed swiftlint warning threshold for the first time",
+      "MINOR: BoardFileOperations.swift vault-wide note-rewrite has no unsaved-edit guard (pre-existing, out of chain scope)",
+      "MINOR: WorkspaceIntegrationUITests.swift crossed type_body_length/file_length, introduced by cycle-1 test additions",
+      "MINOR: WorkspaceOpenStateUITests.swift crossed type_body_length, introduced by cycle-1 test additions",
+      "NIT: Tests/WorkspaceBrowserToolbarTests.swift trailing_newline warning (pre-existing, surfaced by full-diff-scope re-review)"
+    ],
+    "user_decision": "Proceed to Step 7 commit/PR — accept the 6 open MINOR/NIT items as known deferred debt, no further review-triage-fix cycles.",
+    "fix_commits": ["0b0bb15", "1af96f8"]
+  }
 }
