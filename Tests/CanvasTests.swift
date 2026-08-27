@@ -488,16 +488,26 @@ private struct TemporaryRoot: ~Copyable {
 
 @MainActor
 @Test func navigatesTheBoardHierarchyWithABreadcrumb() throws {
+    // ADR-0025 §D3/§D4 (plan Task 3): a board is opened by its own path, not derived
+    // from its folder. The existing vault's own convention - a board named after the
+    // folder holding it - is kept here so the on-disk fixture matches R-13's "the
+    // existing vault behaves exactly as it did before".
     let root = try TemporaryRoot()
     try root.makeDirectory("01 Progetti/vibrofer-emea")
+    let store = CanvasStore(root: root.url)
+    let boardPath = try store.createBoard(named: "vibrofer-emea", in: "01 Progetti/vibrofer-emea")
     let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    controller.attach(to: store)
 
     #expect(controller.breadcrumb.map(\.title) == ["Workspace"])
 
-    controller.open(folder: "01 Progetti/vibrofer-emea")
-    #expect(controller.breadcrumb.map(\.title) == ["Workspace", "01 Progetti", "vibrofer-emea"])
-    #expect(controller.breadcrumb.map(\.folder) == ["", "01 Progetti", "01 Progetti/vibrofer-emea"])
+    controller.open(board: boardPath)
+    #expect(controller.breadcrumb.map(\.title) == ["Workspace", "01 Progetti", "vibrofer-emea", "vibrofer-emea"])
+    // Only the navigable (non-last) segments' `.folder` is pinned: `BoardTopBar` reads
+    // `.folder` solely to build the Button action for an ancestor segment
+    // (BoardChrome.swift), never for the last one, which is a Text (ADR-0024 §D8.2) -
+    // so the last segment's `.folder` value is left unspecified rather than guessed.
+    #expect(controller.breadcrumb.dropLast().map(\.folder) == ["", "01 Progetti", "01 Progetti/vibrofer-emea"])
     controller.detach()
 }
 
@@ -507,18 +517,18 @@ private struct TemporaryRoot: ~Copyable {
     try root.makeDirectory("A")
     try root.makeDirectory("B")
     let store = CanvasStore(root: root.url)
+    let boardA = try store.createBoard(named: "A", in: "A")
+    let boardB = try store.createBoard(named: "B", in: "B")
     let controller = WorkspaceController()
     controller.attach(to: store)
 
-    controller.open(folder: "A")
+    controller.open(board: boardA)
     _ = controller.addStickyNote("appunto", at: CGPoint(x: 10, y: 10))
     #expect(controller.hasUnsavedChanges)
 
     // Navigating away must not lose the edit while the debounce is still pending.
-    controller.open(folder: "B")
-    // The path `open(folder:)` still derives while ADR-0025 Task 3 is outstanding; from
-    // Task 3 the controller is handed a board path and this reads it back verbatim.
-    let saved = try store.load(board: "A/A.canvas")
+    controller.open(board: boardB)
+    let saved = try store.load(board: boardA)
     #expect(saved.nodes.count == 1)
     controller.detach()
 }
@@ -889,14 +899,16 @@ private struct TemporaryRoot: ~Copyable {
 @Test func navigatingAwayEndsAnOpenCropMode() throws {
     let root = try TemporaryRoot()
     try root.makeDirectory("Altra")
+    let store = CanvasStore(root: root.url)
+    let boardPath = try store.createBoard(named: "Altra", in: "Altra")
     let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    controller.attach(to: store)
     let id = controller.placeFile("foto.png", at: .zero)
 
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
     #expect(controller.croppingNodeID == id)
 
-    controller.open(folder: "Altra")
+    controller.open(board: boardPath)
     #expect(controller.croppingNodeID == nil)
     controller.detach()
 }

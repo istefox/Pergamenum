@@ -281,6 +281,17 @@ final class WorkspaceController {
         current = .board(folder: newFolder)
     }
 
+    /// PLACEHOLDER (ADR-0025 Task 3 RED, §D4). `open(folder:)` above is what this
+    /// re-signs at GREEN - stored `board`, derived `folder`, `load(board:)` through
+    /// `CanvasStore.load(board:)`, `current` set only on success and a problem recorded
+    /// otherwise (R-06). The empty body here exists only so
+    /// `Tests/WorkspaceOpenStateTests.swift` and `Tests/CanvasTests.swift` compile
+    /// against the interface they exercise; every test calling this is expected to fail
+    /// on its `#expect`, not on a build error. The coder replaces the body, not the
+    /// signature.
+    func open(board path: String) {
+    }
+
     /// Writes the tree's selection (ADR-0024 §D4), replacing the removed
     /// `closeBoard()`: `select(nil)` is what `closeBoard()` was, `select(.board(f))`
     /// is what a row click on a board does, `select(.folder(f))` is what a row click
