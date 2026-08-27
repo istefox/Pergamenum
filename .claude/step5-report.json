@@ -1,0 +1,160 @@
+{
+  "step5_mode": "workflow",
+  "chain": "workspace-folder-board-separation",
+  "adr": "docs/adr/0025-workspace-folder-board-separation.md",
+  "plan": "docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md",
+  "pre5_sha": "b429ee6723ed7eb964fbd9c36d11795bcb5b4c06",
+  "final_head_sha": "e179461",
+  "tasks_completed": [1, 2, 3, 4, 5, 6, 7, 8],
+  "tasks_failed": [],
+  "commits": [
+    "48c02f5 chore(step5): snapshot coder worktree (coder)",
+    "72f4147 chore(step5): snapshot tester worktree (tester)",
+    "793e1ec chore(step5): correct Task 2 WorkspaceTree ordering fixture to match localizedStandardCompare rule",
+    "630f64b chore(step5): snapshot coder worktree (coder)",
+    "f0f6115 chore(step5): update Task 3-adjacent tests to explicit board creation after attach",
+    "4283dcd chore(step5): snapshot tester worktree (tester)",
+    "813a947 chore(step5): snapshot coder worktree (coder)",
+    "3804cc6 chore(step5): snapshot tester worktree (tester)",
+    "42a36e9 chore(step5): snapshot coder worktree (coder)",
+    "4aeadca chore(step5): snapshot tester worktree (tester)",
+    "c1a8568 chore(step5): snapshot coder worktree (coder)",
+    "1723f5d chore(step5): remove stale pre-ADR-0025 parentOptions test superseded by Task 6 coverage",
+    "f8d5719 chore(step5): snapshot tester worktree (tester)",
+    "73d9445 chore(step5): snapshot tester worktree (tester)",
+    "4a64d07 chore(step5): snapshot coder worktree (coder)",
+    "e179461 test(workspace): align the UI suite and the SPEC with ADR-0025"
+  ],
+  "files_modified": [
+    "Sources/Features/Workspace/WorkspaceTree.swift",
+    "Sources/Features/Workspace/WorkspaceSelection.swift",
+    "Sources/Features/Workspace/WorkspaceController.swift",
+    "Sources/Features/Workspace/WorkspaceController+Viewport.swift",
+    "Sources/Core/Tasks/WorkspaceBoardResolver.swift",
+    "Sources/Features/Workspace/BoardChrome.swift",
+    "Sources/Features/Workspace/BoardCardMenu.swift",
+    "Sources/Features/Workspace/WorkspaceView.swift",
+    "Sources/Features/Workspace/WorkspaceBrowser.swift",
+    "Sources/Features/Workspace/WorkspaceBrowserToolbar.swift",
+    "Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift",
+    "Sources/Features/Workspace/WorkspaceFolderActions.swift",
+    "Sources/Features/Workspace/WorkspaceFolderSheets.swift",
+    "Sources/Vault/BoardFileOperations.swift",
+    "Sources/Vault/FolderFileOperations.swift",
+    "Sources/Vault/VaultController+Folders.swift",
+    "Sources/Vault/VaultSession+Folders.swift",
+    "Tests/WorkspaceTreeTests.swift",
+    "Tests/CanvasCropTests.swift",
+    "Tests/CanvasDuplicateTests.swift",
+    "Tests/CanvasTests.swift",
+    "Tests/WorkspaceBrowserToolbarTests.swift",
+    "Tests/WorkspaceCreationTests.swift",
+    "Tests/BoardFileOperationsTests.swift",
+    "Tests/FolderFileOperationTests.swift",
+    "Tests/WorkspaceFolderNavigationTests.swift",
+    "UITests/WorkspaceOpenStateUITests.swift",
+    "UITests/WorkspaceBoardUITests.swift",
+    "UITests/WorkspaceIntegrationUITests.swift",
+    "docs/20260811_Pergamenum_SpecApp.md"
+  ],
+  "worktree_merges": [
+    {"stage": "task1", "agent_type": "tester+coder", "branch": "(carried over from prior session, already merged pre-segment)", "base_sha": "n/a", "merge_result": "clean"},
+    {"stage": "task2_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "pre-task2", "merge_result": "clean"},
+    {"stage": "task2_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task2-tester", "merge_result": "clean", "note": "commit 793e1ec fixed a fixture transcription slip after Halt #1 approval"},
+    {"stage": "task3_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task2", "merge_result": "clean"},
+    {"stage": "task3_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task3-tester", "merge_result": "clean"},
+    {"stage": "task3_fixup", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task3-coder", "merge_result": "clean", "note": "commit f0f6115 fixed 5 tests after Halt #2 approval"},
+    {"stage": "task4_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task3", "merge_result": "clean"},
+    {"stage": "task4_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task4-tester", "merge_result": "clean"},
+    {"stage": "task5_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task4", "merge_result": "clean"},
+    {"stage": "task5_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task5-tester", "merge_result": "clean"},
+    {"stage": "task5_fixup", "agent_type": "manual", "branch": "n/a (direct Edit)", "base_sha": "post-task5-coder", "merge_result": "clean", "note": "commit 1723f5d deleted stale pre-ADR-0025 test after Halt #3 approval"},
+    {"stage": "task6_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task5", "merge_result": "clean"},
+    {"stage": "task6_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task6-tester", "merge_result": "clean"},
+    {"stage": "task7_supplemental_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task6", "merge_result": "clean", "note": "closed boardAfterRename/boardAfterDelete coverage gap proactively before main Task 7 coder ran"},
+    {"stage": "task7_tester", "agent_type": "tester", "branch": "worktree-agent-*", "base_sha": "post-task7-supplemental", "merge_result": "clean"},
+    {"stage": "task7_coder", "agent_type": "coder", "branch": "worktree-agent-*", "base_sha": "post-task7-tester", "merge_result": "clean, commit 4a64d07"},
+    {"stage": "task8_docs_uitests", "agent_type": "fork/workflow", "branch": "worktree-wf_42745d41-3c1-1", "base_sha": "4a64d0704348c2621760347550c7e1ac0c4a9e19", "merge_result": "clean fast-forward, commit e179461"}
+  ],
+  "test_result": {
+    "bundle": ".claude/test-cmd",
+    "executed": 1689,
+    "failures": 0,
+    "suites": 18,
+    "duration_seconds": 6.02,
+    "connector_builds": {
+      "perg": "BUILD SUCCEEDED",
+      "pergamenum-mcp": "BUILD SUCCEEDED"
+    }
+  },
+  "weakening_findings": [
+    {
+      "file": "Tests/FolderFileOperationTests.swift",
+      "finding": "assert-removed (22>21)",
+      "verified": true,
+      "verdict": "legitimate",
+      "reason": "Task 7 tester removed 6 tests asserting the old folder-rename-moves-the-board contract (ADR-0022 D4 behavior ADR-0025 deliberately deletes) and added 5 new tests asserting the opposite (folder rename touches no board). Net removal matches the ADR's explicit contract change; replacement coverage confirmed in the same file and in Tests/BoardFileOperationsTests.swift (new, 9 tests, the relocated ambiguity guard included)."
+    },
+    {
+      "file": "Tests/WorkspaceBrowserToolbarTests.swift",
+      "finding": "assert-removed (19>14)",
+      "verified": true,
+      "verdict": "legitimate",
+      "reason": "Task 5 tester removed 6 tests targeting removed root-row-synthesis/old-signature behavior (replacement coverage in Tests/WorkspaceTreeTests.swift), plus a 7th stale pre-ADR-0025 test (parentOptionsMapsBoardsToRootFirstDeduplicatedAncestorsIncluded, commit 1723f5d) that asserted the contract this chain replaces, deleted after Halt #3 approval."
+    }
+  ],
+  "suspect_findings": [],
+  "requirement_coverage": {
+    "gate": "spec-coverage.sh --spec SPEC.md --plan docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md --tests-root .",
+    "exit_code": 0,
+    "findings": [
+      {
+        "type": "STALE-WAIVER",
+        "id": "R-13",
+        "status": "waived_as_false_positive",
+        "detail": "spec-coverage.sh flags SPEC.md:156's (no-test: ...) waiver on this chain's own R-13 (manual real-vault verification) as stale because the literal text 'R-13' appears in test files the plan scopes in (e.g. UITests/WorkspaceOpenStateUITests.swift:111, a doc comment dated 2026-08-26, predating this Step 5 segment). That comment references an UNRELATED R-13 from a different plan's own requirement numbering (each plan restarts its own R-01.. sequence) - it is not automated coverage of THIS chain's R-13, which remains genuinely human-only (real iCloud vault, cannot run unattended). Did not apply the tool's suggested remedy (deleting the no-test clause) because doing so would falsely claim R-13 is now test-covered when it is not.",
+        "waiver_decision": {
+          "decided_by": "user (via coordinator)",
+          "decision": "Waive as false positive. SPEC.md's (no-test: ...) clause for R-13 stays untouched.",
+          "rationale": "Checker does a plan-wide substring match on the ID text across every test file the plan scopes in, with no awareness that requirement IDs restart at R-01 per plan. The 'R-13' hit is an ID collision with an unrelated plan's own numbering, not a real coverage gap."
+        }
+      },
+      {
+        "type": "STALE-WAIVER",
+        "id": "R-16",
+        "status": "waived_as_false_positive",
+        "detail": "Same mechanism: SPEC.md:159's (no-test: ...) waiver on this chain's R-16 (scripts/uitests.sh must pass, human-run only per CLAUDE.md) is flagged stale because 'R-16' appears in UITests/WorkspaceIntegrationUITests.swift:3, a doc-comment header dated 2026-08-24 from a DIFFERENT chain's plan (docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md, Task 10), which has its own, unrelated R-16. This chain's own R-16 (the human-run scripts/uitests.sh gate) has not been run by me, deliberately, and the waiver should NOT be deleted.",
+        "waiver_decision": {
+          "decided_by": "user (via coordinator)",
+          "decision": "Waive as false positive. SPEC.md's (no-test: ...) clause for R-16 stays untouched.",
+          "rationale": "Same ID-collision mechanism as R-13: the matched comment belongs to a different plan's own R-01.. sequence, not to this chain's R-16."
+        }
+      }
+    ]
+  },
+  "budget_findings": {
+    "gate": "diff-budget-check.sh --plan <plan> --tasks 1-8",
+    "result": "CLEAN"
+  },
+  "tests_written_by": "tester (per-task, ADR-0049 generator/verifier separation); coder denied test-file writes throughout",
+  "manual_verification_outstanding": [
+    {
+      "id": "R-13",
+      "description": "Copy the real vault (~/Library/Mobile Documents/com~apple~CloudDocs/Vaults/Pergamena) to a disposable /tmp copy, launch a Debug build against it (-recentVaults plist array form), confirm every board/folder/prova/prova.canvas distinction and no on-disk conversion.",
+      "reason_not_automatable": "Depends on real iCloud-synced user data; cannot be part of the automated suite."
+    },
+    {
+      "id": "R-05",
+      "description": "Hand-confirm the double-click-on-folder-row gesture behavior (toggles expand, never opens a board even when the folder holds exactly one), with the documented ADR-0025 §D9 fallback if it starves List(selection:).",
+      "reason_not_automatable": "Gesture/UX behavior requiring a human at the keyboard."
+    },
+    {
+      "id": "R-16",
+      "description": "Run scripts/uitests.sh with no arguments, once, deliberately, before merge to main.",
+      "reason_not_automatable": "CLAUDE.md binding rule: the UI suite must be run deliberately by a human, never triggered unattended by the agent (Stop-hook incident, PG-033)."
+    }
+  ],
+  "errors": [],
+  "manifest_transitioned": false,
+  "gate5_touched": false
+}
