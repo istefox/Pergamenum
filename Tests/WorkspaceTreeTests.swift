@@ -59,7 +59,7 @@ private let fixtureBoards = [
 
     // No synthesized root: the top level is the vault root's own contents, folders
     // first then leaves - `NoteTree`'s own order (R-11).
-    #expect(tree.map(\.id) == ["01 Progetti", "Vuota", "prova", "Pergamena.canvas"])
+    #expect(tree.map(\.id) == ["01 Progetti", "prova", "Vuota", "Pergamena.canvas"])
 
     // No node with id == "" anywhere in the tree - not only at the top level.
     func walk(_ nodes: [WorkspaceTree.Node]) -> Bool {
