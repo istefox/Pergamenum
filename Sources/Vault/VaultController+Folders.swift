@@ -1,6 +1,7 @@
 import Foundation
 
-/// Renaming and deleting a folder from the sidebar - the facade half (ADR-0022 §D1, §D10).
+/// Renaming and deleting a folder or a board from the sidebar - the facade half
+/// (ADR-0022 §D1, §D10, ADR-0025 §D6).
 ///
 /// The file work is on `VaultSession` (ADR-0007 §D3), the same split
 /// `VaultController+Files` makes for a note. Three things stay here, and all three are
@@ -23,8 +24,8 @@ extension VaultController {
         return false
     }
 
-    /// Renames a folder, its board file and every reference that named either
-    /// (R-05, R-06, R-07).
+    /// Renames a folder and repoints every card that pointed inside it (R-05, R-06,
+    /// R-07). It renames no board file: that is `renameBoard` below (ADR-0025 §D6).
     @discardableResult
     func renameFolder(at relativePath: String, to newName: String) -> Bool {
         guard let session, canOperateOnFolder(relativePath) else { return false }
@@ -65,24 +66,45 @@ extension VaultController {
         }
     }
 
-    /// Renames a board file (ADR-0025 §D6, R-08).
+    /// Renames a board file and repoints every reference that named it (ADR-0025 §D6,
+    /// R-08).
     ///
-    /// TODO(ADR-0025 Task 7): placeholder only - `BoardFileOperations` does not exist
-    /// yet and there is no session half to call through. Declared now so the target
-    /// builds while `Tests/BoardFileOperationsTests.swift` is red on its assertions
-    /// rather than on a missing symbol; the coder fills in the real body beside
-    /// `renameFolder` above, mirroring its `canOperate`/`recordProblem`/`rescan` shape.
+    /// `renameFolder`'s shape above, minus the two follow-ups that belong to notes: no
+    /// `canOperateOnFolder` check, because a `.canvas` is not a file the editor can hold
+    /// unsaved edits to, and no `movedNote` pass, because renaming a board moves no note.
+    /// What is left is the same one: report what could not be repointed, then rescan so
+    /// the browser tree rebuilds around the new name.
     @discardableResult
     func renameBoard(at relativePath: String, to newName: String) -> Bool {
-        recordProblem("rinomina board: non ancora implementato (ADR-0025 Task 7)")
-        return false
+        guard let session else { return false }
+        do {
+            let outcome = try session.renameBoard(at: relativePath, to: newName)
+            for failure in outcome.failures {
+                recordProblem("riferimento non aggiornato: \(failure)")
+            }
+            Task { await rescan() }
+            return true
+        } catch {
+            recordProblem("rinomina board: \(error)")
+            return false
+        }
     }
 
-    /// Moves a board file to the Finder's trash (ADR-0025 §D6, R-08). TODO(ADR-0025
-    /// Task 7), see `renameBoard` above.
+    /// Moves a board file to the Finder's trash (ADR-0025 §D6, R-08).
+    ///
+    /// The caller confirms first - `WorkspaceBrowser`'s dialog says the file goes to the
+    /// Trash and that the app cannot undo it. This method does the deleting, it does not
+    /// ask.
     @discardableResult
     func trashBoard(at relativePath: String) -> Bool {
-        recordProblem("eliminazione board: non ancora implementato (ADR-0025 Task 7)")
-        return false
+        guard let session else { return false }
+        do {
+            try session.trashBoard(at: relativePath)
+            Task { await rescan() }
+            return true
+        } catch {
+            recordProblem("eliminazione board: \(error)")
+            return false
+        }
     }
 }

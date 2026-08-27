@@ -12,12 +12,6 @@ import Foundation
 /// one reversible unit (ADR-0016 §D1), and this file is deliberately absent from
 /// `sharedSources` in `Project.swift` so no connector can reach a write that neither
 /// `--dry-run` nor `undo` can answer for (ADR-0025 §D6/A10, ADR-0022 §D6).
-///
-/// TODO(ADR-0025 Task 7, RED phase): every body below is a placeholder that throws
-/// `.notImplementedYet`. `Tests/BoardFileOperationsTests.swift` is red on its
-/// assertions rather than on a missing symbol - the coder's GREEN pass fills these in,
-/// reusing the vault-wide repoint loop `FolderFileOperations.swift` already runs
-/// rather than writing a third one.
 struct BoardFileOperations {
     let store: NoteStore
 
@@ -27,13 +21,18 @@ struct BoardFileOperations {
     /// rules that would be a second spelling of an enumeration that already has one.
     private var canvas: CanvasStore { CanvasStore(root: store.root) }
 
+    /// Built here for the same reason `canvas` above is, and reached for exactly one
+    /// thing: `repointBoardsPlan(from:to:)`, the vault-wide `.canvas` node pass. It reads
+    /// two paths and repoints every node naming the first, which is the same question
+    /// whether the thing that moved was a directory or a file - so a board rename runs
+    /// that loop rather than keeping a third copy of it (ADR-0025 §D6).
+    private var folderOperations: FolderFileOperations { FolderFileOperations(store: store) }
+
     enum OperationError: Error, CustomStringConvertible {
         case invalidTitle([NoteName.Violation])
         case alreadyExists(String)
         case missing(String)
         case failed(String)
-        /// Removed once every body below has a real implementation (ADR-0025 Task 7).
-        case notImplementedYet
 
         var description: String {
             switch self {
@@ -41,7 +40,6 @@ struct BoardFileOperations {
             case .alreadyExists(let path): "esiste già: \(path)"
             case .missing(let path): "non esiste: \(path)"
             case .failed(let reason): reason
-            case .notImplementedYet: "BoardFileOperations: non ancora implementato (ADR-0025 Task 7)"
             }
         }
     }
@@ -63,12 +61,77 @@ struct BoardFileOperations {
     ///
     /// A rename is always a new file name under the *same* folder, never a move: the
     /// destination is `<folder>/<newName>.canvas`.
+    ///
+    /// Two reference classes change and no third one does. The board's file name is
+    /// rewritten in every note that named it - the `^[[old.canvas]]` marker and the plain
+    /// `[[old.canvas]]` link are the same rewrite (ADR-0021 §D3, ADR-0022 §D3) - unless
+    /// the name is ambiguous, and `.canvas` node paths pointing at this exact file are
+    /// repointed vault-wide. **No ordinary `[[Nota]]` wikilink is touched**: a wikilink
+    /// names a note by title and a board rename changes no title.
     func renamePlan(
         _ relativePath: String,
         to newName: String,
         knownPaths: [String]
     ) throws -> BoardRenamePlan {
-        throw OperationError.notImplementedYet
+        // `NoteName.validate` rather than a rule of this file's own: it is what
+        // `FolderFileOperations.validate` delegates to and therefore what the sheet
+        // renders through `ConformanceText.lines`, so a board name that is refused here
+        // is refused with wording the user has already seen (ADR-0022 §D11).
+        let violations = NoteName.validate(newName)
+        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+
+        let oldPath = Self.normalized(relativePath)
+        let oldName = (oldPath as NSString).lastPathComponent
+        let folder = (oldPath as NSString).deletingLastPathComponent
+        let newFileName = "\(newName).\(CanvasStore.fileExtension)"
+        let newPath = folder.isEmpty ? newFileName : "\(folder)/\(newFileName)"
+
+        guard isFile(oldPath) else { throw OperationError.missing(relativePath) }
+        guard newPath == oldPath || !exists(newPath) else {
+            throw OperationError.alreadyExists(newPath)
+        }
+
+        var plan = BoardRenamePlan(newPath: newPath)
+        guard newPath != oldPath else { return plan }
+
+        // The relocated ADR-0022 §D4 guard (ADR-0025 §D6). `WorkspaceBoardResolver` and
+        // `IndexSnapshot.tasks(assignedToWorkspace:)` match a board by file name alone,
+        // so two boards sharing one - which this chain makes legal, not impossible - make
+        // every marker for either of them ambiguous. Rewriting them would repoint
+        // references this rename never touched, so the name-level pass is dropped whole
+        // and reported.
+        let sharing = canvas.allBoards().filter {
+            ($0 as NSString).lastPathComponent.lowercased() == oldName.lowercased()
+        }
+        if sharing.count > 1 {
+            plan.failures.append(
+                "«\(oldName)» nomina \(sharing.count) board: marker e link lasciati invariati"
+            )
+        } else {
+            for path in knownPaths {
+                guard let (_, text) = try? store.read(path) else {
+                    plan.failures.append("\(path): non leggibile")
+                    continue
+                }
+                guard let updated = NoteRename.rewritingLinks(
+                    in: text, from: oldName, to: newFileName
+                ) else { continue }
+                // No path substitution: renaming a board moves one file and no note
+                // with it, so every note is still where it was read from.
+                plan.noteChanges.append(NoteFileOperations.FileChange(
+                    path: path, before: text, after: updated
+                ))
+            }
+        }
+
+        // The one vault-wide node repoint, run rather than copied (ADR-0025 §D6): a card
+        // pointing at this board names its full path, which is unambiguous however many
+        // files share the last component - so it is repointed even when the guard above
+        // fired.
+        let boards = folderOperations.repointBoardsPlan(from: oldPath, to: newPath)
+        plan.boardChanges = boards.changes
+        plan.failures.append(contentsOf: boards.failures)
+        return plan
     }
 
     /// What a board rename actually did: its destination, every path it rewrote, and
@@ -82,12 +145,52 @@ struct BoardFileOperations {
     /// Renames `<folder>/<old>.canvas` to `<folder>/<new>.canvas` - same folder, never
     /// a move - refusing a name collision before writing anything, then rewriting the
     /// marker and repointing board nodes (ADR-0025 §D6).
+    ///
+    /// The plan is computed first and the file moved second, and both happen before a
+    /// single rewrite: the move is one operation that either happens or does not, while
+    /// the rewrites are many and each can fail on its own. A collision or a missing file
+    /// throws out of `renamePlan` with nothing written at all, which is what makes
+    /// "refuses before writing" a property of the code rather than of the order somebody
+    /// happened to call things in (`FolderFileOperations.renameFolder`'s own argument).
     func renameBoard(
         at relativePath: String,
         to newName: String,
         knownPaths: [String]
     ) throws -> RenameOutcome {
-        throw OperationError.notImplementedYet
+        let plan = try renamePlan(relativePath, to: newName, knownPaths: knownPaths)
+        let oldPath = Self.normalized(relativePath)
+
+        if plan.newPath != oldPath {
+            do {
+                try FileManager.default.moveItem(
+                    at: store.url(for: oldPath), to: store.url(for: plan.newPath)
+                )
+            } catch {
+                throw OperationError.failed("rinomina board: \(error.localizedDescription)")
+            }
+        }
+
+        var outcome = RenameOutcome(newPath: plan.newPath, failures: plan.failures)
+        for change in plan.noteChanges {
+            do {
+                try store.write(change.after, to: change.path)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a
+        // note and the planned text is already the encoded document
+        // (`FolderFileOperations.renameFolder` writes its own the same way).
+        for change in plan.boardChanges {
+            do {
+                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        return outcome
     }
 
     /// Moves the `.canvas` at `relativePath` to the Finder's Trash and returns the
@@ -97,6 +200,41 @@ struct BoardFileOperations {
     /// (`WorkspaceBoardResolution.notFound`, ADR-0025 F9), the same story a note
     /// delete already tells for a dangling wikilink.
     func trashBoard(at relativePath: String) throws -> URL? {
-        throw OperationError.notImplementedYet
+        let board = Self.normalized(relativePath)
+        guard isFile(board) else { throw OperationError.missing(relativePath) }
+
+        var resulting: NSURL?
+        do {
+            try FileManager.default.trashItem(
+                at: store.url(for: board), resultingItemURL: &resulting
+            )
+        } catch {
+            throw OperationError.failed("eliminazione board: \(error.localizedDescription)")
+        }
+        return resulting as URL?
+    }
+
+    // MARK: - Paths
+
+    /// A vault-relative path with the leading and trailing slashes a caller may have
+    /// carried in, removed - `FolderFileOperations.normalized`'s trim, applied to a file
+    /// path so `/A/x.canvas` and `A/x.canvas` name the same board here too.
+    private static func normalized(_ relativePath: String) -> String {
+        relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private func exists(_ relativePath: String) -> Bool {
+        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+    }
+
+    /// There, and not a directory: a folder may share a name with a `.canvas` beside it
+    /// (`CanvasStore.createBoard`), so "the file exists" is not the same question as
+    /// "something with this path exists".
+    private func isFile(_ relativePath: String) -> Bool {
+        var flag: ObjCBool = false
+        let found = FileManager.default.fileExists(
+            atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag
+        )
+        return found && !flag.boolValue
     }
 }

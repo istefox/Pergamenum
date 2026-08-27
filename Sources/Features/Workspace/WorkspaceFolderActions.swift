@@ -39,14 +39,13 @@ struct WorkspaceFolderActions {
     /// rename repoints nodes and rewrites markers where a folder rename does neither, and
     /// the row that raises them already knows which kind it is.
     ///
-    /// TODO(ADR-0025 Task 7): no-ops until Task 7 writes `BoardFileOperations` and the
-    /// session/facade halves beside it. Declared here now so the sidebar's board rows can
-    /// offer «Rinomina»/«Elimina» through the one catalogue both surfaces read
-    /// (ADR-0023 §D1) rather than growing a second one later.
-    let renameBoard: (_ board: String) -> Void
+    /// `(board, newName)` is `rename`'s own shape: the sheet asks for the name and the
+    /// browser hands both across, so the extension is added in exactly one place
+    /// (`BoardFileOperations.renamePlan`) and `newName` never carries one.
+    let renameBoard: (_ board: String, _ newName: String) -> Void
 
-    /// Moves the `.canvas` at `board` to the Trash, unconfirmed - `delete`'s contract for
-    /// a file rather than a directory. TODO(ADR-0025 Task 7), see `renameBoard`.
+    /// Moves the `.canvas` at `board` to the Trash. The caller has already confirmed:
+    /// this does not ask - `delete`'s contract, for a file rather than a directory.
     let deleteBoard: (_ board: String) -> Void
 
     /// Records a non-modal problem the browser found on its own, the same visible channel
@@ -90,12 +89,10 @@ struct WorkspaceFolderActions {
     /// `open(board: newPath)`").
     ///
     /// Unlike `folderAfterRename`, there is no prefix case: a board is a file, not a
-    /// directory, so nothing can sit "inside" it.
-    ///
-    /// TODO(ADR-0025 Task 7): placeholder returning the open board unchanged. Real body is
-    /// this task's GREEN step; `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+    /// directory, so nothing can sit "inside" it. One comparison, and the equality is the
+    /// whole rule.
     static func boardAfterRename(open: String, renamed: String, to: String) -> WorkspaceSelection {
-        .board(path: open)
+        .board(path: open == renamed ? to : open)
     }
 
     /// Where the open selection should land once `deleted` has been trashed: unchanged when
@@ -103,9 +100,11 @@ struct WorkspaceFolderActions {
     /// ADR-0025 §D6 - "after a board delete, if the open board was the deleted one,
     /// `select(.folder(containing))`").
     ///
-    /// TODO(ADR-0025 Task 7): placeholder returning the open board unchanged. Real body is
-    /// this task's GREEN step; `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+    /// The containing folder of a board at the vault root is `""`, which is the root
+    /// itself - the one folder this feature cannot delete, so the landing always exists
+    /// (`folderAfterDelete`'s own argument, for a file).
     static func boardAfterDelete(open: String, deleted: String) -> WorkspaceSelection {
-        .board(path: open)
+        guard open == deleted else { return .board(path: open) }
+        return .folder((deleted as NSString).deletingLastPathComponent)
     }
 }

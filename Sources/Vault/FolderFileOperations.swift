@@ -14,9 +14,9 @@ struct FolderFileOperations {
     /// Built here rather than injected: `CanvasStore` is a value over the same root, and
     /// what this file needs from it - `allBoards()`, "every board in the vault" (F4) -
     /// is a walk with exclusion rules that would be a second spelling of an enumeration
-    /// that already has one. It no longer asks which file backs a folder: ADR-0025 §D1
-    /// deleted that rule, and the last caller of it here goes with the name-level pass
-    /// Task 7 removes.
+    /// that already has one. It is asked for the node repoint and for nothing else: a
+    /// folder rename renames no `.canvas` and rewrites no marker any more (ADR-0025 §D6),
+    /// so nothing here derives a board from the name of the folder holding it.
     private var canvas: CanvasStore { CanvasStore(root: store.root) }
 
     enum OperationError: Error, CustomStringConvertible {
@@ -111,28 +111,30 @@ struct FolderFileOperations {
 
     // MARK: - Task 2: the rename plan, computed off disk (R-06, R-07)
 
-    /// What a folder rename would change: its destination, its own board's rename (at
-    /// the *post-move* paths the performer will use, ADR-0022 §D5), the notes whose
-    /// task marker or board-filename link would be rewritten, and the boards
-    /// vault-wide whose cards would be repointed.
+    /// What a folder rename would change: its destination and the boards vault-wide
+    /// whose cards would be repointed (ADR-0022 §D2.1).
+    ///
+    /// `noteChanges` stays and is always empty. It is the field the tests read to state
+    /// what this operation does *not* do: a folder rename rewrites no note text at all
+    /// since ADR-0025 §D6, and a guarantee spelled as an empty list the performer still
+    /// writes through is one a future planner can break loudly rather than silently.
     struct FolderRenamePlan {
         var newPath: String
-        var boardRename: (from: String, to: String)?
         var noteChanges: [NoteFileOperations.FileChange] = []
         var boardChanges: [NoteFileOperations.FileChange] = []
         var failures: [String] = []
     }
 
     /// What `renameFolder` would do, read from where the folder still is - nothing has
-    /// moved yet when this runs (ADR-0022 §D2-§D5).
+    /// moved yet when this runs (ADR-0022 §D2.1, ADR-0025 §D6).
     ///
-    /// Two reference classes change and no third one does. `.canvas` node paths are
-    /// repointed by prefix, vault-wide, always. The folder's own board file name is
-    /// rewritten in every note that named it - the `^[[old.canvas]]` marker and the
-    /// plain `[[old.canvas]]` link are the same rewrite (ADR-0022 §D3) - unless the
-    /// name is ambiguous (§D4). **No ordinary `[[Nota]]` wikilink is touched**: a
-    /// wikilink names a note by title and a folder rename changes no title (§F3), so
-    /// there is nothing there to rewrite.
+    /// **One** reference class changes: `.canvas` node paths, repointed by prefix,
+    /// vault-wide. Nothing else. No `.canvas` file is renamed, because no board is named
+    /// after its folder any more (ADR-0025 §D1), so no note holds a stale board file name
+    /// for this operation to rewrite and ADR-0022 §D4's ambiguity guard has nothing to
+    /// guard - it belongs to `BoardFileOperations.renamePlan` now (R-09). **No ordinary
+    /// `[[Nota]]` wikilink is touched** either: a wikilink names a note by title and a
+    /// folder rename changes no title (ADR-0022 §F3).
     func renamePlan(
         _ relativePath: String,
         to newName: String,
@@ -156,67 +158,10 @@ struct FolderFileOperations {
 
         var plan = FolderRenamePlan(newPath: newFolder)
 
-        // The board file: named after its folder (F1), so exactly one of them changes
-        // name, and only if it is there at all. A folder with no board has no marker
-        // pointing at it either - `WorkspacePicker` lists real files (§D5).
-        let oldBoardPath = Self.temporaryBoardPath(forFolder: oldFolder)
-        let oldBoardName = (oldBoardPath as NSString).lastPathComponent
-        let newBoardName = (Self.temporaryBoardPath(forFolder: newFolder) as NSString).lastPathComponent
-        let hasBoard = exists(oldBoardPath)
-        if hasBoard {
-            plan.boardRename = (from: "\(newFolder)/\(oldBoardName)", to: "\(newFolder)/\(newBoardName)")
-        }
-
-        if hasBoard, oldBoardName != newBoardName {
-            // `tasks(assignedToWorkspace:)` matches a board by file name alone (F5), so
-            // two folders sharing a name make every marker for either of them
-            // ambiguous. Rewriting them would break references this rename never
-            // touched, so the name-level pass is dropped whole and reported (§D4).
-            let sharing = canvas.allBoards().filter {
-                ($0 as NSString).lastPathComponent.lowercased() == oldBoardName.lowercased()
-            }
-            if sharing.count > 1 {
-                plan.failures.append(
-                    "«\(oldBoardName)» nomina \(sharing.count) board: marker e link lasciati invariati"
-                )
-            } else {
-                for path in knownPaths {
-                    guard let (_, text) = try? store.read(path) else {
-                        plan.failures.append("\(path): non leggibile")
-                        continue
-                    }
-                    guard let updated = NoteRename.rewritingLinks(
-                        in: text, from: oldBoardName, to: newBoardName
-                    ) else { continue }
-                    // The performer moves the directory before it writes anything, so a
-                    // note inside the renamed folder is already at its new path by then.
-                    plan.noteChanges.append(NoteFileOperations.FileChange(
-                        path: Self.repointing(path, from: oldFolder, to: newFolder),
-                        before: text,
-                        after: updated
-                    ))
-                }
-            }
-        }
-
-        let boards = repointBoardsPlan(from: oldFolder, to: newFolder, boardRename: plan.boardRename)
+        let boards = repointBoardsPlan(from: oldFolder, to: newFolder)
         plan.boardChanges = boards.changes
         plan.failures.append(contentsOf: boards.failures)
         return plan
-    }
-
-    /// TODO(ADR-0025 Task 7): temporary, and used only by the name-level pass in
-    /// `renamePlan` above. The rule `CanvasStore.boardPath(forFolder:)` carried until
-    /// ADR-0025 §D1 deleted it. It lives here rather than on the store because a folder
-    /// rename must stop renaming any `.canvas` at all (§D6, R-09), and Task 7 removes
-    /// that whole pass - this derivation with it. The vault root is refused earlier in
-    /// `renamePlan`, so the empty-folder case is unreachable here; it is spelled out
-    /// anyway rather than left to a force-unwrap.
-    private static func temporaryBoardPath(forFolder folder: String) -> String {
-        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
-        guard !name.isEmpty else { return "" }
-        return "\(trimmed)/\(name).\(CanvasStore.fileExtension)"
     }
 
     /// What repointing every board's cards would change, read rather than written.
@@ -226,12 +171,17 @@ struct FolderFileOperations {
     /// rename. Each document is decoded and re-encoded through `CanvasDocument` rather
     /// than patched as text, so a board written by Obsidian keeps the keys this app
     /// does not know about (`NoteFileOperations.repointBoards` makes the same choice).
-    private func repointBoardsPlan(
-        from oldFolder: String,
-        to newFolder: String,
-        boardRename: (from: String, to: String)?
+    ///
+    /// Not private, and `oldPath`/`newPath` rather than `oldFolder`/`newFolder`, because
+    /// `BoardFileOperations.renamePlan` runs this same pass for a **file** path
+    /// (ADR-0025 §D6): a node's `file` matches on the exact-path arm and no node can
+    /// carry the `<old>/` prefix of a `.canvas`, so the rule is one rule and there is no
+    /// third copy of this loop in the repository.
+    func repointBoardsPlan(
+        from oldPath: String,
+        to newPath: String
     ) -> (changes: [NoteFileOperations.FileChange], failures: [String]) {
-        guard oldFolder != newFolder else { return ([], []) }
+        guard oldPath != newPath else { return ([], []) }
         var changes: [NoteFileOperations.FileChange] = []
         var failures: [String] = []
 
@@ -244,19 +194,19 @@ struct FolderFileOperations {
             var changed = false
             for index in document.nodes.indices {
                 guard case .file(let path, let subpath) = document.nodes[index].kind,
-                      path == oldFolder || path.hasPrefix("\(oldFolder)/")
+                      path == oldPath || path.hasPrefix("\(oldPath)/")
                 else { continue }
                 document.nodes[index].kind = .file(
-                    path: Self.repointing(path, from: oldFolder, to: newFolder), subpath: subpath
+                    path: Self.repointing(path, from: oldPath, to: newPath), subpath: subpath
                 )
                 changed = true
             }
             guard changed else { continue }
 
-            // Where the performer will find this board once the directory has moved and
-            // the folder's own board has been renamed inside it.
-            var writePath = Self.repointing(boardPath, from: oldFolder, to: newFolder)
-            if let boardRename, writePath == boardRename.from { writePath = boardRename.to }
+            // Where the performer will find this board once what moved has moved: the
+            // renamed directory carried it along, or - for a board rename - it *is* the
+            // file that moved, which the same substitution answers for.
+            let writePath = Self.repointing(boardPath, from: oldPath, to: newPath)
 
             guard let before = String(bytes: data, encoding: .utf8) else {
                 failures.append("\(boardPath): non leggibile come testo")
@@ -289,19 +239,18 @@ struct FolderFileOperations {
         var failures: [String] = []
     }
 
-    /// Moves the directory, renames its board file if it has one, and writes every
-    /// planned change - in that order, and the order is the point.
+    /// Moves the directory and writes every planned change - in that order, and the
+    /// order is the point.
     ///
-    /// The move is one operation that either happens or does not; the board rename and
-    /// the text rewrites are many, each of which can fail on its own. Doing them the
-    /// other way round would leave the vault pointing at a folder that does not exist
-    /// yet if the move then failed - the argument `NoteFileOperations.rename` already
-    /// makes for a note.
+    /// The move is one operation that either happens or does not; the repoints are many,
+    /// each of which can fail on its own. Doing them the other way round would leave the
+    /// vault pointing at a folder that does not exist yet if the move then failed - the
+    /// argument `NoteFileOperations.rename` already makes for a note.
     ///
-    /// The board file is renamed *with* the folder rather than after it: without that,
-    /// `CanvasStore.boardPath(forFolder:)` names a file that is no longer there and
-    /// `load(folder:)` returns `.empty` **without failing**, so the board reads blank
-    /// while its content sits on disk under the old name (ADR-0022 §F1, §D5).
+    /// No `.canvas` inside the folder is renamed: a board carries its own name and moves
+    /// with the directory under it (ADR-0025 §D6, R-09). Renaming one here is what
+    /// ADR-0022 §D5 did while a board was named after its folder, and the derivation that
+    /// made it necessary is gone.
     func renameFolder(
         at relativePath: String,
         to newName: String,
@@ -332,17 +281,6 @@ struct FolderFileOperations {
         var outcome = RenameOutcome(
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
-
-        if let rename = plan.boardRename, rename.from != rename.to {
-            do {
-                try FileManager.default.moveItem(
-                    at: store.url(for: rename.from), to: store.url(for: rename.to)
-                )
-                outcome.rewrittenPaths.append(rename.to)
-            } catch {
-                outcome.failures.append("\(rename.to): \(error.localizedDescription)")
-            }
-        }
 
         for change in plan.noteChanges {
             do {
@@ -394,9 +332,8 @@ struct FolderFileOperations {
     // MARK: - Paths
 
     /// A vault-relative path with the leading and trailing slashes a caller may have
-    /// carried in, removed - the same trim `CanvasStore.boardPath(forFolder:)` makes,
-    /// so `01 Progetti/vecchio/` and `01 Progetti/vecchio` name the same folder here
-    /// too.
+    /// carried in, removed, so `01 Progetti/vecchio/` and `01 Progetti/vecchio` name the
+    /// same folder here - the trim `BoardFileOperations` makes for a board path too.
     private static func normalized(_ relativePath: String) -> String {
         relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }

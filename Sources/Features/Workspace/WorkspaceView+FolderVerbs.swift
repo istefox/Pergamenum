@@ -9,13 +9,8 @@ extension WorkspaceView {
             createFolder: { name, parent in createFolder(named: name, in: parent) },
             rename: { folder, newName in renameWorkspace(folder, to: newName) },
             delete: { folder in deleteWorkspace(folder) },
-            // TODO(ADR-0025 Task 7): board rename and board delete, no-ops until
-            // `BoardFileOperations` and its session/facade halves exist (§D6). The
-            // sidebar already offers both on a board row, gated by the same
-            // `canMutate(_:)` the toolbar reads - what is missing is the verb, not the
-            // surface.
-            renameBoard: { _ in },
-            deleteBoard: { _ in },
+            renameBoard: { board, newName in renameBoard(board, to: newName) },
+            deleteBoard: { board in deleteBoard(board) },
             recordDesync: { message in workspace.recordProblem(message) }
         )
     }
@@ -97,6 +92,35 @@ extension WorkspaceView {
         )
     }
 
+    /// Renames the board file and follows it when it is the one on screen (R-08).
+    private func renameBoard(_ board: String, to newName: String) {
+        // The destination `BoardFileOperations.renamePlan` computes for itself: a new file
+        // name under the same folder, with the extension added there rather than here so
+        // the check and the write cannot disagree about which file they mean.
+        let folder = (board as NSString).deletingLastPathComponent
+        let fileName = "\(newName).\(CanvasStore.fileExtension)"
+        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+        performBoardVerb(
+            { vault.renameBoard(at: board, to: newName) },
+            landing: { open in
+                WorkspaceFolderActions.boardAfterRename(open: open, renamed: board, to: newPath)
+            }
+        )
+    }
+
+    /// Trashes the board file and lands on its folder when what went was on screen (R-08).
+    ///
+    /// The confirmation happened in the browser; by the time this runs the question has
+    /// been answered.
+    private func deleteBoard(_ board: String) {
+        performBoardVerb(
+            { vault.trashBoard(at: board) },
+            landing: { open in
+                WorkspaceFolderActions.boardAfterDelete(open: open, deleted: board)
+            }
+        )
+    }
+
     /// The shape a folder verb has, in the order it has to have it.
     ///
     /// The order is the whole of the decision: **flush first** - the board autosaves about
@@ -135,6 +159,43 @@ extension WorkspaceView {
             return
         }
         workspace.open(board: moved)
+    }
+
+    /// The shape a **board** verb has, in the same order and for the same reason.
+    ///
+    /// `flushBoard()` first, exactly as above: the ~1s autosave would otherwise land on
+    /// the path the rename just moved away from and write the file back into existence
+    /// (ADR-0022 §F10) - or, after a delete, resurrect from the Trash something the user
+    /// asked to throw away.
+    ///
+    /// What differs from `performFolderVerb` is only the landing, and it is simpler: the
+    /// rule answers with a whole `WorkspaceSelection` rather than with a folder path to
+    /// reconstruct a file name under, because a board *is* the path (ADR-0025 §D3). The
+    /// root's `.folder("")` selects nothing: the vault root is the list itself and has no
+    /// row of its own (§D2), so there is nothing there to light.
+    ///
+    /// - Parameters:
+    ///   - mutate: the vault call, returning whether it happened.
+    ///   - landing: where the selection goes, given the board that is open now.
+    private func performBoardVerb(
+        _ mutate: () -> Bool, landing: (String) -> WorkspaceSelection
+    ) {
+        flushBoard()
+        guard mutate() else { return }
+        // Landing somewhere only means something if a board is actually open - a rename
+        // of one that is merely selected in the tree moves no document on screen.
+        guard workspace.isShowingBoard else { return }
+
+        switch landing(workspace.board) {
+        case .board(let path):
+            // Reopened rather than left alone: the document on screen was read from a file
+            // that has moved, and `open(board:)` is what re-reads it, refreshes the
+            // folder's contents and redraws the breadcrumb.
+            guard path != workspace.board else { return }
+            workspace.open(board: path)
+        case .folder(let folder):
+            workspace.select(folder.isEmpty ? nil : .folder(folder))
+        }
     }
 
     /// Everything the board still owes the disk, written now.

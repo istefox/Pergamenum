@@ -83,15 +83,15 @@ struct WorkspaceBrowser: View {
     /// Which creation is waiting for the sheet, `nil` for none - the presentation *is*
     /// the kind, so the two toolbar buttons cannot both be answered by one boolean that
     /// has forgotten which of them was pressed (ADR-0025 §D7).
-    @State private var creating: WorkspaceCreationKind?
-    /// The rename waiting for its sheet, carrying the folder it is about - `pendingDelete`'s
-    /// shape below, for the same reason. Whoever asks names the folder: the row's context
+    @State private var creating: WorkspaceItemKind?
+    /// The rename waiting for its sheet, carrying the row it is about - `pendingDelete`'s
+    /// shape below, for the same reason. Whoever asks names the row: the row's context
     /// menu knows which one was right-clicked, while the selection it also sets travels up
     /// to the controller and back down as a prop, so seeding the sheet from `targetFolder`
     /// made it depend on that round trip having landed first.
-    @State private var renameTarget: PendingFolderRename?
-    /// The delete waiting to be confirmed, with its counts already read (R-10).
-    @State private var pendingDelete: PendingFolderDelete?
+    @State private var renameTarget: PendingWorkspaceRename?
+    /// The delete waiting to be confirmed, with a folder's counts already read (R-10).
+    @State private var pendingDelete: PendingWorkspaceDelete?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -136,20 +136,30 @@ struct WorkspaceBrowser: View {
                 onCancel: { creating = nil }
             )
         }
+        // One sheet for both renames, told which one it is - the create sheet's decision
+        // (ADR-0025 §D7) applied to the other verb that asks for a name. The collision it
+        // asks about is the kind's own, through the same predicate the create sheet reads.
         .sheet(item: $renameTarget) { pending in
             RenameWorkspaceSheet(
-                folder: pending.folder,
-                isNameAvailable: nameIsAvailable,
+                kind: pending.kind,
+                path: pending.seed,
+                isNameAvailable: { name, parent in
+                    nameIsAvailable(name, in: parent, for: pending.kind)
+                },
                 onConfirm: { newName in
                     renameTarget = nil
-                    actions.rename(pending.folder, newName)
+                    switch pending.kind {
+                    case .board: actions.renameBoard(pending.path, newName)
+                    case .folder: actions.rename(pending.path, newName)
+                    }
                 },
                 onCancel: { renameTarget = nil }
             )
         }
-        // Neither verb is journalled (ADR-0022 §D6), so this dialog is the whole of the
-        // "are you sure" this feature has: the recovery afterwards is the Finder's
-        // Trash, not an undo. It says what is inside before it goes there (R-10).
+        // No delete verb here is journalled (ADR-0022 §D6, ADR-0025 §D6), so this dialog
+        // is the whole of the "are you sure" this feature has: the recovery afterwards is
+        // the Finder's Trash, not an undo. It says what is inside before it goes there
+        // (R-10), and a board - one file, nothing inside - says that instead.
         .confirmationDialog(
             "Eliminare «\(pendingDelete?.name ?? "")»?",
             isPresented: Binding(
@@ -161,7 +171,10 @@ struct WorkspaceBrowser: View {
         ) { pending in
             Button("Sposta nel Cestino", role: .destructive) {
                 pendingDelete = nil
-                actions.delete(pending.folder)
+                switch pending {
+                case .board(let path): actions.deleteBoard(path)
+                case .folder(let path, _, _): actions.delete(path)
+                }
             }
             .accessibilityIdentifier("workspace-delete-confirm")
             Button("Annulla", role: .cancel) { pendingDelete = nil }
@@ -226,8 +239,9 @@ struct WorkspaceBrowser: View {
         folderOperations?.nameIsAvailable(name, in: parent) ?? true
     }
 
-    /// The same predicate asked about the kind of thing being created (ADR-0025 §D7):
+    /// The same predicate asked about the kind of thing being named (ADR-0025 §D7):
     /// `CanvasStore.boardNameIsAvailable` for a board, the folder rule above for a folder.
+    /// Read by both sheets - a rename collides with exactly what a creation collides with.
     ///
     /// Two rules and not one, because the two collisions are different ones: a board is
     /// refused by a `.canvas` of that name and by nothing else, so a *folder* called
@@ -239,7 +253,7 @@ struct WorkspaceBrowser: View {
     /// Each is the very function the performing verb guards with, so the sheet cannot
     /// enable a «Crea» that `createBoard`/`createFolder` will then refuse (ADR-0022 §D11).
     private func nameIsAvailable(
-        _ name: String, in parent: String, for kind: WorkspaceCreationKind
+        _ name: String, in parent: String, for kind: WorkspaceItemKind
     ) -> Bool {
         switch kind {
         case .board: canvasStore?.boardNameIsAvailable(name, in: parent) ?? true
@@ -251,15 +265,22 @@ struct WorkspaceBrowser: View {
     //
     // The browser decides, `WorkspaceView` performs (ADR-0022 §D10): create and rename
     // hand the sheet's answer straight to `actions`, which is where `flushPendingSave()`
-    // and `open(folder:)` bracket the vault call. Rename and delete both stop here first,
-    // and for the folder each one is about rather than for a decision - delete because
-    // how much is inside is a walk of the subtree, rename because the folder is whatever
-    // the click named.
+    // and `open(board:)` bracket the vault call. Rename and delete both stop here first,
+    // and for the row each one is about rather than for a decision - delete because how
+    // much is inside a folder is a walk of its subtree, rename because the row is
+    // whatever the click named. Each has a board arm and a folder arm, and the two never
+    // share a verb: a board rename repoints nodes and rewrites markers where a folder
+    // rename does neither (ADR-0025 §D6).
 
     /// Opens the rename sheet on the folder the caller names - the toolbar's target, or
     /// the row a context menu was opened on. Nothing here reads the selection back.
     private func requestRename(of folder: String) {
-        renameTarget = PendingFolderRename(folder: folder)
+        renameTarget = PendingWorkspaceRename(kind: .folder, path: folder)
+    }
+
+    /// The same, for a board row: the `.canvas` path the row drew (ADR-0025 §D6).
+    private func requestRenameBoard(of board: String) {
+        renameTarget = PendingWorkspaceRename(kind: .board, path: board)
     }
 
     /// Reads the counts once, at the click, and shows the dialog (R-10). Once, rather
@@ -267,9 +288,15 @@ struct WorkspaceBrowser: View {
     /// view body is evaluated as often as SwiftUI likes.
     private func confirmDelete(of folder: String) {
         let counts = folderOperations?.contentCounts(at: folder) ?? (notes: 0, subfolders: 0)
-        pendingDelete = PendingFolderDelete(
-            folder: folder, notes: counts.notes, subfolders: counts.subfolders
+        pendingDelete = .folder(
+            path: folder, notes: counts.notes, subfolders: counts.subfolders
         )
+    }
+
+    /// The same dialog for a board, with nothing to count: deleting one removes one file
+    /// and leaves the folder holding it exactly as it was (ADR-0025 §D6).
+    private func confirmDeleteBoard(of board: String) {
+        pendingDelete = .board(path: board)
     }
 
     /// The toolbar's «Rinomina», dispatched on the selection's case onto the same two
@@ -281,7 +308,7 @@ struct WorkspaceBrowser: View {
     private func renameSelection() {
         switch selection {
         case .folder(let folder): requestRename(of: folder)
-        case .board(let path): actions.renameBoard(path)
+        case .board(let path): requestRenameBoard(of: path)
         case .none: break
         }
     }
@@ -290,7 +317,7 @@ struct WorkspaceBrowser: View {
     private func deleteSelection() {
         switch selection {
         case .folder(let folder): confirmDelete(of: folder)
-        case .board(let path): actions.deleteBoard(path)
+        case .board(let path): confirmDeleteBoard(of: path)
         case .none: break
         }
     }
@@ -418,8 +445,8 @@ struct WorkspaceBrowser: View {
             onSelect: onSelect,
             onRename: { requestRename(of: $0) },
             onDelete: { confirmDelete(of: $0) },
-            onRenameBoard: { actions.renameBoard($0) },
-            onDeleteBoard: { actions.deleteBoard($0) }
+            onRenameBoard: { requestRenameBoard(of: $0) },
+            onDeleteBoard: { confirmDeleteBoard(of: $0) }
         )
     }
 
@@ -556,38 +583,63 @@ struct WorkspaceBrowser: View {
     }
 }
 
-/// A folder waiting for its rename sheet.
+/// A board or a folder waiting for its rename sheet.
 ///
 /// A wrapper rather than a bare `String` because `.sheet(item:)` asks for `Identifiable`,
 /// and `.sheet(item:)` rather than `.sheet(isPresented:)` because the sheet is about one
-/// named folder: `RenameWorkspaceSheet` seeds its text field from `folder` at init, so a
-/// presentation that had to read the folder back out of the selection would seed it from
-/// whatever was selected when the sheet's body happened to be evaluated.
-private struct PendingFolderRename: Identifiable {
-    let folder: String
+/// named row: `RenameWorkspaceSheet` seeds its text field from the path at init, so a
+/// presentation that had to read it back out of the selection would seed it from whatever
+/// was selected when the sheet's body happened to be evaluated.
+private struct PendingWorkspaceRename: Identifiable {
+    let kind: WorkspaceItemKind
+    /// What the verb is called with: a board's real `.canvas` path, or the folder's own.
+    let path: String
 
-    var id: String { folder }
+    var id: String { path }
+
+    /// What the sheet seeds its field from - the same path with a board's extension
+    /// dropped, since the sheet asks for a name and `BoardFileOperations` puts the
+    /// extension back (ADR-0025 §D6).
+    var seed: String {
+        switch kind {
+        case .board: (path as NSString).deletingPathExtension
+        case .folder: path
+        }
+    }
 }
 
-/// A folder waiting for its delete to be confirmed, and what the dialog says about it.
+/// A board or a folder waiting for its delete to be confirmed, and what the dialog says
+/// about it.
 ///
-/// The counts travel with it rather than being read from the dialog: they are a walk of
-/// the folder's subtree, and by the time the dialog is on screen the answer is already
-/// known.
-private struct PendingFolderDelete {
-    let folder: String
-    let notes: Int
-    let subfolders: Int
+/// A folder's counts travel with it rather than being read from the dialog: they are a
+/// walk of its subtree, and by the time the dialog is on screen the answer is already
+/// known. A board has none to carry - it is one file - which is why this is a case rather
+/// than a struct with two integers a board would have to spell as zero.
+private enum PendingWorkspaceDelete {
+    case board(path: String)
+    case folder(path: String, notes: Int, subfolders: Int)
 
-    var name: String { (folder as NSString).lastPathComponent }
+    var path: String {
+        switch self {
+        case .board(let path): path
+        case .folder(let path, _, _): path
+        }
+    }
 
-    /// R-10's sentence, with the two nouns agreeing with their numbers - «1 nota e 2
-    /// sottocartelle» rather than «1 note e 2 sottocartelle».
+    var name: String { (path as NSString).lastPathComponent }
+
+    /// R-10's sentence for a folder, with the two nouns agreeing with their numbers - «1
+    /// nota e 2 sottocartelle» rather than «1 note e 2 sottocartelle» - and the board's
+    /// own, which has nothing to count and says what it costs instead.
     var message: String {
-        let notesText = "\(notes) \(notes == 1 ? "nota" : "note")"
-        let subfoldersText = "\(subfolders) \(subfolders == 1 ? "sottocartella" : "sottocartelle")"
-        return "Verranno eliminate \(notesText) e \(subfoldersText). "
-            + "La cartella va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        switch self {
+        case .board:
+            "La board va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        case .folder(_, let notes, let subfolders):
+            "Verranno eliminate \(notes) \(notes == 1 ? "nota" : "note") e "
+                + "\(subfolders) \(subfolders == 1 ? "sottocartella" : "sottocartelle"). "
+                + "La cartella va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        }
     }
 }
 
