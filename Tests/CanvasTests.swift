@@ -831,8 +831,13 @@ private struct TemporaryRoot: ~Copyable {
 @MainActor
 @Test func cancellingACropWritesNothingAndLeavesUnsavedChangesAlone() throws {
     let root = try TemporaryRoot()
+    let store = CanvasStore(root: root.url)
     let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    controller.attach(to: store)
+    // ADR-0025 §D4: `attach` opens nothing, so the root board must be created and
+    // opened explicitly before `flushPendingSave` below has anywhere to write to.
+    let board = try store.createBoard(named: root.url.lastPathComponent, in: "")
+    controller.open(board: board)
     let id = controller.placeFile("foto.png", at: .zero)
     controller.flushPendingSave()
     #expect(!controller.hasUnsavedChanges)

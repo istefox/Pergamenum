@@ -179,6 +179,10 @@ import Testing
         let store = CanvasStore(root: root)
         let controller = WorkspaceController()
         controller.attach(to: store)
+        // ADR-0025 §D4: `attach` opens nothing, so the root board must be created and
+        // opened explicitly before the controller has anywhere to write to.
+        let board = try store.createBoard(named: root.lastPathComponent, in: "")
+        controller.open(board: board)
         let id = controller.placeFile("foto.png", at: CGPoint(x: 30, y: 40))
         controller.setColor(.preset(4), forNodeIDs: [id])
 
@@ -218,6 +222,9 @@ import Testing
 
         let controller = WorkspaceController()
         controller.attach(to: store)
+        // ADR-0025 §D4: `attach` opens nothing, so the board just saved above must be
+        // opened explicitly before `controller.document` reflects its contents.
+        controller.open(board: "\(root.lastPathComponent).canvas")
         controller.beginCrop(nodeID: "a", drawnSize: CGSize(width: 800, height: 400))
         controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
         controller.endCrop(confirm: true)
