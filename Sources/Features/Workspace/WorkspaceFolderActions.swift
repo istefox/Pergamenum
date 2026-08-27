@@ -1,10 +1,11 @@
 import Foundation
 
-/// The three folder verbs of the Workspace sidebar, and the two navigation rules they
-/// need once the disk has moved on (ADR-0022 §D10).
+/// The Workspace sidebar's verbs - two creations, a rename and a delete for each of the
+/// two kinds of row - and the two navigation rules they need once the disk has moved on
+/// (ADR-0022 §D10, ADR-0025 §D7).
 ///
 /// A value carrying closures rather than a type with behaviour: the browser decides
-/// *when* a verb runs, `WorkspaceView` performs it. All three need the
+/// *when* a verb runs, `WorkspaceView` performs it. They all need the
 /// `WorkspaceController` - `flushPendingSave()` before anything touches disk, or the
 /// ~1s autosave lands on the old path afterwards and recreates what was just renamed
 /// away (§F10), and `open(board:)` after, so the board follows what moved - and the
@@ -14,8 +15,17 @@ import Foundation
 /// a rename or a delete is a question about two paths: it needs no controller, no vault
 /// and no view, and `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
 struct WorkspaceFolderActions {
-    /// Creates a folder called `name` inside `parent` and opens its board (R-02).
-    let create: (_ name: String, _ parent: String) -> Void
+    /// Writes a board called `<name>.canvas` inside `parent` and opens it (R-02).
+    let createBoard: (_ name: String, _ parent: String) -> Void
+
+    /// Creates a folder called `name` inside `parent` and selects it, **writing no board
+    /// inside it** (R-01, ADR-0025 §D7).
+    ///
+    /// Two closures rather than one that branches, and the pairing with `createBoard`
+    /// above is the point: they were one verb because a workspace was a folder *with a
+    /// board named after it*, which is the identification this chain removes. A caller
+    /// asks for the thing it wants, and neither verb makes the other's thing on the side.
+    let createFolder: (_ name: String, _ parent: String) -> Void
 
     /// Renames `folder` to `newName`, keeping the open board on it (R-05, R-08).
     let rename: (_ folder: String, _ newName: String) -> Void

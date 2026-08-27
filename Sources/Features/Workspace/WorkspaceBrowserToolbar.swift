@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The sidebar's second row: the three verbs of R-01 and the two tree commands
-/// (ADR-0022 §D8, §D9).
+/// The sidebar's second row: the two creations, the two mutating verbs and the two tree
+/// commands (ADR-0022 §D8, §D9, ADR-0025 §D7).
 ///
 /// A row of its own, below `WorkspaceBrowser`'s header rather than inside it. The header
 /// carries `.accessibilityElement(children: .contain)` and its own identifier, and on
@@ -19,7 +19,14 @@ struct WorkspaceBrowserToolbar: View {
     /// folder, with no fallback when nothing is selected (ADR-0025 §D8, ADR-0024 §D7).
     /// The two verbs dispatch on its case, and so does the wording below.
     let selection: WorkspaceSelection?
+    /// «Nuova board»: a `.canvas` file, in the folder `WorkspaceBrowser.target(for:)`
+    /// names (R-02).
     let onNew: () -> Void
+    /// «Nuova cartella»: a directory, and nothing inside it (R-01, ADR-0025 §D7). A
+    /// button of its own beside `onNew` rather than a mode of it, because the two make
+    /// two different things - which is the whole content of this chain at the level of
+    /// the toolbar.
+    let onNewFolder: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
     let onExpandAll: () -> Void
@@ -27,7 +34,14 @@ struct WorkspaceBrowserToolbar: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            button("Nuova workspace", symbol: "plus", identifier: "workspace-new", action: onNew)
+            // «Nuova board» keeps `plus` and `workspace-new` byte for byte: it is the
+            // button that was here, doing what it did, and the UI suite reaches it by
+            // that identifier (ADR-0025 §D7).
+            button("Nuova board", symbol: "plus", identifier: "workspace-new", action: onNew)
+            button(
+                "Nuova cartella", symbol: "folder.badge.plus",
+                identifier: "workspace-new-folder", action: onNewFolder
+            )
             button(
                 "Rinomina \(targetNoun)", symbol: "pencil", identifier: "workspace-rename",
                 enabled: Self.canMutate(selection), action: onRename
@@ -56,7 +70,7 @@ struct WorkspaceBrowserToolbar: View {
     /// One toolbar button: an SF Symbol, its Italian name as both tooltip and
     /// accessibility label, and its identifier.
     ///
-    /// Icon-only because the pane is 200 points wide and five labelled buttons do not fit
+    /// Icon-only because the pane is 200 points wide and six labelled buttons do not fit
     /// across it. The words are still there - in the tooltip, which is where a person
     /// reads them, and in the accessibility label. A UI test reads the identifier and
     /// never the words (CLAUDE.md), which is what makes that split safe.

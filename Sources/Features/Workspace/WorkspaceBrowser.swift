@@ -57,7 +57,16 @@ struct WorkspaceBrowser: View {
     /// The rows arrive **detached** (`children: []`), which is what lets the list draw
     /// every one of them at depth 0.
     @State private var filteredRows: [WorkspaceTree.Node] = []
-    @State private var boards: [String] = []
+    /// Every folder of the vault, as the last scan found them - what the create sheet's
+    /// parent picker offers (ADR-0025 §D1). The board list beside it is a local of
+    /// `rebuild()`: the tree is the only thing that reads it, and the picker no longer
+    /// infers folders from board paths.
+    @State private var folders: [String] = []
+    /// The board rules over the open vault's root, kept for the same reason
+    /// `folderOperations` below is: `CanvasStore.init` resolves symlinks and standardizes
+    /// the URL, and `boardNameIsAvailable` is asked live, on every keystroke of the create
+    /// sheet.
+    @State private var canvasStore: CanvasStore?
     /// The folder rules over the open vault's root, built once per scan rather than once
     /// per call. `NoteStore.init` resolves symlinks and standardizes the URL - filesystem
     /// syscalls, not string work - and `nameIsAvailable` is asked live, on every keystroke
@@ -71,7 +80,10 @@ struct WorkspaceBrowser: View {
     /// on screen (`RootView.workspacePane` draws it only with a root), so the stored
     /// value cannot outlive the root it was built from.
     @State private var folderOperations: FolderFileOperations?
-    @State private var isCreatingWorkspace = false
+    /// Which creation is waiting for the sheet, `nil` for none - the presentation *is*
+    /// the kind, so the two toolbar buttons cannot both be answered by one boolean that
+    /// has forgotten which of them was pressed (ADR-0025 §D7).
+    @State private var creating: WorkspaceCreationKind?
     /// The rename waiting for its sheet, carrying the folder it is about - `pendingDelete`'s
     /// shape below, for the same reason. Whoever asks names the folder: the row's context
     /// menu knows which one was right-clicked, while the selection it also sets travels up
@@ -103,16 +115,25 @@ struct WorkspaceBrowser: View {
         .onChange(of: selection) { _, new in reveal(new?.path) }
         // The filter's other input is the tree, refreshed at the end of `rebuild()`.
         .onChange(of: filter) { _, _ in refreshFilteredRows() }
-        .sheet(isPresented: $isCreatingWorkspace) {
+        // One sheet for both creations, told which one it is (ADR-0025 §D7): the parent
+        // picker, the name rules and the three identifiers are the same question either
+        // way, and `kind` is what picks the collision it asks about and the verb it calls.
+        .sheet(item: $creating) { kind in
             NewWorkspaceSheet(
-                parents: WorkspaceFolderSheets.parentOptions(from: boards),
+                kind: kind,
+                parents: WorkspaceFolderSheets.parentOptions(from: folders),
                 initialParent: targetFolder,
-                isNameAvailable: nameIsAvailable,
-                onConfirm: { name, parent in
-                    isCreatingWorkspace = false
-                    actions.create(name, parent)
+                isNameAvailable: { name, parent in
+                    nameIsAvailable(name, in: parent, for: kind)
                 },
-                onCancel: { isCreatingWorkspace = false }
+                onConfirm: { name, parent in
+                    creating = nil
+                    switch kind {
+                    case .board: actions.createBoard(name, parent)
+                    case .folder: actions.createFolder(name, parent)
+                    }
+                },
+                onCancel: { creating = nil }
             )
         }
         .sheet(item: $renameTarget) { pending in
@@ -154,7 +175,8 @@ struct WorkspaceBrowser: View {
     private var toolbar: some View {
         WorkspaceBrowserToolbar(
             selection: selection,
-            onNew: { isCreatingWorkspace = true },
+            onNew: { creating = .board },
+            onNewFolder: { creating = .folder },
             // Dispatched on the selection's case, onto the very entry points the row's
             // context menu calls (ADR-0025 §D8, ADR-0023 §D1) - the toolbar and the menu
             // are two renderings of one command, never two code paths.
@@ -202,6 +224,27 @@ struct WorkspaceBrowser: View {
     /// second spelling of the rule for the sheet to disagree with.
     private func nameIsAvailable(_ name: String, in parent: String) -> Bool {
         folderOperations?.nameIsAvailable(name, in: parent) ?? true
+    }
+
+    /// The same predicate asked about the kind of thing being created (ADR-0025 §D7):
+    /// `CanvasStore.boardNameIsAvailable` for a board, the folder rule above for a folder.
+    ///
+    /// Two rules and not one, because the two collisions are different ones: a board is
+    /// refused by a `.canvas` of that name and by nothing else, so a *folder* called
+    /// `prova` does not stop a `prova.canvas` beside it (R-04) - a file and a directory
+    /// may share a name in one directory, and the old fold is what made that look like a
+    /// clash. A folder is still refused by anything of that name, file or directory,
+    /// which is what `FolderFileOperations.nameIsAvailable` asks the file system.
+    ///
+    /// Each is the very function the performing verb guards with, so the sheet cannot
+    /// enable a «Crea» that `createBoard`/`createFolder` will then refuse (ADR-0022 §D11).
+    private func nameIsAvailable(
+        _ name: String, in parent: String, for kind: WorkspaceCreationKind
+    ) -> Bool {
+        switch kind {
+        case .board: canvasStore?.boardNameIsAvailable(name, in: parent) ?? true
+        case .folder: nameIsAvailable(name, in: parent)
+        }
     }
 
     // MARK: Verbs
@@ -383,15 +426,17 @@ struct WorkspaceBrowser: View {
     // MARK: Tree state
 
     private func rebuild() {
-        let store = vault.root.map { CanvasStore(root: $0) }
-        // The folder verbs' file rules, rebuilt here with the rest of what the root
-        // decides rather than on every access (see the declaration).
+        // The two file rules, rebuilt here with the rest of what the root decides rather
+        // than on every access (see their declarations).
+        canvasStore = vault.root.map { CanvasStore(root: $0) }
         folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
-        boards = store?.allBoards() ?? []
+        let boards = canvasStore?.allBoards() ?? []
+        folders = canvasStore?.allFolders() ?? []
         // Folders and boards, two lists and two kinds of row (ADR-0025 §D2). No naming
         // rule is asked any more: a board is a row because it is a file, not because a
-        // folder is named after it. With no vault open there is nothing to draw.
-        workspaceTree = store.map { WorkspaceTree.build(folders: $0.allFolders(), boards: boards) } ?? []
+        // folder is named after it. With no vault open both lists are empty and the
+        // builder draws nothing.
+        workspaceTree = WorkspaceTree.build(folders: folders, boards: boards)
         // A selection is a path, and a rename or a delete has just moved or removed the
         // row it names - this runs on `scanGeneration`, which both of them bump. The
         // selection is owned by the controller (ADR-0024 §D6), so dropping a stale one

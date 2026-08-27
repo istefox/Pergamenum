@@ -1,11 +1,12 @@
 import Foundation
 
-/// The Workspace sidebar's three verbs, performed here rather than in the browser
-/// because all three need this view's `WorkspaceController` (ADR-0022 §D10).
+/// The Workspace sidebar's verbs, performed here rather than in the browser because they
+/// all need this view's `WorkspaceController` (ADR-0022 §D10).
 extension WorkspaceView {
     var folderActions: WorkspaceFolderActions {
         WorkspaceFolderActions(
-            create: { name, parent in createWorkspace(named: name, in: parent) },
+            createBoard: { name, parent in createBoard(named: name, in: parent) },
+            createFolder: { name, parent in createFolder(named: name, in: parent) },
             rename: { folder, newName in renameWorkspace(folder, to: newName) },
             delete: { folder in deleteWorkspace(folder) },
             // TODO(ADR-0025 Task 7): board rename and board delete, no-ops until
@@ -19,36 +20,51 @@ extension WorkspaceView {
         )
     }
 
-    /// Creates the folder, gives it its board, and opens it (R-02).
+    /// Writes a board and opens it, creating no folder (R-02).
     ///
-    /// `CanvasStore.createFolder(named:in:)` unchanged: it refuses a name that is taken
-    /// and does not create intermediate directories, and the sheet has already blocked on
-    /// both. The board file is written straight after because a workspace is a folder
-    /// *with a board* - the sidebar tree is built from `allBoards()`, so a folder created
-    /// without one would not appear in the pane it was created from.
+    /// `CanvasStore.createBoard(named:in:)` refuses a `.canvas` the name already belongs
+    /// to and creates no directory, and the sheet has already blocked on the collision -
+    /// `parent` is a folder the tree drew, so it is there.
     ///
-    /// TODO(ADR-0025 Task 6): that second write is R-01's whole subject and Task 6
-    /// **deletes** it, splitting this verb into "nuova board" and "nuova cartella"
-    /// (§D7). Until then it is expressed as `createBoard(named:in:)` - the same file at
-    /// the same path as the deleted `save(.empty, folder: created)` wrote, refusing
-    /// rather than overwriting.
-    ///
-    /// Not expressed through `performFolderVerb` below: creation opens the folder it has
-    /// just made, where the other two only follow the one that moved out from under them.
-    private func createWorkspace(named name: String, in parent: String) {
+    /// Not expressed through `performFolderVerb` below: a creation opens the thing it has
+    /// just made, where rename and delete only follow the one that moved out from under
+    /// them.
+    private func createBoard(named name: String, in parent: String) {
         guard let root = vault.root else { return }
         flushBoard()
         do {
-            let store = CanvasStore(root: root)
-            let created = try store.createFolder(named: name, in: parent)
-            let board = try store.createBoard(named: name, in: created)
-            workspace.open(board: board)
+            let created = try CanvasStore(root: root).createBoard(named: name, in: parent)
+            workspace.open(board: created)
             Task { await vault.rescan() }
         } catch {
-            // The board is still usable and the name can be retried, so this is a line in
-            // the problem list rather than a modal - the same treatment the "Cartella"
-            // tool gives a rejected name.
-            vault.recordProblem("nuova workspace: \(error)")
+            // The board on screen is still usable and the name can be retried, so this is
+            // a line in the problem list rather than a modal - the same treatment the
+            // "Cartella" tool gives a rejected name.
+            vault.recordProblem("nuova board: \(error)")
+        }
+    }
+
+    /// Creates the folder and selects it. **It writes no board inside it** (R-01).
+    ///
+    /// That absence is the decision, not an omission: this verb used to run
+    /// `save(.empty, folder: created)` straight after the directory, because the sidebar
+    /// was built from `allBoards()` alone and a folder with nothing in it had no row to
+    /// appear as. The tree is built from `allFolders()` *and* `allBoards()` now
+    /// (ADR-0025 §D2), so an empty folder is a row of its own and the second write has
+    /// nothing left to compensate for - it only ever produced a `.canvas` nobody asked
+    /// for, named after its folder, which is the identification this chain removes.
+    ///
+    /// `select(.folder(created))` rather than `open(board:)`: there is no board to open,
+    /// and the tag the tree lights for a folder row is the folder's own path (§D3).
+    private func createFolder(named name: String, in parent: String) {
+        guard let root = vault.root else { return }
+        flushBoard()
+        do {
+            let created = try CanvasStore(root: root).createFolder(named: name, in: parent)
+            workspace.select(.folder(created))
+            Task { await vault.rescan() }
+        } catch {
+            vault.recordProblem("nuova cartella: \(error)")
         }
     }
 
