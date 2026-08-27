@@ -11,7 +11,7 @@ import Foundation
 /// away (§F10), and `open(board:)` after, so the board follows what moved - and the
 /// browser has no business holding that controller.
 ///
-/// The two rules below are static and pure on purpose. Where the open board lands after
+/// The four rules below are static and pure on purpose. Where the open board lands after
 /// a rename or a delete is a question about two paths: it needs no controller, no vault
 /// and no view, and `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
 struct WorkspaceFolderActions {
@@ -82,5 +82,30 @@ struct WorkspaceFolderActions {
     static func folderAfterDelete(open: String, deleted: String) -> String {
         guard open == deleted || open.hasPrefix("\(deleted)/") else { return open }
         return (deleted as NSString).deletingLastPathComponent
+    }
+
+    /// Where the open selection should point once `renamed` has become `to`: unchanged when
+    /// the open board is not the one being renamed, `.board(path: to)` when it is (R-08,
+    /// ADR-0025 §D6 - "after a board rename, if the open board is the renamed one,
+    /// `open(board: newPath)`").
+    ///
+    /// Unlike `folderAfterRename`, there is no prefix case: a board is a file, not a
+    /// directory, so nothing can sit "inside" it.
+    ///
+    /// TODO(ADR-0025 Task 7): placeholder returning the open board unchanged. Real body is
+    /// this task's GREEN step; `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+    static func boardAfterRename(open: String, renamed: String, to: String) -> WorkspaceSelection {
+        .board(path: open)
+    }
+
+    /// Where the open selection should land once `deleted` has been trashed: unchanged when
+    /// the open board is not the one deleted, `.folder(containing)` when it is (R-09,
+    /// ADR-0025 §D6 - "after a board delete, if the open board was the deleted one,
+    /// `select(.folder(containing))`").
+    ///
+    /// TODO(ADR-0025 Task 7): placeholder returning the open board unchanged. Real body is
+    /// this task's GREEN step; `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+    static func boardAfterDelete(open: String, deleted: String) -> WorkspaceSelection {
+        .board(path: open)
     }
 }

@@ -19,6 +19,57 @@ import Testing
 // that return `open` unchanged (`Sources/Features/Workspace/WorkspaceFolderActions.swift`),
 // so every assertion below that expects a rewritten path fails on its `#expect`, not on
 // a build error.
+//
+// ADR-0025: A folder is a container, a board is a file, and neither is named after the
+// other.
+// Plan: docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md, Task 7.
+//
+// Task 7 adds `renameBoard`/`deleteBoard` verbs (not pure - not unit-tested here, per
+// this task's dispatch brief) and the two landing rules they call into, which mirror
+// `folderAfterRename`/`folderAfterDelete` above but for a board file path instead of a
+// folder path (R-08, R-09). `WorkspaceFolderActions.boardAfterRename`/`boardAfterDelete`
+// are placeholders that return `.board(path: open)` unchanged, so every assertion below
+// that expects a redirected selection fails on its `#expect`, not on a build error.
+
+// MARK: - boardAfterRename(open:renamed:to:) (R-08)
+
+@Test func boardAfterRenameRedirectsToTheNewPathWhenTheOpenBoardIsTheRenamedOne() {
+    let result = WorkspaceFolderActions.boardAfterRename(
+        open: "A/vecchio.canvas", renamed: "A/vecchio.canvas", to: "A/nuovo.canvas"
+    )
+
+    #expect(result == .board(path: "A/nuovo.canvas"))
+}
+
+@Test func boardAfterRenameLeavesAnUnrelatedOpenBoardAlone() {
+    let result = WorkspaceFolderActions.boardAfterRename(
+        open: "A/altro.canvas", renamed: "A/vecchio.canvas", to: "A/nuovo.canvas"
+    )
+
+    #expect(result == .board(path: "A/altro.canvas"))
+}
+
+// MARK: - boardAfterDelete(open:deleted:) (R-09)
+
+@Test func boardAfterDeleteSelectsTheContainingFolderWhenTheOpenBoardWasDeleted() {
+    let result = WorkspaceFolderActions.boardAfterDelete(open: "A/x.canvas", deleted: "A/x.canvas")
+
+    #expect(result == .folder("A"))
+}
+
+@Test func boardAfterDeleteLeavesAnUnrelatedOpenBoardAlone() {
+    let result = WorkspaceFolderActions.boardAfterDelete(open: "A/y.canvas", deleted: "A/x.canvas")
+
+    #expect(result == .board(path: "A/y.canvas"))
+}
+
+@Test func boardAfterDeleteHandlesTheRootParentCase() {
+    // Deleting a board directly under the vault root, while it is open, must land on the
+    // root's own folder ("") - the vault root always survives.
+    let result = WorkspaceFolderActions.boardAfterDelete(open: "vault.canvas", deleted: "vault.canvas")
+
+    #expect(result == .folder(""))
+}
 
 // MARK: - folderAfterRename(open:renamed:to:) (R-08)
 
