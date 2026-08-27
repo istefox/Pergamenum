@@ -11,8 +11,53 @@ extension WorkspaceView {
             delete: { folder in deleteWorkspace(folder) },
             renameBoard: { board, newName in renameBoard(board, to: newName) },
             deleteBoard: { board in deleteBoard(board) },
+            move: { items, destination in moveItems(items, into: destination) },
             recordDesync: { message in workspace.recordProblem(message) }
         )
+    }
+
+    /// Moves a batch of rows into `destination` and keeps the open board on screen where
+    /// it landed (R-01 … R-05, R-13). Answers with what the batch refused, empty when it
+    /// committed - the browser has the dialog R-07 asks for.
+    ///
+    /// `performBoardVerb`'s bracket, and its first line for the same reason: **flush
+    /// first**. The board autosaves about a second after a change, and that write would
+    /// otherwise land on the pre-move path and recreate the file the move just relocated
+    /// (ADR-0022 §F10, paid for once already by rename and delete). It is not expressed
+    /// *through* `performBoardVerb` because a batch's landing rule takes the moves it
+    /// performed rather than one path, and because a refusal has to travel back up.
+    ///
+    /// `VaultMoveBatch.plan` is asked here for what to **say** and again inside
+    /// `VaultSession.moveItems` for what to **do**. One function asked twice in the same
+    /// run-loop turn against the same disk, never a second rule: `VaultController
+    /// .moveItems` reports its refusals to the problem list and answers `Bool`, and R-07
+    /// needs the conflicting name in a dialog. The moves it returns are also what
+    /// `boardAfterMove` needs, which the `Bool` cannot carry either.
+    private func moveItems(_ items: [VaultItemRef], into destination: String) -> [String] {
+        flushBoard()
+        guard let session = vault.session else { return [] }
+        let planned: [VaultMove]
+        switch VaultMoveBatch.plan(items, into: destination, exists: { session.exists($0) }) {
+        case .refused(let reasons): return reasons
+        case .moves(let moves): planned = moves
+        }
+        // `undoManager` is the **window's**, read from the environment and handed down as
+        // an argument (ADR-0026 §D8) - the same stack `NSTextView` registers text edits
+        // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
+        // focus. Nil is not silently tolerated: `moveItems` records that the move cannot
+        // be taken back.
+        guard vault.moveItems(items, into: destination, undo: undoManager) else { return [] }
+        // Landing somewhere only means something if a board is actually open - moving a
+        // row that is merely selected in the tree moves no document on screen.
+        guard workspace.isShowingBoard else { return [] }
+
+        let landed = WorkspaceFolderActions.boardAfterMove(open: workspace.board, moves: planned)
+        guard landed != workspace.board else { return [] }
+        // Reopened rather than left alone: the document on screen was read from a file
+        // that has moved, and `open(board:)` is what re-reads it, refreshes the folder's
+        // contents and redraws the breadcrumb - so the board never flickers closed (R-13).
+        workspace.open(board: landed)
+        return []
     }
 
     /// Writes a board and opens it, creating no folder (R-02).

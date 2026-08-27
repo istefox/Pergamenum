@@ -48,6 +48,19 @@ struct WorkspaceFolderActions {
     /// this does not ask - `delete`'s contract, for a file rather than a directory.
     let deleteBoard: (_ board: String) -> Void
 
+    /// Moves `items` into `destination` - a folder path, the vault root spelled `""`
+    /// (R-05) - and answers with what the batch **refused**, empty when it committed
+    /// (ADR-0026 §D6, §D9).
+    ///
+    /// Refusals come back rather than being reported from inside, because R-07 asks for
+    /// the conflicting name to be *shown*: the browser is the side with a dialog, and the
+    /// strings are `VaultMoveBatch.plan`'s own, which already name the path that stopped
+    /// the batch.
+    ///
+    /// One closure for both surfaces - a folder row's drop and «Sposta in» in every row's
+    /// context menu - because they are two renderings of one command (ADR-0023 §D1).
+    let move: (_ items: [VaultItemRef], _ destination: String) -> [String]
+
     /// Records a non-modal problem the browser found on its own, the same visible channel
     /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -
     /// so a tree/click desync (a `.tag`ed id the tree no longer resolves, e.g. a rescan

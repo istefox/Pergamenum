@@ -12,6 +12,15 @@ struct WorkspaceView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
     @Environment(Navigation.self) private var navigation
+    /// The **window's** undo manager, which is the one `NSTextView` already registers its
+    /// text edits on (ADR-0026 §D8): one window, one undo history, and Cmd+Z means "undo
+    /// the last thing I did here" whatever had focus. Read here and handed to
+    /// `VaultController.moveItems` as an argument, so the facade never reaches for
+    /// `NSApp.keyWindow?.undoManager` and never imports AppKit for this.
+    ///
+    /// Internal rather than `private`: `WorkspaceView+FolderVerbs` is another file, and
+    /// `private` is file scope.
+    @Environment(\.undoManager) var undoManager
     @State var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
     /// Shift and Option as they are held right now. `DragGesture` carries no modifier
