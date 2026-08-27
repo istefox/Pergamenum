@@ -818,14 +818,36 @@ private struct WorkspaceRow: View {
     /// so the names line up.
     ///
     /// Also where R-05 / ADR-0025 §D9's double click lives - moved here from the whole row
-    /// (`taggedRow`'s comment has the failure and the fix). `.simultaneousGesture` and
-    /// never `.onTapGesture(count: 2)`: the latter consumes the click, so
-    /// `List(selection:)` would never see it. Confined to the chevron's small hit target
-    /// rather than the row's, a double click landing anywhere else in the row - which is
-    /// where every existing click, including `XCUIElement.click()`'s, lands on the row's
-    /// `.contain` accessibility element - now reaches `List(selection:)` with nothing
-    /// competing for it; only a click aimed at the chevron itself risks the same
-    /// contention, and none of R-04/R-05's clicks are.
+    /// (`taggedRow`'s comment has the failure and the fix). The chevron carries no `.tag`
+    /// of its own, so `List(selection:)` has nothing here to starve - unlike the row body,
+    /// where `.onTapGesture(count: 2)` would consume the click before the List ever saw
+    /// it.
+    ///
+    /// The two recognizers below - plain `.onTapGesture` (default count 1) plus a
+    /// `.simultaneousGesture(TapGesture(count: 2))` - are not the "documented" fix for
+    /// disambiguating tap counts on one control: the seemingly more idiomatic pairing of
+    /// two chained `.onTapGesture(count:)` modifiers (highest count first, per Apple's own
+    /// guidance for that API) was tried on this chevron and confirmed broken by hand on
+    /// macOS 26 inside this `List`: a single click stopped toggling and fell through to
+    /// `List(selection:)`'s own row selection instead, and a double click did nothing at
+    /// all. `.onTapGesture(count:)` always consumes the click it recognizes; two of them
+    /// stacked with no combinator apparently left the click contested between the two
+    /// recognizers and the enclosing `List`, rather than resolved by either.
+    /// `.simultaneousGesture` never consumes, so the double-tap recognizer only ever adds a
+    /// second, non-exclusive observer beside the plain single-tap one - which is what
+    /// `ADR-0025 §D9` specified for the row-wide version this was moved from, and turns out
+    /// to hold just as well confined to the chevron's own hit target.
+    ///
+    /// Verified empirically, not from memory of SwiftUI/AppKit gesture precedence (both
+    /// warned against by this repo's own prior investigations): a throwaway XCUITest drove
+    /// `.click()` and `.doubleClick()` against a temporary `accessibilityIdentifier` on
+    /// this chevron and asserted on a nested row's existence as the `isExpanded` signal.
+    /// Single click toggled without ever selecting the row (`selectedRowsInTree.count ==
+    /// 0` held throughout); double click toggled reliably, and exactly once - the state
+    /// after differed from the state before, never landing back where it started. That
+    /// probe test and its debug identifier are gone from this repository; the finding is
+    /// this comment. Still a manual-verification item before merge (R-05's own gate): the
+    /// probe reads accessibility state, not what a person's actual double click feels like.
     @ViewBuilder
     private var chevron: some View {
         if hasChildren {
