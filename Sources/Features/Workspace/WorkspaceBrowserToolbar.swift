@@ -10,14 +10,15 @@ import SwiftUI
 /// is the only handle a UI test is allowed to use (ADR-0022 §F9, CLAUDE.md).
 ///
 /// It decides nothing. The verbs are closures the browser passes in, and the one rule
-/// that lives here - `canMutate(folder:)` - is a pure function precisely so it can be
+/// that lives here - `canMutate(_:)` - is a pure function precisely so it can be
 /// tested without a view.
 struct WorkspaceBrowserToolbar: View {
     @Environment(\.theme) private var theme
 
-    /// The folder «Rinomina» and «Elimina» act on: the selected row, or the open board's
-    /// own folder when nothing has been clicked (ADR-0022 §D9).
-    let target: String
+    /// The row «Rinomina» and «Elimina» act on, whichever kind it is: a board file or a
+    /// folder, with no fallback when nothing is selected (ADR-0025 §D8, ADR-0024 §D7).
+    /// The two verbs dispatch on its case, and so does the wording below.
+    let selection: WorkspaceSelection?
     let onNew: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
@@ -28,12 +29,12 @@ struct WorkspaceBrowserToolbar: View {
         HStack(spacing: theme.spacing(.xs)) {
             button("Nuova workspace", symbol: "plus", identifier: "workspace-new", action: onNew)
             button(
-                "Rinomina", symbol: "pencil", identifier: "workspace-rename",
-                enabled: Self.canMutate(folder: target), action: onRename
+                "Rinomina \(targetNoun)", symbol: "pencil", identifier: "workspace-rename",
+                enabled: Self.canMutate(selection), action: onRename
             )
             button(
-                "Elimina", symbol: "trash", identifier: "workspace-delete",
-                enabled: Self.canMutate(folder: target), action: onDelete
+                "Elimina \(targetNoun)", symbol: "trash", identifier: "workspace-delete",
+                enabled: Self.canMutate(selection), action: onDelete
             )
             Spacer()
             button(
@@ -82,29 +83,41 @@ struct WorkspaceBrowserToolbar: View {
         .accessibilityIdentifier(identifier)
     }
 
-    /// Whether «Rinomina»/«Elimina» may act on `folder` - false for the vault root, whose
-    /// board is named after the vault itself and whose rename would be a rename of the
-    /// vault (ADR-0022 §D9, R-09).
+    /// The noun the two verbs are said with: a board row and a folder row are renamed and
+    /// deleted by the same two buttons, under the same two identifiers, and only the
+    /// wording tells them apart (ADR-0025 §D8) - 200 points of pane will not hold four
+    /// buttons where two will do, and a UI test reads the identifier and never the words
+    /// (CLAUDE.md).
     ///
+    /// «cartella» with nothing selected, where both buttons are disabled anyway: a
+    /// tooltip on a dead button names the kind of thing a click would have to pick first.
+    private var targetNoun: String {
+        selection?.hasBoard == true ? "board" : "cartella"
+    }
+
+    /// Whether «Rinomina»/«Elimina» may act on `selection` (ADR-0025 §D8, R-08):
+    ///
+    /// - `nil` → `false`, nothing selected and nothing to aim at (ADR-0024 §D7);
+    /// - `.board` → `true`, a `.canvas` file is never the vault root;
+    /// - `.folder(f)` → false for the vault root, whose rename would be a rename of the
+    ///   vault (ADR-0022 §D9, R-09).
+    ///
+    /// That last branch is ADR-0022 §D9's root exemption, kept even though ADR-0025 §D2
+    /// makes the root unselectable by construction - a guard whose precondition is «this
+    /// state is unreachable» is a guard that stops being true the first time somebody
+    /// makes it reachable, and this pane has had three chains in a row add rows to it.
     /// The slashes are trimmed first, the same normalisation `FolderFileOperations` makes
     /// on everything it is handed, so `"/"` names the root here too rather than passing
     /// for a folder called nothing.
-    static func canMutate(folder: String) -> Bool {
-        !folder.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
-    }
-
-    /// ADR-0025 §D8: `canMutate(folder:)`'s replacement, asked of the selection itself
-    /// rather than of a bare folder string, so a **board** row is mutable too (R-08) -
-    /// not only a folder's.
     ///
-    /// TODO(ADR-0025 Task 5): placeholder, always `false` - a new overload rather than a
-    /// rewrite of `canMutate(folder:)` above, so this view's own buttons and
-    /// `WorkspaceRow.menu` (`WorkspaceBrowser.swift`) keep compiling against the old one
-    /// until the coder rewires both call sites to this one and removes it. The coder's
-    /// GREEN section is `nil` → `false`; `.board` → `true` (never the vault root);
-    /// `.folder(f)` → the same trimmed-slash root exemption `canMutate(folder:)` already
-    /// makes.
+    /// One rule, read by both surfaces (ADR-0023 §D1): this view's `.disabled`, and the
+    /// tree row's context menu.
     static func canMutate(_ selection: WorkspaceSelection?) -> Bool {
-        false
+        switch selection {
+        case .none: return false
+        case .board: return true
+        case .folder(let folder):
+            return !folder.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
+        }
     }
 }

@@ -123,7 +123,12 @@ struct WorkspaceView: View {
                 // the tray, so the board keeps the width they gave up.
                 if !navigation.isWorkspaceFocused && !navigation.isWorkspaceTreeCollapsed {
                     WorkspaceBrowser(
-                        selectedFolder: workspace.current?.folder,
+                        // The whole selection, not the folder read off it (ADR-0025 §D8):
+                        // the pane lights the row the selection *names* - a board file's
+                        // own row when one is open - and its two verbs dispatch on the
+                        // case, so throwing it away here would only have to be recovered
+                        // there.
+                        selection: workspace.current,
                         actions: folderActions,
                         onSelect: { workspace.select($0) }
                     )

@@ -8,6 +8,13 @@ extension WorkspaceView {
             create: { name, parent in createWorkspace(named: name, in: parent) },
             rename: { folder, newName in renameWorkspace(folder, to: newName) },
             delete: { folder in deleteWorkspace(folder) },
+            // TODO(ADR-0025 Task 7): board rename and board delete, no-ops until
+            // `BoardFileOperations` and its session/facade halves exist (§D6). The
+            // sidebar already offers both on a board row, gated by the same
+            // `canMutate(_:)` the toolbar reads - what is missing is the verb, not the
+            // surface.
+            renameBoard: { _ in },
+            deleteBoard: { _ in },
             recordDesync: { message in workspace.recordProblem(message) }
         )
     }

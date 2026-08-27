@@ -24,6 +24,21 @@ struct WorkspaceFolderActions {
     /// (R-11, R-12).
     let delete: (_ folder: String) -> Void
 
+    /// The same two verbs for a **board** file, by its own vault-relative `.canvas` path
+    /// (ADR-0025 §D6, R-08). Separate closures rather than one that branches: a board
+    /// rename repoints nodes and rewrites markers where a folder rename does neither, and
+    /// the row that raises them already knows which kind it is.
+    ///
+    /// TODO(ADR-0025 Task 7): no-ops until Task 7 writes `BoardFileOperations` and the
+    /// session/facade halves beside it. Declared here now so the sidebar's board rows can
+    /// offer «Rinomina»/«Elimina» through the one catalogue both surfaces read
+    /// (ADR-0023 §D1) rather than growing a second one later.
+    let renameBoard: (_ board: String) -> Void
+
+    /// Moves the `.canvas` at `board` to the Trash, unconfirmed - `delete`'s contract for
+    /// a file rather than a directory. TODO(ADR-0025 Task 7), see `renameBoard`.
+    let deleteBoard: (_ board: String) -> Void
+
     /// Records a non-modal problem the browser found on its own, the same visible channel
     /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -
     /// so a tree/click desync (a `.tag`ed id the tree no longer resolves, e.g. a rescan
