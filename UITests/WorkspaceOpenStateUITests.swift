@@ -54,6 +54,13 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     /// nothing.
     private let groupingFolder = "Progetti"
     private let groupingChildBoardFile = "Progetti/Cliente/Cliente.canvas"
+    /// Two folder-card nodes placed on the root board itself (review-triage-fix cycle 1,
+    /// MAJOR finding: `BoardCardActions.enter` had no UI coverage at all). One points at
+    /// `boardFolder`, which already holds two boards (`.ambiguous`); the other points at
+    /// `emptyFolder`, which holds none (`.notFound`) - both existing fixtures above, not
+    /// new ones.
+    private let ambiguousFolderCardID = "folder-card-ambiguous"
+    private let notFoundFolderCardID = "folder-card-notfound"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -347,6 +354,78 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `BoardCardActions.enter`
+    // (ADR-0025 §D5): a folder card's double click resolves through the same
+    // `WorkspaceBoardResolver.board(inFolder:among:)` the tree row and the breadcrumb use,
+    // and only its `.unique` branch had ever been exercised before this pair.
+
+    func testDoubleClickingAnAmbiguousFolderCardClosesTheBoardAndSelectsTheFolder() throws {
+        rootBoardRow.click()
+        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board radice avrebbe dovuto aprirsi")
+
+        let card = row(identifier: "canvas-node-\(ambiguousFolderCardID)")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "manca la card cartella per «\(boardFolder)»")
+        card.doubleClick()
+
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+                      "una cartella ambigua non deve aprire nessuna board")
+        assertExactlyOneRowSelected(identifier: "workspace-folder-\(boardFolder)", suffix: ", selezionata")
+    }
+
+    func testDoubleClickingAFolderCardWithNoBoardsClosesTheBoardAndSelectsTheFolder() throws {
+        rootBoardRow.click()
+        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board radice avrebbe dovuto aprirsi")
+
+        let card = row(identifier: "canvas-node-\(notFoundFolderCardID)")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "manca la card cartella per «\(emptyFolder)»")
+        card.doubleClick()
+
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+                      "una cartella senza board non deve aprire nessuna board")
+        assertExactlyOneRowSelected(identifier: "workspace-folder-\(emptyFolder)", suffix: ", selezionata")
+    }
+
+    // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `BoardTopBar.open(ancestor:)`
+    // (ADR-0025 §D5): the breadcrumb's own `.ambiguous`/`.notFound` branch, reusing the
+    // multi-board and board-less-parent fixtures already in this file (`boardFolder` holds
+    // two boards directly, `groupingFolder` holds none directly) rather than adding new ones.
+    // The ancestor segment is a plain SwiftUI `Button(crumb.title)` with no identifier of
+    // its own (`BoardChrome.swift`); its title is the folder's own name, data this fixture
+    // wrote rather than app prose that could be reworded, the same distinction
+    // `WorkspaceIntegrationUITests.taskRow(containing:)` already relies on.
+
+    func testClickingAnAmbiguousBreadcrumbAncestorSelectsTheFolderInsteadOfABoard() throws {
+        app.buttons["workspace-expand-all"].click()
+        let nested = row(identifier: "workspace-board-\(nestedBoardFile)")
+        XCTAssertTrue(nested.waitForExistence(timeout: 5), "la board annidata non è comparsa dopo «Espandi tutto»")
+        nested.click()
+        assertExactlyOneRowSelected(identifier: "workspace-board-\(nestedBoardFile)", suffix: ", aperta")
+
+        let ancestor = app.buttons[boardFolder].firstMatch
+        XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(boardFolder)»")
+        ancestor.click()
+
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+                      "un antenato ambiguo nel breadcrumb non deve aprire una board")
+        assertExactlyOneRowSelected(identifier: "workspace-folder-\(boardFolder)", suffix: ", selezionata")
+    }
+
+    func testClickingANotFoundBreadcrumbAncestorSelectsTheFolderInsteadOfABoard() throws {
+        app.buttons["workspace-expand-all"].click()
+        let nested = row(identifier: "workspace-board-\(groupingChildBoardFile)")
+        XCTAssertTrue(nested.waitForExistence(timeout: 5), "la board del gruppo non è comparsa dopo «Espandi tutto»")
+        nested.click()
+        assertExactlyOneRowSelected(identifier: "workspace-board-\(groupingChildBoardFile)", suffix: ", aperta")
+
+        let ancestor = app.buttons[groupingFolder].firstMatch
+        XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(groupingFolder)»")
+        ancestor.click()
+
+        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+                      "un antenato senza board nel breadcrumb non deve aprire una board")
+        assertExactlyOneRowSelected(identifier: "workspace-folder-\(groupingFolder)", suffix: ", selezionata")
+    }
+
     // MARK: Fixture
 
     /// Real folders and files on disk before the app ever launches: a `.canvas` in the
@@ -371,12 +450,12 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     /// .allFolders()` was added to find.
     private func makeFixtureBoards() throws {
         let rootBoardFile = "\(vault.lastPathComponent).canvas"
-        for boardPath in [rootBoardFile, boardFile, siblingBoardFile, nestedBoardFile, groupingChildBoardFile] {
-            let url = vault.appending(path: boardPath, directoryHint: .notDirectory)
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try Self.emptyCanvas.write(to: url, atomically: true, encoding: .utf8)
+        // The root board alone carries the two folder-card nodes the double-click tests
+        // above need; every other board file stays the plain empty canvas the rest of this
+        // file's fixtures have always used.
+        try writeBoard(rootCanvas, at: rootBoardFile)
+        for boardPath in [boardFile, siblingBoardFile, nestedBoardFile, groupingChildBoardFile] {
+            try writeBoard(Self.emptyCanvas, at: boardPath)
         }
         try FileManager.default.createDirectory(
             at: vault.appending(path: emptyFolder, directoryHint: .isDirectory),
@@ -384,7 +463,33 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         )
     }
 
+    private func writeBoard(_ contents: String, at boardPath: String) throws {
+        let url = vault.appending(path: boardPath, directoryHint: .notDirectory)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private static let emptyCanvas = """
     { "nodes": [], "edges": [] }
     """
+
+    /// `emptyCanvas` plus the two folder cards the double-click tests above open: one
+    /// pointing at `boardFolder` (two boards inside it, `.ambiguous`), one at `emptyFolder`
+    /// (none, `.notFound`). A computed property rather than another `static let`, since it
+    /// has to read `boardFolder`/`emptyFolder` off `self` rather than duplicate their value.
+    private var rootCanvas: String {
+        """
+        {
+          "nodes": [
+            { "id": "\(ambiguousFolderCardID)", "type": "file", "file": "\(boardFolder)",
+              "x": 0, "y": 0, "width": 200, "height": 120 },
+            { "id": "\(notFoundFolderCardID)", "type": "file", "file": "\(emptyFolder)",
+              "x": 300, "y": 0, "width": 200, "height": 120 }
+          ],
+          "edges": []
+        }
+        """
+    }
 }
