@@ -336,8 +336,7 @@ struct FolderFileOperations {
         return (resulting as URL?, trashedNotePaths)
     }
 
-    // MARK: - ADR-0026: Move (§D1, §D7) - Task 2 test step owns this interface;
-    // placeholder bodies only, the code step fills them in.
+    // MARK: - ADR-0026: Move (§D1, §D7)
 
     /// What a folder *move* would change: the folder's own name is kept, only its
     /// parent changes - the mirror of `renamePlan`, which keeps the parent and changes
@@ -348,10 +347,45 @@ struct FolderFileOperations {
         var failures: [String] = []
     }
 
-    /// Placeholder: returns the unchanged path and plans nothing, so this compiles and
-    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    /// What `moveFolder` would do, read from where the folder still is - nothing has
+    /// moved yet when this runs (ADR-0026 §D1).
+    ///
+    /// `renamePlan`'s reference classes, unchanged: **one** changes, `.canvas` node paths
+    /// repointed by prefix vault-wide, and nothing else - no wikilink (it names a note by
+    /// title) and no `^[[board.canvas]]` marker (it names a bare file name, and a move
+    /// changes neither a title nor a file name, ADR-0026 §D7). No name validation either:
+    /// the only name involved is the one the folder already carries.
+    ///
+    /// Two refusals, in this order. `wouldNest` first, because a folder dropped onto
+    /// itself or into one of its own descendants is not a collision and must not be
+    /// reported as one (§D5, R-06); the prefix is `"\(oldFolder)/"` and never `oldFolder`,
+    /// so a sibling called `a-altro` is not a descendant of `a` - `repointing`'s own rule.
+    /// `alreadyExists` second, for a name already taken at the destination (R-07).
     func movePlan(_ relativePath: String, toParent parent: String) throws -> MovePlan {
-        MovePlan(newPath: Self.normalized(relativePath))
+        let oldFolder = Self.normalized(relativePath)
+        guard !oldFolder.isEmpty else {
+            throw OperationError.failed("la radice del vault non si sposta")
+        }
+
+        let destination = Self.normalized(parent)
+        let name = (oldFolder as NSString).lastPathComponent
+        let newFolder = destination.isEmpty ? name : "\(destination)/\(name)"
+
+        guard isDirectory(oldFolder) else { throw OperationError.missing(relativePath) }
+        guard destination != oldFolder, !destination.hasPrefix("\(oldFolder)/") else {
+            throw OperationError.wouldNest(oldFolder)
+        }
+        guard newFolder == oldFolder || !exists(newFolder) else {
+            throw OperationError.alreadyExists(newFolder)
+        }
+
+        var plan = MovePlan(newPath: newFolder)
+        guard newFolder != oldFolder else { return plan }
+
+        let boards = repointBoardsPlan(from: oldFolder, to: newFolder)
+        plan.boardChanges = boards.changes
+        plan.failures.append(contentsOf: boards.failures)
+        return plan
     }
 
     /// What a folder move actually did (ADR-0026 §D1).
@@ -362,11 +396,57 @@ struct FolderFileOperations {
         var failures: [String] = []
     }
 
-    /// Placeholder: returns the unchanged path, moves nothing and writes nothing, so
-    /// this compiles and every Task 2 test fails on its assertions rather than on a
-    /// missing symbol.
+    /// Moves the directory under a different parent - same folder name, never a rename -
+    /// carrying everything inside it, then writing every planned repoint (ADR-0026 §D1,
+    /// §D7).
+    ///
+    /// `renameFolder`'s order and `renameFolder`'s reasons. The move is one operation
+    /// that either happens or does not; the repoints are many, each of which can fail on
+    /// its own, so doing them the other way round would leave the vault pointing at a
+    /// folder that does not exist yet if the move then failed. And the walk runs *before*
+    /// anything moves: afterwards there is nothing at the old path to enumerate, and the
+    /// caller needs both halves of each pair to follow its tabs and carry its stars.
+    ///
+    /// A board *inside* the moved folder that a plan rewrote is written at its new path:
+    /// the directory carried it there, and `repointBoardsPlan`'s `writePath` substitution
+    /// already computed where that is.
     func moveFolder(at relativePath: String, toParent parent: String) throws -> MoveOutcome {
-        MoveOutcome(newPath: Self.normalized(relativePath))
+        let plan = try movePlan(relativePath, toParent: parent)
+        let oldFolder = Self.normalized(relativePath)
+
+        let movedNotes = walk(oldFolder).notePaths.map {
+            (old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
+        }
+
+        if plan.newPath != oldFolder {
+            do {
+                let destination = store.root.appending(
+                    path: plan.newPath, directoryHint: .isDirectory
+                )
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
+                try FileManager.default.moveItem(
+                    at: store.root.appending(path: oldFolder, directoryHint: .isDirectory),
+                    to: destination
+                )
+            } catch {
+                throw OperationError.failed("spostamento cartella: \(error.localizedDescription)")
+            }
+        }
+
+        var outcome = MoveOutcome(
+            newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
+        )
+        for change in plan.boardChanges {
+            do {
+                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        return outcome
     }
 
     // MARK: - Paths

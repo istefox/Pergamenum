@@ -214,8 +214,7 @@ struct BoardFileOperations {
         return resulting as URL?
     }
 
-    // MARK: - ADR-0026: Move (§D1, §D7) - Task 2 test step owns this interface;
-    // placeholder bodies only, the code step fills them in.
+    // MARK: - ADR-0026: Move (§D1, §D7)
 
     /// What a board *move* would change: the file name is kept, only the folder it
     /// sits in changes - the mirror of `renamePlan`, which keeps the folder and changes
@@ -226,10 +225,36 @@ struct BoardFileOperations {
         var failures: [String] = []
     }
 
-    /// Placeholder: returns the unchanged path and plans nothing, so this compiles and
-    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    /// What `moveBoard` would do, read from where the board still is - nothing has moved
+    /// yet when this runs (ADR-0026 §D1).
+    ///
+    /// **One** reference class changes: `.canvas` node paths naming this exact file,
+    /// repointed vault-wide through the same `repointBoardsPlan` a rename runs. Nothing
+    /// else. No `^[[x.canvas]]` marker and no `[[x.canvas]]` link is rewritten, because
+    /// both name a bare **file name** and a move changes no file name (ADR-0026 §D7) -
+    /// which is also why ADR-0022 §D4's relocated ambiguity guard is not consulted here:
+    /// a move cannot make an already-ambiguous name resolve any differently.
+    ///
+    /// No name validation either: the only name involved is the one the board already
+    /// carries, and refusing it now would refuse a file the vault already holds.
     func movePlan(_ relativePath: String, toFolder folder: String) throws -> MovePlan {
-        MovePlan(newPath: Self.normalized(relativePath))
+        let oldPath = Self.normalized(relativePath)
+        let fileName = (oldPath as NSString).lastPathComponent
+        let destination = Self.normalized(folder)
+        let newPath = destination.isEmpty ? fileName : "\(destination)/\(fileName)"
+
+        guard isFile(oldPath) else { throw OperationError.missing(relativePath) }
+        guard newPath == oldPath || !exists(newPath) else {
+            throw OperationError.alreadyExists(newPath)
+        }
+
+        var plan = MovePlan(newPath: newPath)
+        guard newPath != oldPath else { return plan }
+
+        let boards = folderOperations.repointBoardsPlan(from: oldPath, to: newPath)
+        plan.boardChanges = boards.changes
+        plan.failures.append(contentsOf: boards.failures)
+        return plan
     }
 
     /// What a board move actually did (ADR-0026 §D1).
@@ -239,10 +264,49 @@ struct BoardFileOperations {
         var failures: [String] = []
     }
 
-    /// Placeholder: returns the unchanged path and writes nothing, so this compiles and
-    /// every Task 2 test fails on its assertions rather than on a missing symbol.
+    /// Moves `<old folder>/<name>.canvas` to `<new folder>/<name>.canvas` - same file
+    /// name, never a rename - refusing a collision before writing anything, then
+    /// repointing every card that named the old path (ADR-0026 §D1, §D7).
+    ///
+    /// `renameBoard`'s order, and for `renameBoard`'s reason: the plan is computed and
+    /// the file moved before a single rewrite, because the move is one operation that
+    /// either happens or does not while the rewrites are many and each can fail on its
+    /// own. A collision or a missing file throws out of `movePlan` with nothing written
+    /// at all.
+    ///
+    /// The destination folder is created if it is not there yet - the same
+    /// `createDirectory(withIntermediateDirectories:)` `renameFolder` and
+    /// `NoteFileOperations.move` both make before their own `moveItem`.
     func moveBoard(at relativePath: String, toFolder folder: String) throws -> MoveOutcome {
-        MoveOutcome(newPath: Self.normalized(relativePath))
+        let plan = try movePlan(relativePath, toFolder: folder)
+        let oldPath = Self.normalized(relativePath)
+
+        if plan.newPath != oldPath {
+            do {
+                let destination = store.url(for: plan.newPath)
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
+                try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
+            } catch {
+                throw OperationError.failed("spostamento board: \(error.localizedDescription)")
+            }
+        }
+
+        var outcome = MoveOutcome(newPath: plan.newPath, failures: plan.failures)
+        // Written as bytes rather than through `NoteStore.write`, for `renameBoard`'s
+        // reason: a `.canvas` is not a note and the planned text is already the encoded
+        // document. The board that moved is written at its **new** path, which is what
+        // `repointBoardsPlan`'s `writePath` substitution already computed.
+        for change in plan.boardChanges {
+            do {
+                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        return outcome
     }
 
     // MARK: - Paths
