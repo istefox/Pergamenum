@@ -132,6 +132,25 @@ let project = Project(
                 ],
                 "NSCalendarsFullAccessUsageDescription": "Pergamenum mostra e crea eventi nella timeline giornaliera.",
                 "NSRemindersFullAccessUsageDescription": "Pergamenum sincronizza i task con Promemoria.",
+                // ADR-0026 §D3. A dragged sidebar row carries two representations on one
+                // pasteboard item, and the structured one travels under a type this app
+                // owns (`Sources/App/VaultItemDrag.swift`).
+                // Measured rather than assumed, because the obvious check is worthless:
+                // `UTType(exportedAs:)` reads its identifier back verbatim even for a
+                // string nothing declares anywhere - a control run on
+                // `it.stefer.pergamenum.not-declared-control` returned that identifier with
+                // `isDeclared` true and `isDynamic` false, no `dyn.` prefix in sight. What
+                // this entry buys is the type reaching LaunchServices, and the reading that
+                // shows it did is `localizedDescription`, which is nil for the control and
+                // reads `UTTypeDescription` below for the real one.
+                "UTExportedTypeDeclarations": [
+                    [
+                        "UTTypeIdentifier": "it.stefer.pergamenum.vault-item",
+                        "UTTypeDescription": "Pergamenum vault item",
+                        "UTTypeConformsTo": ["public.data"],
+                        "UTTypeTagSpecification": [:],
+                    ],
+                ],
             ]),
             // Everything but the CLI: `Sources/CLI/main.swift` is top-level code, and a
             // module that contains any cannot also carry an `@main` type - the app
