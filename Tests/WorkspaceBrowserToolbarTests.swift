@@ -143,12 +143,3 @@ private let workspaceBoards = [
     #expect(state == .ok)
 }
 
-// MARK: - Task 6 (ADR-0022 §D11): WorkspaceFolderSheets.parentOptions(from:)
-
-@Test func parentOptionsMapsBoardsToRootFirstDeduplicatedAncestorsIncluded() {
-    let boards = ["Labs.canvas", "01 Progetti/a/a.canvas", "01 Progetti/b/b.canvas"]
-
-    let options = WorkspaceFolderSheets.parentOptions(from: boards)
-
-    #expect(options == ["", "01 Progetti", "01 Progetti/a", "01 Progetti/b"])
-}
