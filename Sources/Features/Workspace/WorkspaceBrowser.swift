@@ -309,14 +309,14 @@ struct WorkspaceBrowser: View {
             return board == nil ? .folder(node.id) : .board(folder: node.id)
         case .foreignBoard:
             return nil
-        // TODO(ADR-0025 Task 2): placeholder exhaustiveness arm for the two new `Kind`
-        // cases (ADR-0024's `.workspace`/`.foreignBoard` are superseded but kept for now,
-        // see `WorkspaceTree.Node.Kind`'s doc comment). The coder's GREEN phase re-cases
-        // this whole function; `nil` here is a deliberately wrong placeholder, not a
-        // considered answer - this branch is unreachable in RED, since `workspaceTree` is
-        // only ever built through the old `build(boards:boardPath:)` until then.
-        case .folder, .board:
-            return nil
+        // ADR-0025 §D3: the row's own id, whichever kind it is - a board names itself by
+        // its file path and a folder by its folder path, so nothing here derives one from
+        // the other. TODO(ADR-0025 Task 5): the two ADR-0024 arms above go with their
+        // cases and this function stops being optional (every row is selectable now).
+        case .folder:
+            return .folder(node.id)
+        case .board(let path):
+            return .board(path: path)
         }
     }
 
@@ -381,20 +381,10 @@ struct WorkspaceBrowser: View {
         // decides rather than on every access (see the declaration).
         folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         boards = store?.allBoards() ?? []
-        // TODO(ADR-0025 Task 2): temporary. The folder↔board naming rule used to be
-        // asked of `CanvasStore.boardPath(forFolder:)` (ADR-0024 §D2), which ADR-0025
-        // §D1 deletes; it is reproduced here, locally and only until Task 2 replaces
-        // this whole call with `WorkspaceTree.build(folders:boards:)` and the fold stops
-        // needing a rule at all. Not a helper on `CanvasStore` - that is the thing being
-        // deleted. With no vault open there is nothing to draw.
-        workspaceTree = store.map { canvas in
-            WorkspaceTree.build(
-                boards: boards,
-                boardPath: {
-                    Self.temporaryBoardPath(forFolder: $0, vaultName: canvas.root.lastPathComponent)
-                }
-            )
-        } ?? []
+        // Folders and boards, two lists and two kinds of row (ADR-0025 §D2). No naming
+        // rule is asked any more: a board is a row because it is a file, not because a
+        // folder is named after it. With no vault open there is nothing to draw.
+        workspaceTree = store.map { WorkspaceTree.build(folders: $0.allFolders(), boards: boards) } ?? []
         // A selection is a path, and a rename or a delete has just moved or removed the
         // folder it names - this runs on `scanGeneration`, which both of them bump.
         // `selectedFolder` is owned by the controller now (ADR-0024 §D6), so dropping a
@@ -413,19 +403,6 @@ struct WorkspaceBrowser: View {
         // a board changes what the filter matches, and the filtered list is not redrawn
         // from the tree - it is redrawn from `filteredRows`.
         refreshFilteredRows()
-    }
-
-    /// TODO(ADR-0025 Task 2): temporary, and used only by `rebuild()` above. The rule
-    /// `CanvasStore.boardPath(forFolder:)` carried until ADR-0025 §D1 deleted it: a
-    /// folder's board is the `.canvas` inside it named after it, the vault root's being
-    /// named after the vault so it cannot collide with a note. It survives here, in the
-    /// one caller that still needs it, rather than on the store, because the store is
-    /// where it must not be askable any more. Task 2 removes it with the fold it feeds.
-    private static func temporaryBoardPath(forFolder folder: String, vaultName: String) -> String {
-        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !trimmed.isEmpty else { return "\(vaultName).\(CanvasStore.fileExtension)" }
-        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
-        return "\(trimmed)/\(name).\(CanvasStore.fileExtension)"
     }
 
     /// Recomputes what `flatList` draws, from the filter and the tree it matches against.
@@ -505,28 +482,28 @@ struct WorkspaceBrowser: View {
         }
     }
 
-    /// The three identifier spellings a row can carry, and the only place they are
-    /// spelled (ADR-0024 §D10): `workspace-board-<boardPath>` for a `.workspace` that
-    /// owns a board, `workspace-folder-<id>` for one that does not,
-    /// `workspace-foreign-board-<path>` for a `.foreignBoard`.
+    /// The **two** identifier spellings a row can carry, and the only place they are
+    /// spelled (ADR-0024 §D10, re-cased by ADR-0025): `workspace-board-<boardPath>` for a
+    /// board row, `workspace-folder-<folderPath>` for a folder row. ADR-0024's third
+    /// spelling, the one for a «foreign» board, is gone with the concept and its prefix
+    /// is not written anywhere in this file any more: a `.canvas` this app used to call
+    /// foreign is an ordinary board row now (§D2) and carries the ordinary board
+    /// identifier.
     ///
-    /// The board form is spelled from the **board path**, byte-identical to what the row
-    /// carried before the fold, so the two existing UI call sites keep resolving; the
-    /// folder form is spelled from the folder path, and only a folder that owns no board
-    /// gets it, which is R-01 stated as an identifier.
+    /// Both forms are spelled from the row's own path, which is what keeps the board form
+    /// byte-identical to what a board row carried before this chain - the UI tests'
+    /// `workspace-board-<boardPath>` still resolves.
+    ///
+    /// TODO(ADR-0025 Task 5): the two ADR-0024 arms go with their cases.
     nonisolated static func identifier(for node: WorkspaceTree.Node) -> String {
         switch node.kind {
         case .workspace(let board):
             if let board { return "workspace-board-\(board)" }
             return "workspace-folder-\(node.id)"
-        case .foreignBoard(let path):
-            return "workspace-foreign-board-\(path)"
-        // TODO(ADR-0025 Task 2): placeholder exhaustiveness arm, same reasoning as
-        // `selection(for:)` above. GREEN re-cases this to `workspace-board-<path>` for
-        // `.board` and `workspace-folder-<path>` for `.folder`, with no third spelling -
-        // `""` here is deliberately wrong, not that answer.
-        case .folder, .board:
-            return ""
+        case .foreignBoard(let path), .board(let path):
+            return "workspace-board-\(path)"
+        case .folder:
+            return "workspace-folder-\(node.id)"
         }
     }
 }

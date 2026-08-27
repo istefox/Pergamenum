@@ -1,5 +1,7 @@
+import Foundation
+
 /// The single value that says both which row of the Workspace tree is lit and whether a
-/// board is drawn (ADR-0024 §D4).
+/// board is drawn (ADR-0024 §D4), with the board named by its own file path (ADR-0025 §D3).
 ///
 /// Before this type, those two facts were two variables (`WorkspaceBrowser.selectedFolder`
 /// and `WorkspaceController.hasOpenBoard`/`folder`) that had to be kept in agreement by
@@ -7,58 +9,61 @@
 /// selected at once, for two different reasons (ADR-0024 F1). Anything that reads either
 /// fact reads this one value instead.
 ///
-/// ADR-0025 §D3 (Task 2, RED): a board is addressed by its own file path, not by the
-/// folder it used to be folded into, so `.board` is being re-cased from `folder: String`
-/// to `path: String` - the `.folder("")` this doc comment will carry once that lands is
-/// never produced, because there is no root row to click (§D2) and the breadcrumb's root
-/// segment calls `select(nil)` instead (§D4).
-///
-/// `.board(path:)` below is a **placeholder bridge**, not the real case: two `case board`
-/// declarations differing only in their argument label compile (Swift resolves the
-/// constructor call by label, like an overloaded function), but every *pattern match*
-/// against `.board` becomes ambiguous the moment a second one exists - confirmed with
-/// `swiftc -typecheck` before writing this, because `WorkspaceController.swift:281,295`
-/// and `Tests/WorkspaceOpenStateTests.swift`/`Tests/WorkspaceBrowserToolbarTests.swift`
-/// still pattern-match and construct the **old** `.board(folder:)` case and are not this
-/// task's to rewrite (Tasks 3 and 5 own them). The bridge reuses `.board(folder:)`'s
-/// storage so those three files keep compiling and keep passing, unchanged, while this
-/// file's own tests exercise the new call shape. The coder's GREEN phase replaces this
-/// bridge with a real `case board(path: String)`, deleting `.board(folder:)` and fixing
-/// the three call sites above in the same change - it cannot be done piecemeal because of
-/// the ambiguity just described.
+/// ADR-0025 §D3: a board is addressed by its **own** file path, never derived from the
+/// folder holding it, so a folder may hold any number of boards under any name and each
+/// one is a selection of its own (R-03, R-04, R-06). `.folder("")` is representable and
+/// never produced: there is no root row to click (§D2) and the breadcrumb's root segment
+/// calls `select(nil)` instead (§D4).
 enum WorkspaceSelection: Equatable, Sendable {
-    /// This folder's board is loaded and drawn on screen.
-    case board(folder: String)
+    /// The board on screen, by the `.canvas` file's own vault-relative path -
+    /// `01 Progetti/qualsiasi-nome.canvas`. The containing folder is read off it
+    /// (`folder` below), never the other way round (ADR-0025 §D3).
+    case board(path: String)
     /// Selected for the toolbar's verbs; opens nothing (ADR-0024 §D5, R-05).
     case folder(String)
 
-    /// ADR-0025 §D3's real case, once GREEN lands. For now: a placeholder constructor
-    /// (see the type's doc comment) that stores `path` in the existing `.board(folder:)`
-    /// slot verbatim - `.folder`'s own real logic (`deletingLastPathComponent`) is not
-    /// implemented here, so `folder` below reads the whole path back unchanged for a
-    /// value built this way, which is deliberately wrong until the coder writes it.
-    static func board(path: String) -> WorkspaceSelection {
-        .board(folder: path)
+    /// TODO(ADR-0025 Task 3/5): ADR-0024's `.board(folder:)` **constructor**, kept as a
+    /// bridge over the real `.board(path:)` case above so the call sites Tasks 3 and 5
+    /// own keep compiling and keep passing while this task re-cases the type. Swift
+    /// resolves `WorkspaceSelection.board(…)` by argument label like an overloaded
+    /// function, so `.board(folder:)` call sites need no edit; a *pattern* match on
+    /// `.board` binds the path, which is why `WorkspaceController.select(_:)` reads
+    /// `hasBoard`/`folder` rather than destructuring the case.
+    ///
+    /// It restates ADR-0024's folder→board rule (the `.canvas` inside a folder named
+    /// after it) rather than inventing one, so every reader of `folder` below - the
+    /// breadcrumb (`WorkspaceController.swift:226`), the tree's tag
+    /// (`WorkspaceView.swift:126`), the toolbar's target (`WorkspaceBrowser.target(for:)`)
+    /// - reads exactly the folder ADR-0024 stored. The vault root's board was named after
+    /// the *vault* and this type cannot know that name, so the root's stand-in is a
+    /// sentinel file name whose containing folder is `""`, which is the only property of
+    /// it anything reads. Deleted with the last `.board(folder:)` call site in Task 5.
+    static func board(folder: String) -> WorkspaceSelection {
+        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty else { return .board(path: Self.bridgeRootBoardName) }
+        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        return .board(path: "\(trimmed)/\(name).\(CanvasStore.fileExtension)")
     }
 
-    /// The id either case names - ADR-0025 §D3's `path`. Trivial regardless of which
-    /// case: an unwrap, not a decision, so it reads correctly today for both the legacy
-    /// `.board(folder:)` value and one built through the placeholder constructor above.
+    /// The stand-in file name for the vault root's board under the bridge above. Angle
+    /// brackets so it cannot collide with a real board a person could create.
+    private static let bridgeRootBoardName = "<root>.\(CanvasStore.fileExtension)"
+
+    /// The id this selection names: the board's own path, or the folder's (ADR-0025 §D3).
+    /// The `List`'s tag under Task 5, and an unwrap rather than a decision here.
     var path: String {
         switch self {
-        case .board(let value): return value
-        case .folder(let value): return value
+        case .board(let path): return path
+        case .folder(let folder): return folder
         }
     }
 
-    /// The folder path either case names. Under ADR-0025 this becomes "the containing
-    /// folder" (`deletingLastPathComponent` for `.board`, `self` for `.folder`) - real
-    /// logic left for the coder's GREEN phase, so a `.board` value built through the
-    /// placeholder constructor above still reads its whole path back here rather than
-    /// the folder that contains it.
+    /// The folder this selection sits in: the board file's containing folder, or the
+    /// folder itself. `""` for a board at the vault root, which is the same `""` the
+    /// folder case spells the root with (ADR-0025 §D3).
     var folder: String {
         switch self {
-        case .board(let folder): return folder
+        case .board(let path): return (path as NSString).deletingLastPathComponent
         case .folder(let folder): return folder
         }
     }

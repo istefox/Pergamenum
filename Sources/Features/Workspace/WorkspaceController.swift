@@ -292,8 +292,12 @@ final class WorkspaceController {
     /// thing the user was looking at (ADR-0024 §D4).
     func select(_ new: WorkspaceSelection?) {
         guard new != current else { return }
-        if case .board(let folder) = new {
-            open(folder: folder)
+        // TODO(ADR-0025 Task 3): read as «which folder does this selection sit in» rather
+        // than destructured, because `.board` now carries the board's own path (§D3) and
+        // this controller still opens by folder. Task 3 re-signs `open` to
+        // `open(board: new.path)` and this becomes the same two lines over the path.
+        if let new, new.hasBoard {
+            open(folder: new.folder)
             return
         }
         // Selecting a board-less folder, or nothing at all, is still leaving whatever
