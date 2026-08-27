@@ -34,8 +34,8 @@ extension WorkspaceView {
         do {
             let store = CanvasStore(root: root)
             let created = try store.createFolder(named: name, in: parent)
-            _ = try store.createBoard(named: name, in: created)
-            workspace.open(folder: created)
+            let board = try store.createBoard(named: name, in: created)
+            workspace.open(board: board)
             Task { await vault.rescan() }
         } catch {
             // The board is still usable and the name can be retried, so this is a line in
@@ -95,15 +95,28 @@ extension WorkspaceView {
 
         let destination = landing(workspace.folder)
         guard destination != workspace.folder else { return }
+        // A board is a file with a name of its own (ADR-0025 §D1), so it follows its
+        // folder under that name rather than being derived from where the folder landed.
         // Reopened rather than moved in place: the document on screen was read from a
-        // file that has moved, and `open(folder:)` is what re-reads it, refreshes the
-        // folder's contents and redraws the breadcrumb from `workspace.folder`.
-        workspace.open(folder: destination)
+        // file that has moved, and `open(board:)` is what re-reads it, refreshes the
+        // folder's contents and redraws the breadcrumb.
+        let fileName = (workspace.board as NSString).lastPathComponent
+        let moved = destination.isEmpty ? fileName : "\(destination)/\(fileName)"
+        guard let store = workspace.store, FileManager.default.fileExists(
+            atPath: store.url(forBoard: moved).path(percentEncoded: false)
+        ) else {
+            // Nothing followed: a delete put the board in the Trash, so the surviving
+            // parent is selected and no board is drawn - the answer §D5 gives a folder
+            // that has no board, rather than a reopen that would only report a miss.
+            workspace.select(destination.isEmpty ? nil : .folder(destination))
+            return
+        }
+        workspace.open(board: moved)
     }
 
     /// Everything the board still owes the disk, written now.
     ///
-    /// The crop is ended before the flush rather than left to `open(folder:)`, which ends
+    /// The crop is ended before the flush rather than left to `open(board:)`, which ends
     /// it on the way out (ADR-0020 §D5): confirming a crop is a `mutate`, and a `mutate`
     /// after the folder has moved is a write to a path that is no longer there - the
     /// autosave problem of §F10 arriving through the other door. Ended here, its write

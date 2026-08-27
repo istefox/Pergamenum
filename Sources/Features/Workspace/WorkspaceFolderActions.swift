@@ -7,7 +7,7 @@ import Foundation
 /// *when* a verb runs, `WorkspaceView` performs it. All three need the
 /// `WorkspaceController` - `flushPendingSave()` before anything touches disk, or the
 /// ~1s autosave lands on the old path afterwards and recreates what was just renamed
-/// away (§F10), and `open(folder:)` after, so the board follows what moved - and the
+/// away (§F10), and `open(board:)` after, so the board follows what moved - and the
 /// browser has no business holding that controller.
 ///
 /// The two rules below are static and pure on purpose. Where the open board lands after

@@ -32,16 +32,25 @@ struct BoardTopBar: View {
                 }
                 if index == crumbs.count - 1 {
                     // The last segment is where you already are, so it is not a link
-                    // (ADR-0024 §D8.2): as a `Button` it re-ran `open(folder:)` on the
-                    // open folder, which resets the board's zoom and pan for a click
-                    // that was meant to go nowhere. Emphasis carries "you are here" -
-                    // the tree says it with the system's row fill and this pane's
+                    // (ADR-0024 §D8.2): as a `Button` it re-ran the open command on the
+                    // open board, which resets its zoom and pan for a click that was
+                    // meant to go nowhere. Emphasis carries "you are here" - the tree
+                    // says it with the system's row fill and this pane's
                     // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
                     Text(crumb.title).themedText(.body, color: .textPrimary)
                 } else {
-                    Button(crumb.title) { workspace.open(folder: crumb.folder) }
-                        .buttonStyle(.plain)
-                        .themedText(.body, color: .textSecondary)
+                    // TODO(ADR-0025 Task 4): an ancestor segment selects its folder and
+                    // opens nothing, which is the `.ambiguous`/`.notFound` branch of the
+                    // one rule §D5 gives every folder→board navigation; Task 4 adds the
+                    // resolver that lets `.unique` open the board instead. Selecting is
+                    // the safe half to have first: it can never open a board that is not
+                    // there. The root segment is `select(nil)`, the only spelling of
+                    // "nothing selected" - `.folder("")` is never produced (§D3).
+                    Button(crumb.title) {
+                        workspace.select(crumb.folder.isEmpty ? nil : .folder(crumb.folder))
+                    }
+                    .buttonStyle(.plain)
+                    .themedText(.body, color: .textSecondary)
                 }
             }
 

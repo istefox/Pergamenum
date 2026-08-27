@@ -115,7 +115,12 @@ struct BoardCardActions {
     /// at.
     func open(_ node: CanvasNode) {
         if let subfolder = workspace.subfolder(for: node) {
-            workspace.open(folder: subfolder)
+            // TODO(ADR-0025 Task 4): the resolver decides which board this folder means -
+            // `.unique` opens it, `.ambiguous` and `.notFound` stop here (§D5). Selecting
+            // is that rule's safe half and all this task needs: a folder no longer
+            // implies a board file, so opening one by name would open a board that may
+            // not exist.
+            workspace.select(.folder(subfolder))
             return
         }
         switch node.kind {
