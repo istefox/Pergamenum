@@ -685,9 +685,6 @@ private struct WorkspaceRow: View {
     private var isExpanded: Bool { expanded.contains(node.id) }
     private var isSelected: Bool { selection?.path == node.id }
     private var hasChildren: Bool { !node.children.isEmpty }
-    private var isFolder: Bool {
-        if case .folder = node.kind { true } else { false }
-    }
 
     /// What selecting this row means, asked of the one function the `List`'s binding also
     /// asks, so a click and a right-click cannot disagree (ADR-0023 §D4).
@@ -721,34 +718,20 @@ private struct WorkspaceRow: View {
     /// was therefore structurally unselectable - is gone with the concept: a `.canvas` is
     /// an ordinary, openable row wherever it lives and whatever it is called
     /// (ADR-0025 §D2), so the switch that used to decide this has nothing left to decide.
+    ///
+    /// No gesture recognizer sits between `content` and this `.tag` any more. ADR-0025
+    /// §D9 originally hung the folder row's double-click-to-toggle here, wrapping the
+    /// whole of `content` in `.simultaneousGesture(TapGesture(count: 2))` ahead of the
+    /// `.tag` - and the exact risk that section's own text named before merge is the one
+    /// that reached `WorkspaceOpenStateUITests
+    /// .testClickingABoardLessFolderRowClosesTheOpenBoardAndSelectsOnlyItsRow_R04`:
+    /// clicking a board-less folder row straight after a *different* row was selected
+    /// intermittently failed to register the click as a selection change at all, because
+    /// the double-tap recognizer spanning the entire row contested `List(selection:)`'s
+    /// own tap recognizer over the same area. `chevron` is where the gesture lives now -
+    /// see the comment there.
     private var taggedRow: some View {
-        doubleClickable(content).tag(node.id)
-    }
-
-    /// R-05 / ADR-0025 §D9: a double click on a **folder** row expands or collapses it,
-    /// and opens nothing - not even when the folder holds exactly one board.
-    ///
-    /// `.simultaneousGesture` and never `.onTapGesture(count: 2)`: the latter consumes the
-    /// click, so `List(selection:)` would never see it and the row would stop selecting.
-    /// Applied here, ahead of the `.tag` above, which stays the one modifier nothing may
-    /// follow.
-    ///
-    /// Only where there is something to toggle, which is the same condition the chevron is
-    /// drawn under - a double click on a childless row would otherwise write an id into
-    /// `expanded` that no disclosure ever reads.
-    ///
-    /// This behaviour rests on a SwiftUI interaction this repository has not exercised
-    /// before, so it is a manual-verification item rather than a unit-tested one, with a
-    /// stated fallback (ADR-0025 §D9): if the simultaneous gesture does not fire, or fires
-    /// at the cost of single-click selection, move the double click onto the chevron's
-    /// existing hit target and record the finding here.
-    @ViewBuilder
-    private func doubleClickable(_ row: some View) -> some View {
-        if isFolder && hasChildren {
-            row.simultaneousGesture(TapGesture(count: 2).onEnded { toggle() })
-        } else {
-            row
-        }
+        content.tag(node.id)
     }
 
     private var content: some View {
@@ -833,12 +816,23 @@ private struct WorkspaceRow: View {
     /// Its own hit target, which is what keeps «the triangle expands, the row selects»
     /// implementable at all (ADR-0024 §D5). A row with nothing under it keeps the space
     /// so the names line up.
+    ///
+    /// Also where R-05 / ADR-0025 §D9's double click lives - moved here from the whole row
+    /// (`taggedRow`'s comment has the failure and the fix). `.simultaneousGesture` and
+    /// never `.onTapGesture(count: 2)`: the latter consumes the click, so
+    /// `List(selection:)` would never see it. Confined to the chevron's small hit target
+    /// rather than the row's, a double click landing anywhere else in the row - which is
+    /// where every existing click, including `XCUIElement.click()`'s, lands on the row's
+    /// `.contain` accessibility element - now reaches `List(selection:)` with nothing
+    /// competing for it; only a click aimed at the chevron itself risks the same
+    /// contention, and none of R-04/R-05's clicks are.
     @ViewBuilder
     private var chevron: some View {
         if hasChildren {
             triangle
                 .contentShape(Rectangle())
                 .onTapGesture { toggle() }
+                .simultaneousGesture(TapGesture(count: 2).onEnded { toggle() })
         } else {
             triangle.hidden()
         }
