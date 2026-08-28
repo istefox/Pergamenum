@@ -85,6 +85,20 @@ struct NoteListPane: View {
         // while the composer is up» is the behaviour that would otherwise be lost, taking
         // the `leaveComposer()` click with it.
         .onChange(of: vault.isOpenNoteVisible) { _, _ in syncSelectedRows() }
+        // `VaultTopBar`'s breadcrumb (2026-08-28): a folder crumb opens the tree down to
+        // it and lights its row, without touching the note open in the editor - a folder
+        // id never ends `.md`, so `opening(...)` above reads this as "nothing to open or
+        // close" (its own guard), exactly like a direct click on the row.
+        .onChange(of: navigation.folderReveal) { _, reveal in
+            guard let reveal else { return }
+            guard !reveal.folder.isEmpty else {
+                selectedRows = []
+                return
+            }
+            showsFolders = true
+            expanded.formUnion(NoteTree.ancestors(of: reveal.folder) + [reveal.folder])
+            selectedRows = [reveal.folder]
+        }
         .sheet(item: $renaming) { note in
             RenameNoteSheet(note: note) { newTitle in
                 vault.renameNote(at: note.relativePath, to: newTitle)

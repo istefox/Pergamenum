@@ -13,14 +13,21 @@ struct VaultBrowser: View {
     @Environment(ShortcutStore.self) var shortcuts
 
     var body: some View {
-        HSplitView {
-            NoteListPane()
-                .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
-            editor
-                .frame(minWidth: 360)
-            if navigation.isShowingInspector {
-                inspector
+        VStack(spacing: 0) {
+            // Above everything else in this pane, never inside one column of it - the same
+            // reason `WorkspaceBrowser` gives (`WorkspaceBrowser.swift:123-126`): the header
+            // groups its children under its own identifier and a button placed inside it
+            // risks answering to that identifier instead of its own.
+            VaultTopBar(vault: vault, navigation: navigation)
+            HSplitView {
+                NoteListPane()
                     .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+                editor
+                    .frame(minWidth: 360)
+                if navigation.isShowingInspector {
+                    inspector
+                        .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+                }
             }
         }
         .toolbar { toolbar }

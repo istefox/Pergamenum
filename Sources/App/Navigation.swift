@@ -189,6 +189,29 @@ final class Navigation {
         jumpToOutlineEntry(range: range, ordinal: ordinal)
     }
 
+    // MARK: Folder reveal (2026-08-28, Note-pane breadcrumb chain)
+
+    /// A folder `VaultTopBar`'s breadcrumb asked the Note tree to open and select.
+    ///
+    /// `id` makes two clicks on the same crumb two events, the same reason `OutlineJump`
+    /// carries one - `NoteListPane`'s `.onChange` only fires on a value that actually
+    /// changed, and clicking the same crumb twice in a row is a real request both times.
+    struct FolderReveal: Equatable, Sendable {
+        var id: Int
+        /// `""` for the root crumb ("Note") - deselects the tree without touching the open
+        /// note, the same spelling every path rule in this feature uses for the vault root.
+        var folder: String
+    }
+
+    private(set) var folderReveal: FolderReveal?
+
+    /// Not routed through `pane` the way `jumpToOutlineEntry` is: that jump can be asked
+    /// for from outside the Note pane (a task row in the week), so it has to bring the
+    /// pane with it. A breadcrumb crumb only exists inside the Note pane already showing.
+    func revealFolder(_ folder: String) {
+        folderReveal = FolderReveal(id: (folderReveal?.id ?? 0) + 1, folder: folder)
+    }
+
     // Reading mode, the current index entry and the folds used to be stored here. They
     // are note state, not window state, and moved onto `NoteTab` when a window stopped
     // showing exactly one note (ADR-0012 D2). `VaultController` still exposes all three,

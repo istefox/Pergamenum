@@ -168,4 +168,27 @@ extension VaultController {
     /// backlinks, conformance and history, then belong to a note nobody is looking at
     /// (PG-027).
     var isOpenNoteVisible: Bool { openNote != nil && !isComposingNote }
+
+    /// The breadcrumb `VaultTopBar` draws (2026-08-28, Note-pane parity chain), mirroring
+    /// `WorkspaceController.breadcrumb` (`WorkspaceController.swift:225-237`): `"Note"` as
+    /// the root instead of `"Workspace"`, the open note instead of the open board.
+    ///
+    /// It walks `openNote`, not the sidebar's own selection - there is no `WorkspaceSelection`
+    /// equivalent here, and the open note *is* what the editor is showing, unlike Workspace
+    /// where a folder can be selected with nothing loaded.
+    ///
+    /// The last segment is `note.title`, not the file name: the tab strip and the tree row
+    /// already show the title, and a breadcrumb spelling the same note a third way (the file
+    /// name, extension included) would read as a different note at a glance.
+    var breadcrumb: [(title: String, folder: String)] {
+        var trail: [(String, String)] = [("Note", "")]
+        guard let note = openNote else { return trail }
+        var accumulated = ""
+        for component in note.relativePath.split(separator: "/").dropLast() {
+            accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
+            trail.append((String(component), accumulated))
+        }
+        trail.append((note.title, accumulated))
+        return trail
+    }
 }
