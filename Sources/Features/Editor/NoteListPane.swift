@@ -35,8 +35,10 @@ struct NoteListPane: View {
     /// isComposingNote:)` - a row can be lit without being open, and two lit rows open
     /// nothing (R-10).
     ///
-    /// Only note rows are ever in here: a folder row of this pane carries no `.tag`, which
-    /// is the same structural unselectability it had before this chain.
+    /// Folder rows carry a `.tag` too now (2026-08-28, toolbar parity chain): a folder id
+    /// never collides with a note id (a note path always ends in `.md`, a folder path
+    /// never does), so the two share this one set safely. `opening(...)` below is what
+    /// keeps a folder id from being treated as a note to open.
     ///
     /// Kept in step with the editor by `syncSelectedRows()` - a note opened from a
     /// backlink, a wikilink or the quick switcher lights exactly its own row - and pruned
@@ -55,6 +57,30 @@ struct NoteListPane: View {
     @State private var renaming: NoteRecord?
     /// The note the delete confirmation is about (SPEC §10: never without asking).
     @State private var deleting: NoteRecord?
+    /// The vault's real, on-disk folder list (`CanvasStore.allFolders()`), rebuilt
+    /// alongside `tree` in `rebuild()` - `WorkspaceBrowser`'s own `folders`
+    /// (`WorkspaceBrowser.swift:599`), needed here for the same two reasons: an empty
+    /// folder needs a row `NoteTree.build(from:folders:)` can only give it if this list
+    /// names it, and the "Nuova cartella" sheet's parent picker needs every folder, not
+    /// only the ones a note happens to sit in.
+    @State private var diskFolders: [String] = []
+    /// `WorkspaceBrowser`'s own `folderOperations` (`WorkspaceBrowser.swift:82`), reused
+    /// here for the collision check the "Nuova cartella" sheet blocks on - the very
+    /// predicate `CanvasStore.createFolder` itself refuses against, so the sheet cannot
+    /// enable a "Crea" the write will then reject.
+    @State private var folderOperations: FolderFileOperations?
+    /// Whether the "Nuova cartella" sheet is up.
+    @State private var creatingFolder = false
+    /// The folder the rename sheet is editing (toolbar "Rinomina" on a folder row).
+    @State private var renamingFolder: String?
+    /// The folder the delete confirmation is about (toolbar "Elimina" on a folder row).
+    @State private var deletingFolder: String?
+    /// Set when a move was refused for a reason the drag itself cannot show - today only
+    /// `VaultController.canOperate`'s unsaved-note guard (ADR-0026 §D10), which used to
+    /// fail `performMove` silently: the drag lifted, the folder row lit, and nothing moved,
+    /// with no way to tell a refusal from a slow drop. `vault.problems.last` is read right
+    /// after the refusing call, mirroring `WorkspaceBrowser`'s own `moveConflict` alert.
+    @State private var moveRefused: String?
     /// Folders or flat list. A preference rather than view state: whichever one
     /// someone works in, they work in it every day.
     @AppStorage("noteListShowsFolders") private var showsFolders = true
@@ -65,6 +91,11 @@ struct NoteListPane: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            // A second row *beside* the header, never inside it - the same reason
+            // `WorkspaceBrowser` gives (`WorkspaceBrowser.swift:123-126`): the header
+            // groups its children under its own identifier and a button placed inside it
+            // risks answering to that identifier instead of its own.
+            toolbar
             Divider()
             if showsFolders, filter.isEmpty {
                 folderTree
@@ -120,12 +151,95 @@ struct NoteListPane: View {
         } message: {
             Text("Va nel Cestino del Finder, non è una cancellazione definitiva. I link che puntavano qui resteranno non risolti.")
         }
+        // The toolbar's "Nuova cartella" (2026-08-28): the same sheet type
+        // `WorkspaceBrowser` uses, kept only to `.folder` - its `.board` arm is never
+        // reached from here. `CanvasStore.createFolder` writes no note inside it (R-01's
+        // own rule, unchanged by which pane asked).
+        .sheet(isPresented: $creatingFolder) {
+            NewWorkspaceSheet(
+                kind: .folder,
+                parents: WorkspaceFolderSheets.parentOptions(from: diskFolders),
+                initialParent: targetFolder,
+                isNameAvailable: { name, parent in
+                    folderOperations?.nameIsAvailable(name, in: parent) ?? true
+                },
+                onConfirm: { name, parent in
+                    creatingFolder = false
+                    createFolder(named: name, in: parent)
+                },
+                onCancel: { creatingFolder = false }
+            )
+        }
+        // The toolbar's "Rinomina" on a folder row - `VaultController.renameFolder`
+        // already exists and already repoints every card and board path under it
+        // (ADR-0022 §D1); this is the first UI in this pane that reaches it.
+        .sheet(isPresented: Binding(
+            get: { renamingFolder != nil },
+            set: { if !$0 { renamingFolder = nil } }
+        )) {
+            if let path = renamingFolder {
+                RenameWorkspaceSheet(
+                    kind: .folder,
+                    path: path,
+                    isNameAvailable: { name, parent in
+                        folderOperations?.nameIsAvailable(name, in: parent) ?? true
+                    },
+                    onConfirm: { newName in
+                        renamingFolder = nil
+                        vault.renameFolder(at: path, to: newName)
+                    },
+                    onCancel: { renamingFolder = nil }
+                )
+            }
+        }
+        // The toolbar's "Elimina" on a folder row - same wording and same counts
+        // `WorkspaceBrowser`'s own folder-delete confirmation uses
+        // (`FolderFileOperations.contentCounts`), `VaultController.trashFolder` doing the
+        // actual move to the Finder's Trash (R-11's rule, unchanged by which pane asked).
+        .confirmationDialog(
+            "Eliminare «\(deletingFolder.map { ($0 as NSString).lastPathComponent } ?? "")» e il suo contenuto?",
+            isPresented: Binding(
+                get: { deletingFolder != nil },
+                set: { if !$0 { deletingFolder = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Sposta nel Cestino", role: .destructive) {
+                if let path = deletingFolder { vault.trashFolder(at: path) }
+                deletingFolder = nil
+            }
+            Button("Annulla", role: .cancel) { deletingFolder = nil }
+        } message: {
+            Text(deletingFolderCounts)
+        }
+        // Same treatment `WorkspaceBrowser` gives a collision (ADR-0026 §D9's "a command
+        // rendered twice"): a drop is a gesture with an expectation, and a refusal with
+        // nothing on screen reads as a drag that missed.
+        .alert(
+            "Spostamento rifiutato",
+            isPresented: Binding(
+                get: { moveRefused != nil },
+                set: { if !$0 { moveRefused = nil } }
+            ),
+            presenting: moveRefused
+        ) { _ in
+            Button("OK", role: .cancel) { moveRefused = nil }
+                .accessibilityIdentifier("sidebar-move-conflict-ok")
+        } message: { reason in
+            Text(reason)
+                .accessibilityIdentifier("sidebar-move-conflict")
+        }
     }
 
     // MARK: Header
 
     private var header: some View {
         HStack(spacing: theme.spacing(.xs)) {
+            // `WorkspaceBrowser.header`'s own label half (`WorkspaceBrowser.swift:376-392`),
+            // "NOTE" in place of "WORKSPACE" - the toolbar parity chain (2026-08-28).
+            Image(systemName: "doc.text").foregroundStyle(theme.color(.textTertiary))
+            Text("NOTE").themedText(.caption, color: .textTertiary)
+            Spacer()
             Image(systemName: "magnifyingglass").foregroundStyle(theme.color(.textTertiary))
             TextField("Filtra", text: $filter)
                 .textFieldStyle(.plain)
@@ -141,6 +255,94 @@ struct NoteListPane: View {
             .help(showsFolders ? "Mostra tutte le note in un elenco" : "Mostra le cartelle")
         }
         .padding(theme.spacing(.s))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Note del vault")
+        .accessibilityIdentifier("note-browser-header")
+    }
+
+    // MARK: Toolbar (2026-08-28, parity with `WorkspaceBrowserToolbar`)
+
+    private var toolbar: some View {
+        NoteListToolbar(
+            selection: currentSelection,
+            onNew: { vault.beginNewNote(in: targetFolder) },
+            onNewFolder: { creatingFolder = true },
+            onRename: { renameSelection() },
+            onDelete: { deleteSelection() },
+            onExpandAll: { expanded = Self.allFolders(in: tree) },
+            onCollapseAll: { expanded = [] }
+        )
+    }
+
+    /// What a single lit row is, folder or note - `nil` for zero or two-or-more, the same
+    /// gate `WorkspaceBrowserToolbar.canMutate(_:)` reads (ADR-0025 §D8: nothing to aim
+    /// Rinomina/Elimina at, or a multi-select that answers "what does a drag carry" and
+    /// nothing else, R-11).
+    private var currentSelection: NoteListToolbar.Selection? {
+        guard selectedRows.count == 1, let id = selectedRows.first,
+              let node = NoteTree.node(withID: id, in: tree)
+        else { return nil }
+        return node.kind == .folder ? .folder(id) : .note(id)
+    }
+
+    /// Where "Nuova nota"/"Nuova cartella" land - `WorkspaceBrowser.target(for:)`'s own
+    /// rule (`WorkspaceBrowser.swift:276-278`): a folder selected is made *beside* what a
+    /// note selected sits inside, never inside either one. `""` (the vault root) with
+    /// nothing selected.
+    private var targetFolder: String {
+        switch currentSelection {
+        case .folder(let path): path
+        case .note(let path): (path as NSString).deletingLastPathComponent
+        case nil: ""
+        }
+    }
+
+    /// The toolbar's "Rinomina", dispatched on the selection's kind - a note reuses the
+    /// sheet the row's own context menu already opens (`NoteRowMenu.swift`), a folder
+    /// opens the sheet added in this chain.
+    private func renameSelection() {
+        switch currentSelection {
+        case .note(let path):
+            renaming = vault.index.allNotes.first { $0.relativePath == path }
+        case .folder(let path):
+            renamingFolder = path
+        case nil:
+            break
+        }
+    }
+
+    /// The toolbar's "Elimina", the same dispatch as `renameSelection()` above.
+    private func deleteSelection() {
+        switch currentSelection {
+        case .note(let path):
+            deleting = vault.index.allNotes.first { $0.relativePath == path }
+        case .folder(let path):
+            deletingFolder = path
+        case nil:
+            break
+        }
+    }
+
+    /// The folder-delete dialog's message - `WorkspaceBrowser`'s own wording for its
+    /// `.folder` `pendingDelete` case, over the same `FolderFileOperations.contentCounts`.
+    private var deletingFolderCounts: String {
+        guard let path = deletingFolder else { return "" }
+        let counts = folderOperations?.contentCounts(at: path) ?? (notes: 0, subfolders: 0)
+        return "Va nel Cestino del Finder: \(counts.notes) nota/e, "
+            + "\(counts.subfolders) sottocartella/e. Non è una cancellazione definitiva."
+    }
+
+    /// The toolbar's "Nuova cartella" - `CanvasStore.createFolder` writes no note inside
+    /// it (R-01), the same rule `WorkspaceView+FolderVerbs.createFolder` follows for a
+    /// board folder.
+    private func createFolder(named name: String, in parent: String) {
+        guard let root = vault.root else { return }
+        do {
+            _ = try CanvasStore(root: root).createFolder(named: name, in: parent)
+            Task { await vault.rescan() }
+        } catch {
+            vault.recordProblem("nuova cartella: \(error)")
+        }
     }
 
     // MARK: Folders
@@ -384,6 +586,11 @@ struct NoteListPane: View {
         // action never existed here and is not introduced by turning the binding into a set
         // (§D4 row 4).
         guard let id = new.first else { return nil }
+        // A folder id never ends `.md` (every note path does, by the vault's own file
+        // convention, 2026-08-28 toolbar parity chain): a folder row now carries a `.tag`
+        // too, and this keeps it from being read as a note to open. Folder selection needs
+        // no side effect beyond `List` lighting the row - the toolbar reads it separately.
+        guard id.hasSuffix(".md") else { return nil }
         // Exactly one id, different from what is open: that note opens (§D4 row 1). The id
         // *is* the note's vault-relative path - a `Set<String>` member here is a row's own
         // `.tag`, so there is nothing to resolve it against, which is the whole difference
@@ -471,7 +678,14 @@ struct NoteListPane: View {
         dragging = []
         guard !items.isEmpty,
               WorkspaceBrowser.canDrop(items, onFolder: destination) else { return false }
-        return vault.moveItems(items, into: destination, undo: undoManager)
+        guard vault.moveItems(items, into: destination, undo: undoManager) else {
+            // `canOperate(onAll:)` refuses before touching disk and records why on
+            // `problems` (`VaultController+Move.swift`) - the only source this pane has
+            // for that reason, since the refusal carries no `outcome.refusals` of its own.
+            moveRefused = vault.problems.last
+            return false
+        }
+        return true
     }
 
     // MARK: Tree state
@@ -479,7 +693,10 @@ struct NoteListPane: View {
     /// Rebuilt when the index changes rather than in `body`: sorting every note on
     /// every keystroke in the editor is work nobody asked for.
     private func rebuild() {
-        tree = NoteTree.build(from: vault.index.allNotes)
+        let folders = vault.root.map { CanvasStore(root: $0).allFolders() } ?? []
+        diskFolders = folders
+        folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
+        tree = NoteTree.build(from: vault.index.allNotes, folders: folders)
         // A move, a rename or a delete has just taken rows away, and an id kept in the lit
         // set after its row has gone is an id a drag would still carry (ADR-0026 §D4).
         // Asked of the very list the tree is built from, so the two cannot disagree about
@@ -579,10 +796,20 @@ private struct NoteTreeRow: View {
     @ViewBuilder
     private var folderRow: some View {
         HStack(spacing: theme.spacing(.xs)) {
+            // Its own hit target for the toggle, moved off the row body (2026-08-28, toolbar
+            // parity chain): `WorkspaceRow.chevron`'s exact pattern - a plain `.onTapGesture`
+            // (single click) plus a non-consuming `.simultaneousGesture(TapGesture(count: 2))`
+            // (double click), both confined to the chevron alone. A row-wide gesture here
+            // would starve `List(selection:)`'s own tap once this row carries a `.tag`
+            // (ADR-0025 §D9's exact failure mode) - which it now does, since a folder row
+            // became selectable for Rinomina/Elimina to have something to aim at.
             Image(systemName: "chevron.right")
                 .rotationEffect(.degrees(isOpen ? 90 : 0))
                 .font(.caption2)
                 .foregroundStyle(theme.color(.textTertiary))
+                .contentShape(Rectangle())
+                .onTapGesture { toggle() }
+                .simultaneousGesture(TapGesture(count: 2).onEnded { toggle() })
             Image(systemName: isOpen ? "folder" : "folder.fill")
                 .foregroundStyle(theme.color(.accentPrimary))
             Text(node.name).themedText(.body).lineLimit(1)
@@ -590,16 +817,7 @@ private struct NoteTreeRow: View {
             Text("\(node.noteCount)").themedText(.caption, color: .textTertiary)
         }
         .padding(.leading, CGFloat(depth) * Self.indent)
-        // The whole row, not only the label: a disclosure triangle you have to hit
-        // exactly is the thing people complain about in file trees.
         .contentShape(Rectangle())
-        // Untouched by ADR-0026 and deliberately so: a folder row of this pane carries no
-        // `.tag`, so there is no `List(selection:)` recognizer here for a row-wide gesture
-        // to starve - the failure ADR-0025 §D9 and ADR-0026 A4 are about belongs to the
-        // Workspace tree, whose folder rows are selectable. `.draggable` below is not that
-        // kind of recognizer either: these rows have carried one on their note siblings
-        // since ADR-0012 and select normally.
-        .onTapGesture { toggle() }
         // `draggable(move.beginDrag(...))` rather than `draggable { ... }`: the parameter is
         // an `@autoclosure @escaping () -> T`, so the call written this way *is* the
         // deferred closure the drag start evaluates - a trailing closure would instead make
@@ -626,6 +844,9 @@ private struct NoteTreeRow: View {
         }
         .accessibilityIdentifier("folder-\(node.id)")
         .contextMenu { folderMenu }
+        // `.tag` last in the chain, matching `noteRow`'s own rule (ADR-0026 §D11): a
+        // modifier applied after it drops it, and the failure is silent.
+        .tag(node.id)
 
         if isOpen {
             ForEach(node.children ?? []) { child in

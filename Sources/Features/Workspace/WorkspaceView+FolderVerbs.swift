@@ -46,7 +46,15 @@ extension WorkspaceView {
         // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
         // focus. Nil is not silently tolerated: `moveItems` records that the move cannot
         // be taken back.
-        guard vault.moveItems(items, into: destination, undo: undoManager) else { return [] }
+        //
+        // A `false` here is `canOperate(onAll:)` refusing before disk (ADR-0026 §D10, the
+        // unsaved-note guard) - a different refusal class than the `.refused` case above,
+        // which never runs `moveItems` at all. It carries no `[VaultMove]`, only a message
+        // on `problems`, so it is reported the same way: the browser's one dialog, not a
+        // second alert type for a refusal this function already knew how to hand back.
+        guard vault.moveItems(items, into: destination, undo: undoManager) else {
+            return vault.problems.last.map { [$0] } ?? []
+        }
         // Landing somewhere only means something if a board is actually open - moving a
         // row that is merely selected in the tree moves no document on screen.
         guard workspace.isShowingBoard else { return [] }

@@ -43,12 +43,14 @@ private func note(_ path: String) -> NoteRecord {
     #expect(sito.children?.map(\.name) == ["Brief"])
 }
 
-@Test func foldersComeBeforeNotesAtEveryLevel() {
-    // "Zeta" sorts after "Alfa" alphabetically and still comes second: a folder is
-    // never mixed in among the notes, which is what makes the tree scannable.
+@Test func notesComeBeforeFoldersAtEveryLevel() {
+    // "Zeta" sorts after "Alfa" alphabetically and still comes first: a note directly
+    // in this level sits ahead of every subfolder, never mixed in among them, which is
+    // what makes the tree scannable (2026-08-28 correction of the earlier
+    // "folders first" convention).
     let tree = NoteTree.build(from: [note("Alfa.md"), note("Zeta/Nota.md")])
-    #expect(tree.map(\.kind) == [.folder, .note])
-    #expect(tree.map(\.name) == ["Zeta", "Alfa"])
+    #expect(tree.map(\.kind) == [.note, .folder])
+    #expect(tree.map(\.name) == ["Alfa", "Zeta"])
 }
 
 @Test func namesSortTheWayTheFinderSortsThem() {
@@ -67,7 +69,9 @@ private func note(_ path: String) -> NoteRecord {
         note("01 Progetti/Sotto/C.md"),
         note("Fuori.md"),
     ])
-    let progetti = try #require(tree.first)
+    // Not `tree.first`: "Fuori.md" is a root-level leaf and now sorts ahead of the
+    // "01 Progetti" folder (2026-08-28 leaves-before-folders correction).
+    let progetti = try #require(tree.first { $0.name == "01 Progetti" })
     #expect(progetti.noteCount == 3)
     #expect(progetti.children?.first(where: { $0.name == "Sotto" })?.noteCount == 2)
 }
@@ -85,6 +89,53 @@ private func note(_ path: String) -> NoteRecord {
         == ["01 Progetti", "01 Progetti/Vibrofer"])
     // A note at the root needs nothing opened.
     #expect(NoteTree.ancestors(of: "Appunti.md").isEmpty)
+}
+
+// MARK: - `NoteTree.build(from:folders:)` (2026-08-28, toolbar parity chain)
+//
+// Mirrors `WorkspaceTree.build(folders:boards:)`'s own coverage of the empty-folder case
+// (`WorkspaceTreeTests.swift`): a folder with nothing in it must still hold a row, which
+// `build(from:)` alone (`folders: []`) cannot give it - the whole reason this overload
+// exists.
+
+@Test func anEmptyFolderStillGetsARowWithZeroNotes() throws {
+    let tree = NoteTree.build(from: [note("Appunti.md")], folders: ["Vuota"])
+    let vuota = try #require(tree.first { $0.name == "Vuota" })
+    #expect(vuota.kind == .folder)
+    #expect(vuota.noteCount == 0)
+    #expect(vuota.children?.isEmpty == true)
+}
+
+@Test func buildFromFoldersEmptyIsByteIdenticalToBuildFromNotesAlone() {
+    let notes = [note("01 Progetti/A.md"), note("Fuori.md")]
+    #expect(NoteTree.build(from: notes, folders: []) == NoteTree.build(from: notes))
+}
+
+@Test func aFolderNamedByBothARealNoteAndTheFoldersListIsNotDuplicated() throws {
+    let tree = NoteTree.build(
+        from: [note("01 Progetti/A.md")], folders: ["01 Progetti"]
+    )
+    #expect(tree.count == 1)
+    let progetti = try #require(tree.first)
+    #expect(progetti.children?.map(\.name) == ["A"])
+}
+
+// MARK: - `NoteTree.node(withID:in:)` (2026-08-28, toolbar parity chain)
+
+@Test func nodeWithIDFindsAFolderAndANoteAndReturnsNilForAnUnknownID() {
+    let tree = NoteTree.build(
+        from: [note("01 Progetti/A.md")], folders: ["01 Progetti", "Vuota"]
+    )
+
+    let folder = NoteTree.node(withID: "01 Progetti", in: tree)
+    let note = NoteTree.node(withID: "01 Progetti/A.md", in: tree)
+    let empty = NoteTree.node(withID: "Vuota", in: tree)
+    let missing = NoteTree.node(withID: "nope", in: tree)
+
+    #expect(folder?.kind == .folder)
+    #expect(note?.kind == .note)
+    #expect(empty?.kind == .folder)
+    #expect(missing == nil)
 }
 
 // MARK: - `NoteTree.build(fromPaths:)` (ADR-0021 "A task carries its Workspace and its place in
@@ -107,17 +158,21 @@ private func note(_ path: String) -> NoteRecord {
         "10 Archivio/ten.canvas",
     ])
 
-    // Hand-written expected tree: folders before leaves at every level (never mixed
-    // in among them, `foldersComeBeforeNotesAtEveryLevel` above), Finder-style sort
+    // Hand-written expected tree: leaves before folders at every level (never mixed
+    // in among them, `notesComeBeforeFoldersAtEveryLevel` above), Finder-style sort
     // ("9 Attivi" before "10 Archivio", `namesSortTheWayTheFinderSortsThem` above),
     // `id` is the vault-relative path, `name` is the file name with its extension
     // stripped, and a leaf carries `children == nil` so the outline draws no
     // disclosure triangle on it - every one of these is a property `build(from:)`
     // already has, and `build(fromPaths:)` is asked to have the identical shape.
     let expected: [NoteTree.Node] = [
+        NoteTree.Node(id: "Appunti.canvas", name: "Appunti", kind: .note, children: nil, noteCount: 1),
         NoteTree.Node(
             id: "01 Progetti", name: "01 Progetti", kind: .folder,
             children: [
+                NoteTree.Node(
+                    id: "01 Progetti/altro.canvas", name: "altro", kind: .note, children: nil, noteCount: 1
+                ),
                 NoteTree.Node(
                     id: "01 Progetti/vibrofer-emea", name: "vibrofer-emea", kind: .folder,
                     children: [
@@ -127,9 +182,6 @@ private func note(_ path: String) -> NoteRecord {
                         ),
                     ],
                     noteCount: 1
-                ),
-                NoteTree.Node(
-                    id: "01 Progetti/altro.canvas", name: "altro", kind: .note, children: nil, noteCount: 1
                 ),
             ],
             noteCount: 2
@@ -148,7 +200,6 @@ private func note(_ path: String) -> NoteRecord {
             ],
             noteCount: 1
         ),
-        NoteTree.Node(id: "Appunti.canvas", name: "Appunti", kind: .note, children: nil, noteCount: 1),
     ]
 
     #expect(tree == expected)
