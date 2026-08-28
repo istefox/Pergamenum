@@ -673,11 +673,82 @@ private struct TemporaryRoot: ~Copyable {
 
 @MainActor
 @Test func excludesTheFormsToolFromV1() {
-    // SPEC §6.4 keeps the slot in the layout but not the feature.
-    #expect(WorkspaceController.Tool.allCases.count == 11)
+    // SPEC §6.4 keeps the slot in the layout but not the feature. Counts updated for
+    // ADR-0027 (docs/superpowers/plans/2026-08-28-unificare-nota-e-testo-in-un-solo-strume.md,
+    // Task 1): `.note` is removed from `Tool`, so ten cases remain instead of eleven.
+    #expect(WorkspaceController.Tool.allCases.count == 10)
     #expect(WorkspaceController.Tool.forms.isAvailable == false)
-    #expect(WorkspaceController.Tool.allCases.filter(\.isAvailable).count == 10)
-    #expect(WorkspaceController.Tool.allCases.filter { $0.shortcut != nil }.count == 10)
+    #expect(WorkspaceController.Tool.allCases.filter(\.isAvailable).count == 9)
+    #expect(WorkspaceController.Tool.allCases.filter { $0.shortcut != nil }.count == 9)
+}
+
+// ADR-0027 / plan 2026-08-28-unificare-nota-e-testo-in-un-solo-strume, Task 1 (R-01, R-02).
+// Red until `case note` and its four exhaustive arms are removed from `Tool` and
+// `Tool.TapBehaviour`. Do not weaken: these assert the *positive* shape of the
+// unification, not just the stale counts above.
+
+@MainActor
+@Test func exactlyOneToolCreatesATextCardAndItIsTestoWithTheDocumentedShortcut() {
+    // R-01: "The Workspace toolbar has exactly one tool that creates a `.text` card."
+    // Operationalized as "creates a *blank* `.text`-kind card from an empty board tap":
+    // `.createFreeText` always does (Testo), and `.createSticky(seed)` does only when
+    // `seed` is empty - which is exactly `.note`'s tapBehaviour today
+    // (`WorkspaceController+Tools.swift:32`, `.createSticky("")`) and precisely what this
+    // task removes. `.todo`'s `.createSticky("- [ ] ")` is deliberately excluded: its seed
+    // is non-empty, so it is a checklist tool, not a contender for "the" blank-text-card
+    // tool, and is asserted separately below as an invariant this task must not disturb.
+    // Before `.note` is removed this matches two tools (`.note`, `.text`); it must match
+    // exactly one (`.text`) once it is.
+    let blankTextCardTools = WorkspaceController.Tool.allCases.filter {
+        switch $0.tapBehaviour {
+        case .createFreeText: true
+        case .createSticky(let seed): seed.isEmpty
+        default: false
+        }
+    }
+    #expect(blankTextCardTools == [.text])
+    #expect(WorkspaceController.Tool.text.title == "Testo")
+    #expect(WorkspaceController.Tool.text.symbol == "textformat")
+    #expect(WorkspaceController.Tool.text.shortcut == "t")
+}
+
+@MainActor
+@Test func noToolCarriesTheFreedNShortcut() {
+    // R-01: "the `n` shortcut is freed and assigned to nothing" - not reassigned to any
+    // other tool either.
+    #expect(WorkspaceController.Tool.allCases.allSatisfy { $0.shortcut != "n" })
+}
+
+@MainActor
+@Test func todoTapBehaviourStillCreatesAStickyWithItsChecklistPrefix() {
+    // Guard against C2's mistake: deleting `.note` must not take `addStickyNote` down
+    // with it, since `.todo` is its other caller. `TapBehaviour` is not `Equatable`
+    // (WorkspaceController+Tools.swift:14), so this pattern-matches instead of `==`.
+    guard case .createSticky(let seed) = WorkspaceController.Tool.todo.tapBehaviour else {
+        Issue.record("Tool.todo.tapBehaviour is no longer .createSticky")
+        return
+    }
+    #expect(seed == "- [ ] ")
+}
+
+@MainActor
+@Test func addFreeTextStillProducesAnUncoloredDefaultSizedCardThatColoreCanStillPaint() throws {
+    // R-02: "Creating a card with the unified tool always produces a plain (uncolored)
+    // card; the existing 'Colore' command still changes its background afterward."
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addFreeText("qualsiasi", at: CGPoint(x: 10, y: 20))
+    let created = try #require(controller.document.node(id: id))
+    #expect(created.color == nil)
+    #expect(created.width == 220)
+    #expect(created.height == 60)
+
+    controller.setColor(.preset(3), forNodeIDs: [id])
+    #expect(controller.document.node(id: id)?.color == .preset(3))
+
+    controller.detach()
 }
 
 @Test func writesPathsWithUnescapedSlashes() throws {
