@@ -57,7 +57,10 @@ struct ViewCommands: Commands {
                 .disabled(navigation.pane != .workspace)
             // Hides the app sidebar, the board list and the tray at once, for more
             // room on the board itself. Same keyless precedent as the toggle above.
-            Toggle("Concentrazione", isOn: Bindable(navigation).isWorkspaceFocused)
+            // Qualified with the section name (2026-08-28, toolbar parity chain): with
+            // Note carrying its own «Concentrazione Note» below, the bare name stopped
+            // saying which section it acted on.
+            Toggle("Concentrazione Workspace", isOn: Bindable(navigation).isWorkspaceFocused)
                 .disabled(navigation.pane != .workspace)
             // Narrower than «Concentrazione»: only the board-list tree, tray untouched.
             // Named for what checking it does, not for a shown/hidden state - "Albero
@@ -65,6 +68,13 @@ struct ViewCommands: Commands {
             // checked means shown rather than hidden.
             Toggle("Nascondi albero Workspace", isOn: Bindable(navigation).isWorkspaceTreeCollapsed)
                 .disabled(navigation.pane != .workspace)
+            // Note's own equivalents (2026-08-28, toolbar parity chain): same two
+            // flags, same menu convention (checked = hidden), mirroring the toolbar's
+            // own «Concentrazione»/«Albero» glyphs which invert that presentation.
+            Toggle("Concentrazione Note", isOn: Bindable(navigation).isNotesFocused)
+                .disabled(navigation.pane != .notes)
+            Toggle("Nascondi albero Note", isOn: Bindable(navigation).isNoteTreeCollapsed)
+                .disabled(navigation.pane != .notes)
             Divider()
             // Brings the pane forward as well as asking for the check: the view that
             // runs the linter only exists while that pane is shown, so from anywhere

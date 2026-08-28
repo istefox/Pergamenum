@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The sidebar's second row: the three verbs of R-01 and the two tree commands
-/// (ADR-0022 §D8, §D9).
+/// The sidebar's second row: the two creations, the two mutating verbs and the two tree
+/// commands (ADR-0022 §D8, §D9, ADR-0025 §D7).
 ///
 /// A row of its own, below `WorkspaceBrowser`'s header rather than inside it. The header
 /// carries `.accessibilityElement(children: .contain)` and its own identifier, and on
@@ -10,15 +10,23 @@ import SwiftUI
 /// is the only handle a UI test is allowed to use (ADR-0022 §F9, CLAUDE.md).
 ///
 /// It decides nothing. The verbs are closures the browser passes in, and the one rule
-/// that lives here - `canMutate(folder:)` - is a pure function precisely so it can be
+/// that lives here - `canMutate(_:)` - is a pure function precisely so it can be
 /// tested without a view.
 struct WorkspaceBrowserToolbar: View {
     @Environment(\.theme) private var theme
 
-    /// The folder «Rinomina» and «Elimina» act on: the selected row, or the open board's
-    /// own folder when nothing has been clicked (ADR-0022 §D9).
-    let target: String
+    /// The row «Rinomina» and «Elimina» act on, whichever kind it is: a board file or a
+    /// folder, with no fallback when nothing is selected (ADR-0025 §D8, ADR-0024 §D7).
+    /// The two verbs dispatch on its case, and so does the wording below.
+    let selection: WorkspaceSelection?
+    /// «Nuova board»: a `.canvas` file, in the folder `WorkspaceBrowser.target(for:)`
+    /// names (R-02).
     let onNew: () -> Void
+    /// «Nuova cartella»: a directory, and nothing inside it (R-01, ADR-0025 §D7). A
+    /// button of its own beside `onNew` rather than a mode of it, because the two make
+    /// two different things - which is the whole content of this chain at the level of
+    /// the toolbar.
+    let onNewFolder: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
     let onExpandAll: () -> Void
@@ -26,14 +34,21 @@ struct WorkspaceBrowserToolbar: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            button("Nuova workspace", symbol: "plus", identifier: "workspace-new", action: onNew)
+            // «Nuova board» keeps `plus` and `workspace-new` byte for byte: it is the
+            // button that was here, doing what it did, and the UI suite reaches it by
+            // that identifier (ADR-0025 §D7).
+            button("Nuova board", symbol: "plus", identifier: "workspace-new", action: onNew)
             button(
-                "Rinomina", symbol: "pencil", identifier: "workspace-rename",
-                enabled: Self.canMutate(folder: target), action: onRename
+                "Nuova cartella", symbol: "folder.badge.plus",
+                identifier: "workspace-new-folder", action: onNewFolder
             )
             button(
-                "Elimina", symbol: "trash", identifier: "workspace-delete",
-                enabled: Self.canMutate(folder: target), action: onDelete
+                "Rinomina \(targetNoun)", symbol: "pencil", identifier: "workspace-rename",
+                enabled: Self.canMutate(selection), action: onRename
+            )
+            button(
+                "Elimina \(targetNoun)", symbol: "trash", identifier: "workspace-delete",
+                enabled: Self.canMutate(selection), action: onDelete
             )
             Spacer()
             button(
@@ -55,7 +70,7 @@ struct WorkspaceBrowserToolbar: View {
     /// One toolbar button: an SF Symbol, its Italian name as both tooltip and
     /// accessibility label, and its identifier.
     ///
-    /// Icon-only because the pane is 200 points wide and five labelled buttons do not fit
+    /// Icon-only because the pane is 200 points wide and six labelled buttons do not fit
     /// across it. The words are still there - in the tooltip, which is where a person
     /// reads them, and in the accessibility label. A UI test reads the identifier and
     /// never the words (CLAUDE.md), which is what makes that split safe.
@@ -82,14 +97,41 @@ struct WorkspaceBrowserToolbar: View {
         .accessibilityIdentifier(identifier)
     }
 
-    /// Whether «Rinomina»/«Elimina» may act on `folder` - false for the vault root, whose
-    /// board is named after the vault itself and whose rename would be a rename of the
-    /// vault (ADR-0022 §D9, R-09).
+    /// The noun the two verbs are said with: a board row and a folder row are renamed and
+    /// deleted by the same two buttons, under the same two identifiers, and only the
+    /// wording tells them apart (ADR-0025 §D8) - 200 points of pane will not hold four
+    /// buttons where two will do, and a UI test reads the identifier and never the words
+    /// (CLAUDE.md).
     ///
+    /// «cartella» with nothing selected, where both buttons are disabled anyway: a
+    /// tooltip on a dead button names the kind of thing a click would have to pick first.
+    private var targetNoun: String {
+        selection?.hasBoard == true ? "board" : "cartella"
+    }
+
+    /// Whether «Rinomina»/«Elimina» may act on `selection` (ADR-0025 §D8, R-08):
+    ///
+    /// - `nil` → `false`, nothing selected and nothing to aim at (ADR-0024 §D7);
+    /// - `.board` → `true`, a `.canvas` file is never the vault root;
+    /// - `.folder(f)` → false for the vault root, whose rename would be a rename of the
+    ///   vault (ADR-0022 §D9, R-09).
+    ///
+    /// That last branch is ADR-0022 §D9's root exemption, kept even though ADR-0025 §D2
+    /// makes the root unselectable by construction - a guard whose precondition is «this
+    /// state is unreachable» is a guard that stops being true the first time somebody
+    /// makes it reachable, and this pane has had three chains in a row add rows to it.
     /// The slashes are trimmed first, the same normalisation `FolderFileOperations` makes
     /// on everything it is handed, so `"/"` names the root here too rather than passing
     /// for a folder called nothing.
-    static func canMutate(folder: String) -> Bool {
-        !folder.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
+    ///
+    /// One rule, read by both surfaces (ADR-0023 §D1): this view's `.disabled`, and the
+    /// tree row's context menu.
+    static func canMutate(_ selection: WorkspaceSelection?) -> Bool {
+        switch selection {
+        case .none: return false
+        case .board: return true
+        case .folder(let folder):
+            return !folder.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
+        }
     }
 }

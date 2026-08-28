@@ -32,14 +32,14 @@ struct BoardTopBar: View {
                 }
                 if index == crumbs.count - 1 {
                     // The last segment is where you already are, so it is not a link
-                    // (ADR-0024 §D8.2): as a `Button` it re-ran `open(folder:)` on the
-                    // open folder, which resets the board's zoom and pan for a click
-                    // that was meant to go nowhere. Emphasis carries "you are here" -
-                    // the tree says it with the system's row fill and this pane's
+                    // (ADR-0024 §D8.2): as a `Button` it re-ran the open command on the
+                    // open board, which resets its zoom and pan for a click that was
+                    // meant to go nowhere. Emphasis carries "you are here" - the tree
+                    // says it with the system's row fill and this pane's
                     // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
                     Text(crumb.title).themedText(.body, color: .textPrimary)
                 } else {
-                    Button(crumb.title) { workspace.open(folder: crumb.folder) }
+                    Button(crumb.title) { open(ancestor: crumb.folder) }
                         .buttonStyle(.plain)
                         .themedText(.body, color: .textSecondary)
                 }
@@ -55,6 +55,27 @@ struct BoardTopBar: View {
         }
         .padding(.horizontal, theme.spacing(.m))
         .padding(.vertical, theme.spacing(.s))
+    }
+
+    /// An ancestor segment, under the one rule §D5 gives every folder→board navigation:
+    /// the board that folder unambiguously means is opened, and `.ambiguous`/`.notFound`
+    /// selects the folder instead - never a board derived from its name (§D1). The root
+    /// segment is `select(nil)`, the only spelling of "nothing selected": `.folder("")` is
+    /// never produced (§D3).
+    ///
+    /// The board list is read here, in the click, and never in `body`: `allBoards()` is an
+    /// uncached walk of the whole vault, as `WorkspaceBoardResolver`'s own doc comment says.
+    private func open(ancestor folder: String) {
+        guard !folder.isEmpty else {
+            workspace.select(nil)
+            return
+        }
+        switch WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        ) {
+        case .unique(let path): workspace.select(.board(path: path))
+        case .ambiguous, .notFound: workspace.select(.folder(folder))
+        }
     }
 }
 

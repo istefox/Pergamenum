@@ -1,179 +1,225 @@
-# SPEC — Workspace board tree single selection model
+# SPEC — Drag-and-drop board and note files into folders
 
-**Topic slug:** workspace-board-tree-single-selection
+**Topic slug:** drag-and-drop-board-files-into-workspace
 
-## Objectives
+## Objective
 
-The Workspace sidebar tree (`WorkspaceBrowser.swift`) conflates two distinct selection concepts —
-`selectedFolder` (the toolbar's Rinomina/Elimina target, ADR-0022 §D9) and `openBoardPath` (the
-board currently shown) — and renders both with the identical `.accentPrimary` color token, with no
-other visual differentiator. The result, confirmed by user report and screenshot: three rows can be
-lit simultaneously with no discernible meaning, because opening a board writes both state
-variables at once.
+Let the user reorganize the vault by dragging rows in the Workspace sidebar tree (boards and
+folders) and in the Note sidebar tree (notes and folders) — moving a file or folder into another
+folder, or out to the vault root, without leaving the sidebar. Today neither tree has any
+drag-and-drop: reorganization requires Finder or manual rename/recreate.
 
-This feature replaces the two-variable model with **one derived selection**, following the
-reference pattern already in the codebase (`NoteListPane.swift`): a `List(selection:)` bound to a
-value derived from the controller, native system-drawn row highlighting, and folder rows that are
-structurally incapable of being confused with the open board.
-
-This work explicitly **supersedes ADR-0022 §D9** (which introduced `selectedFolder` as state
-separate from the open board). The new ADR must say so.
+This also extends the sidebar selection model: since the user wants multi-row drag ("move
+everything currently selected together"), both trees gain Cmd/Shift-click multi-selection,
+additive to (not replacing) the existing single-selection "click opens" behavior.
 
 ## Scope
 
 In scope:
-- `Sources/Features/Workspace/WorkspaceBrowser.swift` — tree rendering, row model, selection state.
-- `Sources/Features/Workspace/WorkspaceController.swift` — `hasOpenBoard`/`closeBoard()` folded
-  into the new derived-selection model.
-- `Sources/Features/Workspace/WorkspaceView.swift` — call site wiring.
-- `Sources/Features/Workspace/WorkspaceBrowserToolbar.swift` — `targetFolder` derives from the
-  unified selection, no more divergent fallback.
-- `Sources/Features/Workspace/BoardChrome.swift` — breadcrumb color aligned to the same convention
-  (locked with the user: yes, in this same pass).
-- `Tests/WorkspaceOpenStateTests.swift`, `UITests/WorkspaceOpenStateUITests.swift` — rewritten onto
-  the new model (both created this session for the now-superseded `hasOpenBoard` flag).
+- Drag-and-drop of board rows (`.canvas`) and folder rows within the Workspace sidebar tree.
+- Drag-and-drop of note rows (`.md`) and folder rows within the Note sidebar tree
+  (`NoteListPane.swift` / `NoteTree.swift`).
+- Drop targets: an existing folder row (move inside it), or the root area of the tree (move to
+  vault root).
+- Cmd-click / Shift-click multi-selection in both trees, additive to the existing single-selection
+  click-to-open behavior.
+- Undo/redo of a move via the standard AppKit `NSUndoManager` (Cmd+Z / Cmd+Shift+Z).
+- Name-collision rejection at the destination (no auto-rename, no overwrite).
+- Cycle prevention when dragging a folder into its own descendant (or itself).
 
-Out of scope:
-- Any change to `NoteListPane.swift` itself (it is the reference, not a target).
-- Any change to what a board *is* on disk (`.canvas` files, `CanvasStore`) — this is a selection/
-  rendering redesign only, no persistence schema change.
-- Adding a "create board" affordance to a board-less folder's click (locked: out of scope, see
-  Decisions).
+Out of scope (explicitly deferred, no code touches these):
+- Dragging a file/folder in from Finder, or dragging a row out to Finder.
+- Copy-on-drag (Option-drag or similar) — every drop is a move.
+- Drag-and-drop of anything other than notes, boards and folders (no card-level drag inside a
+  canvas; that already exists and is unrelated).
+- Reordering rows within the same folder (this feature only changes which folder a row belongs
+  to, never its position among siblings — neither tree has manual row ordering today).
 
-## Decisions (locked with the user before/during interview)
+## Stack
 
-1. **One merged row per folder+board.** The disclosure triangle expands/collapses subfolders;
-   clicking the row's name opens that folder's board if it has one. The separate child "board" row
-   disappears — SPEC §6.2 already treats a board as a folder, so the tree showing them as two rows
-   was itself a defect against the app's own spec.
-2. **Single selection across the whole tree.** Exactly one thing is selected at a time. Selecting a
-   folder closes the currently open board, mirroring `NoteListPane`'s single-derived-binding model.
-3. **A folder with no board of its own** (e.g. a pure grouping folder like "Progetti") only
-   expands/collapses on click — no "create board" prompt. Its row can still be selected (for
-   Rinomina/Elimina) without opening anything, since it has nothing to open.
-4. **`hasOpenBoard`/`closeBoard()` fold into the derived-selection binding.** No separate boolean
-   state survives: `hasOpenBoard` becomes `selection != nil`-equivalent, `closeBoard()` becomes the
-   side effect of writing the derived binding to `nil`.
-5. **`BoardChrome.swift`'s breadcrumb is aligned** to the same single color convention as the tree
-   in this same pass, closing the third inconsistent color usage the diagnosis found.
-6. **Native keyboard navigation is kept.** `List(selection:)` gives arrow-key row navigation for
-   free (as `NoteListPane` already has); nothing suppresses it.
-7. **No board-open persistence across app relaunch (correction, ADR-0024).** The interview's
-   premise was wrong: no such persistence exists in the codebase — `VaultSettings` saves no board
-   path, and `5041d5c` (committed this session) already shipped the opposite, "no board open until
-   chosen", with a green UI test (`testLeavingAndReturningToTheWorkspacePaneForgetsTheOpenBoard`)
-   asserting exactly that. Confirmed with the user at Gate 2: the app relaunches with no board open,
-   same as today post-`5041d5c` — this is not a regression to fix, it is the real current state.
+Swift 6 / SwiftUI on macOS 26, `List(selection:)` inside `WorkspaceBrowser.swift` and
+`NoteListPane.swift`. Drag-and-drop uses SwiftUI's `.draggable(_:)` / `.dropDestination(...)`
+(or the `NSItemProvider`-based `onDrag`/`onDrop` pair if `.draggable`/`.dropDestination` prove
+unable to distinguish "internal reorder" from "external file drop" cleanly inside a `List` — the
+architect decides based on a concrete spike, this SPEC does not mandate the API). No new external
+dependency.
 
 ## Architecture
 
-**Reference model** (`NoteListPane.swift`):
-- `List(selection: selectedPath)` (`:156`) where `selectedPath` is a `Binding<String?>` derived
-  from the controller (`:221-232`): `get` reads `vault.openNote?.relativePath`, `set` calls
-  `vault.openNote(at:)` or `vault.leaveComposer()`.
-- Folder rows carry no `.tag`, so they are structurally excluded from ever being the `List`'s
-  selected value (`:290-309`) — expand/collapse only, never highlighted.
-- Highlighting, click-to-select, and click-blank-space-to-deselect are all system-drawn; no
-  hand-rolled `onTapGesture` substitute.
+### Selection model change (supersedes ADR-0024 §D2 in part)
 
-**Target model for `WorkspaceBrowser`:**
-- Replace the hand-rolled `List` (`:191`, no `selection:`) with `List(selection: <derived binding>)`
-  in both `folderTree` and `flatList` (the filtered/search view, shown when the filter text is
-  non-empty — it must get the same treatment, not be left on the old model).
-- The derived binding's `get` reads the currently open board path from `WorkspaceController`
-  (replacing `openBoardPath`/`hasOpenBoard` as independently-read state); its `set`:
-  - non-nil path with a board → `onOpen(path)`.
-  - non-nil path with no board (a board-less folder was `.tag`ged so it can still be selected for
-    the toolbar, per Decision 3) → record it as the toolbar target only, no `onOpen` call.
-  - `nil` → the equivalent of today's `closeBoard()`.
-- `selectedFolder` as independent `@State` is removed. `targetFolder` (`WorkspaceBrowser.swift:
-  131-135`) becomes a direct read of the unified selection — no fallback branch, because the
-  selection is never absent while something is open (Decision 7) and is explicitly `nil` only when
-  nothing is open or selected.
-- One row per folder+board (Decision 1): `WorkspaceTreeRow`'s current split between a folder row
-  (`:365-373`) and a separate `boardRow` (`:419-437`) merges into a single row view. The disclosure
-  chevron (if the folder has children) and the row's `.tag` (if it has a board) become independent
-  affordances on the same row, not two rows.
-- Icon and text color (defects 1 and 2 in the diagnosis) stop being manually conditioned on
-  `selectedFolder`/`openBoardPath` — `List(selection:)`'s native row-fill highlighting is the only
-  selection signal; the folder icon is no longer unconditionally `.accentPrimary`.
-- AX labels (`WorkspaceBrowser.swift:379`, `:439`) gain a selected/open state, consistent with
-  `List(selection:)`'s own accessibility behavior — VoiceOver must be able to tell which row is
-  selected without relying on the removed manual color logic.
-- `WorkspaceController.hasOpenBoard`/`closeBoard()` (added this session, `5041d5c`) fold into the
-  new derived-selection model per Decision 4 — the flag is not kept as parallel state.
-- `BoardChrome.swift`'s breadcrumb (per Decision 5) reads the same color token / condition the tree
-  now uses for "this is the open board", replacing its own third convention.
+ADR-0024 made `WorkspaceSelection` a single derived value (`.board(folder:)` / `.folder(_)`),
+replacing two competing booleans, specifically to remove ambiguity between "what's lit" and
+"what's open". That invariant is preserved: there is still exactly one *open* board and one *lit*
+row at a time, and a plain click still both selects and opens, unchanged.
+
+What this feature adds is a second, additive concept: a **multi-selection set** (row IDs) used
+only to decide what a drag carries. Cmd-click / Shift-click extend this set without changing the
+single "open" selection. The two are independent: `WorkspaceSelection` (or its Note-sidebar
+equivalent) continues to answer "what's open"; the new multi-selection set answers "what moves
+together on a drag". A row that is drag-started while inside a non-empty multi-selection set that
+contains it drags the whole set; a row dragged while it is not part of the current multi-selection
+drags only itself (the multi-selection set is replaced by the single dragged row for that drag).
+
+This is a deliberate, disclosed reopening of ADR-0024 §D2/§D3's scope — not a reversal of its core
+claim (open vs. lit stays one value), an *addition* alongside it.
+
+### Move operation (new, both trees)
+
+Neither `BoardFileOperations.swift` nor `FolderFileOperations.swift` has a move-to-different-
+folder operation today (`renamePlan`/`renameBoard`/`trashBoard` and `renamePlan`/
+`repointBoardsPlan`/`renameFolder`/`trashFolder` respectively — all same-folder rename or trash,
+none change a file's parent folder). This feature adds:
+- `BoardFileOperations.movePlan(from:to:)` / `.move(...)` — moves a `.canvas` file to a new
+  folder, keeping its file name unchanged. Rejects (reports, does not silently rename) if the
+  destination already contains a file of that name.
+- `FolderFileOperations.movePlan(from:to:)` / `.move(...)` — moves a folder (and everything
+  inside it) to a new parent folder. Rejects on name collision at the destination, and rejects
+  (the UI layer refuses to even offer the drop, per the interview decision) when the destination
+  is the folder itself or one of its own descendants.
+- The Note sidebar needs the equivalent for notes: either a new `NoteFileOperations.movePlan`
+  mirroring `BoardFileOperations`'s shape, or reuse if an equivalent already exists for notes —
+  the architect confirms which by reading `Sources/Vault/` before designing this.
+
+### Marker and link consequences of a move (no new rewriting)
+
+- **Note wikilinks are unaffected.** `[[Nota]]` addresses a note by title, not path (ADR-0022
+  §D4 / ADR-0025 key decision 1) — moving a note to a different folder rewrites nothing.
+- **`^[[board.canvas]]` markers are unaffected by a move that keeps the file name.**
+  `WorkspaceBoardResolver` resolves a marker by bare file name against every board on disk
+  (`resolve(_:in:)`), not by path — the marker text itself never encodes a folder. A move can
+  change whether that bare name is `.unique`/`.ambiguous`/`.notFound` afterward (e.g. moving a
+  board into a folder that happens to contain a same-named board — already rejected as a
+  collision by this feature, so that specific case cannot arise from a move), but the marker is
+  never rewritten, matching ADR-0025's explicit choice to report ambiguity rather than guess it.
+- **`IndexSnapshot.tasks(assignedToWorkspace:)`'s file-name-only comparison stays unchanged**
+  (ADR-0025 key decision 5) — a move does not require touching it; any resulting ambiguity
+  surfaces the same way any other ambiguous marker does today.
+- **A folder move that carries boards inside it works the same way**, board by board: each
+  moved board's bare file name is unaffected (only its containing folder changes), so no marker
+  anywhere needs rewriting as a result of a folder move either.
+
+### Undo (new integration — no prior `NSUndoManager` usage in this codebase)
+
+No file in `Sources/` uses `NSUndoManager` today; this is the first. On a successful move, the
+handling view registers an inverse move (`newPath → oldPath`) on `NSUndoManager` via
+`registerUndo(withTarget:handler:)` (or the SwiftUI `UndoManager` environment value, whichever the
+architect determines composes correctly with the existing `NSViewRepresentable` editor/canvas,
+which already owns its own undo stack for text/canvas edits — the two undo domains must not
+collide or double-register). Redo is the standard `NSUndoManager` inverse-of-inverse; no custom
+redo logic.
+
+### Drag/drop UI mechanics
+
+- A row (board, note, or folder) is a drag source. A folder row and the tree's own root/background
+  area are valid drop targets; a board or note row is never a drop target.
+- During a drag, a folder that is the dragged folder itself or one of its descendants gives no
+  drop-target visual affordance and does not accept the drop (interview decision: invalid up
+  front, not rejected after the fact).
+- A destination already containing a same-named entry gives a drop-target-not-accepted affordance
+  the same way, OR (architect's call, whichever the chosen drag API makes straightforward) accepts
+  the visual drop and then shows an error dialog naming the collision — either satisfies "reject,
+  no silent rename/overwrite" from the interview; the architect states which and why.
+- Selecting a board row with a plain click continues to open it, unchanged. Cmd-click / Shift-click
+  extend the multi-selection set and never change which board is open.
+
+## Data model
+
+No new persisted schema. `IndexCache.schemaVersion` (currently 3, ADR-0021) is unaffected — a move
+is a filesystem rename the existing vault-scan/index-rebuild already tolerates (ADR-0025's
+"rebuildable index" principle: nothing here needs a new field, since the index is rebuilt from the
+files on disk regardless of which folder they are found in).
+
+## API
+
+No connector surface (`VaultAPI`) change is required by this SPEC — this is a UI-only feature
+scoped to the app target's sidebar views and the two new `movePlan`/`move` operations in
+`Sources/Vault/`. If the architect finds a reason connectors need this capability too (e.g. a
+future `perg move` CLI command), that is out of scope here and tracked separately, consistent with
+"a new capability goes into `Sources/Connector/`, not into a front end" (CLAUDE.md) not applying
+retroactively to a feature this SPEC does not request there.
 
 ## UI flows
 
-1. **Open a board by clicking its row.** One row lights up (system highlight), no other row is
-   affected. The toolbar's Rinomina/Elimina target updates to that folder.
-2. **Select a folder (with or without a board) by clicking its row.** If a board was open, it
-   closes (empty-state pane shown, per the `hasOpenBoard` behavior already shipped this session).
-   The clicked folder's row lights up. The toolbar target updates.
-3. **Click a board-less folder's disclosure triangle.** Expands/collapses only; does not change
-   selection (matches `NoteListPane`'s folder-row behavior, `:290-309`).
-4. **Click blank space below the last row.** Deselects — free from `List(selection:)`, no
-   hand-rolled `onDeselect`/`onTapGesture` needed any more (the ones added this session for the
-   `hasOpenBoard` feature are removed as part of this redesign, superseded by the native behavior).
-5. **Arrow-key navigation.** Up/Down move the highlighted row, matching `NoteListPane`.
-6. **App relaunch with a previously-open board.** The derived selection binding reflects the
-   restored open board on first render — one row lit, same as flow 1, no regression from today.
-7. **Filtered/search view (`flatList`, filter non-empty).** Same single-selection, same
-   `List(selection:)` binding — not a second, divergent selection model for the filtered case.
+1. **Move a board into a folder (Workspace).** User drags a board row onto a folder row. Folder
+   highlights as a valid target. On drop: `BoardFileOperations.move` runs, the tree re-renders
+   with the board under its new folder, the moved board (if it was the open board) stays open and
+   selected at its new location, an inverse-move undo action is registered.
+2. **Move a folder into another folder (Workspace or Note).** Same as above; the whole subtree
+   moves. Its own descendants (and any folder that is the dragged folder) never highlight as valid
+   targets during this drag.
+3. **Move to root.** User drags a row onto the tree's empty/root area. Item moves to the vault
+   root (folder `""`).
+4. **Multi-row move.** User Cmd-clicks or Shift-clicks to build a selection of several rows across
+   folders, then drags one of the selected rows. All selected rows move to the drop target
+   together, each independently validated (a collision or cycle on one selected row does not
+   silently skip it — see edge cases).
+5. **Rejected drop (collision).** Destination already has an entry with that name. No files move;
+   an error is shown naming the conflicting item(s).
+6. **Undo.** Cmd+Z after a move (single or multi-row) reverses it — every moved item returns to
+   its prior folder in one undo step for a multi-row move (one `NSUndoManager` group, not N
+   separate undo steps a user has to repeat N times).
 
 ## Edge cases
 
-- Opening a board via a source outside the tree (breadcrumb, wikilink, restore-at-launch) must
-  still result in the tree showing exactly that board's row as selected — the diagnosis's defect 5
-  (tree and toolbar disagreeing) must not have a new equivalent under the derived-selection model.
-- Renaming or deleting the currently selected/open folder: existing `WorkspaceFolderActions`
-  behavior is unchanged by this feature; only what row is highlighted before/after is in scope.
-- Filtering the tree text while a board is open: the open board's row, if visible in the filtered
-  results, must still show as selected.
+- Multi-row drag where the selection includes a folder and one of its own descendants (also
+  selected): moving the ancestor folder already carries the descendant with it — the architect
+  decides whether the descendant is silently excluded as redundant or produces no separate error
+  (it is not a cycle, since the descendant moves as part of its ancestor, not into it).
+- Multi-row drag where the selection includes rows that already live directly inside the drop
+  target folder: no-op for those rows (already there), not an error, and not skipped from the
+  undo group's bookkeeping in a way that would try to "restore" a no-op move.
+- Multi-row drag where one selected row's move would collide and another's would not: the
+  interview's "reject, no auto-rename" applies per item — the whole multi-row move either commits
+  entirely or is refused entirely with the conflicting item(s) named (an all-or-nothing group is
+  simpler to reason about and to undo atomically than a partial commit; the architect may choose
+  a different atomicity policy only if it states the reason).
+- Dragging the row that represents the currently-open board: the open board must not flicker
+  closed/reopened; its `WorkspaceSelection` tracks the new folder path after the move completes.
+- Dragging while the destination folder is itself mid-rename or mid-delete in another part of the
+  UI (unlikely but possible race): the move operation re-validates the destination exists
+  immediately before writing, the same defensive pattern `BoardFileOperations`/
+  `FolderFileOperations` already use elsewhere in this codebase.
+- Undo after further unrelated edits (renames, other moves) between the move and the Cmd+Z: the
+  inverse-move undo action targets the *current* path recorded at registration time; if that path
+  no longer exists (e.g. a subsequent operation renamed it), the undo action reports it cannot be
+  applied rather than silently doing nothing or corrupting state (R-11 (no-test: requires a
+  scripted multi-step undo race exercised by hand, not practically assertable in an XCUITest
+  without excessive flakiness) covers this by manual verification, not an automated test).
 
 ## Success criteria
 
-- [ ] R-01 — The Workspace tree renders exactly one row per folder-that-has-a-board, never a
-      separate child row for the board (Decision 1).
-- [ ] R-02 — Exactly one row in the tree is ever visually highlighted as selected at a time, using
-      native `List(selection:)` row-fill highlighting, not a manually-colored icon or text.
-- [ ] R-03 — Opening a board highlights only that board's own row — no ancestor folder row is
-      simultaneously highlighted as a second, differently-meaning selection.
-- [ ] R-04 — Selecting a folder while a board is open closes the open board (Decision 2); exactly
-      one thing is selected across the whole tree at any time.
-- [ ] R-05 — Clicking a board-less folder's name/row only expands or collapses it — no board is
-      created and no creation prompt appears (Decision 3).
-- [ ] R-06 — `WorkspaceBrowserToolbar`'s Rinomina/Elimina target always matches the tree's visually
-      selected row, with no fallback branch that can diverge from what is shown on screen (fixes
-      diagnosis defect 5).
-- [ ] R-07 — Clicking the blank area below the tree's last row deselects, using `List(selection:)`'s
-      native behavior — no hand-rolled `onTapGesture`/`onDeselect` gesture remains in
-      `WorkspaceBrowser.swift`.
-- [ ] R-08 — Arrow-key (Up/Down) navigation moves the tree's selection natively, matching
-      `NoteListPane`'s existing keyboard behavior.
-- [ ] R-09 — The filtered/search list (`flatList`, shown when the filter is non-empty) uses the same
-      single derived-selection `List(selection:)` binding as the unfiltered tree — not a second,
-      divergent implementation.
-- [ ] R-10 — Relaunching the app shows no board open (matching `5041d5c`'s existing "no board open
-      until chosen" behavior — corrected at Gate 2, ADR-0024: no persisted board path exists to
-      restore). A board opened from outside the tree (breadcrumb, wikilink, restore-from-state)
-      still lights its own row, per R-06.
-- [ ] R-11 — `WorkspaceController.hasOpenBoard` and `closeBoard()` are removed as independent state;
-      their behavior is fully expressed through the new derived-selection binding (Decision 4).
-- [ ] R-12 — `BoardChrome.swift`'s breadcrumb uses the same color convention as the tree's selection
-      highlighting for "this is the open board", replacing its previous third, inconsistent
-      convention (Decision 5).
-- [ ] R-13 — VoiceOver can distinguish a selected/open row from an unselected one through its
-      accessibility label or trait, not only through color (fixes diagnosis defect 6).
-- [ ] R-14 — `Tests/WorkspaceOpenStateTests.swift` and `UITests/WorkspaceOpenStateUITests.swift` are
-      updated to assert against the new single-selection model, with no assertions left referring to
-      the removed `selectedFolder`/`hasOpenBoard` two-variable model.
-- [ ] R-15 — A new ADR is written that explicitly records superseding ADR-0022 §D9
-      (no-test: this is a documentation deliverable, verified by its presence in `docs/adr/` and
-      its cross-reference from ADR-0022, not by an executable assertion).
-- [ ] R-16 — `tuist generate` + build succeed, the full unit suite passes via `.claude/test-cmd`, and
-      `scripts/uitests.sh` passes before merge, per this project's standing CLAUDE.md working
-      agreement (no-test: the last clause is a process obligation confirmed by running the script,
-      not something a unit test can assert on its own).
+- [ ] R-01 — Dragging a board row onto a folder row moves the `.canvas` file into that folder on
+      disk, and the sidebar tree reflects the new location without a manual rescan.
+- [ ] R-02 — Dragging a folder row onto another folder row moves the folder (and everything
+      inside it) into that folder on disk.
+- [ ] R-03 — Dragging a note row onto a folder row in the Note sidebar moves the `.md` file into
+      that folder on disk.
+- [ ] R-04 — Dragging a folder row onto another folder row in the Note sidebar moves the folder
+      (and its contents) into that folder on disk.
+- [ ] R-05 — Dragging any row (board, note, or folder) onto the root area of its tree moves it to
+      the vault root.
+- [ ] R-06 — Dragging a folder onto itself, or onto one of its own descendant folders, is refused:
+      no drop-target affordance appears and no filesystem change occurs.
+- [ ] R-07 — Dropping onto a destination that already contains an entry with the same name is
+      refused: no files move, no silent rename, no overwrite, and the conflicting name is shown to
+      the user.
+- [ ] R-08 — Moving a board whose bare file name is referenced by one or more `^[[board.canvas]]`
+      task markers elsewhere in the vault does not rewrite those markers; resolution behavior
+      (unique/ambiguous/not-found) is computed the same way after the move as before, with no
+      marker text changed.
+- [ ] R-09 — Moving a note does not modify any `[[Nota]]` wikilink anywhere in the vault.
+- [ ] R-10 — Cmd-click and Shift-click extend a multi-row selection in both the Workspace and Note
+      sidebar trees without changing which board is currently open.
+- [ ] R-11 — Dragging a row that is part of an active multi-row selection moves every selected row
+      to the drop target in one operation; dragging a row that is not part of the current
+      selection moves only that row.
+- [ ] R-12 — A completed move (single-row or multi-row) can be undone with Cmd+Z, restoring every
+      moved item to its prior folder in one undo step, and redone with Cmd+Shift+Z.
+- [ ] R-13 — A board that is open in the canvas at the moment it (or an ancestor folder of it) is
+      moved remains open and correctly selected at its new location after the move completes.
+- [ ] R-14 — `xcodebuild ... -only-testing:PergamenumTests test` passes with tests covering the
+      new `movePlan`/`move` operations in `BoardFileOperations`, `FolderFileOperations`, and the
+      Note-sidebar equivalent, including the collision-rejection and cycle-rejection cases.
+- [ ] R-15 — `scripts/uitests.sh` passes, including new UI coverage for at least: a single-row
+      board drag-move, a folder drag-move, a multi-row drag-move, and an undo of a move.

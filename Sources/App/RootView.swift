@@ -56,13 +56,26 @@ struct RootView: View {
         WindowPlace(navigation: navigation, vault: vault, day: day)
     }
 
-    /// Collapsed only for concentrazione on the Workspace pane. Derived rather than
-    /// stored beside `isWorkspaceFocused`, the same reasoning as `currentItem` above:
-    /// two copies of "is the sidebar open" can disagree, one copy cannot.
+    /// Whether the pane on screen is running its own "concentrazione" (2026-08-28,
+    /// toolbar parity chain: Note gained its own flag alongside Workspace's).
+    private var isFocusedPane: Bool {
+        (navigation.isWorkspaceFocused && pane == .workspace)
+            || (navigation.isNotesFocused && pane == .notes)
+    }
+
+    /// Collapsed only for concentrazione on the pane it belongs to. Derived rather than
+    /// stored beside `isWorkspaceFocused`/`isNotesFocused`, the same reasoning as
+    /// `currentItem` above: two copies of "is the sidebar open" can disagree, one copy
+    /// cannot.
     private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { navigation.isWorkspaceFocused && pane == .workspace ? .detailOnly : .all },
-            set: { if $0 == .all { navigation.isWorkspaceFocused = false } }
+            get: { isFocusedPane ? .detailOnly : .all },
+            set: {
+                if $0 == .all {
+                    navigation.isWorkspaceFocused = false
+                    navigation.isNotesFocused = false
+                }
+            }
         )
     }
 
@@ -200,6 +213,14 @@ struct RootView: View {
         .background(theme.color(.backgroundSecondary))
         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
         .safeAreaInset(edge: .bottom) { themePicker }
+        // A pane switcher row's own label ("Note", "Workspace") collides with the
+        // bare-root segment `VaultTopBar`/`BoardChrome` draw for that same pane when
+        // nothing is open in it (2026-08-28, recovery checkpoint) - both read the pane
+        // name, both are on screen together whenever that pane is the default at
+        // launch, and neither carried an identifier to tell them apart. Scoping the
+        // sidebar itself lets a lookup say "the switcher row", not "any text reading
+        // the pane's name" - see `WorkspaceIntegrationUITests.openPane`.
+        .accessibilityIdentifier("root-sidebar")
     }
 
     /// `.badge` before `.tag`, and the order is the whole thing: applied after it,

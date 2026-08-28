@@ -2,10 +2,16 @@ import Foundation
 
 /// Reads and writes the `.canvas` files that back the Workspace boards.
 ///
-/// SPEC §6.1 makes a board a spatial view of a real folder: the board for
-/// `01 Progetti/vibrofer-emea` is `01 Progetti/vibrofer-emea/vibrofer-emea.canvas`,
-/// created on first entry. That mapping is what keeps "file over app" true for the
-/// Workspace - the folder is the truth, the canvas only says where things sit.
+/// ADR-0025 §D1: a board is addressed by its own vault-relative path and is never
+/// derived from the folder holding it. A folder is a container and a board is a file,
+/// so a folder may hold no board, one, or several, under any name - and the store is
+/// told which one it is reading rather than working it out.
+///
+/// `load(board:)` **throws** for a file that is not there where the folder-derived
+/// `load(folder:)` returned `.empty` (ADR-0025 F2, ADR-0022's own "single most damaging
+/// failure mode"): every path this app opens is one a walk found or `createBoard` just
+/// wrote, so a missing file means the disk moved under us - a thing to report, not a
+/// thing to draw as a blank board.
 struct CanvasStore: Sendable {
     /// Resolved at construction for the same reason as `NoteStore.root`.
     let root: URL
@@ -16,35 +22,26 @@ struct CanvasStore: Sendable {
 
     static let fileExtension = "canvas"
 
-    /// Vault-relative path of the board file for a folder. The root folder's board is
-    /// named after the vault so it does not collide with a note called "canvas".
-    func boardPath(forFolder folder: String) -> String {
-        let trimmed = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if trimmed.isEmpty {
-            return "\(root.lastPathComponent).\(Self.fileExtension)"
-        }
-        let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
-        return "\(trimmed)/\(name).\(Self.fileExtension)"
+    func url(forBoard board: String) -> URL {
+        root.appending(path: board, directoryHint: .notDirectory)
     }
 
-    func url(forFolder folder: String) -> URL {
-        root.appending(path: boardPath(forFolder: folder), directoryHint: .notDirectory)
-    }
-
-    /// Loads a folder's board, returning an empty canvas when the file does not exist
-    /// yet. Not created on read: a board file appears when something is placed on it,
-    /// so merely looking into a folder does not litter the vault.
-    func load(folder: String) throws -> CanvasDocument {
-        let fileURL = url(forFolder: folder)
+    /// Reads the board at a vault-relative path, failing when the file is not there.
+    ///
+    /// The failure is the decision (ADR-0025 §D1): a caller that wants "open this board
+    /// if it exists" asks which board a folder means and gets an answer that can be
+    /// "none" (§D5) - it does not name a path and hope.
+    func load(board: String) throws -> CanvasDocument {
+        let fileURL = url(forBoard: board)
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
-            return .empty
+            throw StoreError.missing(board)
         }
         return try CanvasDocument(data: try Data(contentsOf: fileURL))
     }
 
     @discardableResult
-    func save(_ document: CanvasDocument, folder: String) throws -> String {
-        let fileURL = url(forFolder: folder)
+    func save(_ document: CanvasDocument, board: String) throws -> String {
+        let fileURL = url(forBoard: board)
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
@@ -53,13 +50,22 @@ struct CanvasStore: Sendable {
         return NoteStore.hash(data)
     }
 
-    /// The folder's real contents, split into what the board already shows and what it
-    /// does not.
+    /// The real contents of the folder holding the open board, split into what the board
+    /// already shows and what it does not.
+    ///
+    /// The folder is derived from the board's own path, so a file dropped on a board
+    /// lands beside it whatever the board is called (ADR-0025 §D1).
     ///
     /// SPEC §6.1: files dropped into the folder from Finder appear in a "Nuovi
     /// elementi" tray to be placed by hand. Nothing is positioned automatically,
     /// because a position the user did not choose is noise on a spatial canvas.
-    func contents(ofFolder folder: String, board: CanvasDocument) -> FolderContents {
+    ///
+    /// No `.canvas` reaches the tray at all - not the open board's own file, and not a
+    /// sibling board (ADR-0025 §D10): the tray offers unplaced items, not a board
+    /// switcher. A `.canvas` already placed as a card on some board still draws; this is
+    /// about what the tray *offers*, not about what a board *shows*.
+    func contents(ofBoard board: String, document: CanvasDocument) -> FolderContents {
+        let folder = (board as NSString).deletingLastPathComponent
         let directory = folder.isEmpty
             ? root
             : root.appending(path: folder, directoryHint: .isDirectory)
@@ -69,7 +75,7 @@ struct CanvasStore: Sendable {
             at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
         )) ?? []
 
-        let placed = Set(board.nodes.compactMap { node -> String? in
+        let placed = Set(document.nodes.compactMap { node -> String? in
             if case .file(let path, _) = node.kind { return path }
             return nil
         })
@@ -88,8 +94,9 @@ struct CanvasStore: Sendable {
                 if !placed.contains(relativePath) { unplaced.append(relativePath) }
                 continue
             }
-            // The board's own file is not an item on the board.
-            guard relativePath != boardPath(forFolder: folder) else { continue }
+            // One predicate rather than an exception list: no board is an item in the
+            // tray (ADR-0025 §D10).
+            guard entry.pathExtension.lowercased() != Self.fileExtension else { continue }
             if !placed.contains(relativePath) { unplaced.append(relativePath) }
         }
         return FolderContents(subfolders: subfolders, unplaced: unplaced)
@@ -101,38 +108,112 @@ struct CanvasStore: Sendable {
         var unplaced: [String]
     }
 
+    /// Writes an empty board at `<parent>/<name>.canvas` and returns its path
+    /// (ADR-0025 §D1).
+    ///
+    /// It creates no directory and no folder named after the board: `parent` is a folder
+    /// the caller picked from the tree, and a board whose folder vanished must fail
+    /// loudly rather than resurrect it - the reasoning `createFolder` below already
+    /// carries. A `.canvas` that name already belongs to is refused; a *folder* of the
+    /// same name is not a collision at all, since a directory and a file may share a
+    /// name in one directory.
+    func createBoard(named name: String, in parent: String) throws -> String {
+        let relativePath = Self.boardFilePath(named: name, in: parent)
+        let fileURL = url(forBoard: relativePath)
+        guard !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
+            throw StoreError.alreadyExists(relativePath)
+        }
+        try CanvasDocument.empty.encoded().write(to: fileURL, options: .atomic)
+        return relativePath
+    }
+
+    /// Whether `createBoard(named:in:)` would accept this name, asked live and without
+    /// writing - the relationship `FolderFileOperations.nameIsAvailable` has to
+    /// `createFolder` (ADR-0022 §D11), so the creation sheet can refuse a taken name
+    /// before the verb runs.
+    func boardNameIsAvailable(_ name: String, in parent: String) -> Bool {
+        !FileManager.default.fileExists(
+            atPath: url(forBoard: Self.boardFilePath(named: name, in: parent))
+                .path(percentEncoded: false)
+        )
+    }
+
+    /// The single spelling of "the file a board called `name` in `parent` would be", so
+    /// the check and the write cannot disagree about which file they mean. It takes the
+    /// board's own name and never a folder's: the folder→board rule is what ADR-0025 §D1
+    /// deletes.
+    private static func boardFilePath(named name: String, in parent: String) -> String {
+        let fileName = "\(name).\(fileExtension)"
+        return parent.isEmpty ? fileName : "\(parent)/\(fileName)"
+    }
+
     /// Every `.canvas` file in the vault, as vault-relative paths, sorted.
     ///
     /// ADR-0021 D10: boards are enumerated on demand rather than carried in
     /// `IndexSnapshot`, which stays a note index. Called when the Workspace browser
     /// appears and on `scanGeneration`, the same trigger the note tree rebuilds on.
+    func allBoards() -> [String] {
+        walk().boards
+    }
+
+    /// Every directory in the vault, as vault-relative paths, sorted - including one
+    /// holding no board at all, which is the row the Workspace tree could not draw
+    /// before (ADR-0025 §D1/§D2).
+    ///
+    /// Not `VaultSession.folders`, which derives folders from *note* paths and so omits
+    /// a folder holding only boards or only subfolders - precisely the folders a
+    /// Workspace user creates (ADR-0022 §D11).
+    func allFolders() -> [String] {
+        walk().folders
+    }
+
+    /// One walk, both answers, because they are the same walk: `allBoards()` passed
+    /// every directory and discarded it, and those directories are exactly what
+    /// `allFolders()` needs. A second enumerator would be a second exclusion rule to
+    /// keep in step with this one.
     ///
     /// The walk mirrors `VaultScanner.scan()`: an enumerator that skips the descendants
     /// of an excluded directory outright rather than filtering its files one at a time,
     /// so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are never entered.
-    func allBoards() -> [String] {
+    private func walk() -> (folders: [String], boards: [String]) {
         let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: keys,
             options: [.skipsPackageDescendants]
         ) else {
-            return []
+            return (folders: [], boards: [])
         }
 
-        var paths: [String] = []
+        var folders: [String] = []
+        var boards: [String] = []
         while let url = enumerator.nextObject() as? URL {
             let values = try? url.resourceValues(forKeys: Set(keys))
             let name = values?.name ?? url.lastPathComponent
 
             if values?.isDirectory == true {
-                if VaultLayout.isExcludedDirectory(name) { enumerator.skipDescendants() }
+                if VaultLayout.isExcludedDirectory(name) {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                // The enumerator hands back a *directory* URL, whose path ends in "/",
+                // and `VaultScanner.relativePath` preserves that faithfully - so this
+                // would yield "01 Progetti/" where every other folder path in the app,
+                // the tree's ids and the selection included, is spelled without one.
+                let path = VaultScanner.relativePath(of: url, under: root)
+                folders.append(path.hasSuffix("/") ? String(path.dropLast()) : path)
                 continue
             }
             guard url.pathExtension.lowercased() == Self.fileExtension else { continue }
-            paths.append(VaultScanner.relativePath(of: url, under: root))
+            boards.append(VaultScanner.relativePath(of: url, under: root))
         }
-        return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return (folders: Self.sorted(folders), boards: Self.sorted(boards))
+    }
+
+    /// `localizedStandardCompare`, so "9 Note" sorts before "10 Note" - the ordering
+    /// both sidebars are read in.
+    private static func sorted(_ paths: [String]) -> [String] {
+        paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// Creates a real directory for a folder card (SPEC §6.4, tool 4).
@@ -148,10 +229,15 @@ struct CanvasStore: Sendable {
 
     enum StoreError: Error, CustomStringConvertible {
         case alreadyExists(String)
+        /// ADR-0025 §D1: a `load(board:)` whose file is not there fails loudly instead
+        /// of silently returning `.empty` (F2 - "the single most damaging failure
+        /// mode of the feature").
+        case missing(String)
 
         var description: String {
             switch self {
             case .alreadyExists(let path): "\(path) esiste già"
+            case .missing(let path): "\(path) non esiste"
             }
         }
     }

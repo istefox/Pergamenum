@@ -140,20 +140,21 @@ extension WorkspaceController {
 extension WorkspaceController {
     /// Acts on a `pergamenum://canvas` link (SPEC §9).
     ///
-    /// The route names a `.canvas` file; this controller works in folders, because a
-    /// board *is* a folder (SPEC §6.2), so the folder is the file's parent.
+    /// The route names a `.canvas` file and that file is what opens: a board is addressed
+    /// by its own path (ADR-0025 §D1), so the link's answer is no longer thrown away by a
+    /// `deletingLastPathComponent` that opened whichever board the parent folder happened
+    /// to imply (ADR-0025 F6).
     ///
     /// Returns the node id when the link named a card this board does not have, so the
     /// caller can say so. A link to a card someone has since deleted still opens the
     /// board: arriving at the right place with nothing selected beats arriving nowhere.
     @discardableResult
     func openRoute(_ route: (path: String, nodeID: String?), viewport: CGSize) -> String? {
-        let folder = (route.path as NSString).deletingLastPathComponent
-        // ADR-0024 §D4: with a board-less folder selected, `self.folder` still names the
-        // last *loaded* board, so comparing against it (as the old guard did) would
-        // decline to open the board this route names and the link would silently do
-        // nothing. `current` is the value that answers "is this board on screen".
-        if current != .board(folder: folder) { open(folder: folder) }
+        // ADR-0024 §D4: with a board-less folder selected, `board` still names the last
+        // *loaded* board, so comparing against it (as the old guard did) would decline to
+        // open the board this route names and the link would silently do nothing.
+        // `current` is the value that answers "is this board on screen".
+        if current != .board(path: route.path) { open(board: route.path) }
 
         guard let nodeID = route.nodeID else { return nil }
         guard let node = document.nodes.first(where: { $0.id == nodeID }) else { return nodeID }

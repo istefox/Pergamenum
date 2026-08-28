@@ -72,15 +72,26 @@ final class WorkspaceController {
     /// Zoom bounds from SPEC §6.1.
     static let zoomRange: ClosedRange<CGFloat> = 0.05...4.0
 
-    private(set) var folder = ""
+    /// The open board's own vault-relative path - its identity, and what `CanvasStore` is
+    /// told (ADR-0025 §D1/§D4). A folder holds any number of boards under any name, so
+    /// the file is named rather than worked out from the directory around it.
+    ///
+    /// `""` with nothing open, which is what `attach` and `detach` leave behind: there is
+    /// no root board to stand in for one (§D1).
+    private(set) var board = ""
+
+    /// The directory the open board sits in, read off the board's path and never the
+    /// other way round (ADR-0025 §D4) - `folder` still answers "which directory is the
+    /// open board in", it has simply stopped being the identity. `""` for a board at the
+    /// vault root.
+    var folder: String { (board as NSString).deletingLastPathComponent }
     /// The single value that says both which row of the Workspace tree is lit and
     /// whether a board is drawn (ADR-0024 §D4). Replaces the former `hasOpenBoard`
-    /// flag: `attach` prepares the root board's document the moment a vault opens, but
-    /// that is readiness, not a choice, so `current` stays `nil` until something is
-    /// actually selected.
+    /// flag: `attach` opens nothing at all (ADR-0025 §D4), so `current` stays `nil`
+    /// until something is actually selected.
     ///
     /// Written in exactly four places, all in this file: `attach` (`nil`),
-    /// `open(folder:)` (`.board`), `select(_:)` (whatever the tree asked for) and
+    /// `open(board:)` (`.board`), `select(_:)` (whatever the tree asked for) and
     /// `detach` (`nil`). Everything else reads it.
     private(set) var current: WorkspaceSelection?
     /// True only while a board is drawn, derived from `current` rather than stored
@@ -166,12 +177,19 @@ final class WorkspaceController {
         self.store = store
         self.thumbnails = thumbnails
         self.vault = vault
-        // Loaded, not opened: the root board is ready the instant a vault attaches, but
-        // that is not the same as the user having chosen it. This is the one caller that
-        // wants the load without the selection `open(folder:)` sets (ADR-0024 §D4), and
-        // it is the whole reason `load` is a function of its own.
-        load(folder: "")
+        // ADR-0024's "loaded, not chosen" becomes "not loaded at all" (ADR-0025 §D4):
+        // there is no root board to read (§D1) and nothing ever needed the load - the
+        // board area draws only while `isShowingBoard`, which is false until something
+        // is opened.
+        board = ""
+        document = .empty
         current = nil
+        // Carried over from the load that used to happen here, because they are about the
+        // vault being left rather than the board being read: a step recorded on the
+        // previous vault's board must not be undoable onto this one, and a dirty flag
+        // that outlived its store would aim the next flush at `board == ""`.
+        hasUnsavedChanges = false
+        history.reset()
     }
 
     func detach() {
@@ -186,17 +204,24 @@ final class WorkspaceController {
         emailHeaders = [:]
         document = .empty
         setContents(.init(subfolders: [], unplaced: []))
-        folder = ""
+        board = ""
         current = nil
         selection = []
     }
 
-    /// The breadcrumb of SPEC §6.1: each segment is a folder the user can jump to.
+    /// The breadcrumb of SPEC §6.1: the folders the user can jump to, ending in the open
+    /// board's own file name (ADR-0025 §D4, R-12).
     ///
     /// It walks the **selection**, not the loaded document (ADR-0024 §D8.1). `folder`
     /// names the last board `load` read, and a `.folder(F)` selection loads nothing, so
     /// deriving from `folder` would leave the previous board's trail on screen while the
     /// tree showed `F`. With nothing selected the trail is `["Workspace"]` alone.
+    ///
+    /// A board is a file rather than the folder holding it, so it earns a segment of its
+    /// own: the two names can differ now (ADR-0025 §D3), and a folder holding two boards
+    /// would otherwise draw the same trail for both. That segment is the last one, which
+    /// `BoardTopBar` renders as a `Text` and not a link (ADR-0024 §D8.2), so it carries
+    /// its containing folder for want of anywhere else to go.
     var breadcrumb: [(title: String, folder: String)] {
         var trail: [(String, String)] = [("Workspace", "")]
         var accumulated = ""
@@ -204,34 +229,43 @@ final class WorkspaceController {
             accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
             trail.append((String(component), accumulated))
         }
+        if case .board(let path)? = current {
+            let fileName = (path as NSString).lastPathComponent
+            trail.append(((fileName as NSString).deletingPathExtension, accumulated))
+        }
         return trail
     }
 
-    /// Reads a folder's board into this controller and says nothing about whether it is
-    /// the selection - that is `open(folder:)`'s decision, or `attach`'s (ADR-0024 §D4).
+    /// Reads a board into this controller and says nothing about whether it is the
+    /// selection - that is `open(board:)`'s decision (ADR-0024 §D4).
     ///
-    /// Returns false when there is no store to read from, which is the one case
-    /// `open(folder:)` must not follow with a selection: a board nothing could load is
-    /// not a board on screen.
+    /// Returns false when there is no store to read from, and when the file is not there:
+    /// `CanvasStore.load(board:)` throws where the folder-derived read used to return
+    /// `.empty`, and that failure has no successor fallback (ADR-0025 §D1/§D4). A board
+    /// nothing could load must not become a board on screen, so the read happens before
+    /// anything here is written and a miss leaves the open board exactly as it was.
     @discardableResult
-    private func load(folder newFolder: String) -> Bool {
+    private func load(board newBoard: String) -> Bool {
         guard let store else { return false }
+        let loaded: CanvasDocument
+        do {
+            loaded = try store.load(board: newBoard)
+        } catch {
+            recordProblem("\(newBoard): \(error)")
+            return false
+        }
         // Navigating away confirms an open crop the same way a click outside the card
         // would (ADR-0020 D5), rather than silently discarding it.
         endCrop(confirm: true)
-        // Leaving a board with pending edits must not lose them.
+        // Leaving a board with pending edits must not lose them. Still aimed at the board
+        // being left, because `board` below has not moved yet.
         flushPendingSave()
 
-        folder = newFolder
+        board = newBoard
+        document = loaded
         selection = []
         pan = .zero
         zoom = 1
-        do {
-            document = try store.load(folder: newFolder)
-        } catch {
-            document = .empty
-            recordProblem("\(newFolder): \(error)")
-        }
         refreshContents()
         hasUnsavedChanges = false
         // Each board has its own history: undoing on one board must never reach back
@@ -240,14 +274,17 @@ final class WorkspaceController {
         return true
     }
 
-    /// Loads a folder's board and makes it the selection. Every caller outside the tree
-    /// - the breadcrumb, a folder card, a `pergamenum://canvas` route, a new board, a
+    /// Loads a board by its own path and makes it the selection. Every caller outside the
+    /// tree - the breadcrumb, a folder card, a `pergamenum://canvas` route, a new board, a
     /// note handed over from the editor - means "this is now the selected board"
-    /// (ADR-0024 §D4, F10), so there is no `markOpen:` left to say otherwise: `attach`
-    /// was its only `false` and it now calls `load` directly.
-    func open(folder newFolder: String) {
-        guard load(folder: newFolder) else { return }
-        current = .board(folder: newFolder)
+    /// (ADR-0024 §D4, F10), so there is no `markOpen:` left to say otherwise.
+    ///
+    /// A board that could not be read selects nothing and is reported (ADR-0025 §D4): a
+    /// lit row for a file that is not there is the silent blank board this chain exists
+    /// to remove.
+    func open(board path: String) {
+        guard load(board: path) else { return }
+        current = .board(path: path)
     }
 
     /// Writes the tree's selection (ADR-0024 §D4), replacing the removed
@@ -261,8 +298,8 @@ final class WorkspaceController {
     /// thing the user was looking at (ADR-0024 §D4).
     func select(_ new: WorkspaceSelection?) {
         guard new != current else { return }
-        if case .board(let folder) = new {
-            open(folder: folder)
+        if case .board(let path)? = new {
+            open(board: path)
             return
         }
         // Selecting a board-less folder, or nothing at all, is still leaving whatever
@@ -304,7 +341,7 @@ final class WorkspaceController {
     /// already read the same document against the same disk - see `createFolder`.
     func refreshContents() {
         guard let store else { return }
-        setContents(store.contents(ofFolder: folder, board: document))
+        setContents(store.contents(ofBoard: board, document: document))
     }
 
     /// The only writer of `contents`, so `subfolderSet` is refilled with it every time
@@ -659,12 +696,12 @@ final class WorkspaceController {
             // reaches `VaultSession.reconcile` and there is nothing for a recorded hash
             // to be recognised against. The board cannot be reloaded under the user by
             // the watcher because the watcher never hears about it.
-            try store.save(document, folder: folder)
+            try store.save(document, board: board)
             hasUnsavedChanges = false
         } catch {
             // Left dirty on purpose: an indicator still showing unsaved changes is
             // the truth, and the next edit will retry.
-            recordProblem("salvataggio di \(folder): \(error)")
+            recordProblem("salvataggio di \(board): \(error)")
         }
     }
 }

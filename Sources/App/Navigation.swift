@@ -118,6 +118,17 @@ final class Navigation {
     /// `isShowingTray` is: the menu bar's Vista entry needs to reach it.
     var isWorkspaceTreeCollapsed = false
 
+    /// The Note pane's own "concentrazione" (2026-08-28, toolbar parity chain): hides
+    /// `NoteListPane` and the inspector, down to the editor alone. A flag of its own
+    /// rather than reusing `isWorkspaceFocused` - the two sections are shown one at a
+    /// time, but their chrome state must not leak into each other when the user
+    /// switches back, the same reasoning `isWorkspaceFocused` already carries.
+    var isNotesFocused = false
+
+    /// Whether the Note pane hides just `NoteListPane`, leaving the editor and the
+    /// inspector untouched. Mirrors `isWorkspaceTreeCollapsed`.
+    var isNoteTreeCollapsed = false
+
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,
@@ -187,6 +198,29 @@ final class Navigation {
     /// the caret to land wrong.
     func jumpToLine(range: NSRange, ordinal: Int) {
         jumpToOutlineEntry(range: range, ordinal: ordinal)
+    }
+
+    // MARK: Folder reveal (2026-08-28, Note-pane breadcrumb chain)
+
+    /// A folder `VaultTopBar`'s breadcrumb asked the Note tree to open and select.
+    ///
+    /// `id` makes two clicks on the same crumb two events, the same reason `OutlineJump`
+    /// carries one - `NoteListPane`'s `.onChange` only fires on a value that actually
+    /// changed, and clicking the same crumb twice in a row is a real request both times.
+    struct FolderReveal: Equatable, Sendable {
+        var id: Int
+        /// `""` for the root crumb ("Note") - deselects the tree without touching the open
+        /// note, the same spelling every path rule in this feature uses for the vault root.
+        var folder: String
+    }
+
+    private(set) var folderReveal: FolderReveal?
+
+    /// Not routed through `pane` the way `jumpToOutlineEntry` is: that jump can be asked
+    /// for from outside the Note pane (a task row in the week), so it has to bring the
+    /// pane with it. A breadcrumb crumb only exists inside the Note pane already showing.
+    func revealFolder(_ folder: String) {
+        folderReveal = FolderReveal(id: (folderReveal?.id ?? 0) + 1, folder: folder)
     }
 
     // Reading mode, the current index entry and the folds used to be stored here. They

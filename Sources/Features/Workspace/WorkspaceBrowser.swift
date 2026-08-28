@@ -9,19 +9,20 @@ import SwiftUI
 /// blueprint's *"reuse the existing folder-tree view component ... not a parallel tree
 /// implementation"* made true at the level of the code.
 ///
-/// `NoteTree.Node.Kind` is not extended for boards (D10). What the sidebar draws is one
-/// fold further on: `WorkspaceTree.build(boards:boardPath:)` turns that tree into one row
-/// per folder, with the board named after a folder drawn *on* that folder's row rather
-/// than beside it (ADR-0024 §D2). This view renders the fold; it does not decide it.
+/// `NoteTree.Node.Kind` is not extended for boards (D10), and the sidebar does not read a
+/// `NoteTree` at all: `WorkspaceTree.build(folders:boards:)` walks the two flat lists
+/// `CanvasStore` gives it into one row per folder **and** one row per `.canvas`, two
+/// different things and never one folded into the other (ADR-0025 §D2). This view renders
+/// those rows; it does not decide them.
 struct WorkspaceBrowser: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
-    /// The folder currently selected in the tree - the lit row, and (through
-    /// `WorkspaceTree.node(withID:in:)`) whether a board is drawn on it (ADR-0024 §D6).
-    /// Owned by `WorkspaceController.current`, handed down as a value: this view no
-    /// longer keeps a selection of its own that could drift from it (ADR-0024 §D4/F1).
-    var selectedFolder: String?
+    /// The row currently selected in the tree, whichever kind it is - a `.canvas` by its
+    /// own file path or a folder by its folder path (ADR-0025 §D3). Owned by
+    /// `WorkspaceController.current`, handed down whole: the case is what the two verbs
+    /// dispatch on (§D8), so a view handed only the folder would have to recover it.
+    var selection: WorkspaceSelection?
     /// The three verbs, performed by `WorkspaceView` because all three need the
     /// `WorkspaceController` this view has no business holding (ADR-0022 §D10).
     var actions: WorkspaceFolderActions
@@ -56,7 +57,16 @@ struct WorkspaceBrowser: View {
     /// The rows arrive **detached** (`children: []`), which is what lets the list draw
     /// every one of them at depth 0.
     @State private var filteredRows: [WorkspaceTree.Node] = []
-    @State private var boards: [String] = []
+    /// Every folder of the vault, as the last scan found them - what the create sheet's
+    /// parent picker offers (ADR-0025 §D1). The board list beside it is a local of
+    /// `rebuild()`: the tree is the only thing that reads it, and the picker no longer
+    /// infers folders from board paths.
+    @State private var folders: [String] = []
+    /// The board rules over the open vault's root, kept for the same reason
+    /// `folderOperations` below is: `CanvasStore.init` resolves symlinks and standardizes
+    /// the URL, and `boardNameIsAvailable` is asked live, on every keystroke of the create
+    /// sheet.
+    @State private var canvasStore: CanvasStore?
     /// The folder rules over the open vault's root, built once per scan rather than once
     /// per call. `NoteStore.init` resolves symlinks and standardizes the URL - filesystem
     /// syscalls, not string work - and `nameIsAvailable` is asked live, on every keystroke
@@ -70,15 +80,42 @@ struct WorkspaceBrowser: View {
     /// on screen (`RootView.workspacePane` draws it only with a root), so the stored
     /// value cannot outlive the root it was built from.
     @State private var folderOperations: FolderFileOperations?
-    @State private var isCreatingWorkspace = false
-    /// The rename waiting for its sheet, carrying the folder it is about - `pendingDelete`'s
-    /// shape below, for the same reason. Whoever asks names the folder: the row's context
+    /// Which creation is waiting for the sheet, `nil` for none - the presentation *is*
+    /// the kind, so the two toolbar buttons cannot both be answered by one boolean that
+    /// has forgotten which of them was pressed (ADR-0025 §D7).
+    @State private var creating: WorkspaceItemKind?
+    /// The rename waiting for its sheet, carrying the row it is about - `pendingDelete`'s
+    /// shape below, for the same reason. Whoever asks names the row: the row's context
     /// menu knows which one was right-clicked, while the selection it also sets travels up
     /// to the controller and back down as a prop, so seeding the sheet from `targetFolder`
     /// made it depend on that round trip having landed first.
-    @State private var renameTarget: PendingFolderRename?
-    /// The delete waiting to be confirmed, with its counts already read (R-10).
-    @State private var pendingDelete: PendingFolderDelete?
+    @State private var renameTarget: PendingWorkspaceRename?
+    /// The delete waiting to be confirmed, with a folder's counts already read (R-10).
+    @State private var pendingDelete: PendingWorkspaceDelete?
+    /// Every lit row, which is `List(selection:)`'s own set and the whole of ADR-0026
+    /// §D4: Cmd-click and Shift-click come from AppKit for free, so nothing here reads
+    /// `NSEvent.modifierFlags` and no recognizer is added to a row body - the one thing
+    /// that ever starved this list's own tap (ADR-0025 §D9, ADR-0026 A4).
+    ///
+    /// It answers **one** question, "what does a drag carry" (R-11). What is *open* stays
+    /// the single `WorkspaceSelection?` handed down as a prop, derived from this set by
+    /// `opening(from:to:currently:in:)` - a row can be lit without being open, and two lit
+    /// rows open nothing (R-10).
+    ///
+    /// Kept in step with the prop by the `.onChange(of: selection)` below (something
+    /// opened from the breadcrumb, a route or a card lights exactly its own row) and
+    /// pruned of ids no row carries by `rebuild()`.
+    @State private var selectedRows: Set<String> = []
+    /// What the drag that is in flight carries, stored by the source row at drag start.
+    ///
+    /// `.dropDestination` has no payload-aware validation - its `isTargeted` closure is
+    /// handed a `Bool` and never the payload (ADR-0026 §D5) - so the only way a folder row
+    /// can decline to light up for a cycle is for the source side to have remembered what
+    /// it started dragging. Empty between drags.
+    @State private var dragging: [VaultItemRef] = []
+    /// The refused batch waiting to be named (R-07). A collision is accepted visually and
+    /// then reported, because a row that stays dark shows no conflicting name (§D5).
+    @State private var moveConflict: WorkspaceMoveConflict?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,35 +136,61 @@ struct WorkspaceBrowser: View {
         // The same trigger the note tree rebuilds on: a scan is what changes the set of
         // files on disk, and a board list is tens of entries beside it.
         .task(id: vault.scanGeneration) { rebuild() }
-        .onChange(of: selectedFolder) { _, path in reveal(path) }
+        // The lit set follows what is open, never the other way round (ADR-0026 §D4): a
+        // board opened from the breadcrumb, a route, a card or the editor lights exactly
+        // its own row and drops whatever multi-row set was standing, because the one thing
+        // that is open is also one row.
+        .onChange(of: selection) { _, new in
+            selectedRows = new.map { Set([$0.path]) } ?? []
+            reveal(new?.path)
+        }
         // The filter's other input is the tree, refreshed at the end of `rebuild()`.
         .onChange(of: filter) { _, _ in refreshFilteredRows() }
-        .sheet(isPresented: $isCreatingWorkspace) {
+        // One sheet for both creations, told which one it is (ADR-0025 §D7): the parent
+        // picker, the name rules and the three identifiers are the same question either
+        // way, and `kind` is what picks the collision it asks about and the verb it calls.
+        .sheet(item: $creating) { kind in
             NewWorkspaceSheet(
-                parents: WorkspaceFolderSheets.parentOptions(from: boards),
+                kind: kind,
+                parents: WorkspaceFolderSheets.parentOptions(from: folders),
                 initialParent: targetFolder,
-                isNameAvailable: nameIsAvailable,
-                onConfirm: { name, parent in
-                    isCreatingWorkspace = false
-                    actions.create(name, parent)
+                isNameAvailable: { name, parent in
+                    nameIsAvailable(name, in: parent, for: kind)
                 },
-                onCancel: { isCreatingWorkspace = false }
+                onConfirm: { name, parent in
+                    creating = nil
+                    switch kind {
+                    case .board: actions.createBoard(name, parent)
+                    case .folder: actions.createFolder(name, parent)
+                    }
+                },
+                onCancel: { creating = nil }
             )
         }
+        // One sheet for both renames, told which one it is - the create sheet's decision
+        // (ADR-0025 §D7) applied to the other verb that asks for a name. The collision it
+        // asks about is the kind's own, through the same predicate the create sheet reads.
         .sheet(item: $renameTarget) { pending in
             RenameWorkspaceSheet(
-                folder: pending.folder,
-                isNameAvailable: nameIsAvailable,
+                kind: pending.kind,
+                path: pending.seed,
+                isNameAvailable: { name, parent in
+                    nameIsAvailable(name, in: parent, for: pending.kind)
+                },
                 onConfirm: { newName in
                     renameTarget = nil
-                    actions.rename(pending.folder, newName)
+                    switch pending.kind {
+                    case .board: actions.renameBoard(pending.path, newName)
+                    case .folder: actions.rename(pending.path, newName)
+                    }
                 },
                 onCancel: { renameTarget = nil }
             )
         }
-        // Neither verb is journalled (ADR-0022 §D6), so this dialog is the whole of the
-        // "are you sure" this feature has: the recovery afterwards is the Finder's
-        // Trash, not an undo. It says what is inside before it goes there (R-10).
+        // No delete verb here is journalled (ADR-0022 §D6, ADR-0025 §D6), so this dialog
+        // is the whole of the "are you sure" this feature has: the recovery afterwards is
+        // the Finder's Trash, not an undo. It says what is inside before it goes there
+        // (R-10), and a board - one file, nothing inside - says that instead.
         .confirmationDialog(
             "Eliminare «\(pendingDelete?.name ?? "")»?",
             isPresented: Binding(
@@ -139,12 +202,33 @@ struct WorkspaceBrowser: View {
         ) { pending in
             Button("Sposta nel Cestino", role: .destructive) {
                 pendingDelete = nil
-                actions.delete(pending.folder)
+                switch pending {
+                case .board(let path): actions.deleteBoard(path)
+                case .folder(let path, _, _): actions.delete(path)
+                }
             }
             .accessibilityIdentifier("workspace-delete-confirm")
             Button("Annulla", role: .cancel) { pendingDelete = nil }
         } message: { pending in
             Text(pending.message)
+        }
+        // R-07: nothing moved, nothing was renamed and nothing was overwritten - and the
+        // name that stopped it is on screen. A dialog rather than a problem line because
+        // the drop is a gesture with an expectation: a batch that refuses silently reads
+        // as a drag that missed (ADR-0026 §D5).
+        .alert(
+            "Spostamento rifiutato",
+            isPresented: Binding(
+                get: { moveConflict != nil },
+                set: { if !$0 { moveConflict = nil } }
+            ),
+            presenting: moveConflict
+        ) { _ in
+            Button("OK", role: .cancel) { moveConflict = nil }
+                .accessibilityIdentifier("sidebar-move-conflict-ok")
+        } message: { conflict in
+            Text(conflict.message)
+                .accessibilityIdentifier("sidebar-move-conflict")
         }
     }
 
@@ -152,10 +236,14 @@ struct WorkspaceBrowser: View {
 
     private var toolbar: some View {
         WorkspaceBrowserToolbar(
-            target: targetFolder,
-            onNew: { isCreatingWorkspace = true },
-            onRename: { requestRename(of: targetFolder) },
-            onDelete: { confirmDelete(of: targetFolder) },
+            selection: selection,
+            onNew: { creating = .board },
+            onNewFolder: { creating = .folder },
+            // Dispatched on the selection's case, onto the very entry points the row's
+            // context menu calls (ADR-0025 §D8, ADR-0023 §D1) - the toolbar and the menu
+            // are two renderings of one command, never two code paths.
+            onRename: { renameSelection() },
+            onDelete: { deleteSelection() },
             // The same `expanded` binding the tree's context menu drives: two places to
             // reach one piece of state, never two pieces of state (ADR-0022 §D8).
             onExpandAll: { expanded = expandableFolders },
@@ -163,32 +251,28 @@ struct WorkspaceBrowser: View {
         )
     }
 
-    /// The folder the toolbar's verbs act on: the selected row, with no fallback
-    /// (ADR-0024 §D7 withdraws ADR-0022 §D9's fallback onto the open board's folder -
-    /// with nothing selected, Rinomina/Elimina are now disabled rather than aiming at a
-    /// row the user cannot see).
+    /// The folder a **creation** lands in: the selected row's own folder, which for a
+    /// board row is the folder holding it, so a new board or folder is made *beside* what
+    /// is selected rather than inside it (ADR-0025 §D7). `""` - the vault root - with
+    /// nothing selected.
     ///
-    /// The rule is asked here rather than restated: `selectedFolder ?? ""` would be a
+    /// The rule is asked here rather than restated: `selection?.folder ?? ""` would be a
     /// second spelling of `target(for:)` below, and two spellings of one rule are what
     /// R-06 is about in the first place.
-    ///
-    /// Constructing `.folder` is not a claim that no board is drawn on that row. This
-    /// view is handed the folder path rather than the selection (§D6), and
-    /// `target(for:)` does not branch on the case - so recovering the case from this
-    /// view's own tree would be a walk whose answer the toolbar immediately discards.
     private var targetFolder: String {
-        Self.target(for: selectedFolder.map { WorkspaceSelection.folder($0) })
+        Self.target(for: selection)
     }
 
-    /// ADR-0024 §D7 / R-06: the toolbar's target read as one expression, with no branch
+    /// ADR-0025 §D7 / R-06: where a creation lands, read as one expression with no branch
     /// on which case the selection is - the whole content of "the toolbar cannot aim
     /// anywhere the visible row is not."
     ///
-    /// `""` for nothing selected is what leaves «Rinomina» and «Elimina» disabled, and
-    /// it leaves them disabled through the enablement rule that already exists rather
-    /// than through a second one: `WorkspaceBrowserToolbar.canMutate(folder:)` refuses
-    /// the vault root, and nothing selected reads as the root here (ADR-0023 §D1, one
-    /// rule and two surfaces).
+    /// `""` for nothing selected is the vault root, which is where a new board or folder
+    /// belongs when no row says otherwise. Whether the two *mutating* verbs are offered
+    /// at all is a different question with a different rule
+    /// (`WorkspaceBrowserToolbar.canMutate(_:)`, §D8), asked of the selection rather than
+    /// of this string - so nothing selected disables them there rather than aiming them
+    /// here.
     static func target(for selection: WorkspaceSelection?) -> String {
         selection?.folder ?? ""
     }
@@ -204,19 +288,48 @@ struct WorkspaceBrowser: View {
         folderOperations?.nameIsAvailable(name, in: parent) ?? true
     }
 
+    /// The same predicate asked about the kind of thing being named (ADR-0025 §D7):
+    /// `CanvasStore.boardNameIsAvailable` for a board, the folder rule above for a folder.
+    /// Read by both sheets - a rename collides with exactly what a creation collides with.
+    ///
+    /// Two rules and not one, because the two collisions are different ones: a board is
+    /// refused by a `.canvas` of that name and by nothing else, so a *folder* called
+    /// `prova` does not stop a `prova.canvas` beside it (R-04) - a file and a directory
+    /// may share a name in one directory, and the old fold is what made that look like a
+    /// clash. A folder is still refused by anything of that name, file or directory,
+    /// which is what `FolderFileOperations.nameIsAvailable` asks the file system.
+    ///
+    /// Each is the very function the performing verb guards with, so the sheet cannot
+    /// enable a «Crea» that `createBoard`/`createFolder` will then refuse (ADR-0022 §D11).
+    private func nameIsAvailable(
+        _ name: String, in parent: String, for kind: WorkspaceItemKind
+    ) -> Bool {
+        switch kind {
+        case .board: canvasStore?.boardNameIsAvailable(name, in: parent) ?? true
+        case .folder: nameIsAvailable(name, in: parent)
+        }
+    }
+
     // MARK: Verbs
     //
     // The browser decides, `WorkspaceView` performs (ADR-0022 §D10): create and rename
     // hand the sheet's answer straight to `actions`, which is where `flushPendingSave()`
-    // and `open(folder:)` bracket the vault call. Rename and delete both stop here first,
-    // and for the folder each one is about rather than for a decision - delete because
-    // how much is inside is a walk of the subtree, rename because the folder is whatever
-    // the click named.
+    // and `open(board:)` bracket the vault call. Rename and delete both stop here first,
+    // and for the row each one is about rather than for a decision - delete because how
+    // much is inside a folder is a walk of its subtree, rename because the row is
+    // whatever the click named. Each has a board arm and a folder arm, and the two never
+    // share a verb: a board rename repoints nodes and rewrites markers where a folder
+    // rename does neither (ADR-0025 §D6).
 
     /// Opens the rename sheet on the folder the caller names - the toolbar's target, or
     /// the row a context menu was opened on. Nothing here reads the selection back.
     private func requestRename(of folder: String) {
-        renameTarget = PendingFolderRename(folder: folder)
+        renameTarget = PendingWorkspaceRename(kind: .folder, path: folder)
+    }
+
+    /// The same, for a board row: the `.canvas` path the row drew (ADR-0025 §D6).
+    private func requestRenameBoard(of board: String) {
+        renameTarget = PendingWorkspaceRename(kind: .board, path: board)
     }
 
     /// Reads the counts once, at the click, and shows the dialog (R-10). Once, rather
@@ -224,9 +337,38 @@ struct WorkspaceBrowser: View {
     /// view body is evaluated as often as SwiftUI likes.
     private func confirmDelete(of folder: String) {
         let counts = folderOperations?.contentCounts(at: folder) ?? (notes: 0, subfolders: 0)
-        pendingDelete = PendingFolderDelete(
-            folder: folder, notes: counts.notes, subfolders: counts.subfolders
+        pendingDelete = .folder(
+            path: folder, notes: counts.notes, subfolders: counts.subfolders
         )
+    }
+
+    /// The same dialog for a board, with nothing to count: deleting one removes one file
+    /// and leaves the folder holding it exactly as it was (ADR-0025 §D6).
+    private func confirmDeleteBoard(of board: String) {
+        pendingDelete = .board(path: board)
+    }
+
+    /// The toolbar's «Rinomina», dispatched on the selection's case onto the same two
+    /// entry points a row's context menu calls (ADR-0025 §D8).
+    ///
+    /// The `nil` arm is unreachable while the button is disabled by `canMutate(_:)`, and
+    /// is written rather than forced: the two surfaces share the rule, not the guarantee
+    /// that it was asked.
+    private func renameSelection() {
+        switch selection {
+        case .folder(let folder): requestRename(of: folder)
+        case .board(let path): requestRenameBoard(of: path)
+        case .none: break
+        }
+    }
+
+    /// The toolbar's «Elimina», the same dispatch as `renameSelection()` above.
+    private func deleteSelection() {
+        switch selection {
+        case .folder(let folder): confirmDelete(of: folder)
+        case .board(let path): confirmDeleteBoard(of: path)
+        case .none: break
+        }
     }
 
     // MARK: Header
@@ -257,44 +399,48 @@ struct WorkspaceBrowser: View {
     // nothing and swallows every click, silently, which is what `RootView.swift:205-208`
     // records this repository having already paid twenty minutes for once.
 
-    /// The `List`'s selection: derived from the value handed down, never stored beside it
-    /// (ADR-0024 §D6).
+    /// The `List`'s selection: the whole lit **set** since ADR-0026 §D4, not the one open
+    /// row it used to be. The tag is still the row's own id - a board's file path or a
+    /// folder's folder path (ADR-0025 §D3) - so the strings travelling through this
+    /// binding are row ids and nothing has to be derived from anything.
     ///
-    /// The setter resolves the clicked id against this view's own tree, which is the only
-    /// place that knows whether a folder owns a board and therefore whether the click
-    /// means `.board` or `.folder`. A `.foreignBoard` row carries no `.tag` (§D3), so the
-    /// lookup cannot land on one.
-    private var treeSelection: Binding<String?> {
+    /// A set rather than a `String?` is the whole of Cmd-click and Shift-click: AppKit's
+    /// list already does both, so this repository reads no modifier flag and adds no
+    /// gesture to a row (ADR-0026 A4). What is *open* is not this set - it is derived from
+    /// it by `opening(from:to:currently:in:)`, whose double optional says which of "open
+    /// that row", "deselect" and "leave what is open alone" a new set means.
+    private var treeSelection: Binding<Set<String>> {
         Binding(
-            get: { selectedFolder },
-            set: { id in
-                guard let id else { return onSelect(nil) }
+            get: { selectedRows },
+            set: { ids in
+                let previous = selectedRows
+                selectedRows = ids
                 // A `.tag`ed row only ever hands this setter an id it drew itself, so a
                 // miss here means the tree and the click disagree - almost always a
                 // rebuild (rename/delete/rescan) racing the click - not an ordinary
                 // click. Recorded, not silent: without this the row still resolves as
-                // `.folder`, so a desync reads identically to a legitimate board-less
-                // folder and leaves no trace to find it by (ADR-0024 Gate 5.06 finding).
-                guard let node = WorkspaceTree.node(withID: id, in: workspaceTree) else {
+                // `.folder`, so a desync reads identically to a legitimate folder row and
+                // leaves no trace to find it by (ADR-0024 Gate 5.06 finding).
+                for id in ids where WorkspaceTree.node(withID: id, in: workspaceTree) == nil {
                     actions.recordDesync("workspace-tree: selected id \(id) resolved to no row")
-                    return onSelect(.folder(id))
                 }
-                // `Self.selection(for:)` returns `nil` only for `.foreignBoard`, which
-                // carries no `.tag` (§D3) and so cannot reach this setter through a click
-                // at all - reachable only if that invariant regresses, which is worth
-                // recording rather than silently opening nothing.
-                guard let picked = Self.selection(for: node) else {
-                    actions.recordDesync("workspace-tree: selected id \(id) resolved to a foreignBoard row")
-                    return onSelect(.folder(id))
-                }
-                onSelect(picked)
+                // `.none` - the outer case - is "leave what is open alone", so `onSelect`
+                // is not called at all: a two-row selection must not close the board on
+                // screen (R-10).
+                guard let opened = Self.opening(
+                    from: previous, to: ids, currently: selection, in: workspaceTree
+                ) else { return }
+                onSelect(opened)
             }
         )
     }
 
-    /// Which case a row means: `.board` when the folder owns one, `.folder` when it only
-    /// groups (ADR-0024 §D5), `nil` for a `.foreignBoard`, which is not in the selection's
-    /// namespace at all (§D3).
+    /// Which case a row means: the row's own id, whichever kind it is - a board names
+    /// itself by its file path and a folder by its folder path, so nothing here derives
+    /// one from the other (ADR-0025 §D3).
+    ///
+    /// Not optional: every row is selectable now that ADR-0024 §D3's «foreign» board is
+    /// gone (§D2), so there is no row a click can land on that this cannot answer for.
     ///
     /// One expression, read by the `List`'s binding above and by the row's context menu,
     /// so a click and a right-click cannot disagree about what was selected (ADR-0023 §D4).
@@ -303,12 +449,10 @@ struct WorkspaceBrowser: View {
     /// statics are pure functions of their arguments, and a pure function that carries
     /// the view's actor isolation is a trap waiting for the first caller that is not on
     /// the main actor.
-    nonisolated static func selection(for node: WorkspaceTree.Node) -> WorkspaceSelection? {
+    nonisolated static func selection(for node: WorkspaceTree.Node) -> WorkspaceSelection {
         switch node.kind {
-        case .workspace(let board):
-            return board == nil ? .folder(node.id) : .board(folder: node.id)
-        case .foreignBoard:
-            return nil
+        case .folder: return .folder(node.id)
+        case .board(let path): return .board(path: path)
         }
     }
 
@@ -320,6 +464,7 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-tree")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
         // No `.onTapGesture` here any more: deselecting by clicking the blank area below
         // the last row is `List(selection:)`'s own behaviour under ADR-0024 §D7/R-07, and
         // the gesture that used to stand in for it was written when this list had no
@@ -350,6 +495,20 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-flat-list")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+    }
+
+    /// R-05's destination, on both lists: the tree's own empty area means the vault root,
+    /// spelled `""` everywhere this feature computes a path.
+    ///
+    /// The rows sit *inside* this destination, and SwiftUI hit-tests the innermost one
+    /// first - so a drop on a folder row reaches that row's and only a drop on the
+    /// background reaches this. That mechanism is the one part of ADR-0026 §D11 asserted
+    /// by hand rather than by construction, which is also why «Sposta in ▸ (radice)»
+    /// exists as a second, certain surface for the same move.
+    private func dropOnRoot(_ drops: [VaultItemDrag]) -> Bool {
+        guard let items = drops.first?.items else { return false }
+        return performMove(items, into: "")
     }
 
     /// One row, wired the same way in both lists.
@@ -358,42 +517,119 @@ struct WorkspaceBrowser: View {
             node: node,
             depth: depth,
             expanded: $expanded,
-            selectedFolder: selectedFolder,
+            selection: selection,
             onSelect: onSelect,
             onRename: { requestRename(of: $0) },
-            onDelete: { confirmDelete(of: $0) }
+            onDelete: { confirmDelete(of: $0) },
+            onRenameBoard: { requestRenameBoard(of: $0) },
+            onDeleteBoard: { confirmDeleteBoard(of: $0) },
+            move: moveContext
         )
+    }
+
+    /// Everything a row's drag, its drop and its «Sposta in» menu need, rebuilt with the
+    /// body so the lit set and the drag in flight it carries are the current ones
+    /// (ADR-0026 §D4, §D5, §D9).
+    ///
+    /// One value rather than six more parameters on a row that already passes nine down
+    /// its own recursion - and one *place*, so the drag and the menu cannot end up asking
+    /// different questions about the same drop.
+    private var moveContext: WorkspaceMoveContext {
+        WorkspaceMoveContext(
+            folders: folders,
+            multiSelection: selectedRows,
+            dragging: dragging,
+            resolve: { Self.items(for: $0, in: workspaceTree) },
+            onDragStart: { dragging = $0 },
+            perform: { performMove($0, into: $1) }
+        )
+    }
+
+    /// The move both surfaces call - a folder row's `.dropDestination`, the list's own
+    /// root-area destination, and «Sposta in» in every row's context menu (ADR-0026 §D9:
+    /// a command is named once and rendered twice).
+    ///
+    /// `false` for a refused drop, which is what `.dropDestination`'s `action` owes the
+    /// drag. Two refusals, and they are deliberately not alike (§D5): a cycle is string
+    /// arithmetic that already declined to light the row up and says nothing more, while a
+    /// collision is named in a dialog because R-07 requires the conflicting name to be
+    /// shown and a row that stayed dark shows nothing.
+    private func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
+        dragging = []
+        guard !items.isEmpty, Self.canDrop(items, onFolder: destination) else { return false }
+        let refusals = actions.move(items, destination)
+        guard refusals.isEmpty else {
+            moveConflict = WorkspaceMoveConflict(reasons: refusals)
+            return false
+        }
+        return true
+    }
+
+    /// The rows behind a set of ids, in the tree's own depth-first order - a `Set` has
+    /// none, and a batch whose order changed between two identical drags would make
+    /// `VaultMoveBatch`'s answers unrepeatable.
+    ///
+    /// A board carries its `.canvas` file's own path and a folder its folder path
+    /// (ADR-0025 §D3), which is exactly what `VaultItemRef` wants: nothing here derives one
+    /// kind of path from the other. An id no row carries is dropped rather than guessed at.
+    ///
+    /// `nonisolated` for the reason `rows(matching:in:)` spells out below (`:543-550`): the
+    /// closure handed to `compactMap` would otherwise carry this `View`'s main-actor
+    /// isolation into a non-isolated function type.
+    nonisolated static func items(
+        for ids: Set<String>, in tree: [WorkspaceTree.Node]
+    ) -> [VaultItemRef] {
+        WorkspaceTree.flattened(tree).compactMap { row in
+            guard ids.contains(row.node.id) else { return nil }
+            switch row.node.kind {
+            case .folder: return VaultItemRef(path: row.node.id, kind: .folder)
+            case .board(let path): return VaultItemRef(path: path, kind: .board)
+            }
+        }
     }
 
     // MARK: Tree state
 
     private func rebuild() {
-        let store = vault.root.map { CanvasStore(root: $0) }
-        // The folder verbs' file rules, rebuilt here with the rest of what the root
-        // decides rather than on every access (see the declaration).
+        // The two file rules, rebuilt here with the rest of what the root decides rather
+        // than on every access (see their declarations).
+        canvasStore = vault.root.map { CanvasStore(root: $0) }
         folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
-        boards = store?.allBoards() ?? []
-        // The folder↔board naming rule is asked, never restated (ADR-0024 §D2): the
-        // closure handed in is `CanvasStore.boardPath(forFolder:)` itself, the same rule
-        // the controller loads a board by, so the fold cannot drift from it. With no
-        // vault open there is no rule to ask and nothing to draw.
-        workspaceTree = store.map {
-            WorkspaceTree.build(boards: boards, boardPath: $0.boardPath(forFolder:))
-        } ?? []
+        let boards = canvasStore?.allBoards() ?? []
+        folders = canvasStore?.allFolders() ?? []
+        // Folders and boards, two lists and two kinds of row (ADR-0025 §D2). No naming
+        // rule is asked any more: a board is a row because it is a file, not because a
+        // folder is named after it. With no vault open both lists are empty and the
+        // builder draws nothing.
+        workspaceTree = WorkspaceTree.build(folders: folders, boards: boards)
         // A selection is a path, and a rename or a delete has just moved or removed the
-        // folder it names - this runs on `scanGeneration`, which both of them bump.
-        // `selectedFolder` is owned by the controller now (ADR-0024 §D6), so dropping a
-        // stale one means asking for `nil` through `onSelect` rather than assigning
-        // local state - there no longer is any to assign.
+        // row it names - this runs on `scanGeneration`, which both of them bump. The
+        // selection is owned by the controller (ADR-0024 §D6), so dropping a stale one
+        // means asking for `nil` through `onSelect` rather than assigning local state -
+        // there no longer is any to assign.
         //
-        // Asked of the tree the rows are actually drawn from, and that is the whole of
-        // it: `NoteTree` has no node for the vault root (ADR-0024 F7), so a check made
-        // against a `NoteTree` walk would find a root board's selection - spelled `""` -
-        // missing and drop it on every single rescan (§D7).
-        if let selectedFolder, !WorkspaceTree.folders(in: workspaceTree).contains(selectedFolder) {
+        // Asked of the tree the rows are actually drawn from, through the lookup that
+        // answers for **every** row rather than through `folders(in:)`, which yields
+        // folder ids only (ADR-0025 §D2): a board selection checked against that list
+        // would be missing from it on every single rescan and dropped every time.
+        if let selection, WorkspaceTree.node(withID: selection.path, in: workspaceTree) == nil {
             onSelect(nil)
         }
-        reveal(selectedFolder)
+        // The same drop for the lit set, which the controller does not own (ADR-0026 §D4):
+        // a rename, a delete or a move has just taken rows away, and an id kept here after
+        // its row has gone is an id a drag would still carry.
+        selectedRows = selectedRows.filter {
+            WorkspaceTree.node(withID: $0, in: workspaceTree) != nil
+        }
+        // With nothing lit, the open row is (ADR-0024's invariant, in the form §D4 keeps):
+        // this is the first scan of a pane drawn with a board already open - navigating
+        // back to the Workspace, or a vault reopened on one - where no `.onChange(of:
+        // selection)` has fired because the value did not change.
+        if selectedRows.isEmpty, let selection,
+           WorkspaceTree.node(withID: selection.path, in: workspaceTree) != nil {
+            selectedRows = [selection.path]
+        }
+        reveal(selection?.path)
         // Last, because it reads `workspaceTree`: a rescan that added, renamed or removed
         // a board changes what the filter matches, and the filtered list is not redrawn
         // from the tree - it is redrawn from `filteredRows`.
@@ -413,40 +649,43 @@ struct WorkspaceBrowser: View {
         filteredRows = filter.isEmpty ? [] : Self.rows(matching: filter, in: workspaceTree)
     }
 
-    /// Opens the folders above a selected **folder**, so a board opened from somewhere
-    /// that is not this list - the breadcrumb, a route, a folder card, the editor - is
-    /// visible here rather than merely selected inside a closed folder.
+    /// Opens the folders above the selected row, so a board opened from somewhere that is
+    /// not this list - the breadcrumb, a route, a folder card, the editor - is visible
+    /// here rather than merely selected inside a closed folder.
     ///
-    /// The path is a folder now rather than a board file (ADR-0024 §D2), and
-    /// `NoteTree.ancestors(of:)` is already right for it: it drops the last component,
-    /// which for a folder is the folder itself, leaving its strict ancestors - the set to
-    /// open, without opening the selected row itself.
+    /// The path is the selection's own (ADR-0025 §D3), and `NoteTree.ancestors(of:)` is
+    /// already right for **both** kinds: it drops the last component, which for a board
+    /// path is the `.canvas` file and for a folder path is the folder itself, leaving in
+    /// each case the strict ancestors - the set to open, without opening the selected row
+    /// itself (which for a board would mean nothing anyway: a board row has no children).
     private func reveal(_ path: String?) {
         guard let path else { return }
         expanded.formUnion(NoteTree.ancestors(of: path))
     }
 
     /// What "Espandi tutto" opens, from both surfaces that offer it (the toolbar button
-    /// and the tree's context menu, ADR-0022 §D8): every `.workspace` row's id of the tree
-    /// the rows are drawn from.
+    /// and the tree's context menu, ADR-0022 §D8): every **folder** row's id of the tree
+    /// the rows are drawn from, and no board path at all - a board row has nothing under
+    /// it to open (ADR-0025 §D2).
     ///
     /// Asked of `WorkspaceTree.folders(in:)` rather than of a walk of this view's own -
-    /// the fold already answers "which ids are folder rows" for the stale-selection drop
-    /// and the selection setter, and an expand-all built on a second walk is a second
-    /// answer to the same question. The root row (`""`) is in the set and its being there
-    /// draws nothing: `WorkspaceTree.build` synthesises it with no children.
+    /// the tree already answers "which ids are folder rows", and an expand-all built on a
+    /// second walk is a second answer to the same question. There is no root row in the
+    /// set because there is no root row: the top level is the vault root's contents.
     private var expandableFolders: Set<String> {
         Set(WorkspaceTree.folders(in: workspaceTree))
     }
 
-    /// The filtered list's input (ADR-0024 Task 3, R-09): every `.workspace` row of
-    /// `tree` whose `id` or `name` contains `filter`, case-insensitively. `.workspace`
-    /// only - a `.foreignBoard` carries no `.tag` and can never be a search result a
-    /// click could act on (ADR-0024 §D3).
+    /// The filtered list's input (R-09): every row of `tree` - folder **and** board
+    /// alike, they are both openable rows now (ADR-0025 §D2) - whose `id` or `name`
+    /// contains `filter`, case-insensitively. The kind guard ADR-0024 had here is gone
+    /// rather than widened: with `Kind` reduced to `.folder` and `.board` it would admit
+    /// every node it was asked about, and a guard that cannot refuse is a guard that only
+    /// looks like one.
     ///
-    /// Matching on `id` alone is a path-only filter and loses the root: its `id` is
-    /// `""`, which never contains a non-empty `filter`. `name` is what makes the root
-    /// row ("Labs" today) reachable while a filter is typed.
+    /// Matching on `id` alone is a path-only filter, and `name` is what makes a board
+    /// findable by what it is called rather than by where it sits - «altro» finds
+    /// `01 Progetti/b/altro.canvas` (R-03).
     ///
     /// The rows come back **detached** - each one's `children` emptied - because they are
     /// drawn flat: a folder and a descendant of it can both match, and a match kept with
@@ -463,7 +702,6 @@ struct WorkspaceBrowser: View {
     /// `identifier(for:)` beside it never crashed because it passes no closure anywhere.
     nonisolated static func rows(matching filter: String, in tree: [WorkspaceTree.Node]) -> [WorkspaceTree.Node] {
         WorkspaceTree.flattened(tree).compactMap { row in
-            guard case .workspace = row.node.kind else { return nil }
             guard row.node.id.localizedCaseInsensitiveContains(filter)
                 || row.node.name.localizedCaseInsensitiveContains(filter)
             else { return nil }
@@ -477,273 +715,162 @@ struct WorkspaceBrowser: View {
         }
     }
 
-    /// The three identifier spellings a row can carry, and the only place they are
-    /// spelled (ADR-0024 §D10): `workspace-board-<boardPath>` for a `.workspace` that
-    /// owns a board, `workspace-folder-<id>` for one that does not,
-    /// `workspace-foreign-board-<path>` for a `.foreignBoard`.
+    /// The **two** identifier spellings a row can carry, and the only place they are
+    /// spelled (ADR-0024 §D10, re-cased by ADR-0025): `workspace-board-<boardPath>` for a
+    /// board row, `workspace-folder-<folderPath>` for a folder row. ADR-0024's third
+    /// spelling, the one for a «foreign» board, is gone with the concept and its prefix
+    /// is not written anywhere in this file any more: a `.canvas` this app used to call
+    /// foreign is an ordinary board row now (§D2) and carries the ordinary board
+    /// identifier.
     ///
-    /// The board form is spelled from the **board path**, byte-identical to what the row
-    /// carried before the fold, so the two existing UI call sites keep resolving; the
-    /// folder form is spelled from the folder path, and only a folder that owns no board
-    /// gets it, which is R-01 stated as an identifier.
+    /// Both forms are spelled from the row's own path, which is what keeps the board form
+    /// byte-identical to what a board row carried before this chain - the UI tests'
+    /// `workspace-board-<boardPath>` still resolves.
+    ///
     nonisolated static func identifier(for node: WorkspaceTree.Node) -> String {
         switch node.kind {
-        case .workspace(let board):
-            if let board { return "workspace-board-\(board)" }
-            return "workspace-folder-\(node.id)"
-        case .foreignBoard(let path):
-            return "workspace-foreign-board-\(path)"
+        case .board(let path): return "workspace-board-\(path)"
+        case .folder: return "workspace-folder-\(node.id)"
+        }
+    }
+
+    /// ADR-0026 §D4's collapse rule, read by the `Binding<Set<String>>` `treeSelection`
+    /// becomes in the code step: what AppKit's own Cmd/Shift-click resolves `new` to,
+    /// answered against `currently` (what is open today) rather than against `old`. The
+    /// double optional is the vocabulary the ADR names: `.none` (the outer case) means
+    /// "leave `currently` alone" - the answer for a set of two-or-more ids (R-10) and for
+    /// a set of exactly one id that is already the open one (the Note pane's
+    /// `leaveComposer()` case, preserved verbatim in shape though this tree has no
+    /// composer); `.some(nil)` means deselect - the answer for an empty set; `.some(.some(
+    /// x))` means open `x` - the answer for exactly one id different from what is open,
+    /// resolved against `tree` the way `treeSelection`'s setter resolves a click today.
+    ///
+    /// `old` is part of the signature and is deliberately not read: what a new set means
+    /// is a question about what is **open**, not about what was lit a moment ago, and the
+    /// two differ precisely in the case this rule exists for - a Shift-click extending the
+    /// set past one row leaves the open board open whether or not it is in either set
+    /// (R-10). It stays in the signature because the caller has it and a later rule that
+    /// needs the transition (a range's anchor, say) would have nowhere to read it from.
+    ///
+    /// `nonisolated` for the reason `rows(matching:in:)` above is (`:543-550`): a pure
+    /// function of its arguments, callable from a test's nonisolated, synchronous context
+    /// with no `@MainActor` hop to trap.
+    nonisolated static func opening(
+        from old: Set<String>, to new: Set<String>, currently: WorkspaceSelection?,
+        in tree: [WorkspaceTree.Node]
+    ) -> WorkspaceSelection?? {
+        // Two or more: nothing opens and nothing closes. The set answers "what does a drag
+        // carry" and only that (§D4 row 3, R-10).
+        guard new.count <= 1 else { return .none }
+        // Empty: deselect, which is what clicking the blank area below the rows already
+        // means (§D4 row 4, ADR-0024 §D7).
+        guard let id = new.first else { return .some(nil) }
+        // The same single row again: nothing. Re-opening the board already on screen would
+        // reset the zoom and pan of the very thing being looked at (§D4 row 2, and
+        // `WorkspaceController.select`'s own guard for the same reason).
+        guard id != currently?.path else { return .none }
+        // Exactly one id, different from what is open: that row opens (§D4 row 1). An id no
+        // row carries answers `.folder(id)`, the behaviour this rule inherited from the
+        // binding it was extracted out of - the desync itself is recorded by the setter,
+        // which is the side that has somewhere to record it.
+        guard let node = WorkspaceTree.node(withID: id, in: tree) else {
+            return .some(.some(.folder(id)))
+        }
+        return .some(.some(selection(for: node)))
+    }
+
+    /// ADR-0026 §D5's cycle rule for a folder row's own drop highlight: pure string
+    /// arithmetic against the drag set the source stored at drag start, asked on every
+    /// hover with no filesystem read - `VaultMoveBatch.plan`'s step 3 asks the same
+    /// question, once, after the drop has already happened; this is the same rule asked
+    /// before it, for the affordance rather than the write.
+    ///
+    /// Only a folder can contain the destination, so a board in the drag set is never
+    /// asked about: a board dropped onto the folder that already holds it is a no-op the
+    /// batch drops (`VaultMoveBatch.plan` rule 2), not a cycle this has to catch.
+    ///
+    /// The prefix is `"\(folder)/"` and **never** the bare path - the rule
+    /// `FolderFileOperations.repointing` and `VaultMoveBatch.plan` both already follow: a
+    /// sibling called `01 Progetti-altro` starts with the same characters as `01 Progetti`
+    /// and is not inside it.
+    nonisolated static func canDrop(_ dragging: [VaultItemRef], onFolder folder: String) -> Bool {
+        !dragging.contains { item in
+            item.kind == .folder && (folder == item.path || folder.hasPrefix("\(item.path)/"))
         }
     }
 }
 
-/// A folder waiting for its rename sheet.
+/// A board or a folder waiting for its rename sheet.
 ///
 /// A wrapper rather than a bare `String` because `.sheet(item:)` asks for `Identifiable`,
 /// and `.sheet(item:)` rather than `.sheet(isPresented:)` because the sheet is about one
-/// named folder: `RenameWorkspaceSheet` seeds its text field from `folder` at init, so a
-/// presentation that had to read the folder back out of the selection would seed it from
-/// whatever was selected when the sheet's body happened to be evaluated.
-private struct PendingFolderRename: Identifiable {
-    let folder: String
+/// named row: `RenameWorkspaceSheet` seeds its text field from the path at init, so a
+/// presentation that had to read it back out of the selection would seed it from whatever
+/// was selected when the sheet's body happened to be evaluated.
+private struct PendingWorkspaceRename: Identifiable {
+    let kind: WorkspaceItemKind
+    /// What the verb is called with: a board's real `.canvas` path, or the folder's own.
+    let path: String
 
-    var id: String { folder }
+    var id: String { path }
+
+    /// What the sheet seeds its field from - the same path with a board's extension
+    /// dropped, since the sheet asks for a name and `BoardFileOperations` puts the
+    /// extension back (ADR-0025 §D6).
+    var seed: String {
+        switch kind {
+        case .board: (path as NSString).deletingPathExtension
+        case .folder: path
+        }
+    }
 }
 
-/// A folder waiting for its delete to be confirmed, and what the dialog says about it.
+/// A board or a folder waiting for its delete to be confirmed, and what the dialog says
+/// about it.
 ///
-/// The counts travel with it rather than being read from the dialog: they are a walk of
-/// the folder's subtree, and by the time the dialog is on screen the answer is already
-/// known.
-private struct PendingFolderDelete {
-    let folder: String
-    let notes: Int
-    let subfolders: Int
+/// A folder's counts travel with it rather than being read from the dialog: they are a
+/// walk of its subtree, and by the time the dialog is on screen the answer is already
+/// known. A board has none to carry - it is one file - which is why this is a case rather
+/// than a struct with two integers a board would have to spell as zero.
+private enum PendingWorkspaceDelete {
+    case board(path: String)
+    case folder(path: String, notes: Int, subfolders: Int)
 
-    var name: String { (folder as NSString).lastPathComponent }
+    var path: String {
+        switch self {
+        case .board(let path): path
+        case .folder(let path, _, _): path
+        }
+    }
 
-    /// R-10's sentence, with the two nouns agreeing with their numbers - «1 nota e 2
-    /// sottocartelle» rather than «1 note e 2 sottocartelle».
+    var name: String { (path as NSString).lastPathComponent }
+
+    /// R-10's sentence for a folder, with the two nouns agreeing with their numbers - «1
+    /// nota e 2 sottocartelle» rather than «1 note e 2 sottocartelle» - and the board's
+    /// own, which has nothing to count and says what it costs instead.
     var message: String {
-        let notesText = "\(notes) \(notes == 1 ? "nota" : "note")"
-        let subfoldersText = "\(subfolders) \(subfolders == 1 ? "sottocartella" : "sottocartelle")"
-        return "Verranno eliminate \(notesText) e \(subfoldersText). "
-            + "La cartella va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        switch self {
+        case .board:
+            "La board va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        case .folder(_, let notes, let subfolders):
+            "Verranno eliminate \(notes) \(notes == 1 ? "nota" : "note") e "
+                + "\(subfolders) \(subfolders == 1 ? "sottocartella" : "sottocartelle"). "
+                + "La cartella va nel Cestino del Finder, ma l'app non può annullare l'operazione."
+        }
     }
 }
 
-/// One row of the Workspace tree, and its subtree.
+/// A batch the vault refused, and the sentence the dialog says about it (R-07).
 ///
-/// Flat and recursive, `NoteTreeRow`'s shape (`NoteListPane.swift:290-322`): the row, and
-/// then - as a **sibling**, never as its content - the expanded children (ADR-0024 §D1).
-/// The chevron is drawn by hand and the depth is paid for in padding, so every row of the
-/// tree is a row of the one enclosing `List` and can carry a `.tag` the selection binding
-/// is able to satisfy. A `DisclosureGroup`'s label is not such a row, which is why there
-/// is none left in this file.
+/// The reasons are `VaultMoveBatch.plan`'s own strings, carried up verbatim rather than
+/// reworded here: they already name the conflicting path (`esiste già: 01 Progetti/b/b
+/// .canvas`), which is the whole of what R-07 asks to be shown, and a second wording of
+/// them here would be a second answer to "what went wrong".
 ///
-/// `expanded` is the browser's shared set rather than state of this row's own: "Espandi
-/// tutto" and a board revealed from outside both have to be able to open a folder this row
-/// did not open itself.
-private struct WorkspaceRow: View {
-    @Environment(\.theme) private var theme
+/// Every reason, not the first: a batch of six can collide on two of them, and a dialog
+/// naming one leaves the user to discover the other by trying again.
+private struct WorkspaceMoveConflict {
+    let reasons: [String]
 
-    let node: WorkspaceTree.Node
-    let depth: Int
-    @Binding var expanded: Set<String>
-    /// The lit row, read one way only (ADR-0024 §D9). Nothing drawn here is conditioned
-    /// on it - the system draws the selected row's fill - except what VoiceOver is told.
-    let selectedFolder: String?
-    let onSelect: (WorkspaceSelection?) -> Void
-    /// The two folder verbs, by folder path. The row does not perform them: it hands the
-    /// path to the same closures the toolbar's buttons call, so the context menu is a
-    /// second entry point rather than a second code path (ADR-0023 §D4).
-    let onRename: (String) -> Void
-    let onDelete: (String) -> Void
-
-    /// One indent step. The rows are drawn flat inside a `List`, so the depth has to be
-    /// paid for in padding rather than by nesting the views - `NoteTreeRow`'s constant,
-    /// because the two sidebars indent by the same amount or they read as two designs.
-    private static let indent: CGFloat = 14
-
-    private var isExpanded: Bool { expanded.contains(node.id) }
-    private var isSelected: Bool { selectedFolder == node.id }
-    private var hasChildren: Bool { !node.children.isEmpty }
-    private var isForeign: Bool {
-        if case .foreignBoard = node.kind { true } else { false }
-    }
-
-    @ViewBuilder
-    var body: some View {
-        taggedRow
-        if isExpanded {
-            ForEach(node.children, id: \.id) { child in
-                WorkspaceRow(
-                    node: child,
-                    depth: depth + 1,
-                    expanded: $expanded,
-                    selectedFolder: selectedFolder,
-                    onSelect: onSelect,
-                    onRename: onRename,
-                    onDelete: onDelete
-                )
-            }
-        }
-    }
-
-    /// `.tag` **last in the chain**, and only on a `.workspace` node.
-    ///
-    /// Last, because a modifier applied after it drops it and the failure is silent - the
-    /// list lights nothing and swallows every click (`RootView.swift:205-208`). Only on a
-    /// `.workspace`, because a `.canvas` not named after the folder holding it is not
-    /// something this app can open at all: no tag makes its row structurally
-    /// unselectable rather than disabled by a rule somebody has to remember to apply
-    /// (ADR-0024 §D3).
-    @ViewBuilder
-    private var taggedRow: some View {
-        switch node.kind {
-        case .workspace: content.tag(node.id)
-        case .foreignBoard: content
-        }
-    }
-
-    private var content: some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            chevron
-            Image(systemName: icon)
-                .foregroundStyle(theme.color(isForeign ? .textTertiary : .textSecondary))
-            Text(node.name)
-                .themedText(.body, color: isForeign ? .textSecondary : .textPrimary)
-                .lineLimit(1)
-            Spacer(minLength: theme.spacing(.xs))
-            // Only where one was shown before the fold: the rows that have something
-            // under them (ADR-0024 §D2).
-            if hasChildren {
-                Text("\(node.boardCount)").themedText(.caption, color: .textTertiary)
-            }
-        }
-        .padding(.leading, CGFloat(depth) * Self.indent)
-        .contentShape(Rectangle())
-        // `.contain`, never `.combine`, and the difference is the whole of R-02/R-03.
-        // `.combine` folds the row's texts into a single element whose macOS role is
-        // `StaticText`, and a `StaticText` carries its words in `AXValue`: the label
-        // below arrived in XCUITest's `value` while its `label` stayed empty, so no
-        // assertion on the ", aperta"/", selezionata" suffix could ever match. Read out
-        // of a failing run's exported UI hierarchy rather than guessed - `StaticText,
-        // identifier: 'workspace-board-…', value: Workspace Dettagli…, Selected` - and
-        // it is the same trap `UITests/WorkspaceIntegrationUITests.swift:176-181` already
-        // wrote down for a plain `Text`. `.contain` makes the row a `Group`, which is the
-        // shape that puts the words in `label`: `TaskPanelRow` (`LinkedTasksPanel.swift`)
-        // and this pane's own `workspace-browser-header` are both already that.
-        //
-        // The second half costs more than the label and is the reason this is not a
-        // cosmetic choice: `.combine` swallowed the chevron's own `.onTapGesture` into
-        // the one merged element, and the merged element's activation point became the
-        // triangle's - so a click on a row *with children* landed on the triangle and
-        // expanded the folder instead of selecting it, while a childless row selected
-        // normally. Measured, not inferred: the failing run's synthesized event drove the
-        // pointer to x=218 (the triangle) on `Progetti`, against x=319 (the row's centre)
-        // on the root board's row one click earlier. Under `.contain` the triangle is an
-        // element of its own again and the row's hit point is the row's - which is
-        // «the triangle expands, the row selects» (ADR-0024 §D5) holding for the
-        // accessibility tree, not only for a mouse aimed by a person.
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
-        // Belt and braces beside the label: whether this trait reaches XCUITest's
-        // `isSelected` for custom `List` row content on macOS is unverified here, so the
-        // label above carries the state in words and is what a test may depend on
-        // (ADR-0024 §D9, R-13).
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .accessibilityIdentifier(WorkspaceBrowser.identifier(for: node))
-        // Outside the combined accessibility element, the order the row carried before
-        // this rewrite - and still ahead of the `.tag` that `taggedRow` applies last of
-        // all, which is the one modifier nothing may follow.
-        .contextMenu { menu }
-    }
-
-    /// The state said in words, because the colour that used to say it is gone (R-02) and
-    /// was never something a screen reader could read anyway (ADR-0024 §D9).
-    private var accessibilityLabel: String {
-        switch node.kind {
-        case .workspace(let board) where board != nil:
-            return isSelected ? "Workspace \(node.name), aperta" : "Workspace \(node.name)"
-        case .workspace:
-            let base = "Cartella \(node.name), \(node.boardCount) Workspace"
-            return isSelected ? "\(base), selezionata" : base
-        case .foreignBoard:
-            return "Board \(node.name), non apribile da Pergamenum"
-        }
-    }
-
-    /// A board on a row that owns one, a folder on a row that does not, and the board
-    /// symbol dimmed for a `.canvas` this app cannot open. Nothing here is conditioned on
-    /// the selection (R-02).
-    private var icon: String {
-        switch node.kind {
-        case .workspace(let board):
-            return board == nil ? (isExpanded ? "folder" : "folder.fill") : "rectangle.3.group"
-        case .foreignBoard:
-            return "rectangle.3.group"
-        }
-    }
-
-    /// Its own hit target, which is what keeps «the triangle expands, the row selects»
-    /// implementable at all (ADR-0024 §D5). A row with nothing under it keeps the space
-    /// so the names line up.
-    @ViewBuilder
-    private var chevron: some View {
-        if hasChildren {
-            triangle
-                .contentShape(Rectangle())
-                .onTapGesture { toggle() }
-        } else {
-            triangle.hidden()
-        }
-    }
-
-    private var triangle: some View {
-        Image(systemName: "chevron.right")
-            .rotationEffect(.degrees(isExpanded && hasChildren ? 90 : 0))
-            .themedText(.caption, color: .textTertiary)
-    }
-
-    /// On the row's own `HStack`, where ADR-0023 §D2 put it - and §D2's warning now has
-    /// nothing left to warn about: there is no `DisclosureGroup` in this file for a
-    /// modifier to leak out of onto every disclosed descendant, so its conclusion holds by
-    /// construction rather than by care (ADR-0024 §D1).
-    ///
-    /// Plain titles, no SF Symbols: the toolbar keeps its `pencil`/`trash` and this menu
-    /// keeps the absence of one, which is what «the same symbol» means for a surface that
-    /// draws none (ADR-0023 §D1).
-    @ViewBuilder
-    private var menu: some View {
-        // Two gates, neither of them restated here: `selection(for:)` is nil for a
-        // `.foreignBoard`, whose id is a file path rather than a folder and which the
-        // folder verbs have no business acting on (ADR-0024 §D3), and
-        // `canMutate(folder:)` is the same rule the toolbar's two buttons are enabled by,
-        // asked in the second place it is rendered (ADR-0023 §D1, §D3).
-        if let picked = WorkspaceBrowser.selection(for: node),
-           WorkspaceBrowserToolbar.canMutate(folder: node.id) {
-            // The selection first, now for what it shows rather than for what it seeds:
-            // both verbs hand `node.id` on and neither reads the selection back, but a
-            // secondary click selects nothing by itself, and a sheet or a dialog opened
-            // over a row the list has not lit reads as acting on another one
-            // (ADR-0023 §D4).
-            Button("Rinomina…") {
-                onSelect(picked)
-                onRename(node.id)
-            }
-            Button("Elimina…", role: .destructive) {
-                onSelect(picked)
-                onDelete(node.id)
-            }
-        }
-    }
-
-    private func toggle() {
-        if isExpanded {
-            expanded.remove(node.id)
-        } else {
-            expanded.insert(node.id)
-        }
-    }
+    var message: String { reasons.joined(separator: "\n") }
 }

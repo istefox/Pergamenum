@@ -2,157 +2,132 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0022: Creating, renaming and deleting a workspace is a folder operation,
-// performed outside the journal.
-// Plan: docs/superpowers/plans/2026-08-25-workspace-ui-creazione-board-toolbar-e-r.md,
-// Tasks 5-6.
+// ADR-0025: A folder is a container, a board is a file, and neither is named after the
+// other.
+// Plan: docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md, Task 5.
 //
-// ADR-0024: One selection, one row, one meaning - the toolbar's target is the
-// selection, with no fallback (R-06).
-// Plan: docs/superpowers/plans/2026-08-25-workspace-board-tree-single-selection.md,
-// Task 4. This file now serves two chains.
+// This pass drops every test in this file that pinned ADR-0024's fold model - the
+// synthesized root row, the `.workspace`/`.foreignBoard` `Kind` cases and the
+// `WorkspaceSelection.board(folder:)` bridge constructor all go with it. Their
+// replacement coverage under the new two-row model (`WorkspaceTree.folders(in:)`,
+// `identifier(for:)`, `selection(for:)`, `WorkspaceSelection`) already lives in
+// `Tests/WorkspaceTreeTests.swift` (Task 2) - keeping a second, stale copy of it here
+// would pin behaviour ADR-0025 §D2 explicitly cancels (no root-row synthesis).
+// `Tests/WorkspaceOpenStateTests.swift` (Task 3) is the same story for
+// `WorkspaceController`. `WorkspaceNameField.state(...)` and
+// `WorkspaceFolderSheets.parentOptions(from:)` below are untouched: they are ADR-0022
+// Task 6 concerns this task does not reopen (`parentOptions`'s own behaviour change -
+// fed from `allFolders()` rather than from board paths - is this chain's own Task 6,
+// with its own new test file).
 //
-// The sidebar toolbar's enablement (Task 5) and the two sheets' decision logic
-// (Task 6), kept as pure functions so they are testable without a view.
-//
-// RED (Task 5): `WorkspaceBrowserToolbar.canMutate(folder:)` is a placeholder that
-// always returns `false`, so the root-exemption test passes for `""` but fails its
-// second assertion for `"01 Progetti"`, on an assertion rather than on a build error.
-// The expand-all set behind "Espandi tutto" is pre-existing, already-correct logic and
-// its tests are coverage pins, not expected to fail. They read it through
-// `WorkspaceTree.folders(in:)`, which is what the button asks: the view's own
-// `allFolders(in:)` is gone, and with it the `private`-to-internal widening that
-// existed only so this file could reach it.
-//
-// RED (Task 6): `WorkspaceNameField.state` is a placeholder that always returns
-// `.ok`, so the `.invalid` and `.taken` cases fail their assertions.
-// `WorkspaceFolderSheets.parentOptions` is a placeholder that always returns `[]`,
-// so its test fails its assertion. Neither throws, neither force-unwraps.
-//
-// RED (ADR-0024 Task 4): `WorkspaceBrowser.target(for:)` is a placeholder that
-// always returns `""`, so the `nil` case of
-// `targetForReadsTheSelectionFolderAsOneExpressionRegardlessOfCase` passes by
-// accident while its `.folder`/`.board` cases fail their expectation of `"A"` - on
-// an assertion, not a build error. The other two new tests below are coverage pins
-// over logic that already exists (`canMutate(folder:)`, `WorkspaceTree.folders(in:)`,
-// `WorkspaceBrowser.allFolders(in:)`), not expected to fail: what they pin down is the
-// decision itself (no-fallback disables the verbs) and the gap that made Task 3's
-// coder flag `rebuild()`'s stale-selection check (a `NoteTree` walk has no node for
-// the root).
+// RED: `WorkspaceBrowserToolbar.canMutate(_:)` is a **new** overload (the existing
+// `canMutate(folder:)` above it is untouched, so the toolbar's own body and
+// `WorkspaceRow.menu` keep compiling against it until the coder rewires them) with a
+// placeholder body that always returns `false` - so `canMutate(nil)`,
+// `canMutate(.folder(""))` and `canMutate(.folder("/"))` pass by accident while
+// `canMutate(.board(path:))` and `canMutate(.folder("A"))` are red on their `#expect`,
+// never on a build error. `WorkspaceBrowser.target(for:)` needed no placeholder: Task 3
+// already gave it its real, ADR-0025-correct body (`selection?.folder ?? ""`), so the
+// three assertions below are a coverage pin, not expected to go red.
+// `WorkspaceBrowser.rows(matching:in:)` needed no signature change either - its
+// `nonisolated` keyword and shape stay exactly as `WorkspaceBrowser.swift:456-463`
+// documents (a `@MainActor` static passing a closure to `compactMap` traps the whole
+// test process, not just the test) - but its body still guards on
+// `case .workspace = row.node.kind`, so every assertion below is red: a tree built
+// through `WorkspaceTree.build(folders:boards:)` (Task 2's builder) carries only
+// `.folder`/`.board` nodes and the guard matches neither.
 
-// MARK: - Task 5: WorkspaceBrowserToolbar.canMutate(folder:) (R-09)
+// MARK: - WorkspaceBrowserToolbar.canMutate(_:) (R-08, R-11)
 
-@Test func canMutateIsFalseForTheVaultRootAndTrueForAnOrdinaryFolder() {
-    #expect(!WorkspaceBrowserToolbar.canMutate(folder: ""))
-    #expect(WorkspaceBrowserToolbar.canMutate(folder: "01 Progetti"))
+@Test func canMutateIsFalseWithNothingSelected() {
+    #expect(!WorkspaceBrowserToolbar.canMutate(nil))
 }
 
-// MARK: - Task 5: the "Espandi tutto" folder set (R-01)
-
-// The toolbar's "Espandi tutto" button drives the same `expanded` binding the tree's
-// context menu already does (ADR-0022 §D8) - this pins the fixture shape the button
-// will read, not new behaviour.
-// MARK: - ADR-0023 Task 4: WorkspaceTree.folders(in:) fed by the real board paths (R-01, R-02)
-//
-// ADR-0023: A command is named once and rendered twice.
-// Plan: docs/superpowers/plans/2026-08-25-universal-command-surface-parity.md, Task 4.
-//
-// R-02 as a property of the tree, not of a guard: the vault root is not a folder any path
-// component names, so there is no ordinary folder row for a context menu to hide
-// Rinomina/Elimina from in the first place - the root's own row is synthesised, and
-// `canMutate(folder:)` refuses it by id. Both `WorkspaceTree.folders(in:)` and
-// `WorkspaceBrowserToolbar.canMutate(folder:)` already exist and are already correct
-// (ADR-0022/ADR-0024); these two tests are coverage pins over the real board-path builder
-// rather than new logic, so they are not expected to go red on their assertions - the
-// SPEC correction they back (SPEC "Three things ... false" table) is what makes them
-// worth pinning down here, ahead of Task 4's context-menu GREEN.
-//
-// Read through `WorkspaceTree.folders(in:)`, which is the function the button itself
-// asks: the view's `allFolders(in:)`, an internal-only-for-this-file copy of the same
-// walk over the `NoteTree` the view no longer keeps, is gone.
-
-/// `CanvasStore.boardPath(forFolder:)`'s rule for a vault rooted at «Labs», restated for
-/// a test that has no store on disk - the same stub the root-selection test below uses.
-private func testBoardPath(forFolder folder: String) -> String {
-    folder.isEmpty ? "Labs.canvas" : "\(folder)/\((folder as NSString).lastPathComponent).canvas"
+@Test func canMutateIsTrueForABoardSelectionIncludingARootLevelOne() {
+    // "x.canvas" carries no folder prefix - a root-level board, R-11's "no
+    // special-cased root synthesis" read as "mutable exactly like any other board".
+    #expect(WorkspaceBrowserToolbar.canMutate(.board(path: "x.canvas")))
 }
 
-@Test func expandAllFoldersOfATreeBuiltFromRealBoardPathsAreTheRootPlusEveryMutableFolder() {
-    let tree = WorkspaceTree.build(
-        boards: ["Labs.canvas", "01 Progetti/a/a.canvas", "01 Progetti/b/b.canvas"],
-        boardPath: testBoardPath(forFolder:)
-    )
+@Test func canMutateIsTrueForAnOrdinaryFolderSelection() {
+    #expect(WorkspaceBrowserToolbar.canMutate(.folder("A")))
+}
 
-    let folders = Set(WorkspaceTree.folders(in: tree))
-
-    #expect(folders == ["", "01 Progetti", "01 Progetti/a", "01 Progetti/b"])
-    // The root is in the set the button expands (its row draws no children, so opening it
-    // shows nothing) and out of the set the toolbar's verbs may act on - R-02 read as two
-    // different questions about the same id.
-    #expect(!WorkspaceBrowserToolbar.canMutate(folder: ""))
-    for folder in folders where !folder.isEmpty {
-        #expect(WorkspaceBrowserToolbar.canMutate(folder: folder), "«\(folder)» dovrebbe essere mutabile")
-    }
+@Test func canMutateIsFalseForTheVaultRootFolderSelection() {
+    #expect(!WorkspaceBrowserToolbar.canMutate(.folder("")))
 }
 
 @Test func canMutateStaysFalseForTheRootSpelledAsASlash() {
-    #expect(!WorkspaceBrowserToolbar.canMutate(folder: "/"))
+    // ADR-0022 §D9's root exemption, relocated onto the selection-typed overload and
+    // kept even though §D2 makes the root unselectable by construction - a guard whose
+    // precondition is "this state is unreachable" is a guard that stops being true the
+    // first time somebody makes it reachable (ADR-0025 §D8).
+    #expect(!WorkspaceBrowserToolbar.canMutate(.folder("/")))
 }
 
-@Test func expandAllFoldersReturnsEveryFolderIdOfAFixtureTree() {
-    let tree = WorkspaceTree.build(
-        boards: ["01 Progetti/vibrofer/vibrofer.canvas", "Labs.canvas"],
-        boardPath: testBoardPath(forFolder:)
-    )
-
-    let folders = Set(WorkspaceTree.folders(in: tree))
-
-    #expect(folders == ["", "01 Progetti", "01 Progetti/vibrofer"])
-}
-
-// MARK: - ADR-0024 Task 4: WorkspaceBrowser.target(for:) (R-06)
+// MARK: - WorkspaceBrowser.target(for:) (ADR-0025 §D7)
 //
-// R-06's whole content, read as code: the toolbar cannot aim anywhere but the
-// visible row, so the read has to be one expression that never branches on which
-// case the selection is. All three cases in one test, because a version that
-// special-cased `.board` (or `.folder`) would still make each assertion pass on its
-// own - it is the shared expression that R-06 is actually about.
+// A coverage pin, not expected to go red (see the header RED paragraph): all three
+// cases in one test, because a version that special-cased `.board` (or `.folder`)
+// would still make each assertion pass on its own - it is the shared expression that
+// "the toolbar cannot aim anywhere the visible row is not" is actually about.
 
 @Test func targetForReadsTheSelectionFolderAsOneExpressionRegardlessOfCase() {
     #expect(WorkspaceBrowser.target(for: nil) == "")
     #expect(WorkspaceBrowser.target(for: .folder("A")) == "A")
-    #expect(WorkspaceBrowser.target(for: .board(folder: "A")) == "A")
+    // A **board** selected means the new board or folder is created beside it, in its
+    // containing folder - this is the assertion that proves the read is
+    // `WorkspaceSelection.folder`, never `.path` (`"A/x.canvas"` would fail this if it
+    // read `.path`).
+    #expect(WorkspaceBrowser.target(for: .board(path: "A/x.canvas")) == "A")
 }
 
-// ADR-0024 §D7: withdraws ADR-0022 §D9's fallback onto the open board's folder - with
-// nothing selected, "Rinomina"/"Elimina" are disabled rather than aiming at a row
-// nobody can see. This is what makes the reversal a decision on the record rather
-// than a regression the next reviewer trips over. A coverage pin, not expected to go
-// red: `canMutate(folder: "")` is already `false` (see
-// `canMutateIsFalseForTheVaultRootAndTrueForAnOrdinaryFolder` above) and
-// `target(for: nil)` reads `""` under both the placeholder above and the real
-// one-expression logic Task 4's coder writes.
-@Test func toolbarCannotMutateWhenNothingIsSelected() {
-    #expect(!WorkspaceBrowserToolbar.canMutate(folder: WorkspaceBrowser.target(for: nil)))
+// MARK: - WorkspaceBrowser.rows(matching:in:) (R-01, R-03)
+
+// ADR-0026, Task 5: not `private` any more. `Tests/WorkspaceMultiSelectionTests.swift`
+// builds its `opening(from:to:currently:in:)`/`canDrop(_:onFolder:)` fixtures out of the
+// same folder/board layout rather than a second, drifting copy of these two arrays - one
+// vault shape, read by both files.
+let workspaceFolders = ["01 Progetti", "01 Progetti/a", "01 Progetti/b"]
+let workspaceBoards = [
+    "Pergamena.canvas",
+    "01 Progetti/a/a.canvas",
+    "01 Progetti/b/b.canvas",
+    "01 Progetti/b/altro.canvas",
+]
+
+@Test func rowsMatchingReturnsBothFolderAndBoardRowsDetached() {
+    let tree = WorkspaceTree.build(folders: workspaceFolders, boards: workspaceBoards)
+
+    let matches = WorkspaceBrowser.rows(matching: "01 Progetti/b", in: tree)
+
+    // The folder row "01 Progetti/b" and the two board rows beneath it all carry the
+    // filter in their own `id` - both kinds are candidates now, never `.workspace`
+    // only (R-01's row model read through the filter).
+    #expect(Set(matches.map(\.id)) == [
+        "01 Progetti/b", "01 Progetti/b/b.canvas", "01 Progetti/b/altro.canvas",
+    ])
+    // Detached: every match arrives with no children, so the filtered list draws each
+    // one flat, at depth 0, with nothing nested under it.
+    #expect(matches.allSatisfy { $0.children.isEmpty })
 }
 
-// ADR-0024 §D7: `rebuild()`'s stale-selection drop must test a selection's path
-// against the set that actually contains the root (`""`) - `WorkspaceTree
-// .folders(in:)` - and not against a walk of the `NoteTree` it is folded from, which
-// has no node for the root at all (F7). Both halves are asserted over the *same*
-// fixture, which is what catches Task 3's coder-flagged gap: a rebuild guarded by a
-// `NoteTree` folder walk would deselect the root board on every rescan. A coverage
-// pin, not expected to go red: the two trees already disagree on `""` by construction.
-@Test func workspaceTreeFoldersContainsTheRootWhereTheNoteTreeItIsFoldedFromHasNoNodeAtAll() {
-    let boards = ["Labs.canvas", "01 Progetti/01 Progetti.canvas"]
-    let noteTree = NoteTree.build(fromPaths: boards)
-    let workspaceTree = WorkspaceTree.build(boards: boards, boardPath: testBoardPath(forFolder:))
+@Test func rowsMatchingMatchesABoardByItsNameAndByItsID() {
+    let tree = WorkspaceTree.build(folders: workspaceFolders, boards: workspaceBoards)
 
-    #expect(WorkspaceTree.folders(in: workspaceTree).contains(""))
-    #expect(!noteTree.contains { $0.kind == .folder && $0.id == "" })
+    // By name: "altro" is the board's file name without its extension, and nothing
+    // else in the fixture's id or name contains it (R-03: independently openable
+    // board rows found by what they are called).
+    let byName = WorkspaceBrowser.rows(matching: "altro", in: tree)
+    #expect(byName.map(\.id) == ["01 Progetti/b/altro.canvas"])
+
+    // By id: "01 Progetti/a/a" is contained in the board's own vault-relative path
+    // but not in its bare name ("a"), so a match here can only come from `id`.
+    let byID = WorkspaceBrowser.rows(matching: "01 Progetti/a/a", in: tree)
+    #expect(byID.map(\.id) == ["01 Progetti/a/a.canvas"])
 }
 
-// MARK: - Task 6: WorkspaceNameField.state(name:parent:available:) (R-02, R-03, R-04)
+// MARK: - Task 6 (ADR-0022): WorkspaceNameField.state(name:parent:available:) (R-02, R-03, R-04)
 
 @Test func nameFieldStateIsInvalidForANameFailingNoteNameValidate() {
     let state = WorkspaceNameField.state(name: "Progetto/uno", parent: "", available: { _, _ in true })
@@ -172,12 +147,3 @@ private func testBoardPath(forFolder folder: String) -> String {
     #expect(state == .ok)
 }
 
-// MARK: - Task 6: WorkspaceFolderSheets.parentOptions(from:) (ADR-0022 §D11)
-
-@Test func parentOptionsMapsBoardsToRootFirstDeduplicatedAncestorsIncluded() {
-    let boards = ["Labs.canvas", "01 Progetti/a/a.canvas", "01 Progetti/b/b.canvas"]
-
-    let options = WorkspaceFolderSheets.parentOptions(from: boards)
-
-    #expect(options == ["", "01 Progetti", "01 Progetti/a", "01 Progetti/b"])
-}

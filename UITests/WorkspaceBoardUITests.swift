@@ -177,8 +177,11 @@ final class WorkspaceBoardUITests: XCTestCase {
         let root = URL(filePath: NSTemporaryDirectory())
             .appending(path: "BoardUITest-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        // The root board of a vault is named after the vault's own folder
-        // (`CanvasStore.boardPath(forFolder:)`), so the app opens this one on launch.
+        // One `.canvas` in the vault root, named after the vault only because this fixture
+        // writes it that way: no rule derives a board from a folder's name any more
+        // (ADR-0025 §D1 deleted `CanvasStore.boardPath(forFolder:)`), and no board opens at
+        // launch - `openWorkspace()` below clicks its row, which is what this file has
+        // actually done since ADR-0024 made `attach` load-not-select.
         let board = root.appending(path: "\(root.lastPathComponent).canvas")
         try Self.fixture.write(to: board, atomically: true, encoding: .utf8)
         vault = root

@@ -39,4 +39,30 @@ enum WorkspaceBoardResolver {
         default: return .ambiguous
         }
     }
+
+    /// «Which board does this folder mean» (ADR-0025 §D5) — the tree/breadcrumb/hand-off
+    /// counterpart to `resolve(_:in:)`'s «which board does this marker name», sharing the same
+    /// `WorkspaceBoardResolution` (one enum, two questions).
+    ///
+    /// The match is on the board's **containing folder**, never on `hasPrefix`: `A/b/x.canvas`
+    /// is `A/b`'s board and not `A`'s, and a prefix test would hand a folder every board
+    /// nested anywhere beneath it. The vault root is an ordinary folder here (`""`), with no
+    /// case of its own - `deletingLastPathComponent` answers `""` for a bare file name.
+    static func board(inFolder folder: String, among boards: [String]) -> WorkspaceBoardResolution {
+        let target = normalized(folder)
+        let hits = boards.filter { normalized(($0 as NSString).deletingLastPathComponent) == target }
+        switch hits.count {
+        case 0: return .notFound
+        case 1: return .unique(hits[0])
+        default: return .ambiguous
+        }
+    }
+
+    /// One spelling of "the vault root", `""`. Callers write it `""`, `"/"` (the spelling
+    /// `WorkspaceBrowserToolbar.canMutate` exempts) or `"."`, and folding them here is what
+    /// keeps a root-level board from being invisible to whichever one asked.
+    private static func normalized(_ folder: String) -> String {
+        let trimmed = folder.hasSuffix("/") ? String(folder.dropLast()) : folder
+        return trimmed == "." ? "" : trimmed
+    }
 }

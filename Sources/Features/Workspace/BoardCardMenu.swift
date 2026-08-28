@@ -104,9 +104,9 @@ struct BoardCardActions {
     /// Puts a `pergamenum://canvas?file=…&node=…` link on the pasteboard, so a card can be
     /// linked to from Obsidian, DEVONthink or Mail (SPEC §9).
     func copyLink(to node: CanvasNode) {
-        guard let store = vault.root.map({ CanvasStore(root: $0) }) else { return }
-        let boardPath = store.boardPath(forFolder: workspace.folder)
-        guard let url = PergamenumLink.canvas(path: boardPath, nodeID: node.id) else { return }
+        // The path of the board actually open, not one derived from its folder
+        // (ADR-0025 §D1) - so the link reopens this `.canvas` whatever it is called.
+        guard let url = PergamenumLink.canvas(path: workspace.board, nodeID: node.id) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
@@ -115,7 +115,7 @@ struct BoardCardActions {
     /// at.
     func open(_ node: CanvasNode) {
         if let subfolder = workspace.subfolder(for: node) {
-            workspace.open(folder: subfolder)
+            enter(subfolder)
             return
         }
         switch node.kind {
@@ -132,6 +132,20 @@ struct BoardCardActions {
             if let target = URL(string: url) { NSWorkspace.shared.open(target) }
         case .text, .group, .unknown:
             break
+        }
+    }
+
+    /// A folder card, under the one rule §D5 gives every folder→board navigation: the
+    /// resolver decides which board the folder means, `.unique` opens it, and
+    /// `.ambiguous`/`.notFound` selects the folder rather than guessing at a board named
+    /// after it (§D1). The board list is read in the gesture, never in a `body`, because
+    /// `allBoards()` walks the whole vault uncached.
+    private func enter(_ folder: String) {
+        switch WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        ) {
+        case .unique(let path): workspace.select(.board(path: path))
+        case .ambiguous, .notFound: workspace.select(.folder(folder))
         }
     }
 }

@@ -3,3 +3,4 @@
 
 Sources/Index/IndexCache.swift:schemaVersion — argued over by three ADRs; a silent bump invalidates ADR-0021 §D4
 Sources/Connector/VaultPayloads.swift:VaultAPI.LintFinding — JSON shape emitted by `perg lint --json` and the MCP `lint` tool to external callers
+Sources/Features/Editor/CompletingTextView+Pasteboard.swift — note-title drop contract (SPEC §7.2 of the workspace-tasks-notes-integration chain); the drag-and-drop-board-files-into-workspace feature's two-representation Transferable payload depends on this file staying untouched

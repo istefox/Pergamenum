@@ -30,7 +30,12 @@ struct SettingsView: View {
         }
         // Taller than it was: the design system pane lists every colour token with
         // its well, and at 420 the list showed four rows and a scroll bar.
-        .frame(width: 620, height: 560)
+        // Wide enough for AppKit's toolbar to lay out all ten tabItems directly: at
+        // 620, it collapsed Calendario and Avanzate into an unlabeled "more toolbar
+        // items" popup once the tab count crossed eight, verified empirically by
+        // dumping the toolbar's accessibility tree (no documented collapse constant
+        // exists to compute this from).
+        .frame(width: 700, height: 560)
     }
 
     private func installSamples() {

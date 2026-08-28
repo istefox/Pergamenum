@@ -12,6 +12,15 @@ struct WorkspaceView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
     @Environment(Navigation.self) private var navigation
+    /// The **window's** undo manager, which is the one `NSTextView` already registers its
+    /// text edits on (ADR-0026 §D8): one window, one undo history, and Cmd+Z means "undo
+    /// the last thing I did here" whatever had focus. Read here and handed to
+    /// `VaultController.moveItems` as an argument, so the facade never reaches for
+    /// `NSApp.keyWindow?.undoManager` and never imports AppKit for this.
+    ///
+    /// Internal rather than `private`: `WorkspaceView+FolderVerbs` is another file, and
+    /// `private` is file scope.
+    @Environment(\.undoManager) var undoManager
     @State var workspace = WorkspaceController()
     @State private var viewportSize: CGSize = .zero
     /// Shift and Option as they are held right now. `DragGesture` carries no modifier
@@ -123,7 +132,12 @@ struct WorkspaceView: View {
                 // the tray, so the board keeps the width they gave up.
                 if !navigation.isWorkspaceFocused && !navigation.isWorkspaceTreeCollapsed {
                     WorkspaceBrowser(
-                        selectedFolder: workspace.current?.folder,
+                        // The whole selection, not the folder read off it (ADR-0025 §D8):
+                        // the pane lights the row the selection *names* - a board file's
+                        // own row when one is open - and its two verbs dispatch on the
+                        // case, so throwing it away here would only have to be recovered
+                        // there.
+                        selection: workspace.current,
                         actions: folderActions,
                         onSelect: { workspace.select($0) }
                     )
@@ -173,17 +187,39 @@ struct WorkspaceView: View {
     }
 
     /// A note sent here from the editor lands on the board of its own folder, which is
-    /// where it already lives on disk.
+    /// where it already lives on disk - if that folder means exactly one board (§D5).
+    ///
+    /// The only one of §D5's three navigations that also **reports**: the other two are
+    /// navigation, this one is a gesture whose note would otherwise land nowhere. It used
+    /// to open a board named after the folder, writing one where none existed - the last
+    /// door through which the app created a `.canvas` nobody asked for (ADR-0025 §F8).
     private func placePendingNote(_ pending: String??) {
         guard let pendingOuter = pending, let pending = pendingOuter else { return }
+        defer { _ = vault.consumePendingWorkspacePlacement() }
         let folder = (pending as NSString).deletingLastPathComponent
-        workspace.select(.board(folder: folder))
+        // Read in the hand-off, never in `body`: `allBoards()` walks the vault uncached.
+        let resolution = WorkspaceBoardResolver.board(
+            inFolder: folder, among: workspace.store?.allBoards() ?? []
+        )
+        guard case .unique(let path) = resolution else {
+            workspace.select(folder.isEmpty ? nil : .folder(folder))
+            let container = folder.isEmpty ? "la radice del vault" : "«\(folder)»"
+            vault.recordProblem(
+                resolution == .ambiguous
+                ? "\(pending): \(container) contiene più di una board, aprine una e riprova"
+                : "\(pending): \(container) non contiene nessuna board, creane una e riprova"
+            )
+            return
+        }
+        workspace.select(.board(path: path))
+        // A board that could not be read leaves the previous one on screen (ADR-0025 §D4),
+        // and the note must not be placed on it.
+        guard workspace.current == .board(path: path) else { return }
         if !workspace.document.nodes.contains(where: {
             if case .file(let path, _) = $0.kind { return path == pending } else { return false }
         }) {
             _ = workspace.placeFile(pending, at: CGPoint(x: 60, y: 60))
         }
-        _ = vault.consumePendingWorkspacePlacement()
     }
 
     /// What the board area shows before anything has been chosen - the same shape as
@@ -277,12 +313,22 @@ struct WorkspaceView: View {
             // Same reach pattern again, one pane narrower: only the board-list tree,
             // never the tray. Independent of «Concentrazione» above - the two flags
             // are read with `&&` at the call site, so either one hides the tree.
-            // Named for what checking it does (MenuCommands.swift carries the same
-            // reasoning), not for a shown/hidden state.
-            Toggle(isOn: Bindable(navigation).isWorkspaceTreeCollapsed) {
-                Label("Nascondi albero", systemImage: "sidebar.left")
+            //
+            // The binding is negated on purpose (2026-08-28): `isWorkspaceTreeCollapsed`
+            // itself is unchanged - `WorkspaceView.swift:133`'s `&&` and MenuCommands.swift's
+            // own checkbox still read it directly, "checked = hidden", the ordinary macOS
+            // menu convention. This toolbar icon is not a menu row, it is one of four glyphs
+            // with no words on them, and the other two here (Anteprima, Concentrazione) are
+            // lit exactly when the thing they name is showing. A toggle lit while its own
+            // tree is hidden read backwards next to them - lit now means "the tree is on
+            // screen", matching the pattern rather than the flag's own polarity.
+            Toggle(isOn: Binding(
+                get: { !navigation.isWorkspaceTreeCollapsed },
+                set: { navigation.isWorkspaceTreeCollapsed = !$0 }
+            )) {
+                Label("Albero", systemImage: "sidebar.left")
             }
-            .help("Nasconde l'albero delle cartelle e delle board")
+            .help("Mostra o nasconde l'albero delle cartelle e delle board")
             .accessibilityIdentifier("workspace-tree-toggle")
         }
     }

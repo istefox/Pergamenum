@@ -32,41 +32,109 @@ enum WorkspaceNameField {
 
 /// The create sheet's parent-folder picker options.
 enum WorkspaceFolderSheets {
-    /// The parent-folder picker's options, derived from the browser's own board list
-    /// (`CanvasStore.allBoards()`) rather than from `vault.folders` - which is
-    /// note-derived and would omit a folder holding only boards (ADR-0022 §D11).
-    /// Root first (`""`), deduplicated, every ancestor folder included.
+    /// The parent-folder picker's options: the vault's folders themselves, root first
+    /// (`""`) and deduplicated.
     ///
-    /// The ancestors matter as much as the folders themselves: `01 Progetti/a/a.canvas`
-    /// is the only evidence that `01 Progetti` exists at all when nothing else lives in
-    /// it, and a user who cannot pick it cannot create a sibling of `a`.
-    static func parentOptions(from boards: [String]) -> [String] {
+    /// Fed `CanvasStore.allFolders()` (ADR-0025 §D1), which is what closes ADR-0022
+    /// §D11's objection rather than working around it. That decision derived the options
+    /// from the *board* list, recovering each board path's ancestors, because a board was
+    /// then the only evidence a folder existed at all - and the recovery could only ever
+    /// see a folder something *below* it held a board in. A folder holding only
+    /// subfolders, or only a board of its own, was silently unpickable, so a user could
+    /// not create a sibling of what they were looking at. `allFolders()` walks the
+    /// directories, so every folder is an entry in its own right and nothing is inferred.
+    ///
+    /// The incoming order is preserved rather than re-sorted: `allFolders()` sorts with
+    /// `localizedStandardCompare`, which is the order both sidebars are read in ("9 Note"
+    /// before "10 Note"), and a plain `sorted()` here would undo exactly that.
+    static func parentOptions(from folders: [String]) -> [String] {
         var seen: Set<String> = [""]
-        var folders: [String] = []
-        for board in boards {
-            var folder = (board as NSString).deletingLastPathComponent
-            while !folder.isEmpty {
-                if seen.insert(folder).inserted { folders.append(folder) }
-                folder = (folder as NSString).deletingLastPathComponent
-            }
+        var options: [String] = []
+        for folder in folders where seen.insert(folder).inserted {
+            options.append(folder)
         }
-        return [""] + folders.sorted()
+        return [""] + options
+    }
+}
+
+/// Which of the two things a sheet is about (ADR-0025 §D7): a board file or a folder.
+///
+/// One sheet carrying a case, never two sheets: the parent picker, the name rules, the
+/// violation wording and the accessibility identifiers are one question asked about a
+/// file or about a directory, and a second sheet would be a second creation dialect
+/// (ADR-0022 §D11). The rename sheet asks the same question of the same two kinds, so it
+/// reads this enum too rather than growing a parallel one.
+enum WorkspaceItemKind: String, Identifiable, Sendable {
+    /// A `.canvas` file, written by `CanvasStore.createBoard(named:in:)` - anywhere, under
+    /// any name, beside as many others as the folder already holds (R-02).
+    case board
+    /// A directory, made by `CanvasStore.createFolder(named:in:)`, with **no board
+    /// written inside it**, which is the whole of R-01.
+    case folder
+
+    var id: String { rawValue }
+
+    var creationTitle: String {
+        switch self {
+        case .board: "Nuova board"
+        case .folder: "Nuova cartella"
+        }
+    }
+
+    /// The line under the title: what the thing being made is, in the words the sidebar
+    /// now uses for its two kinds of row.
+    var creationExplanation: String {
+        switch self {
+        case .board:
+            "Una board è un file .canvas. Può stare in qualsiasi cartella, con qualsiasi nome."
+        case .folder:
+            "Una cartella contiene board e altre cartelle. Nessuna board viene creata dentro."
+        }
+    }
+
+    var renameTitle: String {
+        switch self {
+        case .board: "Rinomina board"
+        case .folder: "Rinomina cartella"
+        }
+    }
+
+    /// What follows the thing being renamed, which is the half users get wrong: a board
+    /// carries its own name and a folder no longer renames one (ADR-0025 §D6, R-09).
+    var renameExplanation: String {
+        switch self {
+        case .board:
+            "Il file .canvas viene rinominato; i task e le card che lo nominavano seguono."
+        case .folder:
+            "La cartella viene rinominata e le card che puntavano dentro seguono. "
+                + "Le board che contiene mantengono il loro nome."
+        }
     }
 }
 
 // MARK: - The sheets
 
-/// Creating a workspace: a name, and the folder it goes in (R-02, R-03, R-04).
+/// Creating a board or a folder: a name, and the folder it goes in (R-01, R-02, R-03,
+/// R-04).
 ///
 /// `RenameNoteSheet`'s five elements, in its order - title, explanation, field, inline
 /// violations, confirm disabled until they are gone - plus the parent picker, which is
 /// the one thing File → «Nuova board» does not ask and this door does (ADR-0022 §D11,
 /// §A5).
+///
+/// `kind` is the only difference between the two doors: it says what the sheet is called
+/// and which collision the caller's predicate asks about
+/// (`CanvasStore.boardNameIsAvailable` for a board, `FolderFileOperations.nameIsAvailable`
+/// for a folder). The three identifiers below - `workspace-new-sheet`,
+/// `workspace-new-name`, `workspace-new-parent` - are the same for both, because it is the
+/// same sheet.
 struct NewWorkspaceSheet: View {
     @Environment(\.theme) private var theme
 
+    /// What is being created (ADR-0025 §D7).
+    let kind: WorkspaceItemKind
     /// Every folder that can hold a new one, root first: `parentOptions(from:)` over the
-    /// board list the browser already has.
+    /// folder list the browser already has.
     let parents: [String]
     let isNameAvailable: (String, String) -> Bool
     /// The chosen name and the chosen parent, in that order.
@@ -77,19 +145,22 @@ struct NewWorkspaceSheet: View {
     @State private var parent: String
 
     init(
+        kind: WorkspaceItemKind,
         parents: [String],
         initialParent: String,
         isNameAvailable: @escaping (String, String) -> Bool,
         onConfirm: @escaping (String, String) -> Void,
         onCancel: @escaping () -> Void
     ) {
+        self.kind = kind
         self.parents = parents
         self.isNameAvailable = isNameAvailable
         self.onConfirm = onConfirm
         self.onCancel = onCancel
-        // A selection that matches no tag leaves the picker showing an empty row, and the
-        // suggested parent is a folder that may hold no board and therefore not be in the
-        // list. The root always is.
+        // A selection that matches no tag leaves the picker showing an empty row. Every
+        // real folder is an option now that they come from `allFolders()` rather than
+        // from board paths, so the miss this guards is a suggested parent the walk no
+        // longer sees - one renamed or trashed since the last scan. The root always is.
         _parent = State(initialValue: parents.contains(initialParent) ? initialParent : "")
     }
 
@@ -101,8 +172,8 @@ struct NewWorkspaceSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Nuova workspace").themedText(.title)
-            Text("Una workspace è una cartella del vault, con la sua board dentro.")
+            Text(kind.creationTitle).themedText(.title)
+            Text(kind.creationExplanation)
                 .themedText(.caption, color: .textSecondary)
 
             TextField("Nome", text: $name)
@@ -143,16 +214,23 @@ struct NewWorkspaceSheet: View {
     }
 }
 
-/// Renaming a workspace: the folder's name, seeded from the selection (R-05).
+/// Renaming a board or a folder: the thing's name, seeded from the selection (R-05,
+/// ADR-0025 §D6).
 ///
-/// The parent is not editable here - moving a workspace under a different parent is out
-/// of this feature's scope (SPEC, «Out of scope»), so the sheet asks the one question a
-/// rename is.
+/// The parent is not editable here - moving a board or a folder under a different parent
+/// is out of this feature's scope (SPEC, «Out of scope»), so the sheet asks the one
+/// question a rename is.
 struct RenameWorkspaceSheet: View {
     @Environment(\.theme) private var theme
 
-    /// The vault-relative path of the folder being renamed.
-    let folder: String
+    /// Which of the two is being renamed - what the title and the explanation say, and
+    /// the only thing this sheet does with it. Which collision to ask about is the
+    /// caller's `isNameAvailable`, as it already was.
+    let kind: WorkspaceItemKind
+    /// The vault-relative path of what is being renamed, a board's **without** its
+    /// `.canvas` extension: a rename asks for a name, and the extension belongs to
+    /// `BoardFileOperations`, which is the one place that spells it (ADR-0025 §D6).
+    let path: String
     let isNameAvailable: (String, String) -> Bool
     let onConfirm: (String) -> Void
     let onCancel: () -> Void
@@ -160,20 +238,22 @@ struct RenameWorkspaceSheet: View {
     @State private var name: String
 
     init(
-        folder: String,
+        kind: WorkspaceItemKind,
+        path: String,
         isNameAvailable: @escaping (String, String) -> Bool,
         onConfirm: @escaping (String) -> Void,
         onCancel: @escaping () -> Void
     ) {
-        self.folder = folder
+        self.kind = kind
+        self.path = path
         self.isNameAvailable = isNameAvailable
         self.onConfirm = onConfirm
         self.onCancel = onCancel
-        _name = State(initialValue: (folder as NSString).lastPathComponent)
+        _name = State(initialValue: (path as NSString).lastPathComponent)
     }
 
-    private var currentName: String { (folder as NSString).lastPathComponent }
-    private var parent: String { (folder as NSString).deletingLastPathComponent }
+    private var currentName: String { (path as NSString).lastPathComponent }
+    private var parent: String { (path as NSString).deletingLastPathComponent }
 
     private var state: WorkspaceNameField.State {
         WorkspaceNameField.state(name: name, parent: parent, available: isNameAvailable)
@@ -185,8 +265,8 @@ struct RenameWorkspaceSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rinomina workspace").themedText(.title)
-            Text("La cartella e la sua board vengono rinominate insieme; i task e le card che le nominavano seguono.")
+            Text(kind.renameTitle).themedText(.title)
+            Text(kind.renameExplanation)
                 .themedText(.caption, color: .textSecondary)
 
             TextField("Nome", text: $name)
