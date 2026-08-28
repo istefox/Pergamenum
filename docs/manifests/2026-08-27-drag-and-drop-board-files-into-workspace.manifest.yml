@@ -6,8 +6,8 @@ mode: "greenfield"
 anonymize: false
 chain_path: "standard"
 created_at: "2026-08-27T14:29:16+00:00"
-last_updated_at: "2026-08-27T15:04:50+00:00"
-current_step: "ready_for_implementation"
+last_updated_at: "2026-08-28T13:43:27+00:00"
+current_step: "step_6_review"
 status: "in_progress"
 
 # Gate 0 routing result (ADR-0017)
@@ -28,11 +28,11 @@ coder_model: "opus"
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: false
-step5_mode: null
+hook_verified: true
+step5_mode: "workflow"
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
-recovery_baseline_sha: null
+recovery_baseline_sha: "7ada68c35d34ff13fb9a002446c6318adcb3150f"
 
 # Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
@@ -42,7 +42,7 @@ recovery_baseline_sha: null
 # it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
 # with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
 # sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
-worktree_baseref_verified: false
+worktree_baseref_verified: true
 worktree_merges: []
 
 # Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
@@ -119,15 +119,15 @@ hitl_gates:
     notes: "user chose confirm-and-close for fresh session; boundary state, resume Step 5 in new session"
   - gate: 5
     label: "review_cycle_decision"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-08-28T13:43:27+00:00"
+    notes: "run review-triage-fix"
 
 # Session boundary tracking
 session_boundary:
   pre_step_4_session_id: null
   fresh_session_started_at: null
-  resumed_at: null
+  resumed_at: "2026-08-27T15:08:34Z"
 
 # Failure tracking (populated only on status=failed)
 failure:

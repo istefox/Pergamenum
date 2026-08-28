@@ -14,23 +14,26 @@ extension VaultController {
     /// (R-01 … R-05, R-12).
     ///
     /// `true` when something moved. `false` when the batch was refused, when a guard
-    /// stopped it, or when an operation threw - in every one of those the reason is on
+    /// stopped it, or when every operation failed - in every one of those the reason is on
     /// `problems`, because a drop that does nothing and says nothing is the failure mode
     /// this repository keeps writing ADR sections about.
+    ///
+    /// An item that failed *after* the batch started writing is reported the same way and
+    /// does not cancel the rest: whatever landed on disk is followed and registered on
+    /// `undo`, because files that moved with nothing on the undo stack to bring them back
+    /// is the worse of the two outcomes (`VaultSession.moveItems` makes the same argument
+    /// from the other side).
     @discardableResult
     func moveItems(_ items: [VaultItemRef], into destination: String, undo: UndoManager?) -> Bool {
         guard let session, canOperate(onAll: items) else { return false }
 
-        let outcome: VaultSession.MoveBatchOutcome
-        do {
-            outcome = try session.moveItems(items, into: destination)
-        } catch {
-            recordProblem("spostamento: \(error)")
-            return false
-        }
+        let outcome = session.moveItems(items, into: destination)
 
         for refusal in outcome.refusals {
             recordProblem("spostamento rifiutato - \(refusal)")
+        }
+        for failure in outcome.failures {
+            recordProblem("spostamento non riuscito - \(failure)")
         }
         guard !outcome.moves.isEmpty else { return false }
 
@@ -92,16 +95,17 @@ extension VaultController {
         var failures: [String] = []
         for destination in destinations {
             let group = current.filter { $0.destination == destination }.map(\.ref)
-            do {
-                let outcome = try session.moveItems(group, into: destination)
-                failures.append(contentsOf: outcome.refusals)
-                if outcome.moves.count != group.count {
-                    failures.append("«\(destination)»: \(group.count - outcome.moves.count) elementi non spostati")
-                }
-                follow(outcome)
-            } catch {
-                failures.append("«\(destination)»: \(error)")
+            let outcome = session.moveItems(group, into: destination)
+            failures.append(contentsOf: outcome.refusals)
+            failures.append(contentsOf: outcome.failures)
+            if outcome.moves.count != group.count && outcome.refusals.isEmpty && outcome.failures.isEmpty {
+                failures.append("«\(destination)»: \(group.count - outcome.moves.count) elementi non spostati")
             }
+            // Outside the `failures.isEmpty` guard below on purpose: a group that came back
+            // half-moved still moved half, and those notes are in tabs and in an index that
+            // both now name a path nothing is at. What the failure costs is the redo
+            // registration, not the follow-up.
+            follow(outcome)
         }
 
         guard failures.isEmpty else {

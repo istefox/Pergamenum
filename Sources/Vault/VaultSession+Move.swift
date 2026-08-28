@@ -32,6 +32,17 @@ extension VaultSession {
         /// `VaultMoveBatch.Result.refused`'s reasons, verbatim, when the batch could not
         /// commit at all (ADR-0026 §D6, all-or-nothing) - empty on a successful batch.
         var refusals: [String] = []
+        /// What failed *after* the batch had started writing: one line per item whose
+        /// operation threw on disk, naming the item and the error.
+        ///
+        /// A different thing from `refusals`, and the distinction is the whole point.
+        /// `VaultMoveBatch.plan`'s all-or-nothing holds for the decision, not for the
+        /// execution: an item can pass every pre-write rule and still fail on disk -
+        /// permissions, a full volume, or the plain TOCTOU of something that moved between
+        /// the plan and the loop. When that happens the items already written stay written,
+        /// so they are in `moves` and the caller can follow and undo them; the ones that
+        /// did not are named here.
+        var failures: [String] = []
     }
 
     /// Moves `items` into `destination` as one batch, all-or-nothing (ADR-0026 §D6).
@@ -40,9 +51,18 @@ extension VaultSession {
     ///
     /// A refusal is a returned `MoveBatchOutcome` with `refusals` filled and `moves`
     /// empty, never a `throw`: the five rules of `VaultMoveBatch.plan` are the batch
-    /// answering a question, and the caller has a dialog to name them in (R-07). What
-    /// does throw is an operation that got past the plan and then failed on disk.
-    func moveItems(_ items: [VaultItemRef], into destination: String) throws -> MoveBatchOutcome {
+    /// answering a question, and the caller has a dialog to name them in (R-07).
+    ///
+    /// **This never throws either.** An operation that got past the plan and then failed
+    /// on disk is caught per item and named in `failures`, and the loop carries on with
+    /// the rest. Letting one item's error unwind the whole call would discard the outcome
+    /// built for the items *before* it - which are already written - so the caller could
+    /// neither follow their notes into the open tabs nor register an undo for them: the
+    /// files would have moved with nothing on the undo stack able to bring them back. The
+    /// all-or-nothing of §D6 is a property of the decision (`VaultMoveBatch.plan` refuses
+    /// before a byte is written), not a promise the file system can be held to once the
+    /// writing has started.
+    func moveItems(_ items: [VaultItemRef], into destination: String) -> MoveBatchOutcome {
         var outcome = MoveBatchOutcome()
 
         switch VaultMoveBatch.plan(items, into: destination, exists: { exists($0) }) {
@@ -52,32 +72,41 @@ extension VaultSession {
 
         case .moves(let moves):
             for move in moves {
-                switch move.item.kind {
-                case .note:
-                    // The existing journalled path (ADR-0026 §D2): `moveNote` writes
-                    // through `transaction("note move")`, carries the star and repoints
-                    // the cards. A second spelling of that verb here would be exactly the
-                    // drift `CLAUDE.md`'s connector section is about.
-                    let note = try moveNote(at: move.item.path, toFolder: move.to)
-                    outcome.movedNotes.append((old: move.item.path, new: note.newPath))
-                    report(note.failures)
+                do {
+                    switch move.item.kind {
+                    case .note:
+                        // The existing journalled path (ADR-0026 §D2): `moveNote` writes
+                        // through `transaction("note move")`, carries the star and repoints
+                        // the cards. A second spelling of that verb here would be exactly
+                        // the drift `CLAUDE.md`'s connector section is about.
+                        let note = try moveNote(at: move.item.path, toFolder: move.to)
+                        outcome.movedNotes.append((old: move.item.path, new: note.newPath))
+                        report(note.failures)
 
-                case .board:
-                    // No star and no moved note: a `.canvas` is neither (the reason
-                    // `renameBoard` is not `renameFolder` with a different path).
-                    let board = try boardOperations.moveBoard(at: move.item.path, toFolder: move.to)
-                    report(board.failures)
+                    case .board:
+                        // No star and no moved note: a `.canvas` is neither (the reason
+                        // `renameBoard` is not `renameFolder` with a different path).
+                        let board = try boardOperations.moveBoard(at: move.item.path, toFolder: move.to)
+                        report(board.failures)
 
-                case .folder:
-                    let folder = try folderOperations.moveFolder(at: move.item.path, toParent: move.to)
-                    // A star is a path, so it moves with the file or it points at nothing
-                    // (ADR-0012 §D6) - `renameFolder`'s own follow-up, once per note the
-                    // directory took with it.
-                    for moved in folder.movedNotes {
-                        moveStar(from: moved.old, to: moved.new)
+                    case .folder:
+                        let folder = try folderOperations.moveFolder(at: move.item.path, toParent: move.to)
+                        // A star is a path, so it moves with the file or it points at
+                        // nothing (ADR-0012 §D6) - `renameFolder`'s own follow-up, once per
+                        // note the directory took with it.
+                        for moved in folder.movedNotes {
+                            moveStar(from: moved.old, to: moved.new)
+                        }
+                        outcome.movedNotes.append(contentsOf: folder.movedNotes)
+                        report(folder.failures)
                     }
-                    outcome.movedNotes.append(contentsOf: folder.movedNotes)
-                    report(folder.failures)
+                } catch {
+                    // Named, not swallowed, and `move` is deliberately not appended to
+                    // `moves`: the inverse the caller registers must describe what is
+                    // actually on disk, so an item that did not move must not be in the
+                    // batch that undo will try to move back.
+                    outcome.failures.append("«\(move.item.path)»: \(error)")
+                    continue
                 }
                 outcome.moves.append(move)
             }
@@ -87,11 +116,12 @@ extension VaultSession {
 
     /// Says what a repoint could not rewrite, rather than dropping it.
     ///
-    /// `MoveBatchOutcome` has no `failures` field - the batch either committed or
-    /// refused, and a card left pointing at the old path is neither - so the visible
-    /// channel is the session's own problem list, which `VaultController.problems`
-    /// already surfaces. `renameFolder` reports the same class of failure from the facade
-    /// side; the difference is only which of the two holds the list.
+    /// Not `MoveBatchOutcome.failures`, which is about an item that did **not** move: the
+    /// item this is called for moved, and only a reference to it was left pointing at the
+    /// old path. So the visible channel is the session's own problem list, which
+    /// `VaultController.problems` already surfaces. `renameFolder` reports the same class
+    /// of failure from the facade side; the difference is only which of the two holds the
+    /// list.
     private func report(_ failures: [String]) {
         for failure in failures {
             recordProblem("riferimento non aggiornato: \(failure)")

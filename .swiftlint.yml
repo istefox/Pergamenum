@@ -38,9 +38,9 @@ line_length:
   ignores_comments: false
   ignores_urls: true
 
-# Kept at their defaults on purpose, and currently failing on four types
-# (VaultController, WorkspaceView, WorkspaceController, VaultBrowser). That is real
-# debt, recorded rather than configured away.
+# Kept at their defaults on purpose, and currently failing on five types
+# (VaultController, WorkspaceView, WorkspaceController, VaultBrowser, NoteListPane).
+# That is real debt, recorded rather than configured away.
 file_length:
   warning: 400
   error: 1000

@@ -5,37 +5,10 @@ import SwiftUI
 // errors at - `NoteRowMenu.swift`'s own split from `NoteListPane`, for the same reason and
 // at the same seam: a row is a record in and an action out, which is the half that moves
 // cleanly. Nothing about the row changed in the move; what is new here is the move gesture.
-
-/// Everything a Workspace row's drag, its drop and its «Sposta in» menu need, in one value
-/// (ADR-0026 §D4, §D5, §D9).
-///
-/// A value rather than six more parameters, because the row passes every parameter it has
-/// down its own recursion; and one value rather than a closure per surface, because the
-/// drag and the menu are two renderings of one command (ADR-0023 §D1) and must ask the
-/// same questions of the same state.
-struct WorkspaceMoveContext {
-    /// Every folder of the vault, for «Sposta in». `CanvasStore.allFolders()`, which is
-    /// what the browser holds, and **never** `VaultController.folders` (ADR-0026 §D9,
-    /// ADR-0022 §D11): the latter derives folders from note paths and therefore omits a
-    /// folder holding only boards, which is precisely the folder a Workspace user makes.
-    let folders: [String]
-    /// Every lit row's id (ADR-0026 §D4). Read for one thing only: whether the row a drag
-    /// or a menu started from is part of the set, and therefore whether the move carries
-    /// the set or that row alone (R-11).
-    let multiSelection: Set<String>
-    /// What the drag in flight carries, remembered by the source row at drag start.
-    /// A folder row's drop affordance is asked of this and of nothing else, because
-    /// `.dropDestination`'s `isTargeted` closure never sees the payload (§D5).
-    let dragging: [VaultItemRef]
-    /// Turns ids into refs against the browser's own tree - a board by its `.canvas`
-    /// path, a folder by its folder path (ADR-0025 §D3).
-    let resolve: (Set<String>) -> [VaultItemRef]
-    /// Remembers what this drag carries, for every folder row's `canDrop` (§D5).
-    let onDragStart: ([VaultItemRef]) -> Void
-    /// The move itself, performed by the browser and answered `false` when refused -
-    /// which is what a `.dropDestination`'s `action` owes the drag.
-    let perform: ([VaultItemRef], String) -> Bool
-}
+//
+// The move gesture itself has since moved on again, to `WorkspaceRow+Move.swift`: this file
+// is the row as a row - label, chevron, selection, and the two folder verbs it carried
+// before ADR-0026 - and that one is the drag, the drop and the «Sposta in» menu.
 
 /// One row of the Workspace tree, and its subtree.
 ///
@@ -50,7 +23,10 @@ struct WorkspaceMoveContext {
 /// tutto" and a board revealed from outside both have to be able to open a folder this row
 /// did not open itself.
 struct WorkspaceRow: View {
-    @Environment(\.theme) private var theme
+    /// Not `private`: `WorkspaceRow+Move.swift` draws the drop affordance's stroke from
+    /// it, and `private` in Swift is file-scoped, so an extension in a sibling file cannot
+    /// see it.
+    @Environment(\.theme) var theme
 
     let node: WorkspaceTree.Node
     let depth: Int
@@ -76,7 +52,10 @@ struct WorkspaceRow: View {
     /// Whether something acceptable is hovering over this row right now - a folder row's
     /// accent stroke, and nothing else in this view is conditioned on it. False on a board
     /// row always: only a folder takes a drop (§D11).
-    @State private var isDropTarget = false
+    ///
+    /// Not `private`, for `theme`'s reason: `accepting(_:)` both reads and writes it from
+    /// `WorkspaceRow+Move.swift`, and file-scoped `private` would hide it there.
+    @State var isDropTarget = false
 
     /// One indent step. The rows are drawn flat inside a `List`, so the depth has to be
     /// paid for in padding rather than by nesting the views - `NoteTreeRow`'s constant,
@@ -90,25 +69,6 @@ struct WorkspaceRow: View {
     /// What selecting this row means, asked of the one function the `List`'s binding also
     /// asks, so a click and a right-click cannot disagree (ADR-0023 §D4).
     private var picked: WorkspaceSelection { WorkspaceBrowser.selection(for: node) }
-
-    /// This row's own reference: a board by its `.canvas` path, a folder by its folder
-    /// path (ADR-0025 §D3).
-    private var reference: VaultItemRef {
-        switch node.kind {
-        case .folder: VaultItemRef(path: node.id, kind: .folder)
-        case .board(let path): VaultItemRef(path: path, kind: .board)
-        }
-    }
-
-    /// What a move started on this row carries (ADR-0026 §D4, R-11): the whole lit set
-    /// when this row is part of it, this row alone when it is not - the SPEC's own rule,
-    /// and AppKit's.
-    ///
-    /// Read by both surfaces, which is what makes «Sposta in» with two rows selected move
-    /// both of them exactly as a drag of either one would (§D9).
-    private var effectiveItems: [VaultItemRef] {
-        move.resolve(move.multiSelection.contains(node.id) ? move.multiSelection : [node.id])
-    }
 
     @ViewBuilder
     var body: some View {
@@ -161,7 +121,8 @@ struct WorkspaceRow: View {
     }
 
     /// The row, then what it can do: a drag source always, a drop target only where a drop
-    /// means something (§D11), and the `.tag` after both.
+    /// means something (§D11), and the `.tag` after both. Both halves - `accepting` and
+    /// `beginDrag` - live in `WorkspaceRow+Move.swift`.
     ///
     /// `draggable(beginDrag())` rather than `draggable { beginDrag() }`: the parameter is
     /// an `@autoclosure @escaping () -> T`, so the call written this way *is* the deferred
@@ -170,51 +131,6 @@ struct WorkspaceRow: View {
     /// a diagnostic that names neither the modifier nor this line.
     private var content: some View {
         accepting(label.draggable(beginDrag()))
-    }
-
-    /// A folder row's drop target, and a board row left exactly as it was.
-    ///
-    /// The stroke is `TaskDropTarget`'s own shape and the same accent token
-    /// (`TaskDrag.swift:69-72`) - a second drop affordance in this app looks like the
-    /// first, and no colour is written here that is not a token (`CLAUDE.md`'s binding
-    /// design-system rule).
-    ///
-    /// `isTargeted` lights the row only when the drag could actually land: a folder
-    /// dragged onto itself or into its own descendant gives no affordance at all (§D5,
-    /// R-06), which is pure string arithmetic against what the source stored and costs
-    /// nothing per hover.
-    @ViewBuilder
-    private func accepting(_ row: some View) -> some View {
-        switch node.kind {
-        case .folder:
-            row
-                .overlay(
-                    RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
-                        .stroke(isDropTarget ? theme.color(.accentPrimary) : .clear, lineWidth: 1)
-                )
-                .dropDestination(for: VaultItemDrag.self) { drops, _ in
-                    guard let items = drops.first?.items else { return false }
-                    return move.perform(items, node.id)
-                } isTargeted: { targeted in
-                    isDropTarget = targeted && WorkspaceBrowser.canDrop(move.dragging, onFolder: node.id)
-                }
-        case .board:
-            row
-        }
-    }
-
-    /// What this drag carries, and the record of it the folder rows read while it is in
-    /// flight (ADR-0026 §D5): the payload is on the pasteboard, but `isTargeted` never
-    /// sees it, so the source side is the only place that can know.
-    ///
-    /// `dragName` is the row's own name, which is what `ProxyRepresentation(exporting:
-    /// \.dragName)` puts on the pasteboard as a plain `String` (§D3) - the representation
-    /// that keeps the editor's note-title drop working without touching the file that
-    /// implements it.
-    private func beginDrag() -> VaultItemDrag {
-        let items = effectiveItems
-        move.onDragStart(items)
-        return VaultItemDrag(items: items, dragName: node.name)
     }
 
     private var label: some View {
@@ -369,53 +285,6 @@ struct WorkspaceRow: View {
             Button("Elimina…", role: .destructive) { requestDelete() }
         }
         moveMenu
-    }
-
-    /// «Sposta in ▸», the second rendering of the drag (ADR-0026 §D9) - and the one that
-    /// is keyboard-reachable, VoiceOver-reachable and deterministically testable, which is
-    /// why it exists at all: no test in this repository has ever driven a `.draggable` →
-    /// `.dropDestination` pasteboard drag.
-    ///
-    /// The destinations are the browser's own `folders`, which is `CanvasStore
-    /// .allFolders()` and never `VaultController.folders` - the latter omits a folder
-    /// holding only boards (ADR-0022 §D11), which is exactly the folder this pane makes.
-    ///
-    /// Two things are disabled rather than hidden, so the menu's shape does not change
-    /// from row to row: the folder this row already sits in (a move that moves nothing)
-    /// and any destination the cycle rule refuses - this row, if it is a folder, and
-    /// everything under it (R-06).
-    @ViewBuilder
-    private var moveMenu: some View {
-        Menu("Sposta in") {
-            Button("(radice)") { requestMove(to: "") }
-                .disabled(!canMove(to: ""))
-            ForEach(move.folders, id: \.self) { folder in
-                Button(folder) { requestMove(to: folder) }
-                    .disabled(!canMove(to: folder))
-            }
-        }
-        .accessibilityIdentifier("workspace-move-menu")
-    }
-
-    /// The folder this row sits in - `""` at the vault root, the same spelling every path
-    /// rule in this feature uses.
-    private var parentFolder: String {
-        (reference.path as NSString).deletingLastPathComponent
-    }
-
-    private func canMove(to destination: String) -> Bool {
-        destination != parentFolder && WorkspaceBrowser.canDrop(effectiveItems, onFolder: destination)
-    }
-
-    /// The menu's move, which is the drop's move: the same effective set, through the same
-    /// closure, refused for the same reasons and reported in the same dialog.
-    ///
-    /// The selection is **not** set first, unlike `requestRename()`/`requestDelete()`
-    /// below: selecting this row would collapse a multi-row set to one (R-11's whole
-    /// point) and, for a board row, open it - a move is not a reason to change what is on
-    /// screen.
-    private func requestMove(to destination: String) {
-        _ = move.perform(effectiveItems, destination)
     }
 
     /// The selection first, for what it shows rather than for what it seeds: both verbs
