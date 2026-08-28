@@ -56,13 +56,26 @@ struct RootView: View {
         WindowPlace(navigation: navigation, vault: vault, day: day)
     }
 
-    /// Collapsed only for concentrazione on the Workspace pane. Derived rather than
-    /// stored beside `isWorkspaceFocused`, the same reasoning as `currentItem` above:
-    /// two copies of "is the sidebar open" can disagree, one copy cannot.
+    /// Whether the pane on screen is running its own "concentrazione" (2026-08-28,
+    /// toolbar parity chain: Note gained its own flag alongside Workspace's).
+    private var isFocusedPane: Bool {
+        (navigation.isWorkspaceFocused && pane == .workspace)
+            || (navigation.isNotesFocused && pane == .notes)
+    }
+
+    /// Collapsed only for concentrazione on the pane it belongs to. Derived rather than
+    /// stored beside `isWorkspaceFocused`/`isNotesFocused`, the same reasoning as
+    /// `currentItem` above: two copies of "is the sidebar open" can disagree, one copy
+    /// cannot.
     private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { navigation.isWorkspaceFocused && pane == .workspace ? .detailOnly : .all },
-            set: { if $0 == .all { navigation.isWorkspaceFocused = false } }
+            get: { isFocusedPane ? .detailOnly : .all },
+            set: {
+                if $0 == .all {
+                    navigation.isWorkspaceFocused = false
+                    navigation.isNotesFocused = false
+                }
+            }
         )
     }
 

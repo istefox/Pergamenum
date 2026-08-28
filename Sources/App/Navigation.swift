@@ -118,6 +118,17 @@ final class Navigation {
     /// `isShowingTray` is: the menu bar's Vista entry needs to reach it.
     var isWorkspaceTreeCollapsed = false
 
+    /// The Note pane's own "concentrazione" (2026-08-28, toolbar parity chain): hides
+    /// `NoteListPane` and the inspector, down to the editor alone. A flag of its own
+    /// rather than reusing `isWorkspaceFocused` - the two sections are shown one at a
+    /// time, but their chrome state must not leak into each other when the user
+    /// switches back, the same reasoning `isWorkspaceFocused` already carries.
+    var isNotesFocused = false
+
+    /// Whether the Note pane hides just `NoteListPane`, leaving the editor and the
+    /// inspector untouched. Mirrors `isWorkspaceTreeCollapsed`.
+    var isNoteTreeCollapsed = false
+
     /// Text the Inserisci menu has asked the editor to put at the cursor.
     ///
     /// A request rather than a call: the menu has no reference to the `NSTextView`,

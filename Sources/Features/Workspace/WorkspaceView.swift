@@ -313,12 +313,22 @@ struct WorkspaceView: View {
             // Same reach pattern again, one pane narrower: only the board-list tree,
             // never the tray. Independent of «Concentrazione» above - the two flags
             // are read with `&&` at the call site, so either one hides the tree.
-            // Named for what checking it does (MenuCommands.swift carries the same
-            // reasoning), not for a shown/hidden state.
-            Toggle(isOn: Bindable(navigation).isWorkspaceTreeCollapsed) {
-                Label("Nascondi albero", systemImage: "sidebar.left")
+            //
+            // The binding is negated on purpose (2026-08-28): `isWorkspaceTreeCollapsed`
+            // itself is unchanged - `WorkspaceView.swift:133`'s `&&` and MenuCommands.swift's
+            // own checkbox still read it directly, "checked = hidden", the ordinary macOS
+            // menu convention. This toolbar icon is not a menu row, it is one of four glyphs
+            // with no words on them, and the other two here (Anteprima, Concentrazione) are
+            // lit exactly when the thing they name is showing. A toggle lit while its own
+            // tree is hidden read backwards next to them - lit now means "the tree is on
+            // screen", matching the pattern rather than the flag's own polarity.
+            Toggle(isOn: Binding(
+                get: { !navigation.isWorkspaceTreeCollapsed },
+                set: { navigation.isWorkspaceTreeCollapsed = !$0 }
+            )) {
+                Label("Albero", systemImage: "sidebar.left")
             }
-            .help("Nasconde l'albero delle cartelle e delle board")
+            .help("Mostra o nasconde l'albero delle cartelle e delle board")
             .accessibilityIdentifier("workspace-tree-toggle")
         }
     }

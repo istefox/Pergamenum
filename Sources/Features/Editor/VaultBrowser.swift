@@ -15,16 +15,17 @@ struct VaultBrowser: View {
     var body: some View {
         VStack(spacing: 0) {
             // Above everything else in this pane, never inside one column of it - the same
-            // reason `WorkspaceBrowser` gives (`WorkspaceBrowser.swift:123-126`): the header
-            // groups its children under its own identifier and a button placed inside it
-            // risks answering to that identifier instead of its own.
+            // reason `BoardTopBar` sits above `WorkspaceView`'s own `HStack` rather than
+            // inside `WorkspaceBrowser` (2026-08-28, breadcrumb parity chain).
             VaultTopBar(vault: vault, navigation: navigation)
             HSplitView {
-                NoteListPane()
-                    .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+                if !navigation.isNotesFocused && !navigation.isNoteTreeCollapsed {
+                    NoteListPane()
+                        .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+                }
                 editor
                     .frame(minWidth: 360)
-                if navigation.isShowingInspector {
+                if navigation.isShowingInspector && !navigation.isNotesFocused {
                     inspector
                         .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
                 }
@@ -111,7 +112,7 @@ struct VaultBrowser: View {
 
         ToolbarItemGroup(placement: .primaryAction) {
             Button(action: vault.saveOpenNote) {
-                Label("Salva", systemImage: "arrow.down.doc")
+                Label("Salva", systemImage: "text.badge.checkmark")
             }
             .help("Salva la nota")
             .disabled(vault.openNote?.hasUnsavedChanges != true)
@@ -121,13 +122,37 @@ struct VaultBrowser: View {
             }
             .help("Modalità lettura")
             .disabled(vault.openNote == nil)
+            .accessibilityIdentifier("notes-reading-mode-toggle")
 
-            Button {
-                navigation.isShowingInspector.toggle()
-            } label: {
+            // Was a plain Button that never lit up (2026-08-28, toolbar parity chain).
+            // «Nuovi elementi» in Workspace is the same kind of control for the other
+            // section's own trailing panel, and is a Toggle - this one now matches.
+            Toggle(isOn: Bindable(navigation).isShowingInspector) {
                 Label("Ispettore", systemImage: "sidebar.right")
             }
             .help("Backlink, conformità, link non risolti")
+            .accessibilityIdentifier("notes-inspector-toggle")
+
+            // Same reach pattern as Workspace's «Concentrazione»: hides the note list
+            // and the inspector, leaving only the editor.
+            Toggle(isOn: Bindable(navigation).isNotesFocused) {
+                Label("Concentrazione", systemImage: "rectangle.expand.vertical")
+            }
+            .help("Nasconde la sidebar, l'elenco note e l'ispettore per lasciare più spazio all'editor")
+            .accessibilityIdentifier("notes-focus-toggle")
+
+            // Same negated-binding pattern as Workspace's «Albero» (2026-08-28):
+            // `isNoteTreeCollapsed` itself keeps "collapsed = true" for the Vista menu's
+            // own checkbox convention; this glyph is lit when the tree is on screen,
+            // matching «Ispettore» and «Concentrazione» beside it.
+            Toggle(isOn: Binding(
+                get: { !navigation.isNoteTreeCollapsed },
+                set: { navigation.isNoteTreeCollapsed = !$0 }
+            )) {
+                Label("Albero", systemImage: "sidebar.left")
+            }
+            .help("Mostra o nasconde l'elenco delle note e delle cartelle")
+            .accessibilityIdentifier("notes-tree-toggle")
         }
     }
 
