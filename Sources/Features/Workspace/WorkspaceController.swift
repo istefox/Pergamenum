@@ -10,10 +10,12 @@ import Observation
 @MainActor
 @Observable
 final class WorkspaceController {
-    /// The eleven tools of SPEC §6.4. `forms` is excluded from v1 and kept only so
-    /// the toolbar layout does not have to be redone in v2.
+    /// The tools of SPEC §6.4, ten of the eleven it lists: ADR-0027 §D8 unified Nota
+    /// into Testo, so `.text` is the only tool of that family and the `n` key is free.
+    /// `forms` is excluded from v1 and kept only so the toolbar layout does not have to
+    /// be redone in v2.
     enum Tool: String, CaseIterable, Identifiable, Sendable {
-        case select, note, text, folder, image, document, link, todo, forms, drawing, arrow
+        case select, text, folder, image, document, link, todo, forms, drawing, arrow
 
         var id: String { rawValue }
 
@@ -23,7 +25,6 @@ final class WorkspaceController {
         var shortcut: String? {
             switch self {
             case .select: "v"
-            case .note: "n"
             case .text: "t"
             case .folder: "f"
             case .image: "i"
@@ -39,7 +40,6 @@ final class WorkspaceController {
         var title: String {
             switch self {
             case .select: "Seleziona"
-            case .note: "Nota"
             case .text: "Testo"
             case .folder: "Cartella"
             case .image: "Immagine"
@@ -55,7 +55,6 @@ final class WorkspaceController {
         var symbol: String {
             switch self {
             case .select: "cursorarrow"
-            case .note: "note.text"
             case .text: "textformat"
             case .folder: "folder"
             case .image: "photo"
@@ -486,7 +485,7 @@ final class WorkspaceController {
     var editingTextDraft: String = ""
 
     /// Enters inline editing on a `.text` node - a double click, the «Modifica testo»
-    /// command, or straight after Nota/Testo creates one (SPEC §6.3).
+    /// command, or straight after Testo/To Do creates one (SPEC §6.3).
     func beginTextEdit(nodeID: String) {
         guard case .text(let text) = document.node(id: nodeID)?.kind else { return }
         // No two editors of different kinds open at once, the same rule `beginCrop` follows.
