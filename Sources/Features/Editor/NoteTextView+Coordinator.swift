@@ -12,6 +12,11 @@ extension NoteTextView {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: NoteTextView
         weak var textView: NSTextView?
+        /// The window's `undoManager` as of the last update, captured here because
+        /// `dismantleNSView` runs after SwiftUI has already detached the text view from
+        /// its window - `textView.undoManager` resolves through the responder chain and
+        /// is nil by then, which would make the cleanup it performs a no-op.
+        weak var undoManager: UndoManager?
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false

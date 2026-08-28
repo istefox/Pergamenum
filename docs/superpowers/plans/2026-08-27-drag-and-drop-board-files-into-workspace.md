@@ -547,3 +547,28 @@ TEST-CMD MODE: brownfield
 `xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS'
 -derivedDataPath "…/.build/DerivedData" -only-testing:PergamenumTests test`. The UI half runs
 through `scripts/uitests.sh`, deliberately and by hand, at Task 8.
+
+## Findings
+
+**Task 8's manual R-12 check crashed the app, and the fix landed outside the Task 6/7 budget.**
+Typing in a note, switching to the Workspace pane, dragging the open board's own row into a
+folder, then pressing Cmd+Z twice: the first undo reverted the move, the second crashed with
+`EXC_BAD_ACCESS` (SIGSEGV) in `-[_NSUndoStack popAndInvoke]`
+(`~/Library/Logs/DiagnosticReports/Pergamenum-2026-08-28-140518.ips`).
+
+Root cause: §D8's window-scoped `undoManager` is shared with `NoteTextView`'s typing undo, and
+the Note/Workspace pane switch is a full SwiftUI rebuild (`RootView.swift`'s `switch pane`), not
+a hide - it deallocates the `NSTextView` while its typing-undo action is still registered on
+that shared stack. The second Cmd+Z then invoked an action targeting a dangling pointer. This is
+worse than the "surprising but coherent" risk §D8's Negative Consequences already named and A6
+was kept in reserve for - it is a crash, not a UX surprise.
+
+Fix (not a reopening of A6): `NoteTextView` gained a `dismantleNSView` that purges every action
+still targeting the text view or its text storage from the window's `undoManager` before SwiftUI
+releases it. The window-scoped design of §D8 is unchanged; a pane switch now silently drops the
+now-unreachable typing-undo step instead of leaving a dangling target on the stack. Reverified:
+same repro sequence, no crash, second Cmd+Z is a no-op (the typing step was discarded on pane
+switch), full unit suite and full UI suite green afterwards.
+
+Files touched beyond the plan's own budget: `Sources/Features/Editor/NoteTextView.swift`,
+`Sources/Features/Editor/NoteTextView+Coordinator.swift` (~20 lines).
