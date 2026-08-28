@@ -36,10 +36,30 @@ struct CardTextStyle: Equatable, Sendable {
     /// absent, malformed, or out of range reads as `nil` on the corresponding property; the
     /// dictionary passed in is never mutated to get there.
     static func read(from node: CanvasNode) -> CardTextStyle {
-        fatalError("not implemented")
+        CardTextStyle(
+            color: raw(colorKey, on: node).flatMap { CanvasColor($0) },
+            alignment: raw(alignKey, on: node).flatMap { Alignment(rawValue: $0) }
+        )
+    }
+
+    /// The string written under `key`, or `nil` when the key is absent or holds something
+    /// that is not a string - `CanvasCrop.read`'s own `guard case .string(let raw)?` shape,
+    /// factored out only because this type reads two keys where that one reads one. A
+    /// subscript read never mutates the dictionary, which is what keeps a malformed value
+    /// on the node instead of correcting it away.
+    private static func raw(_ key: String, on node: CanvasNode) -> String? {
+        guard case .string(let value)? = node.unknown[key] else { return nil }
+        return value
     }
 
     // MARK: Presets
+
+    /// The six JSON Canvas presets as fixed sRGB values, preset `1` first: the Obsidian
+    /// canvas palette (red, orange, yellow, green, cyan, purple), so a `.canvas` authored
+    /// there colours its text the same way here whatever theme is loaded. Written as hex
+    /// strings rather than components so `RGBA(hex:)` stays the only place in this
+    /// repository that turns a colour string into channels.
+    private static let presetHex = ["#E93147", "#EC7500", "#E0AC00", "#08B94E", "#00BFBC", "#7852EE"]
 
     /// `color`'s concrete sRGB value. A `.hex` case is parsed verbatim through `RGBA(hex:)`;
     /// each of the six JSON Canvas presets (`1...6`) is drawn from a fixed table declared on
@@ -50,6 +70,12 @@ struct CardTextStyle: Equatable, Sendable {
     /// reads as `nil` rather than a substituted default - the caller substitutes
     /// `theme.color(.textPrimary)` itself when this returns `nil`.
     static func rgba(for color: CanvasColor) -> RGBA? {
-        fatalError("not implemented")
+        switch color {
+        case .hex(let value):
+            return RGBA(hex: value)
+        case .preset(let index):
+            guard presetHex.indices.contains(index - 1) else { return nil }
+            return RGBA(hex: presetHex[index - 1])
+        }
     }
 }
