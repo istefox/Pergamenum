@@ -1,225 +1,194 @@
-# SPEC — Drag-and-drop board and note files into folders
+# SPEC — Unificare Nota e Testo in un solo strumento del Workspace con formattazione ricca del testo
 
-**Topic slug:** drag-and-drop-board-files-into-workspace
+**Topic slug:** unificare-nota-e-testo-in-un-solo-strume
 
 ## Objective
 
-Let the user reorganize the vault by dragging rows in the Workspace sidebar tree (boards and
-folders) and in the Note sidebar tree (notes and folders) — moving a file or folder into another
-folder, or out to the vault root, without leaving the sidebar. Today neither tree has any
-drag-and-drop: reorganization requires Finder or manual rename/recreate.
+Replace the Workspace's two overlapping toolbar tools, **Nota** and **Testo** — both of which
+create a `CanvasNode.Kind.text` card and differ only in whether `node.color` is pre-set, a
+distinction already redundant with the existing "Colore" command available on every text card —
+with a single **Testo** tool. In the same feature, give `.text` canvas cards real rich-text
+formatting applied to a selection inside the card: bold, italic, strikethrough, text color,
+alignment (left/center/right/justify), bullet/numbered lists and headings.
 
-This also extends the sidebar selection model: since the user wants multi-row drag ("move
-everything currently selected together"), both trees gain Cmd/Shift-click multi-selection,
-additive to (not replacing) the existing single-selection "click opens" behavior.
+Both card types just became editable (commit `8c6405c`, `fix/workspace-editable-note-text-cards`)
+via a plain `TextEditor` bound to a `String` draft. That binding has no notion of a text
+selection, which is why the interview settled the interaction model before anything else:
+selection-based formatting requires replacing that `TextEditor` with an `NSTextView`-backed
+editor, reusing the app's existing TextKit 2 note-editor infrastructure (`CompletingTextView` and
+its `NoteTextView+*` extensions under `Sources/Features/Editor/`) rather than building a second,
+divergent rich-text engine.
 
 ## Scope
 
 In scope:
-- Drag-and-drop of board rows (`.canvas`) and folder rows within the Workspace sidebar tree.
-- Drag-and-drop of note rows (`.md`) and folder rows within the Note sidebar tree
-  (`NoteListPane.swift` / `NoteTree.swift`).
-- Drop targets: an existing folder row (move inside it), or the root area of the tree (move to
-  vault root).
-- Cmd-click / Shift-click multi-selection in both trees, additive to the existing single-selection
-  click-to-open behavior.
-- Undo/redo of a move via the standard AppKit `NSUndoManager` (Cmd+Z / Cmd+Shift+Z).
-- Name-collision rejection at the destination (no auto-rename, no overwrite).
-- Cycle prevention when dragging a folder into its own descendant (or itself).
+- Removing the `.note` case from `WorkspaceController.Tool`; `.text` (title "Testo", shortcut
+  `t`) becomes the sole card-creating tool for this family. The `n` shortcut is freed and
+  assigned to nothing in this feature.
+- The unified tool always creates a plain (uncolored) card, exactly today's `.text`/Testo
+  behavior. A colored "sticky" look is still reachable afterward via the existing "Colore"
+  command — no new color picker at creation time.
+- Selection-based rich text formatting inside a `.text` card's editor: bold, italic,
+  strikethrough, bullet lists, numbered lists, headings (`#`/`##`/`###`) — all stored as plain
+  CommonMark markdown text in the node, since JSON Canvas already stores `.text` content as
+  markdown and Obsidian reads CommonMark natively. No new persisted schema needed for these.
+- Whole-card (not per-selection) text color and text alignment, applied to the entire card's
+  text, persisted as new `pergamenum-textColor` / `pergamenum-textAlign` scalar properties on the
+  `.canvas` node — the same prefixed-custom-property pattern ADR-0020 established for
+  `pergamenum-crop`. Non-standard properties are preserved but not interpreted by Obsidian
+  (CLAUDE.md principle 4).
+- A floating formatting mini-toolbar that appears above an active text selection inside a card
+  (Notion/Pages-style), offering bold/italic/strikethrough/color/alignment, plus matching
+  keyboard shortcuts (Cmd+B, Cmd+I — both currently unbound; confirmed no collision with
+  `ShortcutCommand`'s `newBoard` at Cmd+Shift+B or `toggleInspector` at Cmd+Opt+I).
+- Replacing `StickyTextCard`'s `TextEditor`/static-`Text` pair with one NSTextView-backed
+  component used for both editing and read-only display, so rendering never diverges between the
+  two states. This card-scoped component is architecturally derived from
+  `CompletingTextView`/TextKit 2 — the ADR (Step 2) decides exactly how much is shared vs.
+  card-specific (no outline, no embeds, no wikilink completion, no transclusion — none of that
+  applies to a canvas card).
+- The **To Do** tool's cards (still a `.text` node with a literal `"- [ ] "` prefix, PG-074
+  unchanged) go through the same `StickyTextCard`/editor component and therefore gain the same
+  rich formatting with no special-casing.
+- Existing `.canvas` files are read and written exactly as before: no migration, no rewrite of
+  already-created nodes. A pre-existing colored card keeps `node.color`; a pre-existing plain
+  card stays plain. The unification changes only what the toolbar creates from this point on.
 
-Out of scope (explicitly deferred, no code touches these):
-- Dragging a file/folder in from Finder, or dragging a row out to Finder.
-- Copy-on-drag (Option-drag or similar) — every drop is a move.
-- Drag-and-drop of anything other than notes, boards and folders (no card-level drag inside a
-  canvas; that already exists and is unrelated).
-- Reordering rows within the same folder (this feature only changes which folder a row belongs
-  to, never its position among siblings — neither tree has manual row ordering today).
+Out of scope (tracked separately, not reopened here):
+- `PG-074` — giving To Do a real interactive/indexed checklist `CanvasNode.Kind`.
+- `PG-073` — the Link card's editable title.
+- Any change to `.canvas` files created before this feature ships.
+- A second, non-selection-based color/alignment mode (rejected during interview in favor of
+  whole-card).
 
 ## Stack
 
-Swift 6 / SwiftUI on macOS 26, `List(selection:)` inside `WorkspaceBrowser.swift` and
-`NoteListPane.swift`. Drag-and-drop uses SwiftUI's `.draggable(_:)` / `.dropDestination(...)`
-(or the `NSItemProvider`-based `onDrag`/`onDrop` pair if `.draggable`/`.dropDestination` prove
-unable to distinguish "internal reorder" from "external file drop" cleanly inside a `List` — the
-architect decides based on a concrete spike, this SPEC does not mandate the API). No new external
-dependency.
+No new external dependency. Swift 6, SwiftUI + AppKit via `NSViewRepresentable` (existing
+pattern, CLAUDE.md), TextKit 2 (already used by `CompletingTextView`), JSON Canvas 1.0 file
+format (existing `CanvasNode`/`JSONCanvas.swift`).
 
 ## Architecture
 
-### Selection model change (supersedes ADR-0024 §D2 in part)
+Decisions the ADR (Step 2) must make explicitly, building on what the interview already settled:
 
-ADR-0024 made `WorkspaceSelection` a single derived value (`.board(folder:)` / `.folder(_)`),
-replacing two competing booleans, specifically to remove ambiguity between "what's lit" and
-"what's open". That invariant is preserved: there is still exactly one *open* board and one *lit*
-row at a time, and a plain click still both selects and opens, unchanged.
-
-What this feature adds is a second, additive concept: a **multi-selection set** (row IDs) used
-only to decide what a drag carries. Cmd-click / Shift-click extend this set without changing the
-single "open" selection. The two are independent: `WorkspaceSelection` (or its Note-sidebar
-equivalent) continues to answer "what's open"; the new multi-selection set answers "what moves
-together on a drag". A row that is drag-started while inside a non-empty multi-selection set that
-contains it drags the whole set; a row dragged while it is not part of the current multi-selection
-drags only itself (the multi-selection set is replaced by the single dragged row for that drag).
-
-This is a deliberate, disclosed reopening of ADR-0024 §D2/§D3's scope — not a reversal of its core
-claim (open vs. lit stays one value), an *addition* alongside it.
-
-### Move operation (new, both trees)
-
-Neither `BoardFileOperations.swift` nor `FolderFileOperations.swift` has a move-to-different-
-folder operation today (`renamePlan`/`renameBoard`/`trashBoard` and `renamePlan`/
-`repointBoardsPlan`/`renameFolder`/`trashFolder` respectively — all same-folder rename or trash,
-none change a file's parent folder). This feature adds:
-- `BoardFileOperations.movePlan(from:to:)` / `.move(...)` — moves a `.canvas` file to a new
-  folder, keeping its file name unchanged. Rejects (reports, does not silently rename) if the
-  destination already contains a file of that name.
-- `FolderFileOperations.movePlan(from:to:)` / `.move(...)` — moves a folder (and everything
-  inside it) to a new parent folder. Rejects on name collision at the destination, and rejects
-  (the UI layer refuses to even offer the drop, per the interview decision) when the destination
-  is the folder itself or one of its own descendants.
-- The Note sidebar needs the equivalent for notes: either a new `NoteFileOperations.movePlan`
-  mirroring `BoardFileOperations`'s shape, or reuse if an equivalent already exists for notes —
-  the architect confirms which by reading `Sources/Vault/` before designing this.
-
-### Marker and link consequences of a move (no new rewriting)
-
-- **Note wikilinks are unaffected.** `[[Nota]]` addresses a note by title, not path (ADR-0022
-  §D4 / ADR-0025 key decision 1) — moving a note to a different folder rewrites nothing.
-- **`^[[board.canvas]]` markers are unaffected by a move that keeps the file name.**
-  `WorkspaceBoardResolver` resolves a marker by bare file name against every board on disk
-  (`resolve(_:in:)`), not by path — the marker text itself never encodes a folder. A move can
-  change whether that bare name is `.unique`/`.ambiguous`/`.notFound` afterward (e.g. moving a
-  board into a folder that happens to contain a same-named board — already rejected as a
-  collision by this feature, so that specific case cannot arise from a move), but the marker is
-  never rewritten, matching ADR-0025's explicit choice to report ambiguity rather than guess it.
-- **`IndexSnapshot.tasks(assignedToWorkspace:)`'s file-name-only comparison stays unchanged**
-  (ADR-0025 key decision 5) — a move does not require touching it; any resulting ambiguity
-  surfaces the same way any other ambiguous marker does today.
-- **A folder move that carries boards inside it works the same way**, board by board: each
-  moved board's bare file name is unaffected (only its containing folder changes), so no marker
-  anywhere needs rewriting as a result of a folder move either.
-
-### Undo (new integration — no prior `NSUndoManager` usage in this codebase)
-
-No file in `Sources/` uses `NSUndoManager` today; this is the first. On a successful move, the
-handling view registers an inverse move (`newPath → oldPath`) on `NSUndoManager` via
-`registerUndo(withTarget:handler:)` (or the SwiftUI `UndoManager` environment value, whichever the
-architect determines composes correctly with the existing `NSViewRepresentable` editor/canvas,
-which already owns its own undo stack for text/canvas edits — the two undo domains must not
-collide or double-register). Redo is the standard `NSUndoManager` inverse-of-inverse; no custom
-redo logic.
-
-### Drag/drop UI mechanics
-
-- A row (board, note, or folder) is a drag source. A folder row and the tree's own root/background
-  area are valid drop targets; a board or note row is never a drop target.
-- During a drag, a folder that is the dragged folder itself or one of its descendants gives no
-  drop-target visual affordance and does not accept the drop (interview decision: invalid up
-  front, not rejected after the fact).
-- A destination already containing a same-named entry gives a drop-target-not-accepted affordance
-  the same way, OR (architect's call, whichever the chosen drag API makes straightforward) accepts
-  the visual drop and then shows an error dialog naming the collision — either satisfies "reject,
-  no silent rename/overwrite" from the interview; the architect states which and why.
-- Selecting a board row with a plain click continues to open it, unchanged. Cmd-click / Shift-click
-  extend the multi-selection set and never change which board is open.
+1. **Editor component boundary.** How much of `CompletingTextView`'s TextKit 2 setup (text
+   storage, layout manager, syntax highlighting for `**bold**`/`*italic*`/`# heading`/list
+   markers) is extracted into something both the main note editor and canvas cards can use,
+   versus a new, smaller `NSTextView` subclass for cards that duplicates only what it needs. The
+   interview's direction is "reuse/adapt", not "duplicate wholesale" — the ADR draws the actual
+   line.
+2. **Selection formatting → markdown mutation.** How a floating toolbar's "bold" action, given an
+   `NSRange` selection, mutates the underlying markdown string (wrap/unwrap `**...**`, toggle
+   list/heading prefixes per line) without corrupting existing markdown already in the card, and
+   how the mini-toolbar's own visibility/position is driven from `NSTextView` selection-changed
+   notifications inside an `NSViewRepresentable`.
+3. **`pergamenum-textColor` / `pergamenum-textAlign` schema.** Exact value encoding (e.g. a
+   `ColorToken` raw value vs. a hex string; `"left"|"center"|"right"|"justify"` vs. an integer),
+   where they are read/written in `CanvasNode`/`JSONCanvas.swift`, and how `StickyTextCard`'s
+   renderer applies them to the whole `NSTextView` (paragraph style for alignment, foreground
+   color attribute for color) independent of the per-character bold/italic/strikethrough markdown
+   styling.
+4. **Read-only rendering path.** How the same component renders non-editable when the card is
+   not being edited (`isEditable = false` on the same `NSTextView`, vs. a still-separate static
+   path) so editing and display can never visually diverge, per the interview's decision.
+5. **`WorkspaceController.Tool` migration.** Removing `.note` safely — every switch over `Tool`
+   (`BoardChrome.swift`'s toolbar, any other exhaustive switch) needs updating in one pass; `let
+   tool: Tool = .note` call sites (`addStickyNote`, `WorkspaceView+Creation.swift`) collapse into
+   the existing `.text`/`addFreeText` path.
+6. **Protected-interface check.** Whether `CardCommand`'s catalogue or `VaultPayloads`' JSON
+   shapes (ADR-0021 §D-noted protected interfaces) are touched by adding formatting commands —
+   if so, the deliberate-edit process for `.claude/protected-interfaces` applies.
 
 ## Data model
 
-No new persisted schema. `IndexCache.schemaVersion` (currently 3, ADR-0021) is unaffected — a move
-is a filesystem rename the existing vault-scan/index-rebuild already tolerates (ADR-0025's
-"rebuildable index" principle: nothing here needs a new field, since the index is rebuilt from the
-files on disk regardless of which folder they are found in).
+- `WorkspaceController.Tool`: `.note` case removed. `.text` keeps title "Testo", symbol
+  `"textformat"`, shortcut `"t"`. `n` becomes an unassigned shortcut.
+- `CanvasNode` (`Sources/Core/Canvas/JSONCanvas.swift`): `.text(String)` case unchanged in shape;
+  the markdown `String` itself now may contain `**bold**`, `*italic*`, `~~strikethrough~~`,
+  `- item` / `1. item`, `# heading` markup, all plain CommonMark, no schema change.
+- `CanvasNode` custom properties: two new optional, prefixed, scalar keys —
+  `pergamenum-textColor` and `pergamenum-textAlign` — following the `pergamenum-crop` precedent.
+  Absent on any card that has never had these set (including every card that exists today).
+  Encoding decided by the ADR (Architecture §3).
+- `StickyTextCard.swift`: `TextEditor` + static `Text` pair replaced by one `NSViewRepresentable`
+  wrapping the shared/derived NSTextView component, in both its editing and read-only modes.
+- `WorkspaceController`: `editingTextNodeID`/`editingTextDraft` remain the transient-state
+  mechanism (ADR-0020 §D5 pattern), but the draft type and the commit path
+  (`endTextEdit(commit:)` → `setText`) may need to also carry/read the two new card-level
+  properties — exact shape left to the ADR.
 
 ## API
 
-No connector surface (`VaultAPI`) change is required by this SPEC — this is a UI-only feature
-scoped to the app target's sidebar views and the two new `movePlan`/`move` operations in
-`Sources/Vault/`. If the architect finds a reason connectors need this capability too (e.g. a
-future `perg move` CLI command), that is out of scope here and tracked separately, consistent with
-"a new capability goes into `Sources/Connector/`, not into a front end" (CLAUDE.md) not applying
-retroactively to a feature this SPEC does not request there.
+No connector-facing API change: `Sources/Connector/VaultAPI` reads/writes `.canvas` files through
+`CanvasNode`, and a `.text` node with markdown content plus two new optional prefixed properties
+is still a `.text` node — no new payload shape, no new MCP/CLI surface.
 
 ## UI flows
 
-1. **Move a board into a folder (Workspace).** User drags a board row onto a folder row. Folder
-   highlights as a valid target. On drop: `BoardFileOperations.move` runs, the tree re-renders
-   with the board under its new folder, the moved board (if it was the open board) stays open and
-   selected at its new location, an inverse-move undo action is registered.
-2. **Move a folder into another folder (Workspace or Note).** Same as above; the whole subtree
-   moves. Its own descendants (and any folder that is the dragged folder) never highlight as valid
-   targets during this drag.
-3. **Move to root.** User drags a row onto the tree's empty/root area. Item moves to the vault
-   root (folder `""`).
-4. **Multi-row move.** User Cmd-clicks or Shift-clicks to build a selection of several rows across
-   folders, then drags one of the selected rows. All selected rows move to the drop target
-   together, each independently validated (a collision or cycle on one selected row does not
-   silently skip it — see edge cases).
-5. **Rejected drop (collision).** Destination already has an entry with that name. No files move;
-   an error is shown naming the conflicting item(s).
-6. **Undo.** Cmd+Z after a move (single or multi-row) reverses it — every moved item returns to
-   its prior folder in one undo step for a multi-row move (one `NSUndoManager` group, not N
-   separate undo steps a user has to repeat N times).
+1. **Create a text card.** Click "Testo" (or press `t`), click the board → a plain `.text` card
+   is created and immediately enters editing (existing behavior, `WorkspaceView+Creation.swift`).
+2. **Apply inline formatting.** While editing, select a run of text inside the card → a floating
+   mini-toolbar appears above the selection with Bold / Italic / Strikethrough / Color /
+   Alignment / List / Heading controls; clicking one mutates the markdown under the selection.
+   Cmd+B and Cmd+I do the same for bold/italic without touching the toolbar.
+3. **Set card-wide color/alignment.** Text color and alignment controls in the same mini-toolbar
+   (or the card's existing context menu / `BoardCardControls`, per the ADR's UI-surface decision)
+   apply to the whole card, not just the selection — visibly different behavior from
+   bold/italic/etc., which the mini-toolbar's own layout should make clear (e.g. a visual
+   separator between "this selection" and "this card" groups).
+4. **Leave editing.** Unchanged: Esc commits, outside click commits, focus loss commits — now
+   also persisting `pergamenum-textColor`/`pergamenum-textAlign` if they were touched.
+5. **View a card at rest.** The same rendering engine used while editing draws bold/italic/lists/
+   headings/color/alignment, non-editable, so what you see while typing is exactly what you see
+   after.
+6. **To Do cards.** Same tool family, same editor, same formatting — the `"- [ ] "` line prefix
+   is untouched, PG-074's future checklist model is not implemented here.
 
 ## Edge cases
 
-- Multi-row drag where the selection includes a folder and one of its own descendants (also
-  selected): moving the ancestor folder already carries the descendant with it — the architect
-  decides whether the descendant is silently excluded as redundant or produces no separate error
-  (it is not a cycle, since the descendant moves as part of its ancestor, not into it).
-- Multi-row drag where the selection includes rows that already live directly inside the drop
-  target folder: no-op for those rows (already there), not an error, and not skipped from the
-  undo group's bookkeeping in a way that would try to "restore" a no-op move.
-- Multi-row drag where one selected row's move would collide and another's would not: the
-  interview's "reject, no auto-rename" applies per item — the whole multi-row move either commits
-  entirely or is refused entirely with the conflicting item(s) named (an all-or-nothing group is
-  simpler to reason about and to undo atomically than a partial commit; the architect may choose
-  a different atomicity policy only if it states the reason).
-- Dragging the row that represents the currently-open board: the open board must not flicker
-  closed/reopened; its `WorkspaceSelection` tracks the new folder path after the move completes.
-- Dragging while the destination folder is itself mid-rename or mid-delete in another part of the
-  UI (unlikely but possible race): the move operation re-validates the destination exists
-  immediately before writing, the same defensive pattern `BoardFileOperations`/
-  `FolderFileOperations` already use elsewhere in this codebase.
-- Undo after further unrelated edits (renames, other moves) between the move and the Cmd+Z: the
-  inverse-move undo action targets the *current* path recorded at registration time; if that path
-  no longer exists (e.g. a subsequent operation renamed it), the undo action reports it cannot be
-  applied rather than silently doing nothing or corrupting state (R-11 (no-test: requires a
-  scripted multi-step undo race exercised by hand, not practically assertable in an XCUITest
-  without excessive flakiness) covers this by manual verification, not an automated test).
+- A card with no formatting applied (today's every card) renders and behaves identically to
+  before — no visual regression on existing boards.
+- Undo/redo of a formatting action follows the same single-commit-at-`endTextEdit` discipline as
+  plain text edits (ADR-0020 §D5) — a bold toggle is not a per-keystroke document mutation.
+- Deleting all text in a formatted card leaves the card's `pergamenum-textColor`/
+  `pergamenum-textAlign` properties in place (they describe the card, not its content) until the
+  card itself is deleted or its color/alignment is explicitly reset.
+- A `.canvas` file edited by hand or by Obsidian that already carries an unrelated
+  `pergamenum-*`-prefixed key must round-trip unchanged — this feature's two new keys are
+  additive, never a rename or reinterpretation of an existing key.
+- A markdown wrap operation (e.g. bold) on a selection that already contains partial markdown
+  (an already-bold sub-range) must not produce corrupted nesting like `****text**`.
+- The mini-toolbar must not appear/steal focus when a selection is empty (plain caret movement),
+  matching the interview's "selection-based" framing.
 
 ## Success criteria
 
-- [ ] R-01 — Dragging a board row onto a folder row moves the `.canvas` file into that folder on
-      disk, and the sidebar tree reflects the new location without a manual rescan.
-- [ ] R-02 — Dragging a folder row onto another folder row moves the folder (and everything
-      inside it) into that folder on disk.
-- [ ] R-03 — Dragging a note row onto a folder row in the Note sidebar moves the `.md` file into
-      that folder on disk.
-- [ ] R-04 — Dragging a folder row onto another folder row in the Note sidebar moves the folder
-      (and its contents) into that folder on disk.
-- [ ] R-05 — Dragging any row (board, note, or folder) onto the root area of its tree moves it to
-      the vault root.
-- [ ] R-06 — Dragging a folder onto itself, or onto one of its own descendant folders, is refused:
-      no drop-target affordance appears and no filesystem change occurs.
-- [ ] R-07 — Dropping onto a destination that already contains an entry with the same name is
-      refused: no files move, no silent rename, no overwrite, and the conflicting name is shown to
-      the user.
-- [ ] R-08 — Moving a board whose bare file name is referenced by one or more `^[[board.canvas]]`
-      task markers elsewhere in the vault does not rewrite those markers; resolution behavior
-      (unique/ambiguous/not-found) is computed the same way after the move as before, with no
-      marker text changed.
-- [ ] R-09 — Moving a note does not modify any `[[Nota]]` wikilink anywhere in the vault.
-- [ ] R-10 — Cmd-click and Shift-click extend a multi-row selection in both the Workspace and Note
-      sidebar trees without changing which board is currently open.
-- [ ] R-11 — Dragging a row that is part of an active multi-row selection moves every selected row
-      to the drop target in one operation; dragging a row that is not part of the current
-      selection moves only that row.
-- [ ] R-12 — A completed move (single-row or multi-row) can be undone with Cmd+Z, restoring every
-      moved item to its prior folder in one undo step, and redone with Cmd+Shift+Z.
-- [ ] R-13 — A board that is open in the canvas at the moment it (or an ancestor folder of it) is
-      moved remains open and correctly selected at its new location after the move completes.
-- [ ] R-14 — `xcodebuild ... -only-testing:PergamenumTests test` passes with tests covering the
-      new `movePlan`/`move` operations in `BoardFileOperations`, `FolderFileOperations`, and the
-      Note-sidebar equivalent, including the collision-rejection and cycle-rejection cases.
-- [ ] R-15 — `scripts/uitests.sh` passes, including new UI coverage for at least: a single-row
-      board drag-move, a folder drag-move, a multi-row drag-move, and an undo of a move.
+- [ ] R-01 — The Workspace toolbar has exactly one tool that creates a `.text` card ("Testo",
+  shortcut `t`); `WorkspaceController.Tool` no longer has a `.note` case.
+- [ ] R-02 — Creating a card with the unified tool always produces a plain (uncolored) card; the
+  existing "Colore" command still changes its background afterward.
+- [ ] R-03 — Selecting text inside an editing `.text` card and applying bold/italic/strikethrough
+  wraps/unwraps the correct CommonMark markup around exactly that selection, leaving the rest of
+  the card's text untouched.
+- [ ] R-04 — Cmd+B and Cmd+I apply bold/italic to the current selection with no collision with
+  any existing `ShortcutCommand` binding.
+- [ ] R-05 — Applying a bullet list, a numbered list, or a heading level to one or more selected
+  lines inserts the correct CommonMark line prefix(es).
+- [ ] R-06 — Setting text color or alignment applies to the whole card's text, persisted as
+  `pergamenum-textColor` / `pergamenum-textAlign` on the `.canvas` node, and survives a save/close/
+  reopen of the board.
+- [ ] R-07 — A `.canvas` file containing a card with no `pergamenum-textColor`/
+  `pergamenum-textAlign` properties (every card that exists today) opens and renders exactly as
+  before this feature.
+- [ ] R-08 — The same rendering component draws a card identically whether it is currently being
+  edited or shown at rest — no static/editing visual divergence.
+- [ ] R-09 — A To Do card (`"- [ ] "` prefix) supports the same inline formatting as any other
+  `.text` card, with no special-casing that excludes it.
+- [ ] R-10 — Opening the "Labs" Obsidian vault's existing boards (or any pre-existing `.canvas`
+  file) shows no corruption or unexpected `pergamenum-*` keys on cards this feature never touched.
+- [ ] R-11 — `scripts/uitests.sh` passes before merge, covering at minimum: unified-tool card
+  creation, one bold/italic round trip, one card-color/alignment round trip (no-test: this is a
+  process gate run once at merge time, not a per-behavior assertion the suite itself states).
+- [ ] R-12 — The full unit test suite (`-only-testing:PergamenumTests`) passes, including new
+  tests for the `Tool` enum change, the markdown-mutation logic, and the new `CanvasNode`
+  properties' encode/decode round-trip.
