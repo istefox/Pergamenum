@@ -118,7 +118,16 @@ struct BoardToolbar: View {
                     workspace.isToolLocked.toggle()
                 })
                 .help(tool.shortcut.map { "\(tool.title) (\($0.uppercased()))" } ?? tool.title)
-                .keyboardShortcut(tool.shortcut.map { KeyEquivalent(Character($0)) } ?? "\0", modifiers: [])
+                // Suspended while a card is being written into: a bare-key shortcut with
+                // no modifier reaches `performKeyEquivalent:` ahead of the first
+                // responder, so typing the word "nota" into a `TextEditor` would switch
+                // tools on its own "n".
+                .keyboardShortcut(
+                    workspace.editingTextNodeID == nil
+                        ? (tool.shortcut.map { KeyEquivalent(Character($0)) } ?? "\0")
+                        : "\0",
+                    modifiers: []
+                )
             }
             Spacer()
         }

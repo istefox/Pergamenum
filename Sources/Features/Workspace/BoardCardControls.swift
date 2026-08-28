@@ -81,7 +81,7 @@ struct BoardCardControls: View {
             // Drawn inside «Ridimensiona» and «Ritaglia» respectively, exactly where the
             // context menu draws them: nothing of their own on the bar.
             EmptyView()
-        case .open, .copyLink, .duplicate, .delete:
+        case .open, .editText, .copyLink, .duplicate, .delete:
             Button {
                 actions.run(command, on: node)
             } label: {

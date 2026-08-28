@@ -13,6 +13,7 @@ import Foundation
 /// (R-06, R-13).
 enum CardCommand: String, CaseIterable, Sendable {
     case open
+    case editText
     case copyLink
     case color
     case resize
@@ -30,6 +31,7 @@ enum CardCommand: String, CaseIterable, Sendable {
     var title: String {
         switch self {
         case .open: "Apri"
+        case .editText: "Modifica testo"
         case .copyLink: "Copia link Pergamenum"
         case .color: "Colore"
         case .resize: "Ridimensiona"
@@ -58,6 +60,7 @@ enum CardCommand: String, CaseIterable, Sendable {
     var symbol: String {
         switch self {
         case .open: "arrow.up.forward.square"
+        case .editText: "text.cursor"
         case .copyLink: "link"
         case .color: "paintpalette"
         case .resize: "arrow.up.left.and.arrow.down.right"
@@ -86,7 +89,11 @@ enum CardCommand: String, CaseIterable, Sendable {
     /// the two flags a caller passes are both derived from it, and a future rule that
     /// varies by `kind` lands here instead of at every call site.
     static func available(for node: CanvasNode, isCroppable: Bool, hasCrop: Bool) -> [CardCommand] {
-        var commands: [CardCommand] = [.open, .copyLink, .color, .resize]
+        // A `.text` card has nothing for «Apri» to open (`BoardCardActions.open` no-ops on
+        // it) - «Modifica testo» is the command that actually does something, in the same
+        // menu slot.
+        let opener: CardCommand = { if case .text = node.kind { .editText } else { .open } }()
+        var commands: [CardCommand] = [opener, .copyLink, .color, .resize]
         if isCroppable {
             if hasCrop { commands.append(.fitToCrop) }
             commands.append(.crop)

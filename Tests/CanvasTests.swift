@@ -564,6 +564,54 @@ private struct TemporaryRoot: ~Copyable {
 }
 
 @MainActor
+@Test func beginTextEditSeedsTheDraftFromTheStoredTextAndCommitWritesItBack() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addStickyNote("appunto", at: .zero)
+    controller.beginTextEdit(nodeID: id)
+    #expect(controller.editingTextNodeID == id)
+    #expect(controller.editingTextDraft == "appunto")
+
+    controller.editingTextDraft = "appunto aggiornato"
+    controller.endTextEdit(commit: true)
+    #expect(controller.editingTextNodeID == nil)
+    let node = try #require(controller.document.node(id: id))
+    #expect(node.kind == .text("appunto aggiornato"))
+    controller.detach()
+}
+
+@MainActor
+@Test func endTextEditWithoutCommitDiscardsTheDraft() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addStickyNote("appunto", at: .zero)
+    controller.beginTextEdit(nodeID: id)
+    controller.editingTextDraft = "scartato"
+    controller.endTextEdit(commit: false)
+
+    #expect(controller.editingTextNodeID == nil)
+    let node = try #require(controller.document.node(id: id))
+    #expect(node.kind == .text("appunto"))
+    controller.detach()
+}
+
+@MainActor
+@Test func beginTextEditIgnoresANonTextNode() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = try controller.createFolder(named: "cartella", at: .zero)
+    controller.beginTextEdit(nodeID: id)
+    #expect(controller.editingTextNodeID == nil)
+    controller.detach()
+}
+
+@MainActor
 @Test func keepsNodesGrabbableWhenResizedToNothing() throws {
     let root = try TemporaryRoot()
     let controller = WorkspaceController()

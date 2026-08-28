@@ -34,8 +34,8 @@ private func markdownFileNode() -> CanvasNode {
 
 // MARK: - Catalogue shape (R-06)
 
-@Test func theCatalogueHasExactlyTheNineCommandsTheCardOffers() {
-    #expect(CardCommand.allCases.count == 9)
+@Test func theCatalogueHasExactlyTheTenCommandsTheCardOffers() {
+    #expect(CardCommand.allCases.count == 10)
 }
 
 // MARK: - `available(for:isCroppable:hasCrop:)` (R-06)
@@ -43,6 +43,13 @@ private func markdownFileNode() -> CanvasNode {
 @Test func availableOnACroppableFileWithNoCropReturnsTheBaseSetInMenuOrder() {
     let commands = CardCommand.available(for: fileNode(), isCroppable: true, hasCrop: false)
     #expect(commands == [.open, .copyLink, .color, .resize, .crop, .duplicate, .delete])
+}
+
+// A `.text` card has nothing for «Apri» to open (`BoardCardActions.open` no-ops on it) -
+// «Modifica testo» takes its slot instead, everywhere else in the catalogue unchanged.
+@Test func availableOnATextNodeOffersEditTextInsteadOfOpen() {
+    let commands = CardCommand.available(for: textNode(), isCroppable: false, hasCrop: false)
+    #expect(commands == [.editText, .copyLink, .color, .resize, .duplicate, .delete])
 }
 
 // `BoardContentLayer.swift:66-87`: "Adatta al ritaglio" is drawn inside the "Ridimensiona"
@@ -54,7 +61,7 @@ private func markdownFileNode() -> CanvasNode {
 }
 
 @Test func availableOnANonCroppableNodeOmitsEveryCropCommandButKeepsTheRest() {
-    for node in [textNode(), linkNode(), markdownFileNode()] {
+    for node in [linkNode(), markdownFileNode()] {
         let commands = CardCommand.available(for: node, isCroppable: false, hasCrop: false)
         #expect(commands == [.open, .copyLink, .color, .resize, .duplicate, .delete])
     }
@@ -76,6 +83,7 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everyCommandHasItsExactExistingItalianTitle() {
     let expected: [CardCommand: String] = [
         .open: "Apri",
+        .editText: "Modifica testo",
         .copyLink: "Copia link Pergamenum",
         .color: "Colore",
         .resize: "Ridimensiona",
@@ -109,6 +117,7 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everySymbolMatchesTheTableThisTaskDeclares() {
     let expected: [CardCommand: String] = [
         .open: "arrow.up.forward.square",
+        .editText: "text.cursor",
         .copyLink: "link",
         .color: "paintpalette",
         .resize: "arrow.up.left.and.arrow.down.right",
@@ -155,6 +164,7 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everyCommandHasAStableBoardCardIdentifierDerivedFromItsRawValue() {
     let expected: [CardCommand: String] = [
         .open: "board-card-open",
+        .editText: "board-card-editText",
         .copyLink: "board-card-copyLink",
         .color: "board-card-color",
         .resize: "board-card-resize",

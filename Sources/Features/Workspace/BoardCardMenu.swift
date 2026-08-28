@@ -52,6 +52,8 @@ struct BoardCardActions {
         switch command {
         case .open:
             open(node)
+        case .editText:
+            workspace.beginTextEdit(nodeID: node.id)
         case .copyLink:
             copyLink(to: node)
         case .crop:
@@ -130,7 +132,9 @@ struct BoardCardActions {
             }
         case .link(let url):
             if let target = URL(string: url) { NSWorkspace.shared.open(target) }
-        case .text, .group, .unknown:
+        case .text:
+            workspace.beginTextEdit(nodeID: node.id)
+        case .group, .unknown:
             break
         }
     }
@@ -192,7 +196,7 @@ enum BoardCardMenuItems {
             // Drawn inside «Ridimensiona» by `sizeItems`, which is where the card menu has
             // always drawn it: nothing of its own at the top level.
             EmptyView()
-        case .open, .copyLink, .crop, .removeCrop, .duplicate, .delete:
+        case .open, .editText, .copyLink, .crop, .removeCrop, .duplicate, .delete:
             Button(command.title) { actions.run(command, on: node) }
         }
     }

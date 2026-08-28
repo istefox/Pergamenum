@@ -477,6 +477,35 @@ final class WorkspaceController {
     /// picture and to normalise it back to a fraction at commit.
     var cropDrawnSize: CGSize = .zero
 
+    /// The `.text` card being written into, transient like the crop above and for the same
+    /// reason: the document is mutated once, at `endTextEdit(commit:)`, not per keystroke.
+    var editingTextNodeID: String?
+    /// The editor's own draft, on the controller rather than local view state (as
+    /// `cropDraft` is) so that Esc, an outside click and a focus change - three different
+    /// views - can all commit the same value instead of each holding their own copy.
+    var editingTextDraft: String = ""
+
+    /// Enters inline editing on a `.text` node - a double click, the «Modifica testo»
+    /// command, or straight after Nota/Testo creates one (SPEC §6.3).
+    func beginTextEdit(nodeID: String) {
+        guard case .text(let text) = document.node(id: nodeID)?.kind else { return }
+        // No two editors of different kinds open at once, the same rule `beginCrop` follows.
+        if croppingNodeID != nil { endCrop(confirm: true) }
+        select(nodeID: nodeID, adding: false)
+        editingTextNodeID = nodeID
+        editingTextDraft = text
+    }
+
+    /// Leaves inline editing. `commit` writes `editingTextDraft` through the existing
+    /// `setText`; `false` discards it (Esc is the only caller that ever does).
+    func endTextEdit(commit: Bool) {
+        guard let id = editingTextNodeID else { return }
+        if commit {
+            setText(editingTextDraft, forNodeID: id)
+        }
+        editingTextNodeID = nil
+    }
+
     /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it
     /// started from and how far the pointer has travelled from there, in board units.
     ///

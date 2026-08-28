@@ -23,9 +23,11 @@ extension WorkspaceView {
         case .selectNothing:
             workspace.selection = []
         case .createSticky(let text):
-            _ = workspace.addStickyNote(text, at: point)
+            let id = workspace.addStickyNote(text, at: point)
+            workspace.beginTextEdit(nodeID: id)
         case .createFreeText:
-            _ = workspace.addFreeText("", at: point)
+            let id = workspace.addFreeText("", at: point)
+            workspace.beginTextEdit(nodeID: id)
         case .sheet(let kind):
             newItemDraft = NewItemDraft(kind: kind, point: point)
         case .importPanel:
