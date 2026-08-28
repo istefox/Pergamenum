@@ -29,7 +29,16 @@ struct VaultTopBar: View {
                     // The last segment is the note itself (or the bare root with nothing
                     // open) - not a link, the same reason `BoardTopBar`'s own last segment
                     // is not one (ADR-0024 §D8.2): it is where you already are.
+                    //
+                    // An explicit identifier, distinct from the visible label (2026-08-28,
+                    // recovery checkpoint): the bare root crumb reads "Note", byte-identical
+                    // to the pane switcher's own `staticTexts["Note"]` row
+                    // (`WorkspaceIntegrationUITests.openPane`), and with no identifier of its
+                    // own a `Text` answers a lookup by its label - that ambiguity is what
+                    // broke `testSendingANoteFromAFolderWithNoBoardsToTheWorkspace…` the first
+                    // time the full UI suite ran after this bar shipped.
                     Text(crumb.title).themedText(.body, color: .textPrimary)
+                        .accessibilityIdentifier("breadcrumb-crumb-\(index)")
                 } else {
                     // `navigation.revealFolder(_:)` rather than a local method: the Note
                     // tree's `expanded`/`selectedRows` are `NoteListPane`'s own private
@@ -39,6 +48,7 @@ struct VaultTopBar: View {
                     Button(crumb.title) { navigation.revealFolder(crumb.folder) }
                         .buttonStyle(.plain)
                         .themedText(.body, color: .textSecondary)
+                        .accessibilityIdentifier("breadcrumb-crumb-\(index)")
                 }
             }
 

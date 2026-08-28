@@ -55,23 +55,30 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         XCTAssertTrue(folder.waitForExistence(timeout: 5), "la cartella non è nella barra laterale")
         XCTAssertTrue(app.staticTexts["02 Aree"].exists)
 
+        // Toggling is the chevron's job, not the row body's (2026-08-28, toolbar-parity
+        // chain): a folder row now carries `.tag` for Rinomina/Elimina, and a row-wide
+        // gesture would starve `List(selection:)`'s own tap the same way
+        // `WorkspaceRow.taggedRow`'s own comment records happening there first
+        // (ADR-0025 §D9). `clickFolderChevron(_:)` clicks the chevron's own pixel,
+        // never the words on the row (CLAUDE.md).
+
         // A note at the root is visible without opening anything.
         XCTAssertTrue(app.staticTexts["Appunti sparsi"].exists)
 
         // A note inside a folder is not, until the folder is opened.
         XCTAssertFalse(app.staticTexts["Trasmissibilità"].exists,
                        "la cartella è già aperta: il test non prova nulla")
-        folder.click()
+        clickFolderChevron("01 Progetti")
         XCTAssertTrue(app.staticTexts["Trasmissibilità"].waitForExistence(timeout: 5),
                       "aprire la cartella non ha mostrato la nota")
 
         // And a subfolder inside it nests one level further in.
         XCTAssertTrue(app.staticTexts["Vibrofer"].exists)
-        app.staticTexts["Vibrofer"].click()
+        clickFolderChevron("01 Progetti/Vibrofer")
         XCTAssertTrue(app.staticTexts["Brief sito"].waitForExistence(timeout: 5))
 
-        // Clicking the folder again closes it.
-        folder.click()
+        // Clicking the folder's chevron again closes it.
+        clickFolderChevron("01 Progetti")
         XCTAssertFalse(app.staticTexts["Trasmissibilità"].exists, "la cartella non si è richiusa")
     }
 
@@ -171,6 +178,43 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         recorder.click()
         app.typeKey(.delete, modifierFlags: [])
         XCTAssertEqual(recorder.value as? String, "nessuna")
+    }
+
+    // MARK: Sidebar helpers
+
+    /// Clicks a folder row's own toggle chevron - `NoteListPane.folderRow`'s leading
+    /// `Image(systemName: "chevron.right")`, moved off the row body (2026-08-28,
+    /// toolbar-parity chain) once the row itself gained `.tag` for Rinomina/Elimina.
+    ///
+    /// No `accessibilityIdentifier` reaches it: a macOS `List` row collapses its leaves
+    /// into one accessibility element for the row, the same limitation
+    /// `SidebarMoveUITests`'s header comment records for `WorkspaceRow`'s own chevron
+    /// ("cannot be reached by identifier without first clicking that exact pixel"). This
+    /// clicks the pixel instead, by a fixed point offset from the row's own leading edge
+    /// (`"folder-\(folderId)"`, unaffected by this) rather than a normalized fraction,
+    /// because the row spans the whole sidebar width while the chevron is a fixed ~14pt
+    /// icon - `NoteListPane.indent` for the depth's own padding, plus half that again to
+    /// land inside the icon rather than at its border.
+    ///
+    /// `folderId` is the same relative-path spelling `makeVault()` creates the folder
+    /// with (e.g. `"01 Progetti/Vibrofer"`).
+    ///
+    /// No depth-dependent offset: the row's own accessibility frame tightly wraps its
+    /// laid-out `HStack` content rather than spanning the sidebar's full width, so its
+    /// own leading edge already sits past `.padding(.leading, depth * indent)` whatever
+    /// the depth - confirmed by hand, a fixed offset from a depth-0 row's own edge
+    /// landed short of the chevron once tried against a depth-1 row's identical offset
+    /// plus the padding added back on top.
+    private func clickFolderChevron(_ folderId: String) {
+        // `.firstMatch`: a macOS `List` row's identifier can resolve to more than one
+        // accessibility node (an outer table cell and its content view both answering
+        // to it) that occupy the same point on screen, so either match clicks the same
+        // pixel - `.firstMatch` picks one without asserting there is only one.
+        let row = app.descendants(matching: .any)["folder-\(folderId)"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "la cartella «\(folderId)» non è nella barra laterale")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 7, dy: 0))
+            .click()
     }
 
     // MARK: Fixture
