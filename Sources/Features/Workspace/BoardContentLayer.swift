@@ -28,7 +28,7 @@ struct BoardContentLayer: View {
     @ViewBuilder
     private func nodeView(_ node: CanvasNode) -> some View {
         let isSelected = workspace.selection.contains(node.id)
-        // A card being written into keeps the pointer for its own `TextEditor` - caret
+        // A card being written into keeps the pointer for its own `CardTextView` - caret
         // placement, selection, scrolling - none of which can share the click with the
         // card's own tap-to-select/drag/double-click-to-open gestures below.
         let isEditingText = workspace.editingTextNodeID == node.id
@@ -224,7 +224,7 @@ struct BoardContentLayer: View {
 
 private extension View {
     /// Tap-to-select, double-click-to-open and drag-to-move, or none of the three: a card
-    /// being written into (`StickyTextCard`'s `TextEditor`) needs every click for its own
+    /// being written into (`StickyTextCard`'s `CardTextView`) needs every click for its own
     /// caret placement and selection, and these three gestures would otherwise race it for
     /// the same pointer.
     @ViewBuilder

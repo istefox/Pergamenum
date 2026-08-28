@@ -2,11 +2,13 @@ import SwiftUI
 
 /// The `.text` card: Nota (coloured) and Testo (plain), SPEC §6.4 tools 2 and 3.
 ///
-/// Static `Text` when nobody is writing into it, a `TextEditor` bound to
-/// `workspace.editingTextDraft` while `workspace.editingTextNodeID == node.id`. The document
-/// is mutated once, at `WorkspaceController.endTextEdit(commit:)`, never per keystroke - the
-/// same rule the crop editor and the resize grips already follow, so Cmd+Z undoes one edit
-/// rather than one character.
+/// One `CardTextView` in both states (ADR-0027 §D3): bound to the node's stored text when
+/// nobody is writing into it, to `workspace.editingTextDraft` while
+/// `workspace.editingTextNodeID == node.id`, and `isEditable` is the only property that tells
+/// the two apart - so a card cannot look one way at rest and another way while it is edited
+/// (R-08). The document is mutated once, at `WorkspaceController.endTextEdit(commit:)`, never
+/// per keystroke - the same rule the crop editor and the resize grips already follow, so Cmd+Z
+/// undoes one edit rather than one character.
 struct StickyTextCard: View {
     @Environment(\.theme) private var theme
     let node: CanvasNode
@@ -43,29 +45,33 @@ struct StickyTextCard: View {
         }
     }
 
-    @ViewBuilder
+    /// One component for both states, `isEditable` the only thing that differs (ADR-0027 §D3,
+    /// R-08). Return is left alone deliberately - a sticky note has to be able to hold a line
+    /// break - and Esc is handled inside `FormattingTextView`, where the first responder now is:
+    /// SwiftUI's `.onKeyPress` never sees a key an `NSTextView` has already taken.
     private var content: some View {
-        if isEditing {
-            TextEditor(text: Bindable(workspace).editingTextDraft)
-                .scrollContentBackground(.hidden)
-                .themedText(node.color != nil ? .body : .heading)
-                .focused($isFocused)
-                .task { isFocused = true }
-                // Return is left alone deliberately - a sticky note has to be able to
-                // hold a line break - but Esc has to leave editing (SPEC §6.3), and this
-                // TextEditor is the board's only first responder while it exists, so
-                // nothing above it in the responder chain ever sees the key.
-                .onKeyPress(.escape) {
-                    isFocused = false
-                    workspace.endTextEdit(commit: true)
-                    return .handled
-                }
-        } else {
-            Text(storedText.isEmpty ? placeholder : storedText)
-                .themedText(
-                    node.color != nil ? .body : .heading,
-                    color: storedText.isEmpty ? .textTertiary : .textPrimary
-                )
+        CardTextView(
+            text: isEditing ? Bindable(workspace).editingTextDraft : .constant(storedText),
+            theme: theme,
+            style: CardTextStyle.read(from: node),
+            isEditable: isEditing,
+            // Guarded on this card's own session, exactly as the focus commit above is: when
+            // editing moves straight from one card to another, this card's text view resigns
+            // *after* `editingTextNodeID` already names the other one, and an unguarded call
+            // here would commit and close the session the user just opened over there.
+            onEndEditing: { if isEditing { workspace.endTextEdit(commit: true) } }
+        )
+        .focused($isFocused)
+        // The placeholder is the one thing the text view does not draw: it is not the card's
+        // text, and writing it into the storage would make an empty card commit the word
+        // "Testo" the first time it lost focus. Inset to match the text view's own container.
+        .overlay(alignment: .topLeading) {
+            if !isEditing, storedText.isEmpty {
+                Text(placeholder)
+                    .themedText(.body, color: .textTertiary)
+                    .padding(2)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
