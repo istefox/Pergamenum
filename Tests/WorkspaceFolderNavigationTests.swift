@@ -125,3 +125,64 @@ import Testing
 
     #expect(result == "")
 }
+
+// ADR-0026: A row is dragged into a folder, and several rows are chosen first. §D10 -
+// where the open board lands once a drag-move batch has committed is a pure function
+// over the batch's own `[VaultMove]`, beside the four rules above.
+// Plan: docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md,
+// Task 3.
+//
+// RED: `WorkspaceFolderActions.boardAfterMove` is a placeholder that returns `open`
+// unchanged, so every assertion below that expects a rewritten path fails on its
+// `#expect`, not on a build error.
+
+// MARK: - boardAfterMove(open:moves:) (R-13)
+
+@Test func boardAfterMoveSubstitutesTheExactPathWhenTheOpenBoardIsAMovedItem() {
+    let moves = [
+        VaultMove(item: VaultItemRef(path: "A/x.canvas", kind: .board), from: "A", to: "B"),
+    ]
+
+    let result = WorkspaceFolderActions.boardAfterMove(open: "A/x.canvas", moves: moves)
+
+    #expect(result == "B/x.canvas")
+}
+
+@Test func boardAfterMoveSubstitutesThePrefixWhenTheOpenBoardSitsInsideAMovedFolder() {
+    let moves = [
+        VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
+    ]
+
+    let result = WorkspaceFolderActions.boardAfterMove(open: "A/sub/x.canvas", moves: moves)
+
+    #expect(result == "B/A/sub/x.canvas")
+}
+
+@Test func boardAfterMoveLeavesASiblingFolderWithASimilarNameAlone() {
+    // The prefix tested is "A/", never bare "A" - a sibling called "A-altro" is not a
+    // descendant of "A" (the same rule `FolderFileOperations.repointing` and
+    // `folderAfterRename` follow, and for the same reason).
+    let moves = [
+        VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
+    ]
+
+    let result = WorkspaceFolderActions.boardAfterMove(open: "A-altro/x.canvas", moves: moves)
+
+    #expect(result == "A-altro/x.canvas")
+}
+
+@Test func boardAfterMoveLeavesAnUnrelatedOpenBoardAlone() {
+    let moves = [
+        VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
+    ]
+
+    let result = WorkspaceFolderActions.boardAfterMove(open: "C/y.canvas", moves: moves)
+
+    #expect(result == "C/y.canvas")
+}
+
+@Test func boardAfterMoveLeavesTheOpenBoardAloneWhenTheBatchIsEmpty() {
+    let result = WorkspaceFolderActions.boardAfterMove(open: "A/x.canvas", moves: [])
+
+    #expect(result == "A/x.canvas")
+}

@@ -24,6 +24,12 @@ struct FolderFileOperations {
         case alreadyExists(String)
         case missing(String)
         case failed(String)
+        /// ADR-0026 §D1/§D5 - the destination is the folder itself or one of its own
+        /// descendants (the prefix rule is `"\(folder)/"`, never `folder` -
+        /// `repointing:344-348`'s own rule, so a sibling like `a-altro` is not a
+        /// descendant of `a`). `alreadyExists` already says what a collision is and
+        /// needs no sibling for this different refusal.
+        case wouldNest(String)
 
         var description: String {
             switch self {
@@ -31,6 +37,7 @@ struct FolderFileOperations {
             case .alreadyExists(let path): "esiste già: \(path)"
             case .missing(let path): "non esiste: \(path)"
             case .failed(let reason): reason
+            case .wouldNest(let path): "\(path) non può essere spostata dentro sé stessa"
             }
         }
     }
@@ -77,7 +84,12 @@ struct FolderFileOperations {
     /// descendants of an excluded directory outright rather than filtering its files
     /// one at a time, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are
     /// never entered - and, more to the point here, never counted.
-    private func walk(_ folder: String) -> (notePaths: [String], subfolders: Int) {
+    ///
+    /// Not `private`: `moveFolder` reads it from `FolderFileOperations+Move.swift`, and
+    /// `private` in Swift is file-scoped, so an extension in a sibling file cannot see it.
+    /// Same reason as `repointBoardsPlan` above, which `BoardFileOperations` already
+    /// reaches from outside this file.
+    func walk(_ folder: String) -> (notePaths: [String], subfolders: Int) {
         let directory = folder.isEmpty
             ? store.root
             : store.root.appending(path: folder, directoryHint: .isDirectory)
@@ -329,29 +341,40 @@ struct FolderFileOperations {
         return (resulting as URL?, trashedNotePaths)
     }
 
+    // MARK: - ADR-0026: Move (§D1, §D7)
+    //
+    // In `FolderFileOperations+Move.swift`, which is also why the four helpers below carry
+    // no `private`. See that file's header.
+
     // MARK: - Paths
+    //
+    // None of the four carries `private`: `FolderFileOperations+Move.swift` reads all of
+    // them, and `private` in Swift is file-scoped, so an extension in a sibling file cannot
+    // see it. Same reason as `repointBoardsPlan` above. They stay implementation detail by
+    // convention rather than by keyword - nothing outside this type's own two files calls
+    // any of them.
 
     /// A vault-relative path with the leading and trailing slashes a caller may have
     /// carried in, removed, so `01 Progetti/vecchio/` and `01 Progetti/vecchio` name the
     /// same folder here - the trim `BoardFileOperations` makes for a board path too.
-    private static func normalized(_ relativePath: String) -> String {
+    static func normalized(_ relativePath: String) -> String {
         relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     /// `path` as it will read once `oldFolder` has become `newFolder`. Unchanged for
     /// anything outside the renamed folder, which is what makes the prefix test `<old>/`
     /// rather than `<old>`.
-    private static func repointing(_ path: String, from oldFolder: String, to newFolder: String) -> String {
+    static func repointing(_ path: String, from oldFolder: String, to newFolder: String) -> String {
         if path == oldFolder { return newFolder }
         guard path.hasPrefix("\(oldFolder)/") else { return path }
         return newFolder + String(path.dropFirst(oldFolder.count))
     }
 
-    private func exists(_ relativePath: String) -> Bool {
+    func exists(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
     }
 
-    private func isDirectory(_ relativePath: String) -> Bool {
+    func isDirectory(_ relativePath: String) -> Bool {
         var flag: ObjCBool = false
         let found = FileManager.default.fileExists(
             atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag

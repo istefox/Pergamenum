@@ -5,11 +5,17 @@ import SwiftUI
 /// **It takes the editor header's place rather than sitting above it.** The header showed the
 /// note's title, and so does a tab; keeping both would put the title on screen twice and spend
 /// sixty points of the editor's height saying it. What the header carried and a tab cannot -
-/// the path, the Modifica/Lettura choice, the save state - is here too: the path on a line of
-/// its own under the strip, the other two at the strip's right end.
+/// the Modifica/Lettura choice and the save state - is here too, at the strip's right end.
 ///
 /// The bar is present with one note open as with six. That costs nothing now that it replaced
 /// the header, and it means nothing on screen moves when the second note arrives.
+///
+/// **The path no longer lives here (2026-08-28, breadcrumb parity chain).** It moved up to
+/// `VaultTopBar`, the strip above the whole Note pane - one path shown once, at pane level,
+/// rather than once per column. The trade-off is deliberate and asymmetric: with the editor
+/// split in two, the top bar follows only the focused column (`VaultController.breadcrumb`
+/// reads `openNote`, which resolves through `focusedTab`), so the unfocused column's path is
+/// not shown anywhere until it is clicked into.
 struct NoteTabBar: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
@@ -24,19 +30,7 @@ struct NoteTabBar: View {
     private var isFocused: Bool { vault.focusedColumnIndex == columnIndex }
 
     var body: some View {
-        VStack(spacing: 0) {
-            strip
-            Divider()
-            if let note = tabs.first(where: { $0.id == activeID })?.note {
-                Text(note.relativePath)
-                    .themedText(.caption, color: .textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.horizontal, theme.spacing(.s))
-                    .padding(.vertical, theme.spacing(.xs))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
+        strip
     }
 
     /// Scrolls rather than shrinking: a tab narrow enough to fit twelve of them is a tab whose

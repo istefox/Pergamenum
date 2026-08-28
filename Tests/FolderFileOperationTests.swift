@@ -20,6 +20,18 @@ import Testing
 // behaviour (`FolderRenamePlan.boardRename`, the name-level marker rewrite on a folder
 // rename) are replaced by the ones in the new "ADR-0025 Task 7" section below; the
 // vault-wide `.canvas` node repoint by prefix is unchanged and its tests are untouched.
+//
+// ADR-0026: A row is dragged into a folder, and several rows are chosen first. §D1/§D7 -
+// a folder move keeps its own name and changes only its parent, carrying everything
+// inside it, and repoints `.canvas` node paths vault-wide through the same
+// `repointBoardsPlan` loop a rename already runs. `OperationError.wouldNest` refuses a
+// folder dropped onto itself or one of its own descendants (§D5, R-06).
+// Plan: docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md,
+// Task 2.
+//
+// RED (ADR-0026 section below): `movePlan`/`moveFolder` are placeholders returning the
+// unchanged path, moving nothing and writing nothing, so every test in that section
+// fails on its assertions, not on a missing symbol.
 
 // MARK: - Fixtures and helpers
 
@@ -402,4 +414,141 @@ private let sampleBoard = """
     #expect(outcome.movedNotes.contains {
         $0.old == "01 Progetti/vecchio/Nota.md" && $0.new == "01 Progetti/nuovo/Nota.md"
     })
+}
+
+// MARK: - ADR-0026: A folder moves with everything inside it (R-02, R-05, R-06, R-07, §D7)
+
+@Test func moveFolderMovesEverythingInsideItAndReportsMovedNotesAndRepointsCardsByPrefix() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+    try vault.write(sampleBoard, to: "A/x.canvas")
+    try vault.write(sampleBoard, to: "A/sub/y.canvas")
+    let labsBoard = """
+    {"nodes":[\
+    {"id":"a","type":"file","file":"A/n.md","x":0,"y":0,"width":260,"height":180},\
+    {"id":"b","type":"file","file":"A/sub/y.canvas","x":300,"y":0,"width":260,"height":180}\
+    ],"edges":[]}
+    """
+    try vault.write(labsBoard, to: "Labs.canvas")
+
+    let outcome = try vault.operations.moveFolder(at: "A", toParent: "B")
+
+    #expect(outcome.newPath == "B/A")
+    #expect(!isDirectory("A", in: vault.root))
+    #expect(exists("B/A/n.md", in: vault.root))
+    #expect(exists("B/A/x.canvas", in: vault.root))
+    #expect(exists("B/A/sub/y.canvas", in: vault.root))
+    #expect(outcome.movedNotes.count == 1)
+    #expect(outcome.movedNotes.contains { $0.old == "A/n.md" && $0.new == "B/A/n.md" })
+
+    // Both cards repointed by prefix: the one naming a note inside the moved folder and
+    // the one naming a board inside a subfolder of it (R-02).
+    let labsText = try vault.text(at: "Labs.canvas")
+    #expect(labsText.contains("B/A/n.md"))
+    #expect(labsText.contains("B/A/sub/y.canvas"))
+}
+
+@Test func moveFolderRepointsABoardInsideItThatIsItselfACardOnAnotherBoardAndWritesAtItsNewPath() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+    // "A/x.canvas" is itself a board *inside* the moved folder, and it holds a card
+    // pointing at another file inside the same folder - so its own content must be
+    // rewritten, and rewritten at its NEW path ("B/A/x.canvas"), because by the time
+    // this change is written the folder move has already carried it there and nothing
+    // is left at "A/x.canvas" to write to (`repointBoardsPlan`'s `writePath`, ADR-0026 §D7).
+    let innerBoard = """
+    {"nodes":[{"id":"a","type":"file","file":"A/n.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(innerBoard, to: "A/x.canvas")
+
+    let outcome = try vault.operations.moveFolder(at: "A", toParent: "B")
+
+    #expect(outcome.newPath == "B/A")
+    #expect(!exists("A/x.canvas", in: vault.root))
+    #expect(exists("B/A/x.canvas", in: vault.root))
+    let rewritten = try vault.text(at: "B/A/x.canvas")
+    #expect(rewritten.contains("B/A/n.md"))
+    #expect(!rewritten.contains("\"A/n.md\""))
+    #expect(outcome.rewrittenPaths.contains("B/A/x.canvas"))
+}
+
+@Test func moveFolderThrowsAlreadyExistsForACollisionAndWritesNothing() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+    try vault.createDirectory("B/A")
+
+    do {
+        _ = try vault.operations.moveFolder(at: "A", toParent: "B")
+        Issue.record("expected moveFolder to throw for a name collision at the destination")
+    } catch FolderFileOperations.OperationError.alreadyExists(let path) {
+        #expect(path.contains("A"))
+    } catch {
+        Issue.record("expected OperationError.alreadyExists, got \(error)")
+    }
+    #expect(isDirectory("A", in: vault.root))
+    #expect(exists("A/n.md", in: vault.root))
+}
+
+@Test func moveFolderIntoItselfThrowsWouldNest() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("A")
+
+    do {
+        _ = try vault.operations.moveFolder(at: "A", toParent: "A")
+        Issue.record("expected moveFolder to throw for a destination that is the folder itself")
+    } catch FolderFileOperations.OperationError.wouldNest(let path) {
+        #expect(path.contains("A"))
+    } catch {
+        Issue.record("expected OperationError.wouldNest, got \(error)")
+    }
+    #expect(isDirectory("A", in: vault.root))
+}
+
+@Test func moveFolderIntoItsOwnDescendantThrowsWouldNest() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("A/sub")
+
+    do {
+        _ = try vault.operations.moveFolder(at: "A", toParent: "A/sub")
+        Issue.record("expected moveFolder to throw for a destination that is a descendant")
+    } catch FolderFileOperations.OperationError.wouldNest(let path) {
+        #expect(path.contains("A"))
+    } catch {
+        Issue.record("expected OperationError.wouldNest, got \(error)")
+    }
+    #expect(isDirectory("A", in: vault.root))
+    #expect(isDirectory("A/sub", in: vault.root))
+}
+
+@Test func moveFolderToItsCurrentParentIsANoOpAndWritesNothing() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "01 Progetti/A/n.md")
+
+    let outcome = try vault.operations.moveFolder(at: "01 Progetti/A", toParent: "01 Progetti")
+
+    #expect(outcome.newPath == "01 Progetti/A")
+    #expect(isDirectory("01 Progetti/A", in: vault.root))
+    #expect(exists("01 Progetti/A/n.md", in: vault.root))
+}
+
+@Test func moveFolderToTheVaultRootWorks() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "01 Progetti/A/n.md")
+
+    let outcome = try vault.operations.moveFolder(at: "01 Progetti/A", toParent: "")
+
+    #expect(outcome.newPath == "A")
+    #expect(!isDirectory("01 Progetti/A", in: vault.root))
+    #expect(isDirectory("A", in: vault.root))
+    #expect(exists("A/n.md", in: vault.root))
+}
+
+@Test func folderMovePlanWritesNothing() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+
+    _ = try vault.operations.movePlan("A", toParent: "B")
+
+    #expect(isDirectory("A", in: vault.root))
+    #expect(!isDirectory("B/A", in: vault.root))
 }

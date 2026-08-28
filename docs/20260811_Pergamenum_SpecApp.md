@@ -380,6 +380,8 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Menu contestuali** (ADR-0023 — parità con la barra strumenti/menu su ogni cluster: un solo catalogo di comandi per cluster, condiviso dalle due superfici): card canvas (apri, copia link Pergamenum, ridimensiona a preset, colore, duplica, elimina), riga task (pianifica, scadenza, collega nota/canvas, aggiungi sotto-task, vai a origine), riga cartella Workspace nella sidebar (rinomina, elimina), riga nota nella sidebar (rinomina con aggiornamento link W-08, sposta, copia link Pergamenum, cronologia, applica template, elimina), giorno nel mini-calendario/griglia mese/griglia settimana (apri daily note, nuovo evento, nuovo promemoria — disabilitati anziché nascosti senza accesso EventKit), embed disegnato nell'editor (elimina, stesso percorso di Backspace).
 
+Ogni riga di entrambi gli alberi laterali — board, cartella Workspace, nota, cartella Note — oltre al comando "Sposta in ▸" del menu contestuale, si sposta anche trascinandola col mouse su un'altra riga cartella o sull'area vuota sotto l'ultima riga (drag and drop, ADR-0026): stesso risultato, stessa riscrittura dei percorsi, stessa voce di Annulla.
+
 ---
 
 ## 11. GUI e design system (requisito)

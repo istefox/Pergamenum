@@ -239,6 +239,7 @@ struct NoteTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? CompletingTextView else { return }
         context.coordinator.parent = self
+        context.coordinator.undoManager = textView.window?.undoManager
         textView.noteTitles = noteTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
@@ -315,4 +316,23 @@ struct NoteTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
+    /// Purges this text view's pending undo actions before SwiftUI releases it.
+    ///
+    /// The typing undo `allowsUndo = true` registers is on the **window's** `undoManager`
+    /// (ADR-0026 §D8 shares that stack with the sidebar's move-undo, deliberately). Leaving
+    /// the pane this editor is in - the Note/Workspace switch is a full rebuild, not a
+    /// hide (`RootView.swift`'s pane switch) - deallocates this text view while that action
+    /// is still on the stack, targeting it. The next Cmd+Z that reaches it then invokes a
+    /// dangling target and crashes: `EXC_BAD_ACCESS` in `-[_NSUndoStack popAndInvoke]`,
+    /// reproduced 2026-08-28 by typing in a note, moving a board via the sidebar drag
+    /// (ADR-0026), and pressing Cmd+Z twice. Removing every action still targeting this view
+    /// or its storage - where `NSTextView` actually registers typing undo - drops the
+    /// now-meaningless "redo my typing" step instead of leaving it to crash on.
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        coordinator.undoManager?.removeAllActions(withTarget: textView)
+        if let textStorage = textView.textStorage {
+            coordinator.undoManager?.removeAllActions(withTarget: textStorage)
+        }
+    }
 }

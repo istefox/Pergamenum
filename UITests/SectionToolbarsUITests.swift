@@ -57,8 +57,13 @@ final class SectionToolbarsUITests: XCTestCase {
     }
 
     func testTheNoteSectionCarriesItsCommands() throws {
-        for label in ["Nuova nota", "Vai alla nota", "Ricerca globale", "Ispettore"] {
+        for label in ["Nuova nota", "Vai alla nota", "Ricerca globale"] {
             XCTAssertTrue(button(label).exists, "«\(label)» non è nella toolbar della sezione Note")
+        }
+        // «Ispettore» è un Toggle, non un Button (2026-08-28, parità toolbar Note/Workspace):
+        // AppKit lo riporta come checkbox, esattamente come «Nuovi elementi» in Workspace.
+        for label in ["Ispettore", "Concentrazione", "Albero"] {
+            XCTAssertTrue(toggle(label).exists, "manca l'interruttore «\(label)» nella sezione Note")
         }
     }
 

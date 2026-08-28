@@ -54,12 +54,14 @@ private let fixtureBoards = [
 
 // MARK: - WorkspaceTree.build(folders:boards:) (R-01, R-03, R-04, R-10, R-11)
 
-@Test func buildHasNoRootRowAndOrdersFoldersBeforeLeavesAtTheTopLevel() {
+@Test func buildHasNoRootRowAndOrdersLeavesBeforeFoldersAtTheTopLevel() {
     let tree = WorkspaceTree.build(folders: fixtureFolders, boards: fixtureBoards)
 
-    // No synthesized root: the top level is the vault root's own contents, folders
-    // first then leaves - `NoteTree`'s own order (R-11).
-    #expect(tree.map(\.id) == ["01 Progetti", "prova", "Vuota", "Pergamena.canvas"])
+    // No synthesized root: the top level is the vault root's own contents, leaves
+    // first then folders - `NoteTree`'s own order (R-11), corrected 2026-08-28 so a
+    // board or note directly at a level sits ahead of that level's subfolders rather
+    // than after them.
+    #expect(tree.map(\.id) == ["Pergamena.canvas", "01 Progetti", "prova", "Vuota"])
 
     // No node with id == "" anywhere in the tree - not only at the top level.
     func walk(_ nodes: [WorkspaceTree.Node]) -> Bool {
@@ -85,9 +87,10 @@ private let fixtureBoards = [
 
     #expect(progetti.kind == .folder)
     // The board this folder owns is a row of its own, beside its sibling folders - the
-    // reversal of ADR-0024 §D2, not a child dropped from the list.
+    // reversal of ADR-0024 §D2, not a child dropped from the list. It sits ahead of
+    // the subfolders (2026-08-28 leaves-before-folders correction).
     #expect(progetti.children.map(\.id) == [
-        "01 Progetti/a", "01 Progetti/b", "01 Progetti/01 Progetti.canvas",
+        "01 Progetti/01 Progetti.canvas", "01 Progetti/a", "01 Progetti/b",
     ])
 }
 
@@ -140,17 +143,18 @@ private let fixtureBoards = [
     #expect(vuota.boardCount == 0)
 }
 
-@Test func numericOrderingPlacesNineBeforeTenAndFoldersBeforeLeavesAtTheSameLevel() {
+@Test func numericOrderingPlacesNineBeforeTenAndLeavesBeforeFoldersAtTheSameLevel() {
     // `localizedStandardCompare` (`NoteTree.swift:123, 129`), replicated by
     // `WorkspaceTree.build` rather than restated: "9 Note" sorts before "10 Note", and
-    // both folders sort ahead of the leaf at the same level - given deliberately out of
-    // order to prove the builder sorts rather than merely preserving input order.
+    // the leaf sorts ahead of both folders at the same level (2026-08-28 correction) -
+    // given deliberately out of order to prove the builder sorts rather than merely
+    // preserving input order.
     let tree = WorkspaceTree.build(
         folders: ["10 Note", "9 Note"],
         boards: ["1 Leaf.canvas"]
     )
 
-    #expect(tree.map(\.id) == ["9 Note", "10 Note", "1 Leaf.canvas"])
+    #expect(tree.map(\.id) == ["1 Leaf.canvas", "9 Note", "10 Note"])
 }
 
 // MARK: - WorkspaceTree.folders(in:) (R-01)

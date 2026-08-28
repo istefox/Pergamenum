@@ -192,7 +192,14 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     // MARK: Panes
 
     private func openPane(_ title: String) {
-        let row = app.staticTexts[title]
+        // Scoped to the sidebar (`RootView`'s `"root-sidebar"`, 2026-08-28 recovery
+        // checkpoint), not to the whole app: a pane's own breadcrumb bar draws the same
+        // bare pane name as its root segment when nothing is open in it
+        // (`VaultTopBar`/`BoardChrome`), and an app-wide lookup by words collides with
+        // it the moment that pane is also the one active at launch.
+        let row = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@", "root-sidebar"))
+            .staticTexts[title]
         XCTAssertTrue(row.waitForExistence(timeout: 10), "manca la sezione «\(title)»")
         row.click()
     }

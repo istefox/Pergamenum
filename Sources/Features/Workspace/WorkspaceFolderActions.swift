@@ -48,6 +48,19 @@ struct WorkspaceFolderActions {
     /// this does not ask - `delete`'s contract, for a file rather than a directory.
     let deleteBoard: (_ board: String) -> Void
 
+    /// Moves `items` into `destination` - a folder path, the vault root spelled `""`
+    /// (R-05) - and answers with what the batch **refused**, empty when it committed
+    /// (ADR-0026 §D6, §D9).
+    ///
+    /// Refusals come back rather than being reported from inside, because R-07 asks for
+    /// the conflicting name to be *shown*: the browser is the side with a dialog, and the
+    /// strings are `VaultMoveBatch.plan`'s own, which already name the path that stopped
+    /// the batch.
+    ///
+    /// One closure for both surfaces - a folder row's drop and «Sposta in» in every row's
+    /// context menu - because they are two renderings of one command (ADR-0023 §D1).
+    let move: (_ items: [VaultItemRef], _ destination: String) -> [String]
+
     /// Records a non-modal problem the browser found on its own, the same visible channel
     /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -
     /// so a tree/click desync (a `.tag`ed id the tree no longer resolves, e.g. a rescan
@@ -106,5 +119,32 @@ struct WorkspaceFolderActions {
     static func boardAfterDelete(open: String, deleted: String) -> WorkspaceSelection {
         guard open == deleted else { return .board(path: open) }
         return .folder((deleted as NSString).deletingLastPathComponent)
+    }
+
+    /// Where the open board should land once a drag-move batch has completed: unchanged
+    /// when `open` is none of the moved items, exact-substituted when `open` *is* one of
+    /// them, prefix-substituted when it sits inside a moved folder (R-13, ADR-0026 §D10).
+    ///
+    /// A pure function over `[VaultMove]` rather than one move, because a batch can carry
+    /// several items in one drop and the open board only ever matches at most one of
+    /// them - the first match answers, and looking further would be looking for a second
+    /// one that cannot exist (an item and its own ancestor are never both in a batch,
+    /// `VaultMoveBatch.plan` rule 1).
+    ///
+    /// The prefix tested is `<moved>/` and never `<moved>`, `folderAfterRename`'s rule
+    /// above and `FolderFileOperations.repointing`'s: a sibling called `a-altro` starts
+    /// with the same characters as `a` and has nothing to do with this move.
+    static func boardAfterMove(open: String, moves: [VaultMove]) -> String {
+        for move in moves {
+            // Where this item landed: its own last component inside `move.to`, because a
+            // move never renames (ADR-0026 §D5, "reject means reject").
+            let name = (move.item.path as NSString).lastPathComponent
+            let moved = move.to.isEmpty ? name : "\(move.to)/\(name)"
+            if open == move.item.path { return moved }
+            if open.hasPrefix("\(move.item.path)/") {
+                return moved + String(open.dropFirst(move.item.path.count))
+            }
+        }
+        return open
     }
 }

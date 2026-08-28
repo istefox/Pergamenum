@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=71 -->
+<!-- project-tasks: prefix=PG lastId=72 -->
 # PROJECT TASKS
 
-Updated: 2026-08-27 · Open: 31 (P1: 0) · In progress: 0
+Updated: 2026-08-28 · Open: 32 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -14,6 +14,9 @@ Updated: 2026-08-27 · Open: 31 (P1: 0) · In progress: 0
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-072` **P3** `ComposerUITests.testTheScadenzaPanelIsACalendarAndWritesTheDueMarker` fails, unrelated to any chain touching it — `UITests/ComposerUITests.swift:186-206` <!-- src:session opened:2026-08-28 runs:1 -->
+  - Found running the full `scripts/uitests.sh` bundle at Task 8 of the ADR-0026 chain (`drag-and-drop-board-files-into-workspace`). Confirmed pre-existing and unrelated: `git diff main...HEAD` for this chain is empty for `UITests/ComposerUITests.swift` and `Sources/Features/Composer`, and the test fails identically (same assertion, same 12-13s duration) run alone in an isolated `main`-branch worktree with no other build running concurrently. The captured note content is just `"---"` (frontmatter delimiter, no body) when the assertion checks for the `!<date>` due marker — looks like the calendar-panel click or the file write hadn't landed before `captured(containing:)` read the note, but not diagnosed further; needs a human at the keyboard to watch the panel interaction, per the same class of intermittent-timing defect as `PG-054`.
 
 - [ ] `PG-071` **P3** `WorkspaceFolderActions` mixes pure static navigation-rule functions with six DI closures in one struct — `Sources/Features/Workspace/WorkspaceFolderActions.swift:67-109` <!-- src:review opened:2026-08-27 runs:2 -->
   - Found at Gate 5.06 (type-design-analyzer) on ADR-0025 (`workspace-folder-board-separation`). A separate namespace would let the pure half be referenced/tested independently of the DI-closure half.

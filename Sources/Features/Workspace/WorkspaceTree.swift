@@ -124,7 +124,10 @@ enum WorkspaceTree {
                 }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-            return folderNodes + boardNodes
+            // NoteTree's own order (`Sources/Vault/NoteTree.swift`): a board that lives
+            // directly in this folder sits right under the folder's own row, not after
+            // every subfolder's row and its contents.
+            return boardNodes + folderNodes
         }
     }
 

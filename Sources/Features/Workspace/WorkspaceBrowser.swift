@@ -92,6 +92,30 @@ struct WorkspaceBrowser: View {
     @State private var renameTarget: PendingWorkspaceRename?
     /// The delete waiting to be confirmed, with a folder's counts already read (R-10).
     @State private var pendingDelete: PendingWorkspaceDelete?
+    /// Every lit row, which is `List(selection:)`'s own set and the whole of ADR-0026
+    /// §D4: Cmd-click and Shift-click come from AppKit for free, so nothing here reads
+    /// `NSEvent.modifierFlags` and no recognizer is added to a row body - the one thing
+    /// that ever starved this list's own tap (ADR-0025 §D9, ADR-0026 A4).
+    ///
+    /// It answers **one** question, "what does a drag carry" (R-11). What is *open* stays
+    /// the single `WorkspaceSelection?` handed down as a prop, derived from this set by
+    /// `opening(from:to:currently:in:)` - a row can be lit without being open, and two lit
+    /// rows open nothing (R-10).
+    ///
+    /// Kept in step with the prop by the `.onChange(of: selection)` below (something
+    /// opened from the breadcrumb, a route or a card lights exactly its own row) and
+    /// pruned of ids no row carries by `rebuild()`.
+    @State private var selectedRows: Set<String> = []
+    /// What the drag that is in flight carries, stored by the source row at drag start.
+    ///
+    /// `.dropDestination` has no payload-aware validation - its `isTargeted` closure is
+    /// handed a `Bool` and never the payload (ADR-0026 §D5) - so the only way a folder row
+    /// can decline to light up for a cycle is for the source side to have remembered what
+    /// it started dragging. Empty between drags.
+    @State private var dragging: [VaultItemRef] = []
+    /// The refused batch waiting to be named (R-07). A collision is accepted visually and
+    /// then reported, because a row that stays dark shows no conflicting name (§D5).
+    @State private var moveConflict: WorkspaceMoveConflict?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,7 +136,14 @@ struct WorkspaceBrowser: View {
         // The same trigger the note tree rebuilds on: a scan is what changes the set of
         // files on disk, and a board list is tens of entries beside it.
         .task(id: vault.scanGeneration) { rebuild() }
-        .onChange(of: selection) { _, new in reveal(new?.path) }
+        // The lit set follows what is open, never the other way round (ADR-0026 §D4): a
+        // board opened from the breadcrumb, a route, a card or the editor lights exactly
+        // its own row and drops whatever multi-row set was standing, because the one thing
+        // that is open is also one row.
+        .onChange(of: selection) { _, new in
+            selectedRows = new.map { Set([$0.path]) } ?? []
+            reveal(new?.path)
+        }
         // The filter's other input is the tree, refreshed at the end of `rebuild()`.
         .onChange(of: filter) { _, _ in refreshFilteredRows() }
         // One sheet for both creations, told which one it is (ADR-0025 §D7): the parent
@@ -180,6 +211,24 @@ struct WorkspaceBrowser: View {
             Button("Annulla", role: .cancel) { pendingDelete = nil }
         } message: { pending in
             Text(pending.message)
+        }
+        // R-07: nothing moved, nothing was renamed and nothing was overwritten - and the
+        // name that stopped it is on screen. A dialog rather than a problem line because
+        // the drop is a gesture with an expectation: a batch that refuses silently reads
+        // as a drag that missed (ADR-0026 §D5).
+        .alert(
+            "Spostamento rifiutato",
+            isPresented: Binding(
+                get: { moveConflict != nil },
+                set: { if !$0 { moveConflict = nil } }
+            ),
+            presenting: moveConflict
+        ) { _ in
+            Button("OK", role: .cancel) { moveConflict = nil }
+                .accessibilityIdentifier("sidebar-move-conflict-ok")
+        } message: { conflict in
+            Text(conflict.message)
+                .accessibilityIdentifier("sidebar-move-conflict")
         }
     }
 
@@ -350,26 +399,38 @@ struct WorkspaceBrowser: View {
     // nothing and swallows every click, silently, which is what `RootView.swift:205-208`
     // records this repository having already paid twenty minutes for once.
 
-    /// The `List`'s selection: derived from the value handed down, never stored beside it
-    /// (ADR-0024 §D6). The tag is the row's own id - a board's file path or a folder's
-    /// folder path (ADR-0025 §D3) - so the string travelling through this binding is the
-    /// selection's `path` and nothing has to be derived from anything.
-    private var treeSelection: Binding<String?> {
+    /// The `List`'s selection: the whole lit **set** since ADR-0026 §D4, not the one open
+    /// row it used to be. The tag is still the row's own id - a board's file path or a
+    /// folder's folder path (ADR-0025 §D3) - so the strings travelling through this
+    /// binding are row ids and nothing has to be derived from anything.
+    ///
+    /// A set rather than a `String?` is the whole of Cmd-click and Shift-click: AppKit's
+    /// list already does both, so this repository reads no modifier flag and adds no
+    /// gesture to a row (ADR-0026 A4). What is *open* is not this set - it is derived from
+    /// it by `opening(from:to:currently:in:)`, whose double optional says which of "open
+    /// that row", "deselect" and "leave what is open alone" a new set means.
+    private var treeSelection: Binding<Set<String>> {
         Binding(
-            get: { selection?.path },
-            set: { id in
-                guard let id else { return onSelect(nil) }
+            get: { selectedRows },
+            set: { ids in
+                let previous = selectedRows
+                selectedRows = ids
                 // A `.tag`ed row only ever hands this setter an id it drew itself, so a
                 // miss here means the tree and the click disagree - almost always a
                 // rebuild (rename/delete/rescan) racing the click - not an ordinary
                 // click. Recorded, not silent: without this the row still resolves as
                 // `.folder`, so a desync reads identically to a legitimate folder row and
                 // leaves no trace to find it by (ADR-0024 Gate 5.06 finding).
-                guard let node = WorkspaceTree.node(withID: id, in: workspaceTree) else {
+                for id in ids where WorkspaceTree.node(withID: id, in: workspaceTree) == nil {
                     actions.recordDesync("workspace-tree: selected id \(id) resolved to no row")
-                    return onSelect(.folder(id))
                 }
-                onSelect(Self.selection(for: node))
+                // `.none` - the outer case - is "leave what is open alone", so `onSelect`
+                // is not called at all: a two-row selection must not close the board on
+                // screen (R-10).
+                guard let opened = Self.opening(
+                    from: previous, to: ids, currently: selection, in: workspaceTree
+                ) else { return }
+                onSelect(opened)
             }
         )
     }
@@ -403,6 +464,7 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-tree")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
         // No `.onTapGesture` here any more: deselecting by clicking the blank area below
         // the last row is `List(selection:)`'s own behaviour under ADR-0024 §D7/R-07, and
         // the gesture that used to stand in for it was written when this list had no
@@ -433,6 +495,20 @@ struct WorkspaceBrowser: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-flat-list")
+        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+    }
+
+    /// R-05's destination, on both lists: the tree's own empty area means the vault root,
+    /// spelled `""` everywhere this feature computes a path.
+    ///
+    /// The rows sit *inside* this destination, and SwiftUI hit-tests the innermost one
+    /// first - so a drop on a folder row reaches that row's and only a drop on the
+    /// background reaches this. That mechanism is the one part of ADR-0026 §D11 asserted
+    /// by hand rather than by construction, which is also why «Sposta in ▸ (radice)»
+    /// exists as a second, certain surface for the same move.
+    private func dropOnRoot(_ drops: [VaultItemDrag]) -> Bool {
+        guard let items = drops.first?.items else { return false }
+        return performMove(items, into: "")
     }
 
     /// One row, wired the same way in both lists.
@@ -446,8 +522,70 @@ struct WorkspaceBrowser: View {
             onRename: { requestRename(of: $0) },
             onDelete: { confirmDelete(of: $0) },
             onRenameBoard: { requestRenameBoard(of: $0) },
-            onDeleteBoard: { confirmDeleteBoard(of: $0) }
+            onDeleteBoard: { confirmDeleteBoard(of: $0) },
+            move: moveContext
         )
+    }
+
+    /// Everything a row's drag, its drop and its «Sposta in» menu need, rebuilt with the
+    /// body so the lit set and the drag in flight it carries are the current ones
+    /// (ADR-0026 §D4, §D5, §D9).
+    ///
+    /// One value rather than six more parameters on a row that already passes nine down
+    /// its own recursion - and one *place*, so the drag and the menu cannot end up asking
+    /// different questions about the same drop.
+    private var moveContext: WorkspaceMoveContext {
+        WorkspaceMoveContext(
+            folders: folders,
+            multiSelection: selectedRows,
+            dragging: dragging,
+            resolve: { Self.items(for: $0, in: workspaceTree) },
+            onDragStart: { dragging = $0 },
+            perform: { performMove($0, into: $1) }
+        )
+    }
+
+    /// The move both surfaces call - a folder row's `.dropDestination`, the list's own
+    /// root-area destination, and «Sposta in» in every row's context menu (ADR-0026 §D9:
+    /// a command is named once and rendered twice).
+    ///
+    /// `false` for a refused drop, which is what `.dropDestination`'s `action` owes the
+    /// drag. Two refusals, and they are deliberately not alike (§D5): a cycle is string
+    /// arithmetic that already declined to light the row up and says nothing more, while a
+    /// collision is named in a dialog because R-07 requires the conflicting name to be
+    /// shown and a row that stayed dark shows nothing.
+    private func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
+        dragging = []
+        guard !items.isEmpty, Self.canDrop(items, onFolder: destination) else { return false }
+        let refusals = actions.move(items, destination)
+        guard refusals.isEmpty else {
+            moveConflict = WorkspaceMoveConflict(reasons: refusals)
+            return false
+        }
+        return true
+    }
+
+    /// The rows behind a set of ids, in the tree's own depth-first order - a `Set` has
+    /// none, and a batch whose order changed between two identical drags would make
+    /// `VaultMoveBatch`'s answers unrepeatable.
+    ///
+    /// A board carries its `.canvas` file's own path and a folder its folder path
+    /// (ADR-0025 §D3), which is exactly what `VaultItemRef` wants: nothing here derives one
+    /// kind of path from the other. An id no row carries is dropped rather than guessed at.
+    ///
+    /// `nonisolated` for the reason `rows(matching:in:)` spells out below (`:543-550`): the
+    /// closure handed to `compactMap` would otherwise carry this `View`'s main-actor
+    /// isolation into a non-isolated function type.
+    nonisolated static func items(
+        for ids: Set<String>, in tree: [WorkspaceTree.Node]
+    ) -> [VaultItemRef] {
+        WorkspaceTree.flattened(tree).compactMap { row in
+            guard ids.contains(row.node.id) else { return nil }
+            switch row.node.kind {
+            case .folder: return VaultItemRef(path: row.node.id, kind: .folder)
+            case .board(let path): return VaultItemRef(path: path, kind: .board)
+            }
+        }
     }
 
     // MARK: Tree state
@@ -476,6 +614,20 @@ struct WorkspaceBrowser: View {
         // would be missing from it on every single rescan and dropped every time.
         if let selection, WorkspaceTree.node(withID: selection.path, in: workspaceTree) == nil {
             onSelect(nil)
+        }
+        // The same drop for the lit set, which the controller does not own (ADR-0026 §D4):
+        // a rename, a delete or a move has just taken rows away, and an id kept here after
+        // its row has gone is an id a drag would still carry.
+        selectedRows = selectedRows.filter {
+            WorkspaceTree.node(withID: $0, in: workspaceTree) != nil
+        }
+        // With nothing lit, the open row is (ADR-0024's invariant, in the form §D4 keeps):
+        // this is the first scan of a pane drawn with a board already open - navigating
+        // back to the Workspace, or a vault reopened on one - where no `.onChange(of:
+        // selection)` has fired because the value did not change.
+        if selectedRows.isEmpty, let selection,
+           WorkspaceTree.node(withID: selection.path, in: workspaceTree) != nil {
+            selectedRows = [selection.path]
         }
         reveal(selection?.path)
         // Last, because it reads `workspaceTree`: a rescan that added, renamed or removed
@@ -581,6 +733,71 @@ struct WorkspaceBrowser: View {
         case .folder: return "workspace-folder-\(node.id)"
         }
     }
+
+    /// ADR-0026 §D4's collapse rule, read by the `Binding<Set<String>>` `treeSelection`
+    /// becomes in the code step: what AppKit's own Cmd/Shift-click resolves `new` to,
+    /// answered against `currently` (what is open today) rather than against `old`. The
+    /// double optional is the vocabulary the ADR names: `.none` (the outer case) means
+    /// "leave `currently` alone" - the answer for a set of two-or-more ids (R-10) and for
+    /// a set of exactly one id that is already the open one (the Note pane's
+    /// `leaveComposer()` case, preserved verbatim in shape though this tree has no
+    /// composer); `.some(nil)` means deselect - the answer for an empty set; `.some(.some(
+    /// x))` means open `x` - the answer for exactly one id different from what is open,
+    /// resolved against `tree` the way `treeSelection`'s setter resolves a click today.
+    ///
+    /// `old` is part of the signature and is deliberately not read: what a new set means
+    /// is a question about what is **open**, not about what was lit a moment ago, and the
+    /// two differ precisely in the case this rule exists for - a Shift-click extending the
+    /// set past one row leaves the open board open whether or not it is in either set
+    /// (R-10). It stays in the signature because the caller has it and a later rule that
+    /// needs the transition (a range's anchor, say) would have nowhere to read it from.
+    ///
+    /// `nonisolated` for the reason `rows(matching:in:)` above is (`:543-550`): a pure
+    /// function of its arguments, callable from a test's nonisolated, synchronous context
+    /// with no `@MainActor` hop to trap.
+    nonisolated static func opening(
+        from old: Set<String>, to new: Set<String>, currently: WorkspaceSelection?,
+        in tree: [WorkspaceTree.Node]
+    ) -> WorkspaceSelection?? {
+        // Two or more: nothing opens and nothing closes. The set answers "what does a drag
+        // carry" and only that (§D4 row 3, R-10).
+        guard new.count <= 1 else { return .none }
+        // Empty: deselect, which is what clicking the blank area below the rows already
+        // means (§D4 row 4, ADR-0024 §D7).
+        guard let id = new.first else { return .some(nil) }
+        // The same single row again: nothing. Re-opening the board already on screen would
+        // reset the zoom and pan of the very thing being looked at (§D4 row 2, and
+        // `WorkspaceController.select`'s own guard for the same reason).
+        guard id != currently?.path else { return .none }
+        // Exactly one id, different from what is open: that row opens (§D4 row 1). An id no
+        // row carries answers `.folder(id)`, the behaviour this rule inherited from the
+        // binding it was extracted out of - the desync itself is recorded by the setter,
+        // which is the side that has somewhere to record it.
+        guard let node = WorkspaceTree.node(withID: id, in: tree) else {
+            return .some(.some(.folder(id)))
+        }
+        return .some(.some(selection(for: node)))
+    }
+
+    /// ADR-0026 §D5's cycle rule for a folder row's own drop highlight: pure string
+    /// arithmetic against the drag set the source stored at drag start, asked on every
+    /// hover with no filesystem read - `VaultMoveBatch.plan`'s step 3 asks the same
+    /// question, once, after the drop has already happened; this is the same rule asked
+    /// before it, for the affordance rather than the write.
+    ///
+    /// Only a folder can contain the destination, so a board in the drag set is never
+    /// asked about: a board dropped onto the folder that already holds it is a no-op the
+    /// batch drops (`VaultMoveBatch.plan` rule 2), not a cycle this has to catch.
+    ///
+    /// The prefix is `"\(folder)/"` and **never** the bare path - the rule
+    /// `FolderFileOperations.repointing` and `VaultMoveBatch.plan` both already follow: a
+    /// sibling called `01 Progetti-altro` starts with the same characters as `01 Progetti`
+    /// and is not inside it.
+    nonisolated static func canDrop(_ dragging: [VaultItemRef], onFolder folder: String) -> Bool {
+        !dragging.contains { item in
+            item.kind == .folder && (folder == item.path || folder.hasPrefix("\(item.path)/"))
+        }
+    }
 }
 
 /// A board or a folder waiting for its rename sheet.
@@ -643,277 +860,17 @@ private enum PendingWorkspaceDelete {
     }
 }
 
-/// One row of the Workspace tree, and its subtree.
+/// A batch the vault refused, and the sentence the dialog says about it (R-07).
 ///
-/// Flat and recursive, `NoteTreeRow`'s shape (`NoteListPane.swift:290-322`): the row, and
-/// then - as a **sibling**, never as its content - the expanded children (ADR-0024 §D1).
-/// The chevron is drawn by hand and the depth is paid for in padding, so every row of the
-/// tree is a row of the one enclosing `List` and can carry a `.tag` the selection binding
-/// is able to satisfy. A `DisclosureGroup`'s label is not such a row, which is why there
-/// is none left in this file.
+/// The reasons are `VaultMoveBatch.plan`'s own strings, carried up verbatim rather than
+/// reworded here: they already name the conflicting path (`esiste già: 01 Progetti/b/b
+/// .canvas`), which is the whole of what R-07 asks to be shown, and a second wording of
+/// them here would be a second answer to "what went wrong".
 ///
-/// `expanded` is the browser's shared set rather than state of this row's own: "Espandi
-/// tutto" and a board revealed from outside both have to be able to open a folder this row
-/// did not open itself.
-private struct WorkspaceRow: View {
-    @Environment(\.theme) private var theme
+/// Every reason, not the first: a batch of six can collide on two of them, and a dialog
+/// naming one leaves the user to discover the other by trying again.
+private struct WorkspaceMoveConflict {
+    let reasons: [String]
 
-    let node: WorkspaceTree.Node
-    let depth: Int
-    @Binding var expanded: Set<String>
-    /// The lit row, read one way only (ADR-0024 §D9). Nothing drawn here is conditioned
-    /// on it - the system draws the selected row's fill - except what VoiceOver is told.
-    let selection: WorkspaceSelection?
-    let onSelect: (WorkspaceSelection?) -> Void
-    /// The two folder verbs, by folder path. The row does not perform them: it hands the
-    /// path to the same closures the toolbar's buttons call, so the context menu is a
-    /// second entry point rather than a second code path (ADR-0023 §D4).
-    let onRename: (String) -> Void
-    let onDelete: (String) -> Void
-    /// The same two verbs for a board, by the `.canvas` file's own path (ADR-0025 §D6).
-    /// Separate closures rather than one that branches, because the two file operations
-    /// are different ones - a board rename repoints nodes and rewrites markers, a folder
-    /// rename does neither - and this row already knows which kind it is.
-    let onRenameBoard: (String) -> Void
-    let onDeleteBoard: (String) -> Void
-
-    /// One indent step. The rows are drawn flat inside a `List`, so the depth has to be
-    /// paid for in padding rather than by nesting the views - `NoteTreeRow`'s constant,
-    /// because the two sidebars indent by the same amount or they read as two designs.
-    private static let indent: CGFloat = 14
-
-    private var isExpanded: Bool { expanded.contains(node.id) }
-    private var isSelected: Bool { selection?.path == node.id }
-    private var hasChildren: Bool { !node.children.isEmpty }
-
-    /// What selecting this row means, asked of the one function the `List`'s binding also
-    /// asks, so a click and a right-click cannot disagree (ADR-0023 §D4).
-    private var picked: WorkspaceSelection { WorkspaceBrowser.selection(for: node) }
-
-    @ViewBuilder
-    var body: some View {
-        taggedRow
-        if isExpanded {
-            ForEach(node.children, id: \.id) { child in
-                WorkspaceRow(
-                    node: child,
-                    depth: depth + 1,
-                    expanded: $expanded,
-                    selection: selection,
-                    onSelect: onSelect,
-                    onRename: onRename,
-                    onDelete: onDelete,
-                    onRenameBoard: onRenameBoard,
-                    onDeleteBoard: onDeleteBoard
-                )
-            }
-        }
-    }
-
-    /// `.tag` **last in the chain**, on every row without exception.
-    ///
-    /// Last, because a modifier applied after it drops it and the failure is silent - the
-    /// list lights nothing and swallows every click (`RootView.swift:205-208`). On every
-    /// row, because ADR-0024 §D3's «foreign» board - the one kind that carried no tag and
-    /// was therefore structurally unselectable - is gone with the concept: a `.canvas` is
-    /// an ordinary, openable row wherever it lives and whatever it is called
-    /// (ADR-0025 §D2), so the switch that used to decide this has nothing left to decide.
-    ///
-    /// No gesture recognizer sits between `content` and this `.tag` any more. ADR-0025
-    /// §D9 originally hung the folder row's double-click-to-toggle here, wrapping the
-    /// whole of `content` in `.simultaneousGesture(TapGesture(count: 2))` ahead of the
-    /// `.tag` - and the exact risk that section's own text named before merge is the one
-    /// that reached `WorkspaceOpenStateUITests
-    /// .testClickingABoardLessFolderRowClosesTheOpenBoardAndSelectsOnlyItsRow_R04`:
-    /// clicking a board-less folder row straight after a *different* row was selected
-    /// intermittently failed to register the click as a selection change at all, because
-    /// the double-tap recognizer spanning the entire row contested `List(selection:)`'s
-    /// own tap recognizer over the same area. `chevron` is where the gesture lives now -
-    /// see the comment there.
-    private var taggedRow: some View {
-        content.tag(node.id)
-    }
-
-    private var content: some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            chevron
-            // One weight for every row: the dimmed pair ADR-0024 §D3 drew a «foreign»
-            // board in is gone with the concept it stood for (ADR-0025 §D2). A board is
-            // openable wherever it lives, so nothing here is drawn as if it were not.
-            Image(systemName: icon)
-                .foregroundStyle(theme.color(.textSecondary))
-            Text(node.name)
-                .themedText(.body, color: .textPrimary)
-                .lineLimit(1)
-            Spacer(minLength: theme.spacing(.xs))
-            // Only where one was shown before the fold: the rows that have something
-            // under them (ADR-0024 §D2).
-            if hasChildren {
-                Text("\(node.boardCount)").themedText(.caption, color: .textTertiary)
-            }
-        }
-        .padding(.leading, CGFloat(depth) * Self.indent)
-        .contentShape(Rectangle())
-        // `.contain`, never `.combine`, and the difference is the whole of R-02/R-03.
-        // `.combine` folds the row's texts into a single element whose macOS role is
-        // `StaticText`, and a `StaticText` carries its words in `AXValue`: the label
-        // below arrived in XCUITest's `value` while its `label` stayed empty, so no
-        // assertion on the ", aperta"/", selezionata" suffix could ever match. Read out
-        // of a failing run's exported UI hierarchy rather than guessed - `StaticText,
-        // identifier: 'workspace-board-…', value: Workspace Dettagli…, Selected` - and
-        // it is the same trap `UITests/WorkspaceIntegrationUITests.swift:176-181` already
-        // wrote down for a plain `Text`. `.contain` makes the row a `Group`, which is the
-        // shape that puts the words in `label`: `TaskPanelRow` (`LinkedTasksPanel.swift`)
-        // and this pane's own `workspace-browser-header` are both already that.
-        //
-        // The second half costs more than the label and is the reason this is not a
-        // cosmetic choice: `.combine` swallowed the chevron's own `.onTapGesture` into
-        // the one merged element, and the merged element's activation point became the
-        // triangle's - so a click on a row *with children* landed on the triangle and
-        // expanded the folder instead of selecting it, while a childless row selected
-        // normally. Measured, not inferred: the failing run's synthesized event drove the
-        // pointer to x=218 (the triangle) on `Progetti`, against x=319 (the row's centre)
-        // on the root board's row one click earlier. Under `.contain` the triangle is an
-        // element of its own again and the row's hit point is the row's - which is
-        // «the triangle expands, the row selects» (ADR-0024 §D5) holding for the
-        // accessibility tree, not only for a mouse aimed by a person.
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
-        // Belt and braces beside the label: whether this trait reaches XCUITest's
-        // `isSelected` for custom `List` row content on macOS is unverified here, so the
-        // label above carries the state in words and is what a test may depend on
-        // (ADR-0024 §D9, R-13).
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .accessibilityIdentifier(WorkspaceBrowser.identifier(for: node))
-        // Outside the combined accessibility element, the order the row carried before
-        // this rewrite - and still ahead of the `.tag` that `taggedRow` applies last of
-        // all, which is the one modifier nothing may follow.
-        .contextMenu { menu }
-    }
-
-    /// The state said in words, because the colour that used to say it is gone (R-02) and
-    /// was never something a screen reader could read anyway (ADR-0024 §D9).
-    private var accessibilityLabel: String {
-        switch node.kind {
-        case .board:
-            return isSelected ? "Workspace \(node.name), aperta" : "Workspace \(node.name)"
-        case .folder:
-            let base = "Cartella \(node.name), \(node.boardCount) Workspace"
-            return isSelected ? "\(base), selezionata" : base
-        }
-    }
-
-    /// The board symbol on a board row, the folder pair on a folder row - a direct read of
-    /// the kind, since a row is one thing or the other and no longer both at once
-    /// (ADR-0025 §D2). Nothing here is conditioned on the selection (R-02).
-    private var icon: String {
-        switch node.kind {
-        case .board: return "rectangle.3.group"
-        case .folder: return isExpanded ? "folder" : "folder.fill"
-        }
-    }
-
-    /// Its own hit target, which is what keeps «the triangle expands, the row selects»
-    /// implementable at all (ADR-0024 §D5). A row with nothing under it keeps the space
-    /// so the names line up.
-    ///
-    /// Also where R-05 / ADR-0025 §D9's double click lives - moved here from the whole row
-    /// (`taggedRow`'s comment has the failure and the fix). The chevron carries no `.tag`
-    /// of its own, so `List(selection:)` has nothing here to starve - unlike the row body,
-    /// where `.onTapGesture(count: 2)` would consume the click before the List ever saw
-    /// it.
-    ///
-    /// The two recognizers below - plain `.onTapGesture` (default count 1) plus a
-    /// `.simultaneousGesture(TapGesture(count: 2))` - are not the "documented" fix for
-    /// disambiguating tap counts on one control: the seemingly more idiomatic pairing of
-    /// two chained `.onTapGesture(count:)` modifiers (highest count first, per Apple's own
-    /// guidance for that API) was tried on this chevron and confirmed broken by hand on
-    /// macOS 26 inside this `List`: a single click stopped toggling and fell through to
-    /// `List(selection:)`'s own row selection instead, and a double click did nothing at
-    /// all. `.onTapGesture(count:)` always consumes the click it recognizes; two of them
-    /// stacked with no combinator apparently left the click contested between the two
-    /// recognizers and the enclosing `List`, rather than resolved by either.
-    /// `.simultaneousGesture` never consumes, so the double-tap recognizer only ever adds a
-    /// second, non-exclusive observer beside the plain single-tap one - which is what
-    /// `ADR-0025 §D9` specified for the row-wide version this was moved from, and turns out
-    /// to hold just as well confined to the chevron's own hit target.
-    ///
-    /// Verified empirically, not from memory of SwiftUI/AppKit gesture precedence (both
-    /// warned against by this repo's own prior investigations): a throwaway XCUITest drove
-    /// `.click()` and `.doubleClick()` against a temporary `accessibilityIdentifier` on
-    /// this chevron and asserted on a nested row's existence as the `isExpanded` signal.
-    /// Single click toggled without ever selecting the row (`selectedRowsInTree.count ==
-    /// 0` held throughout); double click toggled reliably, and exactly once - the state
-    /// after differed from the state before, never landing back where it started. That
-    /// probe test and its debug identifier are gone from this repository; the finding is
-    /// this comment. Still a manual-verification item before merge (R-05's own gate): the
-    /// probe reads accessibility state, not what a person's actual double click feels like.
-    @ViewBuilder
-    private var chevron: some View {
-        if hasChildren {
-            triangle
-                .contentShape(Rectangle())
-                .onTapGesture { toggle() }
-                .simultaneousGesture(TapGesture(count: 2).onEnded { toggle() })
-        } else {
-            triangle.hidden()
-        }
-    }
-
-    private var triangle: some View {
-        Image(systemName: "chevron.right")
-            .rotationEffect(.degrees(isExpanded && hasChildren ? 90 : 0))
-            .themedText(.caption, color: .textTertiary)
-    }
-
-    /// On the row's own `HStack`, where ADR-0023 §D2 put it - and §D2's warning now has
-    /// nothing left to warn about: there is no `DisclosureGroup` in this file for a
-    /// modifier to leak out of onto every disclosed descendant, so its conclusion holds by
-    /// construction rather than by care (ADR-0024 §D1).
-    ///
-    /// Plain titles, no SF Symbols: the toolbar keeps its `pencil`/`trash` and this menu
-    /// keeps the absence of one, which is what «the same symbol» means for a surface that
-    /// draws none (ADR-0023 §D1).
-    @ViewBuilder
-    private var menu: some View {
-        // One gate now, and not restated here: `canMutate(_:)` is the same rule the
-        // toolbar's two buttons are enabled by, asked of the same value in the second
-        // place it is rendered (ADR-0023 §D1, §D3, ADR-0025 §D8). ADR-0024's second gate -
-        // `selection(for:) != nil`, which refused a «foreign» board - went with the
-        // concept: both kinds of row are renamed and deleted here (R-08).
-        if WorkspaceBrowserToolbar.canMutate(picked) {
-            Button("Rinomina…") { requestRename() }
-            Button("Elimina…", role: .destructive) { requestDelete() }
-        }
-    }
-
-    /// The selection first, for what it shows rather than for what it seeds: both verbs
-    /// are handed this row's own path and neither reads the selection back, but a
-    /// secondary click selects nothing by itself, and a sheet or a dialog opened over a
-    /// row the list has not lit reads as acting on another one (ADR-0023 §D4).
-    private func requestRename() {
-        onSelect(picked)
-        switch node.kind {
-        case .folder: onRename(node.id)
-        case .board(let path): onRenameBoard(path)
-        }
-    }
-
-    /// `requestRename()`'s shape for the destructive verb, and the same reason for setting
-    /// the selection first.
-    private func requestDelete() {
-        onSelect(picked)
-        switch node.kind {
-        case .folder: onDelete(node.id)
-        case .board(let path): onDeleteBoard(path)
-        }
-    }
-
-    private func toggle() {
-        if isExpanded {
-            expanded.remove(node.id)
-        } else {
-            expanded.insert(node.id)
-        }
-    }
+    var message: String { reasons.joined(separator: "\n") }
 }

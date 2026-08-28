@@ -434,6 +434,44 @@ Key architectural decisions:
 
 Detail: `docs/adr/0025-workspace-folder-board-separation.md`.
 
+## Decisions from the drag-and-drop board/note files into folders chain (ADR-0026)
+
+Drag-and-drop reorganization for both sidebar trees (Workspace boards/folders, Note notes/folders):
+`docs/adr/0026-drag-and-drop-board-files-into-workspace.md`. Supersedes ADR-0024 §D2/§D3 in part
+(adds a second, additive multi-selection concept beside the single derived `WorkspaceSelection` —
+does not reverse ADR-0024's "one open value, never two" claim).
+
+Key architectural decisions:
+- **The dragged item carries two `Transferable` representations, not one** — a `CodableRepresentation`
+  for the structured move payload plus a `ProxyRepresentation(exporting: \.dragName)` byte-identical
+  to today's `.draggable(note.title)`, so `CompletingTextView+Pasteboard.swift`'s existing
+  "drop a note title onto a task line" contract (SPEC §7.2 of the workspace-tasks-notes-integration
+  chain) keeps working with zero edits to that file — now a protected interface.
+- **Multi-selection is `List`'s own `Binding<Set<String>>`, no new gesture recognizer anywhere** —
+  Cmd/Shift-click come from AppKit for free; a modifier-flag-reading tap recognizer on the row body
+  was rejected because that is exactly what starved `List(selection:)`'s own tap once already
+  (ADR-0025 §D9's fix). "Open" is derived from the set by a collapse rule: one id opens/closes as
+  today, two-or-more ids opens nothing — the set answers only "what does a drag carry".
+- **A cycle gives no drop-target affordance (string arithmetic, free per hover); a collision is
+  accepted visually and then named in an error dialog** — asymmetric on purpose, because
+  `.dropDestination` has no payload-aware validation closure and R-07 requires the conflicting name
+  to be shown, which a row that stays dark cannot do.
+- **A move rewrites no wikilink and no `^[[board.canvas]]` marker (both are title/bare-name based),
+  but does repoint every `.canvas` node's file path** via `FolderFileOperations.repointBoardsPlan`,
+  made non-private by ADR-0025 §D6 precisely for this reuse — the SPEC's "no new rewriting" premise
+  was incomplete on this one point.
+- **Undo registers on the window's `@Environment(\.undoManager)`, the same stack `NSTextView`
+  already uses (`allowsUndo = true`)** — there are not two undo domains in this app to keep apart,
+  there is one; a private sidebar-owned `NSUndoManager` was rejected because it would make Cmd+Z's
+  meaning depend on which pane holds first responder.
+- **The drag is a second rendering of a "Sposta in ▸" menu command already reachable from every
+  note row** — the note-move file operations (`NoteFileOperations.movePlan`/`.move`) already existed
+  end-to-end before this chain; only the board/folder equivalents and the menu wiring are new. The
+  menu path also gives R-01…R-07 deterministic XCUITest coverage no drag gesture in this repo has
+  ever had (`.draggable`→`.dropDestination` is an untested machine here).
+
+Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
+
 ## Chain decision index
 
 - **ADR-0019** — drag-to-resize handle for drawn embeds, size persisted as Obsidian `|W`/`|WxH` → `docs/adr/0019-embed-drag-resize.md`
@@ -443,3 +481,4 @@ Detail: `docs/adr/0025-workspace-folder-board-separation.md`.
 - **ADR-0023** — Toolbar/context-menu command parity across six clusters + Duplica card, one catalogue per cluster shared by both surfaces → `docs/adr/0023-universal-command-surface-parity.md`
 - **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`
 - **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
+- **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`

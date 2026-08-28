@@ -26,13 +26,25 @@ enum NoteTree {
         var noteCount: Int
     }
 
-    /// Builds the tree from the index.
-    ///
-    /// Only notes: the index holds markdown and nothing else, so a folder containing
-    /// only PDFs or only canvases does not appear. That is a real limit of the folder
-    /// view and not a rendering bug - it is the same set the flat list showed.
+    /// Builds the tree from the index alone - every folder it draws holds at least one
+    /// note, `folders: []` below.
     static func build(from notes: [NoteRecord]) -> [Node] {
+        build(from: notes, folders: [])
+    }
+
+    /// Builds the tree from the index **and** the vault's real folder list (2026-08-28,
+    /// the toolbar's "Nuova cartella" chain): with `folders: []` this is byte-identical
+    /// to the note-only tree above - a folder containing only PDFs or only canvases and
+    /// nothing else still does not appear, which is a real limit of the folder view and
+    /// not a rendering bug. `folders` is what lets a folder with **nothing** in it (an
+    /// empty one just created) hold a row anyway, the same reason `WorkspaceTree.build
+    /// (folders:boards:)` takes a folder list of its own rather than deriving folders
+    /// from boards alone (R-10).
+    static func build(from notes: [NoteRecord], folders: [String]) -> [Node] {
         var root = Builder()
+        for folder in folders {
+            root.insertFolder(components: folder.split(separator: "/").map(String.init))
+        }
         for note in notes {
             root.insert(
                 Builder.Leaf(path: note.relativePath, name: note.title),
@@ -40,6 +52,19 @@ enum NoteTree {
             )
         }
         return root.nodes(prefix: "")
+    }
+
+    /// A folder or a note by its id, depth-first - `WorkspaceTree.node(withID:in:)`'s own
+    /// shape, needed here now that a folder row is a selectable thing this pane has to
+    /// resolve rather than only draw.
+    static func node(withID id: String, in tree: [Node]) -> Node? {
+        for candidate in tree {
+            if candidate.id == id { return candidate }
+            if let children = candidate.children, let found = node(withID: id, in: children) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Builds the tree from a flat list of vault-relative paths rather than from the
@@ -104,9 +129,23 @@ enum NoteTree {
             folders[first, default: Builder()].insert(leaf, components: Array(components.dropFirst()))
         }
 
-        /// This folder's rows: subfolders first, then leaves, each group in the order
-        /// the Finder would use - so `9 Note` sorts before `10 Note` and accents do
-        /// not push a note to the end of the list.
+        /// A folder that arrives on its own rather than only as a prefix of some note's
+        /// path (R-10) - `WorkspaceTree.Builder.insertFolder`'s own shape. `[folders[
+        /// first, default: Builder()]` alone, with no leaf appended anywhere, is what
+        /// gives an empty folder a `Builder` (and so a `Node`) even when no note or
+        /// deeper folder is ever inserted under it.
+        mutating func insertFolder(components: [String]) {
+            guard let first = components.first else { return }
+            folders[first, default: Builder()].insertFolder(components: Array(components.dropFirst()))
+        }
+
+        /// This folder's rows: its own notes first, then subfolders, each group in the
+        /// order the Finder would use - so `9 Note` sorts before `10 Note` and accents
+        /// do not push a note to the end of the list. A note that lives directly in
+        /// this folder sits right under the folder's own row, not after every
+        /// subfolder's row and its (possibly expanded) contents - Stefano's own
+        /// correction, 2026-08-28, against the "folders first" convention this file
+        /// carried until then.
         func nodes(prefix: String) -> [Node] {
             let folderNodes = folders
                 .map { name, builder -> Node in
@@ -128,7 +167,7 @@ enum NoteTree {
                 }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-            return folderNodes + leafNodes
+            return leafNodes + folderNodes
         }
     }
 }
