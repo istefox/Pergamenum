@@ -11,8 +11,7 @@ import SwiftUI
 /// This table is the sibling ADR-0027 §D1 names - a card renders through this table only, and
 /// the note editor's own styling is never touched by this feature.
 ///
-/// Rules the implementation (coder-owned, this file's bodies are stubs) must satisfy - held to
-/// them by `Tests/CardTextViewTests.swift`:
+/// The rules this table satisfies, held to by `Tests/CardTextViewTests.swift`:
 ///
 /// - `.bold` -> a genuinely bold, non-monospaced font, e.g.
 ///   `NSFont.systemFont(ofSize: 13, weight: .bold)`. Never `NSFont.monospacedSystemFont`.
