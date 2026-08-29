@@ -329,6 +329,31 @@ for the identical class of value, so adding one only here is an inconsistency, a
 BLOCKS once declared (ADR-0053 §D2). The consistent version covers both files. The operator
 decides at Gate 2; nothing here creates or edits the file.
 
+### D10 — The card never conceals markdown markers; Obsidian-style live preview stays a note-editor-only feature (non-goal)
+
+Raised during Task 6's manual verification pass (Step 5): a card's `**`/`*`/`#` markers are
+drawn dimmed (`CardTextAttributes.colorToken(for:)` → `.textTertiary`) but **always visible**,
+never hidden. The note editor has a real live-preview concealment mechanism —
+`EditorDecorationDelegate` (`Sources/Features/Editor/EditorDecorationDelegate.swift`,
+`hidesMarkup`, `revealedParagraphs`) — that hides a marker outside the caret's own paragraph,
+Obsidian's "live preview" behaviour. This ADR never considered it, in either direction: it is
+absent from the interview, the SPEC, and every decision above.
+
+**Explicitly out of scope for this ADR.** `EditorDecorationDelegate` is not an isolated 400-line
+utility; it is wired into `NoteTextView+Embeds.swift`, `NoteTextView+EmbedCaret.swift`,
+`NoteTextView+Reveal.swift`, `NoteTextView+Coordinator.swift`, `EmbedNavigation.swift` and
+`EmbedAttachment.swift` — built together with transclusion, embed rendition and heading folding,
+none of which a Workspace card has. Porting even a reduced, markers-only slice would be a new
+mechanism (caret-to-paragraph tracking, an `NSTextContentManager` element provider) requiring its
+own design, not a natural extension of `CardFormatBar`/`CardTextAttributes`. Bolting it onto Task
+7/8 here would be exactly the kind of unrequested scope-creep C1/D8 above already declined for
+font size.
+
+The dimmed-but-always-visible marker rendering already implemented and tested
+(`CardTextViewTests.swift`) is the accepted v1 behaviour. A card-level Obsidian-style concealment
+is a legitimate future feature, tracked as a follow-up in `TODO.md`, not a requirement of R-03
+through R-10.
+
 ## Alternatives considered
 
 **A1 — Keep SwiftUI's `TextEditor` and add the new `selection:` binding.** Genuinely available
