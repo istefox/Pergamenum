@@ -9,9 +9,8 @@ import AppKit
 /// this chain's blast radius (ADR-0027 §D9).
 ///
 /// What it is for: draw a card's markdown source with `CardTextAttributes`, report where its
-/// selection is **in its own coordinates**, and leave editing on Esc. Cmd+B/Cmd+I and the
-/// formatting edits themselves arrive in the next slice; this file deliberately stops short of
-/// them.
+/// selection is **in its own coordinates**, leave editing on Esc, and turn a format request -
+/// from Cmd+B/Cmd+I or from the floating bar - into one undoable edit on its own text.
 final class FormattingTextView: NSTextView {
     /// Esc: leave editing (SPEC §6.3).
     ///
@@ -80,14 +79,41 @@ final class FormattingTextView: NSTextView {
     /// file is a declared protected interface under `Sources/Features/Editor/`, outside this
     /// chain's edits (ADR §D9).
     func toggleInlineFormat(_ format: InlineFormat) {
-        fatalError("not implemented")
+        let edit = InlineFormat.toggled(format, in: string, over: selectedRange())
+        replaceWholeText(with: edit.text, selecting: edit.selection)
     }
 
     /// Applies `format`'s line prefix (bullet/numbered/heading) to every line the current
     /// selection touches, via `LineFormat.toggled` (Task 2) through the same one-edit-per-press
     /// idiom as `toggleInlineFormat(_:)` above.
+    ///
+    /// No `selectedRange().length > 0` guard, unlike the note editor's `applyFormat(_:)`: a bare
+    /// caret still touches exactly one line - its own - and `LineFormat.toggled` documents that
+    /// as a real edit rather than the no-op an empty inline selection is.
     func toggleLineFormat(_ format: LineFormat) {
-        fatalError("not implemented")
+        let edit = LineFormat.toggled(format, in: string, over: selectedRange())
+        replaceWholeText(with: edit.text, selecting: edit.selection)
+    }
+
+    /// The single edit path both formatters go through: the whole card's text replaced as one
+    /// `NSTextView` change, so one press is one undo step however many lines it rewrote.
+    ///
+    /// Copied from `CompletingTextView+FormatBar.swift:98-109` - its `applyFormat(_:)` no-op
+    /// guard plus its `replaceWholeText(with:selecting:)` - rather than extracted into something
+    /// both files call. The duplication is deliberate: that file lives under
+    /// `Sources/Features/Editor/`, which this chain does not touch (ADR-0027 §D1/§D9), and any
+    /// shared helper would mean editing it.
+    ///
+    /// Written through AppKit and never into `string`, which is the point of the idiom: assigning
+    /// `string` bypasses `shouldChangeText`/`didChangeText` and leaves the undo stack, the
+    /// delegate and the layout with no record of the change.
+    private func replaceWholeText(with replacement: String, selecting selection: NSRange) {
+        guard replacement != string else { return }
+        let whole = NSRange(location: 0, length: (string as NSString).length)
+        guard shouldChangeText(in: whole, replacementString: replacement) else { return }
+        textStorage?.replaceCharacters(in: whole, with: replacement)
+        didChangeText()
+        setSelectedRange(selection)
     }
 
     /// Cmd+B → `.bold`, Cmd+I → `.italic`, every other key or modifier combination → `nil`.
@@ -107,22 +133,36 @@ final class FormattingTextView: NSTextView {
     static func inlineFormat(
         forKeyEquivalent characters: String, modifierFlags: NSEvent.ModifierFlags
     ) -> InlineFormat? {
-        fatalError("not implemented")
+        guard modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else {
+            return nil
+        }
+        switch characters {
+        case "b": return .bold
+        case "i": return .italic
+        default: return nil
+        }
     }
 
-    /// Routes Cmd+B/Cmd+I to `toggleInlineFormat(_:)` while the view is editable; returns
-    /// `false` for everything else, letting the event fall through to
-    /// `BoardChrome.swift:118-128`'s bare-key tool-shortcut suppression - a different and
+    /// Routes Cmd+B/Cmd+I to `toggleInlineFormat(_:)` while the view is editable; claims nothing
+    /// else, letting every other event fall through - including to
+    /// `BoardChrome.swift:118-128`'s bare-key tool-shortcut suppression, a different and
     /// unaffected path, since a tool shortcut carries no modifier at all and Cmd+B/Cmd+I always
     /// carry one.
     ///
-    /// Stubbed to `false` unconditionally rather than `fatalError`: this override sits in the
-    /// live key-event path of every editable card text view, including ordinary typing in a
-    /// hand-run Debug build, and a `fatalError` here would crash that flow the moment any
-    /// Cmd-anything key event reached the view - not only a test that calls the method on
-    /// purpose. `inlineFormat(forKeyEquivalent:modifierFlags:)` above is the stub the red tests
-    /// actually target for R-04; this override is filled in alongside it.
+    /// Every unhandled case returns `super.performKeyEquivalent(with:)` rather than a bare
+    /// `false`: this override sits in the live key-event path of every card text view, and
+    /// answering `false` without asking the superclass would silently drop whatever `NSTextView`
+    /// itself does with a key equivalent - a wider blast radius than the two keys this method is
+    /// here for. A read-only card (`isEditable == false`) takes that same path before the
+    /// mapping is even consulted: a card nobody is typing into formats nothing.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        false
+        guard isEditable,
+              let characters = event.charactersIgnoringModifiers,
+              let format = Self.inlineFormat(
+                  forKeyEquivalent: characters, modifierFlags: event.modifierFlags
+              )
+        else { return super.performKeyEquivalent(with: event) }
+        toggleInlineFormat(format)
+        return true
     }
 }
