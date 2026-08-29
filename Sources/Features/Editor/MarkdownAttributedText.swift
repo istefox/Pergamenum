@@ -126,6 +126,11 @@ enum MarkdownAttributedText {
         case .taskMarker(let done): done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
+        // Placeholder arm only, to keep this switch exhaustive (Task 1 owns the
+        // declaration, not the styling). The coder assigns `.textTertiary` - the shelf
+        // `.headingMarker`/`.emphasisMarker` already sit on - in Task 1's "Then implement"
+        // step (`2026-08-29-wysiwyg-markdown-in-workspace.md`).
+        case .listMarker: .textPrimary
         }
     }
 

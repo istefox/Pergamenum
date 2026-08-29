@@ -59,6 +59,16 @@ enum MarkdownStyler {
         case due
         /// `@done(...)`, `@remind(...)`, `@repeat(...)`.
         case annotation
+        /// A bullet (`-`/`*`/`+`) or ordered (`N.`/`N)`) list marker (ADR-0028 §D1).
+        enum ListKind: Equatable, Sendable { case bullet, ordered }
+        /// The marker and its trailing space - `- `, `* `, `+ `, `12. `, `12) ` - starting
+        /// after the line's own indentation, never on a checkbox line (ADR-0028 §D2).
+        /// `level` is `1 + indentColumns / 2` (a space is one column, a tab four), capped
+        /// at 6. Carries no range for the item's text and no paragraph range: the view
+        /// derives the paragraph itself (Task 3). Declaration only for now - the tester
+        /// owns the shape, the coder owns `spans(inLine:at:in:)`'s recognition of it
+        /// (plan `2026-08-29-wysiwyg-markdown-in-workspace.md`, Task 1).
+        case listMarker(kind: ListKind, level: Int)
     }
 
     struct StyledRange: Equatable, Sendable {
@@ -117,7 +127,11 @@ enum MarkdownStyler {
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
-        case .heading, .bold, .italic, .strikethrough:
+        //
+        // `.listMarker` is a placeholder arm only, kept here (not moved to the `true`
+        // group above) so `MarkdownStylerTests.listMarkerSuppressesSpellCheck` is red for
+        // the right reason - the coder moves it in Task 1's "Then implement" step.
+        case .heading, .bold, .italic, .strikethrough, .listMarker:
             false
         }
     }
