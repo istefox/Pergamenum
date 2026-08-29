@@ -73,6 +73,10 @@ struct BoardCardControls: View {
         switch command {
         case .color:
             submenu(command) { BoardCardMenuItems.colorItems(node: node, actions: actions) }
+        case .textColor:
+            submenu(command) { BoardCardMenuItems.textColorItems(node: node, actions: actions) }
+        case .textAlign:
+            submenu(command) { BoardCardMenuItems.textAlignItems(node: node, actions: actions) }
         case .resize:
             submenu(command) { BoardCardMenuItems.sizeItems(node: node, actions: actions) }
         case .crop:

@@ -541,6 +541,24 @@ final class WorkspaceController {
         }
     }
 
+    /// «Colore testo» (ADR-0027 §D4, §D7): mirrors `setColor(_:forNodeIDs:)` exactly, one
+    /// `mutate` call writing at most `CardTextStyle.colorKey`, removing it - never writing a
+    /// default - when `color` is `nil`, the same non-destructive rule `endCrop`/`removeCrop`
+    /// already follow (`WorkspaceController+Crop.swift:119-126`).
+    ///
+    /// RED (Task 7, ADR-0155): `fatalError` stub - the coder fills this in.
+    func setTextColor(_ color: CanvasColor?, forNodeIDs ids: Set<String>) {
+        fatalError("not implemented")
+    }
+
+    /// «Allineamento» (ADR-0027 §D4, §D7): same shape as `setTextColor(_:forNodeIDs:)` above,
+    /// writing or removing `CardTextStyle.alignKey`.
+    ///
+    /// RED (Task 7, ADR-0155): `fatalError` stub - the coder fills this in.
+    func setTextAlignment(_ alignment: CardTextStyle.Alignment?, forNodeIDs ids: Set<String>) {
+        fatalError("not implemented")
+    }
+
     func setText(_ text: String, forNodeID id: String) {
         mutate { document in
             guard let index = document.nodes.firstIndex(where: { $0.id == id }) else { return }

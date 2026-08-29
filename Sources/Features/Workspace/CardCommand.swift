@@ -16,6 +16,13 @@ enum CardCommand: String, CaseIterable, Sendable {
     case editText
     case copyLink
     case color
+    /// Whole-card text colour, offered only on a `.text` node (ADR-0027 §D4, §D7) - sits
+    /// right next to `.color` in menu order, because §D7 puts "text colour" exactly where
+    /// "Colore" already is, never on the selection-scoped format bar.
+    case textColor
+    /// Whole-card text alignment, offered only on a `.text` node (ADR-0027 §D4, §D7) - same
+    /// reasoning and the same menu slot as `.textColor` above.
+    case textAlign
     case resize
     case fitToCrop
     case crop
@@ -34,6 +41,8 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .editText: "Modifica testo"
         case .copyLink: "Copia link Pergamenum"
         case .color: "Colore"
+        case .textColor: "Colore testo"
+        case .textAlign: "Allineamento"
         case .resize: "Ridimensiona"
         case .fitToCrop: "Adatta al ritaglio"
         case .crop: "Ritaglia"
@@ -63,6 +72,8 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .editText: "text.cursor"
         case .copyLink: "link"
         case .color: "paintpalette"
+        case .textColor: "paintbrush"
+        case .textAlign: "text.aligncenter"
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .fitToCrop: "aspectratio"
         case .crop: "crop"
@@ -93,7 +104,13 @@ enum CardCommand: String, CaseIterable, Sendable {
         // it) - «Modifica testo» is the command that actually does something, in the same
         // menu slot.
         let opener: CardCommand = { if case .text = node.kind { .editText } else { .open } }()
-        var commands: [CardCommand] = [opener, .copyLink, .color, .resize]
+        var commands: [CardCommand] = [opener, .copyLink, .color]
+        // ADR-0027 §D7: whole-card text colour and alignment sit right after «Colore»,
+        // only on a `.text` node - every other card kind has no text to colour or align.
+        if case .text = node.kind {
+            commands.append(contentsOf: [.textColor, .textAlign])
+        }
+        commands.append(.resize)
         if isCroppable {
             if hasCrop { commands.append(.fitToCrop) }
             commands.append(.crop)
