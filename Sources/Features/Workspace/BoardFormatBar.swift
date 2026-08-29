@@ -199,6 +199,7 @@ final class CardTextSelection {
 /// (`WorkspaceView.swift:354`) and never inside it - a view inside that scale would shrink the
 /// pill exactly as ADR §D5 says a screen-space `NSPanel` might.
 struct BoardFormatBar: View {
+    @Environment(\.theme) private var theme
     let workspace: WorkspaceController
     let node: CanvasNode
     let selectionFrame: CGRect
@@ -208,10 +209,20 @@ struct BoardFormatBar: View {
     let onToggleInline: (InlineFormat) -> Void
     let onToggleLine: (LineFormat) -> Void
 
+    /// A coloured Nota wraps its `CardTextView` in `.padding(theme.spacing(.s))`
+    /// (`StickyTextCard.swift:31`); a plain Testo does not. The text view's own board-space
+    /// origin is offset by exactly that padding on a coloured card, so the geometry's
+    /// `cardOrigin` must include it too, or the pill sits `spacing(.s)` points high on every
+    /// Nota (found manually verifying Task 6, ADR-0027 §D10 area).
+    private var cardOrigin: CGPoint {
+        let inset = node.color != nil ? theme.spacing(.s) : 0
+        return CGPoint(x: node.x + inset, y: node.y + inset)
+    }
+
     var body: some View {
         let placement = BoardFormatBarGeometry.placement(
             selectionFrame: selectionFrame,
-            cardOrigin: CGPoint(x: node.x, y: node.y),
+            cardOrigin: cardOrigin,
             zoom: workspace.zoom,
             pan: workspace.pan,
             viewport: viewport
