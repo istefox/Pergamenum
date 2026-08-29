@@ -73,6 +73,10 @@ struct BoardCardControls: View {
         switch command {
         case .color:
             submenu(command) { BoardCardMenuItems.colorItems(node: node, actions: actions) }
+        case .textColor:
+            submenu(command) { BoardCardMenuItems.textColorItems(node: node, actions: actions) }
+        case .textAlign:
+            submenu(command) { BoardCardMenuItems.textAlignItems(node: node, actions: actions) }
         case .resize:
             submenu(command) { BoardCardMenuItems.sizeItems(node: node, actions: actions) }
         case .crop:
@@ -81,7 +85,7 @@ struct BoardCardControls: View {
             // Drawn inside «Ridimensiona» and «Ritaglia» respectively, exactly where the
             // context menu draws them: nothing of their own on the bar.
             EmptyView()
-        case .open, .copyLink, .duplicate, .delete:
+        case .open, .editText, .copyLink, .duplicate, .delete:
             Button {
                 actions.run(command, on: node)
             } label: {

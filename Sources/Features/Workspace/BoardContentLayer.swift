@@ -28,6 +28,10 @@ struct BoardContentLayer: View {
     @ViewBuilder
     private func nodeView(_ node: CanvasNode) -> some View {
         let isSelected = workspace.selection.contains(node.id)
+        // A card being written into keeps the pointer for its own `CardTextView` - caret
+        // placement, selection, scrolling - none of which can share the click with the
+        // card's own tap-to-select/drag/double-click-to-open gestures below.
+        let isEditingText = workspace.editingTextNodeID == node.id
 
         // Gestures are attached BEFORE `.position`, which is load-bearing: `.position`
         // expands its result to fill the parent, so anything added after it responds
@@ -53,17 +57,22 @@ struct BoardContentLayer: View {
             // A group answers the pointer on its frame only; everything else answers
             // over its whole rectangle.
             .contentShape(hitShape(for: node))
-            .onTapGesture(count: 2) { cardActions.open(node) }
-            .onTapGesture { workspace.select(nodeID: node.id, adding: modifiers.contains(.shift)) }
+            .selectionGestures(enabled: !isEditingText) {
+                cardActions.open(node)
+            } onSelect: {
+                workspace.select(nodeID: node.id, adding: modifiers.contains(.shift))
+            } drag: {
+                cardGesture(node)
+            }
             // The entries come from `CardCommand`, which the board's command bar reads
             // too, so the two surfaces cannot offer a card different commands under
             // different names (ADR-0023 §D1, §D8).
             .contextMenu { BoardCardMenuItems.menu(for: node, actions: cardActions) }
-            .gesture(cardGesture(node))
             // The grips come after the card's own gesture, which is what puts them
             // above it: attached before, the card's drag took the pointer first and
-            // the corners could never be grabbed.
-            .overlay { grips(node, isSelected: isSelected, frame: frame) }
+            // the corners could never be grabbed. Suppressed while writing, the same
+            // condition the crop editor's own grips already use just below.
+            .overlay { grips(node, isSelected: isSelected && !isEditingText, frame: frame) }
             .position(x: frame.midX, y: frame.midY)
             // Visual feedback for the drag, in board units: this offset is applied
             // inside the board's `scaleEffect`, so the scale is already accounted for
@@ -211,4 +220,27 @@ struct BoardContentLayer: View {
         ("Grande", CGSize(width: 480, height: 360)),
         ("Colonna", CGSize(width: 260, height: 520)),
     ]
+}
+
+private extension View {
+    /// Tap-to-select, double-click-to-open and drag-to-move, or none of the three: a card
+    /// being written into (`StickyTextCard`'s `CardTextView`) needs every click for its own
+    /// caret placement and selection, and these three gestures would otherwise race it for
+    /// the same pointer.
+    @ViewBuilder
+    func selectionGestures(
+        enabled: Bool,
+        onOpen: @escaping () -> Void,
+        onSelect: @escaping () -> Void,
+        drag: () -> some Gesture
+    ) -> some View {
+        if enabled {
+            self
+                .onTapGesture(count: 2, perform: onOpen)
+                .onTapGesture(perform: onSelect)
+                .gesture(drag())
+        } else {
+            self
+        }
+    }
 }

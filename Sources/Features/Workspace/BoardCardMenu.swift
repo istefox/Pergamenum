@@ -52,6 +52,8 @@ struct BoardCardActions {
         switch command {
         case .open:
             open(node)
+        case .editText:
+            workspace.beginTextEdit(nodeID: node.id)
         case .copyLink:
             copyLink(to: node)
         case .crop:
@@ -64,15 +66,26 @@ struct BoardCardActions {
             workspace.duplicate(nodeIDs: targets(node))
         case .delete:
             workspace.delete(nodeIDs: targets(node))
-        case .color, .resize:
-            // Both surfaces draw these two as a `Menu`, never as a button, so reaching
-            // here means a surface rendered one as something it is not.
+        case .color, .textColor, .textAlign, .resize:
+            // Every one of these draws as a `Menu`, never as a button, so reaching here
+            // means a surface rendered one as something it is not.
             assertionFailure("\(command) carries an argument and is invoked through its submenu")
         }
     }
 
     func setColor(preset: Int?, on node: CanvasNode) {
         workspace.setColor(preset.map { .preset($0) }, forNodeIDs: targets(node))
+    }
+
+    /// «Colore testo» (ADR-0027 §D4): the same preset-or-nil vocabulary `setColor(preset:on:)`
+    /// already speaks, written to `CardTextStyle.colorKey` instead of the node's own `color`.
+    func setTextColor(preset: Int?, on node: CanvasNode) {
+        workspace.setTextColor(preset.map { .preset($0) }, forNodeIDs: targets(node))
+    }
+
+    /// «Allineamento» (ADR-0027 §D4): `nil` clears back to natural alignment.
+    func setTextAlignment(_ alignment: CardTextStyle.Alignment?, on node: CanvasNode) {
+        workspace.setTextAlignment(alignment, forNodeIDs: targets(node))
     }
 
     func resize(_ node: CanvasNode, to size: CGSize) {
@@ -130,7 +143,9 @@ struct BoardCardActions {
             }
         case .link(let url):
             if let target = URL(string: url) { NSWorkspace.shared.open(target) }
-        case .text, .group, .unknown:
+        case .text:
+            workspace.beginTextEdit(nodeID: node.id)
+        case .group, .unknown:
             break
         }
     }
@@ -186,13 +201,17 @@ enum BoardCardMenuItems {
         switch command {
         case .color:
             Menu(command.title) { colorItems(node: node, actions: actions) }
+        case .textColor:
+            Menu(command.title) { textColorItems(node: node, actions: actions) }
+        case .textAlign:
+            Menu(command.title) { textAlignItems(node: node, actions: actions) }
         case .resize:
             Menu(command.title) { sizeItems(node: node, actions: actions) }
         case .fitToCrop:
             // Drawn inside «Ridimensiona» by `sizeItems`, which is where the card menu has
             // always drawn it: nothing of its own at the top level.
             EmptyView()
-        case .open, .copyLink, .crop, .removeCrop, .duplicate, .delete:
+        case .open, .editText, .copyLink, .crop, .removeCrop, .duplicate, .delete:
             Button(command.title) { actions.run(command, on: node) }
         }
     }
@@ -206,6 +225,30 @@ enum BoardCardMenuItems {
                 actions.setColor(preset: preset, on: node)
             }
         }
+    }
+
+    /// «Colore testo» (ADR-0027 §D4): "Nessuno" (back to `theme.color(.textPrimary)`), then
+    /// the same six JSON Canvas presets `colorItems` draws for the card's own background -
+    /// one vocabulary for both, per `CardTextStyle`'s own doc comment.
+    @ViewBuilder
+    static func textColorItems(node: CanvasNode, actions: BoardCardActions) -> some View {
+        Button("Nessuno") { actions.setTextColor(preset: nil, on: node) }
+        ForEach(1...6, id: \.self) { preset in
+            Button(BoardContentLayer.colorNames[preset - 1]) {
+                actions.setTextColor(preset: preset, on: node)
+            }
+        }
+    }
+
+    /// «Allineamento» (ADR-0027 §D4): "Naturale" clears `CardTextStyle.alignKey`, then the
+    /// four alignment values in reading order.
+    @ViewBuilder
+    static func textAlignItems(node: CanvasNode, actions: BoardCardActions) -> some View {
+        Button("Naturale") { actions.setTextAlignment(nil, on: node) }
+        Button("Sinistra") { actions.setTextAlignment(.left, on: node) }
+        Button("Centro") { actions.setTextAlignment(.center, on: node) }
+        Button("Destra") { actions.setTextAlignment(.right, on: node) }
+        Button("Giustificato") { actions.setTextAlignment(.justify, on: node) }
     }
 
     /// «Ridimensiona»: the presets of SPEC §10, and «Adatta al ritaglio» below them on a

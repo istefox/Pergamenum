@@ -13,8 +13,16 @@ import Foundation
 /// (R-06, R-13).
 enum CardCommand: String, CaseIterable, Sendable {
     case open
+    case editText
     case copyLink
     case color
+    /// Whole-card text colour, offered only on a `.text` node (ADR-0027 §D4, §D7) - sits
+    /// right next to `.color` in menu order, because §D7 puts "text colour" exactly where
+    /// "Colore" already is, never on the selection-scoped format bar.
+    case textColor
+    /// Whole-card text alignment, offered only on a `.text` node (ADR-0027 §D4, §D7) - same
+    /// reasoning and the same menu slot as `.textColor` above.
+    case textAlign
     case resize
     case fitToCrop
     case crop
@@ -30,8 +38,11 @@ enum CardCommand: String, CaseIterable, Sendable {
     var title: String {
         switch self {
         case .open: "Apri"
+        case .editText: "Modifica testo"
         case .copyLink: "Copia link Pergamenum"
         case .color: "Colore"
+        case .textColor: "Colore testo"
+        case .textAlign: "Allineamento"
         case .resize: "Ridimensiona"
         case .fitToCrop: "Adatta al ritaglio"
         case .crop: "Ritaglia"
@@ -58,8 +69,11 @@ enum CardCommand: String, CaseIterable, Sendable {
     var symbol: String {
         switch self {
         case .open: "arrow.up.forward.square"
+        case .editText: "text.cursor"
         case .copyLink: "link"
         case .color: "paintpalette"
+        case .textColor: "paintbrush"
+        case .textAlign: "text.aligncenter"
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .fitToCrop: "aspectratio"
         case .crop: "crop"
@@ -86,7 +100,17 @@ enum CardCommand: String, CaseIterable, Sendable {
     /// the two flags a caller passes are both derived from it, and a future rule that
     /// varies by `kind` lands here instead of at every call site.
     static func available(for node: CanvasNode, isCroppable: Bool, hasCrop: Bool) -> [CardCommand] {
-        var commands: [CardCommand] = [.open, .copyLink, .color, .resize]
+        // A `.text` card has nothing for «Apri» to open (`BoardCardActions.open` no-ops on
+        // it) - «Modifica testo» is the command that actually does something, in the same
+        // menu slot.
+        let opener: CardCommand = { if case .text = node.kind { .editText } else { .open } }()
+        var commands: [CardCommand] = [opener, .copyLink, .color]
+        // ADR-0027 §D7: whole-card text colour and alignment sit right after «Colore»,
+        // only on a `.text` node - every other card kind has no text to colour or align.
+        if case .text = node.kind {
+            commands.append(contentsOf: [.textColor, .textAlign])
+        }
+        commands.append(.resize)
         if isCroppable {
             if hasCrop { commands.append(.fitToCrop) }
             commands.append(.crop)

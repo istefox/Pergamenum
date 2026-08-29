@@ -12,8 +12,8 @@ struct NodeCard: View {
 
     var body: some View {
         switch node.kind {
-        case .text(let text):
-            stickyOrText(text)
+        case .text:
+            StickyTextCard(node: node, workspace: workspace)
         case .file(let path, _):
             fileCard(path)
         case .link(let url):
@@ -24,42 +24,6 @@ struct NodeCard: View {
             // Drawn as a placeholder rather than skipped, so a node from another tool
             // is visible and movable instead of silently invisible.
             placeholder("nodo «\(type)»")
-        }
-    }
-
-    @ViewBuilder
-    private func stickyOrText(_ text: String) -> some View {
-        if let color = node.color {
-            Text(text.isEmpty ? "Nota" : text)
-                .themedText(.body)
-                .padding(theme.spacing(.s))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(stickyColor(color))
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.sticky), style: .continuous))
-                .themedShadow(.card)
-        } else {
-            Text(text.isEmpty ? "Testo" : text)
-                .themedText(.heading)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-
-    /// Maps the six JSON Canvas presets onto theme tokens so a canvas made in
-    /// Obsidian keeps its colour coding here, in this app's palette.
-    private func stickyColor(_ color: CanvasColor) -> Color {
-        switch color {
-        case .hex(let value):
-            let rgba = RGBA(hex: value) ?? RGBA(hex: "#E8E5DF")!
-            return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
-        case .preset(let index):
-            return switch index {
-            case 1: theme.color(.stickyPink)
-            case 2: theme.color(.stickyPink)
-            case 3: theme.color(.stickyYellow)
-            case 4: theme.color(.stickyGreen)
-            case 5: theme.color(.stickyBlue)
-            default: theme.color(.stickyGrey)
-            }
         }
     }
 

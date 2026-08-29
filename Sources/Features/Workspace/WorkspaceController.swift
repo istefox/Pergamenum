@@ -10,10 +10,12 @@ import Observation
 @MainActor
 @Observable
 final class WorkspaceController {
-    /// The eleven tools of SPEC §6.4. `forms` is excluded from v1 and kept only so
-    /// the toolbar layout does not have to be redone in v2.
+    /// The tools of SPEC §6.4, ten of the eleven it lists: ADR-0027 §D8 unified Nota
+    /// into Testo, so `.text` is the only tool of that family and the `n` key is free.
+    /// `forms` is excluded from v1 and kept only so the toolbar layout does not have to
+    /// be redone in v2.
     enum Tool: String, CaseIterable, Identifiable, Sendable {
-        case select, note, text, folder, image, document, link, todo, forms, drawing, arrow
+        case select, text, folder, image, document, link, todo, forms, drawing, arrow
 
         var id: String { rawValue }
 
@@ -23,7 +25,6 @@ final class WorkspaceController {
         var shortcut: String? {
             switch self {
             case .select: "v"
-            case .note: "n"
             case .text: "t"
             case .folder: "f"
             case .image: "i"
@@ -39,7 +40,6 @@ final class WorkspaceController {
         var title: String {
             switch self {
             case .select: "Seleziona"
-            case .note: "Nota"
             case .text: "Testo"
             case .folder: "Cartella"
             case .image: "Immagine"
@@ -55,7 +55,6 @@ final class WorkspaceController {
         var symbol: String {
             switch self {
             case .select: "cursorarrow"
-            case .note: "note.text"
             case .text: "textformat"
             case .folder: "folder"
             case .image: "photo"
@@ -477,6 +476,43 @@ final class WorkspaceController {
     /// picture and to normalise it back to a fraction at commit.
     var cropDrawnSize: CGSize = .zero
 
+    /// The `.text` card being written into, transient like the crop above and for the same
+    /// reason: the document is mutated once, at `endTextEdit(commit:)`, not per keystroke.
+    var editingTextNodeID: String?
+    /// The editor's own draft, on the controller rather than local view state (as
+    /// `cropDraft` is) so that Esc, an outside click and a focus change - three different
+    /// views - can all commit the same value instead of each holding their own copy.
+    var editingTextDraft: String = ""
+    /// Where the selection inside that card is and what is applied to it, published by the
+    /// card's own text view and read by the board's floating format bar (ADR-0027 §D5).
+    ///
+    /// Here for `editingTextDraft`'s own reason - two views that must agree share one value
+    /// rather than each keeping a copy - and a separate object rather than three more
+    /// properties because it holds a reference to a live `NSTextView`, which is not something
+    /// this file should know about (see `CardTextSelection`).
+    let cardTextSelection = CardTextSelection()
+
+    /// Enters inline editing on a `.text` node - a double click, the «Modifica testo»
+    /// command, or straight after Testo/To Do creates one (SPEC §6.3).
+    func beginTextEdit(nodeID: String) {
+        guard case .text(let text) = document.node(id: nodeID)?.kind else { return }
+        // No two editors of different kinds open at once, the same rule `beginCrop` follows.
+        if croppingNodeID != nil { endCrop(confirm: true) }
+        select(nodeID: nodeID, adding: false)
+        editingTextNodeID = nodeID
+        editingTextDraft = text
+    }
+
+    /// Leaves inline editing. `commit` writes `editingTextDraft` through the existing
+    /// `setText`; `false` discards it (Esc is the only caller that ever does).
+    func endTextEdit(commit: Bool) {
+        guard let id = editingTextNodeID else { return }
+        if commit {
+            setText(editingTextDraft, forNodeID: id)
+        }
+        editingTextNodeID = nil
+    }
+
     /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it
     /// started from and how far the pointer has travelled from there, in board units.
     ///
@@ -501,6 +537,43 @@ final class WorkspaceController {
         mutate { document in
             for index in document.nodes.indices where ids.contains(document.nodes[index].id) {
                 document.nodes[index].color = color
+            }
+        }
+    }
+
+    /// «Colore testo» (ADR-0027 §D4, §D7): mirrors `setColor(_:forNodeIDs:)` exactly, one
+    /// `mutate` call writing at most `CardTextStyle.colorKey`, removing it - never writing a
+    /// default - when `color` is `nil`, the same non-destructive rule `endCrop`/`removeCrop`
+    /// already follow (`WorkspaceController+Crop.swift:119-126`).
+    ///
+    /// The `.text` guard is `setText`'s own (line 565): the two commands are already offered
+    /// only on a `.text` node, and a text colour written onto a `.file` or `.group` node would
+    /// be a key nothing reads. Every other key on `unknown` is left exactly as it was, so a
+    /// node also carrying `pergamenum-crop` keeps it.
+    func setTextColor(_ color: CanvasColor?, forNodeIDs ids: Set<String>) {
+        mutate { document in
+            for index in document.nodes.indices where ids.contains(document.nodes[index].id) {
+                guard case .text = document.nodes[index].kind else { continue }
+                if let color {
+                    document.nodes[index].unknown[CardTextStyle.colorKey] = .string(color.rawValue)
+                } else {
+                    document.nodes[index].unknown.removeValue(forKey: CardTextStyle.colorKey)
+                }
+            }
+        }
+    }
+
+    /// «Allineamento» (ADR-0027 §D4, §D7): same shape as `setTextColor(_:forNodeIDs:)` above,
+    /// writing or removing `CardTextStyle.alignKey`.
+    func setTextAlignment(_ alignment: CardTextStyle.Alignment?, forNodeIDs ids: Set<String>) {
+        mutate { document in
+            for index in document.nodes.indices where ids.contains(document.nodes[index].id) {
+                guard case .text = document.nodes[index].kind else { continue }
+                if let alignment {
+                    document.nodes[index].unknown[CardTextStyle.alignKey] = .string(alignment.rawValue)
+                } else {
+                    document.nodes[index].unknown.removeValue(forKey: CardTextStyle.alignKey)
+                }
             }
         }
     }

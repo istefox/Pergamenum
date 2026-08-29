@@ -356,6 +356,9 @@ struct WorkspaceView: View {
 
                 BoardGuides(workspace: workspace)
                 BoardMarquee(workspace: workspace)
+                // Third overlay outside the `scaleEffect` above, and the only one of the three
+                // that answers the pointer, so it comes after both (ADR-0027 §D5).
+                BoardFormatBarLayer(workspace: workspace, viewport: viewportSize)
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)
@@ -394,10 +397,12 @@ struct WorkspaceView: View {
         theme.color(.canvasBackground)
             .contentShape(Rectangle())
             .onTapGesture { location in
-                // A click outside the card confirms an open crop (ADR-0020 D5)
-                // rather than acting on whatever tool is selected.
+                // A click outside the card confirms an open crop (ADR-0020 D5) or a card
+                // being written into, rather than acting on whatever tool is selected.
                 if workspace.croppingNodeID != nil {
                     workspace.endCrop(confirm: true)
+                } else if workspace.editingTextNodeID != nil {
+                    workspace.endTextEdit(commit: true)
                 } else {
                     handleTap(at: canvasPoint(from: location, in: size))
                 }

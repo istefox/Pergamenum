@@ -1,6 +1,7 @@
 import Foundation
 
-/// What each of the eleven tools of SPEC §6.4 does when the board is tapped.
+/// What each of the ten tools of SPEC §6.4 does when the board is tapped (eleven in the
+/// SPEC; ADR-0027 §D8 unified Nota into Testo).
 ///
 /// Declared here, beside `Tool`'s own `title`/`symbol`/`shortcut`, rather than in the
 /// board view: the view used to hand-write one branch per tool and then restate, in a
@@ -29,7 +30,6 @@ extension WorkspaceController.Tool {
     var tapBehaviour: TapBehaviour {
         switch self {
         case .select: .selectNothing
-        case .note: .createSticky("")
         case .todo: .createSticky("- [ ] ")
         case .text: .createFreeText
         case .folder: .sheet(.folder)

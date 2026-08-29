@@ -87,6 +87,24 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-29: **ADR-0027 (unificare Nota e Testo in un solo strumento del Workspace, con
+  formattazione ricca del testo selezionabile) implementata per intero, 8 task su 8, 1839 test
+  unitari verdi, weakening-scan CLEAN, build di entrambi i connettori (`perg`, `pergamenum-mcp`)
+  verdi, suite UI 105/105 al netto di quattro fallimenti pre-esistenti e non correlati (stesso
+  difetto intermittente di `PG-072`, ora anche `PG-076`).** «Nota» e «Testo» sono ora un solo
+  strumento; la card `.text` disegna il proprio `NSTextView` (`CardTextView`/`FormattingTextView`),
+  con formattazione selezione-per-selezione (grassetto/corsivo/barrato/liste/heading, Cmd+B/Cmd+I
+  e una barra flottante in coordinate board) più colore e allineamento dell'intera card come
+  comandi `CardCommand`, tutto persistito come markdown puro o due chiavi `pergamenum-*` sul nodo
+  `.canvas`, mai in un nuovo schema. Trovata e corretta durante il Task 8 una regressione reale
+  (non pre-esistente): il passaggio da `Text` SwiftUI a `NSTextView` aveva rotto la scopribilità
+  di accessibilità della card, rilevata da 6 test UI di `WorkspaceBoardUITests` - risolta con un
+  `accessibilityRole()` che torna `.staticText` a riposo. Registrato come non-goal esplicito
+  (ADR-0027 §D10, `PG-075`) il concealment stile Obsidian dei marcatori markdown sulla card: la
+  Nota ha un vero meccanismo di questo tipo (`EditorDecorationDelegate`) che questa feature non
+  replica, essendo un sottosistema di 400+ righe intrecciato con embed e folding degli heading.
+  Round trip Obsidian (R-10) verificato a mano su vault reale. Gate 5 (ciclo di review) non
+  ancora deciso.
 - 2026-08-25: **ADR-0023 (parità barra/menu contestuale su sei cluster di comandi + Duplica
   card) implementata per intero, 8 task su 8, 1628 test unitari verdi, weakening-scan CLEAN,
   build di entrambi i connettori (`perg`, `pergamenum-mcp`) verdi, suite UI 70/71 (l'unico

@@ -32,10 +32,15 @@ private func markdownFileNode() -> CanvasNode {
     CanvasNode(id: "d", kind: .file(path: "01 Progetti/Nota.md", subpath: nil), x: 0, y: 0, width: 260, height: 180)
 }
 
+private func groupNode() -> CanvasNode {
+    CanvasNode(id: "e", kind: .group(label: "Zona"), x: 0, y: 0, width: 400, height: 300)
+}
+
 // MARK: - Catalogue shape (R-06)
 
-@Test func theCatalogueHasExactlyTheNineCommandsTheCardOffers() {
-    #expect(CardCommand.allCases.count == 9)
+// ADR-0027 §D7 (Task 7): `.textColor` and `.textAlign` bring the catalogue from 10 to 12.
+@Test func theCatalogueHasExactlyTheTwelveCommandsTheCardOffers() {
+    #expect(CardCommand.allCases.count == 12)
 }
 
 // MARK: - `available(for:isCroppable:hasCrop:)` (R-06)
@@ -43,6 +48,27 @@ private func markdownFileNode() -> CanvasNode {
 @Test func availableOnACroppableFileWithNoCropReturnsTheBaseSetInMenuOrder() {
     let commands = CardCommand.available(for: fileNode(), isCroppable: true, hasCrop: false)
     #expect(commands == [.open, .copyLink, .color, .resize, .crop, .duplicate, .delete])
+}
+
+// A `.text` card has nothing for «Apri» to open (`BoardCardActions.open` no-ops on it) -
+// «Modifica testo» takes its slot instead, everywhere else in the catalogue unchanged.
+//
+// ADR-0027 §D7 (Task 7): `.textColor` and `.textAlign` sit right after `.color`, only for a
+// `.text` node - the one card kind that has text to colour or align.
+@Test func availableOnATextNodeOffersEditTextInsteadOfOpen() {
+    let commands = CardCommand.available(for: textNode(), isCroppable: false, hasCrop: false)
+    #expect(commands == [.editText, .copyLink, .color, .textColor, .textAlign, .resize, .duplicate, .delete])
+}
+
+// ADR-0027 §D4: whole-card text colour and alignment describe a `.text` node's own content -
+// a `.file`, `.link` or `.group` node has no text to colour or align, so neither command may
+// leak onto it regardless of croppability or crop state.
+@Test func neitherTextColorNorTextAlignIsOfferedOnAFileLinkOrGroupNode() {
+    for node in [fileNode(), linkNode(), groupNode(), markdownFileNode()] {
+        let commands = CardCommand.available(for: node, isCroppable: true, hasCrop: true)
+        #expect(!commands.contains(.textColor), "\(node.kind) should not offer .textColor")
+        #expect(!commands.contains(.textAlign), "\(node.kind) should not offer .textAlign")
+    }
 }
 
 // `BoardContentLayer.swift:66-87`: "Adatta al ritaglio" is drawn inside the "Ridimensiona"
@@ -54,7 +80,7 @@ private func markdownFileNode() -> CanvasNode {
 }
 
 @Test func availableOnANonCroppableNodeOmitsEveryCropCommandButKeepsTheRest() {
-    for node in [textNode(), linkNode(), markdownFileNode()] {
+    for node in [linkNode(), markdownFileNode()] {
         let commands = CardCommand.available(for: node, isCroppable: false, hasCrop: false)
         #expect(commands == [.open, .copyLink, .color, .resize, .duplicate, .delete])
     }
@@ -76,8 +102,11 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everyCommandHasItsExactExistingItalianTitle() {
     let expected: [CardCommand: String] = [
         .open: "Apri",
+        .editText: "Modifica testo",
         .copyLink: "Copia link Pergamenum",
         .color: "Colore",
+        .textColor: "Colore testo",
+        .textAlign: "Allineamento",
         .resize: "Ridimensiona",
         .fitToCrop: "Adatta al ritaglio",
         .crop: "Ritaglia",
@@ -109,8 +138,11 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everySymbolMatchesTheTableThisTaskDeclares() {
     let expected: [CardCommand: String] = [
         .open: "arrow.up.forward.square",
+        .editText: "text.cursor",
         .copyLink: "link",
         .color: "paintpalette",
+        .textColor: "paintbrush",
+        .textAlign: "text.aligncenter",
         .resize: "arrow.up.left.and.arrow.down.right",
         .fitToCrop: "aspectratio",
         .crop: "crop",
@@ -155,8 +187,11 @@ private func markdownFileNode() -> CanvasNode {
 @Test func everyCommandHasAStableBoardCardIdentifierDerivedFromItsRawValue() {
     let expected: [CardCommand: String] = [
         .open: "board-card-open",
+        .editText: "board-card-editText",
         .copyLink: "board-card-copyLink",
         .color: "board-card-color",
+        .textColor: "board-card-textColor",
+        .textAlign: "board-card-textAlign",
         .resize: "board-card-resize",
         .fitToCrop: "board-card-fitToCrop",
         .crop: "board-card-crop",

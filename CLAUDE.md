@@ -482,3 +482,34 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`
 - **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
 - **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`
+- **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
+
+## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
+
+Unifies the Workspace's "Nota" and "Testo" toolbar tools into one, and adds selection-based rich
+text formatting to `.text` canvas cards: `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`.
+
+Key architectural decisions:
+- **The card gets its own lightweight `NSTextView`, sharing no class with the note editor** — only
+  `Sources/Core/Editor/InlineFormat.swift` (Foundation-only markdown wrap/unwrap, already tested,
+  with its `isLongerMarker` guard against `****text**`) is reused. `MarkdownAttributedText`'s bold
+  rendering (`monospacedSystemFont`) is the note editor's source-mode look and is deliberately not
+  reused here.
+- **The app already ships a floating format bar (M8: `FormatBar`/`FormatBarPanel`/
+  `CompletingTextView+FormatBar`) that deliberately excludes lists and headings** — this chain's
+  card-scoped bar is a new, separate component for the same reason; `FormatBar.swift`'s own
+  exclusion is not reopened to serve a second surface.
+- **The floating bar positions itself in board-space coordinates, never screen coordinates** —
+  following the existing `BoardMarquee`/`BoardGuides` precedent (`p * zoom + pan`), since the board
+  wraps its content in `.scaleEffect(zoom, anchor: .topLeading)` + `pan` and anything derived from
+  `firstRect(forCharacterRange:)` or an `NSPanel` would drift at any zoom other than 1.
+- **Text color and alignment are whole-card `CardCommand`s, not selection-bar controls** — they are
+  properties of the entire card, reachable without an active text selection, unlike
+  bold/italic/strikethrough/lists/headings which are per-selection markdown.
+- **`addStickyNote` is not removed** — `Tool.todo` calls it too (`.createSticky("- [ ] ")`); only
+  the `.note` case and its toolbar entry point are removed, `.text`/Testo survives as the sole
+  card-creating tool for this family.
+- **`CanvasColor`'s existing preset/hex parsing is reused for the new text-color property** rather
+  than inventing a second color encoding on the same node.
+
+Detail: `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`.
