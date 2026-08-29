@@ -546,17 +546,36 @@ final class WorkspaceController {
     /// default - when `color` is `nil`, the same non-destructive rule `endCrop`/`removeCrop`
     /// already follow (`WorkspaceController+Crop.swift:119-126`).
     ///
-    /// RED (Task 7, ADR-0155): `fatalError` stub - the coder fills this in.
+    /// The `.text` guard is `setText`'s own (line 565): the two commands are already offered
+    /// only on a `.text` node, and a text colour written onto a `.file` or `.group` node would
+    /// be a key nothing reads. Every other key on `unknown` is left exactly as it was, so a
+    /// node also carrying `pergamenum-crop` keeps it.
     func setTextColor(_ color: CanvasColor?, forNodeIDs ids: Set<String>) {
-        fatalError("not implemented")
+        mutate { document in
+            for index in document.nodes.indices where ids.contains(document.nodes[index].id) {
+                guard case .text = document.nodes[index].kind else { continue }
+                if let color {
+                    document.nodes[index].unknown[CardTextStyle.colorKey] = .string(color.rawValue)
+                } else {
+                    document.nodes[index].unknown.removeValue(forKey: CardTextStyle.colorKey)
+                }
+            }
+        }
     }
 
     /// «Allineamento» (ADR-0027 §D4, §D7): same shape as `setTextColor(_:forNodeIDs:)` above,
     /// writing or removing `CardTextStyle.alignKey`.
-    ///
-    /// RED (Task 7, ADR-0155): `fatalError` stub - the coder fills this in.
     func setTextAlignment(_ alignment: CardTextStyle.Alignment?, forNodeIDs ids: Set<String>) {
-        fatalError("not implemented")
+        mutate { document in
+            for index in document.nodes.indices where ids.contains(document.nodes[index].id) {
+                guard case .text = document.nodes[index].kind else { continue }
+                if let alignment {
+                    document.nodes[index].unknown[CardTextStyle.alignKey] = .string(alignment.rawValue)
+                } else {
+                    document.nodes[index].unknown.removeValue(forKey: CardTextStyle.alignKey)
+                }
+            }
+        }
     }
 
     func setText(_ text: String, forNodeID id: String) {
