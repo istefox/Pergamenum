@@ -213,3 +213,254 @@ private func fullRange(_ text: String) -> NSRange {
     #expect(view.string == text)
     #expect((view.string as NSString).substring(with: view.selectedRange()) == "secondo")
 }
+
+// MARK: - Return inside a card's list, its renumbering, and one undo step per press
+//
+// ADR-0028, plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 6 (R-07, R-08, R-12).
+//
+// The card's half of what `Tests/NoteListEditingTests.swift` asserts for the note editor, and
+// deliberately the same shape: the arithmetic is `ListContinuation`'s and is already covered by
+// `Tests/ListContinuationTests.swift` (Task 2), so what is under test here is only the *wiring* -
+// that a Return reaching a real `FormattingTextView` turns into that function's answer, as one
+// edit on the storage and therefore one undo step on the card's own stack (ADR-0027 §D2).
+//
+// Two fixtures, on purpose. The caret assertions use the bare `makeView` above, with no
+// coordinator: `applyStyling` on a windowless text view leaves the selection at the end of the
+// text (the harness artifact `Tests/CardConcealmentTests.swift:76-80` records), so a wired card
+// cannot answer "where did the caret land". The undo assertions need the opposite - the
+// coordinator, because the manager Cmd+Z reaches is the one it hands out from
+// `undoManager(for:)`, and because the renumber pass they exercise lives in its `textDidChange`.
+//
+// RED, expected, until Task 6's coder overrides `FormattingTextView.insertNewline(_:)` and adds
+// the renumber pass to `CardTextView.Coordinator.textDidChange`:
+// `returnAtTheEndOfACardsBulletItemContinuesTheList`,
+// `returnOnACardsEmptyItemLeavesTheList`,
+// `returnInsideACardsOrderedRunRenumbersTheRestOfItInTheSameEdit`,
+// `returnAtTheEndOfACardsCheckboxItemContinuesWithAnEmptyBox`,
+// `oneUndoOnTheCardsOwnStackTakesBackTheWholeContinuation`,
+// `oneUndoOnTheCardsOwnStackTakesBackTheContinuationAndItsRenumberingTogether` and
+// `deletingAMiddleItemOfACardsOrderedRunRenumbersTheRestAndOneUndoTakesBothBack` all fail on
+// today's build, where Return falls through to AppKit and inserts a bare newline and nothing
+// renumbers anything. `returnOnACardsPlainLineInsertsAPlainNewlineAndNothingElse` is green on
+// arrival - it is the fall-through case, and it is here to pin that the claim stays narrow once
+// the rest goes green.
+
+/// Return as it reaches the card's text view: the responder method the plan names as the
+/// implementation site, never a synthesised `NSEvent` - routing one needs a window and a first
+/// responder, neither of which this file has ever built.
+@MainActor
+private func pressReturn(_ view: FormattingTextView) {
+    view.insertNewline(nil)
+}
+
+/// The offset just past `line`'s last character - where a caret sits when Return is pressed at
+/// the end of that line.
+private func endOf(_ line: String, in text: String) -> Int {
+    NSMaxRange((text as NSString).range(of: line))
+}
+
+/// The leading ordinal of every line that carries one, in document order. Reads a run's
+/// contiguity off the text itself rather than off a hard-coded expected string.
+private func ordinals(in text: String) -> [Int] {
+    text.split(separator: "\n", omittingEmptySubsequences: false).compactMap {
+        Int($0.prefix { $0.isNumber })
+    }
+}
+
+@MainActor
+private struct WiredCard {
+    let scrollView: NSScrollView
+    let textView: FormattingTextView
+    let coordinator: CardTextView.Coordinator
+}
+
+/// A card wired the way `CardTextView.makeNSView` wires it - the coordinator as the text view's
+/// delegate (which is what makes `undoManager(for:)` answer), `allowsUndo`, and the two
+/// decoration-delegate assignments - holding `text` with a caret at `caret`.
+///
+/// The same compromise `Tests/CardConcealmentTests.swift:35` makes: `makeNSView` needs an
+/// `NSViewRepresentable.Context` no test can build, so the harness repeats its assignments but
+/// calls the real coordinator for everything it is actually asserting.
+@MainActor
+private func wiredCard(_ text: String, caret: Int) throws -> WiredCard {
+    let view = CardTextView(
+        text: .constant(text),
+        theme: .emergency,
+        style: CardTextStyle(color: nil, alignment: nil),
+        isEditable: true,
+        hidesMarkup: true
+    )
+    let coordinator = view.makeCoordinator()
+    let scrollView = FormattingTextView.scrollableTextView()
+    let textView = try #require(
+        scrollView.documentView as? FormattingTextView,
+        "scrollableTextView() must hand back an instance of the receiving class"
+    )
+    textView.delegate = coordinator
+    textView.isRichText = false
+    textView.allowsUndo = true
+    textView.textContentStorage?.delegate = coordinator.decorations
+    textView.textLayoutManager?.delegate = coordinator.decorations
+    // Assigning `.string` posts no `textDidChange` and registers no undo action, so "one undo
+    // returns to this" stays an assertion about the edit alone.
+    textView.string = text
+    coordinator.configure(textView, editable: true)
+    coordinator.applyStyling(to: textView)
+    textView.setSelectedRange(NSRange(location: caret, length: 0))
+    return WiredCard(scrollView: scrollView, textView: textView, coordinator: coordinator)
+}
+
+// MARK: R-07: continuing and leaving a list on a card
+
+@MainActor
+@Test func returnAtTheEndOfACardsBulletItemContinuesTheList() {
+    let view = makeView("- primo", selecting: NSRange(location: 7, length: 0))
+
+    pressReturn(view)
+
+    #expect(view.string == "- primo\n- ")
+    // Past the marker it just wrote, not before it: the next character typed is the item's text.
+    #expect(view.selectedRange() == NSRange(location: 10, length: 0))
+}
+
+@MainActor
+@Test func returnOnACardsEmptyItemLeavesTheList() {
+    // The state the test above ends in, set up directly rather than by pressing Return twice:
+    // this is R-07's *exit* rule and it has to be able to fail on its own.
+    let view = makeView("- primo\n- ", selecting: NSRange(location: 10, length: 0))
+
+    pressReturn(view)
+
+    // The empty item's prefix goes and no line is inserted - one blank paragraph after
+    // "- primo", not two.
+    #expect(view.string == "- primo\n")
+    #expect(view.selectedRange() == NSRange(location: 8, length: 0))
+}
+
+@MainActor
+@Test func returnAtTheEndOfACardsCheckboxItemContinuesWithAnEmptyBox() {
+    let text = "- [ ] fai"
+    let view = makeView(text, selecting: NSRange(location: (text as NSString).length, length: 0))
+
+    pressReturn(view)
+
+    // Always an empty box, whatever this item's state - a To Do card that continued "- [x]"
+    // would tick something nobody did.
+    #expect(view.string == "- [ ] fai\n- [ ] ")
+    #expect(view.selectedRange() == NSRange(location: 16, length: 0))
+}
+
+@MainActor
+@Test func returnOnACardsPlainLineInsertsAPlainNewlineAndNothingElse() {
+    let text = "prosa normale"
+    let view = makeView(text, selecting: NSRange(location: (text as NSString).length, length: 0))
+
+    pressReturn(view)
+
+    // The claim has to stay narrow: everywhere that is not a list item, Return is AppKit's own
+    // Return and writes exactly one newline.
+    #expect(view.string == "prosa normale\n")
+    #expect(view.selectedRange() == NSRange(location: 14, length: 0))
+}
+
+// MARK: R-08: an ordered run on a card stays contiguous
+
+@MainActor
+@Test func returnInsideACardsOrderedRunRenumbersTheRestOfItInTheSameEdit() throws {
+    let text = "1. uno\n2. due\n3. tre"
+    let caret = endOf("2. due", in: text)
+    // Derived from the pure function Task 2 already tested, not hand-written: what is asserted
+    // here is that the card ends up holding that exact answer, and a hand-copied string would
+    // only be asserting this test's own arithmetic.
+    let expected = try #require(
+        ListContinuation.newline(in: text, at: NSRange(location: caret, length: 0))
+    )
+    let view = makeView(text, selecting: NSRange(location: caret, length: 0))
+
+    pressReturn(view)
+
+    #expect(view.string == expected.text)
+    #expect(view.selectedRange() == expected.selection)
+    // R-08 spelled out: four items, numbered 1 to 4, no gap left where the new one went in.
+    #expect(ordinals(in: view.string) == [1, 2, 3, 4])
+}
+
+// MARK: R-12: one press, one undo, on the card's own stack
+
+@MainActor
+@Test func oneUndoOnTheCardsOwnStackTakesBackTheWholeContinuation() throws {
+    let card = try wiredCard("- primo", caret: 7)
+    let undo = card.coordinator.undoManager
+    // Load-bearing premise, not decoration: the edit registers on whatever `textView.undoManager`
+    // resolves to, and this view has no window behind it - so if the delegate's manager is not
+    // the one, `undo()` below would be undoing an empty stack and the assertion would pass for
+    // the wrong reason.
+    #expect(card.textView.undoManager === undo, "la carta deve annullare sulla propria pila")
+
+    pressReturn(card.textView)
+    #expect(card.textView.string == "- primo\n- ")
+
+    undo.undo()
+
+    #expect(card.textView.string == "- primo")
+}
+
+@MainActor
+@Test func oneUndoOnTheCardsOwnStackTakesBackTheContinuationAndItsRenumberingTogether() throws {
+    let text = "1. uno\n2. due\n3. tre"
+    let caret = endOf("2. due", in: text)
+    let expected = try #require(
+        ListContinuation.newline(in: text, at: NSRange(location: caret, length: 0))
+    )
+    let card = try wiredCard(text, caret: caret)
+    let undo = card.coordinator.undoManager
+    #expect(card.textView.undoManager === undo, "la carta deve annullare sulla propria pila")
+
+    pressReturn(card.textView)
+    // Asserted before the undo on purpose: without it this test would pass on a build where
+    // Return only inserts a bare newline, since one undo takes *that* back too. What has to be
+    // undone in one step is the renumbering as well.
+    #expect(card.textView.string == expected.text)
+
+    undo.undo()
+
+    #expect(card.textView.string == text)
+}
+
+/// The assertion that turns ADR-0027 §D2's «AppKit groups them» into a fact.
+///
+/// A deletion is not a Return, so the insertion-time renumbering `ListContinuation.newline`
+/// performs inside its own returned string cannot answer for it: the run is made contiguous
+/// again by the coordinator's `textDidChange` pass, a *second* write, and whether one Cmd+Z
+/// takes both back is a claim about `groupsByEvent` rather than about either write. If it fails,
+/// the fix is the coder's - group the pair explicitly with
+/// `beginUndoGrouping`/`endUndoGrouping` - never a weaker assertion here: a person who deletes
+/// an item and presses Cmd+Z once must get their item back, not a list still renumbered around
+/// the hole it left.
+@MainActor
+@Test func deletingAMiddleItemOfACardsOrderedRunRenumbersTheRestAndOneUndoTakesBothBack() throws {
+    let text = "1. uno\n2. due\n3. tre"
+    let card = try wiredCard(text, caret: 0)
+    let undo = card.coordinator.undoManager
+    #expect(card.textView.undoManager === undo, "la carta deve annullare sulla propria pila")
+
+    // The app's own atomic idiom, which is what a Backspace over a selected line reaches too:
+    // `shouldChangeText` is the call that registers the undo action, so a raw
+    // `textStorage.replaceCharacters` without it would leave nothing to undo.
+    let victim = (card.textView.string as NSString).range(of: "2. due\n")
+    #expect(victim.location != NSNotFound, "premessa: la riga da cancellare deve esistere")
+    #expect(
+        card.textView.shouldChangeText(in: victim, replacementString: ""),
+        "premessa: la vista deve accettare la modifica"
+    )
+    card.textView.textStorage?.replaceCharacters(in: victim, with: "")
+    card.textView.didChangeText()
+
+    #expect(card.textView.string == "1. uno\n2. tre")
+    #expect(ordinals(in: card.textView.string) == [1, 2])
+
+    // One call, not two.
+    undo.undo()
+
+    #expect(card.textView.string == text)
+}
