@@ -185,7 +185,15 @@ struct NoteTextView: NSViewRepresentable {
     /// read when the event happens, so it is the current one and not the one this view was
     /// built with. In a method of its own because `makeNSView` is otherwise past the length
     /// SwiftLint warns at, and a text view with eight callbacks earns the separation.
-    private func wire(_ textView: CompletingTextView, to coordinator: Coordinator) {
+    ///
+    /// **Internal rather than private so a test can wire a text view the way the app does.**
+    /// `Tests/NoteListEditingTests.swift` drives Return through a real `CompletingTextView`,
+    /// and the behaviour it asserts lives in `claimsCommand` below; a fixture that assigned
+    /// that closure itself would be asserting against its own copy of the wiring rather than
+    /// against this one, and would go stale the moment this method changed
+    /// (`Tests/EmbedEditorTestSupport.swift` holds exactly such a copy). Nothing else about
+    /// the method changes: it is still called only from `makeNSView`.
+    func wire(_ textView: CompletingTextView, to coordinator: Coordinator) {
         // The headings of a note, for `[[Nota#`. Through the same source the two surfaces
         // resolve a transclusion with, so the completion cannot offer a section the
         // rendition would fail to find - `NoteOutline` strips the markdown from a heading,

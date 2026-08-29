@@ -109,6 +109,35 @@ private let noComposition = NSRange(location: NSNotFound, length: 0)
     #expect(result.allSatisfy { $0 == 0 })
 }
 
+// MARK: Lists (ADR-0028, plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 4, R-03)
+
+/// Three list items, each its own paragraph:
+///
+/// ```
+/// 0  "- primo\n"    (8)
+/// 8  "- secondo\n"  (10)
+/// 18 "- terzo\n"    (8)
+/// ```
+private let list = "- primo\n- secondo\n- terzo\n"
+private let primo = 0
+private let secondo = 8
+private let terzo = 18
+
+@Test func onlyTheCaretsOwnItemIsRevealedInAList() {
+    // A list is three paragraphs like any other three, and `paragraphs` is offset
+    // arithmetic that knows nothing about markdown - so the item being edited comes back
+    // and its neighbours do not. Green on arrival is the expected result: a red here would
+    // mean the reveal rule needs a list arm, which is a finding, not something to patch
+    // quietly.
+    let caret = NSRange(location: secondo + 4, length: 0)
+    let revealed = MarkupReveal.paragraphs(
+        in: list, selection: caret, markedRange: noComposition, currentMatch: nil
+    )
+    #expect(revealed == [secondo])
+    #expect(!revealed.contains(primo))
+    #expect(!revealed.contains(terzo))
+}
+
 @Test func aCaretAtTheVeryEndOfTheDocumentStillBelongsToTheLastParagraph() {
     // No trailing newline: the whole string is one paragraph, and a caret at `length`
     // still lands inside it rather than in a paragraph past the end of the text.
