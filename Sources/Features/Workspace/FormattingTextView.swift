@@ -20,6 +20,11 @@ final class FormattingTextView: NSTextView {
     /// live where the responder is, or Esc silently stops leaving the card.
     var onCancel: (() -> Void)?
 
+    /// A click landed on a folded heading's badge, naming the entry ordinal it stands for
+    /// (ADR-0028 §D8). Nil on a card whose board never asked to be told, which is a preview or a
+    /// test - and nil is also what makes the click fall through to `super` untouched.
+    var onToggleFold: ((Int) -> Void)?
+
     /// Read from the raw event rather than from `cancelOperation(_:)`, which is what the key
     /// looks like it should arrive as: AppKit's standard key bindings send Esc inside a text view
     /// to `complete:`, word completion, so the responder method that reads as its obvious home is
@@ -123,6 +128,72 @@ final class FormattingTextView: NSTextView {
             return super.insertNewline(sender)
         }
         replaceWholeText(with: edit.text, selecting: edit.selection)
+    }
+
+    // MARK: - Unfolding by click (ADR-0028 §D8, plan
+    // `2026-08-29-wysiwyg-markdown-in-workspace` Task 7, R-09/R-11)
+
+    /// A click on a folded heading's badge opens the section, and is not a click in the text.
+    ///
+    /// Handled before `super`, which would otherwise move the caret to the nearest character - and
+    /// the nearest character to a badge drawn past the end of a line is that line's own end, so the
+    /// caret would jump every time somebody meant to unfold. The same order, and the same reason,
+    /// as `CompletingTextView.mouseDown(with:)`.
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if claimsFoldBadge(at: point) { return }
+        super.mouseDown(with: event)
+    }
+
+    /// Whether a folded heading's badge is under `point`, and toggling its section when one is.
+    ///
+    /// **While editable only.** A card at rest is neither editable nor selectable
+    /// (`CardTextView.Coordinator.configure`), because at rest the pointer belongs to the board's
+    /// own tap, drag and double-click gestures - a text view that swallowed a click there would
+    /// take it from `BoardContentLayer`'s selection, and the badge would be a dead spot on the card
+    /// that also stopped it being picked up. The heading is still reachable from «Ripiega titoli»
+    /// in both states, which is the command this only ever shadows.
+    ///
+    /// The fragment walk below re-states `NoteTextView+Transclusion.decoration(at:in:claimedBy:)`
+    /// rather than extracting it (ADR-0028 §D9): that file is the note editor's, outside this
+    /// chain's edits, and a shared helper would mean editing it. `textContainerOrigin` is taken off
+    /// the point for the reason `NoteTextView+Transclusion.inContainer(_:of:)` exists at all - a
+    /// layout fragment's frame is in the container's coordinates and a click arrives in the view's,
+    /// and comparing the two directly is a containment test that can never succeed.
+    private func claimsFoldBadge(at point: CGPoint) -> Bool {
+        guard isEditable, let onToggleFold, let manager = textLayoutManager else { return false }
+        let origin = textContainerOrigin
+        let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let text = string
+
+        var handled = false
+        manager.enumerateTextLayoutFragments(
+            from: manager.documentRange.location, options: [.ensuresLayout]
+        ) { fragment in
+            guard let folded = fragment as? FoldedHeadingFragment,
+                  folded.badgeFrameInContainer.contains(inContainer),
+                  let entry = Self.entry(atHeadingOffset: folded.headingOffset, in: text)
+            else { return true }
+            onToggleFold(entry)
+            handled = true
+            return false
+        }
+        return handled
+    }
+
+    /// The outline ordinal of the heading whose line begins at `offset`, or nil when no entry does.
+    ///
+    /// The fold is held by entry ordinal and the fragment knows a character offset, so the two are
+    /// joined by the outline itself - the same translation the note editor makes through
+    /// `parent.outlineRanges`, which is that list precomputed. A card has no such property to read,
+    /// and `NoteOutline.entries(in:)` over a card's worth of text is cheap enough to ask per click;
+    /// a second opinion about which section is which is the one thing this must not be, so the
+    /// ordinals are counted over *every* entry, embeds included, exactly as `NoteFolding` counts
+    /// them.
+    private static func entry(atHeadingOffset offset: Int, in text: String) -> Int? {
+        NoteOutline.entries(in: text).firstIndex { entry in
+            NSRange(entry.range, in: text).location == offset
+        }
     }
 
     /// The single edit path both formatters go through: the whole card's text replaced as one

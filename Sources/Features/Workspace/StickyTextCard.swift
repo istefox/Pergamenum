@@ -60,6 +60,11 @@ struct StickyTextCard: View {
             // preferences here the same way, and a `@Environment(VaultController.self)` read at
             // this level would crash a card built in a preview or a test.
             hidesMarkup: workspace.hidesMarkup,
+            // Which of this card's headings are folded (ADR-0028 §D8), off the controller by node
+            // id and along the same route as the setting above. Transient by construction: the
+            // table is cleared in `attach`/`detach`, so a reopened board starts unfolded and
+            // nothing of this reaches the `.canvas` file.
+            foldedEntries: workspace.foldedHeadings[node.id] ?? [],
             // The card is the only thing that knows both its node's id and its live text view,
             // so it is where the two are put together for the board's floating format bar
             // (ADR-0027 §D5). The controller keeps the last one published; whether a bar is
@@ -72,7 +77,12 @@ struct StickyTextCard: View {
             // editing moves straight from one card to another, this card's text view resigns
             // *after* `editingTextNodeID` already names the other one, and an unguarded call
             // here would commit and close the session the user just opened over there.
-            onEndEditing: { if isEditing { workspace.endTextEdit(commit: true) } }
+            onEndEditing: { if isEditing { workspace.endTextEdit(commit: true) } },
+            // A click on a folded heading's badge, and the same controller call «Ripiega titoli»
+            // makes - one fold model reached from two places, never two (ADR-0028 §D8). Unguarded,
+            // unlike the two closures above: the click can only arrive from this card's own text
+            // view while it is editable, so there is no other card's session to close over.
+            onToggleFold: { entry in workspace.toggleFold(entry, forNodeID: node.id) }
         )
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's
