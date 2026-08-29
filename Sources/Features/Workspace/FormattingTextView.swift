@@ -64,4 +64,65 @@ final class FormattingTextView: NSTextView {
         let origin = textContainerOrigin
         return union?.offsetBy(dx: origin.x, dy: origin.y)
     }
+
+    // MARK: - Selection formatting (ADR-0027 §D1, plan
+    // `2026-08-28-unificare-nota-e-testo-in-un-solo-strume` Task 5, R-03/R-04/R-05)
+
+    /// Wraps or unwraps the current selection in `format`'s markdown markers.
+    ///
+    /// `InlineFormat.toggled` is reused verbatim, never reimplemented (C4 in the plan): it
+    /// already carries the `isLongerMarker` guard against `****text**` and the two-shape
+    /// unwrap rule (markers inside a drag-selection, markers outside a double-click selection).
+    /// This method's own job is only the one-edit-per-press idiom that turns the pure result
+    /// into a single undo step - `shouldChangeText(in:replacementString:)` →
+    /// `textStorage.replaceCharacters` → `didChangeText()` → `setSelectedRange`, copied verbatim
+    /// from `CompletingTextView+FormatBar.swift:103-109` rather than extracted from it: that
+    /// file is a declared protected interface under `Sources/Features/Editor/`, outside this
+    /// chain's edits (ADR §D9).
+    func toggleInlineFormat(_ format: InlineFormat) {
+        fatalError("not implemented")
+    }
+
+    /// Applies `format`'s line prefix (bullet/numbered/heading) to every line the current
+    /// selection touches, via `LineFormat.toggled` (Task 2) through the same one-edit-per-press
+    /// idiom as `toggleInlineFormat(_:)` above.
+    func toggleLineFormat(_ format: LineFormat) {
+        fatalError("not implemented")
+    }
+
+    /// Cmd+B → `.bold`, Cmd+I → `.italic`, every other key or modifier combination → `nil`.
+    ///
+    /// A pure mapping, deliberately taking the flags and the character apart from a whole
+    /// `NSEvent`, so `performKeyEquivalent(with:)`'s own routing can be asserted without
+    /// dispatching a live event through the responder chain - unreliable off-screen, and not
+    /// what R-04 is actually about (plan Task 5: "assert against the key-event → action
+    /// mapping, not against a real keystroke").
+    ///
+    /// `modifierFlags` is expected already masked to `.deviceIndependentFlagsMask`
+    /// (`ShortcutSettings.swift:162`'s own convention for reading a key event's modifiers).
+    /// Exactly `.command` and no more is what R-04's "no collision with any existing
+    /// `ShortcutCommand` binding" requires: `newBoard` is Cmd+Shift+B and `toggleInspector` is
+    /// Cmd+Opt+I (`ShortcutCommand.swift:215`, `:276`), so a stray Shift or Option held down
+    /// alongside B/I must resolve to neither format here and fall through to those bindings.
+    static func inlineFormat(
+        forKeyEquivalent characters: String, modifierFlags: NSEvent.ModifierFlags
+    ) -> InlineFormat? {
+        fatalError("not implemented")
+    }
+
+    /// Routes Cmd+B/Cmd+I to `toggleInlineFormat(_:)` while the view is editable; returns
+    /// `false` for everything else, letting the event fall through to
+    /// `BoardChrome.swift:118-128`'s bare-key tool-shortcut suppression - a different and
+    /// unaffected path, since a tool shortcut carries no modifier at all and Cmd+B/Cmd+I always
+    /// carry one.
+    ///
+    /// Stubbed to `false` unconditionally rather than `fatalError`: this override sits in the
+    /// live key-event path of every editable card text view, including ordinary typing in a
+    /// hand-run Debug build, and a `fatalError` here would crash that flow the moment any
+    /// Cmd-anything key event reached the view - not only a test that calls the method on
+    /// purpose. `inlineFormat(forKeyEquivalent:modifierFlags:)` above is the stub the red tests
+    /// actually target for R-04; this override is filled in alongside it.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        false
+    }
 }
