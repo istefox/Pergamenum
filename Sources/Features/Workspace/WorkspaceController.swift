@@ -483,6 +483,14 @@ final class WorkspaceController {
     /// `cropDraft` is) so that Esc, an outside click and a focus change - three different
     /// views - can all commit the same value instead of each holding their own copy.
     var editingTextDraft: String = ""
+    /// Where the selection inside that card is and what is applied to it, published by the
+    /// card's own text view and read by the board's floating format bar (ADR-0027 §D5).
+    ///
+    /// Here for `editingTextDraft`'s own reason - two views that must agree share one value
+    /// rather than each keeping a copy - and a separate object rather than three more
+    /// properties because it holds a reference to a live `NSTextView`, which is not something
+    /// this file should know about (see `CardTextSelection`).
+    let cardTextSelection = CardTextSelection()
 
     /// Enters inline editing on a `.text` node - a double click, the «Modifica testo»
     /// command, or straight after Testo/To Do creates one (SPEC §6.3).

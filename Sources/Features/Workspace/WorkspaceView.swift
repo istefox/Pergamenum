@@ -356,6 +356,9 @@ struct WorkspaceView: View {
 
                 BoardGuides(workspace: workspace)
                 BoardMarquee(workspace: workspace)
+                // Third overlay outside the `scaleEffect` above, and the only one of the three
+                // that answers the pointer, so it comes after both (ADR-0027 §D5).
+                BoardFormatBarLayer(workspace: workspace, viewport: viewportSize)
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)

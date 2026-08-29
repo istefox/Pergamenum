@@ -1,3 +1,5 @@
+import AppKit
+import Observation
 import SwiftUI
 
 /// Where `CardFormatBar` is drawn over the board, and on which side of the selection it sits
@@ -78,7 +80,24 @@ enum BoardFormatBarGeometry {
         pan: CGSize,
         viewport: CGSize
     ) -> Placement {
-        fatalError("not implemented")
+        // `p * zoom + pan`, the board's own documented transform (`BoardOverlays.swift:16-19`).
+        // `p` is the board point the selection begins at: the card's own origin plus the
+        // view-local rectangle its text view reported, never a screen coordinate (ADR §D5).
+        let origin = CGPoint(
+            x: (cardOrigin.x + selectionFrame.origin.x) * zoom + pan.width,
+            y: (cardOrigin.y + selectionFrame.origin.y) * zoom + pan.height
+        )
+        // Flip below, never clamp - the strategy this file's own doc comment above commits to.
+        // The pill drawn above the selection needs its whole height plus `gap` of clearance;
+        // with less than that it would be drawn past the container's top edge, so it takes the
+        // other side of the same selection instead of sliding away from it.
+        //
+        // `viewport` is deliberately not read here: the top edge of the space `origin` already
+        // lives in is `y = 0` whatever the viewport measures, exactly as `BoardMarquee` and
+        // `BoardGuides` draw into that space without ever seeing a viewport. The parameter is
+        // threaded for the horizontal clamp the doc comment above names as a future need.
+        let flipsBelow = origin.y - gap - pillSize.height < 0
+        return Placement(origin: origin, flipsBelow: flipsBelow)
     }
 
     /// True only while the card named `forNodeID` is the one currently being edited **and** the
@@ -94,21 +113,91 @@ enum BoardFormatBarGeometry {
         forNodeID: String,
         selectionRange: NSRange
     ) -> Bool {
-        fatalError("not implemented")
+        editingTextNodeID == forNodeID && selectionRange.length > 0
     }
+}
+
+/// The live selection inside the `.text` card being written into - the one thing
+/// `BoardFormatBar` needs that only an `NSTextView` knows.
+///
+/// A small holder rather than three more properties on `WorkspaceController`, for a reason the
+/// controller states about itself: it imports CoreGraphics, Foundation and Observation and
+/// nothing else, so putting a reference to a live `NSTextView` on it would hang a view off the
+/// object every non-view part of the Workspace reads. It is stored there as one `let`, beside
+/// `editingTextNodeID`/`editingTextDraft`, on those two properties' own argument
+/// (`WorkspaceController.swift:482-485`): one value three views share beats three copies.
+///
+/// The reference back to the text view is **weak**. A card's text view is deallocated every
+/// time the card crosses `BoardContentLayer.visibleNodes`' culling rect (the reason
+/// `CardTextView.dismantleNSView` exists at all), and a strong reference here would keep the
+/// text view of a card nobody can see alive on the controller.
+@MainActor
+@Observable
+final class CardTextSelection {
+    /// The card the values below were read from, `nil` until some card has published one.
+    ///
+    /// Compared against `WorkspaceController.editingTextNodeID` rather than trusted: a card
+    /// that stops being edited never clears this, and that mismatch is exactly what
+    /// `BoardFormatBarGeometry.shouldShowFormatBar` reads to hide the bar. Nothing has to
+    /// remember to tidy up, which is the same reason `endTextEdit` clears one variable rather
+    /// than telling every view about it.
+    private(set) var nodeID: String?
+    /// The selection's rectangle in the card's own text view coordinates, `.zero` when there is
+    /// no selection to point at.
+    private(set) var frame: CGRect = .zero
+    /// The selection itself, read by `shouldShowFormatBar` for its `length > 0` rule.
+    private(set) var range = NSRange(location: 0, length: 0)
+
+    /// `@ObservationIgnored` because a `weak` reference is not something a view observes: every
+    /// change worth redrawing for already lands on `frame` and `range` above, published in the
+    /// same call. Same shape as `WorkspaceController`'s own `weak var vault`.
+    @ObservationIgnored private(set) weak var textView: FormattingTextView?
+
+    /// Reads the current selection out of the card's text view.
+    ///
+    /// Called from that view's own delegate callbacks - selection changed, text changed - and
+    /// never from inside a SwiftUI update pass, which would be a state mutation during view
+    /// update.
+    func update(nodeID: String, from textView: FormattingTextView) {
+        self.nodeID = nodeID
+        self.textView = textView
+        range = textView.selectedRange()
+        frame = textView.selectionFrameInView() ?? .zero
+    }
+
+    /// Whether `format` is already applied over the live selection - read straight from the text
+    /// view rather than from a copy of its string, so the answer cannot lag a keystroke behind
+    /// what the person is looking at.
+    func isApplied(_ format: InlineFormat) -> Bool {
+        guard let textView else { return false }
+        return InlineFormat.isApplied(format, in: textView.string, over: textView.selectedRange())
+    }
+
+    /// The `LineFormat` half of `isApplied(_:)` above, on the lines the selection touches.
+    func isApplied(_ format: LineFormat) -> Bool {
+        guard let textView else { return false }
+        return LineFormat.isApplied(format, in: textView.string, over: textView.selectedRange())
+    }
+
+    /// Toggles `format` on the live text view, which is what keeps a bar press and a Cmd+B
+    /// press one and the same edit - one undo step, through `FormattingTextView`'s own single
+    /// edit path. A card whose text view has gone (culled, or editing already over) formats
+    /// nothing rather than reaching for a value that is no longer there.
+    func toggle(_ format: InlineFormat) { textView?.toggleInlineFormat(format) }
+
+    /// The `LineFormat` half of `toggle(_:)` above.
+    func toggle(_ format: LineFormat) { textView?.toggleLineFormat(format) }
 }
 
 /// The SwiftUI sibling that actually draws `CardFormatBar` over the board (ADR §D5), positioned
 /// by `BoardFormatBarGeometry` above.
 ///
-/// **Not wired into `BoardContentLayer.swift` or `WorkspaceView.swift` by this task** - plan
-/// Task 6 is explicit that the live placement (where in the view tree this sits, what feeds it
-/// `selectionFrame` and `viewport` on every selection change) is the coder's job in the next
-/// dispatch. Declared here as scaffolding only, following `BoardMarquee`/`BoardGuides`
-/// (`BoardOverlays.swift`) as a SwiftUI sibling drawn **outside** `WorkspaceView`'s
-/// `.scaleEffect(workspace.zoom, anchor: .topLeading)` (`WorkspaceView.swift:354`), never inside
-/// it - a view inside that scale would shrink the pill exactly as ADR §D5 says a screen-space
-/// `NSPanel` might.
+/// Drawn by `BoardFormatBarLayer` (`BoardOverlays.swift`), which is where the decision about
+/// *whether* there is a bar at all lives; this view is only the pill and its position. The layer
+/// is a sibling of `BoardGuides`/`BoardMarquee` in `WorkspaceView`'s own board `ZStack`
+/// (`WorkspaceView.swift:357-359`), **outside** `.scaleEffect(workspace.zoom, anchor: .topLeading)`
+/// (`WorkspaceView.swift:354`) and never inside it - a view inside that scale would shrink the
+/// pill exactly as ADR §D5 says a screen-space `NSPanel` might.
 struct BoardFormatBar: View {
     let workspace: WorkspaceController
     let node: CanvasNode
@@ -137,8 +226,14 @@ struct BoardFormatBar: View {
         .frame(width: size.width, height: size.height)
         .position(
             x: placement.origin.x + size.width / 2,
+            // `placement.origin` is the *top* of the selection, so the flipped side has to
+            // clear the selection's own drawn height before the gap starts - at zoom, since
+            // that height is a board measurement while the pill and the gap are screen ones.
+            // Above, there is nothing to clear: the pill's bottom edge is `gap` above that
+            // same point.
             y: placement.flipsBelow
-                ? placement.origin.y + size.height / 2 + BoardFormatBarGeometry.gap
+                ? placement.origin.y + selectionFrame.height * workspace.zoom
+                    + BoardFormatBarGeometry.gap + size.height / 2
                 : placement.origin.y - size.height / 2 - BoardFormatBarGeometry.gap
         )
     }

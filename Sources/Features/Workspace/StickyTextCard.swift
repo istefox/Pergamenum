@@ -55,6 +55,14 @@ struct StickyTextCard: View {
             theme: theme,
             style: CardTextStyle.read(from: node),
             isEditable: isEditing,
+            // The card is the only thing that knows both its node's id and its live text view,
+            // so it is where the two are put together for the board's floating format bar
+            // (ADR-0027 §D5). The controller keeps the last one published; whether a bar is
+            // drawn for it is `BoardFormatBarGeometry.shouldShowFormatBar`'s answer, not this
+            // card's, so nothing here has to be undone when editing moves elsewhere.
+            onSelectionChange: { textView in
+                workspace.cardTextSelection.update(nodeID: node.id, from: textView)
+            },
             // Guarded on this card's own session, exactly as the focus commit above is: when
             // editing moves straight from one card to another, this card's text view resigns
             // *after* `editingTextNodeID` already names the other one, and an unguarded call

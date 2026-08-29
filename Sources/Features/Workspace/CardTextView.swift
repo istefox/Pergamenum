@@ -24,6 +24,14 @@ struct CardTextView: NSViewRepresentable {
     /// arrive here as one value and are applied under every span.
     let style: CardTextStyle
     let isEditable: Bool
+    /// The card's selection moved or its text changed while it was editable, with the live view
+    /// so the caller can read where the selection is and act on it (ADR-0027 §D5).
+    ///
+    /// A closure rather than a reference to `CardTextSelection` for the same reason
+    /// `onEndEditing` below is one: this view knows nothing about the board it floats on, only
+    /// that something out there asked to be told. Both `nil`-safe by default, so a card built
+    /// without a board behind it - a preview, a test - publishes to nobody.
+    var onSelectionChange: (FormattingTextView) -> Void = { _ in }
     /// Esc, a click outside, or the keyboard going anywhere else. One closure for all three
     /// because today all three do the same thing - `endTextEdit(commit: true)` - and a second
     /// one would only record a distinction the card does not make.
@@ -74,19 +82,26 @@ struct CardTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? FormattingTextView else { return }
         context.coordinator.parent = self
 
-        // Only touch the text when the model diverges from what is on screen: reassigning it
-        // unconditionally would reset the caret on every keystroke (`NoteTextView`'s own guard).
-        if textView.string != text {
-            let selection = textView.selectedRange()
-            textView.string = text
-            textView.setSelectedRange(NSRange(
-                location: min(selection.location, (text as NSString).length),
-                length: 0
-            ))
+        // Everything below runs inside SwiftUI's own update pass, and two of these calls -
+        // `setSelectedRange` and `makeFirstResponder` - make AppKit deliver
+        // `textViewDidChangeSelection` synchronously. Publishing the selection from in there
+        // would be a state mutation during a view update, so the coordinator holds the
+        // publication back for the length of the pass (ADR-0027 §D5).
+        context.coordinator.duringViewUpdate {
+            // Only touch the text when the model diverges from what is on screen: reassigning it
+            // unconditionally would reset the caret on every keystroke (`NoteTextView`'s own guard).
+            if textView.string != text {
+                let selection = textView.selectedRange()
+                textView.string = text
+                textView.setSelectedRange(NSRange(
+                    location: min(selection.location, (text as NSString).length),
+                    length: 0
+                ))
+            }
+            context.coordinator.configure(textView, editable: isEditable)
+            context.coordinator.applyStyling(to: textView)
+            context.coordinator.matchFocus(textView, editable: isEditable)
         }
-        context.coordinator.configure(textView, editable: isEditable)
-        context.coordinator.applyStyling(to: textView)
-        context.coordinator.matchFocus(textView, editable: isEditable)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -119,6 +134,9 @@ struct CardTextView: NSViewRepresentable {
         let undoManager = UndoManager()
         /// Guards the delegate callback from re-entering while styling rewrites attributes.
         private var isStyling = false
+        /// Set for the length of `updateNSView`, the same shape as `isStyling` above and for a
+        /// neighbouring reason: what happens in there is SwiftUI's, not the typist's.
+        private var isUpdatingView = false
 
         init(parent: CardTextView) {
             self.parent = parent
@@ -130,6 +148,42 @@ struct CardTextView: NSViewRepresentable {
             guard !isStyling, let textView = notification.object as? FormattingTextView else { return }
             parent.text = textView.string
             applyStyling(to: textView)
+            // After the restyle, not before it: the frame published below comes from the laid-out
+            // text, and a selection measured against the previous layout is a bar a few points
+            // off the words it labels.
+            publishSelection(textView)
+        }
+
+        /// Every arrow key, every drag, and the `setSelectedRange` that ends a format action land
+        /// here - the same callback `refreshFormatBar` hangs the note editor's own bar off
+        /// (`CompletingTextView+FormatBar.swift:11`).
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? FormattingTextView else { return }
+            publishSelection(textView)
+        }
+
+        /// Hands the board this card's current selection, but **only while this card is the one
+        /// being written into**.
+        ///
+        /// The guard is the whole point: a card at rest that published its own empty selection
+        /// would overwrite what the card actually being edited had just reported, and the bar
+        /// would blink out from under the person using it. `isEditable` is the property that
+        /// separates the two states (ADR-0027 §D3), so it is the one asked.
+        ///
+        /// Called from AppKit's own callbacks and never from `updateNSView`: publishing there
+        /// would mutate observable state during a SwiftUI update pass. Nothing is lost by not
+        /// doing so - a card that has just been opened for editing has an empty selection, which
+        /// shows no bar anyway, and the first selection the person makes arrives here.
+        private func publishSelection(_ textView: FormattingTextView) {
+            guard !isUpdatingView, textView.isEditable else { return }
+            parent.onSelectionChange(textView)
+        }
+
+        /// Runs `body` with every selection publication suppressed - see `publishSelection`.
+        func duringViewUpdate(_ body: () -> Void) {
+            isUpdatingView = true
+            defer { isUpdatingView = false }
+            body()
         }
 
         func textDidEndEditing(_ notification: Notification) {
