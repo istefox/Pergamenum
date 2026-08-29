@@ -229,19 +229,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
               let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
 
-        // Re-read from the real characters rather than trust the table: it is filled by
-        // the last styling pass, this is a later layout pass, and the two can go stale
-        // between each other. Silently collapsing prose would be the failure mode here,
-        // not a crash. Each marker is checked on its own, so one gone stale does not
-        // cancel the others in the same paragraph.
-        let survivors = markers.filter { marker in
-            NSMaxRange(marker.range) <= range.length &&
-                Self.stillSpells(
-                    marker.kind,
-                    storage.string as NSString,
-                    at: NSRange(location: range.location + marker.range.location, length: marker.range.length)
-                )
-        }
+        let survivors = Self.survivors(among: markers, of: range, in: storage.string as NSString)
         guard !survivors.isEmpty else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
@@ -249,6 +237,30 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
         }
         return NSTextParagraph(attributedString: copy)
+    }
+
+    /// The markers of `paragraph` that may still be drawn - re-read from the real
+    /// characters rather than trusted: the table is filled by the last styling pass, this
+    /// is a later layout pass, and the two can go stale against each other. Silently
+    /// collapsing prose would be the failure mode here, not a crash. Each marker is checked
+    /// on its own, so one gone stale does not cancel the others in the same paragraph.
+    ///
+    /// Shared by the two paths that collapse a marker into `collapsedFont`: the generic one
+    /// above and the list branch below, which returns early and would otherwise leave a
+    /// bold list item's `**` on screen (ADR-0028, the SPEC's coexistence case).
+    private static func survivors(
+        among markers: [HiddenMarker], of paragraph: NSRange, in text: NSString
+    ) -> [HiddenMarker] {
+        markers.filter { marker in
+            NSMaxRange(marker.range) <= paragraph.length &&
+                stillSpells(
+                    marker.kind,
+                    text,
+                    at: NSRange(
+                        location: paragraph.location + marker.range.location, length: marker.range.length
+                    )
+                )
+        }
     }
 
     /// The embed's own branch of the substitution above: swaps the run's first character
@@ -344,11 +356,66 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// in it (R-03), or the marker gone stale against the real characters since the last
     /// styling pass.
     private func listParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
-        // STUB (ADR-0155, tester owns the interface / coder owns the body): the branch and
-        // its call site above are declared here with the red tests in
-        // `Tests/MarkupHidingTests.swift` that drive them, so the target still builds. The
-        // substitution itself is the coder's.
-        nil
+        guard !revealedParagraphs.contains(range.location) else { return nil }
+        let markers = hiddenMarkers[range.location] ?? []
+        guard let marker = markers.first(where: { $0.kind == .list }),
+              NSMaxRange(marker.range) <= range.length
+        else { return nil }
+
+        let text = storage.string as NSString
+        let markerRange = NSRange(
+            location: range.location + marker.range.location, length: marker.range.length
+        )
+        guard let item = Self.stillSpellsAListMarker(text, at: markerRange) else { return nil }
+
+        let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+        // A substitution, not an insertion: one character out, one in, the paragraph's own
+        // length unmoved - `NSTextContentManager.h:120`'s constraint, the same one the
+        // embed branch above keeps. Nil for an ordered marker, whose own digits are the
+        // rendered ordinal and are therefore left exactly as the file spells them
+        // (ADR-0028 §D4).
+        if let glyph = ListMarkerRendering.glyph(for: item.kind) {
+            copy.replaceCharacters(
+                in: NSRange(location: marker.range.location + item.indent, length: 1),
+                with: String(glyph)
+            )
+        }
+        if item.indent > 0 {
+            copy.addAttribute(
+                .font, value: Self.collapsedFont,
+                range: NSRange(location: marker.range.location, length: item.indent)
+            )
+        }
+        // The paragraph's other markers, collapsed exactly as the generic path below would
+        // have collapsed them: this branch returns early, and a list item whose text is
+        // bold has to render both its bullet and its hidden `**` in the one paragraph the
+        // hook is allowed to hand back.
+        for other in Self.survivors(among: markers.filter { $0.kind != .list }, of: range, in: text) {
+            copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+        }
+        copy.addAttribute(
+            .paragraphStyle,
+            value: ListMarkerRendering.paragraphStyle(
+                level: item.level, font: Self.bodyFont(of: copy, after: marker.range)
+            ),
+            // The whole displayed paragraph, not only the marker: an item that wrapped
+            // would otherwise lose its indentation on its second line (R-05).
+            range: NSRange(location: 0, length: copy.length)
+        )
+        return NSTextParagraph(attributedString: copy)
+    }
+
+    /// The font a list item's own text is drawn in, read from the character just past its
+    /// marker - the one place in the paragraph guaranteed to be neither indentation nor
+    /// marker, and so to carry the body font `ListMarkerRendering.paragraphStyle` steps in
+    /// proportion to. The system font when the storage carries no font at all, which is
+    /// what an offscreen harness building a paragraph out of a bare string has.
+    private static func bodyFont(of paragraph: NSAttributedString, after marker: NSRange) -> NSFont {
+        let probe = NSMaxRange(marker)
+        guard probe < paragraph.length,
+              let font = paragraph.attribute(.font, at: probe, effectiveRange: nil) as? NSFont
+        else { return .systemFont(ofSize: NSFont.systemFontSize) }
+        return font
     }
 
     /// Whether a drawn embed's run sits at this exact paragraph-start offset right now,
@@ -404,14 +471,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // `stillSpellsAnEmbed` before this generic, font-collapsing path ever sees the
         // paragraph (ADR-0018 slice 3, Step 3).
         case .embed: false
-        // STUB (ADR-0155, tester owns the interface / coder owns the body). `false` is the
-        // conservative placeholder, and it is the same answer `.embed` above gives for the
-        // same structural reason: a list marker is drawn by its own dedicated
-        // `listParagraph(at:storage:)` branch, which re-validates the characters itself,
-        // never by this generic font-collapsing path - which would hide the `- ` instead
-        // of turning it into a bullet. Whether the coder's arm ends up returning `false`
-        // permanently or re-checking here depends on where the re-read lands; either way
-        // no `.list` entry may reach the collapsing loop.
+        // Never handled here either, and for the same structural reason `.embed` above is
+        // not: a list marker is drawn by its own dedicated `listParagraph(at:storage:)`
+        // branch, which re-reads the characters through `stillSpellsAListMarker` because it
+        // needs what they say - the indent's width and the item's level - and not merely
+        // whether they are still there. Answering anything but `false` here would let a
+        // `.list` entry into the generic collapsing loop, which would hide the `- ` outright
+        // instead of turning it into a bullet (ADR-0028 §D4).
         case .list: false
         }
     }
@@ -447,6 +513,80 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
         let candidate = text.substring(with: range)
         return (candidate.count == 1 || candidate.count == 2) && candidate.allSatisfy { $0 == "*" }
+    }
+
+    /// Whether `range` still spells a list item's whole opening run - an optional
+    /// indentation of spaces and tabs, then `- `/`* `/`+ ` or `12. `/`12) `, and never a
+    /// checkbox - read from the text as it is right now, with the three things drawing it
+    /// needs: how much of that run is indentation, which kind of marker closes it, and how
+    /// deep it therefore is.
+    ///
+    /// Returns a value rather than a `Bool`, the way `stillSpellsAnEmbed` above does and
+    /// unlike the heading and emphasis re-checks: those two say *whether* to collapse a
+    /// range, this one also says *what* to draw over it. The level is derived here, from
+    /// the characters, and never carried on the marker - `HiddenMarker.Kind.list` has no
+    /// level field precisely because a table entry can go stale between a styling pass and
+    /// a layout pass, and an indentation read one pass late would indent the wrong item.
+    ///
+    /// The rule is `listMarkerSpan`'s own, restated (a space is one column, a tab four,
+    /// one level per two columns, capped at six): that function's grammar is private to
+    /// `MarkdownStyler.swift` and this re-read has to happen against the live characters
+    /// anyway, which is what the whole `stillSpells` family exists for. The checkbox
+    /// refusal is restated with it for the same reason it is restated there - `- [ ] fai`
+    /// is a task line, and its rendering is not this one (ADR-0028 §D2, R-06).
+    private static func stillSpellsAListMarker(_ text: NSString, at range: NSRange) -> ListItem? {
+        guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return nil }
+        let candidate = text.substring(with: range)
+        let indent = candidate.prefix(while: { $0 == " " || $0 == "\t" })
+        let marker = candidate.dropFirst(indent.count)
+        guard let first = marker.first else { return nil }
+
+        let kind: MarkdownStyler.Span.ListKind
+        if first == "-" || first == "*" || first == "+" {
+            // Exactly the marker and its one trailing space, nothing else: a range that
+            // covers more than that is not the run the styling pass recorded.
+            guard marker.count == 2, marker.last == " " else { return nil }
+            if first != "+", Self.checkboxFollows(range, in: text) { return nil }
+            kind = .bullet
+        } else {
+            let digits = marker.prefix(while: { $0.isASCII && $0.isNumber })
+            let afterDigits = marker.dropFirst(digits.count)
+            guard !digits.isEmpty, afterDigits.count == 2,
+                  let delimiter = afterDigits.first, delimiter == "." || delimiter == ")",
+                  afterDigits.last == " "
+            else { return nil }
+            kind = .ordered
+        }
+
+        let columns = indent.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+        return ListItem(indent: indent.count, kind: kind, level: min(1 + columns / 2, 6))
+    }
+
+    /// What a live re-read of a list marker's run says about drawing it: how many of its
+    /// characters are indentation to collapse, which kind of marker closes it, and how deep
+    /// the item sits. A value rather than the three-part tuple it replaced, because all
+    /// three are read at one call site and `indent` and `level` are both plain `Int`s that
+    /// a tuple would let a caller swap without a word from the compiler.
+    private struct ListItem {
+        /// In UTF-16 units, the same space `HiddenMarker.range` is measured in - and equal
+        /// to the character count, since only spaces and tabs are counted into it.
+        let indent: Int
+        let kind: MarkdownStyler.Span.ListKind
+        let level: Int
+    }
+
+    /// Whether the three characters after a `- `/`* ` marker spell a checkbox's `[ ]`,
+    /// which is what makes the line a task rather than a list item. Read past the marker's
+    /// own range on purpose: the range is the marker, and `- ` is a marker either way -
+    /// only what follows it tells the two apart.
+    private static func checkboxFollows(_ marker: NSRange, in text: NSString) -> Bool {
+        let start = NSMaxRange(marker)
+        guard start + 3 <= text.length else { return false }
+        // By character and not by UTF-16 unit: three units are not always three characters,
+        // and a range that cuts a surrogate pair in half must answer «no checkbox» rather
+        // than trap on the subscript.
+        let brackets = Array(text.substring(with: NSRange(location: start, length: 3)))
+        return brackets.count == 3 && brackets[0] == "[" && brackets[2] == "]"
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {
