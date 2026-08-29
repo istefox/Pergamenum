@@ -30,8 +30,8 @@ import Testing
         pan: CGSize(width: 50, height: -20),
         viewport: CGSize(width: 800, height: 600)
     )
-    #expect(placement.origin.x == (100 + 12) * 2 + 50)
-    #expect(placement.origin.y == (200 + 30) * 2 + (-20))
+    #expect(placement.origin.x == (100 + 12) * 2 + 50.0)
+    #expect(placement.origin.y == (200 + 30) * 2 + (-20.0))
 }
 
 @Test func placementIsTheIdentityAtZoomOneWithZeroPan() {
