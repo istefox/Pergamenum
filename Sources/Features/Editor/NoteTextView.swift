@@ -209,12 +209,16 @@ struct NoteTextView: NSViewRepresentable {
         textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
-        // The caret and Backspace/Delete crossing a drawn embed's run in one step
-        // (ADR-0018 slice 3, Step 4, D5) - closed over `textView` the same way the click
-        // handler below is, since `claimsEmbedCommand` needs the live selection.
+        // Two claimants, asked in turn the way the `onClickInMargin` chain below is:
+        // the caret and Backspace/Delete crossing a drawn embed's run in one step
+        // (ADR-0018 slice 3, Step 4, D5), then Return inside a list item (ADR-0028 §D6,
+        // R-07/R-08). They cannot both claim one command - the embed's half answers only
+        // to the four arrows and the two delete keys. Closed over `textView` the same way
+        // the click handler below is, since both need the live selection.
         textView.claimsCommand = { [weak textView] selector in
             guard let textView else { return false }
             return coordinator.claimsEmbedCommand(selector, in: textView)
+                || coordinator.claimsListCommand(selector, in: textView)
         }
         // A drag on a drawn embed's resize handle (ADR-0019 §D6) - closed over `textView`
         // weakly, exactly as `claimsCommand` above is, and for the same reason: the

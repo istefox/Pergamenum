@@ -189,7 +189,12 @@ extension NoteTextView {
             applyStyling(to: textView, theme: parent.theme)
             applyEmbeds(to: textView)
             applyTransclusions(to: textView, theme: parent.theme)
-            // After the two passes above: a keystroke shifts every offset below it, and
+            // After the styling and before the reveal, in that order and for both reasons:
+            // this is a text change of its own, so the attributes it needs are the ones the
+            // pass it triggers writes, and the offsets the reveal works in are the ones it
+            // leaves behind (ADR-0028 §D6, R-08).
+            renumberLists(in: textView)
+            // After the passes above: a keystroke shifts every offset below it, and
             // the revealed set has to be recomputed against the new text (ADR-0018 §D2).
             applyReveal(to: textView)
 
