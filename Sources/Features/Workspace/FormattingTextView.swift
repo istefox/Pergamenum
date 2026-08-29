@@ -165,4 +165,16 @@ final class FormattingTextView: NSTextView {
         toggleInlineFormat(format)
         return true
     }
+
+    // MARK: - Accessibility
+
+    /// A resting card (`isEditable == false`) reads exactly as the SwiftUI `Text` it replaced
+    /// did: a plain static label. UI tests and VoiceOver both located a `.text` card by its
+    /// content before ADR-0027 (`app.staticTexts["CARD A"]`), and that lookup broke the moment
+    /// the card became this `NSTextView`, whose default accessibility role is a text area, not
+    /// static text. The moment editing starts (`isEditable == true`) this reverts to
+    /// `NSTextView`'s own default role, which is what typing into it actually needs.
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        isEditable ? super.accessibilityRole() : .staticText
+    }
 }
