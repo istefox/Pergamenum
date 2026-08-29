@@ -65,6 +65,14 @@ enum LineFormat: Equatable, Sendable {
                 guard let length = markerLength(of: format, on: line, in: haystack) else { continue }
                 edits.append(Edit(start: start, oldLength: length, replacement: ""))
             } else {
+                // A checklist line ("- [ ] Task") already owns its leading "- " as
+                // `TaskParser.parse`'s own bullet, not this format's marker (see `markerLength`
+                // above). Prepending a second "- " in front of it would leave the checklist's own
+                // "- [ ] " text untouched byte-for-byte but no longer at the start of the line, so
+                // `TaskParser.parse` would stop recognizing the line as a task at all - a
+                // corruption this format bar must not cause even though nothing is *stripped*.
+                // Bullet-toggling a checklist line is therefore a no-op, not a stack.
+                if format == .bullet, isChecklistLine(line, in: haystack) { continue }
                 // Whatever line marker the line already carries is *replaced*, never stacked: a
                 // level-1 heading asked for level 2 becomes `## `, not `### `, and a line means
                 // one of bullet / numbered / heading at a time rather than `1. - item`.
@@ -169,7 +177,14 @@ enum LineFormat: Equatable, Sendable {
         let start = line.start + indentLength(on: line, in: haystack)
         switch format {
         case .bullet:
-            return matches("- ", in: haystack, at: start, limit: line.contentEnd) ? 2 : nil
+            // "- [ ] Task" (`Tool.todo`'s own seed text, `WorkspaceController+Tools.swift:33`) is
+            // a checklist line, not an already-bulleted one: its "- " is `TaskParser.parse`'s own
+            // bullet marker, not this format's. Reading it as this format's marker anyway is what
+            // let the card format bar's bullet button strip a To Do card's "- " down to a bare
+            // "[ ] Task", since a To Do sticky is a plain `.text` card sharing this exact code path
+            // (ADR-0027 §D1).
+            guard matches("- ", in: haystack, at: start, limit: line.contentEnd) else { return nil }
+            return isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd) ? nil : 2
         case .numbered:
             return numberedMarkerLength(in: haystack, at: start, limit: line.contentEnd)
         case .heading(let level):
@@ -194,6 +209,28 @@ enum LineFormat: Equatable, Sendable {
             }
         }
         return 0
+    }
+
+    /// Whether `line` opens with a checklist bullet - `"- [ ] "`/`"- [x] "` and the other states
+    /// `TaskParser.state(for:)` recognizes, `"*"` bullet included since that parser accepts it too
+    /// even though this file's own `.bullet` marker only ever writes/reads `"- "`.
+    private static func isChecklistLine(_ line: Line, in haystack: NSString) -> Bool {
+        let start = line.start + indentLength(on: line, in: haystack)
+        guard start + 2 < line.contentEnd else { return false }
+        let bulletChar = haystack.character(at: start)
+        guard bulletChar == 0x2D || bulletChar == 0x2A,  // "-" or "*"
+              haystack.character(at: start + 1) == 0x20  // " "
+        else { return false }
+        return isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd)
+    }
+
+    /// Whether `"[X]"` sits at `index`, `X` being one of `TaskParser.state(for:)`'s markers: a
+    /// space (open), `x`/`X` (done), `>` (rescheduled) or `-` (cancelled).
+    private static func isChecklistMarker(in haystack: NSString, at index: Int, limit: Int) -> Bool {
+        guard index + 3 <= limit, haystack.character(at: index) == 0x5B else { return false }  // "["
+        guard haystack.character(at: index + 2) == 0x5D else { return false }  // "]"
+        let state = haystack.character(at: index + 1)
+        return state == 0x20 || state == 0x78 || state == 0x58 || state == 0x3E || state == 0x2D
     }
 
     /// `12. ` and `12) ` both, since CommonMark writes either; this file only ever emits the dot.

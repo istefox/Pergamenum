@@ -43,6 +43,30 @@ private func fullRange(_ text: String) -> NSRange {
     #expect(result.text == "primo\nsecondo\nterzo")
 }
 
+@Test func bulletToggleOnAChecklistLineDoesNotCorruptTheTaskMarker() {
+    // Regression: a To Do sticky is a plain `.text` card seeded with "- [ ] " (`Tool.todo`,
+    // `WorkspaceController+Tools.swift:33`) and shares this exact bullet-toggle code path. Before
+    // the fix, `markerLength(of: .bullet, ...)` read the checklist's own "- " as an already-applied
+    // bullet marker and stripped it, corrupting "- [ ] Task" down to "[ ] Task" - a line
+    // `TaskParser.parse` no longer recognizes as a task at all.
+    let text = "- [ ] Task"
+    let word = range(of: "Task", in: text)
+    #expect(!LineFormat.isApplied(.bullet, in: text, over: fullRange(text)))
+    let result = LineFormat.toggled(.bullet, in: text, over: word)
+    #expect(result.text == "- [ ] Task")
+    #expect((result.text as NSString).substring(with: result.selection) == "Task")
+}
+
+@Test func bulletToggleLeavesADoneChecklistLineUntouchedToo() {
+    // Same corruption risk for a completed task line ("- [x] ...") and for the cancelled ("-")
+    // and rescheduled (">") states `TaskParser.state(for:)` also recognizes.
+    for marker: Character in [" ", "x", "X", ">", "-"] {
+        let text = "- [\(marker)] Task"
+        let result = LineFormat.toggled(.bullet, in: text, over: fullRange(text))
+        #expect(result.text == text)
+    }
+}
+
 // MARK: Numbered
 
 @Test func numberedListOverThreeLinesWritesSequentialNumbersStartingFromOneRegardlessOfPosition() {
