@@ -24,6 +24,13 @@ struct CardTextView: NSViewRepresentable {
     /// arrive here as one value and are applied under every span.
     let style: CardTextStyle
     let isEditable: Bool
+    /// The vault's `hidesMarkup` setting (ADR-0028 §D10), travelling the route the board's own
+    /// settings already travel: `WorkspaceView.applyBoardSettings()` reads it from
+    /// `vault.settings`, `WorkspaceController` holds it, `StickyTextCard` hands it here. Never a
+    /// second switch of the card's own, and never an `@Environment(VaultController.self)` read
+    /// inside the card - a card built in a preview or a test has no such environment and would
+    /// crash on it.
+    let hidesMarkup: Bool
     /// The card's selection moved or its text changed while it was editable, with the live view
     /// so the caller can read where the selection is and act on it (ADR-0027 §D5).
     ///
@@ -132,6 +139,21 @@ struct CardTextView: NSViewRepresentable {
         /// they meant. It also means no action targeting this view can outlive it on a stack
         /// somebody else owns.
         let undoManager = UndoManager()
+        /// The rendering rule the two surfaces share, reused rather than forked (ADR-0028 §D1):
+        /// the same object the note editor hands its own content storage and layout manager to
+        /// (`NoteTextView.swift:148-149`), because the delegate *is* the rule and a fork of it
+        /// would let a card and a note quietly disagree about what a `- ` looks like.
+        let decorations = EditorDecorationDelegate()
+        /// The hidden-marker table the last styling pass handed `decorations`: paragraph-start
+        /// offset to the markers inside it, each range relative to its own paragraph - the key
+        /// space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1), and the same one
+        /// `NoteTextView+Coordinator.applyStyling` fills for the note editor.
+        ///
+        /// Kept on the coordinator rather than left as a local of the walk because the delegate's
+        /// own copy is private: this is where a test reads back the kinds and the ranges the
+        /// card's walk produced, and "the card's table has the same shape as the note's" is
+        /// R-04's precondition.
+        private(set) var hiddenMarkers: [Int: [HiddenMarker]] = [:]
         /// Guards the delegate callback from re-entering while styling rewrites attributes.
         private var isStyling = false
         /// Set for the length of `updateNSView`, the same shape as `isStyling` above and for a
@@ -211,6 +233,20 @@ struct CardTextView: NSViewRepresentable {
             CardTextAttributes.apply(to: storage, theme: parent.theme, base: baseAttributes)
             storage.endEditing()
         }
+
+        /// Which paragraphs are drawn with their raw markdown showing: the caret's own while the
+        /// card is being written into (R-03), and none at all while it is at rest, where every
+        /// marker stays concealed (R-04). Returns what it published, so a caller - and a test -
+        /// can read the answer without reaching into the delegate's private table.
+        ///
+        /// **Stub, filled in by Task 5's coder** (plan `2026-08-29-wysiwyg-markdown-in-workspace`):
+        /// returns the empty set unconditionally and publishes nothing. The real body is
+        /// `MarkupReveal.paragraphs(in:selection:markedRange:currentMatch: nil)` while editable,
+        /// the empty set otherwise, handed to `decorations.apply(revealedParagraphs:)` and then
+        /// re-edited as `.editedAttributes` for the paragraphs that actually changed - never the
+        /// whole document (`NoteTextView+Reveal.swift:66-88`).
+        @discardableResult
+        func applyReveal(to textView: NSTextView) -> Set<Int> { [] }
 
         /// Puts the keyboard where the model says editing is happening.
         ///

@@ -474,6 +474,10 @@ struct WorkspaceView: View {
     private func applyBoardSettings() {
         workspace.showsGrid = vault.settings.boardShowsGrid
         workspace.snapsToGrid = vault.settings.boardSnapsToGrid
+        // The editor's own markup setting, reaching the card by the route the two above already
+        // take (ADR-0028 §D10): one switch for both surfaces, re-run on every settings change by
+        // the `onChange(of: vault.settings)` this method is already wired to.
+        workspace.hidesMarkup = vault.settings.hidesMarkup
     }
 
     private var grid: some View {

@@ -55,6 +55,11 @@ struct StickyTextCard: View {
             theme: theme,
             style: CardTextStyle.read(from: node),
             isEditable: isEditing,
+            // The vault setting, off the controller rather than out of the environment
+            // (ADR-0028 §D10): `WorkspaceView.applyBoardSettings()` already carries the board's
+            // preferences here the same way, and a `@Environment(VaultController.self)` read at
+            // this level would crash a card built in a preview or a test.
+            hidesMarkup: workspace.hidesMarkup,
             // The card is the only thing that knows both its node's id and its live text view,
             // so it is where the two are put together for the board's floating format bar
             // (ADR-0027 §D5). The controller keeps the last one published; whether a bar is

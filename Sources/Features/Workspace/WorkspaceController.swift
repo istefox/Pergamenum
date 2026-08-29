@@ -430,6 +430,12 @@ final class WorkspaceController {
     /// the vault settings (SPEC §12, "Canvas (griglia, snap)").
     var showsGrid = true
     var snapsToGrid = false
+    /// Whether a `.text` card draws its markdown or its markers (ADR-0028 §D10). The vault's
+    /// own `hidesMarkup`, carried here by `WorkspaceView.applyBoardSettings()` beside the two
+    /// above so that the board and the note editor read one setting and not two - a card never
+    /// gets a switch of its own. `true` to match `VaultSettings.default`, for the window that
+    /// draws a board before the settings have been applied to it.
+    var hidesMarkup = true
     /// The grid the board draws, and the one cards snap to when snapping is on. One
     /// constant for both: a card that landed on a spacing the user cannot see would
     /// look misaligned.
