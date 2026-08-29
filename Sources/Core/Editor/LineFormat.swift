@@ -66,13 +66,16 @@ enum LineFormat: Equatable, Sendable {
                 edits.append(Edit(start: start, oldLength: length, replacement: ""))
             } else {
                 // A checklist line ("- [ ] Task") already owns its leading "- " as
-                // `TaskParser.parse`'s own bullet, not this format's marker (see `markerLength`
-                // above). Prepending a second "- " in front of it would leave the checklist's own
-                // "- [ ] " text untouched byte-for-byte but no longer at the start of the line, so
-                // `TaskParser.parse` would stop recognizing the line as a task at all - a
-                // corruption this format bar must not cause even though nothing is *stripped*.
-                // Bullet-toggling a checklist line is therefore a no-op, not a stack.
-                if format == .bullet, isChecklistLine(line, in: haystack) { continue }
+                // `TaskParser.parse`'s own bullet, not any line format's marker (see `markerLength`
+                // above, `.bullet` case). Prepending a numbered/heading/bullet marker in front of
+                // it would leave the checklist's own "- [ ] " text untouched byte-for-byte but no
+                // longer at the start of the line, so `TaskParser.parse` would stop recognizing the
+                // line as a task at all - a corruption this format bar must not cause even though
+                // nothing is *stripped*. This applies to all three line formats, not only `.bullet`
+                // - a numbered or heading press is just as capable of writing something in front of
+                // a checklist's own marker. Toggling any line format on a checklist line is
+                // therefore a no-op, not a stack.
+                if isChecklistLine(line, in: haystack) { continue }
                 // Whatever line marker the line already carries is *replaced*, never stacked: a
                 // level-1 heading asked for level 2 becomes `## `, not `### `, and a line means
                 // one of bullet / numbered / heading at a time rather than `1. - item`.

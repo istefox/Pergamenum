@@ -87,6 +87,27 @@ private func fullRange(_ text: String) -> NSRange {
     #expect(result.text == "primo\nsecondo\nterzo")
 }
 
+@Test func numberedToggleOnAChecklistLineDoesNotCorruptTheTaskMarker() {
+    // Regression: the checklist guard originally only covered `.bullet` (`format == .bullet` in
+    // `LineFormat.toggled`), so pressing the numbered button on a To Do card's "- [ ] Task" line
+    // wrote "1. - [ ] Task" - `TaskParser.parse` no longer recognizes that as a task at all,
+    // since the trimmed line no longer starts with "-"/"*". Widened to cover every line format.
+    let text = "- [ ] Task"
+    let word = range(of: "Task", in: text)
+    #expect(!LineFormat.isApplied(.numbered, in: text, over: fullRange(text)))
+    let result = LineFormat.toggled(.numbered, in: text, over: word)
+    #expect(result.text == "- [ ] Task")
+    #expect((result.text as NSString).substring(with: result.selection) == "Task")
+}
+
+@Test func numberedToggleLeavesADoneChecklistLineUntouchedToo() {
+    for marker: Character in [" ", "x", "X", ">", "-"] {
+        let text = "- [\(marker)] Task"
+        let result = LineFormat.toggled(.numbered, in: text, over: fullRange(text))
+        #expect(result.text == text)
+    }
+}
+
 // MARK: Heading
 
 @Test func headingLevelTwoOverAnExistingLevelOneReplacesRatherThanStacks() {
@@ -103,6 +124,26 @@ private func fullRange(_ text: String) -> NSRange {
     #expect(once.text == "## Titolo")
     let twice = LineFormat.toggled(.heading(level: 2), in: once.text, over: once.selection)
     #expect(twice.text == "Titolo")
+}
+
+@Test func headingToggleOnAChecklistLineDoesNotCorruptTheTaskMarker() {
+    // Same regression as the numbered case above, for the heading button: before the fix,
+    // toggling `.heading(level: 1)` on "- [ ] Task" wrote "# - [ ] Task", equally unrecognizable
+    // to `TaskParser.parse`.
+    let text = "- [ ] Task"
+    let word = range(of: "Task", in: text)
+    #expect(!LineFormat.isApplied(.heading(level: 1), in: text, over: fullRange(text)))
+    let result = LineFormat.toggled(.heading(level: 1), in: text, over: word)
+    #expect(result.text == "- [ ] Task")
+    #expect((result.text as NSString).substring(with: result.selection) == "Task")
+}
+
+@Test func headingToggleLeavesADoneChecklistLineUntouchedToo() {
+    for marker: Character in [" ", "x", "X", ">", "-"] {
+        let text = "- [\(marker)] Task"
+        let result = LineFormat.toggled(.heading(level: 1), in: text, over: fullRange(text))
+        #expect(result.text == text)
+    }
 }
 
 @Test func isAppliedForAHeadingLevelIsFalseWhenALineIsAtADifferentLevel() {
