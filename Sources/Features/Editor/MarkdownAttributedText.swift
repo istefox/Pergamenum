@@ -115,7 +115,7 @@ enum MarkdownAttributedText {
         // `[.foregroundColor: …colorToken(for: span)…]`, and `addAttributes` merges
         // rather than replaces, so a marker keeps its run's font - bold, or oblique, or
         // the heading's, applied first - and only gets this colour on top, for free.
-        case .linkSyntax, .headingMarker, .emphasisMarker: .textTertiary
+        case .linkSyntax, .headingMarker, .emphasisMarker, .listMarker: .textTertiary
         // `.embedRun` has its own explicit arm in `attributes(for:)` that returns `[:]`
         // (Step 3 is what collapses it into a preview), so this entry exists only to
         // keep this table exhaustive - the same shelf as `.heading`/`.linkTarget` above,
@@ -126,11 +126,6 @@ enum MarkdownAttributedText {
         case .taskMarker(let done): done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
-        // Placeholder arm only, to keep this switch exhaustive (Task 1 owns the
-        // declaration, not the styling). The coder assigns `.textTertiary` - the shelf
-        // `.headingMarker`/`.emphasisMarker` already sit on - in Task 1's "Then implement"
-        // step (`2026-08-29-wysiwyg-markdown-in-workspace.md`).
-        case .listMarker: .textPrimary
         }
     }
 

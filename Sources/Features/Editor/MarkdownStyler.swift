@@ -65,9 +65,7 @@ enum MarkdownStyler {
         /// after the line's own indentation, never on a checkbox line (ADR-0028 §D2).
         /// `level` is `1 + indentColumns / 2` (a space is one column, a tab four), capped
         /// at 6. Carries no range for the item's text and no paragraph range: the view
-        /// derives the paragraph itself (Task 3). Declaration only for now - the tester
-        /// owns the shape, the coder owns `spans(inLine:at:in:)`'s recognition of it
-        /// (plan `2026-08-29-wysiwyg-markdown-in-workspace.md`, Task 1).
+        /// derives the paragraph itself.
         case listMarker(kind: ListKind, level: Int)
     }
 
@@ -123,15 +121,12 @@ enum MarkdownStyler {
         switch span {
         case .frontmatter, .code, .codeBlock, .codeToken,
              .linkSyntax, .linkTarget, .embedTarget, .embedRun, .tag,
-             .taskMarker, .scheduled, .due, .annotation, .headingMarker, .emphasisMarker:
+             .taskMarker, .scheduled, .due, .annotation, .headingMarker, .emphasisMarker,
+             .listMarker:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
-        //
-        // `.listMarker` is a placeholder arm only, kept here (not moved to the `true`
-        // group above) so `MarkdownStylerTests.listMarkerSuppressesSpellCheck` is red for
-        // the right reason - the coder moves it in Task 1's "Then implement" step.
-        case .heading, .bold, .italic, .strikethrough, .listMarker:
+        case .heading, .bold, .italic, .strikethrough:
             false
         }
     }
@@ -213,11 +208,19 @@ enum MarkdownStyler {
             }
         }
 
-        if let marker = taskMarker(in: trimmed) {
+        let task = taskMarker(in: trimmed)
+        if let task {
             result.append(StyledRange(
-                range: absolute(indent, marker.length),
-                span: .taskMarker(done: marker.done)
+                range: absolute(indent, task.length),
+                span: .taskMarker(done: task.done)
             ))
+        }
+
+        // A checkbox line is not a list line (ADR-0028 §D2), and emitting nothing at all
+        // for it is the whole of R-06: with no marker to conceal there is no bullet to
+        // put in its place, so `- [ ] fai` keeps exactly today's appearance.
+        if task == nil, let list = listMarkerSpan(inLine: line, absolute: absolute) {
+            result.append(list)
         }
 
         if let embed = embedRun(inLine: line) {
@@ -414,6 +417,59 @@ private func emphasisMarkers(
             range: absolute(index + length - markerLength, markerLength), span: .emphasisMarker
         )
     ]
+}
+
+/// The `- `/`* `/`+ `/`12. `/`12) ` marker opening a list item, as a span (ADR-0028 §D1).
+///
+/// Takes `absolute` the way `emphasisMarkers` above does, and lives at file scope for the
+/// same reason `taskMarker` below does: `MarkdownStyler`'s own body is already at its
+/// length limit and this helper depends on nothing the type carries.
+///
+/// It trims tabs as well as spaces, which the caller's own `trimmed` does not: a tab is
+/// four columns of nesting, so a tab-indented item has to be seen to be measured. That
+/// wider trim is also why the checkbox refusal is restated here rather than left to the
+/// caller's `taskMarker(in: trimmed)` guard - `\t- [ ] fai` is a checkbox line this sees
+/// and that one cannot (§D2, R-06).
+private func listMarkerSpan(
+    inLine line: String,
+    absolute: (Int, Int) -> Range<String.Index>
+) -> MarkdownStyler.StyledRange? {
+    let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
+    let content = line.dropFirst(indent.count)
+    guard taskMarker(in: content) == nil, let marker = listMarkerLength(in: content) else { return nil }
+
+    // A space counts one column and a tab four, and the level is one per two columns,
+    // capped at six. Deliberately not CommonMark's rule, which measures the parent item's
+    // content column and so needs the whole list's state to answer for a single line;
+    // this classifier is line-local by construction, and a two-space step is what every
+    // note in this vault and every card this app writes actually uses.
+    let columns = indent.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+    return MarkdownStyler.StyledRange(
+        range: absolute(indent.count, marker.length),
+        span: .listMarker(kind: marker.kind, level: min(1 + columns / 2, 6))
+    )
+}
+
+/// How long a list marker is - itself and the single space after it - and which kind it is.
+///
+/// The trailing space is what makes it a marker at all: `-nodash` is a word, `1.no-space`
+/// is a version number and a bare `1.` at the end of a line is a sentence. Exactly one
+/// space is taken, the way `.headingMarker` takes one out of `#   Titolo`, so a marker
+/// written with extra spacing does not swallow the indentation of its own text.
+private func listMarkerLength(
+    in content: some StringProtocol
+) -> (length: Int, kind: MarkdownStyler.Span.ListKind)? {
+    guard let first = content.first else { return nil }
+    if first == "-" || first == "*" || first == "+" {
+        return content.dropFirst().hasPrefix(" ") ? (2, .bullet) : nil
+    }
+    // The digits are left verbatim in the source on purpose (ADR-0028 §D4): the file's own
+    // ordinal is the rendered one, so a multi-digit marker is measured, never normalised.
+    let digits = content.prefix(while: { $0.isASCII && $0.isNumber }).count
+    guard digits > 0 else { return nil }
+    let afterDigits = content.dropFirst(digits)
+    guard let delimiter = afterDigits.first, delimiter == "." || delimiter == ")" else { return nil }
+    return afterDigits.dropFirst().hasPrefix(" ") ? (digits + 2, .ordered) : nil
 }
 
 private func taskMarker(in line: some StringProtocol) -> (length: Int, done: Bool)? {

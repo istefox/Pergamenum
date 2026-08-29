@@ -185,16 +185,12 @@ enum CardTextAttributes {
         // because the line already says what it is.
         case .strikethrough: .textSecondary
         case .frontmatter, .code, .annotation: .textSecondary
-        case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun: .textTertiary
+        case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun, .listMarker: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let done): done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
-        // Placeholder arm only, to keep this switch exhaustive (Task 1 owns the
-        // declaration, not the styling). The coder assigns `.textTertiary` in Task 1's
-        // "Then implement" step (`2026-08-29-wysiwyg-markdown-in-workspace.md`).
-        case .listMarker: .textPrimary
         }
     }
 }
