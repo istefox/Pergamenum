@@ -352,7 +352,13 @@ private func firstParagraphLength(of note: String) -> Int {
     @Test func theParagraphStyleCoversTheWholeDisplayedParagraph() {
         let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
         var effective = NSRange(location: 0, length: 0)
-        _ = displayed?.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: &effective)
+        // `effectiveRange:` reports the run where the WHOLE attribute dictionary is constant,
+        // which the collapsed-indent font split breaks even though `.paragraphStyle` alone is
+        // unchanged across it. `longestEffectiveRange:` is the call that answers this test's
+        // actual question — how far this one attribute's value extends.
+        _ = displayed?.attributedString.attribute(
+            .paragraphStyle, at: 0, longestEffectiveRange: &effective,
+            in: NSRange(location: 0, length: displayed?.attributedString.length ?? 0))
 
         #expect(displayed != nil)
         #expect(effective.length == displayed?.attributedString.length)
