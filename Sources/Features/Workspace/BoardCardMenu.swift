@@ -66,9 +66,11 @@ struct BoardCardActions {
             workspace.duplicate(nodeIDs: targets(node))
         case .delete:
             workspace.delete(nodeIDs: targets(node))
-        case .color, .textColor, .textAlign, .resize:
+        case .color, .textColor, .textAlign, .foldHeadings, .resize:
             // Every one of these draws as a `Menu`, never as a button, so reaching here
-            // means a surface rendered one as something it is not.
+            // means a surface rendered one as something it is not. `.foldHeadings` belongs
+            // to this group and not to the buttons above it: it carries an argument - which
+            // heading - the command alone does not (ADR-0028 §D8).
             assertionFailure("\(command) carries an argument and is invoked through its submenu")
         }
     }
@@ -205,6 +207,14 @@ enum BoardCardMenuItems {
             Menu(command.title) { textColorItems(node: node, actions: actions) }
         case .textAlign:
             Menu(command.title) { textAlignItems(node: node, actions: actions) }
+        case .foldHeadings:
+            // STUB (ADR-0028, plan `2026-08-29-wysiwyg-markdown-in-workspace` Task 7): the
+            // submenu is built from `NoteOutline.entries(in:)` over the node's own text, with
+            // a check per folded entry, by this task's coder. The arm exists so the exhaustive
+            // switch compiles while `Tests/CardFoldTests.swift` is red - the catalogue half of
+            // the command (title, symbol, applicability) is what those tests assert, and it is
+            // real.
+            EmptyView()
         case .resize:
             Menu(command.title) { sizeItems(node: node, actions: actions) }
         case .fitToCrop:

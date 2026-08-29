@@ -39,8 +39,10 @@ private func groupNode() -> CanvasNode {
 // MARK: - Catalogue shape (R-06)
 
 // ADR-0027 §D7 (Task 7): `.textColor` and `.textAlign` bring the catalogue from 10 to 12.
-@Test func theCatalogueHasExactlyTheTwelveCommandsTheCardOffers() {
-    #expect(CardCommand.allCases.count == 12)
+// ADR-0028 §D8 (plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 7): `.foldHeadings`
+// brings it to 13.
+@Test func theCatalogueHasExactlyTheThirteenCommandsTheCardOffers() {
+    #expect(CardCommand.allCases.count == 13)
 }
 
 // MARK: - `available(for:isCroppable:hasCrop:)` (R-06)
@@ -55,9 +57,19 @@ private func groupNode() -> CanvasNode {
 //
 // ADR-0027 §D7 (Task 7): `.textColor` and `.textAlign` sit right after `.color`, only for a
 // `.text` node - the one card kind that has text to colour or align.
+//
+// ADR-0028 §D8 (plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 7): `.foldHeadings`
+// closes that same group, before `.resize` - the three commands that exist only because the
+// card has markdown of its own stay together, so the menu does not interleave "what this
+// card's text is" with "how big this card is".
 @Test func availableOnATextNodeOffersEditTextInsteadOfOpen() {
     let commands = CardCommand.available(for: textNode(), isCroppable: false, hasCrop: false)
-    #expect(commands == [.editText, .copyLink, .color, .textColor, .textAlign, .resize, .duplicate, .delete])
+    #expect(
+        commands == [
+            .editText, .copyLink, .color, .textColor, .textAlign, .foldHeadings,
+            .resize, .duplicate, .delete
+        ]
+    )
 }
 
 // ADR-0027 §D4: whole-card text colour and alignment describe a `.text` node's own content -
@@ -68,6 +80,25 @@ private func groupNode() -> CanvasNode {
         let commands = CardCommand.available(for: node, isCroppable: true, hasCrop: true)
         #expect(!commands.contains(.textColor), "\(node.kind) should not offer .textColor")
         #expect(!commands.contains(.textAlign), "\(node.kind) should not offer .textAlign")
+    }
+}
+
+// ADR-0028 §D8, R-09: the same restriction, for the same reason and asserted separately
+// because the reason is a different one at the level that matters. `.textColor` and
+// `.textAlign` are absent from a `.file` card because it has no text to *style*;
+// `.foldHeadings` is absent because it has no markdown of its own to *read* - the submenu is
+// built from `NoteOutline.entries(in:)` over the node's text, and a `.file` node's `path` is
+// not text. A markdown *file* card is in the list on purpose: it is the one card kind whose
+// content is markdown while its node is not a `.text` node, so it is where a rule written
+// against "does this card show markdown" instead of "is this a `.text` node" would leak.
+@Test func foldHeadingsIsOfferedOnATextNodeAndOnNoOtherCardKind() {
+    #expect(
+        CardCommand.available(for: textNode(), isCroppable: false, hasCrop: false)
+            .contains(.foldHeadings)
+    )
+    for node in [fileNode(), linkNode(), groupNode(), markdownFileNode()] {
+        let commands = CardCommand.available(for: node, isCroppable: true, hasCrop: true)
+        #expect(!commands.contains(.foldHeadings), "\(node.kind) should not offer .foldHeadings")
     }
 }
 
@@ -107,6 +138,7 @@ private func groupNode() -> CanvasNode {
         .color: "Colore",
         .textColor: "Colore testo",
         .textAlign: "Allineamento",
+        .foldHeadings: "Ripiega titoli",
         .resize: "Ridimensiona",
         .fitToCrop: "Adatta al ritaglio",
         .crop: "Ritaglia",
@@ -143,6 +175,11 @@ private func groupNode() -> CanvasNode {
         .color: "paintpalette",
         .textColor: "paintbrush",
         .textAlign: "text.aligncenter",
+        // The system's own two-way disclosure glyph, and not `chevron.right`: that one is
+        // `OutlinePane`'s per-row state indicator (`OutlinePane.swift:66`), which says whether
+        // *this* section is folded. A menu entry that opens a list of every heading is asking
+        // about all of them, so it may not borrow the icon that means one.
+        .foldHeadings: "chevron.up.chevron.down",
         .resize: "arrow.up.left.and.arrow.down.right",
         .fitToCrop: "aspectratio",
         .crop: "crop",
@@ -192,6 +229,7 @@ private func groupNode() -> CanvasNode {
         .color: "board-card-color",
         .textColor: "board-card-textColor",
         .textAlign: "board-card-textAlign",
+        .foldHeadings: "board-card-foldHeadings",
         .resize: "board-card-resize",
         .fitToCrop: "board-card-fitToCrop",
         .crop: "board-card-crop",

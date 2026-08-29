@@ -77,6 +77,13 @@ struct BoardCardControls: View {
             submenu(command) { BoardCardMenuItems.textColorItems(node: node, actions: actions) }
         case .textAlign:
             submenu(command) { BoardCardMenuItems.textAlignItems(node: node, actions: actions) }
+        case .foldHeadings:
+            // STUB (ADR-0028, plan `2026-08-29-wysiwyg-markdown-in-workspace` Task 7): the
+            // bar draws the same submenu the context menu builds, once `BoardCardMenuItems`
+            // has one to build. Declared here because the switch is exhaustive - the plan's
+            // own contract table lists only `BoardCardMenu.swift` as a break site, and this
+            // second one is a gap in that grep.
+            EmptyView()
         case .resize:
             submenu(command) { BoardCardMenuItems.sizeItems(node: node, actions: actions) }
         case .crop:
