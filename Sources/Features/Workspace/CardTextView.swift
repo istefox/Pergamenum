@@ -191,6 +191,10 @@ struct CardTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isStyling, let textView = notification.object as? FormattingTextView else { return }
             parent.text = textView.string
+            // Before the styling, so the passes below measure the text this one leaves behind
+            // rather than one it is about to rewrite (ADR-0028 §D6, R-08). A no-op on every
+            // keystroke outside an ordered run - see `CardTextView+ListEditing.swift`.
+            renumberLists(in: textView)
             applyStyling(to: textView)
             // After the restyle: a keystroke moves every offset below it, so the revealed set has
             // to be recomputed against the text the pass above has just measured (ADR-0018 §D2).

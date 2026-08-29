@@ -95,6 +95,36 @@ final class FormattingTextView: NSTextView {
         replaceWholeText(with: edit.text, selecting: edit.selection)
     }
 
+    // MARK: - Return inside a list (ADR-0028 §D6, plan
+    // `2026-08-29-wysiwyg-markdown-in-workspace` Task 6, R-07/R-08/R-12)
+
+    /// Return inside a list item: the item's own marker is carried onto the new line, an empty
+    /// item leaves the list instead, and an ordered run is made contiguous again around the item
+    /// that has just gone in.
+    ///
+    /// The card's half of `NoteTextView+ListEditing.claimsListCommand`, and deliberately the same
+    /// shape - every rule about where a run starts, what continues it and how it is numbered is
+    /// `ListContinuation`'s and is tested there (`Tests/ListContinuationTests.swift`). Only the
+    /// site differs: the note editor claims the selector through `CompletingTextView
+    /// .claimsCommand`'s chain, which a card has none of, so the responder method itself is where
+    /// the key is taken here.
+    ///
+    /// `ListContinuation.newline` answering nil is what leaves Return to `super` - a caret on
+    /// prose, one still inside its own marker, one over a non-empty selection - so this claim is
+    /// exactly as narrow as that pure function is, and nothing else about AppKit's Return moves.
+    ///
+    /// **One write, whatever it rewrote.** The insertion and the renumbering it forces come back
+    /// from `ListContinuation` already applied to the same string, so they reach the storage as a
+    /// single replacement through `replaceWholeText(with:selecting:)` and one Cmd+Z on the card's
+    /// own stack (ADR-0027 §D2) takes both back - never an item gone from a run still numbered
+    /// around it (R-12).
+    override func insertNewline(_ sender: Any?) {
+        guard let edit = ListContinuation.newline(in: string, at: selectedRange()) else {
+            return super.insertNewline(sender)
+        }
+        replaceWholeText(with: edit.text, selecting: edit.selection)
+    }
+
     /// The single edit path both formatters go through: the whole card's text replaced as one
     /// `NSTextView` change, so one press is one undo step however many lines it rewrote.
     ///
@@ -107,7 +137,13 @@ final class FormattingTextView: NSTextView {
     /// Written through AppKit and never into `string`, which is the point of the idiom: assigning
     /// `string` bypasses `shouldChangeText`/`didChangeText` and leaves the undo stack, the
     /// delegate and the layout with no record of the change.
-    private func replaceWholeText(with replacement: String, selecting selection: NSRange) {
+    ///
+    /// Not private since ADR-0028 Task 6: `CardTextView+ListEditing.renumberLists(in:)` writes
+    /// through it too. Widening the existing path rather than adding a second one is the whole
+    /// reason "one press is one undo step" holds - a renumbering that opened its own edit path
+    /// would be the second way for a card's text to reach the storage, and the first one anybody
+    /// forgot to keep atomic.
+    func replaceWholeText(with replacement: String, selecting selection: NSRange) {
         guard replacement != string else { return }
         let whole = NSRange(location: 0, length: (string as NSString).length)
         guard shouldChangeText(in: whole, replacementString: replacement) else { return }
