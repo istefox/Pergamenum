@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=79 -->
+<!-- project-tasks: prefix=PG lastId=83 -->
 # PROJECT TASKS
 
-Updated: 2026-08-28 · Open: 32 (P1: 0) · In progress: 0
+Updated: 2026-08-29 · Open: 36 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -15,6 +15,14 @@ Updated: 2026-08-28 · Open: 32 (P1: 0) · In progress: 0
 
 ## Backlog / To Add
 
+- [ ] `PG-083` **P2** `VaultController.moveItems` returns only `Bool`, discarding `VaultSession.MoveBatchOutcome` — a multi-item batch move that fails on disk for several items reports only the last problem (`vault.problems.last`), contradicting `WorkspaceMoveConflict`'s own doc comment ("every reason, not the first"); and `WorkspaceView+FolderVerbs.moveItems(_:into:)` computes the landed board path from the pre-write plan rather than the actual write outcome, so a partial-batch failure on the open board can try to load a path that was never written — `Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift:36-69`, `Sources/Vault/VaultController+Move.swift:27-37` <!-- src:session opened:2026-08-29 runs:1 -->
+  - Found at Gate 5.06 (silent-failure-hunter) for ADR-0026. Degrades gracefully (`WorkspaceController.load(board:)` already handles a missing path), not a crash. Suggested fix: have `moveItems` expose `MoveBatchOutcome` (or at least `failures`/`moves`) so the caller shows every reason and computes the landing path from what was actually written.
+- [ ] `PG-082` **P3** `NoteListPane`'s selection set discriminates note vs. folder ids by `id.hasSuffix(".md")` rather than a typed lookup — `NoteName.validate` does not forbid `.` in a name, so a folder literally named `Reunion.md` would be misclassified as a note-open request; no test covers this — `Sources/Features/Editor/NoteListPane.swift:53,457-461` <!-- src:session opened:2026-08-29 runs:1 -->
+  - Found at Gate 5.06 (type-design-analyzer) for ADR-0026. `NoteTree.node(withID:in:)` already exists and could resolve the real kind instead of guessing from the id's string shape.
+- [ ] `PG-081` **P3** Breadcrumb rendering is duplicated: `VaultController.breadcrumb` (new) and `WorkspaceController.breadcrumb` (pre-existing) declare byte-identical anonymous tuples `(title: String, folder: String)`, and `VaultTopBar`/`BoardChrome.BoardTopBar` independently re-implement the same rendering loop over them — `Sources/Vault/VaultController+Notes.swift:191`, `Sources/Features/Workspace/WorkspaceController.swift:224` <!-- src:session opened:2026-08-29 runs:1 -->
+  - Found at Gate 5.06 (type-design-analyzer) for ADR-0026. Suggested fix: a shared `BreadcrumbSegment` type plus one rendering view for both panes.
+- [ ] `PG-080` **P3** Two near-identical `OperationError` enums (`BoardFileOperations`, `FolderFileOperations`) with duplicated case names and description strings, and the `(old: String, new: String)` "moved note" tuple repeated across three outcome types (`RenameOutcome`, `MoveOutcome`, `VaultSession.MoveBatchOutcome.movedNotes`) — `Sources/Vault/BoardFileOperations.swift:31`, `Sources/Vault/FolderFileOperations.swift:22`, `Sources/Vault/VaultSession+Move.swift:31` <!-- src:session opened:2026-08-29 runs:1 -->
+  - Found at Gate 5.06 (type-design-analyzer) for ADR-0026. Low risk today (labels always present at call sites), but a wording/shape change to one sibling is easy to make without updating the others.
 - [ ] `PG-079` **P3** `CardCommand`'s "plain button vs. argument-taking submenu" split is re-derived by three independent exhaustive switches (`BoardCardControls.control(_:node:actions:)`, `BoardCardMenuItems.item`, `BoardCardActions.run`) instead of a property on the enum; the only safety net is a DEBUG-only `assertionFailure`, a silent dead button in Release if a case is ever mis-wired — `Sources/Features/Workspace/BoardCardControls.swift:70-98`, `Sources/Features/Workspace/BoardCardMenu.swift:51-74,197-217` <!-- src:session opened:2026-08-29 runs:1 -->
   - Found at Gate 5.06 (type-design-analyzer) for ADR-0027. Suggested fix: a `CardCommand.rendersAsSubmenu: Bool` (or small `RenderKind` enum) computed once on the type.
 - [ ] `PG-078` **P3** "Nota vs Testo" (`node.color != nil`) is re-implemented in three files with no shared accessor; the duplication already caused the Task 6 pill-alignment bug once — `Sources/Features/Workspace/StickyTextCard.swift:25`, `Sources/Features/Workspace/BoardContentLayer.swift:187`, `Sources/Features/Workspace/BoardFormatBar.swift:218` <!-- src:session opened:2026-08-29 runs:1 -->
