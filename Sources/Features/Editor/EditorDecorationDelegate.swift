@@ -36,6 +36,16 @@ import OSLog
 struct HiddenMarker: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case heading, emphasis, embed
+        /// A list item's whole opening run - its indentation **and** its `- `/`1. ` marker
+        /// (ADR-0028; plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 3).
+        ///
+        /// The one kind here whose range does not start at the marker character: it starts
+        /// at its paragraph's own start, so that the indentation is inside the range. Two
+        /// things depend on that. The indent characters cannot be collapsed if they are
+        /// outside the range, and the item's nesting level is read back out of them - a
+        /// `.list` marker carries no level of its own, because the characters are the
+        /// level and the table can go stale between a styling pass and a layout pass.
+        case list
     }
 
     let range: NSRange
@@ -204,6 +214,17 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return embedded
         }
 
+        // The list branch, beside the embed one and under the same length rule: a marker
+        // is *substituted*, never inserted or removed (ADR-0028 §D2). Unlike the embed
+        // branch above, it must honour `revealedParagraphs` - a list marker reveals on the
+        // caret's paragraph the way a heading's does (R-03) - which is why its own guards
+        // belong inside it rather than being borrowed from the ones below: a paragraph
+        // carrying a list marker cannot fall through to the generic, font-collapsing path,
+        // or its `- ` would be hidden outright instead of being drawn as a bullet.
+        if let list = listParagraph(at: range, storage: storage) {
+            return list
+        }
+
         guard !revealedParagraphs.contains(range.location),
               let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
@@ -306,6 +327,30 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return NSTextParagraph(attributedString: copy)
     }
 
+    /// The list branch of the substitution above: draws a list item's opening run the way
+    /// a reader expects it - the unordered marker character replaced by
+    /// `ListMarkerRendering.glyph(for:)`, an ordered marker's digits left exactly as the
+    /// file spells them (ADR-0028 §D4), the indentation it hangs at collapsed into
+    /// `collapsedFont` so the paragraph style is the only thing indenting the line, and
+    /// `ListMarkerRendering.paragraphStyle(level:font:)` applied over the whole displayed
+    /// paragraph.
+    ///
+    /// One character out, one character in, never more: the displayed paragraph keeps its
+    /// stored length, which is `NSTextContentManager.h:120`'s constraint and the reason a
+    /// bullet can only ever *replace* a marker rather than be inserted before it.
+    ///
+    /// Nil - leaving the raw source on screen exactly as today - whenever there is nothing
+    /// to draw: no list marker at this offset, the paragraph revealed because the caret is
+    /// in it (R-03), or the marker gone stale against the real characters since the last
+    /// styling pass.
+    private func listParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
+        // STUB (ADR-0155, tester owns the interface / coder owns the body): the branch and
+        // its call site above are declared here with the red tests in
+        // `Tests/MarkupHidingTests.swift` that drive them, so the target still builds. The
+        // substitution itself is the coder's.
+        nil
+    }
+
     /// Whether a drawn embed's run sits at this exact paragraph-start offset right now,
     /// and its absolute range when it does - the same validity `embedParagraph(at:
     /// storage:)` requires before it draws one, asked from outside for the caret and
@@ -359,6 +404,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // `stillSpellsAnEmbed` before this generic, font-collapsing path ever sees the
         // paragraph (ADR-0018 slice 3, Step 3).
         case .embed: false
+        // STUB (ADR-0155, tester owns the interface / coder owns the body). `false` is the
+        // conservative placeholder, and it is the same answer `.embed` above gives for the
+        // same structural reason: a list marker is drawn by its own dedicated
+        // `listParagraph(at:storage:)` branch, which re-validates the characters itself,
+        // never by this generic font-collapsing path - which would hide the `- ` instead
+        // of turning it into a bullet. Whether the coder's arm ends up returning `false`
+        // permanently or re-checking here depends on where the re-read lands; either way
+        // no `.list` entry may reach the collapsing loop.
+        case .list: false
         }
     }
 

@@ -266,8 +266,17 @@ extension NoteTextView {
                 case .headingMarker: .heading
                 case .emphasisMarker: .emphasis
                 case .embedRun: .embed
+                case .listMarker: .list
                 default: nil
                 }
+                // Note for the coder (plan `2026-08-29-wysiwyg-markdown-in-workspace`,
+                // Task 3, «Ordering note»): a `.list` marker's recorded range must start at
+                // the paragraph's own start, indentation included, not at the marker
+                // character the way `.heading`/`.emphasis` do - `listMarkerSpan` deliberately
+                // skips the indent (`absolute(indent.count, marker.length)`), and the
+                // arithmetic below therefore records a range that begins after it. The
+                // indent has to be inside the range or it cannot be collapsed, and the
+                // item's nesting level is read back out of it at layout time.
                 if let kind {
                     let paragraphStart = nsText.paragraphRange(
                         for: NSRange(location: nsRange.location, length: 0)

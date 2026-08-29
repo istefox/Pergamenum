@@ -66,6 +66,30 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
     return delegate.textContentStorage(storage, textParagraphWith: range)
 }
 
+/// `substitutedParagraph` above with the delegate built in - the whole configuration a
+/// list case needs is the marker table, the setting and the reveal set, so a test that
+/// spells out three lines of setup per assertion is a test whose fixture is harder to read
+/// than the rule it pins (ADR-0028; plan `2026-08-29-wysiwyg-markdown-in-workspace`,
+/// Task 3).
+@MainActor
+private func displayedParagraph(
+    _ note: String,
+    markers: [HiddenMarker],
+    hidesMarkup: Bool = true,
+    revealed: Set<Int> = []
+) -> NSTextParagraph? {
+    let delegate = EditorDecorationDelegate()
+    delegate.apply(hiddenMarkers: [0: markers], hidingMarkup: hidesMarkup)
+    _ = delegate.apply(revealedParagraphs: revealed)
+    return substitutedParagraph(delegate, note: note)
+}
+
+/// The length of `note`'s first paragraph, the number a substitution of it must return
+/// unchanged.
+private func firstParagraphLength(of note: String) -> Int {
+    (note as NSString).paragraphRange(for: NSRange(location: 0, length: 0)).length
+}
+
 @MainActor
 @Suite struct MarkupHiding {
     private static let note = "# Titolo\ncorpo\n"
@@ -200,6 +224,223 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
         )
 
         #expect(substitutedParagraph(delegate, note: Self.note) == nil)
+    }
+}
+
+// MARK: - The list marker (ADR-0028, plan 2026-08-29-wysiwyg-markdown-in-workspace)
+
+/// The third kind of marker this delegate draws, and the first one that *replaces* a
+/// character rather than only shrinking it: an unordered `- ` becomes a bullet, an ordered
+/// `1. ` stays exactly as the file spells it, and both hang at an indentation that grows
+/// with their nesting level (R-02, R-03, R-05; ADR-0028 §D2, §D4).
+///
+/// Every fixture below records its marker range **from the paragraph's own start,
+/// indentation included** - the one place a `.list` marker differs from a `.heading` or an
+/// `.emphasis` one (plan Task 3, «Ordering note»). The indent has to be inside the range
+/// or it cannot be collapsed, and the nesting level is read back out of it, since
+/// `HiddenMarker.Kind.list` carries no level of its own.
+@MainActor
+@Suite struct MarkupHidingLists {
+    /// The glyph an unordered marker is drawn as. A `Character` rather than a `String` so
+    /// `contains` resolves to `Sequence.contains(_:)` on the displayed text.
+    private static let bullet: Character = "•"
+
+    private static let unordered = "- primo\ncorpo\n"
+    private static let unorderedMarker = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .list)
+
+    private static let ordered = "1. uno\ncorpo\n"
+    private static let orderedMarker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .list)
+
+    /// Two spaces of indentation and then `- `: four characters, all inside the range.
+    private static let nested = "  - annidato\ncorpo\n"
+    private static let nestedMarker = HiddenMarker(range: NSRange(location: 0, length: 4), kind: .list)
+
+    /// A list item whose text is emphasised - the SPEC's coexistence case. `**` opens at
+    /// index 2 and closes at index 13.
+    private static let mixed = "- **grassetto** elemento\n"
+    private static let mixedList = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .list)
+    private static let mixedOpen = HiddenMarker(range: NSRange(location: 2, length: 2), kind: .emphasis)
+    private static let mixedClose = HiddenMarker(range: NSRange(location: 13, length: 2), kind: .emphasis)
+
+    private static let everyCase: [(note: String, markers: [HiddenMarker])] = [
+        (unordered, [unorderedMarker]),
+        (ordered, [orderedMarker]),
+        (nested, [nestedMarker]),
+        (mixed, [mixedList, mixedOpen, mixedClose])
+    ]
+
+    /// First and loudest (R-10's structural half, and the plan's highest-listed risk): the
+    /// file must not gain or lose a character, whatever is drawn over it. Checked through a
+    /// real layout pass, with the setting on and off and the paragraph revealed and not,
+    /// because a substitution that changes length does not show up as a wrong picture - it
+    /// shows up later as offsets drifting between the storage and the layout.
+    @Test func theStorageNeverGainsOrLosesACharacterForAnyListCase() {
+        for (note, markers) in Self.everyCase {
+            let source = (note as NSString).length
+            for hides in [true, false] {
+                for revealed in [Set<Int>(), Set([0])] {
+                    let measured = frames(
+                        text: note, markers: [0: markers], hidesMarkup: hides, revealed: revealed
+                    )
+                    #expect(
+                        measured.length == source,
+                        "«\(note)» nascondi=\(hides) rivelato=\(revealed): \(measured.length) invece di \(source)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// The same rule from the other side: what the hook hands back is a *displayed*
+    /// paragraph of the stored paragraph's own length - `NSTextContentManager.h:120`'s
+    /// constraint, which is why a bullet can only replace a marker character and never be
+    /// inserted before one.
+    @Test func theDisplayedParagraphKeepsItsStoredLength() {
+        for (note, markers) in Self.everyCase {
+            let displayed = displayedParagraph(note, markers: markers)
+            #expect(displayed != nil, "«\(note)»: nessuna sostituzione")
+            #expect(
+                displayed?.attributedString.length == firstParagraphLength(of: note),
+                "«\(note)»: lunghezza \(displayed?.attributedString.length ?? -1)"
+            )
+        }
+    }
+
+    @Test func anUnorderedMarkerIsDrawnAsABullet() {
+        let displayed = displayedParagraph(Self.unordered, markers: [Self.unorderedMarker])
+
+        #expect(displayed != nil)
+        #expect(displayed?.attributedString.string.first == Self.bullet)
+        // The item's own text is untouched: exactly one character is replaced.
+        #expect(displayed?.attributedString.string.hasSuffix("primo\n") == true)
+        #expect(displayed?.attributedString.length == firstParagraphLength(of: Self.unordered))
+    }
+
+    /// An ordered marker is displayed verbatim: the digits in the file *are* the ordinal
+    /// (ADR-0028 §D4), so nothing is substituted for them and no bullet appears beside
+    /// them. The paragraph is still returned - it carries the item's indentation.
+    @Test func anOrderedMarkerIsDisplayedVerbatim() {
+        let displayed = displayedParagraph(Self.ordered, markers: [Self.orderedMarker])
+
+        #expect(displayed != nil)
+        #expect(displayed?.attributedString.string.hasPrefix("1. ") == true)
+        #expect(displayed?.attributedString.string.contains(Self.bullet) == false)
+        #expect(displayed?.attributedString.length == firstParagraphLength(of: Self.ordered))
+    }
+
+    /// R-05: a nested item is *visibly deeper*, not merely different - and a top-level one
+    /// is already indented, so the two are told apart by their step rather than by one of
+    /// them being flush left.
+    @Test func aNestedItemIndentsFurtherThanATopLevelOne() {
+        let top = displayedParagraph(Self.unordered, markers: [Self.unorderedMarker])
+        let deeper = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        let topStyle = top?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let deeperStyle = deeper?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+
+        #expect(topStyle != nil)
+        #expect(deeperStyle != nil)
+        #expect((topStyle?.headIndent ?? 0) > 0)
+        #expect((topStyle?.firstLineHeadIndent ?? 0) > 0)
+        #expect((deeperStyle?.headIndent ?? 0) > (topStyle?.headIndent ?? 0))
+        #expect((deeperStyle?.firstLineHeadIndent ?? 0) > (topStyle?.firstLineHeadIndent ?? 0))
+    }
+
+    /// The style covers the whole displayed paragraph, not only the marker: a wrapped item
+    /// that lost its indentation on its second line would still pass every assertion above.
+    @Test func theParagraphStyleCoversTheWholeDisplayedParagraph() {
+        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        var effective = NSRange(location: 0, length: 0)
+        _ = displayed?.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: &effective)
+
+        #expect(displayed != nil)
+        #expect(effective.length == displayed?.attributedString.length)
+    }
+
+    /// R-05's «no double indentation» half: the two spaces the source spells are collapsed
+    /// into `collapsedFont`, so the only thing indenting the line is the paragraph style
+    /// above. Left visible, they would be added to it.
+    @Test func theLeadingIndentIsDrawnInTheCollapsedFont() {
+        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        let first = displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let second = displayed?.attributedString.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
+
+        // The whole indent run, not only its first character.
+        #expect(first == EditorDecorationDelegate.collapsedFont)
+        #expect(second == EditorDecorationDelegate.collapsedFont)
+    }
+
+    /// R-03: the caret's paragraph shows its own raw prefix. Nil, so the raw source is laid
+    /// out - no substitution, no paragraph style, nothing shifting under the caret.
+    @Test func theHookReturnsNilForARevealedListParagraph() {
+        #expect(displayedParagraph(Self.unordered, markers: [Self.unorderedMarker], revealed: [0]) == nil)
+        #expect(displayedParagraph(Self.nested, markers: [Self.nestedMarker], revealed: [0]) == nil)
+    }
+
+    /// ADR-0028 §D10: the whole feature is behind `hidesMarkup`, and off means off,
+    /// whatever the reveal set says.
+    @Test func theListHookIsInertWhenTheSettingIsOff() {
+        #expect(
+            displayedParagraph(Self.unordered, markers: [Self.unorderedMarker], hidesMarkup: false) == nil
+        )
+        #expect(
+            displayedParagraph(
+                Self.unordered, markers: [Self.unorderedMarker], hidesMarkup: false, revealed: [0]
+            ) == nil
+        )
+        #expect(
+            displayedParagraph(Self.nested, markers: [Self.nestedMarker], hidesMarkup: false) == nil
+        )
+    }
+
+    /// The `stillSpells` re-check contract: the table is filled by the last styling pass and
+    /// read by a later layout pass, and the two go stale against each other. A `.list` entry
+    /// whose characters no longer spell a marker is skipped on its own account - it neither
+    /// draws a bullet over prose nor cancels the other markers in the same paragraph.
+    @Test func aStaleListEntryIsSkippedWhileTheOtherMarkersStillRender() {
+        let note = "prosa **enfasi** qui\n"
+        let stale = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .list)
+        let open = HiddenMarker(range: NSRange(location: 6, length: 2), kind: .emphasis)
+        let close = HiddenMarker(range: NSRange(location: 14, length: 2), kind: .emphasis)
+
+        let displayed = displayedParagraph(note, markers: [stale, open, close])
+
+        #expect(displayed != nil)
+        // «pr» never spelled a list marker: the prose is drawn exactly as written.
+        #expect(displayed?.attributedString.string == note)
+        #expect((displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont) == nil)
+        // The emphasis pair in the same paragraph still collapses.
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 6, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 14, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+    }
+
+    /// The SPEC's coexistence edge case: one paragraph, two kinds of marker, one
+    /// substitution. The bullet replaces the `-`, the `**` pair collapses, and the length
+    /// does not move.
+    @Test func aListAndAnEmphasisMarkerRenderTogetherInOneParagraph() {
+        let displayed = displayedParagraph(
+            Self.mixed, markers: [Self.mixedList, Self.mixedOpen, Self.mixedClose]
+        )
+
+        #expect(displayed != nil)
+        #expect(displayed?.attributedString.string.first == Self.bullet)
+        #expect(displayed?.attributedString.string.hasSuffix("grassetto** elemento\n") == true)
+        #expect(displayed?.attributedString.length == firstParagraphLength(of: Self.mixed))
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 13, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
     }
 }
 
