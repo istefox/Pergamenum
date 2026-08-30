@@ -150,7 +150,7 @@ struct BoardFileOperations {
                     at: store.url(for: oldPath), to: store.url(for: plan.newPath)
                 )
             } catch {
-                throw FileOperationError.failed("rinomina board: \(error.localizedDescription)")
+                throw FileOperationError.failed("rinomina board: \(error)")
             }
         }
 
@@ -193,7 +193,7 @@ struct BoardFileOperations {
                 at: store.url(for: board), resultingItemURL: &resulting
             )
         } catch {
-            throw FileOperationError.failed("eliminazione board: \(error.localizedDescription)")
+            throw FileOperationError.failed("eliminazione board: \(error)")
         }
         return resulting as URL?
     }
@@ -273,7 +273,7 @@ struct BoardFileOperations {
                 )
                 try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
             } catch {
-                throw FileOperationError.failed("spostamento board: \(error.localizedDescription)")
+                throw FileOperationError.failed("spostamento board: \(error)")
             }
         }
 
