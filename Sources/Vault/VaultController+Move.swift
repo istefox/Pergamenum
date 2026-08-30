@@ -13,10 +13,12 @@ extension VaultController {
     /// Moves `items` into `destination` and registers the whole batch as one undo step
     /// (R-01 … R-05, R-12).
     ///
-    /// `true` when something moved. `false` when the batch was refused, when a guard
-    /// stopped it, or when every operation failed - in every one of those the reason is on
-    /// `problems`, because a drop that does nothing and says nothing is the failure mode
-    /// this repository keeps writing ADR sections about.
+    /// Returns the full outcome rather than a `Bool` (PG-083): a caller needs every
+    /// refusal and every failure, not only whether `didMove` is true, and it needs the
+    /// `moves` that actually landed on disk to know where the open board went - a plan
+    /// re-computed independently can name an item that never made it. Every one of those
+    /// is also on `problems` regardless, because a drop that does nothing and says
+    /// nothing is the failure mode this repository keeps writing ADR sections about.
     ///
     /// An item that failed *after* the batch started writing is reported the same way and
     /// does not cancel the rest: whatever landed on disk is followed and registered on
@@ -24,8 +26,19 @@ extension VaultController {
     /// is the worse of the two outcomes (`VaultSession.moveItems` makes the same argument
     /// from the other side).
     @discardableResult
-    func moveItems(_ items: [VaultItemRef], into destination: String, undo: UndoManager?) -> Bool {
-        guard let session, canOperate(onAll: items) else { return false }
+    func moveItems(
+        _ items: [VaultItemRef], into destination: String, undo: UndoManager?
+    ) -> VaultSession.MoveBatchOutcome {
+        guard let session else {
+            var outcome = VaultSession.MoveBatchOutcome()
+            outcome.refusals = ["nessun vault aperto"]
+            return outcome
+        }
+        if let reason = refusal(forAll: items) {
+            var outcome = VaultSession.MoveBatchOutcome()
+            outcome.refusals = [reason]
+            return outcome
+        }
 
         let outcome = session.moveItems(items, into: destination)
 
@@ -35,7 +48,7 @@ extension VaultController {
         for failure in outcome.failures {
             recordProblem("spostamento non riuscito - \(failure)")
         }
-        guard !outcome.moves.isEmpty else { return false }
+        guard outcome.didMove else { return outcome }
 
         follow(outcome)
 
@@ -43,13 +56,13 @@ extension VaultController {
             // Degrading silently is what §D8 refuses: the move happened and it cannot be
             // taken back, and only the person who made it can decide what to do about it.
             recordProblem("spostamento non annullabile: nessun gestore di undo disponibile")
-            return true
+            return outcome
         }
         undo.setActionName("Sposta")
         undo.registerUndo(withTarget: self) { controller in
             controller.moveInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
         }
-        return true
+        return outcome
     }
 
     /// Performs `moves` and, only if all of them landed, re-registers their own inverse -
@@ -82,7 +95,7 @@ extension VaultController {
             )
             return
         }
-        guard canOperate(onAll: current.map(\.ref)) else { return }
+        guard refusal(forAll: current.map(\.ref)) == nil else { return }
 
         // One call per landing folder, because an inverse is the only batch whose items
         // can be going to different places: they return to wherever each came from.
@@ -124,19 +137,24 @@ extension VaultController {
     // MARK: - The window's half
 
     /// Refuses the whole batch while any note it would carry has unsaved edits, before
-    /// anything touches disk (ADR-0026 §D10).
+    /// anything touches disk (ADR-0026 §D10). Answers the reason rather than a `Bool`
+    /// (PG-083) so the caller can put it in `MoveBatchOutcome.refusals` instead of
+    /// re-reading `problems.last`.
     ///
     /// The two guards that already exist, each asked of the kind it was written for: a
     /// note by its own path, a folder by the subtree it holds. A board is neither - the
-    /// editor cannot have a `.canvas` open with unsaved edits - so it is not asked.
-    private func canOperate(onAll items: [VaultItemRef]) -> Bool {
-        items.allSatisfy { item in
+    /// editor cannot have a `.canvas` open with unsaved edits - so it is not asked. Both
+    /// guards test against the single `openNote`, so at most one reason can ever fire;
+    /// `allSatisfy`'s short-circuit was never hiding a second one.
+    private func refusal(forAll items: [VaultItemRef]) -> String? {
+        for item in items {
             switch item.kind {
-            case .note: canOperate(on: item.path)
-            case .folder: canOperateOnFolder(item.path)
-            case .board: true
+            case .note where !canOperate(on: item.path): return Self.unsavedNoteRefusal
+            case .folder where !canOperateOnFolder(item.path): return Self.unsavedNoteInFolderRefusal
+            default: continue
             }
         }
+        return nil
     }
 
     /// Follows every note the batch carried into the tabs and RECENTI that were showing

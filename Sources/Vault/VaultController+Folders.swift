@@ -23,9 +23,13 @@ extension VaultController {
         guard let note = openNote, note.hasUnsavedChanges,
               note.relativePath == folder || note.relativePath.hasPrefix("\(folder)/")
         else { return true }
-        recordProblem("salva la nota prima di rinominare o eliminare la cartella")
+        recordProblem(Self.unsavedNoteInFolderRefusal)
         return false
     }
+
+    /// The exact sentence `canOperateOnFolder(_:)` records, kept as one value for the
+    /// same reason as `unsavedNoteRefusal` in `VaultController+Files.swift`.
+    static let unsavedNoteInFolderRefusal = "salva la nota prima di rinominare o eliminare la cartella"
 
     /// Renames a folder and repoints every card that pointed inside it (R-05, R-06,
     /// R-07). It renames no board file: that is `renameBoard` below (ADR-0025 §D6).

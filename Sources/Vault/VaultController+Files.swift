@@ -18,9 +18,14 @@ extension VaultController {
     func canOperate(on relativePath: String) -> Bool {
         guard let note = openNote, note.relativePath == relativePath, note.hasUnsavedChanges
         else { return true }
-        recordProblem("salva la nota prima di rinominarla, spostarla o eliminarla")
+        recordProblem(Self.unsavedNoteRefusal)
         return false
     }
+
+    /// The exact sentence `canOperate(on:)` records, kept as one value so
+    /// `VaultController+Move.swift`'s batch-level guard can hand back the same string
+    /// through `MoveBatchOutcome.refusals` instead of a second wording of it.
+    static let unsavedNoteRefusal = "salva la nota prima di rinominarla, spostarla o eliminarla"
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
     @discardableResult
