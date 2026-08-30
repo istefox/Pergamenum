@@ -30,6 +30,10 @@ final class CommandActions {
     /// The places the window has been (ADR-0015), so «Indietro» is the same command from the
     /// menu, the key and the toolbar rather than three of them.
     let history: NavigationHistory
+    /// Internal rather than private so a test can name it - the same reason
+    /// `RecentVaults.key` is internal. Defaults to the real system pasteboard; a test
+    /// passes `.volatile()` so running the suite does not touch the user's own clipboard.
+    let pasteboard: NSPasteboard
 
     init(
         navigation: Navigation,
@@ -37,7 +41,8 @@ final class CommandActions {
         day: DayController,
         calendar: EventKitStore,
         capturePanel: CapturePanel,
-        history: NavigationHistory
+        history: NavigationHistory,
+        pasteboard: NSPasteboard = .general
     ) {
         self.navigation = navigation
         self.vault = vault
@@ -45,6 +50,7 @@ final class CommandActions {
         self.calendar = calendar
         self.capturePanel = capturePanel
         self.history = history
+        self.pasteboard = pasteboard
     }
 
     /// The same value `RootView` derives, built from the same three controllers: this is what
@@ -421,8 +427,8 @@ final class CommandActions {
     /// Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
     private func copyLinkToOpenNote() {
         guard let note = vault.openNote, let url = PergamenumLink.note(path: note.relativePath) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(url.absoluteString, forType: .string)
     }
 
     private func revealOpenNote() {
@@ -433,7 +439,10 @@ final class CommandActions {
     }
 
     /// The pasteboard is rewritten to its plain text and pasted through the responder
-    /// chain, so this works in any field, not only the editor.
+    /// chain, so this works in any field, not only the editor. Always the real system
+    /// pasteboard, never `self.pasteboard` - the paste responder chain reads from
+    /// `.general` by construction, so rewriting any other pasteboard would be a silent
+    /// no-op.
     private func pastePlain() {
         let plain = NSPasteboard.general.string(forType: .string) ?? ""
         NSPasteboard.general.clearContents()
