@@ -180,15 +180,15 @@ extension VaultController {
     /// The last segment is `note.title`, not the file name: the tab strip and the tree row
     /// already show the title, and a breadcrumb spelling the same note a third way (the file
     /// name, extension included) would read as a different note at a glance.
-    var breadcrumb: [(title: String, folder: String)] {
-        var trail: [(String, String)] = [("Note", "")]
+    var breadcrumb: [BreadcrumbSegment] {
+        var trail: [BreadcrumbSegment] = [BreadcrumbSegment(title: "Note", folder: "")]
         guard let note = openNote else { return trail }
         var accumulated = ""
         for component in note.relativePath.split(separator: "/").dropLast() {
             accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
-            trail.append((String(component), accumulated))
+            trail.append(BreadcrumbSegment(title: String(component), folder: accumulated))
         }
-        trail.append((note.title, accumulated))
+        trail.append(BreadcrumbSegment(title: note.title, folder: accumulated))
         return trail
     }
 }

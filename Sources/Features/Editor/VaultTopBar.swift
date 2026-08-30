@@ -13,47 +13,24 @@ struct VaultTopBar: View {
     let navigation: Navigation
 
     var body: some View {
-        let crumbs = vault.breadcrumb
-        return HStack(spacing: theme.spacing(.xs)) {
-            Circle()
-                .fill(theme.color(
-                    vault.openNote?.hasUnsavedChanges == true ? .taskScheduled : .accentPrimary
-                ))
-                .frame(width: 8, height: 8)
-
-            ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
-                if index > 0 {
-                    Text("›").themedText(.body, color: .textTertiary)
-                }
-                if index == crumbs.count - 1 {
-                    // The last segment is the note itself (or the bare root with nothing
-                    // open) - not a link, the same reason `BoardTopBar`'s own last segment
-                    // is not one (ADR-0024 §D8.2): it is where you already are.
-                    //
-                    // An explicit identifier, distinct from the visible label (2026-08-28,
-                    // recovery checkpoint): the bare root crumb reads "Note", byte-identical
-                    // to the pane switcher's own `staticTexts["Note"]` row
-                    // (`WorkspaceIntegrationUITests.openPane`), and with no identifier of its
-                    // own a `Text` answers a lookup by its label - that ambiguity is what
-                    // broke `testSendingANoteFromAFolderWithNoBoardsToTheWorkspace…` the first
-                    // time the full UI suite ran after this bar shipped.
-                    Text(crumb.title).themedText(.body, color: .textPrimary)
-                        .accessibilityIdentifier("breadcrumb-crumb-\(index)")
-                } else {
-                    // `navigation.revealFolder(_:)` rather than a local method: the Note
-                    // tree's `expanded`/`selectedRows` are `NoteListPane`'s own private
-                    // `@State`, so this bar has no reference to open a row through - the
-                    // same reason `jumpToOutlineEntry` exists for the outline instead of a
-                    // direct call into the editor.
-                    Button(crumb.title) { navigation.revealFolder(crumb.folder) }
-                        .buttonStyle(.plain)
-                        .themedText(.body, color: .textSecondary)
-                        .accessibilityIdentifier("breadcrumb-crumb-\(index)")
-                }
-            }
-
-            Spacer()
-
+        // `navigation.revealFolder(_:)` rather than a local method: the Note tree's
+        // `expanded`/`selectedRows` are `NoteListPane`'s own private `@State`, so this bar
+        // has no reference to open a row through - the same reason `jumpToOutlineEntry`
+        // exists for the outline instead of a direct call into the editor.
+        //
+        // An explicit identifier on every segment, distinct from the visible label
+        // (2026-08-28, recovery checkpoint): the bare root crumb reads "Note", byte-identical
+        // to the pane switcher's own `staticTexts["Note"]` row
+        // (`WorkspaceIntegrationUITests.openPane`), and with no identifier of its own a
+        // `Text` answers a lookup by its label - that ambiguity is what broke
+        // `testSendingANoteFromAFolderWithNoBoardsToTheWorkspace…` the first time the full UI
+        // suite ran after this bar shipped.
+        BreadcrumbBar(
+            segments: vault.breadcrumb,
+            isUnsaved: vault.openNote?.hasUnsavedChanges == true,
+            identifierPrefix: "breadcrumb-crumb",
+            onSelectAncestor: { navigation.revealFolder($0) }
+        ) {
             // Only with a note open: unlike `WorkspaceController`, which carries a stored
             // `hasUnsavedChanges` that reads `false` at rest even with nothing loaded,
             // there is no save state to report here until a note exists to have one -
@@ -67,7 +44,5 @@ struct VaultTopBar: View {
                 .themedText(.caption, color: .textSecondary)
             }
         }
-        .padding(.horizontal, theme.spacing(.m))
-        .padding(.vertical, theme.spacing(.s))
     }
 }
