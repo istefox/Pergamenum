@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=83 -->
+<!-- project-tasks: prefix=PG lastId=86 -->
 # PROJECT TASKS
 
-Updated: 2026-08-29 · Open: 36 (P1: 0) · In progress: 0
+Updated: 2026-08-30 · Open: 36 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -15,6 +15,12 @@ Updated: 2026-08-29 · Open: 36 (P1: 0) · In progress: 0
 
 ## Backlog / To Add
 
+- [ ] `PG-086` **P3** No real checkbox glyph on a task line (`- [ ] fai`) — a To Do card/note draws its own characters, coloured through `.taskMarker(done:)`, with nothing substituting a box or a tick — `Sources/Features/Editor/MarkdownAttributedText.swift:126`, `Sources/Features/Workspace/CardTextAttributes.swift:191` <!-- src:session opened:2026-08-30 runs:1 -->
+  - Declined follow-up from ADR-0028 (wysiwyg-markdown-in-workspace) §C4: R-06 is satisfied by *not* emitting a list span on a checkbox line, so it keeps today's appearance. Drawing a real checkbox glyph is a separate feature, out of that chain's SPEC.
+- [ ] `PG-085` **P3** List nesting depth is computed by this app's own indent classifier, not CommonMark's content-column rule — a list indented three spaces, or whose nesting depends on the parent bullet's content column, renders at a level this classifier computes rather than the one CommonMark (and Obsidian) would assign <!-- src:session opened:2026-08-30 runs:1 -->
+  - Declined follow-up from ADR-0028 (wysiwyg-markdown-in-workspace), Consequences/Negative. Only observable on a list authored elsewhere (e.g. pasted from Obsidian or another editor) with non-standard indentation; a list authored inside Pergamenum never hits it.
+- [ ] `PG-084` **P3** `MarkdownStyler`'s inline-span parser (`inlineSpans`/`emphasis`) is non-recursive: a matched `**...**` span consumes its entire matched range as one atomic `.bold` span, including any `~~...~~` nested inside it, so `**~~testo~~**` never renders (or conceals) as bold+strikethrough — only as bold, with the `~~` markers left visible and unconcealed — `Sources/Features/Editor/MarkdownStyler.swift` (`inlineSpans`, `emphasis`) <!-- src:manual opened:2026-08-29 runs:1 -->
+  - Found by hand-check during the ADR-0028 (wysiwyg-markdown-in-workspace) ship gate, reproduced on a Workspace `.text` card. Confirmed pre-existing and unrelated to ADR-0028: `git diff 4623c7d..HEAD -- Sources/Features/Editor/MarkdownStyler.swift` shows that chain's entire diff on this file is additive (`.listMarker` case + helpers only), zero changes to `inlineSpans`/`emphasis`/`strikethroughLength`. Reproduces identically in Nota, since `MarkdownStyler`/`EditorDecorationDelegate` are shared (ADR-0028 §D1). Fix needs `emphasis`'s span search to recurse into (or otherwise not swallow) nested marker pairs before returning its match length.
 - [ ] `PG-083` **P2** `VaultController.moveItems` returns only `Bool`, discarding `VaultSession.MoveBatchOutcome` — a multi-item batch move that fails on disk for several items reports only the last problem (`vault.problems.last`), contradicting `WorkspaceMoveConflict`'s own doc comment ("every reason, not the first"); and `WorkspaceView+FolderVerbs.moveItems(_:into:)` computes the landed board path from the pre-write plan rather than the actual write outcome, so a partial-batch failure on the open board can try to load a path that was never written — `Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift:36-69`, `Sources/Vault/VaultController+Move.swift:27-37` <!-- src:session opened:2026-08-29 runs:1 -->
   - Found at Gate 5.06 (silent-failure-hunter) for ADR-0026. Degrades gracefully (`WorkspaceController.load(board:)` already handles a missing path), not a crash. Suggested fix: have `moveItems` expose `MoveBatchOutcome` (or at least `failures`/`moves`) so the caller shows every reason and computes the landing path from what was actually written.
 - [ ] `PG-082` **P3** `NoteListPane`'s selection set discriminates note vs. folder ids by `id.hasSuffix(".md")` rather than a typed lookup — `NoteName.validate` does not forbid `.` in a name, so a folder literally named `Reunion.md` would be misclassified as a note-open request; no test covers this — `Sources/Features/Editor/NoteListPane.swift:53,457-461` <!-- src:session opened:2026-08-29 runs:1 -->
