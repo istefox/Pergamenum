@@ -315,6 +315,15 @@ enum ListContinuation {
         var kind: Kind
     }
 
+    /// The ordered marker on a line: its number, the range of its digits (the only part a
+    /// renumbering rewrites), the delimiter it was written with, and where the item's text begins.
+    private struct Ordered {
+        var number: Int
+        var digits: NSRange
+        var delimiter: String
+        var end: Int
+    }
+
     private static func marker(on line: Line, in haystack: NSString) -> Marker? {
         let start = line.start + indentLength(on: line, in: haystack)
         if let ordered = ordered(on: line, in: haystack) {
@@ -339,7 +348,7 @@ enum ListContinuation {
     /// renumbering rewrites - the delimiter it was written with, and where the item's text begins.
     private static func ordered(
         on line: Line, in haystack: NSString
-    ) -> (number: Int, digits: NSRange, delimiter: String, end: Int)? {
+    ) -> Ordered? {
         let start = line.start + indentLength(on: line, in: haystack)
         var cursor = start
         while cursor < line.contentEnd, isDigit(haystack.character(at: cursor)) { cursor += 1 }
@@ -349,10 +358,10 @@ enum ListContinuation {
         else { return nil }
         let digits = NSRange(location: start, length: cursor - start)
         guard let number = Int(haystack.substring(with: digits)) else { return nil }
-        return (
-            number, digits,
-            haystack.substring(with: NSRange(location: cursor, length: 1)),
-            cursor + 2
+        return Ordered(
+            number: number, digits: digits,
+            delimiter: haystack.substring(with: NSRange(location: cursor, length: 1)),
+            end: cursor + 2
         )
     }
 
