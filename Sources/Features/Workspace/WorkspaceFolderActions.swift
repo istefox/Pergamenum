@@ -11,9 +11,10 @@ import Foundation
 /// away (§F10), and `open(board:)` after, so the board follows what moved - and the
 /// browser has no business holding that controller.
 ///
-/// The four rules below are static and pure on purpose. Where the open board lands after
-/// a rename or a delete is a question about two paths: it needs no controller, no vault
-/// and no view, and `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+/// The four navigation rules that used to live here are pure and static, and now live in
+/// their own namespace, `WorkspaceFolderNavigation` (PG-071) — they need no controller, no
+/// vault and no view, and mixing them into a struct built to carry DI closures made neither
+/// half easy to reference on its own.
 struct WorkspaceFolderActions {
     /// Writes a board called `<name>.canvas` inside `parent` and opens it (R-02).
     let createBoard: (_ name: String, _ parent: String) -> Void
@@ -67,7 +68,14 @@ struct WorkspaceFolderActions {
     /// racing the click) leaves a trace instead of silently reading as an ordinary
     /// board-less folder (ADR-0024 Gate 5.06 finding).
     let recordDesync: (_ message: String) -> Void
+}
 
+/// The four navigation rules for where the open board/selection should land after a
+/// rename, delete or drag-move (ADR-0022 §D10, ADR-0025 §D7) - pure and static on purpose,
+/// split from `WorkspaceFolderActions`' DI closures (PG-071). Where the open board lands
+/// after a rename or a delete is a question about two paths: it needs no controller, no
+/// vault and no view, and `Tests/WorkspaceFolderNavigationTests.swift` asks it that way.
+enum WorkspaceFolderNavigation {
     /// Where the open board should point once `renamed` has become `to`: unchanged
     /// outside the renamed subtree, exact-substituted when `open` *is* `renamed`, and
     /// prefix-substituted when it sits inside it (R-08, ADR-0022 §D10 - "`workspace.folder`

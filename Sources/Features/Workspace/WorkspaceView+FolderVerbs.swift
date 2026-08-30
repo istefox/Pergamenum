@@ -51,7 +51,7 @@ extension WorkspaceView {
 
         // `outcome.moves`, not a separately-planned list: an item that failed on disk
         // mid-batch is not in it, so the open board does not chase a path nothing wrote.
-        let landed = WorkspaceFolderActions.boardAfterMove(open: workspace.board, moves: outcome.moves)
+        let landed = WorkspaceFolderNavigation.boardAfterMove(open: workspace.board, moves: outcome.moves)
         guard landed != workspace.board else { return [] }
         // Reopened rather than left alone: the document on screen was read from a file
         // that has moved, and `open(board:)` is what re-reads it, refreshes the folder's
@@ -117,7 +117,7 @@ extension WorkspaceView {
         performFolderVerb(
             { vault.renameFolder(at: folder, to: newName) },
             landing: { open in
-                WorkspaceFolderActions.folderAfterRename(
+                WorkspaceFolderNavigation.folderAfterRename(
                     open: open, renamed: folder, to: newPath
                 )
             }
@@ -132,7 +132,7 @@ extension WorkspaceView {
         performFolderVerb(
             { vault.trashFolder(at: folder) },
             landing: { open in
-                WorkspaceFolderActions.folderAfterDelete(open: open, deleted: folder)
+                WorkspaceFolderNavigation.folderAfterDelete(open: open, deleted: folder)
             }
         )
     }
@@ -148,7 +148,7 @@ extension WorkspaceView {
         performBoardVerb(
             { vault.renameBoard(at: board, to: newName) },
             landing: { open in
-                WorkspaceFolderActions.boardAfterRename(open: open, renamed: board, to: newPath)
+                WorkspaceFolderNavigation.boardAfterRename(open: open, renamed: board, to: newPath)
             }
         )
     }
@@ -161,7 +161,7 @@ extension WorkspaceView {
         performBoardVerb(
             { vault.trashBoard(at: board) },
             landing: { open in
-                WorkspaceFolderActions.boardAfterDelete(open: open, deleted: board)
+                WorkspaceFolderNavigation.boardAfterDelete(open: open, deleted: board)
             }
         )
     }
