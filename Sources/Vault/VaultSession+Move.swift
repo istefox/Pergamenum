@@ -21,7 +21,7 @@ extension VaultSession {
     private var folderOperations: FolderFileOperations { FolderFileOperations(store: store) }
 
     /// What a completed batch move did, across every kind of item it touched.
-    struct MoveBatchOutcome {
+    struct MoveBatchOutcome: Equatable, Sendable {
         /// The moves the batch actually performed, in the order `VaultMoveBatch.plan`
         /// returned them - what `VaultController` hands to `boardAfterMove` and to
         /// `UndoManager.registerUndo`'s inverse.

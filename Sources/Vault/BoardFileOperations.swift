@@ -203,7 +203,7 @@ struct BoardFileOperations {
     /// What a board *move* would change: the file name is kept, only the folder it
     /// sits in changes - the mirror of `renamePlan`, which keeps the folder and changes
     /// the name (ADR-0026 §D1).
-    struct MovePlan {
+    struct MovePlan: Equatable, Sendable {
         var newPath: String
         var boardChanges: [NoteFileOperations.FileChange] = []
         var failures: [String] = []
@@ -242,7 +242,7 @@ struct BoardFileOperations {
     }
 
     /// What a board move actually did (ADR-0026 §D1).
-    struct MoveOutcome {
+    struct MoveOutcome: Equatable, Sendable {
         var newPath: String
         var rewrittenPaths: [String] = []
         var failures: [String] = []

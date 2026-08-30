@@ -1,133 +1,127 @@
-# PG-080 — deduplicate the moved-note tuple across outcome types
+# SPEC — PG-046: Equatable, Sendable conformance for Folder/Board rename and move plan/outcome types
 
-**Topic slug:** pg-080-dedupe-moved-note-tuple
+**Topic slug:** pg-046-equatable-sendable-conformance
 
 ## Objectives
 
-`FolderFileOperations.RenameOutcome`, `FolderFileOperations.MoveOutcome` and
-`VaultSession+Move.swift`'s `MoveBatchOutcome` each independently declare the same anonymous
-tuple shape, `[(old: String, new: String)]`, to record a note that moved as the side effect of a
-folder-level rename or move. Replace all three with one shared named type, `MovedNote`, reused
-as-is at every site. Type-only refactor, no behavior change.
+Close the `Equatable, Sendable` disparity between `NoteFileOperations`'s plan/outcome types
+(`RenamePlan`, `MovePlan`, `FileChange`, `Outcome` — all `Equatable, Sendable`) and their
+Folder/Board-layer siblings, which today declare no such conformance. Pure additive-conformance
+change: no field renamed, reshaped or added; no behavior change.
 
-This is the surviving half of TODO.md's PG-080 entry. The other half — two near-identical
-`OperationError` enums across `BoardFileOperations`/`FolderFileOperations` — was already resolved
-this session by PG-066, which unified all three file-operations types' `OperationError` enums
-(Note, Folder, Board) into one shared `FileOperationError` at
-`Sources/Core/Vault/FileOperationError.swift`. That work is out of scope here.
+TODO.md's PG-046 entry, verified stale on both cited facts before this chain started:
+`FolderRenamePlan.boardRename` (the anonymous `(from: String, to: String)?` tuple it named) was
+removed entirely by ADR-0025 — a folder rename no longer touches board files named after it.
+`RenameOutcome.movedNotes` (the anonymous `[(old: String, new: String)]` tuple it named) was
+already replaced by a named `MovedNote` struct in this session's PG-080 chain. The underlying
+observation survives: none of the six Folder/Board-layer plan/outcome types below are `Equatable,
+Sendable`, unlike every Note-layer sibling.
 
 ## Scope
 
-**In scope:**
-- New type `MovedNote` (struct, fields `old: String`, `new: String`) at
-  `Sources/Core/Vault/MovedNote.swift`.
-- Replace the anonymous tuple in three declarations:
-  - `Sources/Vault/FolderFileOperations.swift:226` — `RenameOutcome.movedNotes`
-  - `Sources/Vault/FolderFileOperations+Move.swift:69` — `MoveOutcome.movedNotes`
-  - `Sources/Vault/VaultSession+Move.swift:31` — `MoveBatchOutcome.movedNotes`
-- Update every construction and read site (see Architecture below for the full enumeration).
+**In scope** — add `Equatable, Sendable` to all six types:
+- `Sources/Vault/FolderFileOperations.swift` — `FolderRenamePlan`, `RenameOutcome`
+- `Sources/Vault/FolderFileOperations+Move.swift` — `MovePlan`, `MoveOutcome`
+- `Sources/Vault/BoardFileOperations.swift` — `MovePlan`, `MoveOutcome`
+- `Sources/Vault/VaultSession+Move.swift` — `MoveBatchOutcome`
+
+Scope extended beyond TODO.md's original two-type claim (`FolderRenamePlan`/`RenameOutcome` only)
+to all six by explicit user decision before this interview, closing the disparity with
+`NoteFileOperations` everywhere in one pass rather than leaving four of six unresolved.
+
+**Also in scope** — `Sources/Core/Vault/MovedNote.swift` gains `Equatable, Sendable`: it is a
+stored-property field on `RenameOutcome`/`MoveOutcome`/`MoveBatchOutcome`, and Swift's automatic
+`Equatable`/`Sendable` synthesis requires every stored property to itself conform. Confirmed by
+interview — not optional.
 
 **Out of scope:**
-- `OperationError` dedup — already done by PG-066.
-- `RenameOutcome.rewrittenPaths` (a separate, unrelated field noted in TODO.md's PG-070, not
-  touched here).
-- Any behavior change to how notes are discovered, moved, or reported.
+- No test file changes — existing unit tests continue to compile and pass unchanged; no test
+  is converted from field-by-field assertion to whole-value `==` comparison (interview decision:
+  keep existing tests as-is, matching PG-065/PG-066/PG-080 precedent of build/test-green as the
+  sole completeness oracle).
+- `NoteFileOperations.FileChange` and `VaultMove` — already `Equatable, Sendable`, no change
+  needed; both are reused as field types by the six types above without modification.
+- No restructuring of any field: every field on all six types is already a value composed
+  entirely of `String`, `[String]`, `[NoteFileOperations.FileChange]` (already `Equatable,
+  Sendable`), `[MovedNote]` (gaining it in this chain), or `[VaultMove]` (already `Equatable,
+  Sendable`) — so no field needs to change shape for conformance to synthesize.
+- `MoveBatchOutcome.didMove` is a computed property (`!moves.isEmpty`), not stored — irrelevant
+  to synthesis, unaffected by this change.
 
 ## Stack
 
-Swift 6, no new dependency. Follows the exact precedent of PG-065 (`BoardPath`/`FolderPath`
-wrapper types) and PG-066 (`FileOperationError`) from this same session.
+Swift 6, strict concurrency. `Equatable`/`Sendable` are compiler-synthesized when every stored
+property already conforms — no manual `==`/`Sendable` implementation needed anywhere in this
+change, matching the pattern already used by every `NoteFileOperations` sibling type.
 
 ## Architecture
 
-**New file `Sources/Core/Vault/MovedNote.swift`:**
+Seven struct declarations gain a conformance clause; nothing else changes.
+
 ```swift
-struct MovedNote {
+// Sources/Core/Vault/MovedNote.swift
+struct MovedNote: Equatable, Sendable {
     var old: String
     var new: String
 }
+
+// Sources/Vault/FolderFileOperations.swift
+struct FolderRenamePlan: Equatable, Sendable { ... }   // unchanged fields
+struct RenameOutcome: Equatable, Sendable { ... }        // unchanged fields
+
+// Sources/Vault/FolderFileOperations+Move.swift
+struct MovePlan: Equatable, Sendable { ... }             // unchanged fields
+struct MoveOutcome: Equatable, Sendable { ... }           // unchanged fields
+
+// Sources/Vault/BoardFileOperations.swift
+struct MovePlan: Equatable, Sendable { ... }             // unchanged fields
+struct MoveOutcome: Equatable, Sendable { ... }           // unchanged fields
+
+// Sources/Vault/VaultSession+Move.swift
+struct MoveBatchOutcome: Equatable, Sendable { ... }      // unchanged fields
 ```
-Lives under `Sources/Core/**`, already covered by `Project.swift`'s `sharedSources` glob — no
-`Project.swift` edit needed, same placement pattern as `FileOperationError.swift` (PG-066) and
-`BoardPath.swift` (PG-065). Both current call sites are under `Sources/Vault/`, which is app-only
-today; placing the shared type under `Sources/Core/Vault/` makes it reachable from
-`perg`/`pergamenum-mcp` as well, consistent with the session's established convention for shared
-vault-layer types.
 
-No `Equatable`/`Hashable` conformance — verified this session that no test or call site compares
-a `MovedNote` value for equality; every read site pattern-matches on `.old`/`.new` via closures
-or keypaths (`$0.old == ...`, `.map(\.old)`), which works identically whether the type conforms to
-`Equatable` or not.
-
-**Change the three declarations** from `[(old: String, new: String)]` to `[MovedNote]`:
-- `FolderFileOperations.RenameOutcome.movedNotes`
-- `FolderFileOperations.MoveOutcome.movedNotes` (in `FolderFileOperations+Move.swift`)
-- `VaultSession+Move.swift`'s `MoveBatchOutcome.movedNotes`
-
-**Construction sites** (tuple literals become `MovedNote(...)`):
-- `Sources/Vault/FolderFileOperations.swift:253` — `.map { (old: $0, new: ...) }` → `.map { MovedNote(old: $0, new: ...) }`
-- `Sources/Vault/FolderFileOperations+Move.swift:92` — same pattern
-- `Sources/Vault/VaultSession+Move.swift:88` — `outcome.movedNotes.append((old: ..., new: ...))` → `outcome.movedNotes.append(MovedNote(old: ..., new: ...))`
-
-**Read sites** (unaffected — `.old`/`.new` field access, `.map(\.old)`, `.contains { $0.old == ... }`
-all continue to compile unchanged against a named struct with the same field names):
-- `Sources/Vault/VaultController+Move.swift:163`
-- `Sources/Vault/VaultController+Folders.swift:44`
-- `Sources/Vault/VaultSession+Folders.swift:29`
-- `Sources/Vault/VaultSession+Move.swift:102,105` (the aggregation loop and `append(contentsOf:)`
-  pass-through between `MoveOutcome`/`RenameOutcome` and `MoveBatchOutcome` — this is the site
-  that most benefits from the shared type, since today it silently relies on both tuples having
-  identical shape)
-
-**Test sites** (assertions on `.old`/`.new` unaffected; only the local `var outcome`/pattern-match
-declarations that name the tuple type explicitly, if any, would need updating — grep did not find
-any such explicit type annotation, only inferred usage via `.contains { $0.old == ... }` and
-`.map(\.old)`):
-- `Tests/VaultMoveTests.swift:155`
-- `Tests/FolderFileOperationTests.swift:414,441,442`
-- `Tests/VaultSessionFolderOperationsTests.swift:80,81`
-
-As with PG-065/PG-066, this grep-based enumeration is the starting list, not the completeness
-guarantee — `xcodebuild build` after the edits is the actual oracle for a type-only refactor: a
-missed site is a compile error, not a silent gap.
+Note: `FolderFileOperations+Move.MovePlan`/`MoveOutcome` and `BoardFileOperations.MovePlan`/
+`MoveOutcome` share names within their own enclosing types (`FolderFileOperations`,
+`BoardFileOperations`) — this is pre-existing and unaffected; each pair is nested and distinct.
 
 ## Data model
 
-```swift
-struct MovedNote {
-    var old: String
-    var new: String
-}
-```
+No new stored fields anywhere. `MovedNote`'s two `String` fields (`old`, `new`) and every other
+field on the six outcome/plan types are unchanged from their current declarations — only the
+conformance clause changes.
 
 ## API
 
-No public API surface — `MovedNote` is used internally by `FolderFileOperations`/
-`VaultSession+Move` and their callers (`VaultController+Move`, `VaultController+Folders`,
-`VaultSession+Folders`). No connector-facing (`VaultAPI`) change.
+None — internal-only types, none reachable from `VaultAPI` or either connector (`perg`,
+`pergamenum-mcp`). No `Sources/Connector/` change.
 
 ## Edge cases
 
-- **`FolderFileOperations.MoveOutcome` and `RenameOutcome` are structurally similar but not
-  identical** (verified this session for the earlier PG-066 scope decision): `MoveOutcome` also
-  carries `rewrittenPaths: [String]`, which `RenameOutcome` does not. This refactor touches only
-  the `movedNotes` field each declares independently — it does not unify the two outcome types
-  themselves, which remain distinct (out of scope, matches PG-066's precedent of not merging
-  `RenameOutcome`/`MoveOutcome` types wholesale).
-- **`VaultSession+Move.swift:105`'s `append(contentsOf:)` pass-through** already assumes
-  `FolderFileOperations`'s `movedNotes` and `VaultSession`'s own `movedNotes` are the same array
-  element type — today this works only because both are the exact same anonymous tuple shape
-  `(old: String, new: String)`, which is fragile (a field reorder or rename on one side would
-  silently break `Array.append(contentsOf:)`'s type inference, or fail loudly with a confusing
-  error at a distant call site). This is the concrete risk the shared `MovedNote` type removes.
+- **Synthesis compiles or it does not — the build is the oracle.** If any field on any of the
+  seven types were not already `Equatable`/`Sendable`-compatible, the build would fail at the
+  conformance declaration, not silently produce a broken `==`. Verified before this SPEC: every
+  field's type already conforms (`String`, `[String]`, `[NoteFileOperations.FileChange]`,
+  `[MovedNote]` (once conforming), `[VaultMove]`).
+- **Nesting inside an `extension` or an enclosing `struct` does not block conformance synthesis**
+  — `NoteFileOperations.RenamePlan`/`MovePlan`/`Outcome`/`FileChange` are the existing proof:
+  all four are nested inside `struct NoteFileOperations` and already `Equatable, Sendable`.
+- **`Equatable` on a plan/outcome type used only for pass-through aggregation
+  (`VaultSession+Move.swift:105`'s `outcome.movedNotes.append(contentsOf: folder.movedNotes)`)**
+  has no observable effect on that call site — `append(contentsOf:)` does not require `Equatable`
+  on its element type. The conformance is additive value, not a requirement anything currently
+  needs to compile.
 
 ## Success criteria
 
-- [ ] R-01 — `Sources/Core/Vault/MovedNote.swift` declares `struct MovedNote { var old: String; var new: String }`, reachable from both `perg` and `pergamenum-mcp` via the existing `sharedSources` glob with no `Project.swift` edit
-- [ ] R-02 — `FolderFileOperations.RenameOutcome.movedNotes` is typed `[MovedNote]`
-- [ ] R-03 — `FolderFileOperations.MoveOutcome.movedNotes` (in `FolderFileOperations+Move.swift`) is typed `[MovedNote]`
-- [ ] R-04 — `VaultSession+Move.swift`'s `MoveBatchOutcome.movedNotes` is typed `[MovedNote]`
-- [ ] R-05 — every construction site builds a `MovedNote(old:new:)` value instead of an anonymous tuple literal
-- [ ] R-06 — every read site (`VaultController+Move.swift`, `VaultController+Folders.swift`, `VaultSession+Folders.swift`, and `VaultSession+Move.swift`'s own aggregation loop) compiles unchanged against the new named type
-- [ ] R-07 — `.claude/test-cmd` (`-only-testing:PergamenumTests`) builds clean and passes 100%
-- [ ] R-08 — `tuist generate --no-open` confirms the new file is picked up by the existing `Sources/Core/**` glob with no `Project.swift` edit
+- [ ] R-01 — `Sources/Core/Vault/MovedNote.swift`'s `MovedNote` declares `Equatable, Sendable`
+- [ ] R-02 — `Sources/Vault/FolderFileOperations.swift`'s `FolderRenamePlan` declares `Equatable, Sendable`
+- [ ] R-03 — `Sources/Vault/FolderFileOperations.swift`'s `RenameOutcome` declares `Equatable, Sendable`
+- [ ] R-04 — `Sources/Vault/FolderFileOperations+Move.swift`'s `MovePlan` declares `Equatable, Sendable`
+- [ ] R-05 — `Sources/Vault/FolderFileOperations+Move.swift`'s `MoveOutcome` declares `Equatable, Sendable`
+- [ ] R-06 — `Sources/Vault/BoardFileOperations.swift`'s `MovePlan` declares `Equatable, Sendable`
+- [ ] R-07 — `Sources/Vault/BoardFileOperations.swift`'s `MoveOutcome` declares `Equatable, Sendable`
+- [ ] R-08 — `Sources/Vault/VaultSession+Move.swift`'s `MoveBatchOutcome` declares `Equatable, Sendable`
+- [ ] R-09 — No field on any of the eight types above is renamed, reshaped, added or removed
+- [ ] R-10 — .claude/test-cmd (-only-testing:PergamenumTests) builds clean and passes 100%
+- [ ] R-11 — No test file is modified (existing tests compile and pass unchanged)

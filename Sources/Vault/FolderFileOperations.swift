@@ -107,7 +107,7 @@ struct FolderFileOperations {
     /// what this operation does *not* do: a folder rename rewrites no note text at all
     /// since ADR-0025 §D6, and a guarantee spelled as an empty list the performer still
     /// writes through is one a future planner can break loudly rather than silently.
-    struct FolderRenamePlan {
+    struct FolderRenamePlan: Equatable, Sendable {
         var newPath: String
         var noteChanges: [NoteFileOperations.FileChange] = []
         var boardChanges: [NoteFileOperations.FileChange] = []
@@ -221,7 +221,7 @@ struct FolderFileOperations {
 
     /// What a folder rename actually did: its destination, the notes it moved (old
     /// path, new path), every path it rewrote, and anything that failed along the way.
-    struct RenameOutcome {
+    struct RenameOutcome: Equatable, Sendable {
         var newPath: String
         var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
