@@ -57,9 +57,9 @@ extension VaultSession {
     /// `pathBefore`, not the text. There is no `textBefore` - a move has nothing to restore.
     func moveFile(from oldPath: String, to newPath: String) throws {
         guard oldPath != newPath else { return }
-        guard exists(oldPath) else { throw NoteFileOperations.OperationError.missing(oldPath) }
+        guard exists(oldPath) else { throw FileOperationError.missing(oldPath) }
         guard !exists(newPath) else {
-            throw NoteFileOperations.OperationError.alreadyExists(newPath)
+            throw FileOperationError.alreadyExists(newPath)
         }
         guard !isDryRun else { return }
 
@@ -70,7 +70,7 @@ extension VaultSession {
             )
             try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
         } catch {
-            throw NoteFileOperations.OperationError.failed(
+            throw FileOperationError.failed(
                 "spostamento: \(error.localizedDescription)"
             )
         }
@@ -105,7 +105,7 @@ extension VaultSession {
     /// `hashAfter` is empty, and that is the honest value: there is no file after this.
     func trashFile(at relativePath: String) throws {
         guard exists(relativePath) else {
-            throw NoteFileOperations.OperationError.missing(relativePath)
+            throw FileOperationError.missing(relativePath)
         }
         // Read before the refusal to perform, not after: a dry run that skipped the read would
         // not discover an unreadable file, and the real thing would then fail where the
@@ -118,7 +118,7 @@ extension VaultSession {
                 at: store.url(for: relativePath), resultingItemURL: nil
             )
         } catch {
-            throw NoteFileOperations.OperationError.failed(
+            throw FileOperationError.failed(
                 "eliminazione: \(error.localizedDescription)"
             )
         }
@@ -159,7 +159,7 @@ extension VaultSession {
         do {
             try data.write(to: url, options: .atomic)
         } catch {
-            throw NoteFileOperations.OperationError.failed(
+            throw FileOperationError.failed(
                 "scrittura: \(error.localizedDescription)"
             )
         }

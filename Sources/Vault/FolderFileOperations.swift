@@ -19,29 +19,6 @@ struct FolderFileOperations {
     /// so nothing here derives a board from the name of the folder holding it.
     private var canvas: CanvasStore { CanvasStore(root: store.root) }
 
-    enum OperationError: Error, CustomStringConvertible {
-        case invalidTitle([NoteName.Violation])
-        case alreadyExists(String)
-        case missing(String)
-        case failed(String)
-        /// ADR-0026 §D1/§D5 - the destination is the folder itself or one of its own
-        /// descendants (the prefix rule is `"\(folder)/"`, never `folder` -
-        /// `repointing:344-348`'s own rule, so a sibling like `a-altro` is not a
-        /// descendant of `a`). `alreadyExists` already says what a collision is and
-        /// needs no sibling for this different refusal.
-        case wouldNest(String)
-
-        var description: String {
-            switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
-            case .alreadyExists(let path): "esiste già: \(path)"
-            case .missing(let path): "non esiste: \(path)"
-            case .failed(let reason): reason
-            case .wouldNest(let path): "\(path) non può essere spostata dentro sé stessa"
-            }
-        }
-    }
-
     // MARK: - Task 1: validation, collision, content counts (R-03, R-04, R-10)
 
     /// Delegates to `NoteName.validate`: a folder name follows the same rules a note
@@ -153,19 +130,19 @@ struct FolderFileOperations {
         knownPaths: [String]
     ) throws -> FolderRenamePlan {
         let violations = Self.validate(newName)
-        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
 
         let oldFolder = Self.normalized(relativePath)
         guard !oldFolder.isEmpty else {
-            throw OperationError.failed("la radice del vault non si rinomina")
+            throw FileOperationError.failed("la radice del vault non si rinomina")
         }
 
         let parent = (oldFolder as NSString).deletingLastPathComponent
         let newFolder = parent.isEmpty ? newName : "\(parent)/\(newName)"
 
-        guard isDirectory(oldFolder) else { throw OperationError.missing(relativePath) }
+        guard isDirectory(oldFolder) else { throw FileOperationError.missing(relativePath) }
         guard newFolder == oldFolder || !exists(newFolder) else {
-            throw OperationError.alreadyExists(newFolder)
+            throw FileOperationError.alreadyExists(newFolder)
         }
 
         var plan = FolderRenamePlan(newPath: newFolder)
@@ -287,7 +264,7 @@ struct FolderFileOperations {
                 to: destination
             )
         } catch {
-            throw OperationError.failed("rinomina cartella: \(error.localizedDescription)")
+            throw FileOperationError.failed("rinomina cartella: \(error.localizedDescription)")
         }
 
         var outcome = RenameOutcome(
@@ -324,9 +301,9 @@ struct FolderFileOperations {
     func trashFolder(at relativePath: String) throws -> (url: URL?, trashedNotePaths: [String]) {
         let folder = Self.normalized(relativePath)
         guard !folder.isEmpty else {
-            throw OperationError.failed("la radice del vault non si elimina")
+            throw FileOperationError.failed("la radice del vault non si elimina")
         }
-        guard isDirectory(folder) else { throw OperationError.missing(relativePath) }
+        guard isDirectory(folder) else { throw FileOperationError.missing(relativePath) }
 
         let trashedNotePaths = walk(folder).notePaths
         var resulting: NSURL?
@@ -336,7 +313,7 @@ struct FolderFileOperations {
                 resultingItemURL: &resulting
             )
         } catch {
-            throw OperationError.failed("eliminazione: \(error.localizedDescription)")
+            throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
         }
         return (resulting as URL?, trashedNotePaths)
     }

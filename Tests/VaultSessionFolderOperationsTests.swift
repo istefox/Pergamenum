@@ -19,7 +19,7 @@ import Testing
 // RED: `VaultSession.renameFolder`/`trashFolder` and `VaultController.renameFolder`
 // are signatures only (Task 4). Every test below fails - either on its own assertion,
 // or because the still-throwing session method propagates
-// `FolderFileOperations.OperationError.notImplementedYet` uncaught.
+// `FileOperationError.notImplementedYet` uncaught.
 
 private func note(_ body: String = "Corpo.") -> String {
     "---\ndate: 2026-08-25\ntags:\n  - type-note\n---\n\n\(body)\n"

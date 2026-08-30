@@ -28,22 +28,6 @@ struct BoardFileOperations {
     /// that loop rather than keeping a third copy of it (ADR-0025 §D6).
     private var folderOperations: FolderFileOperations { FolderFileOperations(store: store) }
 
-    enum OperationError: Error, CustomStringConvertible {
-        case invalidTitle([NoteName.Violation])
-        case alreadyExists(String)
-        case missing(String)
-        case failed(String)
-
-        var description: String {
-            switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
-            case .alreadyExists(let path): "esiste già: \(path)"
-            case .missing(let path): "non esiste: \(path)"
-            case .failed(let reason): reason
-            }
-        }
-    }
-
     /// What a board rename would change: its destination, the notes whose task marker
     /// or plain link would be rewritten, the boards vault-wide whose cards would be
     /// repointed, and anything that failed - including the relocated ADR-0022 §D4
@@ -78,7 +62,7 @@ struct BoardFileOperations {
         // renders through `ConformanceText.lines`, so a board name that is refused here
         // is refused with wording the user has already seen (ADR-0022 §D11).
         let violations = NoteName.validate(newName)
-        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
 
         let oldPath = Self.normalized(relativePath)
         let oldName = (oldPath as NSString).lastPathComponent
@@ -86,9 +70,9 @@ struct BoardFileOperations {
         let newFileName = "\(newName).\(CanvasStore.fileExtension)"
         let newPath = folder.isEmpty ? newFileName : "\(folder)/\(newFileName)"
 
-        guard isFile(oldPath) else { throw OperationError.missing(relativePath) }
+        guard isFile(oldPath) else { throw FileOperationError.missing(relativePath) }
         guard newPath == oldPath || !exists(newPath) else {
-            throw OperationError.alreadyExists(newPath)
+            throw FileOperationError.alreadyExists(newPath)
         }
 
         var plan = BoardRenamePlan(newPath: newPath)
@@ -166,7 +150,7 @@ struct BoardFileOperations {
                     at: store.url(for: oldPath), to: store.url(for: plan.newPath)
                 )
             } catch {
-                throw OperationError.failed("rinomina board: \(error.localizedDescription)")
+                throw FileOperationError.failed("rinomina board: \(error.localizedDescription)")
             }
         }
 
@@ -201,7 +185,7 @@ struct BoardFileOperations {
     /// delete already tells for a dangling wikilink.
     func trashBoard(at relativePath: String) throws -> URL? {
         let board = Self.normalized(relativePath)
-        guard isFile(board) else { throw OperationError.missing(relativePath) }
+        guard isFile(board) else { throw FileOperationError.missing(relativePath) }
 
         var resulting: NSURL?
         do {
@@ -209,7 +193,7 @@ struct BoardFileOperations {
                 at: store.url(for: board), resultingItemURL: &resulting
             )
         } catch {
-            throw OperationError.failed("eliminazione board: \(error.localizedDescription)")
+            throw FileOperationError.failed("eliminazione board: \(error.localizedDescription)")
         }
         return resulting as URL?
     }
@@ -243,9 +227,9 @@ struct BoardFileOperations {
         let destination = Self.normalized(folder)
         let newPath = destination.isEmpty ? fileName : "\(destination)/\(fileName)"
 
-        guard isFile(oldPath) else { throw OperationError.missing(relativePath) }
+        guard isFile(oldPath) else { throw FileOperationError.missing(relativePath) }
         guard newPath == oldPath || !exists(newPath) else {
-            throw OperationError.alreadyExists(newPath)
+            throw FileOperationError.alreadyExists(newPath)
         }
 
         var plan = MovePlan(newPath: newPath)
@@ -289,7 +273,7 @@ struct BoardFileOperations {
                 )
                 try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
             } catch {
-                throw OperationError.failed("spostamento board: \(error.localizedDescription)")
+                throw FileOperationError.failed("spostamento board: \(error.localizedDescription)")
             }
         }
 

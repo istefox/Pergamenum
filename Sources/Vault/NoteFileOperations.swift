@@ -48,22 +48,6 @@ struct NoteFileOperations {
         var failures: [String] = []
     }
 
-    enum OperationError: Error, CustomStringConvertible {
-        case invalidTitle([NoteName.Violation])
-        case alreadyExists(String)
-        case missing(String)
-        case failed(String)
-
-        var description: String {
-            switch self {
-            case .invalidTitle(let violations): "titolo non conforme: \(violations)"
-            case .alreadyExists(let path): "esiste già: \(path)"
-            case .missing(let path): "non esiste: \(path)"
-            case .failed(let reason): reason
-            }
-        }
-    }
-
     // MARK: - Computing what would change (ADR-0016 §D6)
     //
     // `rename`, `move` and `trash` above write directly and stay exactly as they were, for the
@@ -107,16 +91,16 @@ struct NoteFileOperations {
         knownPaths: [String]
     ) throws -> RenamePlan {
         let violations = NoteName.validate(newTitle)
-        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
 
         let oldTitle = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
         let folder = (relativePath as NSString).deletingLastPathComponent
         let fileName = NoteName.fileName(for: newTitle)
         let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
 
-        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
+        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
         guard newPath == relativePath || !exists(newPath) else {
-            throw OperationError.alreadyExists(newPath)
+            throw FileOperationError.alreadyExists(newPath)
         }
 
         var plan = RenamePlan(newPath: newPath)
@@ -147,8 +131,8 @@ struct NoteFileOperations {
         let fileName = (relativePath as NSString).lastPathComponent
         let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
         guard newPath != relativePath else { return MovePlan(newPath: relativePath) }
-        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
-        guard !exists(newPath) else { throw OperationError.alreadyExists(newPath) }
+        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
+        guard !exists(newPath) else { throw FileOperationError.alreadyExists(newPath) }
 
         var plan = MovePlan(newPath: newPath)
         let boards = repointBoardsPlan(from: relativePath, to: newPath)
@@ -222,23 +206,23 @@ struct NoteFileOperations {
         knownPaths: [String]
     ) throws -> Outcome {
         let violations = NoteName.validate(newTitle)
-        guard violations.isEmpty else { throw OperationError.invalidTitle(violations) }
+        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
 
         let oldTitle = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
         let folder = (relativePath as NSString).deletingLastPathComponent
         let fileName = NoteName.fileName(for: newTitle)
         let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
 
-        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
+        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
         guard newPath == relativePath || !exists(newPath) else {
-            throw OperationError.alreadyExists(newPath)
+            throw FileOperationError.alreadyExists(newPath)
         }
 
         if newPath != relativePath {
             do {
                 try FileManager.default.moveItem(at: store.url(for: relativePath), to: store.url(for: newPath))
             } catch {
-                throw OperationError.failed("rinomina: \(error.localizedDescription)")
+                throw FileOperationError.failed("rinomina: \(error.localizedDescription)")
             }
         }
 
@@ -275,8 +259,8 @@ struct NoteFileOperations {
         let fileName = (relativePath as NSString).lastPathComponent
         let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
         guard newPath != relativePath else { return Outcome(newPath: relativePath) }
-        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
-        guard !exists(newPath) else { throw OperationError.alreadyExists(newPath) }
+        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
+        guard !exists(newPath) else { throw FileOperationError.alreadyExists(newPath) }
 
         do {
             let destination = store.url(for: newPath)
@@ -285,7 +269,7 @@ struct NoteFileOperations {
             )
             try FileManager.default.moveItem(at: store.url(for: relativePath), to: destination)
         } catch {
-            throw OperationError.failed("spostamento: \(error.localizedDescription)")
+            throw FileOperationError.failed("spostamento: \(error.localizedDescription)")
         }
 
         var outcome = Outcome(newPath: newPath)
@@ -329,13 +313,13 @@ struct NoteFileOperations {
     /// The trash rather than an unlink: a note deleted by a misclick is recoverable
     /// there, and nothing this app does is worth making that unrecoverable.
     func trash(_ relativePath: String, knownPaths: [String]) throws -> [String] {
-        guard exists(relativePath) else { throw OperationError.missing(relativePath) }
+        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
         let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
 
         do {
             try FileManager.default.trashItem(at: store.url(for: relativePath), resultingItemURL: nil)
         } catch {
-            throw OperationError.failed("eliminazione: \(error.localizedDescription)")
+            throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
         }
 
         let needle = title.lowercased()
