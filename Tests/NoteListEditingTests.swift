@@ -2,33 +2,33 @@ import AppKit
 import Testing
 @testable import Pergamenum
 
-/// Return inside a list, in the note editor (ADR-0028, plan
-/// `2026-08-29-wysiwyg-markdown-in-workspace`, Task 4, R-07, R-08, R-12).
-///
-/// What is under test here is the *wiring*, not the arithmetic: `ListContinuation.newline`
-/// and `.renumbered` are pure, already implemented and already covered by
-/// `Tests/ListContinuationTests.swift` (Task 2). This file asserts that a Return key
-/// command reaching a real `CompletingTextView` - wired exactly the way the app wires it -
-/// turns into that function's answer, as **one** edit on the storage and therefore one
-/// undo step.
-///
-/// The fixture calls `NoteTextView.wire(_:to:)` rather than assigning `claimsCommand`
-/// itself. That is deliberate: the seam Task 4 extends is the closure inside that method
-/// (`NoteTextView.swift:207`), and a fixture that assigned its own copy of the closure
-/// would be asserting against the copy - green here, broken in the app, or red forever
-/// whatever the coder writes. `Tests/EmbedEditorTestSupport.swift` holds exactly such a
-/// copy for the embed suites; this file does not repeat that.
-///
-/// RED, expected, until Task 4's coder extends that closure to claim
-/// `#selector(insertNewline(_:))` when `ListContinuation.newline` returns non-nil:
-/// `returnAtTheEndOfABulletItemContinuesTheList`, `returnOnAnEmptyItemLeavesTheList`,
-/// `returnInsideAnOrderedRunRenumbersTheRestOfItInTheSameEdit`,
-/// `oneUndoTakesBackTheWholeContinuation` and
-/// `oneUndoTakesBackTheContinuationAndItsRenumberingTogether` all fail on today's build,
-/// where Return falls through to AppKit and inserts a bare newline.
-/// `returnOnALineThatIsNotAListItemInsertsAPlainNewlineAndNothingElse` is green on
-/// arrival - it is the fall-through case, and it is here to pin that the claim stays
-/// narrow once the rest goes green.
+// Return inside a list, in the note editor (ADR-0028, plan
+// `2026-08-29-wysiwyg-markdown-in-workspace`, Task 4, R-07, R-08, R-12).
+//
+// What is under test here is the *wiring*, not the arithmetic: `ListContinuation.newline`
+// and `.renumbered` are pure, already implemented and already covered by
+// `Tests/ListContinuationTests.swift` (Task 2). This file asserts that a Return key
+// command reaching a real `CompletingTextView` - wired exactly the way the app wires it -
+// turns into that function's answer, as **one** edit on the storage and therefore one
+// undo step.
+//
+// The fixture calls `NoteTextView.wire(_:to:)` rather than assigning `claimsCommand`
+// itself. That is deliberate: the seam Task 4 extends is the closure inside that method
+// (`NoteTextView.swift:207`), and a fixture that assigned its own copy of the closure
+// would be asserting against the copy - green here, broken in the app, or red forever
+// whatever the coder writes. `Tests/EmbedEditorTestSupport.swift` holds exactly such a
+// copy for the embed suites; this file does not repeat that.
+//
+// RED, expected, until Task 4's coder extends that closure to claim
+// `#selector(insertNewline(_:))` when `ListContinuation.newline` returns non-nil:
+// `returnAtTheEndOfABulletItemContinuesTheList`, `returnOnAnEmptyItemLeavesTheList`,
+// `returnInsideAnOrderedRunRenumbersTheRestOfItInTheSameEdit`,
+// `oneUndoTakesBackTheWholeContinuation` and
+// `oneUndoTakesBackTheContinuationAndItsRenumberingTogether` all fail on today's build,
+// where Return falls through to AppKit and inserts a bare newline.
+// `returnOnALineThatIsNotAListItemInsertsAPlainNewlineAndNothingElse` is green on
+// arrival - it is the fall-through case, and it is here to pin that the claim stays
+// narrow once the rest goes green.
 
 // MARK: - Fixture
 
