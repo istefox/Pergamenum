@@ -81,3 +81,4 @@ Tuist/.build/
 # Session context written by the SessionStart hook: generated state, not source.
 .claude/context.md
 .claude/.triage-fix-last-*.json
+.claude/.refactor-snapshot.txt
