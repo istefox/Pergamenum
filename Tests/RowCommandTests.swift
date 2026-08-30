@@ -35,7 +35,8 @@ private func makeActions(vault root: URL) async -> CommandActions {
             theme: { ThemeEngine().current },
             shortcutCaption: { nil }
         ),
-        history: NavigationHistory()
+        history: NavigationHistory(),
+        pasteboard: .volatile()
     )
 }
 
@@ -101,7 +102,7 @@ Nota B.
 
     #expect(actions.vault.openNote?.relativePath == "b.md")
     let link = try #require(PergamenumLink.note(path: "b.md"))
-    #expect(NSPasteboard.general.string(forType: .string) == link.absoluteString)
+    #expect(actions.pasteboard.string(forType: .string) == link.absoluteString)
 }
 
 // MARK: - R-04: no implicit re-open on the note that is already open
