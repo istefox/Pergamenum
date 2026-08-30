@@ -536,8 +536,8 @@ struct NoteListPane: View {
     ///
     /// `false` for a refused drop, which is what `.dropDestination`'s `action` owes the
     /// drag. The cycle is refused here as well as by the affordance, because the menu has
-    /// no hover to decline; a collision is refused inside `VaultController.moveItems` and
-    /// named on the problem list, which is where every non-modal refusal in this pane goes.
+    /// no hover to decline; every other refusal comes back on `vault.moveItems`'s own
+    /// outcome (PG-083) and is joined into the one alert this pane shows.
     ///
     /// `undoManager` is the **window's**, handed down as an argument rather than reached
     /// for (§D8). Nil is not silently tolerated: `moveItems` records that the move cannot
@@ -546,11 +546,10 @@ struct NoteListPane: View {
         dragging = []
         guard !items.isEmpty,
               WorkspaceBrowser.canDrop(items, onFolder: destination) else { return false }
-        guard vault.moveItems(items, into: destination, undo: undoManager) else {
-            // `canOperate(onAll:)` refuses before touching disk and records why on
-            // `problems` (`VaultController+Move.swift`) - the only source this pane has
-            // for that reason, since the refusal carries no `outcome.refusals` of its own.
-            moveRefused = vault.problems.last
+        let outcome = vault.moveItems(items, into: destination, undo: undoManager)
+        guard outcome.didMove else {
+            let reasons = outcome.refusals + outcome.failures
+            moveRefused = reasons.isEmpty ? nil : reasons.joined(separator: "\n")
             return false
         }
         return true

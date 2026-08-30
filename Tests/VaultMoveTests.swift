@@ -171,7 +171,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     await controller.open(root)
     let manager = UndoManager()
 
-    let moved = controller.moveItems(
+    let outcome = controller.moveItems(
         [
             VaultItemRef(path: "A/x.md", kind: .note),
             VaultItemRef(path: "A/ghost.canvas", kind: .board),
@@ -180,7 +180,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
         undo: manager
     )
 
-    #expect(moved, "qualcosa si è spostato: il batch non può dichiararsi fallito del tutto")
+    #expect(outcome.didMove, "qualcosa si è spostato: il batch non può dichiararsi fallito del tutto")
     #expect(exists("B/x.md", at: root))
     #expect(
         !controller.problems.isEmpty,
@@ -215,9 +215,9 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
         VaultItemRef(path: "A/y.canvas", kind: .board),
     ]
 
-    let moved = controller.moveItems(items, into: "B", undo: manager)
+    let outcome = controller.moveItems(items, into: "B", undo: manager)
 
-    #expect(moved)
+    #expect(outcome.didMove)
     #expect(exists("B/x.md", at: root))
     #expect(exists("B/y.canvas", at: root))
     #expect(manager.canUndo, "una mossa completata deve registrarsi sull'UndoManager")
@@ -247,8 +247,8 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     await controller.open(root)
     let manager = UndoManager()
 
-    let moved = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: manager)
-    #expect(moved)
+    let outcome = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: manager)
+    #expect(outcome.didMove)
 
     // The moved note is renamed out from under the undo before Cmd+Z ever runs - the
     // exact race ADR-0026 §D8 names ("a later rename moved it").
@@ -280,14 +280,91 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(root)
 
-    let moved = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil)
+    let outcome = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil)
 
-    #expect(moved)
+    #expect(outcome.didMove)
     #expect(exists("B/x.md", at: root))
     #expect(
         controller.problems.count == 1,
         "senza UndoManager deve comparire esattamente una riga di problema, non un fallimento silenzioso"
     )
+
+    controller.close()
+}
+
+// MARK: - VaultController.moveItems answers the outcome, not a Bool (PG-083)
+//
+// `VaultController.moveItems` used to discard `VaultSession.MoveBatchOutcome` down to a
+// `Bool`, so a caller with a multi-item batch that failed on several items could only
+// read `problems.last` - one reason, chosen arbitrarily by whatever else wrote to that
+// list last. The three tests below exercise the controller-level outcome directly.
+
+@MainActor
+@Test func aBatchWhereTwoItemsFailMidwayNamesBothInTheControllersOutcome() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    try vault.write(note(), to: "A/x.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(root)
+
+    let outcome = controller.moveItems(
+        [
+            VaultItemRef(path: "A/x.md", kind: .note),
+            VaultItemRef(path: "A/ghost1.canvas", kind: .board),
+            VaultItemRef(path: "A/ghost2.canvas", kind: .board),
+        ],
+        into: "B",
+        undo: nil
+    )
+
+    #expect(outcome.didMove, "l'elemento riuscito deve comparire nell'esito")
+    #expect(
+        outcome.failures.contains { $0.contains("A/ghost1.canvas") }
+            && outcome.failures.contains { $0.contains("A/ghost2.canvas") },
+        "entrambi i falliti devono comparire, non solo l'ultimo"
+    )
+
+    controller.close()
+}
+
+@MainActor
+@Test func aBatchRefusedByThePlanReturnsEveryReasonThroughTheController() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    try vault.write(note(), to: "A/x.md")
+    try vault.write(note(), to: "B/x.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(root)
+
+    let outcome = controller.moveItems(
+        [VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil
+    )
+
+    #expect(!outcome.didMove)
+    #expect(
+        outcome.refusals.contains { $0.contains("B/x.md") },
+        "il rifiuto del piano deve arrivare nell'esito del controller, non solo su problems"
+    )
+
+    controller.close()
+}
+
+@MainActor
+@Test func theUnsavedNoteGuardFillsRefusalsInsteadOfOnlyRecordingAProblem() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    try vault.write(note(), to: "A/x.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(root)
+    controller.openNote(at: "A/x.md")
+    controller.updateOpenNoteText("modificato, mai salvato")
+
+    let outcome = controller.moveItems(
+        [VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil
+    )
+
+    #expect(!outcome.didMove)
+    #expect(outcome.refusals == [VaultController.unsavedNoteRefusal])
 
     controller.close()
 }

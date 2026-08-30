@@ -43,6 +43,11 @@ extension VaultSession {
         /// so they are in `moves` and the caller can follow and undo them; the ones that
         /// did not are named here.
         var failures: [String] = []
+
+        /// Whether anything actually landed on disk - the condition every caller of
+        /// `VaultController.moveItems` needs to decide success, named once so it is
+        /// asked the same way everywhere instead of each site re-deriving `!moves.isEmpty`.
+        var didMove: Bool { !moves.isEmpty }
     }
 
     /// Moves `items` into `destination` as one batch, all-or-nothing (ADR-0026 §D6).

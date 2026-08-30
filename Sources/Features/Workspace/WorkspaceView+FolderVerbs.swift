@@ -17,8 +17,8 @@ extension WorkspaceView {
     }
 
     /// Moves a batch of rows into `destination` and keeps the open board on screen where
-    /// it landed (R-01 … R-05, R-13). Answers with what the batch refused, empty when it
-    /// committed - the browser has the dialog R-07 asks for.
+    /// it landed (R-01 … R-05, R-13). Answers with every reason the batch refused, empty
+    /// when it committed - the browser has the dialog R-07 asks for.
     ///
     /// `performBoardVerb`'s bracket, and its first line for the same reason: **flush
     /// first**. The board autosaves about a second after a change, and that write would
@@ -27,39 +27,31 @@ extension WorkspaceView {
     /// *through* `performBoardVerb` because a batch's landing rule takes the moves it
     /// performed rather than one path, and because a refusal has to travel back up.
     ///
-    /// `VaultMoveBatch.plan` is asked here for what to **say** and again inside
-    /// `VaultSession.moveItems` for what to **do**. One function asked twice in the same
-    /// run-loop turn against the same disk, never a second rule: `VaultController
-    /// .moveItems` reports its refusals to the problem list and answers `Bool`, and R-07
-    /// needs the conflicting name in a dialog. The moves it returns are also what
-    /// `boardAfterMove` needs, which the `Bool` cannot carry either.
+    /// `VaultController.moveItems` asks `VaultMoveBatch.plan` once, internally, and hands
+    /// back the full `MoveBatchOutcome` (PG-083) - this used to plan a second time here
+    /// just to get the conflicting names and the moved list back, because the call
+    /// answered only a `Bool`. Asking twice against the same disk in the same run-loop
+    /// turn is gone along with the reason for it.
+    ///
+    /// The unsaved-note guard (ADR-0026 §D10) now runs *inside* `vault.moveItems`, before
+    /// the plan: a batch that both trips it and collides on a name reports the unsaved
+    /// note, not the collision. That guard has to be cleared before disk either way.
     private func moveItems(_ items: [VaultItemRef], into destination: String) -> [String] {
         flushBoard()
-        guard let session = vault.session else { return [] }
-        let planned: [VaultMove]
-        switch VaultMoveBatch.plan(items, into: destination, exists: { session.exists($0) }) {
-        case .refused(let reasons): return reasons
-        case .moves(let moves): planned = moves
-        }
         // `undoManager` is the **window's**, read from the environment and handed down as
         // an argument (ADR-0026 §D8) - the same stack `NSTextView` registers text edits
         // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
         // focus. Nil is not silently tolerated: `moveItems` records that the move cannot
         // be taken back.
-        //
-        // A `false` here is `canOperate(onAll:)` refusing before disk (ADR-0026 §D10, the
-        // unsaved-note guard) - a different refusal class than the `.refused` case above,
-        // which never runs `moveItems` at all. It carries no `[VaultMove]`, only a message
-        // on `problems`, so it is reported the same way: the browser's one dialog, not a
-        // second alert type for a refusal this function already knew how to hand back.
-        guard vault.moveItems(items, into: destination, undo: undoManager) else {
-            return vault.problems.last.map { [$0] } ?? []
-        }
+        let outcome = vault.moveItems(items, into: destination, undo: undoManager)
+        guard outcome.didMove else { return outcome.refusals + outcome.failures }
         // Landing somewhere only means something if a board is actually open - moving a
         // row that is merely selected in the tree moves no document on screen.
         guard workspace.isShowingBoard else { return [] }
 
-        let landed = WorkspaceFolderActions.boardAfterMove(open: workspace.board, moves: planned)
+        // `outcome.moves`, not a separately-planned list: an item that failed on disk
+        // mid-batch is not in it, so the open board does not chase a path nothing wrote.
+        let landed = WorkspaceFolderActions.boardAfterMove(open: workspace.board, moves: outcome.moves)
         guard landed != workspace.board else { return [] }
         // Reopened rather than left alone: the document on screen was read from a file
         // that has moved, and `open(board:)` is what re-reads it, refreshes the folder's
