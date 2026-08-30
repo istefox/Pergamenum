@@ -6,9 +6,9 @@ mode: "greenfield"
 anonymize: false
 chain_path: "standard"
 created_at: "2026-08-29T13:45:20+00:00"
-last_updated_at: "2026-08-30T06:10:43+00:00"
-current_step: "step_6_review"
-status: "in_progress"
+last_updated_at: "2026-08-30T06:58:59+00:00"
+current_step: "completed"
+status: "completed"
 
 # Gate 0 routing result (ADR-0017)
 gate0:
@@ -87,7 +87,7 @@ step6_mode: null
 
 # Artifacts (absolute paths, populated as steps complete)
 artifacts:
-  spec: "/Users/stefer/Developer/Pergamenum/SPEC.md"
+  spec: "/Users/stefer/Developer/Pergamenum/docs/specs/wysiwyg-markdown-in-workspace.spec.md"
   brainstorm: null
   ux_blueprint: null
   adr: "docs/adr/0028-wysiwyg-markdown-in-workspace.md"
