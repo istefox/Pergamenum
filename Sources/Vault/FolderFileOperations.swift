@@ -223,7 +223,7 @@ struct FolderFileOperations {
     /// path, new path), every path it rewrote, and anything that failed along the way.
     struct RenameOutcome {
         var newPath: String
-        var movedNotes: [(old: String, new: String)] = []
+        var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
         var failures: [String] = []
     }
@@ -251,7 +251,7 @@ struct FolderFileOperations {
         // Read before anything moves: afterwards there is nothing at the old path to
         // enumerate, and the caller needs both halves of each pair to follow its tabs.
         let movedNotes = walk(oldFolder).notePaths.map {
-            (old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
+            MovedNote(old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
         }
 
         do {

@@ -28,7 +28,7 @@ extension VaultSession {
         var moves: [VaultMove] = []
         /// Every note the batch carried, old path then new - what the facade needs to
         /// follow tabs and RECENTI, `renameFolder`'s own `movedNotes` shape.
-        var movedNotes: [(old: String, new: String)] = []
+        var movedNotes: [MovedNote] = []
         /// `VaultMoveBatch.Result.refused`'s reasons, verbatim, when the batch could not
         /// commit at all (ADR-0026 §D6, all-or-nothing) - empty on a successful batch.
         var refusals: [String] = []
@@ -85,7 +85,7 @@ extension VaultSession {
                         // the cards. A second spelling of that verb here would be exactly
                         // the drift `CLAUDE.md`'s connector section is about.
                         let note = try moveNote(at: move.item.path, toFolder: move.to)
-                        outcome.movedNotes.append((old: move.item.path, new: note.newPath))
+                        outcome.movedNotes.append(MovedNote(old: move.item.path, new: note.newPath))
                         report(note.failures)
 
                     case .board:

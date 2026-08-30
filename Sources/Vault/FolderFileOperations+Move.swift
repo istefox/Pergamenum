@@ -66,7 +66,7 @@ extension FolderFileOperations {
     /// What a folder move actually did (ADR-0026 §D1).
     struct MoveOutcome {
         var newPath: String
-        var movedNotes: [(old: String, new: String)] = []
+        var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
         var failures: [String] = []
     }
@@ -90,7 +90,7 @@ extension FolderFileOperations {
         let oldFolder = Self.normalized(relativePath)
 
         let movedNotes = walk(oldFolder).notePaths.map {
-            (old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
+            MovedNote(old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
         }
 
         if plan.newPath != oldFolder {
