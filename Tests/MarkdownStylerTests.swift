@@ -360,3 +360,81 @@ private func italics(_ text: String) -> [String] {
     // A file name is not prose to correct.
     #expect(MarkdownStyler.suppressesSpellCheck(.embedRun))
 }
+
+// MARK: - List markers (ADR-0028 §D1, §D2 - plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 1)
+
+/// Whether any list marker, of any kind or level, is among a line's spans - used by the
+/// negative assertions below, which do not care which level a false positive would claim.
+private func hasAnyListMarker(_ line: String) -> Bool {
+    spans(line).contains { if case .listMarker = $0 { true } else { false } }
+}
+
+@Test func stylesUnorderedListMarkersAtLevelOne() {
+    // R-01. The styled text is the marker and its trailing space, character for
+    // character - `-`, `*` and `+` are not normalised to one another.
+    #expect(styled("- primo", .listMarker(kind: .bullet, level: 1)) == "- ")
+    #expect(styled("* primo", .listMarker(kind: .bullet, level: 1)) == "* ")
+    #expect(styled("+ primo", .listMarker(kind: .bullet, level: 1)) == "+ ")
+}
+
+@Test func stylesOrderedListMarkersAtLevelOne() {
+    // R-01. Both delimiters (`.`/`)`) and multi-digit ordinals are recognised, and the
+    // styled text keeps the digits and the delimiter exactly as written.
+    #expect(styled("1. uno", .listMarker(kind: .ordered, level: 1)) == "1. ")
+    #expect(styled("12. dodici", .listMarker(kind: .ordered, level: 1)) == "12. ")
+    #expect(styled("12) dodici", .listMarker(kind: .ordered, level: 1)) == "12) ")
+}
+
+@Test func nestedListMarkersReportTheirIndentLevel() {
+    // R-01, and R-05's precondition: the level a nested item reports, which the view
+    // later turns into indentation. A space is one column, a tab four - `\t- sotto`
+    // reaches the same level `    - sotto` (four spaces) does.
+    #expect(spans("  - sotto").contains(.listMarker(kind: .bullet, level: 2)))
+    #expect(spans("    - sotto").contains(.listMarker(kind: .bullet, level: 3)))
+    #expect(spans("\t- sotto").contains(.listMarker(kind: .bullet, level: 3)))
+}
+
+@Test func deepIndentationIsCappedAtLevelSix() {
+    // 20 columns of indent would compute to level 11 uncapped; the classifier caps it.
+    let twentySpaces = String(repeating: " ", count: 20)
+    #expect(spans("\(twentySpaces)- sotto").contains(.listMarker(kind: .bullet, level: 6)))
+}
+
+@Test func aCheckboxLineHasNoListMarkerSpanButKeepsItsTaskMarker() {
+    // The R-06 guard, asserted both ways: a checkbox line is not a list line (ADR-0028
+    // §D2), so it must gain no list span at all, and it must keep exactly the
+    // `.taskMarker` span it already had - nothing about today's checkbox rendering
+    // may change.
+    let checkboxLines: [(line: String, done: Bool)] = [
+        ("- [ ] Da fare", false),
+        ("- [x] Fatto", true),
+        ("- [>] Rimandato", false),
+        ("- [-] Annullato", false),
+        ("    - [ ] Annidato", false),
+    ]
+    for (line, done) in checkboxLines {
+        #expect(!hasAnyListMarker(line), "\"\(line)\" must not yield a list marker span")
+        #expect(spans(line).contains(.taskMarker(done: done)))
+    }
+}
+
+@Test func aListMarkerInsideAFenceHasNoListMarkerSpan() {
+    // The fence filter that already keeps every other per-line span out of a fenced
+    // block (`markdownStopsBeingMarkdownInsideAFence` above) must also keep the new
+    // recogniser out - asserted so a future change to the fence filter cannot regress
+    // this silently.
+    let note = "```md\n- non è una lista qui\n```"
+    #expect(!hasAnyListMarker(note))
+}
+
+@Test func aMarkerWithNoTrailingSpaceIsNotAListMarker() {
+    // A marker needs its trailing space: a lone dash, a dash immediately followed by a
+    // letter, and an ordered marker with no space or no text after it are all plain text.
+    for line in ["-", "-nodash", "1.no-space", "1."] {
+        #expect(!hasAnyListMarker(line), "\"\(line)\" must not yield a list marker span")
+    }
+}
+
+@Test func listMarkerSuppressesSpellCheck() {
+    #expect(MarkdownStyler.suppressesSpellCheck(.listMarker(kind: .bullet, level: 1)))
+}

@@ -87,6 +87,24 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-30: **ADR-0028 (rendering WYSIWYG markdown - occultamento marcatori e nuovi glifi di
+  lista - portato dalla Nota alle card `.text` del Workspace) implementato per intero, 8 task su
+  8, 1930 test unitari verdi, weakening-scan CLEAN, suite UI 105/105 al netto degli stessi
+  quattro fallimenti intermittenti pre-esistenti (`PG-072`, `PG-076`).** `EditorDecorationDelegate`
+  è riusato invariato su entrambe le superfici (nessun fork), cosi' occultamento di `#`/`**` e
+  regole del caret restano un solo meccanismo testato una volta sola. Aggiunto per la prima volta
+  il rendering di liste (pallini/numeri con nesting) su entrambe le superfici, tramite
+  `ListContinuation` (Foundation-only) per continuazione/rinumerazione con Invio e cancellazione,
+  e un nuovo comando "Ripiega titoli" sulla card che riusa `NoteFolding`/`FoldedHeadingFragment`
+  invariati. Nessun nuovo schema, nessuna chiave sul nodo `.canvas`, nessun bump di indice: tutto
+  e' sintassi markdown nel testo stesso (ADR §D12). Trovato durante l'hand-check un difetto reale
+  ma pre-esistente e non correlato a questa chain (confermato con `git diff` sulla baseline):
+  `MarkdownStyler` non riconosce markup annidato (`**~~testo~~**` renderizza solo come grassetto,
+  `~~` non occultati) - registrato come `PG-084`, non affrontato in questa chain. Registrati anche
+  i due follow-up dichiarati e rimandati dall'ADR: un vero glifo di checkbox (`PG-086`) e la
+  regola di nesting non-CommonMark del classificatore di indentazione (`PG-085`). Round trip
+  Obsidian (R-10) ancora da verificare a mano, rimandato dall'operatore. Gate 5 (ciclo di review)
+  non ancora deciso.
 - 2026-08-29: **ADR-0027 (unificare Nota e Testo in un solo strumento del Workspace, con
   formattazione ricca del testo selezionabile) implementata per intero, 8 task su 8, 1839 test
   unitari verdi, weakening-scan CLEAN, build di entrambi i connettori (`perg`, `pergamenum-mcp`)

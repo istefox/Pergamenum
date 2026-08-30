@@ -183,6 +183,11 @@ final class WorkspaceController {
         board = ""
         document = .empty
         current = nil
+        // A fold is transient and keyed by node id (ADR-0028 §D8): a table carried into
+        // another vault would name ids that mean nothing here, or - worse - ids that mean
+        // something else, since a canvas id is unique within its file and not across a vault.
+        // This line is what makes "a fold resets when the board is reopened" true.
+        foldedHeadings = [:]
         // Carried over from the load that used to happen here, because they are about the
         // vault being left rather than the board being read: a step recorded on the
         // previous vault's board must not be undoable onto this one, and a dirty flag
@@ -201,6 +206,8 @@ final class WorkspaceController {
         thumbnails = nil
         vault = nil
         emailHeaders = [:]
+        // Same reason as in `attach` above, from the other side of the same crossing.
+        foldedHeadings = [:]
         document = .empty
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
@@ -430,6 +437,24 @@ final class WorkspaceController {
     /// the vault settings (SPEC §12, "Canvas (griglia, snap)").
     var showsGrid = true
     var snapsToGrid = false
+    /// Whether a `.text` card draws its markdown or its markers (ADR-0028 §D10). The vault's
+    /// own `hidesMarkup`, carried here by `WorkspaceView.applyBoardSettings()` beside the two
+    /// above so that the board and the note editor read one setting and not two - a card never
+    /// gets a switch of its own. `true` to match `VaultSettings.default`, for the window that
+    /// draws a board before the settings have been applied to it.
+    var hidesMarkup = true
+    /// Which headings each `.text` card has folded right now, by node id (ADR-0028 §D8).
+    ///
+    /// The entry ordinals are `NoteOutline.entries(in:)`'s over that node's own text, exactly
+    /// the numbers `NoteTab.foldedEntries` holds for a note - the same transient model, keyed
+    /// differently because a card has no tab to hold it (plan C6). Transient in the same sense:
+    /// nothing of this reaches the `.canvas` file, so a fold is a way of looking at a card and
+    /// never a property of it (principle 1), and reopening a board starts unfolded.
+    ///
+    /// Cleared in `attach` and in `detach`, which is what actually enforces that reset - a
+    /// table keyed by node id would otherwise outlive the board whose node ids it names, and
+    /// canvas ids are unique within a file rather than across a vault.
+    var foldedHeadings: [String: Set<Int>] = [:]
     /// The grid the board draws, and the one cards snap to when snapping is on. One
     /// constant for both: a card that landed on a spacing the user cannot see would
     /// look misaligned.
@@ -511,6 +536,30 @@ final class WorkspaceController {
             setText(editingTextDraft, forNodeID: id)
         }
         editingTextNodeID = nil
+    }
+
+    /// «Ripiega titoli» (ADR-0028 §D8): folds or unfolds one heading of one `.text` card,
+    /// the card-side mirror of `VaultController.toggleFold(_:)`.
+    ///
+    /// Deliberately **not** through `mutate`: a fold changes no node, writes no file and
+    /// records no history step (R-12). It is a way of looking at a card, so it must not make
+    /// the board dirty, must not schedule a save, and must not put a step between the person
+    /// and the board undo they meant.
+    func toggleFold(_ entry: Int, forNodeID id: String) {
+        var folded = foldedHeadings[id] ?? []
+        if folded.contains(entry) {
+            folded.remove(entry)
+        } else {
+            folded.insert(entry)
+        }
+        // Removed rather than left as an empty set: "this card folds nothing" and "this card
+        // is not in the table" are the same state, and keeping only one of them spelled means
+        // a rebuilt card cannot read a stale empty entry as anything else.
+        if folded.isEmpty {
+            foldedHeadings.removeValue(forKey: id)
+        } else {
+            foldedHeadings[id] = folded
+        }
     }
 
     /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it

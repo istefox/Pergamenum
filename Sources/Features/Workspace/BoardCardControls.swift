@@ -77,6 +77,8 @@ struct BoardCardControls: View {
             submenu(command) { BoardCardMenuItems.textColorItems(node: node, actions: actions) }
         case .textAlign:
             submenu(command) { BoardCardMenuItems.textAlignItems(node: node, actions: actions) }
+        case .foldHeadings:
+            submenu(command) { BoardCardMenuItems.foldItems(node: node, actions: actions) }
         case .resize:
             submenu(command) { BoardCardMenuItems.sizeItems(node: node, actions: actions) }
         case .crop:

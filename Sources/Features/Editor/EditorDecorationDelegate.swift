@@ -36,6 +36,16 @@ import OSLog
 struct HiddenMarker: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case heading, emphasis, embed
+        /// A list item's whole opening run - its indentation **and** its `- `/`1. ` marker
+        /// (ADR-0028; plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 3).
+        ///
+        /// The one kind here whose range does not start at the marker character: it starts
+        /// at its paragraph's own start, so that the indentation is inside the range. Two
+        /// things depend on that. The indent characters cannot be collapsed if they are
+        /// outside the range, and the item's nesting level is read back out of them - a
+        /// `.list` marker carries no level of its own, because the characters are the
+        /// level and the table can go stale between a styling pass and a layout pass.
+        case list
     }
 
     let range: NSRange
@@ -74,11 +84,17 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// other features this object carries (folding, transclusion) are kept as separate
     /// inputs, but a heading marker, an emphasis marker and an embed's run are the same
     /// feature - hiding - with three sources.
-    nonisolated(unsafe) private var hiddenMarkers: [Int: [HiddenMarker]] = [:]
+    ///
+    /// Not `private`: `listParagraph(at:storage:)` in `EditorDecorationDelegate+ListRendering.swift`
+    /// reads it too (ADR-0028, Task 3).
+    nonisolated(unsafe) var hiddenMarkers: [Int: [HiddenMarker]] = [:]
     /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
     /// selection, an active IME composition or the find bar's current match touches them
     /// (ADR-0018 §D2). Keyed the same way as `headingMarkers`.
-    nonisolated(unsafe) private var revealedParagraphs: Set<Int> = []
+    ///
+    /// Not `private`: `listParagraph(at:storage:)` in `EditorDecorationDelegate+ListRendering.swift`
+    /// reads it too (ADR-0028, Task 3).
+    nonisolated(unsafe) var revealedParagraphs: Set<Int> = []
     /// The vault's `hidesMarkup` setting. `false` makes
     /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
     /// markup is fully reversible with a toggle rather than a revert.
@@ -204,23 +220,22 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return embedded
         }
 
+        // The list branch, beside the embed one and under the same length rule: a marker
+        // is *substituted*, never inserted or removed (ADR-0028 §D2). Unlike the embed
+        // branch above, it must honour `revealedParagraphs` - a list marker reveals on the
+        // caret's paragraph the way a heading's does (R-03) - which is why its own guards
+        // belong inside it rather than being borrowed from the ones below: a paragraph
+        // carrying a list marker cannot fall through to the generic, font-collapsing path,
+        // or its `- ` would be hidden outright instead of being drawn as a bullet.
+        if let list = listParagraph(at: range, storage: storage) {
+            return list
+        }
+
         guard !revealedParagraphs.contains(range.location),
               let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
 
-        // Re-read from the real characters rather than trust the table: it is filled by
-        // the last styling pass, this is a later layout pass, and the two can go stale
-        // between each other. Silently collapsing prose would be the failure mode here,
-        // not a crash. Each marker is checked on its own, so one gone stale does not
-        // cancel the others in the same paragraph.
-        let survivors = markers.filter { marker in
-            NSMaxRange(marker.range) <= range.length &&
-                Self.stillSpells(
-                    marker.kind,
-                    storage.string as NSString,
-                    at: NSRange(location: range.location + marker.range.location, length: marker.range.length)
-                )
-        }
+        let survivors = Self.survivors(among: markers, of: range, in: storage.string as NSString)
         guard !survivors.isEmpty else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
@@ -228,6 +243,31 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
         }
         return NSTextParagraph(attributedString: copy)
+    }
+
+    /// The markers of `paragraph` that may still be drawn - re-read from the real
+    /// characters rather than trusted: the table is filled by the last styling pass, this
+    /// is a later layout pass, and the two can go stale against each other. Silently
+    /// collapsing prose would be the failure mode here, not a crash. Each marker is checked
+    /// on its own, so one gone stale does not cancel the others in the same paragraph.
+    ///
+    /// Shared by the two paths that collapse a marker into `collapsedFont`: the generic one
+    /// above and the list branch in `EditorDecorationDelegate+ListRendering.swift`, which
+    /// returns early and would otherwise leave a bold list item's `**` on screen (ADR-0028,
+    /// the SPEC's coexistence case). Not `private` for that reason.
+    static func survivors(
+        among markers: [HiddenMarker], of paragraph: NSRange, in text: NSString
+    ) -> [HiddenMarker] {
+        markers.filter { marker in
+            NSMaxRange(marker.range) <= paragraph.length &&
+                stillSpells(
+                    marker.kind,
+                    text,
+                    at: NSRange(
+                        location: paragraph.location + marker.range.location, length: marker.range.length
+                    )
+                )
+        }
     }
 
     /// The embed's own branch of the substitution above: swaps the run's first character
@@ -359,6 +399,14 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // `stillSpellsAnEmbed` before this generic, font-collapsing path ever sees the
         // paragraph (ADR-0018 slice 3, Step 3).
         case .embed: false
+        // Never handled here either, and for the same structural reason `.embed` above is
+        // not: a list marker is drawn by its own dedicated `listParagraph(at:storage:)`
+        // branch, which re-reads the characters through `stillSpellsAListMarker` because it
+        // needs what they say - the indent's width and the item's level - and not merely
+        // whether they are still there. Answering anything but `false` here would let a
+        // `.list` entry into the generic collapsing loop, which would hide the `- ` outright
+        // instead of turning it into a bullet (ADR-0028 §D4).
+        case .list: false
         }
     }
 

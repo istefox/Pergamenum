@@ -483,6 +483,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
 - **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
+- **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -513,3 +514,38 @@ Key architectural decisions:
   than inventing a second color encoding on the same node.
 
 Detail: `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`.
+
+## Decisions from the WYSIWYG markdown rendering chain (ADR-0028)
+
+Brings Note's WYSIWYG markdown rendering (marker concealment + heading fold) into Workspace's
+`.text` cards, and adds list rendering (bullets/ordinals with nesting) to both surfaces for the
+first time: `docs/adr/0028-wysiwyg-markdown-in-workspace.md`. Reopens ADR-0027 §D10 (concealment
+was an explicit non-goal for cards) and narrowly reopens ADR-0027 §D1 for one class only.
+
+Key architectural decisions:
+- **The Workspace card's text view reuses `EditorDecorationDelegate` directly, it is not forked**
+  — a deliberate, narrow reopening of ADR-0027 §D1's "share pure logic, never AppKit classes" for
+  exactly this one class: the delegate *is* the rendering rule, so forking it would let the two
+  surfaces silently diverge. The two attribute tables (`MarkdownAttributedText` vs
+  `CardTextAttributes`) stay separate — ADR-0027 §D1's actual prize, the card's real non-monospaced
+  bold/italic, is untouched.
+- **A list marker is substituted character-for-character, never inserted or collapsed** — TextKit 2
+  forbids changing the displayed paragraph's length in
+  `textContentStorage(_:textParagraphWith:)` (`NSTextContentManager.h:120`). An ordered marker's
+  digits are left verbatim in the source, since the file's own digits are the rendered ordinal;
+  this couples correct rendering to keeping the list run's text contiguous.
+- **The whole feature lives behind the existing `VaultSettings.hidesMarkup` toggle on both
+  surfaces** (already `true` by default) — no new card-only switch, reached through
+  `WorkspaceView.applyBoardSettings()` the same way `boardShowsGrid` already is. Never
+  `@Environment(VaultController.self)` inside the card view — a preview or test built without that
+  environment crashes.
+- **Auto-continuation/renumbering of ordered lists needs a new pure type, `ListContinuation`** —
+  `LineFormat.toggled(.numbered)` only renumbers the selection from 1 and has no concept of a run's
+  extent or starting ordinal, so it is not reusable for this.
+- **The Workspace card's heading fold is a new `CardCommand` submenu, not a ported disclosure
+  control** — Note has no in-text fold trigger at all; fold there comes from `OutlinePane`'s
+  chevron, outside the editor.
+- **Checkbox lines (`- [ ]`) never get a list span or bullet** — checkboxes stay their own separate
+  rendering in both surfaces, unrelated to the new list-glyph mechanism.
+
+Detail: `docs/adr/0028-wysiwyg-markdown-in-workspace.md`.

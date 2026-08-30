@@ -185,7 +185,7 @@ enum CardTextAttributes {
         // because the line already says what it is.
         case .strikethrough: .textSecondary
         case .frontmatter, .code, .annotation: .textSecondary
-        case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun: .textTertiary
+        case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun, .listMarker: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let done): done ? .taskDone : .taskOpen

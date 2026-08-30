@@ -66,9 +66,11 @@ struct BoardCardActions {
             workspace.duplicate(nodeIDs: targets(node))
         case .delete:
             workspace.delete(nodeIDs: targets(node))
-        case .color, .textColor, .textAlign, .resize:
+        case .color, .textColor, .textAlign, .foldHeadings, .resize:
             // Every one of these draws as a `Menu`, never as a button, so reaching here
-            // means a surface rendered one as something it is not.
+            // means a surface rendered one as something it is not. `.foldHeadings` belongs
+            // to this group and not to the buttons above it: it carries an argument - which
+            // heading - the command alone does not (ADR-0028 §D8).
             assertionFailure("\(command) carries an argument and is invoked through its submenu")
         }
     }
@@ -86,6 +88,33 @@ struct BoardCardActions {
     /// «Allineamento» (ADR-0027 §D4): `nil` clears back to natural alignment.
     func setTextAlignment(_ alignment: CardTextStyle.Alignment?, on node: CanvasNode) {
         workspace.setTextAlignment(alignment, forNodeIDs: targets(node))
+    }
+
+    /// The markdown this card is *showing*: the live draft while it is being written into, its
+    /// stored text otherwise, and nothing at all for a card kind that has none.
+    ///
+    /// The draft rather than the node matters here and nowhere else in this type: a fold names a
+    /// heading by its ordinal in `NoteOutline.entries(in:)`, and while somebody is typing the
+    /// node's stored text is the one they started from - a submenu built off it would offer
+    /// ordinals that mean different headings than the ones the card's own text view is rendering.
+    func cardText(of node: CanvasNode) -> String {
+        if workspace.editingTextNodeID == node.id { return workspace.editingTextDraft }
+        if case .text(let text) = node.kind { return text }
+        return ""
+    }
+
+    /// Which of this card's headings are folded right now (ADR-0028 §D8).
+    func foldedEntries(of node: CanvasNode) -> Set<Int> {
+        workspace.foldedHeadings[node.id] ?? []
+    }
+
+    /// «Ripiega titoli», on one heading of one card.
+    ///
+    /// This card alone, never `targets(node)` the way «Colore» and «Elimina» act on the whole
+    /// selection: an entry ordinal is an index into *this* card's own outline, so the same number
+    /// names a different heading on every other card it reached - or no heading at all.
+    func toggleFold(_ entry: Int, on node: CanvasNode) {
+        workspace.toggleFold(entry, forNodeID: node.id)
     }
 
     func resize(_ node: CanvasNode, to size: CGSize) {
@@ -205,6 +234,8 @@ enum BoardCardMenuItems {
             Menu(command.title) { textColorItems(node: node, actions: actions) }
         case .textAlign:
             Menu(command.title) { textAlignItems(node: node, actions: actions) }
+        case .foldHeadings:
+            Menu(command.title) { foldItems(node: node, actions: actions) }
         case .resize:
             Menu(command.title) { sizeItems(node: node, actions: actions) }
         case .fitToCrop:
@@ -249,6 +280,68 @@ enum BoardCardMenuItems {
         Button("Centro") { actions.setTextAlignment(.center, on: node) }
         Button("Destra") { actions.setTextAlignment(.right, on: node) }
         Button("Giustificato") { actions.setTextAlignment(.justify, on: node) }
+    }
+
+    /// «Ripiega titoli» (ADR-0028 §D8): one row per heading of this card's own markdown, checked
+    /// while its section is folded.
+    ///
+    /// Built from `NoteOutline.entries(in:)` - the note's own parser, over a card's text, which
+    /// `Tests/CardFoldTests.swift` asserts answers unadapted - and the ordinal each row carries is
+    /// the entry's place in the **whole** outline, embeds included, because that is the number
+    /// `NoteFolding` and `WorkspaceController.foldedHeadings` both speak. Filtering the list
+    /// without keeping the ordinals would fold a different section than the one clicked, which is
+    /// `QuickSwitcher.headingGroups`' own reason for enumerating before it filters.
+    ///
+    /// Only the headings with at least one line under them, the rule `OutlinePane.foldable` already
+    /// applies to the note's own chevrons: an embed opens no section, and a heading with nothing
+    /// beneath it would fold to nothing - a row that ticks and hides not one line.
+    ///
+    /// A `Toggle` rather than a `Button`, because macOS draws one in a menu as a checked row, which
+    /// is what "a check per folded entry" is. Its getter reads the controller rather than a
+    /// captured snapshot, so the check follows a fold made from anywhere else - the badge, the
+    /// other surface - without this menu being rebuilt.
+    @ViewBuilder
+    static func foldItems(node: CanvasNode, actions: BoardCardActions) -> some View {
+        let rows = foldRows(in: actions.cardText(of: node))
+        if rows.isEmpty {
+            // A card with no heading in it is most cards. Saying so is better than an empty
+            // submenu, which reads as a command that is broken rather than one with nothing to
+            // offer.
+            Text("Nessun titolo da ripiegare")
+        } else {
+            ForEach(rows) { row in
+                Toggle(isOn: Binding(
+                    get: { actions.foldedEntries(of: node).contains(row.id) },
+                    set: { _ in actions.toggleFold(row.id, on: node) }
+                )) {
+                    Text(row.title)
+                }
+            }
+        }
+    }
+
+    /// One row per foldable heading, carrying the ordinal the fold is held by.
+    ///
+    /// A named type rather than the `(ordinal, entry)` pairs `enumerated()` hands back: Swift has
+    /// no key path to a tuple's element, so a `ForEach` over those pairs has no `id` to be given.
+    /// `QuickSwitcher.headingGroups` builds its own `Row` from the same enumeration for the same
+    /// reason.
+    private static func foldRows(in text: String) -> [FoldRow] {
+        NoteOutline.entries(in: text).enumerated().compactMap { ordinal, entry -> FoldRow? in
+            guard case .heading = entry.kind,
+                  !NoteFolding.hiddenParagraphs(in: text, foldedEntries: [ordinal]).isEmpty
+            else { return nil }
+            return FoldRow(id: ordinal, title: entry.title.isEmpty ? "Senza titolo" : entry.title)
+        }
+    }
+
+    /// A heading the fold submenu offers. `id` is its ordinal in the **whole** outline, embeds
+    /// included - the number `NoteFolding` and `WorkspaceController.foldedHeadings` speak - and not
+    /// its place among the rows, which would name a different section on any card holding an
+    /// embed.
+    private struct FoldRow: Identifiable {
+        let id: Int
+        let title: String
     }
 
     /// «Ridimensiona»: the presets of SPEC §10, and «Adatta al ritaglio» below them on a

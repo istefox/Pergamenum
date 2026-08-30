@@ -185,7 +185,15 @@ struct NoteTextView: NSViewRepresentable {
     /// read when the event happens, so it is the current one and not the one this view was
     /// built with. In a method of its own because `makeNSView` is otherwise past the length
     /// SwiftLint warns at, and a text view with eight callbacks earns the separation.
-    private func wire(_ textView: CompletingTextView, to coordinator: Coordinator) {
+    ///
+    /// **Internal rather than private so a test can wire a text view the way the app does.**
+    /// `Tests/NoteListEditingTests.swift` drives Return through a real `CompletingTextView`,
+    /// and the behaviour it asserts lives in `claimsCommand` below; a fixture that assigned
+    /// that closure itself would be asserting against its own copy of the wiring rather than
+    /// against this one, and would go stale the moment this method changed
+    /// (`Tests/EmbedEditorTestSupport.swift` holds exactly such a copy). Nothing else about
+    /// the method changes: it is still called only from `makeNSView`.
+    func wire(_ textView: CompletingTextView, to coordinator: Coordinator) {
         // The headings of a note, for `[[Nota#`. Through the same source the two surfaces
         // resolve a transclusion with, so the completion cannot offer a section the
         // rendition would fail to find - `NoteOutline` strips the markdown from a heading,
@@ -201,12 +209,16 @@ struct NoteTextView: NSViewRepresentable {
         textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
-        // The caret and Backspace/Delete crossing a drawn embed's run in one step
-        // (ADR-0018 slice 3, Step 4, D5) - closed over `textView` the same way the click
-        // handler below is, since `claimsEmbedCommand` needs the live selection.
+        // Two claimants, asked in turn the way the `onClickInMargin` chain below is:
+        // the caret and Backspace/Delete crossing a drawn embed's run in one step
+        // (ADR-0018 slice 3, Step 4, D5), then Return inside a list item (ADR-0028 §D6,
+        // R-07/R-08). They cannot both claim one command - the embed's half answers only
+        // to the four arrows and the two delete keys. Closed over `textView` the same way
+        // the click handler below is, since both need the live selection.
         textView.claimsCommand = { [weak textView] selector in
             guard let textView else { return false }
             return coordinator.claimsEmbedCommand(selector, in: textView)
+                || coordinator.claimsListCommand(selector, in: textView)
         }
         // A drag on a drawn embed's resize handle (ADR-0019 §D6) - closed over `textView`
         // weakly, exactly as `claimsCommand` above is, and for the same reason: the

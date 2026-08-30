@@ -23,6 +23,15 @@ enum CardCommand: String, CaseIterable, Sendable {
     /// Whole-card text alignment, offered only on a `.text` node (ADR-0027 §D4, §D7) - same
     /// reasoning and the same menu slot as `.textColor` above.
     case textAlign
+    /// Fold a heading's section on a `.text` card (ADR-0028 §D8), offered only there for the
+    /// same reason the two above are: a card with no markdown in it has no heading to fold.
+    ///
+    /// A submenu rather than a plain button, like `.color` and `.textAlign`: the command
+    /// carries an argument - *which* heading - built from `NoteOutline.entries(in:)` over the
+    /// node's own text. The Workspace has no in-text disclosure control to port, because the
+    /// note editor has none either: fold there comes from `OutlinePane`'s chevron, outside the
+    /// editor (ADR-0028 §D8).
+    case foldHeadings
     case resize
     case fitToCrop
     case crop
@@ -43,6 +52,7 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .color: "Colore"
         case .textColor: "Colore testo"
         case .textAlign: "Allineamento"
+        case .foldHeadings: "Ripiega titoli"
         case .resize: "Ridimensiona"
         case .fitToCrop: "Adatta al ritaglio"
         case .crop: "Ritaglia"
@@ -74,6 +84,7 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .color: "paintpalette"
         case .textColor: "paintbrush"
         case .textAlign: "text.aligncenter"
+        case .foldHeadings: "chevron.up.chevron.down"
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .fitToCrop: "aspectratio"
         case .crop: "crop"
@@ -107,8 +118,11 @@ enum CardCommand: String, CaseIterable, Sendable {
         var commands: [CardCommand] = [opener, .copyLink, .color]
         // ADR-0027 §D7: whole-card text colour and alignment sit right after «Colore»,
         // only on a `.text` node - every other card kind has no text to colour or align.
+        // ADR-0028 §D8 adds «Ripiega titoli» at the end of that same group, for the same
+        // reason and on the same one card kind: only a `.text` node has markdown of its own
+        // to fold, and its headings are what the submenu is built from.
         if case .text = node.kind {
-            commands.append(contentsOf: [.textColor, .textAlign])
+            commands.append(contentsOf: [.textColor, .textAlign, .foldHeadings])
         }
         commands.append(.resize)
         if isCroppable {

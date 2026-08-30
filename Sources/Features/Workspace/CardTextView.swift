@@ -24,6 +24,18 @@ struct CardTextView: NSViewRepresentable {
     /// arrive here as one value and are applied under every span.
     let style: CardTextStyle
     let isEditable: Bool
+    /// The vault's `hidesMarkup` setting (ADR-0028 §D10), travelling the route the board's own
+    /// settings already travel: `WorkspaceView.applyBoardSettings()` reads it from
+    /// `vault.settings`, `WorkspaceController` holds it, `StickyTextCard` hands it here. Never a
+    /// second switch of the card's own, and never an `@Environment(VaultController.self)` read
+    /// inside the card - a card built in a preview or a test has no such environment and would
+    /// crash on it.
+    let hidesMarkup: Bool
+    /// Which of this card's headings are folded (ADR-0028 §D8), as ordinals into
+    /// `NoteOutline.entries(in:)` over this card's own text - the numbers `NoteTab.foldedEntries`
+    /// holds for a note, down the route `hidesMarkup` above already travels. Defaulted like the
+    /// closures below: a card in a preview or a test folds nothing.
+    var foldedEntries: Set<Int> = []
     /// The card's selection moved or its text changed while it was editable, with the live view
     /// so the caller can read where the selection is and act on it (ADR-0027 §D5).
     ///
@@ -36,6 +48,10 @@ struct CardTextView: NSViewRepresentable {
     /// because today all three do the same thing - `endTextEdit(commit: true)` - and a second
     /// one would only record a distinction the card does not make.
     var onEndEditing: () -> Void = {}
+    /// A click landed on a folded heading's badge, naming the entry ordinal it stands for
+    /// (ADR-0028 §D8) - the card's half of `NoteTextView.onToggleFold`. Reported rather than acted
+    /// on for the reason the two above are: this view does not know which node id the fold is for.
+    var onToggleFold: (Int) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -71,10 +87,23 @@ struct CardTextView: NSViewRepresentable {
 
         let coordinator = context.coordinator
         textView.onCancel = { [weak coordinator] in coordinator?.parent.onEndEditing() }
+        // A click on a folded heading's badge (ADR-0028 §D8), reported the way Esc above is and
+        // through the same weak coordinator - reading `parent` at call time is what makes it
+        // follow the card as SwiftUI replaces the struct.
+        textView.onToggleFold = { [weak coordinator] entry in coordinator?.parent.onToggleFold(entry) }
 
+        // The rendering rule, handed over in the two lines that carry it - the same pair
+        // `NoteTextView.swift:148-149` assigns, to the same class rather than to a fork of it
+        // (ADR-0028 §D1): the delegate *is* what a `# `, a `- ` and a `**` look like, so a
+        // second copy of it is how a card and a note would quietly stop agreeing.
+        textView.textContentStorage?.delegate = coordinator.decorations
+        textView.textLayoutManager?.delegate = coordinator.decorations
         textView.string = text
         coordinator.configure(textView, editable: isEditable)
         coordinator.applyStyling(to: textView)
+        // After the styling, which fills the table the fold's re-read walks over. A card rebuilt
+        // on a node that is already folded draws folded straight away - see `applyFolding`.
+        coordinator.applyFolding(to: textView)
         return scrollView
     }
 
@@ -101,25 +130,18 @@ struct CardTextView: NSViewRepresentable {
             context.coordinator.configure(textView, editable: isEditable)
             context.coordinator.applyStyling(to: textView)
             context.coordinator.matchFocus(textView, editable: isEditable)
+            // Last, and after `configure` above in particular: `isEditable` is what decides
+            // whether anything is revealed at all (R-04), so a card that has just stopped being
+            // edited has to be asked again here - nothing else will ask, because AppKit sends no
+            // selection change when a view merely becomes uneditable.
+            context.coordinator.applyReveal(to: textView)
+            // Last, so the fold's document-wide re-read is the one that reaches the layout manager
+            // (`NoteTextView.swift:275`'s own placement) - see `CardTextView+Fold.swift`.
+            context.coordinator.applyFolding(to: textView)
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
-    /// Purges this text view's pending undo actions before SwiftUI releases it.
-    ///
-    /// Redundant given that the coordinator hands out an `UndoManager` of its own, which dies
-    /// with it (ADR-0027 §D2) - and kept anyway, because the cost of being wrong about that is
-    /// the `EXC_BAD_ACCESS` in `-[_NSUndoStack popAndInvoke]` that `a853e8e` fixed for the note
-    /// editor. A card's text view is deallocated far more often than the editor's: once per card,
-    /// and again every time a card crosses `BoardContentLayer.visibleNodes`' culling rect.
-    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-        coordinator.undoManager.removeAllActions(withTarget: textView)
-        if let textStorage = textView.textStorage {
-            coordinator.undoManager.removeAllActions(withTarget: textStorage)
-        }
-    }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -132,6 +154,31 @@ struct CardTextView: NSViewRepresentable {
         /// they meant. It also means no action targeting this view can outlive it on a stack
         /// somebody else owns.
         let undoManager = UndoManager()
+        /// The rendering rule the two surfaces share, reused rather than forked (ADR-0028 §D1):
+        /// the same object the note editor hands its own content storage and layout manager to
+        /// (`NoteTextView.swift:148-149`), because the delegate *is* the rule and a fork of it
+        /// would let a card and a note quietly disagree about what a `- ` looks like.
+        let decorations = EditorDecorationDelegate()
+        /// The hidden-marker table the last styling pass handed `decorations`: paragraph-start
+        /// offset to the markers inside it, each range relative to its own paragraph - the key
+        /// space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1), and the same one
+        /// `NoteTextView+Coordinator.applyStyling` fills for the note editor.
+        ///
+        /// Kept on the coordinator rather than left as a local of the walk because the delegate's
+        /// own copy is private: this is where a test reads back the kinds and the ranges the
+        /// card's walk produced, and "the card's table has the same shape as the note's" is
+        /// R-04's precondition.
+        private(set) var hiddenMarkers: [Int: [HiddenMarker]] = [:]
+        /// The revealed set already published, so an unchanged one invalidates nothing - the
+        /// same restraint `NoteTextView.Coordinator.lastRevealed` keeps, and for the same
+        /// reason: `applyReveal` runs on every arrow key. Not private for that type's other
+        /// reason too - its mutator lives in `CardTextView+Reveal.swift`.
+        var lastRevealed: Set<Int> = []
+        /// The fold layout already handed to the delegate, so an unchanged one re-reads nothing -
+        /// `NoteTextView.Coordinator.lastFoldLayout`'s restraint, mattering more here because
+        /// `applyFolding` runs in every SwiftUI update of every card. Not private, like
+        /// `lastRevealed` above: its mutator lives in `CardTextView+Fold.swift`.
+        var lastFoldLayout = NoteFolding.Layout()
         /// Guards the delegate callback from re-entering while styling rewrites attributes.
         private var isStyling = false
         /// Set for the length of `updateNSView`, the same shape as `isStyling` above and for a
@@ -147,10 +194,17 @@ struct CardTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isStyling, let textView = notification.object as? FormattingTextView else { return }
             parent.text = textView.string
+            // Before the styling, so the passes below measure the text this one leaves behind
+            // rather than one it is about to rewrite (ADR-0028 §D6, R-08). A no-op on every
+            // keystroke outside an ordered run - see `CardTextView+ListEditing.swift`.
+            renumberLists(in: textView)
             applyStyling(to: textView)
-            // After the restyle, not before it: the frame published below comes from the laid-out
-            // text, and a selection measured against the previous layout is a bar a few points
-            // off the words it labels.
+            // After the restyle: a keystroke moves every offset below it, so the revealed set has
+            // to be recomputed against the text the pass above has just measured (ADR-0018 §D2).
+            applyReveal(to: textView)
+            // After both, not before: the frame published below comes from the laid-out text, and
+            // a selection measured against the previous layout is a bar a few points off the words
+            // it labels.
             publishSelection(textView)
         }
 
@@ -159,6 +213,10 @@ struct CardTextView: NSViewRepresentable {
         /// (`CompletingTextView+FormatBar.swift:11`).
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? FormattingTextView else { return }
+            // Before the publication and unconditionally: this is the only callback an arrow key
+            // reaches, and it is arrows that carry the caret from one paragraph to the next
+            // (R-03). `publishSelection` below returns early for a card at rest; this must not.
+            applyReveal(to: textView)
             publishSelection(textView)
         }
 
@@ -203,13 +261,79 @@ struct CardTextView: NSViewRepresentable {
 
         /// Restyles the live storage in place - attributes only, never a character, so the caret
         /// and the selection stay where the typist left them.
+        ///
+        /// Two readings of the same spans, and only the second is about hiding:
+        /// `CardTextAttributes.apply` writes what the card looks like, from the card's own table
+        /// (ADR-0027 §D1), and the walk below records what the card conceals, in the note
+        /// editor's key space (ADR-0018 §D1). They are kept apart rather than fused because those
+        /// two tables are deliberately different objects - the attribute one is the card's, the
+        /// marker one is shared - and `MarkdownStyler.spans(in:)` is cheap enough to ask twice
+        /// for a card's worth of text.
         func applyStyling(to textView: NSTextView) {
             guard let storage = textView.textStorage else { return }
             isStyling = true
             defer { isStyling = false }
+            let text = textView.string
+            let nsText = text as NSString
+            var markers: [Int: [HiddenMarker]] = [:]
             storage.beginEditing()
             CardTextAttributes.apply(to: storage, theme: parent.theme, base: baseAttributes)
+            for styled in MarkdownStyler.spans(in: text) {
+                let kind: HiddenMarker.Kind? = switch styled.span {
+                case .headingMarker: .heading
+                case .emphasisMarker: .emphasis
+                case .embedRun: .embed
+                case .listMarker: .list
+                default: nil
+                }
+                guard let kind else { continue }
+                let nsRange = NSRange(styled.range, in: text)
+                guard nsRange.location != NSNotFound, NSMaxRange(nsRange) <= nsText.length else { continue }
+                let paragraphStart = nsText.paragraphRange(
+                    for: NSRange(location: nsRange.location, length: 0)
+                ).location
+                markers[paragraphStart, default: []].append(
+                    // The note editor's own mapping, called rather than copied: a `.list` marker's
+                    // range starts at its paragraph and not at its marker character, so that the
+                    // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
+                    // asymmetry is exactly how the two surfaces would start drawing nested items
+                    // differently.
+                    NoteTextView.Coordinator.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
+                )
+            }
+            hiddenMarkers = markers
+            // The badge a folded heading draws over itself, from the two tokens the note editor's
+            // `applyFolding` reads (`NoteTextView+Coordinator.swift:154-155`). Here rather than
+            // beside a fold pass the card does not have yet: the delegate is shared, and it must
+            // never be left drawing a badge in its `.secondaryLabelColor` default on a themed card.
+            decorations.badgeColor = NSColor(parent.theme.color(.textTertiary))
+            decorations.badgeBackground = NSColor(parent.theme.color(.backgroundTertiary))
+            // Before `endEditing()`, not after: that call is what fires the document-wide
+            // `.editedAttributes` that re-triggers the content manager's enumeration, so the table
+            // has to already be current when it does (ADR-0018 §D1). The setting travels beside
+            // the table rather than switching the walk off, so turning it back on redraws without
+            // a styling pass of its own (ADR-0028 §D10).
+            decorations.apply(hiddenMarkers: markers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
+        }
+
+        /// Lets go of everything the shared delegate is holding on this card's behalf (R-11).
+        ///
+        /// All three tables, not only the markers: they are read together at layout time, and a
+        /// revealed-paragraph offset or a folded heading's offset surviving its text is the same
+        /// stale-offset bug as a marker surviving it. `hidingMarkup: false` alongside, which makes
+        /// the substitution hook a no-op outright rather than leaving it to find an empty table.
+        ///
+        /// The fold is the one with teeth: its offsets keep a paragraph out of the layout rather
+        /// than styling it. `lastFoldLayout` empties with it, or the next pass would compare
+        /// against a layout the delegate no longer holds and skip re-applying it.
+        func releaseDecorations() {
+            hiddenMarkers = [:]
+            lastRevealed = []
+            lastFoldLayout = NoteFolding.Layout()
+            decorations.apply(hiddenMarkers: [:], hidingMarkup: false)
+            _ = decorations.apply(revealedParagraphs: [])
+            decorations.apply(hiddenLines: [], foldedHeadings: [:])
         }
 
         /// Puts the keyboard where the model says editing is happening.

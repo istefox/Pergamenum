@@ -115,7 +115,7 @@ enum MarkdownAttributedText {
         // `[.foregroundColor: …colorToken(for: span)…]`, and `addAttributes` merges
         // rather than replaces, so a marker keeps its run's font - bold, or oblique, or
         // the heading's, applied first - and only gets this colour on top, for free.
-        case .linkSyntax, .headingMarker, .emphasisMarker: .textTertiary
+        case .linkSyntax, .headingMarker, .emphasisMarker, .listMarker: .textTertiary
         // `.embedRun` has its own explicit arm in `attributes(for:)` that returns `[:]`
         // (Step 3 is what collapses it into a preview), so this entry exists only to
         // keep this table exhaustive - the same shelf as `.heading`/`.linkTarget` above,
