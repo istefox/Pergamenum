@@ -228,16 +228,18 @@ final class WorkspaceController {
     /// would otherwise draw the same trail for both. That segment is the last one, which
     /// `BoardTopBar` renders as a `Text` and not a link (ADR-0024 §D8.2), so it carries
     /// its containing folder for want of anywhere else to go.
-    var breadcrumb: [(title: String, folder: String)] {
-        var trail: [(String, String)] = [("Workspace", "")]
+    var breadcrumb: [BreadcrumbSegment] {
+        var trail: [BreadcrumbSegment] = [BreadcrumbSegment(title: "Workspace", folder: "")]
         var accumulated = ""
         for component in (current?.folder ?? "").split(separator: "/") {
             accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
-            trail.append((String(component), accumulated))
+            trail.append(BreadcrumbSegment(title: String(component), folder: accumulated))
         }
         if case .board(let path)? = current {
             let fileName = (path as NSString).lastPathComponent
-            trail.append(((fileName as NSString).deletingPathExtension, accumulated))
+            trail.append(BreadcrumbSegment(
+                title: (fileName as NSString).deletingPathExtension, folder: accumulated
+            ))
         }
         return trail
     }

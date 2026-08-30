@@ -26,7 +26,7 @@ decision to reopen SPEC §14).
 - [x] PG-080 deduplicate OperationError and the moved-note tuple across outcome types  (completed: 2026-08-30)
 - [x] PG-046 give FolderRenamePlan/RenameOutcome named types instead of anonymous tuples  (completed: 2026-08-30)
 - [x] PG-064 use error interpolation consistently in BoardFileOperations catch blocks  (completed: 2026-08-30)
-- [ ] PG-081 deduplicate breadcrumb rendering between VaultController and WorkspaceController
+- [x] PG-081 deduplicate breadcrumb rendering between VaultController and WorkspaceController  (completed: 2026-08-30)
 - [ ] PG-071 split WorkspaceFolderActions pure rules from its DI closures
 
 ### Phase 3 — Card and canvas debt

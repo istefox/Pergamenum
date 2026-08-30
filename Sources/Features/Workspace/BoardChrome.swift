@@ -17,44 +17,27 @@ struct BoardTopBar: View {
     let workspace: WorkspaceController
 
     var body: some View {
-        // Read once per redraw: `breadcrumb` is computed - it splits the folder path and
-        // allocates a fresh array on every access - so reading it inside the `ForEach`
-        // body cost one more array construction per segment on top of the enumeration.
-        let crumbs = workspace.breadcrumb
-        return HStack(spacing: theme.spacing(.xs)) {
-            Circle()
-                .fill(theme.color(workspace.hasUnsavedChanges ? .taskScheduled : .accentPrimary))
-                .frame(width: 8, height: 8)
-
-            ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
-                if index > 0 {
-                    Text("›").themedText(.body, color: .textTertiary)
-                }
-                if index == crumbs.count - 1 {
-                    // The last segment is where you already are, so it is not a link
-                    // (ADR-0024 §D8.2): as a `Button` it re-ran the open command on the
-                    // open board, which resets its zoom and pan for a click that was
-                    // meant to go nowhere. Emphasis carries "you are here" - the tree
-                    // says it with the system's row fill and this pane's
-                    // `.accentPrimary` no longer means "selected" anywhere (§D8.3).
-                    Text(crumb.title).themedText(.body, color: .textPrimary)
-                } else {
-                    Button(crumb.title) { open(ancestor: crumb.folder) }
-                        .buttonStyle(.plain)
-                        .themedText(.body, color: .textSecondary)
-                }
-            }
-
-            Spacer()
-
+        // The last segment is where you already are, so it is not a link (ADR-0024 §D8.2):
+        // as a `Button` it re-ran the open command on the open board, which resets its zoom
+        // and pan for a click that was meant to go nowhere. Emphasis carries "you are here" -
+        // the tree says it with the system's row fill and this pane's `.accentPrimary` no
+        // longer means "selected" anywhere (§D8.3). `BreadcrumbBar` already draws the last
+        // segment this way for every caller.
+        //
+        // Every segment now also carries `.accessibilityIdentifier("breadcrumb-crumb-\(index)")`
+        // (PG-081) - previously only the Note side's bar had one.
+        BreadcrumbBar(
+            segments: workspace.breadcrumb,
+            isUnsaved: workspace.hasUnsavedChanges,
+            identifierPrefix: "breadcrumb-crumb",
+            onSelectAncestor: { open(ancestor: $0) }
+        ) {
             Label(
                 workspace.hasUnsavedChanges ? "Salvataggio…" : "Salvato",
                 systemImage: workspace.hasUnsavedChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
             )
             .themedText(.caption, color: .textSecondary)
         }
-        .padding(.horizontal, theme.spacing(.m))
-        .padding(.vertical, theme.spacing(.s))
     }
 
     /// An ancestor segment, under the one rule §D5 gives every folder→board navigation:

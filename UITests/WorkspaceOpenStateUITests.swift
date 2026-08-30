@@ -401,7 +401,11 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         nested.click()
         assertExactlyOneRowSelected(identifier: "workspace-board-\(nestedBoardFile)", suffix: ", aperta")
 
-        let ancestor = app.buttons[boardFolder].firstMatch
+        // Index 1: the trail is ["Workspace", boardFolder, "Dettaglio", nestedBoardFile's own
+        // name] - `nestedBoardFile` nests one folder below `boardFolder`, so `boardFolder`
+        // is always the first ancestor segment after the root (PG-081: identifier, not label,
+        // per CLAUDE.md's "never find a control by the words on it").
+        let ancestor = app.buttons["breadcrumb-crumb-1"].firstMatch
         XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(boardFolder)»")
         ancestor.click()
 
@@ -417,7 +421,11 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         nested.click()
         assertExactlyOneRowSelected(identifier: "workspace-board-\(groupingChildBoardFile)", suffix: ", aperta")
 
-        let ancestor = app.buttons[groupingFolder].firstMatch
+        // Index 1: the trail is ["Workspace", groupingFolder, "Cliente", groupingChildBoardFile's
+        // own name] - `groupingChildBoardFile` nests one folder below `groupingFolder`, so
+        // `groupingFolder` is always the first ancestor segment after the root (PG-081:
+        // identifier, not label, per CLAUDE.md's "never find a control by the words on it").
+        let ancestor = app.buttons["breadcrumb-crumb-1"].firstMatch
         XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(groupingFolder)»")
         ancestor.click()
 
