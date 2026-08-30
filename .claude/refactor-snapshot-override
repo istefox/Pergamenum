@@ -1,0 +1,3 @@
+REASON: xcodebuild's own stdout embeds wall-clock timestamps and per-test elapsed-time strings (e.g. "passed after 0.001 seconds", IDETestOperationsObserverDebug absolute-time lines), which differ byte-for-byte between identical runs on an unmodified tree even though exit code and test count (1930/1930) are stable. Confirmed 2026-08-30 during the wysiwyg-markdown-in-workspace review-triage-fix cycle.
+SCOPE: stdout
+EXPIRES: 2027-08-30
