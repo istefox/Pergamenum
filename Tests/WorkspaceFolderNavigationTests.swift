@@ -12,10 +12,10 @@ import Testing
 // R-05 (rename on disk) and R-10 (delete confirmation) are not unit-tested here; they
 // are the coder's GREEN-section view wiring, per this task's dispatch brief. The two
 // navigation rules the wiring calls into ARE pure, so they live on
-// `WorkspaceFolderActions` as static functions and are exactly what this file tests
-// (R-08, R-12).
+// `WorkspaceFolderNavigation` as static functions (PG-071: split from `WorkspaceFolderActions`'
+// DI closures, same file) and are exactly what this file tests (R-08, R-12).
 //
-// RED: `WorkspaceFolderActions.folderAfterRename`/`folderAfterDelete` are placeholders
+// RED: `WorkspaceFolderNavigation.folderAfterRename`/`folderAfterDelete` are placeholders
 // that return `open` unchanged (`Sources/Features/Workspace/WorkspaceFolderActions.swift`),
 // so every assertion below that expects a rewritten path fails on its `#expect`, not on
 // a build error.
@@ -27,14 +27,14 @@ import Testing
 // Task 7 adds `renameBoard`/`deleteBoard` verbs (not pure - not unit-tested here, per
 // this task's dispatch brief) and the two landing rules they call into, which mirror
 // `folderAfterRename`/`folderAfterDelete` above but for a board file path instead of a
-// folder path (R-08, R-09). `WorkspaceFolderActions.boardAfterRename`/`boardAfterDelete`
+// folder path (R-08, R-09). `WorkspaceFolderNavigation.boardAfterRename`/`boardAfterDelete`
 // are placeholders that return `.board(path: open)` unchanged, so every assertion below
 // that expects a redirected selection fails on its `#expect`, not on a build error.
 
 // MARK: - boardAfterRename(open:renamed:to:) (R-08)
 
 @Test func boardAfterRenameRedirectsToTheNewPathWhenTheOpenBoardIsTheRenamedOne() {
-    let result = WorkspaceFolderActions.boardAfterRename(
+    let result = WorkspaceFolderNavigation.boardAfterRename(
         open: "A/vecchio.canvas", renamed: "A/vecchio.canvas", to: "A/nuovo.canvas"
     )
 
@@ -42,7 +42,7 @@ import Testing
 }
 
 @Test func boardAfterRenameLeavesAnUnrelatedOpenBoardAlone() {
-    let result = WorkspaceFolderActions.boardAfterRename(
+    let result = WorkspaceFolderNavigation.boardAfterRename(
         open: "A/altro.canvas", renamed: "A/vecchio.canvas", to: "A/nuovo.canvas"
     )
 
@@ -52,13 +52,13 @@ import Testing
 // MARK: - boardAfterDelete(open:deleted:) (R-09)
 
 @Test func boardAfterDeleteSelectsTheContainingFolderWhenTheOpenBoardWasDeleted() {
-    let result = WorkspaceFolderActions.boardAfterDelete(open: "A/x.canvas", deleted: "A/x.canvas")
+    let result = WorkspaceFolderNavigation.boardAfterDelete(open: "A/x.canvas", deleted: "A/x.canvas")
 
     #expect(result == .folder("A"))
 }
 
 @Test func boardAfterDeleteLeavesAnUnrelatedOpenBoardAlone() {
-    let result = WorkspaceFolderActions.boardAfterDelete(open: "A/y.canvas", deleted: "A/x.canvas")
+    let result = WorkspaceFolderNavigation.boardAfterDelete(open: "A/y.canvas", deleted: "A/x.canvas")
 
     #expect(result == .board(path: "A/y.canvas"))
 }
@@ -66,7 +66,7 @@ import Testing
 @Test func boardAfterDeleteHandlesTheRootParentCase() {
     // Deleting a board directly under the vault root, while it is open, must land on the
     // root's own folder ("") - the vault root always survives.
-    let result = WorkspaceFolderActions.boardAfterDelete(open: "vault.canvas", deleted: "vault.canvas")
+    let result = WorkspaceFolderNavigation.boardAfterDelete(open: "vault.canvas", deleted: "vault.canvas")
 
     #expect(result == .folder(""))
 }
@@ -74,7 +74,7 @@ import Testing
 // MARK: - folderAfterRename(open:renamed:to:) (R-08)
 
 @Test func folderAfterRenameSubstitutesThePrefixForAnOpenFolderInsideTheRenamedOne() {
-    let result = WorkspaceFolderActions.folderAfterRename(
+    let result = WorkspaceFolderNavigation.folderAfterRename(
         open: "01 Progetti/a/sub", renamed: "01 Progetti/a", to: "01 Progetti/z"
     )
 
@@ -82,7 +82,7 @@ import Testing
 }
 
 @Test func folderAfterRenameLeavesAnUnrelatedOpenFolderAlone() {
-    let result = WorkspaceFolderActions.folderAfterRename(
+    let result = WorkspaceFolderNavigation.folderAfterRename(
         open: "01 Progetti/b", renamed: "01 Progetti/a", to: "01 Progetti/z"
     )
 
@@ -91,7 +91,7 @@ import Testing
 
 @Test func folderAfterRenameHandlesTheExactMatchCase() {
     // The open board IS the folder being renamed, not merely inside it.
-    let result = WorkspaceFolderActions.folderAfterRename(
+    let result = WorkspaceFolderNavigation.folderAfterRename(
         open: "01 Progetti/a", renamed: "01 Progetti/a", to: "01 Progetti/z"
     )
 
@@ -101,19 +101,19 @@ import Testing
 // MARK: - folderAfterDelete(open:deleted:) (R-12)
 
 @Test func folderAfterDeleteReturnsTheDeletedFoldersParentWhenTheOpenBoardIsIt() {
-    let result = WorkspaceFolderActions.folderAfterDelete(open: "01 Progetti/a", deleted: "01 Progetti/a")
+    let result = WorkspaceFolderNavigation.folderAfterDelete(open: "01 Progetti/a", deleted: "01 Progetti/a")
 
     #expect(result == "01 Progetti")
 }
 
 @Test func folderAfterDeleteReturnsTheDeletedFoldersParentWhenTheOpenBoardIsUnderIt() {
-    let result = WorkspaceFolderActions.folderAfterDelete(open: "01 Progetti/a/sub", deleted: "01 Progetti/a")
+    let result = WorkspaceFolderNavigation.folderAfterDelete(open: "01 Progetti/a/sub", deleted: "01 Progetti/a")
 
     #expect(result == "01 Progetti")
 }
 
 @Test func folderAfterDeleteLeavesAnUnrelatedOpenFolderUnchanged() {
-    let result = WorkspaceFolderActions.folderAfterDelete(open: "01 Progetti/b", deleted: "01 Progetti/a")
+    let result = WorkspaceFolderNavigation.folderAfterDelete(open: "01 Progetti/b", deleted: "01 Progetti/a")
 
     #expect(result == "01 Progetti/b")
 }
@@ -121,7 +121,7 @@ import Testing
 @Test func folderAfterDeleteHandlesTheRootParentCase() {
     // Deleting a folder directly under the vault root, while it is open, must land on
     // the root itself ("") - the vault root always survives.
-    let result = WorkspaceFolderActions.folderAfterDelete(open: "Ricerca", deleted: "Ricerca")
+    let result = WorkspaceFolderNavigation.folderAfterDelete(open: "Ricerca", deleted: "Ricerca")
 
     #expect(result == "")
 }
@@ -132,7 +132,7 @@ import Testing
 // Plan: docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md,
 // Task 3.
 //
-// RED: `WorkspaceFolderActions.boardAfterMove` is a placeholder that returns `open`
+// RED: `WorkspaceFolderNavigation.boardAfterMove` is a placeholder that returns `open`
 // unchanged, so every assertion below that expects a rewritten path fails on its
 // `#expect`, not on a build error.
 
@@ -143,7 +143,7 @@ import Testing
         VaultMove(item: VaultItemRef(path: "A/x.canvas", kind: .board), from: "A", to: "B"),
     ]
 
-    let result = WorkspaceFolderActions.boardAfterMove(open: "A/x.canvas", moves: moves)
+    let result = WorkspaceFolderNavigation.boardAfterMove(open: "A/x.canvas", moves: moves)
 
     #expect(result == "B/x.canvas")
 }
@@ -153,7 +153,7 @@ import Testing
         VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
     ]
 
-    let result = WorkspaceFolderActions.boardAfterMove(open: "A/sub/x.canvas", moves: moves)
+    let result = WorkspaceFolderNavigation.boardAfterMove(open: "A/sub/x.canvas", moves: moves)
 
     #expect(result == "B/A/sub/x.canvas")
 }
@@ -166,7 +166,7 @@ import Testing
         VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
     ]
 
-    let result = WorkspaceFolderActions.boardAfterMove(open: "A-altro/x.canvas", moves: moves)
+    let result = WorkspaceFolderNavigation.boardAfterMove(open: "A-altro/x.canvas", moves: moves)
 
     #expect(result == "A-altro/x.canvas")
 }
@@ -176,13 +176,13 @@ import Testing
         VaultMove(item: VaultItemRef(path: "A", kind: .folder), from: "", to: "B"),
     ]
 
-    let result = WorkspaceFolderActions.boardAfterMove(open: "C/y.canvas", moves: moves)
+    let result = WorkspaceFolderNavigation.boardAfterMove(open: "C/y.canvas", moves: moves)
 
     #expect(result == "C/y.canvas")
 }
 
 @Test func boardAfterMoveLeavesTheOpenBoardAloneWhenTheBatchIsEmpty() {
-    let result = WorkspaceFolderActions.boardAfterMove(open: "A/x.canvas", moves: [])
+    let result = WorkspaceFolderNavigation.boardAfterMove(open: "A/x.canvas", moves: [])
 
     #expect(result == "A/x.canvas")
 }
