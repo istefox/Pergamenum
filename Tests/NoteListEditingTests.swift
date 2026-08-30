@@ -212,4 +212,46 @@ private func ordinals(in text: String) -> [Int] {
 
         #expect(fixture.textView.string == text)
     }
+
+    // MARK: Pinning the documented digit-width-shrink caret boundary (accepted limitation, not a bug)
+
+    /// `NoteTextView+ListEditing.renumberLists(in:)`'s own doc comment discloses that the
+    /// caret restore is exact "until a run reaches its tenth item" - past that boundary, a
+    /// member whose ordinal's digit width changes shifts everything after it, and the
+    /// restore does not compensate for that shift. This pins the *current* behaviour so a
+    /// future regression that makes it worse is caught; it is not a test that expects a
+    /// fix, and closing the gap should update this assertion deliberately rather than break
+    /// it by accident. The card's half of the same wiring is pinned the same way in
+    /// `Tests/CardFormattingTests.swift`'s
+    /// `renumberListsAfterARunsTrailingItemShrinksLeavesTheCaretOneCharacterAhead`.
+    ///
+    /// Text as it stands right after a manual delete of a run's ninth item ("9. i\n") from
+    /// a correctly numbered ten-item list: eight untouched items, then the former tenth
+    /// still carrying its two-digit "10." marker, then a plain trailing line the run does
+    /// not extend into. `ListContinuation.renumbered` shrinks that one marker from "10" to
+    /// "9" - the run's only edit, one character shorter - and the caret, parked well inside
+    /// the trailing line rather than at the edit itself, is where the missing compensation
+    /// shows.
+    @Test func renumberListsAfterARunsTrailingItemShrinksLeavesTheCaretOneCharacterAhead() throws {
+        let text = "1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n10. j\nprosa"
+        // Right after "pro", inside the trailing plain line - well past "10."'s digits
+        // (which sit at 40..<42), so the one-character shrink there is a shift the caret
+        // has already crossed.
+        let caret = 49
+        let fixture = editor(text, caret: caret)
+        defer { fixture.window.orderOut(nil) }
+        // Derived, not hand-written, for the same reason the Return tests above derive from
+        // `ListContinuation.newline`: a hand-copied string would only assert this test's
+        // own arithmetic.
+        let expected = try #require(ListContinuation.renumbered(text))
+
+        fixture.coordinator.renumberLists(in: fixture.textView)
+
+        #expect(fixture.textView.string == expected)
+        // Documented, not ideal: the correct position would compensate for the
+        // one-character shrink and land at 48 (still between "pro" and "sa"). The restore
+        // instead reuses the pre-edit caret unshifted, landing at 49 - one character
+        // further into "prosa" than where the person's caret actually was.
+        #expect(fixture.textView.selectedRange() == NSRange(location: caret, length: 0))
+    }
 }
