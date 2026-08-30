@@ -1,158 +1,133 @@
-# SPEC — PG-066: deduplicate OperationError across Note/Folder/Board file operations
+# PG-080 — deduplicate the moved-note tuple across outcome types
 
-**Topic slug:** pg-066-dedupe-operationerror
+**Topic slug:** pg-080-dedupe-moved-note-tuple
 
-## Objective
+## Objectives
 
-`NoteFileOperations.swift`, `FolderFileOperations.swift` and `BoardFileOperations.swift` each
-independently declare a nested `enum OperationError: Error, CustomStringConvertible` with the
-cases `invalidTitle([NoteName.Violation])`, `alreadyExists(String)`, `missing(String)`,
-`failed(String)`, and a matching `description` implementation — verified byte-for-byte identical
-between `NoteFileOperations` and `BoardFileOperations`. `FolderFileOperations`'s copy carries one
-additional case, `wouldNest(String)` (ADR-0026 §D1/§D5, folder-into-itself/descendant refusal),
-with a matching extra `description` branch. Replace the three nested enums with one shared
-top-level type.
+`FolderFileOperations.RenameOutcome`, `FolderFileOperations.MoveOutcome` and
+`VaultSession+Move.swift`'s `MoveBatchOutcome` each independently declare the same anonymous
+tuple shape, `[(old: String, new: String)]`, to record a note that moved as the side effect of a
+folder-level rename or move. Replace all three with one shared named type, `MovedNote`, reused
+as-is at every site. Type-only refactor, no behavior change.
+
+This is the surviving half of TODO.md's PG-080 entry. The other half — two near-identical
+`OperationError` enums across `BoardFileOperations`/`FolderFileOperations` — was already resolved
+this session by PG-066, which unified all three file-operations types' `OperationError` enums
+(Note, Folder, Board) into one shared `FileOperationError` at
+`Sources/Core/Vault/FileOperationError.swift`. That work is out of scope here.
 
 ## Scope
 
-**In scope:** the `OperationError` triplication only. One new top-level type,
-`FileOperationError`, replacing all three nested `OperationError` declarations and every
-construction/catch/test site that names them.
+**In scope:**
+- New type `MovedNote` (struct, fields `old: String`, `new: String`) at
+  `Sources/Core/Vault/MovedNote.swift`.
+- Replace the anonymous tuple in three declarations:
+  - `Sources/Vault/FolderFileOperations.swift:226` — `RenameOutcome.movedNotes`
+  - `Sources/Vault/FolderFileOperations+Move.swift:69` — `MoveOutcome.movedNotes`
+  - `Sources/Vault/VaultSession+Move.swift:31` — `MoveBatchOutcome.movedNotes`
+- Update every construction and read site (see Architecture below for the full enumeration).
 
-**Out of scope, verified and explicitly rejected:** TODO.md's PG-066 entry also claimed
-`RenamePlan`/`RenameOutcome`-shaped DTOs are "near-identical" across the same three files. Read
-directly this session: `NoteFileOperations.RenamePlan` (`newPath`, `noteChanges`, `boardChanges`,
-`failures`) has no separate `RenameOutcome` counterpart at all;
-`FolderFileOperations.RenameOutcome` carries a `movedNotes: [(old: String, new: String)]` field
-neither of the other two has; `BoardFileOperations.RenameOutcome` carries only `newPath` and
-`failures`. The three types' own doc comments explain deliberately different rewrite behavior per
-file kind (which reference classes each rewrites, per ADR-0021/ADR-0022/ADR-0025). These are
-structurally similar, not semantically identical — forcing one shared type would conflate three
-distinct, deliberately-differentiated behaviors. Not touched by this chain.
-
-`WorkspaceItemKind`, `BoardPath`/`FolderPath` (PG-065) and any other type unrelated to
-`OperationError` are untouched.
+**Out of scope:**
+- `OperationError` dedup — already done by PG-066.
+- `RenameOutcome.rewrittenPaths` (a separate, unrelated field noted in TODO.md's PG-070, not
+  touched here).
+- Any behavior change to how notes are discovered, moved, or reported.
 
 ## Stack
 
-Swift 6, no new dependency, no schema/index change. Type-only refactor: renaming and relocating
-an existing error type, no behavior change to any catch site's logic.
+Swift 6, no new dependency. Follows the exact precedent of PG-065 (`BoardPath`/`FolderPath`
+wrapper types) and PG-066 (`FileOperationError`) from this same session.
 
 ## Architecture
 
-**New file `Sources/Core/Vault/FileOperationError.swift`:**
+**New file `Sources/Core/Vault/MovedNote.swift`:**
 ```swift
-enum FileOperationError: Error, CustomStringConvertible {
-    case invalidTitle([NoteName.Violation])
-    case alreadyExists(String)
-    case missing(String)
-    case failed(String)
-    case wouldNest(String)
-
-    var description: String {
-        switch self {
-        case .invalidTitle(let violations): "titolo non conforme: \(violations)"
-        case .alreadyExists(let path): "esiste già: \(path)"
-        case .missing(let path): "non esiste: \(path)"
-        case .failed(let reason): reason
-        case .wouldNest(let path): "\(path) non può essere spostata dentro sé stessa"
-        }
-    }
+struct MovedNote {
+    var old: String
+    var new: String
 }
 ```
+Lives under `Sources/Core/**`, already covered by `Project.swift`'s `sharedSources` glob — no
+`Project.swift` edit needed, same placement pattern as `FileOperationError.swift` (PG-066) and
+`BoardPath.swift` (PG-065). Both current call sites are under `Sources/Vault/`, which is app-only
+today; placing the shared type under `Sources/Core/Vault/` makes it reachable from
+`perg`/`pergamenum-mcp` as well, consistent with the session's established convention for shared
+vault-layer types.
 
-Lives under `Sources/Core/**` — already covered by `Project.swift`'s `sharedSources` glob, no
-manifest edit needed (same placement pattern as PG-065's `BoardPath.swift`). This matters because
-only `NoteFileOperations.swift` is itself in `sharedSources` today (reachable from `perg`/
-`pergamenum-mcp`); `FolderFileOperations.swift` and `BoardFileOperations.swift` are app-only. A
-shared top-level error type under `Sources/Core/**` is reachable from all three call sites
-regardless of which target compiles which file, and from both connectors.
+No `Equatable`/`Hashable` conformance — verified this session that no test or call site compares
+a `MovedNote` value for equality; every read site pattern-matches on `.old`/`.new` via closures
+or keypaths (`$0.old == ...`, `.map(\.old)`), which works identically whether the type conforms to
+`Equatable` or not.
 
-**`wouldNest` stays a case on the single shared enum, never split into a separate type
-(conversion, not collapse — same principle as PG-065's four discriminated unions).**
-`NoteFileOperations` and `BoardFileOperations` simply never construct `.wouldNest` — nothing
-enforces that at the type level (Swift has no way to remove a case per call site without a second
-type), and that is an accepted, explicit trade-off given the alternative (a generic wrapper plus a
-separate per-file-kind case) is more machinery for one extra case.
+**Change the three declarations** from `[(old: String, new: String)]` to `[MovedNote]`:
+- `FolderFileOperations.RenameOutcome.movedNotes`
+- `FolderFileOperations.MoveOutcome.movedNotes` (in `FolderFileOperations+Move.swift`)
+- `VaultSession+Move.swift`'s `MoveBatchOutcome.movedNotes`
 
-**Site changes:**
-- Delete the three nested `enum OperationError { ... }` declarations from `NoteFileOperations.swift`,
-  `FolderFileOperations.swift`, `BoardFileOperations.swift`.
-- Every unqualified `OperationError.xxx` construction inside those three files (and
-  `FolderFileOperations+Move.swift`, which throws `OperationError.wouldNest`/`.missing`/
-  `.alreadyExists`/`.failed` today) becomes `FileOperationError.xxx` — unqualified reference
-  works identically since the type is now top-level and in scope everywhere `Sources/Core/**` is
-  visible.
-- Every external qualified reference — `NoteFileOperations.OperationError`,
-  `FolderFileOperations.OperationError`, `BoardFileOperations.OperationError` — becomes
-  `FileOperationError`, at every catch site, throw site and test site.
+**Construction sites** (tuple literals become `MovedNote(...)`):
+- `Sources/Vault/FolderFileOperations.swift:253` — `.map { (old: $0, new: ...) }` → `.map { MovedNote(old: $0, new: ...) }`
+- `Sources/Vault/FolderFileOperations+Move.swift:92` — same pattern
+- `Sources/Vault/VaultSession+Move.swift:88` — `outcome.movedNotes.append((old: ..., new: ...))` → `outcome.movedNotes.append(MovedNote(old: ..., new: ...))`
 
-**Known call sites requiring the qualified-name change** (grepped exhaustively this session,
-`grep -rn` across `Sources/` and `Tests/` for `OperationError` — the full list, not a sample):
-- `Sources/Connector/VaultWrites.swift:117,137,150` — `catch let refusal as NoteFileOperations.OperationError`
-- `Sources/Vault/VaultSession+Journal.swift:60,62,73,108,121,162` — `throw NoteFileOperations.OperationError.xxx`
-- `Tests/BoardFileOperationsTests.swift:101,111,235,310` — `#expect(throws: BoardFileOperations.OperationError.self)` / `catch BoardFileOperations.OperationError.alreadyExists`
-- `Tests/FolderFileOperationTests.swift:178,188,196,299,483,499,514` — `#expect(throws: FolderFileOperations.OperationError.self)` / `catch FolderFileOperations.OperationError.alreadyExists` / `.wouldNest`
-- `Tests/VaultSessionJournalTests.swift:111,166,169` — `#expect(throws: NoteFileOperations.OperationError.self)`
-- `Tests/NoteFileOperationTests.swift:182,195,221,244` — `#expect(throws: NoteFileOperations.OperationError.self)`
+**Read sites** (unaffected — `.old`/`.new` field access, `.map(\.old)`, `.contains { $0.old == ... }`
+all continue to compile unchanged against a named struct with the same field names):
+- `Sources/Vault/VaultController+Move.swift:163`
+- `Sources/Vault/VaultController+Folders.swift:44`
+- `Sources/Vault/VaultSession+Folders.swift:29`
+- `Sources/Vault/VaultSession+Move.swift:102,105` (the aggregation loop and `append(contentsOf:)`
+  pass-through between `MoveOutcome`/`RenameOutcome` and `MoveBatchOutcome` — this is the site
+  that most benefits from the shared type, since today it silently relies on both tuples having
+  identical shape)
 
-As with PG-065, an exhaustive grep is the starting enumeration, not the completeness guarantee: a
-full `xcodebuild build` after the edits is the actual oracle for a type-only refactor, since a
+**Test sites** (assertions on `.old`/`.new` unaffected; only the local `var outcome`/pattern-match
+declarations that name the tuple type explicitly, if any, would need updating — grep did not find
+any such explicit type annotation, only inferred usage via `.contains { $0.old == ... }` and
+`.map(\.old)`):
+- `Tests/VaultMoveTests.swift:155`
+- `Tests/FolderFileOperationTests.swift:414,441,442`
+- `Tests/VaultSessionFolderOperationsTests.swift:80,81`
+
+As with PG-065/PG-066, this grep-based enumeration is the starting list, not the completeness
+guarantee — `xcodebuild build` after the edits is the actual oracle for a type-only refactor: a
 missed site is a compile error, not a silent gap.
-
-**Tests:** no new test file needed — this is a rename/relocation of an existing type with
-identical cases and identical `description` text; every existing assertion on `OperationError`
-values keeps passing unchanged once the type name at the assertion site is updated to
-`FileOperationError`. If any existing test constructs the type directly for setup (not just
-catches it), update that construction site the same way.
 
 ## Data model
 
-No new data on disk, no schema change, no index bump. `FileOperationError`'s five cases carry
-exactly the same associated values the three original enums carried between them.
+```swift
+struct MovedNote {
+    var old: String
+    var new: String
+}
+```
 
 ## API
 
-No public API surface change for either connector — `VaultWrites.swift`'s catch clauses change
-which type name they name, not what they catch or how they translate it to a connector-facing
-payload.
+No public API surface — `MovedNote` is used internally by `FolderFileOperations`/
+`VaultSession+Move` and their callers (`VaultController+Move`, `VaultController+Folders`,
+`VaultSession+Folders`). No connector-facing (`VaultAPI`) change.
 
 ## Edge cases
 
-- **A future fourth file-operations type adding its own case:** out of scope for this chain: adds
-  a case to `FileOperationError` when it happens, following the same "conversion not collapse"
-  pattern already established.
-- **`wouldNest` unreachable from Note/Board:** accepted (see Architecture above) — not a defect,
-  documented trade-off.
+- **`FolderFileOperations.MoveOutcome` and `RenameOutcome` are structurally similar but not
+  identical** (verified this session for the earlier PG-066 scope decision): `MoveOutcome` also
+  carries `rewrittenPaths: [String]`, which `RenameOutcome` does not. This refactor touches only
+  the `movedNotes` field each declares independently — it does not unify the two outcome types
+  themselves, which remain distinct (out of scope, matches PG-066's precedent of not merging
+  `RenameOutcome`/`MoveOutcome` types wholesale).
+- **`VaultSession+Move.swift:105`'s `append(contentsOf:)` pass-through** already assumes
+  `FolderFileOperations`'s `movedNotes` and `VaultSession`'s own `movedNotes` are the same array
+  element type — today this works only because both are the exact same anonymous tuple shape
+  `(old: String, new: String)`, which is fragile (a field reorder or rename on one side would
+  silently break `Array.append(contentsOf:)`'s type inference, or fail loudly with a confusing
+  error at a distant call site). This is the concrete risk the shared `MovedNote` type removes.
 
 ## Success criteria
 
-- [ ] R-01 — `Sources/Core/Vault/FileOperationError.swift` exists with one top-level
-      `FileOperationError` enum carrying exactly the five cases (`invalidTitle`, `alreadyExists`,
-      `missing`, `failed`, `wouldNest`) and their `description` text unchanged from today's three
-      originals.
-- [ ] R-02 — `NoteFileOperations.swift`, `FolderFileOperations.swift`, `BoardFileOperations.swift`
-      no longer declare a nested `OperationError` enum.
-- [ ] R-03 — every throw site in `NoteFileOperations.swift`, `FolderFileOperations.swift`,
-      `BoardFileOperations.swift`, `FolderFileOperations+Move.swift` constructs
-      `FileOperationError`, not a removed nested type.
-- [ ] R-04 — every external catch/assertion site (`VaultWrites.swift`, `VaultSession+Journal.swift`,
-      and the five test files listed in Architecture) references `FileOperationError`, not
-      `NoteFileOperations.OperationError`/`FolderFileOperations.OperationError`/
-      `BoardFileOperations.OperationError`.
-- [ ] R-05 — `tuist generate --no-open` succeeds with no `Project.swift` edit, confirming
-      `Sources/Core/**`'s existing glob picks up the new file (no-test: this is a build-tooling
-      confirmation step, not an assertion a unit test can make — verified by running the command
-      and observing its exit code, ADR-0138).
-- [ ] R-06 — `xcodebuild ... -only-testing:PergamenumTests test` passes 100%, with zero behavior
-      change to any existing assertion beyond the type name referenced.
-- [ ] R-07 — `RenamePlan`/`RenameOutcome`-shaped types across the three files remain untouched,
-      per the explicit scope decision above (no-test: this is a negative/scope-boundary
-      confirmation — verified by diff review showing no changes to those three struct
-      declarations, not by a unit test asserting an absence of change, ADR-0138).
-
-## Definition of Done
-
-Unit tests only (`.claude/test-cmd`, `-only-testing:PergamenumTests`), no manual/UI verification —
-same precedent as PG-065: a type-only refactor with no behavior change, where a build failure is
-the primary and sufficient signal of a missed call site.
+- [ ] R-01 — `Sources/Core/Vault/MovedNote.swift` declares `struct MovedNote { var old: String; var new: String }`, reachable from both `perg` and `pergamenum-mcp` via the existing `sharedSources` glob with no `Project.swift` edit
+- [ ] R-02 — `FolderFileOperations.RenameOutcome.movedNotes` is typed `[MovedNote]`
+- [ ] R-03 — `FolderFileOperations.MoveOutcome.movedNotes` (in `FolderFileOperations+Move.swift`) is typed `[MovedNote]`
+- [ ] R-04 — `VaultSession+Move.swift`'s `MoveBatchOutcome.movedNotes` is typed `[MovedNote]`
+- [ ] R-05 — every construction site builds a `MovedNote(old:new:)` value instead of an anonymous tuple literal
+- [ ] R-06 — every read site (`VaultController+Move.swift`, `VaultController+Folders.swift`, `VaultSession+Folders.swift`, and `VaultSession+Move.swift`'s own aggregation loop) compiles unchanged against the new named type
+- [ ] R-07 — `.claude/test-cmd` (`-only-testing:PergamenumTests`) builds clean and passes 100%
+- [ ] R-08 — `tuist generate --no-open` confirms the new file is picked up by the existing `Sources/Core/**` glob with no `Project.swift` edit
