@@ -16,7 +16,7 @@ extension FolderFileOperations {
     /// What a folder *move* would change: the folder's own name is kept, only its
     /// parent changes - the mirror of `renamePlan`, which keeps the parent and changes
     /// the name (ADR-0026 §D1).
-    struct MovePlan {
+    struct MovePlan: Equatable, Sendable {
         var newPath: String
         var boardChanges: [NoteFileOperations.FileChange] = []
         var failures: [String] = []
@@ -64,7 +64,7 @@ extension FolderFileOperations {
     }
 
     /// What a folder move actually did (ADR-0026 §D1).
-    struct MoveOutcome {
+    struct MoveOutcome: Equatable, Sendable {
         var newPath: String
         var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
