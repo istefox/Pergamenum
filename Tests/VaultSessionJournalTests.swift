@@ -108,7 +108,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let vault = try TemporaryVault()
     let session = try await armedSession(vault)
 
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try session.moveFile(from: "Uno.md", to: "Due.md")
     }
     #expect(session.exists("Uno.md"), "il rifiuto ha spostato il file lo stesso")
@@ -163,10 +163,10 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     // Stops one line short of the disk, not one line short of the rules: a rehearsal that said
     // yes to a move the real thing would refuse is a rehearsal of a different operation.
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try session.moveFile(from: "Uno.md", to: "Due.md")
     }
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try session.trashFile(at: "Mai-esistita.md")
     }
 }

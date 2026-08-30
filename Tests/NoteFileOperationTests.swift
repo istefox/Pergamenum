@@ -179,7 +179,7 @@ tags:
     try vault.write(header, to: "Uno.md")
     try vault.write(header, to: "Due.md")
 
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.rename("Uno.md", to: "Due", knownPaths: ["Uno.md", "Due.md"])
     }
     // Both are still there: a refused rename must not have moved anything.
@@ -192,7 +192,7 @@ tags:
     let root = vault.root
     try vault.write(header, to: "Nota.md")
 
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.rename("Nota.md", to: "Titolo/con slash", knownPaths: ["Nota.md"])
     }
     #expect(exists("Nota.md", in: root))
@@ -218,7 +218,7 @@ tags:
     try vault.write(header, to: "Nota.md")
     try vault.write(header, to: "01 Progetti/Nota.md")
 
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.move("Nota.md", toFolder: "01 Progetti")
     }
     #expect(exists("Nota.md", in: root))
@@ -241,7 +241,7 @@ tags:
 
 @Test func deletingSomethingThatIsNotThereIsAnError() throws {
     let vault = try OpsVault()
-    #expect(throws: NoteFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.trash("Mai esistita.md", knownPaths: [])
     }
 }

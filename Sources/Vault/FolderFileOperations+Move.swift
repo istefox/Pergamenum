@@ -39,19 +39,19 @@ extension FolderFileOperations {
     func movePlan(_ relativePath: String, toParent parent: String) throws -> MovePlan {
         let oldFolder = Self.normalized(relativePath)
         guard !oldFolder.isEmpty else {
-            throw OperationError.failed("la radice del vault non si sposta")
+            throw FileOperationError.failed("la radice del vault non si sposta")
         }
 
         let destination = Self.normalized(parent)
         let name = (oldFolder as NSString).lastPathComponent
         let newFolder = destination.isEmpty ? name : "\(destination)/\(name)"
 
-        guard isDirectory(oldFolder) else { throw OperationError.missing(relativePath) }
+        guard isDirectory(oldFolder) else { throw FileOperationError.missing(relativePath) }
         guard destination != oldFolder, !destination.hasPrefix("\(oldFolder)/") else {
-            throw OperationError.wouldNest(oldFolder)
+            throw FileOperationError.wouldNest(oldFolder)
         }
         guard newFolder == oldFolder || !exists(newFolder) else {
-            throw OperationError.alreadyExists(newFolder)
+            throw FileOperationError.alreadyExists(newFolder)
         }
 
         var plan = MovePlan(newPath: newFolder)
@@ -106,7 +106,7 @@ extension FolderFileOperations {
                     to: destination
                 )
             } catch {
-                throw OperationError.failed("spostamento cartella: \(error.localizedDescription)")
+                throw FileOperationError.failed("spostamento cartella: \(error.localizedDescription)")
             }
         }
 

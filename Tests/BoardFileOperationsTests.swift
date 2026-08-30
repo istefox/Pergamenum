@@ -10,7 +10,7 @@ import Testing
 // `BoardFileOperations` is `FolderFileOperations`'s shape for a `.canvas` file instead
 // of a directory: a rename plan computed off disk, then performed in one pass - rename
 // on disk, delete to the Trash. RED: every body currently throws
-// `BoardFileOperations.OperationError.notImplementedYet`, so every test below fails on
+// `FileOperationError.notImplementedYet`, so every test below fails on
 // its assertions (or on the uncaught throw), not on a missing symbol.
 //
 // ADR-0026: A row is dragged into a folder, and several rows are chosen first. §D1/§D7 -
@@ -98,7 +98,7 @@ private let sampleBoard = """
     try vault.write(sampleBoard, to: "A/vecchio.canvas")
     try vault.write(sampleBoard, to: "A/nuovo.canvas")
 
-    #expect(throws: BoardFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.renamePlan("A/vecchio.canvas", to: "nuovo", knownPaths: [])
     }
 }
@@ -108,7 +108,7 @@ private let sampleBoard = """
     try vault.write(sampleBoard, to: "A/vecchio.canvas")
     try vault.write("{\"nodes\":[],\"edges\":[],\"marker\":true}", to: "A/nuovo.canvas")
 
-    #expect(throws: BoardFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.renameBoard(at: "A/vecchio.canvas", to: "nuovo", knownPaths: [])
     }
     // Both files are exactly where - and what - they started: the collision is refused
@@ -232,7 +232,7 @@ private let sampleBoard = """
 @Test func trashBoardThrowsForABoardThatIsNotThere() throws {
     let vault = try BoardOpsVault()
 
-    #expect(throws: BoardFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.trashBoard(at: "A/mai-esistito.canvas")
     }
 }
@@ -307,10 +307,10 @@ private func isUnique(_ resolution: WorkspaceBoardResolution) -> Bool {
     do {
         _ = try vault.operations.moveBoard(at: "A/x.canvas", toFolder: "B")
         Issue.record("expected moveBoard to throw for a name collision at the destination")
-    } catch BoardFileOperations.OperationError.alreadyExists(let path) {
+    } catch FileOperationError.alreadyExists(let path) {
         #expect(path.contains("x.canvas"))
     } catch {
-        Issue.record("expected OperationError.alreadyExists, got \(error)")
+        Issue.record("expected FileOperationError.alreadyExists, got \(error)")
     }
     // Nothing moved, nothing was overwritten.
     #expect(exists("A/x.canvas", in: vault.root))

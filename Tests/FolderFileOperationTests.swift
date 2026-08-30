@@ -24,7 +24,7 @@ import Testing
 // ADR-0026: A row is dragged into a folder, and several rows are chosen first. §D1/§D7 -
 // a folder move keeps its own name and changes only its parent, carrying everything
 // inside it, and repoints `.canvas` node paths vault-wide through the same
-// `repointBoardsPlan` loop a rename already runs. `OperationError.wouldNest` refuses a
+// `repointBoardsPlan` loop a rename already runs. `FileOperationError.wouldNest` refuses a
 // folder dropped onto itself or one of its own descendants (§D5, R-06).
 // Plan: docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md,
 // Task 2.
@@ -175,7 +175,7 @@ private let sampleBoard = """
     let vault = try FolderOpsVault()
     try vault.createDirectory("01 Progetti/vecchio")
 
-    #expect(throws: FolderFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.renamePlan("01 Progetti/vecchio", to: "nuovo/con slash", knownPaths: [])
     }
 }
@@ -185,7 +185,7 @@ private let sampleBoard = """
     try vault.createDirectory("01 Progetti/vecchio")
     try vault.createDirectory("01 Progetti/nuovo")
 
-    #expect(throws: FolderFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.renamePlan("01 Progetti/vecchio", to: "nuovo", knownPaths: [])
     }
 }
@@ -193,7 +193,7 @@ private let sampleBoard = """
 @Test func renamePlanThrowsWhenTheSourceFolderDoesNotExist() throws {
     let vault = try FolderOpsVault()
 
-    #expect(throws: FolderFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.renamePlan("01 Progetti/mai-esistita", to: "nuovo", knownPaths: [])
     }
 }
@@ -296,7 +296,7 @@ private let sampleBoard = """
 @Test func trashFolderThrowsForAFolderThatIsNotThere() throws {
     let vault = try FolderOpsVault()
 
-    #expect(throws: FolderFileOperations.OperationError.self) {
+    #expect(throws: FileOperationError.self) {
         try vault.operations.trashFolder(at: "01 Progetti/mai-esistita")
     }
 }
@@ -480,10 +480,10 @@ private let sampleBoard = """
     do {
         _ = try vault.operations.moveFolder(at: "A", toParent: "B")
         Issue.record("expected moveFolder to throw for a name collision at the destination")
-    } catch FolderFileOperations.OperationError.alreadyExists(let path) {
+    } catch FileOperationError.alreadyExists(let path) {
         #expect(path.contains("A"))
     } catch {
-        Issue.record("expected OperationError.alreadyExists, got \(error)")
+        Issue.record("expected FileOperationError.alreadyExists, got \(error)")
     }
     #expect(isDirectory("A", in: vault.root))
     #expect(exists("A/n.md", in: vault.root))
@@ -496,10 +496,10 @@ private let sampleBoard = """
     do {
         _ = try vault.operations.moveFolder(at: "A", toParent: "A")
         Issue.record("expected moveFolder to throw for a destination that is the folder itself")
-    } catch FolderFileOperations.OperationError.wouldNest(let path) {
+    } catch FileOperationError.wouldNest(let path) {
         #expect(path.contains("A"))
     } catch {
-        Issue.record("expected OperationError.wouldNest, got \(error)")
+        Issue.record("expected FileOperationError.wouldNest, got \(error)")
     }
     #expect(isDirectory("A", in: vault.root))
 }
@@ -511,10 +511,10 @@ private let sampleBoard = """
     do {
         _ = try vault.operations.moveFolder(at: "A", toParent: "A/sub")
         Issue.record("expected moveFolder to throw for a destination that is a descendant")
-    } catch FolderFileOperations.OperationError.wouldNest(let path) {
+    } catch FileOperationError.wouldNest(let path) {
         #expect(path.contains("A"))
     } catch {
-        Issue.record("expected OperationError.wouldNest, got \(error)")
+        Issue.record("expected FileOperationError.wouldNest, got \(error)")
     }
     #expect(isDirectory("A", in: vault.root))
     #expect(isDirectory("A/sub", in: vault.root))

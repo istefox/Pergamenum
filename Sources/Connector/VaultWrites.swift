@@ -114,7 +114,7 @@ extension VaultAPI {
                 rewrittenPaths: outcome.rewrittenPaths,
                 failures: outcome.failures
             )
-        } catch let refusal as NoteFileOperations.OperationError {
+        } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")
         }
     }
@@ -134,7 +134,7 @@ extension VaultAPI {
                 rewrittenPaths: outcome.rewrittenPaths,
                 failures: outcome.failures
             )
-        } catch let refusal as NoteFileOperations.OperationError {
+        } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")
         }
     }
@@ -147,7 +147,7 @@ extension VaultAPI {
         do {
             let orphaned = try session.trashNote(at: path)
             return TrashSummary(path: path, applied: !session.isDryRun, orphaned: orphaned)
-        } catch let refusal as NoteFileOperations.OperationError {
+        } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")
         }
     }
