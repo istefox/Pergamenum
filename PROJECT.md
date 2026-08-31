@@ -31,7 +31,7 @@ decision to reopen SPEC §14).
 
 ### Phase 3 — Card and canvas debt
 - [x] PG-078 share one accessor for the Nota-vs-Testo color check across three files  (completed: 2026-08-31)
-- [ ] PG-079 make CardCommand's button-vs-submenu split a property instead of three switches
+- [x] PG-079 make CardCommand's button-vs-submenu split a property instead of three switches  (completed: 2026-08-31)
 - [ ] PG-068 report a problem on BoardCardMenu copyLink miss instead of a silent return
 - [ ] PG-069 make board-lookup nil fallbacks consistent instead of asymmetric
 - [ ] PG-070 consume RenameOutcome.rewrittenPaths or drop it

@@ -46,9 +46,15 @@ struct BoardCardActions {
 
     // MARK: Performing
 
-    /// The commands a plain button invokes - everything except the two the surfaces draw
-    /// as submenus, which carry an argument (a colour, a size) the command alone does not.
+    /// The commands a plain button invokes - everything `CardCommand.carriesArgument` says
+    /// is not built from a submenu's own values.
     func run(_ command: CardCommand, on node: CanvasNode) {
+        guard !command.carriesArgument else {
+            // Every argument-carrying command draws as a `Menu` on both surfaces, so
+            // reaching here means one rendered it as something it is not.
+            assertionFailure("\(command) carries an argument and is invoked through its submenu")
+            return
+        }
         switch command {
         case .open:
             open(node)
@@ -67,11 +73,10 @@ struct BoardCardActions {
         case .delete:
             workspace.delete(nodeIDs: targets(node))
         case .color, .textColor, .textAlign, .foldHeadings, .resize:
-            // Every one of these draws as a `Menu`, never as a button, so reaching here
-            // means a surface rendered one as something it is not. `.foldHeadings` belongs
-            // to this group and not to the buttons above it: it carries an argument - which
-            // heading - the command alone does not (ADR-0028 §D8).
-            assertionFailure("\(command) carries an argument and is invoked through its submenu")
+            // Unreachable: `carriesArgument` is true for every case listed here, and the
+            // guard above already returned. Listed rather than `default` so a new
+            // argument-carrying case must be routed here deliberately.
+            break
         }
     }
 
@@ -227,23 +232,33 @@ enum BoardCardMenuItems {
     private static func item(
         _ command: CardCommand, node: CanvasNode, actions: BoardCardActions
     ) -> some View {
-        switch command {
-        case .color:
-            Menu(command.title) { colorItems(node: node, actions: actions) }
-        case .textColor:
-            Menu(command.title) { textColorItems(node: node, actions: actions) }
-        case .textAlign:
-            Menu(command.title) { textAlignItems(node: node, actions: actions) }
-        case .foldHeadings:
-            Menu(command.title) { foldItems(node: node, actions: actions) }
-        case .resize:
-            Menu(command.title) { sizeItems(node: node, actions: actions) }
-        case .fitToCrop:
+        if command.carriesArgument {
+            Menu(command.title) { argumentItems(for: command, node: node, actions: actions) }
+        } else if command == .fitToCrop {
             // Drawn inside «Ridimensiona» by `sizeItems`, which is where the card menu has
             // always drawn it: nothing of its own at the top level.
             EmptyView()
-        case .open, .editText, .copyLink, .crop, .removeCrop, .duplicate, .delete:
+        } else {
             Button(command.title) { actions.run(command, on: node) }
+        }
+    }
+
+    /// The submenu an argument-carrying command draws, one mapping shared by the context
+    /// menu (`item` above) and the command bar (`BoardCardControls.control`), so the two
+    /// cannot build a different submenu for the same command.
+    @ViewBuilder
+    static func argumentItems(
+        for command: CardCommand, node: CanvasNode, actions: BoardCardActions
+    ) -> some View {
+        switch command {
+        case .color: colorItems(node: node, actions: actions)
+        case .textColor: textColorItems(node: node, actions: actions)
+        case .textAlign: textAlignItems(node: node, actions: actions)
+        case .foldHeadings: foldItems(node: node, actions: actions)
+        case .resize: sizeItems(node: node, actions: actions)
+        case .open, .editText, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete:
+            // Unreachable: `carriesArgument` is false for every case listed here.
+            EmptyView()
         }
     }
 

@@ -249,3 +249,17 @@ private func groupNode() -> CanvasNode {
     let identifiers = CardCommand.allCases.map(\.identifier)
     #expect(Set(identifiers).count == CardCommand.allCases.count)
 }
+
+// MARK: - PG-079: `carriesArgument`
+
+// Pins the classification `BoardCardActions.run` refuses to perform and both surfaces draw
+// as a submenu, by assertion rather than only by a DEBUG-time `assertionFailure` - the
+// Release-silent gap the ticket is about. `.crop` stays false here even though the command
+// bar collapses it into a submenu too (`BoardCardMenuItems.cropItems`): that is a bar-layout
+// choice, not an argument the command carries.
+@Test func onlyTheFiveArgumentCarryingCommandsAreClassifiedAsSuch() {
+    let expected: Set<CardCommand> = [.color, .textColor, .textAlign, .foldHeadings, .resize]
+    for command in CardCommand.allCases {
+        #expect(command.carriesArgument == expected.contains(command))
+    }
+}

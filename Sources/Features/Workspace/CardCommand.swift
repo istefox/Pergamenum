@@ -94,6 +94,22 @@ enum CardCommand: String, CaseIterable, Sendable {
         }
     }
 
+    /// Whether performing this command needs an argument the command alone does not name -
+    /// which colour, which size, which heading. Both surfaces draw such a command as a
+    /// submenu built from that argument's own values, and `BoardCardActions.run` refuses to
+    /// perform it.
+    ///
+    /// Not "does this draw as a submenu": the command bar also collapses «Ritaglia» into a
+    /// dropdown, which is a layout decision about a row of icons
+    /// (`BoardCardMenuItems.cropItems`), not a property of the command. `.crop` performs on
+    /// its own and is false here.
+    var carriesArgument: Bool {
+        switch self {
+        case .color, .textColor, .textAlign, .foldHeadings, .resize: true
+        case .open, .editText, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete: false
+        }
+    }
+
     /// The commands `node` offers, in menu order, given whether it can be cropped
     /// (`BoardContentLayer.isCroppable(node)`, unchanged - it needs the board's zoom, so
     /// only the caller can answer it) and whether it already carries a crop
