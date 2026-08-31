@@ -120,7 +120,7 @@ struct BoardFileOperations {
 
     /// What a board rename actually did: its destination and anything that failed
     /// along the way.
-    struct RenameOutcome {
+    struct RenameOutcome: Equatable, Sendable {
         var newPath: String
         var failures: [String] = []
     }
