@@ -71,11 +71,6 @@ struct NoteListPane: View {
     /// names it, and the "Nuova cartella" sheet's parent picker needs every folder, not
     /// only the ones a note happens to sit in.
     @State var diskFolders: [String] = []
-    /// `WorkspaceBrowser`'s own `folderOperations` (`WorkspaceBrowser.swift:82`), reused
-    /// here for the collision check the "Nuova cartella" sheet blocks on - the very
-    /// predicate `CanvasStore.createFolder` itself refuses against, so the sheet cannot
-    /// enable a "Crea" the write will then reject.
-    @State var folderOperations: FolderFileOperations?
     /// Whether the "Nuova cartella" sheet is up.
     @State var creatingFolder = false
     /// The folder the rename sheet is editing (toolbar "Rinomina" on a folder row).
@@ -562,7 +557,6 @@ struct NoteListPane: View {
     private func rebuild() {
         let folders = vault.root.map { CanvasStore(root: $0).allFolders() } ?? []
         diskFolders = folders
-        folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         tree = NoteTree.build(from: vault.index.allNotes, folders: folders)
         // A move, a rename or a delete has just taken rows away, and an id kept in the lit
         // set after its row has gone is an id a drag would still carry (ADR-0026 §D4).

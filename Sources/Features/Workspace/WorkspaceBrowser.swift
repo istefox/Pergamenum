@@ -62,24 +62,13 @@ struct WorkspaceBrowser: View {
     /// `rebuild()`: the tree is the only thing that reads it, and the picker no longer
     /// infers folders from board paths.
     @State private var folders: [String] = []
-    /// The board rules over the open vault's root, kept for the same reason
-    /// `folderOperations` below is: `CanvasStore.init` resolves symlinks and standardizes
-    /// the URL, and `boardNameIsAvailable` is asked live, on every keystroke of the create
-    /// sheet.
+    /// The board rules over the open vault's root: `CanvasStore.init` resolves symlinks
+    /// and standardizes the URL, and `boardNameIsAvailable` is asked live, on every
+    /// keystroke of the create sheet, so this is built once per scan in `rebuild()` rather
+    /// than once per call. The folder-side equivalent no longer lives here (PG-051):
+    /// `nameIsAvailable`/`contentCounts` are read through `vault`, which owns the
+    /// write-capable `FolderFileOperations` this view used to hold directly.
     @State private var canvasStore: CanvasStore?
-    /// The folder rules over the open vault's root, built once per scan rather than once
-    /// per call. `NoteStore.init` resolves symlinks and standardizes the URL - filesystem
-    /// syscalls, not string work - and `nameIsAvailable` is asked live, on every keystroke
-    /// of both sheets, so deriving this in a getter spent a symlink resolution and an
-    /// allocation per typed character on top of the `fileExists` the check is actually
-    /// for. Nil with no vault open, which is also when the toolbar has nothing to act on.
-    ///
-    /// Assigned in `rebuild()`, whose trigger is `vault.scanGeneration`, and the root is
-    /// this value's only input: a vault switch bumps that counter (`VaultController.open`
-    /// awaits `rescan()`), and a close takes this whole view down rather than leaving it
-    /// on screen (`RootView.workspacePane` draws it only with a root), so the stored
-    /// value cannot outlive the root it was built from.
-    @State private var folderOperations: FolderFileOperations?
     /// Which creation is waiting for the sheet, `nil` for none - the presentation *is*
     /// the kind, so the two toolbar buttons cannot both be answered by one boolean that
     /// has forgotten which of them was pressed (ADR-0025 §D7).
@@ -282,10 +271,10 @@ struct WorkspaceBrowser: View {
     /// (ADR-0022 §D11, R-03).
     ///
     /// The same function the performing code guards with
-    /// (`FolderFileOperations.nameIsAvailable`), reached through the vault's root - not a
-    /// second spelling of the rule for the sheet to disagree with.
+    /// (`FolderFileOperations.nameIsAvailable`), read through `VaultController` (PG-051) -
+    /// not a second spelling of the rule for the sheet to disagree with.
     private func nameIsAvailable(_ name: String, in parent: String) -> Bool {
-        folderOperations?.nameIsAvailable(name, in: parent) ?? true
+        vault.nameIsAvailable(name, in: parent)
     }
 
     /// The same predicate asked about the kind of thing being named (ADR-0025 §D7):
@@ -336,7 +325,7 @@ struct WorkspaceBrowser: View {
     /// than in the dialog's own body: `contentCounts` enumerates the whole subtree and a
     /// view body is evaluated as often as SwiftUI likes.
     private func confirmDelete(of folder: String) {
-        pendingDelete = .folder(path: folder, counts: folderOperations?.contentCounts(at: folder))
+        pendingDelete = .folder(path: folder, counts: vault.contentCounts(at: folder))
     }
 
     /// The same dialog for a board, with nothing to count: deleting one removes one file
@@ -591,7 +580,6 @@ struct WorkspaceBrowser: View {
         // The two file rules, rebuilt here with the rest of what the root decides rather
         // than on every access (see their declarations).
         canvasStore = vault.root.map { CanvasStore(root: $0) }
-        folderOperations = vault.root.map { FolderFileOperations(store: NoteStore(root: $0)) }
         let boards = canvasStore?.allBoards() ?? []
         folders = canvasStore?.allFolders() ?? []
         // Folders and boards, two lists and two kinds of row (ADR-0025 §D2). No naming
