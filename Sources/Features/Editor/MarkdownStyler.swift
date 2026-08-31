@@ -251,9 +251,34 @@ enum MarkdownStyler {
             if characters[index] == "*", span == .bold || span == .italic {
                 result.append(contentsOf: emphasisMarkers(at: index, length: length, span: span, absolute: absolute))
             }
+            // PG-084: a run's own inner content is itself line-shaped text and may contain
+            // another marker pair the forward walk below would otherwise never see, since it
+            // advances straight past the whole matched `length` - `**~~testo~~**` is one atomic
+            // `.bold` match with `~~testo~~` entirely inside it. Recursing through this same
+            // entry point on just the inner slice (markers excluded) finds it, offset back into
+            // the outer line's coordinates by the closure passed to the recursive call.
+            if let marker = markerLength(for: span), length > 2 * marker {
+                let innerStart = index + marker
+                let innerText = String(characters[innerStart..<(index + length - marker)])
+                result.append(contentsOf: inlineSpans(in: innerText) { offset, len in
+                    absolute(innerStart + offset, len)
+                })
+            }
             index += length
         }
         return result
+    }
+
+    /// The width of `span`'s own opening/closing delimiter, for the three run spans another
+    /// span can nest inside (PG-084). `nil` for every span `inlineSpan(in:at:)` matches
+    /// atomically - `.code`, `.tag`, `.scheduled`, `.due`, `.annotation` have no inner content
+    /// of their own to recurse into.
+    private static func markerLength(for span: Span) -> Int? {
+        switch span {
+        case .bold, .strikethrough: 2
+        case .italic: 1
+        default: nil
+        }
     }
 
     /// What starts at `index`, if anything does.

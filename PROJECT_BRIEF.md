@@ -102,6 +102,20 @@ Binding order, each yielding a usable app (SPEC §13):
   Non ancora verificato a mano da Stefano (interazione di editing inline, fallback su commit
   vuoto, andata e ritorno con Obsidian, doppio click che apre ancora la destinazione) - dovuto
   insieme agli altri controlli manuali ancora pendenti a fine sessione.
+- 2026-08-31: **PG-084 (parser degli span inline di `MarkdownStyler` reso ricorsivo per gli span
+  annidati) implementato via plan mode nativo, 1981 test unitari verdi.** Difetto trovato durante
+  l'hand-check di ADR-0028: `**~~testo~~**` veniva riconosciuto come un solo span `.bold` atomico,
+  senza mai emettere lo span `.strikethrough` interno - `index += length` nel forward-walk saltava
+  a piè pari qualsiasi coppia di marcatori annidata. Corretto con una ricorsione attraverso lo
+  stesso punto d'ingresso `inlineSpans(in:absolute:)`, sul contenuto interno del run (marcatori
+  esclusi), con una chiusura `absolute` che ricompone l'offset - nessuna seconda logica di parsing
+  aggiunta. Applicazione degli attributi invariata: `addAttributes(_:range:)` unisce già le chiavi
+  del dizionario, quindi grassetto (font) e barrato (strikethroughStyle) su range sovrapposti si
+  combinano da soli. `~~` resta non occultabile per design (invariato). Unico file di produzione
+  toccato: `Sources/Features/Editor/MarkdownStyler.swift`, letto sia dall'editor della nota sia
+  dalla card del Workspace (ADR-0028 §D1) - la correzione raggiunge entrambe le superfici senza
+  ulteriori modifiche. Nessuna superficie UI propria da verificare a mano (fix puro del parser,
+  già coperto dalle suite di test dell'editor e della card).
 - 2026-08-31: **PG-074 + PG-086 (checkbox interattiva e indicizzazione dei task per lo strumento
   To Do del Workspace) implementati, catena a cinque parti, 1964 test unitari verdi, suite UI
   105/105 al netto degli stessi quattro fallimenti intermittenti pre-esistenti (`PG-072`,
