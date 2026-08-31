@@ -99,12 +99,13 @@ extension EditorDecorationDelegate {
     /// pass and a layout pass, and an indentation read one pass late would indent the wrong
     /// item.
     ///
-    /// The rule is `listMarkerSpan`'s own, restated (a space is one column, a tab four,
-    /// one level per two columns, capped at six): that function's grammar is private to
+    /// The rule is `listMarkerSpan`'s own, restated: the marker grammar is private to
     /// `MarkdownStyler.swift` and this re-read has to happen against the live characters
     /// anyway, which is what the whole `stillSpells` family exists for. The checkbox
     /// refusal is restated with it for the same reason it is restated there - `- [ ] fai`
-    /// is a task line, and its rendering is not this one (ADR-0028 §D2, R-06).
+    /// is a task line, and its rendering is not this one (ADR-0028 §D2, R-06). The level
+    /// itself is `ListNesting.level` (PG-085) - CommonMark's content-column depth, computed
+    /// fresh from `text`, the whole document, exactly as this function already receives it.
     private static func stillSpellsAListMarker(_ text: NSString, at range: NSRange) -> ListItem? {
         guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return nil }
         let candidate = text.substring(with: range)
@@ -130,7 +131,11 @@ extension EditorDecorationDelegate {
         }
 
         let columns = indent.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
-        return ListItem(indent: indent.count, kind: kind, level: min(1 + columns / 2, 6))
+        let swiftText = text as String
+        guard let lineStart = Range(NSRange(location: range.location, length: 0), in: swiftText)?.lowerBound
+        else { return nil }
+        let level = ListNesting.level(in: swiftText, lineStart: lineStart, indent: columns)
+        return ListItem(indent: indent.count, kind: kind, level: level)
     }
 
     /// What a live re-read of a list marker's run says about drawing it: how many of its

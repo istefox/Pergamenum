@@ -102,6 +102,36 @@ Binding order, each yielding a usable app (SPEC §13):
   Non ancora verificato a mano da Stefano (interazione di editing inline, fallback su commit
   vuoto, andata e ritorno con Obsidian, doppio click che apre ancora la destinazione) - dovuto
   insieme agli altri controlli manuali ancora pendenti a fine sessione.
+- 2026-08-31: **PG-085 (profondità di annidamento delle liste calcolata con la regola CommonMark
+  della content-column) implementato via chain `concept-to-code` hybrid, 1991 test unitari verdi -
+  ultimo item aperto della Phase 4.** Follow-up dichiarato e rimandato da ADR-0028
+  (Consequences/Negative): il classificatore calcolava il livello dalla sola indentazione della
+  riga (`1 + colonne/2`, tab=4), ignorando che CommonMark misura contro la *content column*
+  dell'item genitore (inizio marcatore + larghezza marcatore + spazio) - variabile con la
+  larghezza del marcatore (`- ` = 2 colonne, `12. ` = 4). Mai osservabile su una lista scritta
+  dentro Pergamenum (la propria continuazione da Invio emette sempre la spaziatura della vecchia
+  regola); solo su liste incollate da Obsidian o altrove con indentazione CommonMark-corretta.
+  Nuova funzione pura condivisa `ListNesting.level(in:lineStart:indent:)`
+  (`Sources/Core/Editor/ListNesting.swift`, solo Foundation, accanto a `ListContinuation.swift`):
+  percorre il documento all'indietro dall'inizio della riga per ricostruire lo stack delle content
+  column ancora aperte, poi assegna `1 +` quante ne stanno ancora sotto l'indentazione della riga
+  (il tie-break di CommonMark: aggancia alla lista aperta più profonda che ancora ci sta), con il
+  cap a 6 invariato. Le due implementazioni duplicate che prima calcolavano la stessa formula
+  sbagliata - `MarkdownStyler.listMarkerSpan` (passata di styling) ed
+  `EditorDecorationDelegate+ListRendering.stillSpellsAListMarker` (ri-lettura a layout-time) - ora
+  chiamano entrambe questa unica funzione, ciascuna ricalcolandola dai caratteri live al proprio
+  momento: invariato l'invariante "nessun livello mai in cache" su `HiddenMarker.Kind.list`
+  (un valore letto un passaggio troppo tardi indenterebbe l'item sbagliato). `ListContinuation.swift`
+  (continuazione/rinumerazione da Invio, meccanismo distinto) non toccato, come da scope
+  dell'interview. Test riscritti: le vecchie asserzioni a colonna fissa in `MarkdownStylerTests.swift`
+  ora usano scenari con un vero genitore (un item isolato senza genitore resta livello 1 con
+  qualsiasi indentazione, per CommonMark); la fixture `nested` di `MarkupHidingTests.swift` ha
+  guadagnato un vero genitore, e i suoi helper un parametro `at:`/`offset` per puntare a un
+  paragrafo diverso dal primo. Nuovo `Tests/ListNestingTests.swift` copre l'algoritmo
+  direttamente (nesting a 3 spazi sotto marcatori stretti/larghi, tie-break, cap a livello 6, un
+  paragrafo di primo livello che chiude ogni lista aperta). `xcodebuild build` verde su tutti e
+  tre gli scheme; suite unitaria 1991/1991 verde. Nessun hand-check dovuto (fix puro di
+  algoritmo/rendering, nessuna nuova superficie UI).
 - 2026-08-31: **PG-084 (parser degli span inline di `MarkdownStyler` reso ricorsivo per gli span
   annidati) implementato via plan mode nativo, 1981 test unitari verdi.** Difetto trovato durante
   l'hand-check di ADR-0028: `**~~testo~~**` veniva riconosciuto come un solo span `.bold` atomico,

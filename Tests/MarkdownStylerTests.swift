@@ -426,18 +426,72 @@ private func hasAnyListMarker(_ line: String) -> Bool {
 }
 
 @Test func nestedListMarkersReportTheirIndentLevel() {
-    // R-01, and R-05's precondition: the level a nested item reports, which the view
-    // later turns into indentation. A space is one column, a tab four - `\t- sotto`
-    // reaches the same level `    - sotto` (four spaces) does.
-    #expect(spans("  - sotto").contains(.listMarker(kind: .bullet, level: 2)))
-    #expect(spans("    - sotto").contains(.listMarker(kind: .bullet, level: 3)))
-    #expect(spans("\t- sotto").contains(.listMarker(kind: .bullet, level: 3)))
+    // R-01, R-04: a child's level is measured against its parent's content column
+    // (marker start + marker width + the mandatory space), not a fixed division of its
+    // own indentation - so every case here supplies a real parent line to nest under.
+    let twoSpaceChild = "- padre\n  - sotto"
+    #expect(spans(twoSpaceChild).contains(.listMarker(kind: .bullet, level: 2)))
+
+    // Four spaces is still >= the "- " parent's content column (2), so it nests at the
+    // same depth a two-space child does - it is not a deeper level on its own.
+    let fourSpaceChild = "- padre\n    - sotto"
+    #expect(spans(fourSpaceChild).contains(.listMarker(kind: .bullet, level: 2)))
+
+    // A tab counts as four columns, reaching the same content column a four-space child
+    // does.
+    let tabChild = "- padre\n\t- sotto"
+    #expect(spans(tabChild).contains(.listMarker(kind: .bullet, level: 2)))
+
+    // A genuinely three-deep chain - each line's own marker opens the content column the
+    // next line nests under.
+    let threeDeep = "- uno\n  - due\n    - tre"
+    #expect(spans(threeDeep).contains(.listMarker(kind: .bullet, level: 3)))
+}
+
+@Test func aLoneIndentedListLineWithNoParentIsLevelOne() {
+    // No preceding line means no open ancestor list to measure against - CommonMark's
+    // content-column rule has nothing to compare indentation to, so an isolated indented
+    // item is still level 1, however deep its own indentation. This replaces the old
+    // fixed-column classifier's behavior of computing a level from indentation alone.
+    #expect(spans("  - sotto").contains(.listMarker(kind: .bullet, level: 1)))
+    #expect(spans("    - sotto").contains(.listMarker(kind: .bullet, level: 1)))
+    #expect(spans("\t- sotto").contains(.listMarker(kind: .bullet, level: 1)))
+    let twentySpaces = String(repeating: " ", count: 20)
+    #expect(spans("\(twentySpaces)- sotto").contains(.listMarker(kind: .bullet, level: 1)))
 }
 
 @Test func deepIndentationIsCappedAtLevelSix() {
-    // 20 columns of indent would compute to level 11 uncapped; the classifier caps it.
-    let twentySpaces = String(repeating: " ", count: 20)
-    #expect(spans("\(twentySpaces)- sotto").contains(.listMarker(kind: .bullet, level: 6)))
+    // R-07: six genuinely nested levels, each indented two columns past its parent's
+    // content column - a seventh would compute to level 7 uncapped; the classifier caps
+    // it at 6.
+    let sixDeep = (1...6)
+        .map { String(repeating: "  ", count: $0 - 1) + "- n\($0)" }
+        .joined(separator: "\n")
+    #expect(spans(sixDeep).contains(.listMarker(kind: .bullet, level: 6)))
+
+    let sevenDeep = sixDeep + "\n" + String(repeating: "  ", count: 6) + "- n7"
+    #expect(spans(sevenDeep).contains(.listMarker(kind: .bullet, level: 6)))
+}
+
+@Test func orderedMarkersOfDifferentWidthProduceDifferentChildThresholds() {
+    // R-05: CommonMark's content column depends on marker width, so a 3-space child does
+    // NOT nest under an ordered parent whose marker is wide enough to push the content
+    // column past 3 - it stays a level-1 sibling instead.
+    let underWideOrdinal = "12. padre\n   - troppo vicino"
+    #expect(spans(underWideOrdinal).contains(.listMarker(kind: .bullet, level: 1)))
+
+    // The same three-space indent DOES nest under a narrow "- " parent (content column 2).
+    let underBullet = "- padre\n   - sotto"
+    #expect(spans(underBullet).contains(.listMarker(kind: .bullet, level: 2)))
+}
+
+@Test func spansTieBreakAttachesToTheDeepestListThatStillFits() {
+    // R-06: an indentation strictly between two open lists' content columns attaches to
+    // the deeper one still <= it. "- a" (content column 2) opens a child "- b" (indent 2,
+    // content column 4); a third line indented 3 does not reach "- b"'s content column
+    // (4) but does reach "- a"'s (2), so it nests as "- b"'s sibling, not as its child.
+    let text = "- a\n  - b\n   - c"
+    #expect(spans(text).contains(.listMarker(kind: .bullet, level: 2)))
 }
 
 @Test func aCheckboxLineHasNoListMarkerSpanButKeepsItsTaskMarker() {

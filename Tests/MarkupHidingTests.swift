@@ -59,10 +59,12 @@ private func frames(
 /// would when laying it out - for the tests that check the hook's return value directly
 /// rather than a measured frame.
 @MainActor
-private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: String) -> NSTextParagraph? {
+private func substitutedParagraph(
+    _ delegate: EditorDecorationDelegate, note: String, at location: Int = 0
+) -> NSTextParagraph? {
     let storage = NSTextContentStorage()
     storage.textStorage?.setAttributedString(NSAttributedString(string: note))
-    let range = (note as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
+    let range = (note as NSString).paragraphRange(for: NSRange(location: location, length: 0))
     return delegate.textContentStorage(storage, textParagraphWith: range)
 }
 
@@ -75,19 +77,20 @@ private func substitutedParagraph(_ delegate: EditorDecorationDelegate, note: St
 private func displayedParagraph(
     _ note: String,
     markers: [HiddenMarker],
+    at location: Int = 0,
     hidesMarkup: Bool = true,
     revealed: Set<Int> = []
 ) -> NSTextParagraph? {
     let delegate = EditorDecorationDelegate()
-    delegate.apply(hiddenMarkers: [0: markers], hidingMarkup: hidesMarkup)
+    delegate.apply(hiddenMarkers: [location: markers], hidingMarkup: hidesMarkup)
     _ = delegate.apply(revealedParagraphs: revealed)
-    return substitutedParagraph(delegate, note: note)
+    return substitutedParagraph(delegate, note: note, at: location)
 }
 
-/// The length of `note`'s first paragraph, the number a substitution of it must return
-/// unchanged.
-private func firstParagraphLength(of note: String) -> Int {
-    (note as NSString).paragraphRange(for: NSRange(location: 0, length: 0)).length
+/// The length of `note`'s paragraph starting at `location` (the first paragraph by
+/// default), the number a substitution of it must return unchanged.
+private func firstParagraphLength(of note: String, at location: Int = 0) -> Int {
+    (note as NSString).paragraphRange(for: NSRange(location: location, length: 0)).length
 }
 
 @MainActor
@@ -251,8 +254,12 @@ private func firstParagraphLength(of note: String) -> Int {
     private static let ordered = "1. uno\ncorpo\n"
     private static let orderedMarker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .list)
 
-    /// Two spaces of indentation and then `- `: four characters, all inside the range.
-    private static let nested = "  - annidato\ncorpo\n"
+    /// A real parent line, then two spaces of indentation and `- `: four characters, all
+    /// inside the range. PG-085: CommonMark's content-column rule measures a child against
+    /// its actual parent, so an isolated indented line has no ancestor to nest under and
+    /// this fixture needs one - `nestedOffset` is where the child's own paragraph starts.
+    private static let nested = "- padre\n  - annidato\ncorpo\n"
+    private static let nestedOffset = (("- padre\n") as NSString).length
     private static let nestedMarker = HiddenMarker(range: NSRange(location: 0, length: 4), kind: .list)
 
     /// A list item whose text is emphasised - the SPEC's coexistence case. `**` opens at
@@ -262,11 +269,11 @@ private func firstParagraphLength(of note: String) -> Int {
     private static let mixedOpen = HiddenMarker(range: NSRange(location: 2, length: 2), kind: .emphasis)
     private static let mixedClose = HiddenMarker(range: NSRange(location: 13, length: 2), kind: .emphasis)
 
-    private static let everyCase: [(note: String, markers: [HiddenMarker])] = [
-        (unordered, [unorderedMarker]),
-        (ordered, [orderedMarker]),
-        (nested, [nestedMarker]),
-        (mixed, [mixedList, mixedOpen, mixedClose])
+    private static let everyCase: [(note: String, offset: Int, markers: [HiddenMarker])] = [
+        (unordered, 0, [unorderedMarker]),
+        (ordered, 0, [orderedMarker]),
+        (nested, nestedOffset, [nestedMarker]),
+        (mixed, 0, [mixedList, mixedOpen, mixedClose])
     ]
 
     /// First and loudest (R-10's structural half, and the plan's highest-listed risk): the
@@ -275,12 +282,12 @@ private func firstParagraphLength(of note: String) -> Int {
     /// because a substitution that changes length does not show up as a wrong picture - it
     /// shows up later as offsets drifting between the storage and the layout.
     @Test func theStorageNeverGainsOrLosesACharacterForAnyListCase() {
-        for (note, markers) in Self.everyCase {
+        for (note, offset, markers) in Self.everyCase {
             let source = (note as NSString).length
             for hides in [true, false] {
-                for revealed in [Set<Int>(), Set([0])] {
+                for revealed in [Set<Int>(), Set([offset])] {
                     let measured = frames(
-                        text: note, markers: [0: markers], hidesMarkup: hides, revealed: revealed
+                        text: note, markers: [offset: markers], hidesMarkup: hides, revealed: revealed
                     )
                     #expect(
                         measured.length == source,
@@ -296,11 +303,11 @@ private func firstParagraphLength(of note: String) -> Int {
     /// constraint, which is why a bullet can only replace a marker character and never be
     /// inserted before one.
     @Test func theDisplayedParagraphKeepsItsStoredLength() {
-        for (note, markers) in Self.everyCase {
-            let displayed = displayedParagraph(note, markers: markers)
+        for (note, offset, markers) in Self.everyCase {
+            let displayed = displayedParagraph(note, markers: markers, at: offset)
             #expect(displayed != nil, "«\(note)»: nessuna sostituzione")
             #expect(
-                displayed?.attributedString.length == firstParagraphLength(of: note),
+                displayed?.attributedString.length == firstParagraphLength(of: note, at: offset),
                 "«\(note)»: lunghezza \(displayed?.attributedString.length ?? -1)"
             )
         }
@@ -333,7 +340,7 @@ private func firstParagraphLength(of note: String) -> Int {
     /// them being flush left.
     @Test func aNestedItemIndentsFurtherThanATopLevelOne() {
         let top = displayedParagraph(Self.unordered, markers: [Self.unorderedMarker])
-        let deeper = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        let deeper = displayedParagraph(Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset)
         let topStyle = top?.attributedString
             .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         let deeperStyle = deeper?.attributedString
@@ -350,7 +357,7 @@ private func firstParagraphLength(of note: String) -> Int {
     /// The style covers the whole displayed paragraph, not only the marker: a wrapped item
     /// that lost its indentation on its second line would still pass every assertion above.
     @Test func theParagraphStyleCoversTheWholeDisplayedParagraph() {
-        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset)
         var effective = NSRange(location: 0, length: 0)
         // `effectiveRange:` reports the run where the WHOLE attribute dictionary is constant,
         // which the collapsed-indent font split breaks even though `.paragraphStyle` alone is
@@ -368,7 +375,7 @@ private func firstParagraphLength(of note: String) -> Int {
     /// into `collapsedFont`, so the only thing indenting the line is the paragraph style
     /// above. Left visible, they would be added to it.
     @Test func theLeadingIndentIsDrawnInTheCollapsedFont() {
-        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker])
+        let displayed = displayedParagraph(Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset)
         let first = displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         let second = displayed?.attributedString.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
 
@@ -381,7 +388,11 @@ private func firstParagraphLength(of note: String) -> Int {
     /// out - no substitution, no paragraph style, nothing shifting under the caret.
     @Test func theHookReturnsNilForARevealedListParagraph() {
         #expect(displayedParagraph(Self.unordered, markers: [Self.unorderedMarker], revealed: [0]) == nil)
-        #expect(displayedParagraph(Self.nested, markers: [Self.nestedMarker], revealed: [0]) == nil)
+        #expect(
+            displayedParagraph(
+                Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset, revealed: [Self.nestedOffset]
+            ) == nil
+        )
     }
 
     /// ADR-0028 §D10: the whole feature is behind `hidesMarkup`, and off means off,
@@ -396,7 +407,9 @@ private func firstParagraphLength(of note: String) -> Int {
             ) == nil
         )
         #expect(
-            displayedParagraph(Self.nested, markers: [Self.nestedMarker], hidesMarkup: false) == nil
+            displayedParagraph(
+                Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset, hidesMarkup: false
+            ) == nil
         )
     }
 
