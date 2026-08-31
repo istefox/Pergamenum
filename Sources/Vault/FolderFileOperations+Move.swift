@@ -89,7 +89,10 @@ extension FolderFileOperations {
         let plan = try movePlan(relativePath, toParent: parent)
         let oldFolder = Self.normalized(relativePath)
 
-        let movedNotes = walk(oldFolder).notePaths.map {
+        // `movePlan` above has already thrown if `oldFolder` does not exist, so `walk`
+        // returning nil here is unreachable in practice - the fallback exists only to
+        // satisfy the optional PG-048 introduced, not because a real folder is missing.
+        let movedNotes = (walk(oldFolder)?.notePaths ?? []).map {
             MovedNote(old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
         }
 
