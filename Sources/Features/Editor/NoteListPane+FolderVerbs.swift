@@ -76,7 +76,12 @@ extension NoteListPane {
     /// `.folder` `pendingDelete` case, over the same `FolderFileOperations.contentCounts`.
     private var deletingFolderCounts: String {
         guard let path = deletingFolder else { return "" }
-        let counts = folderOperations?.contentCounts(at: path) ?? (notes: 0, subfolders: 0)
+        // `nil` when the folder could not be read (PG-048) - never defaulted to zero,
+        // which is the answer for a folder that is genuinely empty.
+        guard let counts = folderOperations?.contentCounts(at: path) else {
+            return "Non è stato possibile leggere il contenuto della cartella. "
+                + "Non è una cancellazione definitiva."
+        }
         return "Va nel Cestino del Finder: \(counts.notes) nota/e, "
             + "\(counts.subfolders) sottocartella/e. Non è una cancellazione definitiva."
     }

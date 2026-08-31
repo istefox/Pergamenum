@@ -152,7 +152,7 @@ private let sampleBoard = """
     try vault.write(header, to: "01 Progetti/vibrofer/sub1/c.md")
     try vault.write(header, to: "01 Progetti/vibrofer/sub2/d.md")
 
-    let counts = vault.operations.contentCounts(at: "01 Progetti/vibrofer")
+    let counts = try #require(vault.operations.contentCounts(at: "01 Progetti/vibrofer"))
 
     #expect(counts.notes == 4)
     #expect(counts.subfolders == 2)
@@ -163,9 +163,25 @@ private let sampleBoard = """
     try vault.write(header, to: "01 Progetti/vibrofer/a.md")
     try vault.write(header, to: "01 Progetti/vibrofer/.trash/nascosta.md")
 
-    let counts = vault.operations.contentCounts(at: "01 Progetti/vibrofer")
+    let counts = try #require(vault.operations.contentCounts(at: "01 Progetti/vibrofer"))
 
     #expect(counts.notes == 1)
+    #expect(counts.subfolders == 0)
+}
+
+@Test func contentCountsReturnsNilForAFolderThatDoesNotExist() throws {
+    let vault = try FolderOpsVault()
+
+    #expect(vault.operations.contentCounts(at: "01 Progetti/non-esiste") == nil)
+}
+
+@Test func contentCountsReturnsZeroNotNilForARealEmptyFolder() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("01 Progetti/vuota")
+
+    let counts = try #require(vault.operations.contentCounts(at: "01 Progetti/vuota"))
+
+    #expect(counts.notes == 0)
     #expect(counts.subfolders == 0)
 }
 

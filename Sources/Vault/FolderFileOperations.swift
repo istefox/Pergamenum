@@ -58,8 +58,13 @@ struct FolderFileOperations {
     /// Every `.md` note and every subdirectory under `folder`, counted recursively and
     /// skipping the descendants of any `VaultLayout.isExcludedDirectory` directory,
     /// exactly as `CanvasStore.allBoards()` does. The board file itself is not a note.
-    func contentCounts(at folder: String) -> (notes: Int, subfolders: Int) {
-        let walked = walk(folder)
+    ///
+    /// `nil` when `folder` could not be read (PG-048) - a genuinely empty folder and a
+    /// stale selection pointing at one that is gone are not the same answer, and a
+    /// destructive-delete dialog reading this must not claim to know a count it never
+    /// took.
+    func contentCounts(at folder: String) -> (notes: Int, subfolders: Int)? {
+        guard let walked = walk(folder) else { return nil }
         return (notes: walked.notePaths.count, subfolders: walked.subfolders)
     }
 
@@ -72,20 +77,30 @@ struct FolderFileOperations {
     /// one at a time, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are
     /// never entered - and, more to the point here, never counted.
     ///
+    /// `nil` when `folder` does not exist or its enumerator could not be built (PG-048) -
+    /// never silently folded into "nothing here", which is the answer for a folder that
+    /// exists and is empty.
+    ///
     /// Not `private`: `moveFolder` reads it from `FolderFileOperations+Move.swift`, and
     /// `private` in Swift is file-scoped, so an extension in a sibling file cannot see it.
     /// Same reason as `repointBoardsPlan` above, which `BoardFileOperations` already
     /// reaches from outside this file.
-    func walk(_ folder: String) -> (notePaths: [String], subfolders: Int) {
+    func walk(_ folder: String) -> (notePaths: [String], subfolders: Int)? {
         let directory = folder.isEmpty
             ? store.root
             : store.root.appending(path: folder, directoryHint: .isDirectory)
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return nil
+        }
 
         let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
         guard let enumerator = FileManager.default.enumerator(
             at: directory, includingPropertiesForKeys: keys, options: [.skipsPackageDescendants]
         ) else {
-            return ([], 0)
+            return nil
         }
 
         var notePaths: [String] = []
@@ -260,7 +275,9 @@ struct FolderFileOperations {
 
         // Read before anything moves: afterwards there is nothing at the old path to
         // enumerate, and the caller needs both halves of each pair to follow its tabs.
-        let movedNotes = walk(oldFolder).notePaths.map {
+        // `renamePlan` above has already thrown if `oldFolder` is missing, so `walk`
+        // returning nil here is unreachable in practice (PG-048).
+        let movedNotes = (walk(oldFolder)?.notePaths ?? []).map {
             MovedNote(old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
         }
 
@@ -315,7 +332,9 @@ struct FolderFileOperations {
         }
         guard isDirectory(folder) else { throw FileOperationError.missing(relativePath) }
 
-        let trashedNotePaths = walk(folder).notePaths
+        // The guard above has already confirmed `folder` exists, so `walk` returning
+        // nil here is unreachable in practice (PG-048).
+        let trashedNotePaths = walk(folder)?.notePaths ?? []
         var resulting: NSURL?
         do {
             try FileManager.default.trashItem(

@@ -204,7 +204,7 @@ struct WorkspaceBrowser: View {
                 pendingDelete = nil
                 switch pending {
                 case .board(let path): actions.deleteBoard(path)
-                case .folder(let path, _, _): actions.delete(path)
+                case .folder(let path, _): actions.delete(path)
                 }
             }
             .accessibilityIdentifier("workspace-delete-confirm")
@@ -336,10 +336,7 @@ struct WorkspaceBrowser: View {
     /// than in the dialog's own body: `contentCounts` enumerates the whole subtree and a
     /// view body is evaluated as often as SwiftUI likes.
     private func confirmDelete(of folder: String) {
-        let counts = folderOperations?.contentCounts(at: folder) ?? (notes: 0, subfolders: 0)
-        pendingDelete = .folder(
-            path: folder, notes: counts.notes, subfolders: counts.subfolders
-        )
+        pendingDelete = .folder(path: folder, counts: folderOperations?.contentCounts(at: folder))
     }
 
     /// The same dialog for a board, with nothing to count: deleting one removes one file
@@ -834,12 +831,16 @@ private struct PendingWorkspaceRename: Identifiable {
 /// than a struct with two integers a board would have to spell as zero.
 private enum PendingWorkspaceDelete {
     case board(path: String)
-    case folder(path: String, notes: Int, subfolders: Int)
+    /// `counts` is `nil` when `FolderFileOperations.contentCounts` could not read the
+    /// folder (PG-048) - a stale selection, or no operations object at all - and must
+    /// never be defaulted to zero: zero is the answer for a folder that is genuinely
+    /// empty, not for one nobody could count.
+    case folder(path: String, counts: (notes: Int, subfolders: Int)?)
 
     var path: String {
         switch self {
         case .board(let path): path
-        case .folder(let path, _, _): path
+        case .folder(let path, _): path
         }
     }
 
@@ -847,14 +848,19 @@ private enum PendingWorkspaceDelete {
 
     /// R-10's sentence for a folder, with the two nouns agreeing with their numbers - «1
     /// nota e 2 sottocartelle» rather than «1 note e 2 sottocartelle» - and the board's
-    /// own, which has nothing to count and says what it costs instead.
+    /// own, which has nothing to count and says what it costs instead. A folder whose
+    /// content could not be read (PG-048) gets its own sentence naming that, rather than
+    /// silently claiming "0 e 0".
     var message: String {
         switch self {
         case .board:
             "La board va nel Cestino del Finder, ma l'app non può annullare l'operazione."
-        case .folder(_, let notes, let subfolders):
-            "Verranno eliminate \(notes) \(notes == 1 ? "nota" : "note") e "
-                + "\(subfolders) \(subfolders == 1 ? "sottocartella" : "sottocartelle"). "
+        case .folder(_, .none):
+            "Non è stato possibile leggere il contenuto della cartella. Va nel Cestino "
+                + "del Finder, ma l'app non può annullare l'operazione."
+        case .folder(_, .some(let counts)):
+            "Verranno eliminate \(counts.notes) \(counts.notes == 1 ? "nota" : "note") e "
+                + "\(counts.subfolders) \(counts.subfolders == 1 ? "sottocartella" : "sottocartelle"). "
                 + "La cartella va nel Cestino del Finder, ma l'app non può annullare l'operazione."
         }
     }
