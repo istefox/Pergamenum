@@ -6,6 +6,11 @@ struct NodeCard: View {
     let node: CanvasNode
     let subfolder: String?
     let workspace: WorkspaceController
+    /// Focus for the `.link` card's inline title field (PG-073) - the same
+    /// `@FocusState`-driven commit-on-focus-loss shape `StickyTextCard` uses for its own
+    /// text editing, mirrored here rather than in a separate file since a `TextField` needs
+    /// none of that card's `NSViewRepresentable`/Esc machinery.
+    @FocusState private var isTitleFieldFocused: Bool
     /// Shift, for the crop editor's aspect lock (ADR-0020 D5) - the same modifiers the
     /// board already tracks for the resize grips, threaded one level further in.
     var modifiers: EventModifiers = []
@@ -17,7 +22,7 @@ struct NodeCard: View {
         case .file(let path, _):
             fileCard(path)
         case .link(let url):
-            linkCard(url)
+            linkCard(node, url)
         case .group(let label):
             groupCard(label)
         case .unknown(let type):
@@ -135,12 +140,12 @@ struct NodeCard: View {
         }
     }
 
-    private func linkCard(_ url: String) -> some View {
+    private func linkCard(_ node: CanvasNode, _ url: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: symbol(forScheme: url))
                     .foregroundStyle(theme.color(.accentPrimary))
-                Text(url).themedText(.body).lineLimit(1)
+                linkTitle(node, url)
             }
             Text(URL(string: url)?.scheme.map { "\($0)://" } ?? "link")
                 .themedText(.caption, color: .textTertiary)
@@ -155,6 +160,34 @@ struct NodeCard: View {
                 .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
         )
         .themedShadow(.card)
+    }
+
+    /// The card's title area (PG-073): the stored title when `.renameLink` last set one, the
+    /// raw URL otherwise (R-08's fallback), or a `TextField` seeded from
+    /// `workspace.editingTitleDraft` while `.renameLink` is being edited on this node.
+    /// Committing (Return, or losing focus - the same focus-loss commit `StickyTextCard`
+    /// already follows) writes it through `endTitleEdit(commit: true)`; Esc discards it via
+    /// `.onExitCommand`, which a plain `TextField` delivers on its own, unlike the rich text
+    /// editor's `NSTextView` that needed `FormattingTextView`'s own key handling.
+    @ViewBuilder
+    private func linkTitle(_ node: CanvasNode, _ url: String) -> some View {
+        if workspace.editingTitleNodeID == node.id {
+            TextField("", text: Bindable(workspace).editingTitleDraft)
+                .textFieldStyle(.plain)
+                .themedText(.body)
+                .lineLimit(1)
+                .focused($isTitleFieldFocused)
+                .onAppear { isTitleFieldFocused = true }
+                .onSubmit { workspace.endTitleEdit(commit: true) }
+                .onExitCommand { workspace.endTitleEdit(commit: false) }
+                .onChange(of: isTitleFieldFocused) { _, focused in
+                    if !focused, workspace.editingTitleNodeID == node.id {
+                        workspace.endTitleEdit(commit: true)
+                    }
+                }
+        } else {
+            Text(LinkCardTitle.read(from: node) ?? url).themedText(.body).lineLimit(1)
+        }
     }
 
     /// Schemes SPEC §9 singles out for their own icon.

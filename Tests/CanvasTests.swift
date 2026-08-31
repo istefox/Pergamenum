@@ -611,6 +611,112 @@ private struct TemporaryRoot: ~Copyable {
     controller.detach()
 }
 
+// PG-073 (R-04): begin seeds the draft from the stored title, or "" when unset.
+@MainActor
+@Test func beginTitleEditSeedsTheDraftFromTheStoredTitleOrEmptyWhenUnset() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let untitled = controller.addLink("https://example.com", at: .zero)
+    controller.beginTitleEdit(nodeID: untitled)
+    #expect(controller.editingTitleNodeID == untitled)
+    #expect(controller.editingTitleDraft == "")
+    controller.endTitleEdit(commit: false)
+
+    let titled = controller.addLink("https://example.org", at: .zero)
+    controller.setTitle("Documentazione", forNodeID: titled)
+    controller.beginTitleEdit(nodeID: titled)
+    #expect(controller.editingTitleDraft == "Documentazione")
+    controller.detach()
+}
+
+// PG-073 (R-05): commit with a non-empty draft writes `pergamenum-title` and the title reads
+// back correctly.
+@MainActor
+@Test func beginTitleEditCommitWithNonEmptyDraftWritesTheTitleKey() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addLink("https://example.com", at: .zero)
+    controller.beginTitleEdit(nodeID: id)
+    controller.editingTitleDraft = "Documentazione"
+    controller.endTitleEdit(commit: true)
+
+    #expect(controller.editingTitleNodeID == nil)
+    let node = try #require(controller.document.node(id: id))
+    #expect(LinkCardTitle.read(from: node) == "Documentazione")
+    controller.detach()
+}
+
+// PG-073 (R-06): commit with an empty draft removes the key entirely, never writes "".
+@MainActor
+@Test func endTitleEditCommitWithEmptyDraftRemovesTheTitleKeyRatherThanWritingEmpty() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addLink("https://example.com", at: .zero)
+    controller.setTitle("Documentazione", forNodeID: id)
+    controller.beginTitleEdit(nodeID: id)
+    controller.editingTitleDraft = ""
+    controller.endTitleEdit(commit: true)
+
+    let node = try #require(controller.document.node(id: id))
+    #expect(LinkCardTitle.read(from: node) == nil)
+    #expect(node.unknown[LinkCardTitle.key] == nil)
+    controller.detach()
+}
+
+// PG-073 (R-07): Esc (`commit: false`) leaves the stored node unchanged.
+@MainActor
+@Test func endTitleEditWithoutCommitLeavesTheStoredTitleUnchanged() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addLink("https://example.com", at: .zero)
+    controller.setTitle("Documentazione", forNodeID: id)
+    controller.beginTitleEdit(nodeID: id)
+    controller.editingTitleDraft = "scartato"
+    controller.endTitleEdit(commit: false)
+
+    #expect(controller.editingTitleNodeID == nil)
+    let node = try #require(controller.document.node(id: id))
+    #expect(LinkCardTitle.read(from: node) == "Documentazione")
+    controller.detach()
+}
+
+@MainActor
+@Test func beginTitleEditIgnoresANonLinkNode() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addStickyNote("appunto", at: .zero)
+    controller.beginTitleEdit(nodeID: id)
+    #expect(controller.editingTitleNodeID == nil)
+    controller.detach()
+}
+
+// PG-073 (R-09): a duplicated `.link` node carries the same `pergamenum-title` value.
+@MainActor
+@Test func duplicatingATitledLinkNodeCarriesTheTitleAlong() throws {
+    let root = try TemporaryRoot()
+    let controller = WorkspaceController()
+    controller.attach(to: CanvasStore(root: root.url))
+
+    let id = controller.addLink("https://example.com", at: .zero)
+    controller.setTitle("Documentazione", forNodeID: id)
+
+    let copies = controller.duplicate(nodeIDs: [id])
+    let copyID = try #require(copies.first)
+    let copy = try #require(controller.document.node(id: copyID))
+    #expect(LinkCardTitle.read(from: copy) == "Documentazione")
+    controller.detach()
+}
+
 @MainActor
 @Test func keepsNodesGrabbableWhenResizedToNothing() throws {
     let root = try TemporaryRoot()

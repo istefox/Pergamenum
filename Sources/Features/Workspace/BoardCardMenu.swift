@@ -60,6 +60,8 @@ struct BoardCardActions {
             open(node)
         case .editText:
             workspace.beginTextEdit(nodeID: node.id)
+        case .renameLink:
+            workspace.beginTitleEdit(nodeID: node.id)
         case .copyLink:
             copyLink(to: node)
         case .crop:
@@ -259,7 +261,7 @@ enum BoardCardMenuItems {
         case .textAlign: textAlignItems(node: node, actions: actions)
         case .foldHeadings: foldItems(node: node, actions: actions)
         case .resize: sizeItems(node: node, actions: actions)
-        case .open, .editText, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete:
+        case .open, .editText, .renameLink, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete:
             // Unreachable: `carriesArgument` is false for every case listed here.
             EmptyView()
         }

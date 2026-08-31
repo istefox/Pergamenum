@@ -32,6 +32,11 @@ enum CardCommand: String, CaseIterable, Sendable {
     /// note editor has none either: fold there comes from `OutlinePane`'s chevron, outside the
     /// editor (ADR-0028 §D8).
     case foldHeadings
+    /// «Rinomina» (PG-073, SPEC §6.4 row 7 / §6.5): begins inline editing of a `.link` card's
+    /// title, offered only there for the same reason `.editText` is offered only on `.text` -
+    /// double click is already spoken for on a link card (`NSWorkspace.open(URL)`), so this
+    /// command is the only trigger.
+    case renameLink
     case resize
     case fitToCrop
     case crop
@@ -53,6 +58,7 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .textColor: "Colore testo"
         case .textAlign: "Allineamento"
         case .foldHeadings: "Ripiega titoli"
+        case .renameLink: "Rinomina"
         case .resize: "Ridimensiona"
         case .fitToCrop: "Adatta al ritaglio"
         case .crop: "Ritaglia"
@@ -85,6 +91,7 @@ enum CardCommand: String, CaseIterable, Sendable {
         case .textColor: "paintbrush"
         case .textAlign: "text.aligncenter"
         case .foldHeadings: "chevron.up.chevron.down"
+        case .renameLink: "pencil"
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .fitToCrop: "aspectratio"
         case .crop: "crop"
@@ -106,7 +113,7 @@ enum CardCommand: String, CaseIterable, Sendable {
     var carriesArgument: Bool {
         switch self {
         case .color, .textColor, .textAlign, .foldHeadings, .resize: true
-        case .open, .editText, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete: false
+        case .open, .editText, .renameLink, .copyLink, .crop, .fitToCrop, .removeCrop, .duplicate, .delete: false
         }
     }
 
@@ -132,6 +139,11 @@ enum CardCommand: String, CaseIterable, Sendable {
         // menu slot.
         let opener: CardCommand = { if case .text = node.kind { .editText } else { .open } }()
         var commands: [CardCommand] = [opener, .copyLink, .color]
+        // PG-073: «Rinomina» is offered only on a `.link` node - every other card kind has
+        // no editable title of its own (a `.text` card's own text is edited via `.editText`).
+        if case .link = node.kind {
+            commands.append(.renameLink)
+        }
         // ADR-0027 §D7: whole-card text colour and alignment sit right after «Colore»,
         // only on a `.text` node - every other card kind has no text to colour or align.
         // ADR-0028 §D8 adds «Ripiega titoli» at the end of that same group, for the same

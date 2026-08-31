@@ -540,6 +540,38 @@ final class WorkspaceController {
         editingTextNodeID = nil
     }
 
+    /// The `.link` card's title being written into (PG-073), transient like `editingTextNodeID`
+    /// above and for the same reason: the document is mutated once, at `endTitleEdit(commit:)`.
+    var editingTitleNodeID: String?
+    /// The field's own draft, same reasoning as `editingTextDraft`: Esc, an outside click and a
+    /// focus change all commit the same value instead of each holding their own copy.
+    var editingTitleDraft: String = ""
+
+    /// Enters inline editing on a `.link` node's title - the «Rinomina» command, the only
+    /// trigger (double click is already spoken for: `NSWorkspace.open(URL)`, SPEC §6.4 row 7).
+    func beginTitleEdit(nodeID: String) {
+        guard case .link = document.node(id: nodeID)?.kind else { return }
+        // No two editors of different kinds open at once, the same rule `beginCrop`/
+        // `beginTextEdit` already follow for each other - a `.link` node is never a `.text`
+        // node, so the two sessions can never legitimately overlap, but a stale
+        // `editingTextNodeID` left over from a different card still has to be closed cleanly.
+        if croppingNodeID != nil { endCrop(confirm: true) }
+        if editingTextNodeID != nil { endTextEdit(commit: true) }
+        select(nodeID: nodeID, adding: false)
+        editingTitleNodeID = nodeID
+        editingTitleDraft = LinkCardTitle.read(from: document.node(id: nodeID)!) ?? ""
+    }
+
+    /// Leaves title editing. `commit` writes `editingTitleDraft` through `setTitle`; `false`
+    /// discards it (Esc is the only caller that ever does).
+    func endTitleEdit(commit: Bool) {
+        guard let id = editingTitleNodeID else { return }
+        if commit {
+            setTitle(editingTitleDraft, forNodeID: id)
+        }
+        editingTitleNodeID = nil
+    }
+
     /// «Ripiega titoli» (ADR-0028 §D8): folds or unfolds one heading of one `.text` card,
     /// the card-side mirror of `VaultController.toggleFold(_:)`.
     ///
@@ -634,6 +666,21 @@ final class WorkspaceController {
             guard let index = document.nodes.firstIndex(where: { $0.id == id }) else { return }
             if case .text = document.nodes[index].kind {
                 document.nodes[index].kind = .text(text)
+            }
+        }
+    }
+
+    /// «Rinomina» (PG-073, SPEC §6.4 row 7 / §6.5): the `.link` card's title, same non-destructive
+    /// shape as `setTextColor(_:forNodeIDs:)` above - an empty title removes the key rather than
+    /// storing `""`, so the card falls back to displaying its URL exactly as an unset title does.
+    func setTitle(_ title: String, forNodeID id: String) {
+        mutate { document in
+            guard let index = document.nodes.firstIndex(where: { $0.id == id }) else { return }
+            guard case .link = document.nodes[index].kind else { return }
+            if title.isEmpty {
+                document.nodes[index].unknown.removeValue(forKey: LinkCardTitle.key)
+            } else {
+                document.nodes[index].unknown[LinkCardTitle.key] = .string(title)
             }
         }
     }
