@@ -82,7 +82,12 @@ struct StickyTextCard: View {
             // makes - one fold model reached from two places, never two (ADR-0028 §D8). Unguarded,
             // unlike the two closures above: the click can only arrive from this card's own text
             // view while it is editable, so there is no other card's session to close over.
-            onToggleFold: { entry in workspace.toggleFold(entry, forNodeID: node.id) }
+            onToggleFold: { entry in workspace.toggleFold(entry, forNodeID: node.id) },
+            // A click on a task line's checkbox glyph (PG-074) - unguarded on `isEditing`, and
+            // deliberately so: the card's own click-hit-test does the same "this card only"
+            // narrowing `onToggleFold` above needs a guard for, but `toggleTask` itself reads
+            // whichever of the two states (`editingTextDraft` / the node's stored text) applies.
+            onToggleTask: { lineIndex in workspace.toggleTask(atLineIndex: lineIndex, forNodeID: node.id) }
         )
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's

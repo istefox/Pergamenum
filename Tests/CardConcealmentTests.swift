@@ -129,6 +129,22 @@ private func makeCard(
         #expect(card.coordinator.decorations.hidesMarkup)
     }
 
+    /// PG-086's own precondition, alongside the one above: a checkbox line's marker lands in the
+    /// same table under a `.checkbox` kind, five characters wide (the whole `- [ ]`), not folded
+    /// into `.list` - a checkbox is never a list marker (ADR-0028 §D11).
+    @Test func theStylingWalkFillsAChekboxEntryForATaskLine() throws {
+        let card = try makeCard("- [ ] fai\n**grassetto**")
+        let markers = card.coordinator.hiddenMarkers
+        let checkboxParagraph = 0
+
+        #expect(Set(markers.keys) == [checkboxParagraph, checkboxParagraph + 10])
+        #expect(
+            markers[checkboxParagraph] == [
+                HiddenMarker(range: NSRange(location: 0, length: 5), kind: .checkbox)
+            ]
+        )
+    }
+
     /// Principle 1, at the card's own level: styling changes how the source is drawn and never
     /// what it says. The card's text is a node in a `.canvas` file on disk.
     @Test func theCardsStringIsByteIdenticalAfterStylingAndReveal() throws {

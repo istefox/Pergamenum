@@ -137,6 +137,25 @@ Corpo con un [[Altro titolo]] e un ![[schema.pdf]].
     #expect(outcome.failures.map(\.path) == ["Rotta.md"])
 }
 
+@Test func scansATaskBearingBoardIntoABoardTaskRecord() throws {
+    let vault = try TemporaryVault()
+    let canvasStore = CanvasStore(root: vault.root)
+    let node = CanvasNode(
+        id: "node1", kind: .text("- [ ] Alfa\n- [x] Beta"), x: 0, y: 0, width: 260, height: 120
+    )
+    try canvasStore.save(CanvasDocument(nodes: [node]), board: "01 Progetti/Lavagna.canvas")
+    // A freehand Testo card whose first line does not parse as a task: never entered.
+    let plain = CanvasNode(id: "node2", kind: .text("solo testo"), x: 0, y: 0, width: 260, height: 120)
+    try canvasStore.save(CanvasDocument(nodes: [plain]), board: "Vuota.canvas")
+
+    let outcome = VaultScanner(root: vault.root).scan()
+    #expect(outcome.boardTaskRecords.map(\.relativePath) == ["01 Progetti/Lavagna.canvas"])
+    let record = try #require(outcome.boardTaskRecords.first)
+    #expect(record.tasks.map(\.sourcePath) == ["01 Progetti/Lavagna.canvas", "01 Progetti/Lavagna.canvas"])
+    #expect(record.tasks.map(\.nodeID) == ["node1", "node1"])
+    #expect(record.tasks.map(\.state) == [.open, .done])
+}
+
 // MARK: - A vault in iCloud Drive (principle 6)
 
 @Test func reportsANoteICloudHasEvictedRatherThanLosingIt() throws {
@@ -205,6 +224,32 @@ private func makeRecord(
         relativePath: path, title: title, frontmatter: frontmatter, linkTargets: links,
         tasks: tasks, modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
     )
+}
+
+@MainActor
+@Test func allTasksMergesNoteSourcedAndBoardSourcedTasksAtOnePoint() throws {
+    let noteTask = try #require(TaskParser.parse(line: "- [ ] Alfa", sourcePath: "A.md", lineIndex: 0))
+    var boardTask = try #require(
+        TaskParser.parse(line: "- [ ] Beta", sourcePath: "Lavagna.canvas", lineIndex: 0)
+    )
+    boardTask.nodeID = "node1"
+
+    var index = IndexSnapshot()
+    let records = [makeRecord(path: "A.md", title: "Alfa", tasks: [noteTask])]
+    let boardRecords = [
+        BoardTaskRecord(
+            relativePath: "Lavagna.canvas", tasks: [boardTask],
+            modifiedAt: .distantPast, byteSize: 0, contentHash: "-"
+        ),
+    ]
+    index.replaceAll(
+        with: .init(records: records, failures: [], boardTaskRecords: boardRecords), duration: .zero
+    )
+
+    // Every task query reads `allTasks`, so this is the one point where the merge has to
+    // hold: a board contributes here and nowhere else.
+    #expect(Set(index.allTasks.map(\.sourcePath)) == ["A.md", "Lavagna.canvas"])
+    #expect(index.allTasks.first { $0.sourcePath == "Lavagna.canvas" }?.nodeID == "node1")
 }
 
 @MainActor

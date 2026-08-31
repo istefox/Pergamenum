@@ -638,6 +638,46 @@ final class WorkspaceController {
         }
     }
 
+    /// A click on a task line's checkbox glyph (PG-074, plan Section 3): toggles that one
+    /// line between open and done, `@done(...)` stamp and clear included via `TaskParser.line
+    /// (for:settingState:today:)` - the same rewrite `VaultSession.apply(_:to:)` performs for a
+    /// note-sourced task, reused here rather than duplicated.
+    ///
+    /// Two write paths, because the card has two states (plan decision 1). While `id` is being
+    /// edited, the draft is mutated and committed through the existing `endTextEdit(commit:)`,
+    /// so the toggle is one entry on the card's own undo stack rather than a competing document
+    /// write; at rest, `setText(_:forNodeID:)` writes straight through `mutate`, the same call
+    /// `endTextEdit(commit:)` itself makes.
+    func toggleTask(atLineIndex lineIndex: Int, forNodeID id: String) {
+        let isEditingThisCard = editingTextNodeID == id
+        let text: String
+        if isEditingThisCard {
+            text = editingTextDraft
+        } else if case .text(let stored) = document.node(id: id)?.kind {
+            text = stored
+        } else {
+            return
+        }
+
+        let lines = text.components(separatedBy: "\n")
+        guard lines.indices.contains(lineIndex),
+              let task = TaskParser.parse(line: lines[lineIndex], sourcePath: id, lineIndex: lineIndex)
+        else { return }
+
+        let newState: TaskItem.State = task.state == .done ? .open : .done
+        let newLine = TaskParser.line(for: task, settingState: newState, today: .today)
+        guard let updated = TaskParser.rewrite(
+            text, at: lineIndex, expecting: lines[lineIndex], with: newLine
+        ) else { return }
+
+        if isEditingThisCard {
+            editingTextDraft = updated
+            endTextEdit(commit: true)
+        } else {
+            setText(updated, forNodeID: id)
+        }
+    }
+
     func delete(nodeIDs: Set<String>) {
         mutate { document in
             document.nodes.removeAll { nodeIDs.contains($0.id) }

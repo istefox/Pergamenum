@@ -87,6 +87,22 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-31: **PG-074 + PG-086 (checkbox interattiva e indicizzazione dei task per lo strumento
+  To Do del Workspace) implementati, catena a cinque parti, 1964 test unitari verdi, suite UI
+  105/105 al netto degli stessi quattro fallimenti intermittenti pre-esistenti (`PG-072`,
+  `PG-076`).** Marcatore a quattro stati in `MarkdownStyler`, sostituzione del glifo checkbox
+  condivisa verbatim fra editor della nota e card del Workspace (un solo carattere sostituito,
+  offset 3 del marcatore a cinque caratteri, lunghezza del paragrafo invariata per il vincolo
+  TextKit 2), click-to-toggle funzionante sia a card ferma sia in editing
+  (`WorkspaceController.toggleTask`), indicizzazione dei task di bordo (`.canvas`) tramite un
+  nuovo `BoardTaskRecord`/tabella `boardTasks` in `IndexCache` (schema invariato a 3, additivo)
+  unita in `IndexSnapshot.allTasks` - l'unico punto che ogni query legge, quindi Attività e i
+  connettori la ereditano gratis - e un solo punto di risoluzione per la scrittura
+  (`VaultSession.apply`) che ora redirige un task di bordo verso `CanvasStore` invece che verso
+  `NoteStore`. `PG-086` (glifo checkbox reale) si è rivelato lo stesso lavoro di `PG-074` e non
+  ha richiesto un'implementazione separata. Non ancora verificato a mano da Stefano su un vault
+  reale (stati del glifo, toggle a riposo/in editing, marcatura `@done(...)` sul `.canvas` su
+  disco, andata e ritorno con Attività e con Obsidian) - dovuto separatamente.
 - 2026-08-30: **ADR-0028 (rendering WYSIWYG markdown - occultamento marcatori e nuovi glifi di
   lista - portato dalla Nota alle card `.text` del Workspace) implementato per intero, 8 task su
   8, 1930 test unitari verdi, weakening-scan CLEAN, suite UI 105/105 al netto degli stessi

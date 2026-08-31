@@ -52,6 +52,11 @@ struct CardTextView: NSViewRepresentable {
     /// (ADR-0028 §D8) - the card's half of `NoteTextView.onToggleFold`. Reported rather than acted
     /// on for the reason the two above are: this view does not know which node id the fold is for.
     var onToggleFold: (Int) -> Void = { _ in }
+    /// A click landed on a task line's checkbox glyph, naming the zero-based line it toggled
+    /// (SPEC §7.1, PG-074) - reported for the same reason `onToggleFold` above is: this view
+    /// does not know which node id, or which of the two write paths (at rest / while editing),
+    /// the toggle has to go through.
+    var onToggleTask: (Int) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -91,6 +96,8 @@ struct CardTextView: NSViewRepresentable {
         // through the same weak coordinator - reading `parent` at call time is what makes it
         // follow the card as SwiftUI replaces the struct.
         textView.onToggleFold = { [weak coordinator] entry in coordinator?.parent.onToggleFold(entry) }
+        // A click on a task line's checkbox glyph (PG-074), reported the same way.
+        textView.onToggleTask = { [weak coordinator] lineIndex in coordinator?.parent.onToggleTask(lineIndex) }
 
         // The rendering rule, handed over in the two lines that carry it - the same pair
         // `NoteTextView.swift:148-149` assigns, to the same class rather than to a fork of it
@@ -284,6 +291,7 @@ struct CardTextView: NSViewRepresentable {
                 case .emphasisMarker: .emphasis
                 case .embedRun: .embed
                 case .listMarker: .list
+                case .taskMarker: .checkbox
                 default: nil
                 }
                 guard let kind else { continue }

@@ -46,6 +46,11 @@ struct HiddenMarker: Equatable, Sendable {
         /// `.list` marker carries no level of its own, because the characters are the
         /// level and the table can go stale between a styling pass and a layout pass.
         case list
+        /// A task line's whole `- [ ]`/`- [x]`/`- [>]`/`- [-]` marker (§7.1), drawn as a
+        /// real checkbox glyph in place of the coloured bracket characters. Anchored at the
+        /// span itself, not at its paragraph's start - unlike `.list`, a checkbox's
+        /// indentation is not part of what this kind collapses.
+        case checkbox
     }
 
     let range: NSRange
@@ -231,6 +236,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return list
         }
 
+        // The checkbox branch, beside the list one and under the same length rule: a
+        // task's state character is *substituted*, never inserted or removed (§7.1). Like
+        // list, it honours `revealedParagraphs` internally so a task line reveals on the
+        // caret's paragraph, and it must run before the generic path below or its `[ ]`
+        // would be hidden outright instead of drawn as a checkbox.
+        if let checkbox = checkboxParagraph(at: range, storage: storage) {
+            return checkbox
+        }
+
         guard !revealedParagraphs.contains(range.location),
               let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
@@ -407,6 +421,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // `.list` entry into the generic collapsing loop, which would hide the `- ` outright
         // instead of turning it into a bullet (ADR-0028 §D4).
         case .list: false
+        // Never handled here either, for the same structural reason as `.list`: a
+        // checkbox marker is drawn by its own dedicated `checkboxParagraph(at:storage:)`
+        // branch, re-validated through `stillSpellsATaskMarker`.
+        case .checkbox: false
         }
     }
 

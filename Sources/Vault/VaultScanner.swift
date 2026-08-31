@@ -15,8 +15,13 @@ struct VaultScanner: Sendable {
         var failures: [(path: String, reason: String)]
         /// How many of the records came from the cache rather than from disk.
         var reusedFromCache = 0
+        /// The tasks every scanned `.canvas` board's own To Do card(s) carry (PG-074,
+        /// plan Section 4). A board with no task-bearing `.text` node contributes nothing
+        /// here, never an empty record - the same "absent, not empty" rule
+        /// `WorkspaceController.toggleFold` follows for `foldedHeadings`.
+        var boardTaskRecords: [BoardTaskRecord] = []
 
-        var isEmpty: Bool { records.isEmpty && failures.isEmpty }
+        var isEmpty: Bool { records.isEmpty && failures.isEmpty && boardTaskRecords.isEmpty }
     }
 
     /// Records already known, keyed by path, from `.pergamenum/cache.db`.
@@ -27,6 +32,10 @@ struct VaultScanner: Sendable {
     /// being avoided.
     var cached: [String: IndexCache.Entry] = [:]
 
+    /// Cached board task records, keyed by the board's relative path - `cached`'s sibling for
+    /// the second table `IndexCache` now carries.
+    var cachedBoardTasks: [String: IndexCache.BoardEntry] = [:]
+
     /// How many notes the last scan took from the cache, for the index panel.
     final class Statistics: @unchecked Sendable {
         var reused = 0
@@ -34,9 +43,11 @@ struct VaultScanner: Sendable {
 
     func scan() -> Outcome {
         let store = NoteStore(root: root)
+        let canvasStore = CanvasStore(root: root)
         var records: [NoteRecord] = []
         var failures: [(String, String)] = []
         var reused = 0
+        var boardTaskRecords: [BoardTaskRecord] = []
 
         let keys: [URLResourceKey] = [
             .isDirectoryKey, .nameKey, .fileSizeKey, .contentModificationDateKey,
@@ -64,6 +75,16 @@ struct VaultScanner: Sendable {
                 continue
             }
             guard url.pathExtension.lowercased() == "md" else {
+                if url.pathExtension.lowercased() == CanvasStore.fileExtension {
+                    let boardPath = Self.relativePath(of: url, under: root)
+                    if let entry = cachedBoardTasks[boardPath], isUnchanged(entry, at: url) {
+                        boardTaskRecords.append(entry.record.record)
+                    } else if let record = Self.boardTaskRecord(
+                        at: url, relativePath: boardPath, store: canvasStore
+                    ) {
+                        boardTaskRecords.append(record)
+                    }
+                }
                 if let note = Self.evictedNoteName(from: name) {
                     let placeholder = Self.relativePath(of: url, under: root)
                     failures.append((
@@ -86,7 +107,49 @@ struct VaultScanner: Sendable {
                 failures.append((relativePath, "\(error)"))
             }
         }
-        return Outcome(records: records, failures: failures, reusedFromCache: reused)
+        return Outcome(
+            records: records, failures: failures, reusedFromCache: reused,
+            boardTaskRecords: boardTaskRecords
+        )
+    }
+
+    /// The tasks one board contributes to the index, or nil when it holds none.
+    ///
+    /// The entry criterion is deliberately content-based, per the SPEC (plan Section 4): no
+    /// marker on `CanvasNode` distinguishes a purpose-made To Do card from a freehand Testo
+    /// card that starts the same way, so a `.text` node is scanned exactly when its own first
+    /// line already parses as a task line. A board unreadable or with no such node contributes
+    /// nothing, silently - a `.canvas` a freehand card lives on is not a scanner failure.
+    private static func boardTaskRecord(
+        at url: URL, relativePath: String, store: CanvasStore
+    ) -> BoardTaskRecord? {
+        guard let data = try? Data(contentsOf: url),
+              let document = try? store.load(board: relativePath)
+        else { return nil }
+
+        var tasks: [TaskItem] = []
+        for node in document.nodes {
+            guard case .text(let text) = node.kind else { continue }
+            let firstLine = text.prefix { $0 != "\n" }
+            guard TaskParser.parse(line: String(firstLine), sourcePath: relativePath, lineIndex: 0) != nil
+            else { continue }
+
+            tasks += TaskParser.tasks(in: text, sourcePath: relativePath).map { task in
+                var task = task
+                task.nodeID = node.id
+                return task
+            }
+        }
+        guard !tasks.isEmpty else { return nil }
+
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return BoardTaskRecord(
+            relativePath: relativePath,
+            tasks: tasks,
+            modifiedAt: values?.contentModificationDate ?? Date(timeIntervalSince1970: 0),
+            byteSize: values?.fileSize ?? data.count,
+            contentHash: NoteStore.hash(data)
+        )
     }
 
     /// Percent-decoded, separator-normalised path of `url` relative to `root`.
@@ -131,6 +194,23 @@ extension VaultScanner {
     }
 
     private func isUnchanged(_ entry: IndexCache.Entry, at url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return Self.isUnchanged(
+            entry,
+            size: values?.fileSize ?? -1,
+            modifiedAt: values?.contentModificationDate
+        )
+    }
+
+    /// Whether a cached board-task row still describes the file on disk - `isUnchanged(_:at:)`'s
+    /// sibling for the second table.
+    static func isUnchanged(_ entry: IndexCache.BoardEntry, size: Int, modifiedAt: Date?) -> Bool {
+        guard let modifiedAt else { return false }
+        return entry.byteSize == size
+            && abs(entry.modifiedAt.timeIntervalSince(modifiedAt)) < 1
+    }
+
+    private func isUnchanged(_ entry: IndexCache.BoardEntry, at url: URL) -> Bool {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         return Self.isUnchanged(
             entry,
