@@ -63,8 +63,8 @@ enum MarkdownStyler {
         enum ListKind: Equatable, Sendable { case bullet, ordered }
         /// The marker and its trailing space - `- `, `* `, `+ `, `12. `, `12) ` - starting
         /// after the line's own indentation, never on a checkbox line (ADR-0028 §D2).
-        /// `level` is `1 + indentColumns / 2` (a space is one column, a tab four), capped
-        /// at 6. Carries no range for the item's text and no paragraph range: the view
+        /// `level` is CommonMark's content-column nesting depth (`ListNesting.level`, PG-085),
+        /// capped at 6. Carries no range for the item's text and no paragraph range: the view
         /// derives the paragraph itself.
         case listMarker(kind: ListKind, level: Int)
     }
@@ -219,7 +219,9 @@ enum MarkdownStyler {
         // A checkbox line is not a list line (ADR-0028 §D2), and emitting nothing at all
         // for it is the whole of R-06: with no marker to conceal there is no bullet to
         // put in its place, so `- [ ] fai` keeps exactly today's appearance.
-        if task == nil, let list = listMarkerSpan(inLine: line, absolute: absolute) {
+        if task == nil, let list = listMarkerSpan(
+            inLine: line, at: lineRange.lowerBound, in: text, absolute: absolute
+        ) {
             result.append(list)
         }
 
@@ -455,23 +457,26 @@ private func emphasisMarkers(
 /// wider trim is also why the checkbox refusal is restated here rather than left to the
 /// caller's `taskMarker(in: trimmed)` guard - `\t- [ ] fai` is a checkbox line this sees
 /// and that one cannot (§D2, R-06).
+///
+/// `lineStart`/`text` are the whole note and this line's own start in it, passed through
+/// to `ListNesting.level` (PG-085) for the CommonMark content-column depth - the classifier
+/// is no longer line-local, since a child's level depends on its enclosing item's marker
+/// width, not just its own indentation.
 private func listMarkerSpan(
     inLine line: String,
+    at lineStart: String.Index,
+    in text: String,
     absolute: (Int, Int) -> Range<String.Index>
 ) -> MarkdownStyler.StyledRange? {
     let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
     let content = line.dropFirst(indent.count)
     guard taskMarker(in: content) == nil, let marker = listMarkerLength(in: content) else { return nil }
 
-    // A space counts one column and a tab four, and the level is one per two columns,
-    // capped at six. Deliberately not CommonMark's rule, which measures the parent item's
-    // content column and so needs the whole list's state to answer for a single line;
-    // this classifier is line-local by construction, and a two-space step is what every
-    // note in this vault and every card this app writes actually uses.
     let columns = indent.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+    let level = ListNesting.level(in: text, lineStart: lineStart, indent: columns)
     return MarkdownStyler.StyledRange(
         range: absolute(indent.count, marker.length),
-        span: .listMarker(kind: marker.kind, level: min(1 + columns / 2, 6))
+        span: .listMarker(kind: marker.kind, level: level)
     )
 }
 

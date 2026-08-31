@@ -1,175 +1,177 @@
-# SPEC — PG-073: editable title affordance for the Link card
+# SPEC — PG-085: compute list nesting depth by CommonMark's content-column rule
 
-**Topic slug:** pg-073-add-an-editable-title-affordance
+**Topic slug:** pg-085-compute-list-nesting-depth-by-com
 
 ## Objectives
 
-SPEC §6.4 row 7 (Link tool) and §6.5 ("Card link URI") both require: *"icona per schema, titolo
-editabile"* — an editable title on every Link card. This has never been implemented:
-`CanvasNode.Kind.link(url: String)` carries only the URL, `NodeCard.linkCard(_:)` renders the raw
-URL string as the card's primary text, and `WorkspaceController.addLink(_:at:)` creates the node
-with no title of any kind. This chain closes that gap.
+`MarkdownStyler`'s list-nesting classifier computes a line's level from its own indentation alone
+(`level = min(1 + columns / 2, 6)`, one space = one column, one tab = four), independent of any
+other line. This disagrees with CommonMark (and Obsidian) whenever a list's actual nesting depends
+on a parent item's *content column* — the column where the parent's own text begins, which varies
+with marker width (`- ` is 2 columns wide, `12. ` is 4). A list authored inside Pergamenum never
+hits this, because Pergamenum's own list-continuation always emits indentation in multiples of the
+fixed rule; the gap is only observable on a list pasted in from Obsidian or another editor using
+CommonMark-correct indentation.
+
+This chain replaces the fixed-column formula with a genuine CommonMark content-column algorithm,
+shared as one pure function between the two places that compute it today.
+
+ADR-0028 (`docs/adr/0028-wysiwyg-markdown-in-workspace.md`), Consequences/Negative, declared this
+gap explicitly and declined to close it in that chain: *"The nesting rule is not CommonMark's
+(§D1). A list indented three spaces, or one whose nesting depends on the parent's content column,
+renders at a level this classifier computes from indentation alone and may disagree with what
+Obsidian draws. Nothing is written to disk, so the disagreement is cosmetic and reversible."*
 
 ## Scope
 
-In scope:
-- A new `pergamenum-title` prefixed property on a `.link` `CanvasNode`, read/written the same way
-  `CardTextStyle`'s `pergamenum-textColor`/`pergamenum-textAlign` and `CanvasCrop`'s
-  `pergamenum-crop` already are — never a change to `Sources/Core/Canvas/JSONCanvas.swift` itself.
-- A new `CardCommand` case that switches a Link card into an inline-editable title field, offered
-  in both the context menu and the board's command bar (ADR-0023 §D1 parity), analogous to
-  `.editText` on a `.text` card.
-- `NodeCard.linkCard(_:)` rendering the title when present, falling back to the URL when absent —
-  identical to today's display for every existing Link card on disk.
-- Empty-title-on-commit clears the property (removed, never stored as `""`) — the non-destructive
-  rule `CardTextStyle`/`CanvasCrop` already follow.
+**In scope:**
+- A new pure, shared function computing CommonMark-correct nesting level from the whole document
+  text and a target line's own range — a stack-based algorithm tracking each open list item's
+  content column, not a per-line fixed-column formula.
+- `MarkdownStyler.swift`'s `listMarkerSpan`/`listMarkerLength` (lines 458-498) call this shared
+  function instead of computing `1 + columns/2` inline.
+- `EditorDecorationDelegate+ListRendering.swift`'s `stillSpellsAListMarker` (lines 108-134) calls
+  the same shared function, re-derived from live characters at layout time exactly as today — the
+  no-caching invariant on `HiddenMarker.Kind.list` (documented at
+  `EditorDecorationDelegate.swift:37-48` and `NoteTextView+Coordinator.swift` around the
+  `hiddenMarker` factory) is preserved unchanged.
+- CommonMark's tie-breaking rule: an item whose indentation does not exactly match any open list's
+  content column attaches to the deepest open list whose content column is still ≤ the item's
+  indentation.
+- Tab handling unchanged (1 tab = 4 columns for indentation purposes — CommonMark's own rule,
+  already correctly implemented) but folded into the new content-column comparison rather than the
+  old fixed-division formula.
+- The existing level cap of 6 is preserved — `ListMarkerRendering.paragraphStyle(level:font:)`
+  already assumes `level ∈ 1...6`.
+- `Tests/MarkdownStylerTests.swift:429-440` and `Tests/MarkupHidingTests.swift:235-241,331`
+  rewritten to assert CommonMark-correct expectations (they currently assert the bug as correct
+  behavior). New tests for the ticket's own scenarios: 3-space indents, and sibling items under
+  ordered markers of different widths (`1. ` vs `12. `) producing different child thresholds.
 
-Out of scope:
-- Any change to double-click behavior (still `NSWorkspace.open(URL)`, SPEC §6.4 row 7 — unchanged).
-- Any change to the Link creation sheet's own fields (URL entry stays exactly as it is; a title is
-  never mandatory at creation).
-- Any character limit or validation on the title text (none exists elsewhere in the Workspace for
-  a card-scoped text property, and none is added here).
-- `.canvas` markdown or JSON Canvas schema changes beyond the one new prefixed key.
+**Out of scope:**
+- `Sources/Core/Editor/ListContinuation.swift`'s own "level" grouping (raw indent-column count,
+  used only for Enter-key continuation/renumbering of ordered runs) is architecturally separate
+  from rendering depth and is **not touched** by this chain, unless implementation surfaces a
+  concrete correctness bug there (not merely a naming/consistency observation).
+- No change to `.canvas`/note file content, frontmatter, or index schema — this is a rendering
+  fix only, matching ADR-0028's own "nothing is written to disk" framing.
+- No change to `ListMarkerRendering.swift`'s glyph selection or paragraph-style geometry beyond
+  what a corrected `level` value naturally produces.
+- No manual hand-check — pure algorithm/rendering correctness fix, no new UI affordance, fully
+  reachable through existing offscreen test infrastructure (`MarkupHidingTests` already drives the
+  real `EditorDecorationDelegate` against a bare `NSTextContentStorage`).
 
 ## Stack
 
-No new dependency. Same layers as ADR-0027 (Nota/Testo unification): `Sources/Core/Canvas/` (no
-change), `Sources/Features/Workspace/` (`CanvasNode.unknown`-backed property type, `CardCommand`,
-`WorkspaceController`, `NodeCard`, `BoardCardMenu`).
+Swift 6, Foundation-only for the new shared algorithm (no AppKit/SwiftUI dependency — consistent
+with `ListContinuation.swift`'s own precedent as a Foundation-only sibling type, and with
+`Sources/Core/**`'s constraint of being compiled into both command-line tools with no UI framework
+available, ADR-0001 §D1). Swift Testing for new/updated tests.
 
 ## Architecture
 
-**Storage — `LinkCardTitle`, a new file mirroring `CanvasCrop.swift`/`CardTextStyle.swift`
-exactly.** One prefixed key, `pergamenum-title`, on `CanvasNode.unknown`. `CanvasNode.init?`
-already funnels an unrecognised key into `unknown` and `rawValue` already re-emits it (the same
-mechanism `CardTextStyle`'s doc comment describes), so JSON Canvas round-trip and Obsidian
-compatibility (CLAUDE.md principle 4) come for free with zero change to `JSONCanvas.swift`.
+**New shared function**, in a new file `Sources/Core/Editor/ListNesting.swift` (Foundation-only,
+alongside `ListContinuation.swift`, which already models list-run state in the same file family):
 
 ```swift
-enum LinkCardTitle {
-    static let key = "pergamenum-title"
-
-    static func read(from node: CanvasNode) -> String? {
-        guard case .string(let value)? = node.unknown[key], !value.isEmpty else { return nil }
-        return value
-    }
+enum ListNesting {
+    /// The CommonMark-correct nesting level of a list item, computed by walking the document
+    /// text backward from `lineStart` to find every enclosing open list item's own content
+    /// column, and comparing this item's indentation against that stack.
+    static func level(in text: String, lineStart: String.Index, indent: Int) -> Int
 }
 ```
 
-A malformed or empty stored value reads as absent, never corrected, never removed — the same rule
-`CanvasCrop.read`/`CardTextStyle.read` already follow (they document it explicitly; this type
-inherits it rather than re-deciding it).
+Both existing call sites invoke this identically, from live characters, at their own separate
+times — no caching, no shared mutable state across calls, matching the existing "recompute from
+characters, never carry a stale value" invariant:
 
-**Editing flow — a new `CardCommand.renameLink` case, sitting where `.editText` sits for `.text`
-cards.** `CardCommand.available(for:isCroppable:hasCrop:)` gains: for a `.link` node, prepend
-`.renameLink` to the command list (same slot `.editText`/`.open` occupy — the "opener" position).
-`BoardCardMenu.run(_:on:)` gains a `.renameLink` case calling a new
-`WorkspaceController.beginTitleEdit(nodeID:)`, modeled line-for-line on the existing
-`beginTextEdit(nodeID:)`/`endTextEdit(commit:)` pair (`WorkspaceController.swift:524-541`): a
-transient `editingTitleDraft: String` seeded from `LinkCardTitle.read(from:)` (or `""` when
-absent) on begin, written through to the node's `pergamenum-title` key via `setTitle(_:forNodeID:)`
-on commit — mutating the document once, on commit, never per keystroke, exactly like the existing
-text-edit pair's own documented reason.
+- `MarkdownStyler.listMarkerSpan` (styling pass, walks `text` — the whole note) calls
+  `ListNesting.level(in:lineStart:indent:)` instead of `min(1 + columns / 2, 6)`.
+- `EditorDecorationDelegate+ListRendering.stillSpellsAListMarker` (layout-time re-read, already
+  receives `storage.string as NSString` — the whole document, not just the current paragraph)
+  calls the same function via a thin `String`-bridging call, instead of restating the fixed-column
+  formula inline.
 
-`NodeCard.linkCard(_:)` (or its caller) is threaded the node's `editingTitleDraft` binding when
-`workspace.editingTitleNodeID == node.id`, rendering a `TextField` in place of the static `Text(url)`
-line; otherwise unchanged. Return or click-away commits (`endTitleEdit(commit: true)`); Esc cancels
-(`endTitleEdit(commit: false)`) — same as the text-card precedent.
+**Algorithm** (CommonMark's list-nesting rule, §5.2/§5.3 of the CommonMark spec, restated for this
+codebase's single-pass indentation-based grammar rather than a full block-parser):
 
-**Empty commit → property removed, not stored empty.** `setTitle(_:forNodeID:)` removes the
-`pergamenum-title` key entirely when the committed string is empty, mirroring
-`setColor(_:forNodeIDs:)`'s documented "never writing a default" rule (`WorkspaceController.swift`,
-`setTextColor` doc comment) — the card falls back to the URL display, identical to the never-set
-case.
+1. Walk backward from `lineStart` line by line, collecting the run of preceding list-item lines
+   that could be this line's ancestors — stop at the first blank line or first non-indented,
+   non-list line that closes every open list (a paragraph at column 0 with no list marker).
+2. For each collected ancestor line (in document order), compute its own *content column*: its
+   indentation width, plus its marker width (`"- "` → 2, `"1. "` → 3, `"12. "` → 4, etc.), i.e.
+   the column immediately after the marker and its one mandatory trailing space — this is where a
+   CommonMark-conformant child's own indentation must reach or exceed to nest under it.
+3. Maintain a stack of open content columns as the walk proceeds forward through the collected
+   ancestors: an ancestor whose own indentation is `<` the current stack top's content column pops
+   the stack (it closes that list and every deeper one) before its own content column is pushed.
+4. The target line's level is `1 +` the number of stack entries whose content column is `≤` the
+   target line's own indentation (CommonMark's tie-break: attach to the deepest list whose content
+   column still fits), capped at 6.
+5. Tabs count as 4 columns for both indentation and content-column arithmetic, matching today's
+   behavior (unchanged, confirmed CommonMark-correct).
+
+This is a bounded backward walk (stops at the nearest list-closing boundary, not the whole
+document), acceptable given `spans(in:)` and the layout re-read already run a comparable per-line
+walk on every keystroke (ADR-0028 §D-Negative already documents "every keystroke... runs one more
+full-text pass").
+
+**No change to `Span.listMarker`'s shape** (`kind:` and `level:` fields, `MarkdownStyler.swift:63-
+69`) — only how `level` is computed. No change to `ListItem`'s shape
+(`EditorDecorationDelegate+ListRendering.swift`) for the same reason.
 
 ## Data model
 
-One new key on `CanvasNode.unknown`, present only on `.link` nodes that have had a title set:
-
-| Key | Type | Meaning | Absent means |
-|---|---|---|---|
-| `pergamenum-title` | string | User-set display title for a Link card | Card displays the raw URL (today's behavior) |
-
-No frontmatter, no index, no schema bump — this is a Workspace/canvas-only property, same class as
-`pergamenum-crop`/`pergamenum-textColor`/`pergamenum-textAlign`.
+No new persisted data. `ListNesting.level(in:lineStart:indent:)` is a pure function over
+`String`/`String.Index` values already in scope at both call sites — no new stored type, no new
+`.canvas`/frontmatter key.
 
 ## API
 
-No connector surface (`VaultAPI`) change — Link card titles are a Workspace-editing concern with
-no note/task/connector consumer, same as crop state and text color/alignment before it.
-
-New symbols (app-only, not in `sharedSources` — same exclusion `CardCommand.swift`'s own header
-documents, "the connectors have no board-editing surface"):
-- `LinkCardTitle` (new file, `Sources/Features/Workspace/LinkCardTitle.swift`)
-- `CardCommand.renameLink` (new case)
-- `WorkspaceController.editingTitleDraft: String`, `.editingTitleNodeID: String?`,
-  `.beginTitleEdit(nodeID:)`, `.endTitleEdit(commit:)`, `.setTitle(_:forNodeID:)`
+Internal only — `ListNesting` is not exposed to `perg`/`pergamenum-mcp` (no connector surface for
+markdown rendering internals) and carries no public API of its own beyond the one static function
+above, callable from both `Sources/Features/Editor/` and `Sources/Features/Workspace/` (both
+already depend on `Sources/Core/Editor/` today via `ListContinuation`).
 
 ## UI flows
 
-1. **Create a Link card** — unchanged. The existing creation sheet sets the URL only; no title
-   field is added to it.
-2. **View a Link card, no title set** — unchanged. Card shows the URL and its scheme caption.
-3. **Rename a Link card** — new. User invokes «Rinomina» (or equivalent title) from the card's
-   context menu or the board's command bar. The card's title area becomes an editable `TextField`
-   seeded with the current title (or empty, if none). Typing edits a transient draft only. Return
-   or clicking away commits; Esc cancels and discards the draft.
-4. **View a Link card with a title set** — the title replaces the URL as the card's primary text;
-   the scheme caption is unchanged.
-5. **Clear a title** — user renames to an empty string and commits. The `pergamenum-title` key is
-   removed; the card reverts to displaying the URL, indistinguishable from a card that never had a
-   title.
-6. **Double-click a Link card** — unchanged in every state above: always `NSWorkspace.open(URL)`.
+None — no new UI affordance. Existing rendering (note editor and Workspace `.text` card) is
+unchanged in every case except where today's fixed-column classifier and CommonMark's
+content-column rule disagree, where the displayed nesting level now matches CommonMark/Obsidian.
 
 ## Edge cases
 
-- **Existing `.canvas` files with Link nodes, authored before this ships**: no `pergamenum-title`
-  key present → `LinkCardTitle.read` returns `nil` → URL display, byte-identical to today. No
-  migration.
-- **Obsidian round-trip**: Obsidian does not understand `pergamenum-title` and preserves it
-  unread/unmodified, per CLAUDE.md principle 4 and the identical precedent already shipped for
-  `pergamenum-crop`/`pergamenum-textColor`/`pergamenum-textAlign`.
-- **Duplicate a Link card** (`CardCommand.duplicate`)**: the title travels with the copy — every
-  other `unknown` key already does (`WorkspaceController+Duplicate.swift`'s documented behavior for
-  `pergamenum-crop`), and this key is copied by the same undifferentiated mechanism, no special
-  case needed.
-- **Rename while another card is also being title-edited**: only one node id can be
-  `editingTitleNodeID` at a time (mirrors `editingTextDraft`'s single-node-at-a-time model);
-  beginning a new title edit while one is in flight commits or discards the prior one first,
-  exactly as beginning a new `.editText` session does today.
-- **Malformed stored value** (e.g. a non-string JSON value under the key, from a hand-edited
-  file): reads as absent, never corrected, never removed — same rule as `CanvasCrop`/
-  `CardTextStyle`.
+- **Tabs**: 1 tab = 4 columns, unchanged (already CommonMark-correct) — folded into the new
+  content-column comparison.
+- **Tie-breaking**: an item's indentation between two valid content columns attaches to the
+  deepest open list whose content column is still ≤ its own indentation (CommonMark's rule) —
+  this is what fixes the ticket's named 3-space-indent scenario.
+- **Level cap**: preserved at 6, matching `ListMarkerRendering.paragraphStyle`'s existing
+  `level ∈ 1...6` assumption.
+- **Ordered markers of different widths** (`1. ` vs `12. `): the content-column algorithm
+  naturally produces different child thresholds for these, where the old `1 + columns/2` formula
+  did not distinguish marker width at all.
+- **A list authored entirely inside Pergamenum**: unaffected — Pergamenum's own
+  `ListContinuation`-driven indentation already happens to agree with both the old and new rule
+  for content produced by this app's own Enter-key continuation (not verified by a new test in
+  this chain, since it is a pre-existing, already-covered path; any regression here would show up
+  in the existing `ListContinuationTests.swift` suite, which is untouched).
+- **A malformed/ambiguous backward walk** (e.g. a line whose ancestor chain cannot be resolved,
+  or that sits at column 0 with no marker of its own): falls through to level 1, the same
+  behavior a non-nested list item gets today.
 
 ## Success criteria
 
-- [ ] R-01 — `LinkCardTitle.read(from:)` returns the stored `pergamenum-title` string when present
-      and non-empty, `nil` when the key is absent, empty, or holds a non-string JSON value
-- [ ] R-02 — A `.link` `CanvasNode` with no `pergamenum-title` key round-trips through
-      `CanvasStore.save`/`.load` byte-identical to today (no key is ever written for the
-      never-set case)
-- [ ] R-03 — `CardCommand.available(for:isCroppable:hasCrop:)` includes a rename command for a
-      `.link` node and excludes it for every other node kind
-- [ ] R-04 — Invoking the rename command begins an inline title edit seeded from the node's
-      current title (or empty, when unset)
-- [ ] R-05 — Committing a non-empty title writes `pergamenum-title` on the node and the card
-      displays the title instead of the URL
-- [ ] R-06 — Committing an empty title removes the `pergamenum-title` key entirely (never writes
-      `""`) and the card falls back to displaying the URL
-- [ ] R-07 — Canceling an in-flight title edit (Esc) discards the draft and leaves the node's
-      stored title unchanged
-- [ ] R-08 — `NodeCard.linkCard(_:)` displays the stored title when present, the raw URL when
-      absent, for every existing (pre-feature) Link card with no `pergamenum-title` key
-- [ ] R-09 — Duplicating a Link card that has a title copies the `pergamenum-title` key to the new
-      node
-- [ ] R-10 — Double-click on a Link card still opens the destination via `NSWorkspace.open(URL)`
-      in every title state (set, unset, mid-edit-cancelled)
-- [ ] R-11 — test-cmd (`-only-testing:PergamenumTests`) builds clean and passes 100%
-- [ ] R-12 — `Pergamenum`, `perg`, and `pergamenum-mcp` schemes all build clean (no new file
-      needed in `sharedSources`, since this feature has no connector-facing surface)
-- [ ] R-13 — Manual hand-check on a live vault confirms: entering/committing/canceling the inline
-      title edit, the empty-clear fallback, and that the new `pergamenum-title` key survives an
-      open/edit/save round-trip in Obsidian unmodified (no-test: requires a human driving the
-      actual pointer/keyboard interaction and an external app, matching this repo's standing
-      precedent that drag/resize/inline-edit gestures are hand-checked, not XCUITest'd)
+- [ ] R-01 — `ListNesting.level(in:lineStart:indent:)` exists in `Sources/Core/Editor/ListNesting.swift`, Foundation-only, and implements the CommonMark content-column stack algorithm described above.
+- [ ] R-02 — `MarkdownStyler.listMarkerSpan` calls `ListNesting.level` instead of the inline `1 + columns / 2` formula; `listMarkerLength`'s grammar (marker detection itself) is unchanged.
+- [ ] R-03 — `EditorDecorationDelegate+ListRendering.stillSpellsAListMarker` calls the same `ListNesting.level` function against live characters at layout time, preserving the existing no-caching invariant on `HiddenMarker.Kind.list` (§D-architecture above).
+- [ ] R-04 — A list item indented 3 spaces under a `- ` (2-column-wide) parent renders at level 2 (CommonMark: content column 2, indent 3 ≥ 2 → nests).
+- [ ] R-05 — A list item indented 3 spaces under a `12. ` (4-column-wide) parent renders at level 1, not level 2 (CommonMark: content column 4, indent 3 < 4 → does not nest, stays a sibling of the ordered item's own list).
+- [ ] R-06 — CommonMark's tie-break rule is exercised by at least one test: an indentation that falls strictly between two open lists' content columns attaches to the deeper one.
+- [ ] R-07 — The level cap of 6 is preserved for indentation deep enough to mathematically exceed it.
+- [ ] R-08 — `Tests/MarkdownStylerTests.swift:429-440`'s existing assertions are rewritten to assert CommonMark-correct expected levels for the same inputs (2 spaces, 4 spaces, one tab, 20 spaces), not the old fixed-column values.
+- [ ] R-09 — `Tests/MarkupHidingTests.swift:235-241,331`'s existing nesting-level assertions against the live `EditorDecorationDelegate` are rewritten to match, confirming the layout-time re-read agrees with the styling-pass computation for the same input.
+- [ ] R-10 — A list authored inside Pergamenum via the existing Enter-key continuation (`ListContinuation`) still renders at the same levels it did before this chain — no regression in `Tests/ListContinuationTests.swift` (no-test: ListContinuation.swift itself is explicitly out of scope and untouched by this chain, so this is a non-regression check on an unmodified suite, not a new assertion this chain writes).
+- [ ] R-11 — `Sources/Core/Editor/ListContinuation.swift` is not modified by this chain (no-test: a scope boundary confirmed by the diff at commit time, not a runtime behavior a unit test can assert).
+- [ ] R-12 — `xcodebuild` build succeeds for all three schemes (`Pergamenum`, `perg`, `pergamenum-mcp`) with the new `Sources/Core/Editor/ListNesting.swift` file added to `sharedSources` if it needs to be reachable from the connectors (verify against `Project.swift`'s existing glob for `Sources/Core/**`).
