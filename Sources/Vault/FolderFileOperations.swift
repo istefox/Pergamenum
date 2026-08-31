@@ -45,6 +45,16 @@ struct FolderFileOperations {
         return !exists(relativePath)
     }
 
+    /// Creates a real directory for a folder card, validated the same way rename and
+    /// delete already are (PG-047). `CanvasStore.createFolder` on its own only checks
+    /// `fileExists` - this is the one folder write that used to bypass this file's own
+    /// rules, relying on a UI guard that not every creation surface has.
+    func createFolder(named name: String, in parent: String) throws -> String {
+        let violations = Self.validate(name)
+        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
+        return try canvas.createFolder(named: name, in: parent)
+    }
+
     /// Every `.md` note and every subdirectory under `folder`, counted recursively and
     /// skipping the descendants of any `VaultLayout.isExcludedDirectory` directory,
     /// exactly as `CanvasStore.allBoards()` does. The board file itself is not a note.

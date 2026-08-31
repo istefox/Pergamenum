@@ -134,6 +134,15 @@ private let sampleBoard = """
     #expect(!vault.operations.nameIsAvailable("Nuova", in: "01 Progetti"))
 }
 
+@Test func createFolderRejectsAnInvalidNameAndCreatesNoDirectory() throws {
+    let vault = try FolderOpsVault()
+
+    #expect(throws: FileOperationError.self) {
+        try vault.operations.createFolder(named: "Progetto/uno", in: "01 Progetti")
+    }
+    #expect(vault.operations.nameIsAvailable("Progetto/uno", in: "01 Progetti"))
+}
+
 @Test func contentCountsCountsNotesAndSubfoldersRecursivelySkippingTheBoardAndOtherFiles() throws {
     let vault = try FolderOpsVault()
     try vault.write(header, to: "01 Progetti/vibrofer/a.md")
