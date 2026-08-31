@@ -73,7 +73,7 @@ decision to reopen SPEC §14).
 - [x] PG-051 stop WorkspaceBrowser constructing FolderFileOperations directly on the main actor  (completed: 2026-08-31)
 - [x] PG-052 read WorkspaceView.renameWorkspace's destination from the rename outcome  (completed: 2026-08-31)
 - [x] PG-059 stop WorkspaceBrowser.targetFolder fabricating a .folder(...) case  (completed: 2026-08-31 — already fixed on main by the ADR-0025 chain, no code change)
-- [ ] PG-067 make WorkspaceController's gesture-transient state private(set)
+- [~] PG-067 make WorkspaceController's gesture-transient state private(set)  (closed: 2026-08-31 — declined, see TODO.md Done)
 
 ### Phase 9 — Remaining SPEC milestones (M13/M14)
 - [ ] PG-014 finish M13 vault: rename/move/trash under the journal, prompts, export, import, AppIntents
