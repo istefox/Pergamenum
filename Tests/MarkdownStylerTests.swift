@@ -209,6 +209,47 @@ private func emphasisMarkers(_ text: String) -> [String] {
     #expect(!spans("un asterisco * solo").contains(.italic))
 }
 
+// MARK: PG-084 - recursive inline spans
+
+// A matched `**...**` used to consume its entire range as one atomic `.bold` span, so a
+// `~~...~~` nested inside it was invisible: rendered (and would conceal) only as bold, the
+// `~~` markers left plain and unstyled. `inlineSpans` now recurses into a run's own inner
+// content, so the nested span is emitted too.
+@Test func strikethroughNestedInsideBoldIsRecognizedAlongsideTheOuterBoldSpan() {
+    #expect(styled("**~~testo~~**", .bold) == "**~~testo~~**")
+    #expect(styled("**~~testo~~**", .strikethrough) == "~~testo~~")
+}
+
+@Test func strikethroughNestedInsideItalicIsRecognizedAlongsideTheOuterItalicSpan() {
+    #expect(styled("*~~testo~~*", .italic) == "*~~testo~~*")
+    #expect(styled("*~~testo~~*", .strikethrough) == "~~testo~~")
+}
+
+// The reverse nesting: bold inside strikethrough. Not the ticket's literal example, but the
+// same recursion mechanism handles it for free - including the nested run's own
+// `.emphasisMarker` pair, since the recursive call re-triggers `inlineSpans`' own
+// `characters[index] == "*"` guard on the inner slice's fresh `characters` array.
+@Test func boldNestedInsideStrikethroughIsRecognizedWithItsOwnEmphasisMarkers() {
+    #expect(styled("~~**testo**~~", .strikethrough) == "~~**testo**~~")
+    #expect(styled("~~**testo**~~", .bold) == "**testo**")
+    #expect(emphasisMarkers("~~**testo**~~") == ["**", "**"])
+}
+
+// A plain, non-nested run must render identically to before this fix: the inner slice
+// contains no further markers, so the recursive call contributes nothing.
+@Test func aNonNestedRunIsUnaffectedByTheRecursiveInnerScan() {
+    #expect(styled("testo **grassetto** qui", .bold) == "**grassetto**")
+    #expect(!spans("testo **grassetto** qui").contains(.strikethrough))
+}
+
+// Offset correctness: the outer match does not start at line position 0, so the recursion's
+// `absolute` closure composition (outer offset + inner offset) must still land on the right
+// `String.Index` range rather than one shifted by the leading text's length.
+@Test func aNestedSpanPrecededByOtherTextResolvesToTheCorrectAbsoluteRange() {
+    #expect(styled("prima **~~dopo~~** qui", .strikethrough) == "~~dopo~~")
+    #expect(styled("prima **~~dopo~~** qui", .bold) == "**~~dopo~~**")
+}
+
 @Test func handlesAnEmptyNote() {
     #expect(MarkdownStyler.spans(in: "").isEmpty)
 }
