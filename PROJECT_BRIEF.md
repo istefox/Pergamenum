@@ -87,6 +87,21 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-31: **PG-073 (titolo editabile per la card Link, SPEC §6.4 riga 7 / §6.5) implementato
+  via catena `concept-to-code` hybrid, 1976 test unitari verdi.** Titolo memorizzato come nuova
+  chiave prefissata `pergamenum-title` su `CanvasNode.unknown` (`LinkCardTitle.swift`, stesso
+  schema di `CanvasCrop`/`CardTextStyle`); nessun titolo impostato mostra ancora l'URL come oggi,
+  un commit vuoto rimuove la chiave invece di scrivere `""`. Nuovo `CardCommand.renameLink`
+  ("Rinomina") avvia l'editing inline - il doppio click resta riservato a
+  `NSWorkspace.open(URL)` (SPEC §6.4 riga 7) - tramite `WorkspaceController.beginTitleEdit`/
+  `endTitleEdit`/`setTitle`, lo stesso schema di stato transitorio già usato per
+  `editingTextNodeID`/`editingTextDraft`. `NodeCard.linkTitle` sostituisce un `Text` con un
+  `TextField` legato a `editingTitleDraft`, commit su invio/perdita del focus, annullamento con
+  Esc. `xcodebuild build` verde per app, CLI `perg` e `pergamenum-mcp` (nessuna modifica a
+  `Project.swift`/`sharedSources`, `Sources/Features/**` non ha superficie per i connettori).
+  Non ancora verificato a mano da Stefano (interazione di editing inline, fallback su commit
+  vuoto, andata e ritorno con Obsidian, doppio click che apre ancora la destinazione) - dovuto
+  insieme agli altri controlli manuali ancora pendenti a fine sessione.
 - 2026-08-31: **PG-074 + PG-086 (checkbox interattiva e indicizzazione dei task per lo strumento
   To Do del Workspace) implementati, catena a cinque parti, 1964 test unitari verdi, suite UI
   105/105 al netto degli stessi quattro fallimenti intermittenti pre-esistenti (`PG-072`,

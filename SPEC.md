@@ -1,200 +1,175 @@
-# SPEC — PG-074: interactive checkbox and task indexing for the Workspace To Do tool (+ PG-086)
+# SPEC — PG-073: editable title affordance for the Link card
 
-**Topic slug:** pg-074-give-the-to-do-tool-an-interactiv
+**Topic slug:** pg-073-add-an-editable-title-affordance
 
 ## Objectives
 
-SPEC §6.4, tool 8 (To Do): "Crea una card lista task: checkbox interattive con la sintassi §7.1.
-I task della card sono indicizzati come quelli delle note (appaiono in Attività, pianificabili,
-collegabili); il file di origine è il `.canvas`." Today `WorkspaceController+Tools.swift:33`
-(`case .todo: .createSticky("- [ ] ")`) creates an ordinary `.text` card containing the literal
-string `"- [ ] "` — no checkbox glyph, no click-to-toggle, no task indexing. This chain closes
-that gap in full, plus its sibling TODO.md finding PG-086 (no real checkbox glyph is drawn on a
-task line anywhere in the app — only coloured characters via `.taskMarker(done:)`), included by
-explicit choice because both surfaces (`MarkdownAttributedText.swift:126`,
-`CardTextAttributes.swift:191`) share the same `MarkdownStyler` span and the same fix shape.
+SPEC §6.4 row 7 (Link tool) and §6.5 ("Card link URI") both require: *"icona per schema, titolo
+editabile"* — an editable title on every Link card. This has never been implemented:
+`CanvasNode.Kind.link(url: String)` carries only the URL, `NodeCard.linkCard(_:)` renders the raw
+URL string as the card's primary text, and `WorkspaceController.addLink(_:at:)` creates the node
+with no title of any kind. This chain closes that gap.
 
 ## Scope
 
 In scope:
-- A Workspace To Do card is a multi-line task **list** (SPEC's own wording: "card lista task"),
-  using the full §7.1 syntax (`>data`, `!scadenza`, `@remind(...)`, `@repeat(n/N)`, `[[wikilink]]`,
-  `#project-*`, state markers `[ ]`/`[x]`/`[>]`/`[-]`) — not a single-task sticky and not a reduced
-  syntax subset.
-- A real checkbox glyph replaces the coloured `[ ]`/`[x]` characters on a task line, in both the
-  Workspace card surface and the note editor surface (PG-086).
-- Click-to-toggle on the glyph flips `[ ]`↔`[x]`, appends/removes `@done(YYYY-MM-DD)` on completion,
-  and writes the change back to the line's source file atomically.
-- Task lines inside a Workspace To Do card's `.text` node are indexed into the same task machinery
-  notes already use (`TaskItem`, `IndexCache`, the Attività views), with the card's `.canvas` file
-  as `sourcePath` — satisfying "indicizzati come quelli delle note … il file di origine è il
-  `.canvas`" literally.
+- A new `pergamenum-title` prefixed property on a `.link` `CanvasNode`, read/written the same way
+  `CardTextStyle`'s `pergamenum-textColor`/`pergamenum-textAlign` and `CanvasCrop`'s
+  `pergamenum-crop` already are — never a change to `Sources/Core/Canvas/JSONCanvas.swift` itself.
+- A new `CardCommand` case that switches a Link card into an inline-editable title field, offered
+  in both the context menu and the board's command bar (ADR-0023 §D1 parity), analogous to
+  `.editText` on a `.text` card.
+- `NodeCard.linkCard(_:)` rendering the title when present, falling back to the URL when absent —
+  identical to today's display for every existing Link card on disk.
+- Empty-title-on-commit clears the property (removed, never stored as `""`) — the non-destructive
+  rule `CardTextStyle`/`CanvasCrop` already follow.
 
-Out of scope (unchanged, or a separate ticket):
-- Any new `CanvasNode.Kind` — the To Do card stays a `.text` node (see Architecture).
-- `PG-085` (list nesting depth) and `PG-084` (non-recursive inline-span parser) — unrelated
-  `MarkdownStyler`/`EditorDecorationDelegate` defects, not touched by this chain.
-- Rollover, reminders, project sub-tasks, wikilink-based task↔note/canvas linking (§7.2/§7.3) —
-  already implemented (ADR-0021) and reused as-is, not redesigned.
-- A Workspace To Do card is never itself the target of a `[[wikilink]]` task-link the way a note or
-  a `.canvas` board can be (§7.1's `[[Progetto X.canvas]]` example links to a *board*, not to a
-  task list embedded inside one) — no change to `WorkspaceBoardResolver` or §7.2's linking UI.
+Out of scope:
+- Any change to double-click behavior (still `NSWorkspace.open(URL)`, SPEC §6.4 row 7 — unchanged).
+- Any change to the Link creation sheet's own fields (URL entry stays exactly as it is; a title is
+  never mandatory at creation).
+- Any character limit or validation on the title text (none exists elsewhere in the Workspace for
+  a card-scoped text property, and none is added here).
+- `.canvas` markdown or JSON Canvas schema changes beyond the one new prefixed key.
 
 ## Stack
 
-No new dependency. Swift 6, SwiftUI, AppKit `NSTextView` (TextKit 2) — same stack ADR-0019/
-ADR-0020/ADR-0026/ADR-0028 already used for card interactivity and WYSIWYG rendering.
+No new dependency. Same layers as ADR-0027 (Nota/Testo unification): `Sources/Core/Canvas/` (no
+change), `Sources/Features/Workspace/` (`CanvasNode.unknown`-backed property type, `CardCommand`,
+`WorkspaceController`, `NodeCard`, `BoardCardMenu`).
 
 ## Architecture
 
-### Rendering (reuses ADR-0028's mechanism, extends `EditorDecorationDelegate`)
+**Storage — `LinkCardTitle`, a new file mirroring `CanvasCrop.swift`/`CardTextStyle.swift`
+exactly.** One prefixed key, `pergamenum-title`, on `CanvasNode.unknown`. `CanvasNode.init?`
+already funnels an unrecognised key into `unknown` and `rawValue` already re-emits it (the same
+mechanism `CardTextStyle`'s doc comment describes), so JSON Canvas round-trip and Obsidian
+compatibility (CLAUDE.md principle 4) come for free with zero change to `JSONCanvas.swift`.
 
-The To Do card stays an ordinary `.text` `CanvasNode`, drawn by `StickyTextCard`'s `NSTextView` +
-`EditorDecorationDelegate` (ADR-0028 §D1) — no new `CanvasNode.Kind`, preserving JSON Canvas 1.0 /
-Obsidian round-trip (CLAUDE.md principle 4). A checkbox glyph is substituted character-for-character
-for the `[ ]`/`[x]`/`[>]`/`[-]` state marker inside `MarkdownStyler`'s existing `.taskMarker(done:)`
-span, the same way ADR-0028 substituted list bullets/ordinals: TextKit 2 forbids changing the
-displayed paragraph's length in `textContentStorage(_:textParagraphWith:)`, so the substitution
-must not insert or remove characters, only redraw the same span's glyph run. This one substitution
-rule is shared verbatim by both surfaces this chain touches (Workspace card and note editor,
-PG-086) since both already read `.taskMarker(done:)` off the same `MarkdownStyler` output — only
-each surface's own attribute table (`CardTextAttributes` vs `MarkdownAttributedText`) decides how
-to draw it, per ADR-0027 §D1's "share pure logic, never AppKit classes."
+```swift
+enum LinkCardTitle {
+    static let key = "pergamenum-title"
 
-### Interaction (reuses ADR-0019/ADR-0020's atomic-write pattern)
+    static func read(from node: CanvasNode) -> String? {
+        guard case .string(let value)? = node.unknown[key], !value.isEmpty else { return nil }
+        return value
+    }
+}
+```
 
-A click lands on the drawn glyph's own hit-test rect (not the whole line — avoids toggling by
-accident while editing surrounding text, same reasoning as the resize/crop handles). On a hit:
-1. Compute the new line via `TaskParser.line(for:settingState:today:)` — already produces the
-   correct marker swap **and** the `@done(YYYY-MM-DD)`/`@done` removal pair (SPEC §7.1: "Data
-   completamento, apposta automaticamente"). No new line-rewriting logic; this function already
-   exists and is already tested (`TaskParser+Writes.swift`).
-2. Write it back through the same atomic `shouldChangeText`/`beginEditing`/`replaceCharacters`/
-   `endEditing` sequence ADR-0019's embed resize and the Backspace-delete path already use — one
-   undo step per toggle, regardless of the click's origin.
+A malformed or empty stored value reads as absent, never corrected, never removed — the same rule
+`CanvasCrop.read`/`CardTextStyle.read` already follow (they document it explicitly; this type
+inherits it rather than re-deciding it).
 
-### Indexing (new: a board-scan source parallel to `NoteStore`, no schema bump)
+**Editing flow — a new `CardCommand.renameLink` case, sitting where `.editText` sits for `.text`
+cards.** `CardCommand.available(for:isCroppable:hasCrop:)` gains: for a `.link` node, prepend
+`.renameLink` to the command list (same slot `.editText`/`.open` occupy — the "opener" position).
+`BoardCardMenu.run(_:on:)` gains a `.renameLink` case calling a new
+`WorkspaceController.beginTitleEdit(nodeID:)`, modeled line-for-line on the existing
+`beginTextEdit(nodeID:)`/`endTextEdit(commit:)` pair (`WorkspaceController.swift:524-541`): a
+transient `editingTitleDraft: String` seeded from `LinkCardTitle.read(from:)` (or `""` when
+absent) on begin, written through to the node's `pergamenum-title` key via `setTitle(_:forNodeID:)`
+on commit — mutating the document once, on commit, never per keystroke, exactly like the existing
+text-edit pair's own documented reason.
 
-Today `NoteStore.read(_:)` is the only place that calls `TaskParser.tasks(in:sourcePath:)`, over a
-note's markdown text, feeding `IndexCache` (schemaVersion 3). A parallel scan is added for
-Workspace boards: during the same vault rescan, every `.text` `CanvasNode` in every `.canvas` file
-whose first line matches a task-list start (`^- \[.\] `, the same state-marker alphabet §7.1
-defines) has its full text run through `TaskParser.tasks(in:sourcePath:)` with `sourcePath` set to
-the board's own relative path (e.g. `"01 Progetti/Board.canvas"`) — literally the ".canvas" source
-path SPEC §6.4 calls for. No card-level marker/flag is added to `CanvasNode` to distinguish a To Do
-card from a freehand Nota/Testo card that happens to start with the same syntax: the content-based
-heuristic is the entry criterion, and it is deliberately inclusive — a Nota card a user free-writes
-starting with `"- [ ] "` is indexed exactly like a purpose-created To Do card, which is consistent
-with §6.4's own framing of To Do as "just" a starting template over the shared `.text` mechanism,
-not a distinct, gated data type.
+`NodeCard.linkCard(_:)` (or its caller) is threaded the node's `editingTitleDraft` binding when
+`workspace.editingTitleNodeID == node.id`, rendering a `TextField` in place of the static `Text(url)`
+line; otherwise unchanged. Return or click-away commits (`endTitleEdit(commit: true)`); Esc cancels
+(`endTitleEdit(commit: false)`) — same as the text-card precedent.
 
-`TaskItem.sourcePath` and `StoredTask` already store a bare `String` with no note-specific
-assumption baked in (ADR-0021 §D "`StoredTask` re-parses `rawLine` through `TaskParser.parse`
-rather than serializing fields, so a field TaskParser already recognizes is free in the cache with
-no migration") — a `.canvas`-suffixed `sourcePath` is a new *value* in an existing column, not a
-schema change. `IndexCache.schemaVersion` stays 3.
-
-**Rewrite target resolution.** A task's `sourcePath` may now name either a note (`.md`) or a board
-(`.canvas`). Every existing task-mutation call site that writes back to `sourcePath` (reschedule,
-due-date, complete/reopen, from any Attività view) must resolve which store owns that path — the
-`NoteStore` (existing) or `CanvasStore`'s board-node text (new) — and write through the matching
-one. This is the one piece of existing task-completion machinery (§7.3: "Completare un task da
-qualsiasi vista aggiorna il file markdown di origine") that must learn a second file kind; it was
-written assuming every `sourcePath` was a note.
-
-### PG-086 — real checkbox glyph (both surfaces)
-
-Same substitution rule as above (character-for-character, no length change), applied independently
-of whether a task is indexed: PG-086 is a pure rendering fix and fires on any `.taskMarker(done:)`
-span in either editor, To Do card or plain note, whether or not that task line is presently
-indexed. This keeps PG-086 correct even for a task line inside a Nota/Testo card that the heuristic
-above does not treat as list-worthy for indexing (e.g. a single stray `- [ ]` line with no other
-task-shaped content around it — still gets a real glyph, even if IndexCache does not surface it).
+**Empty commit → property removed, not stored empty.** `setTitle(_:forNodeID:)` removes the
+`pergamenum-title` key entirely when the committed string is empty, mirroring
+`setColor(_:forNodeIDs:)`'s documented "never writing a default" rule (`WorkspaceController.swift`,
+`setTextColor` doc comment) — the card falls back to the URL display, identical to the never-set
+case.
 
 ## Data model
 
-No new persisted field, no schema bump. `TaskItem`/`StoredTask` (`Sources/Core/Tasks/`) are reused
-unchanged; `sourcePath` now legitimately carries a `.canvas`-suffixed value alongside its existing
-`.md`-suffixed ones. No new `CanvasNode` field (see Architecture — the heuristic is content-based,
-not a stored marker).
+One new key on `CanvasNode.unknown`, present only on `.link` nodes that have had a title set:
+
+| Key | Type | Meaning | Absent means |
+|---|---|---|---|
+| `pergamenum-title` | string | User-set display title for a Link card | Card displays the raw URL (today's behavior) |
+
+No frontmatter, no index, no schema bump — this is a Workspace/canvas-only property, same class as
+`pergamenum-crop`/`pergamenum-textColor`/`pergamenum-textAlign`.
 
 ## API
 
-No new public API surface, no connector change. `perg`/`pergamenum-mcp` task-listing commands
-already read through `IndexSnapshot`; a To Do card's tasks appear there automatically once the scan
-source above is wired in, with no separate connector work.
+No connector surface (`VaultAPI`) change — Link card titles are a Workspace-editing concern with
+no note/task/connector consumer, same as crop state and text color/alignment before it.
+
+New symbols (app-only, not in `sharedSources` — same exclusion `CardCommand.swift`'s own header
+documents, "the connectors have no board-editing surface"):
+- `LinkCardTitle` (new file, `Sources/Features/Workspace/LinkCardTitle.swift`)
+- `CardCommand.renameLink` (new case)
+- `WorkspaceController.editingTitleDraft: String`, `.editingTitleNodeID: String?`,
+  `.beginTitleEdit(nodeID:)`, `.endTitleEdit(commit:)`, `.setTitle(_:forNodeID:)`
 
 ## UI flows
 
-1. **Create.** Toolbar "To Do" (SPEC §6.4 row 8, shortcut K) creates a `.text` card seeded with one
-   `"- [ ] "` line, exactly as today — `WorkspaceController+Tools.swift:33` is unchanged. The user
-   types further lines to build the list; each new `"- [ ] "`-prefixed line is a new task the same
-   scan picks up on the next rescan.
-2. **Render.** Every task line in the card shows a real checkbox glyph (open/done/rescheduled/
-   cancelled per §7.1's four state markers) instead of coloured `[ ]`/`[x]` text.
-3. **Toggle.** Clicking the glyph flips its state, stamps/clears `@done(...)`, one undo step.
-4. **Appear in Attività.** After the next rescan, the task shows in the Oggi/Prossimi/etc. views
-   exactly like a note-sourced task: schedulable (`>data`), can carry a due date (`!scadenza`), a
-   reminder, wikilinks. Its origin badge/click-through opens the board (not a note editor).
-5. **Complete from Attività.** Completing the task from any Attività view writes `@done(...)` back
-   into the board's `.canvas` file (see Architecture's rewrite-target resolution), mirroring §7.3's
-   "Completare un task da qualsiasi vista aggiorna il file markdown di origine" — here, the file of
-   origin is a `.canvas`, not markdown, but the write-back principle is identical.
+1. **Create a Link card** — unchanged. The existing creation sheet sets the URL only; no title
+   field is added to it.
+2. **View a Link card, no title set** — unchanged. Card shows the URL and its scheme caption.
+3. **Rename a Link card** — new. User invokes «Rinomina» (or equivalent title) from the card's
+   context menu or the board's command bar. The card's title area becomes an editable `TextField`
+   seeded with the current title (or empty, if none). Typing edits a transient draft only. Return
+   or clicking away commits; Esc cancels and discards the draft.
+4. **View a Link card with a title set** — the title replaces the URL as the card's primary text;
+   the scheme caption is unchanged.
+5. **Clear a title** — user renames to an empty string and commits. The `pergamenum-title` key is
+   removed; the card reverts to displaying the URL, indistinguishable from a card that never had a
+   title.
+6. **Double-click a Link card** — unchanged in every state above: always `NSWorkspace.open(URL)`.
 
 ## Edge cases
 
-- **Card holding a mix of task lines and free prose.** Only lines matching the state-marker syntax
-  are treated as tasks; surrounding prose renders and edits normally, unaffected.
-- **A Nota/Testo card that happens to start with `"- [ ] "`.** Indexed like a To Do card per the
-  deliberately inclusive heuristic (Architecture) — not a bug, a chosen consequence, documented so
-  a future report of "my note got indexed as a task" is triaged against this SPEC, not treated as a
-  new defect.
-- **Toggling a task whose board file changed on disk since the last read** (stale line index). The
-  toggle write reuses `TaskParser.rewrite(_:at:expecting:with:)`, which already refuses (`nil`) when
-  the line at that index no longer matches the expected original — the same staleness guard note
-  tasks already rely on, applied unchanged to a board's text.
-- **Deleting the card, or the line, out from under an open Attività view.** Handled by the existing
-  rescan-and-refresh cycle IndexCache already uses for a deleted/edited note; no new invalidation
-  path needed since the board scan participates in the same rescan.
-- **A task line inside a To Do card that also carries a `[[wikilink]]`.** §7.2's existing
-  task↔note/canvas linking panel and backlink indexing apply unchanged — the panel logic keys off
-  `TaskItem`/wikilink text, not off `sourcePath`'s file extension.
-- **Obsidian round-trip.** A `.canvas` file with a To Do card's text node opens unmodified in
-  Obsidian — no new node type, no new property; Obsidian shows the raw `"- [ ] "` markdown text
-  exactly as JSON Canvas 1.0 defines, since the checkbox glyph is a Pergamenum-only rendering layer
-  over unmodified text (CLAUDE.md principle 1 and 4).
+- **Existing `.canvas` files with Link nodes, authored before this ships**: no `pergamenum-title`
+  key present → `LinkCardTitle.read` returns `nil` → URL display, byte-identical to today. No
+  migration.
+- **Obsidian round-trip**: Obsidian does not understand `pergamenum-title` and preserves it
+  unread/unmodified, per CLAUDE.md principle 4 and the identical precedent already shipped for
+  `pergamenum-crop`/`pergamenum-textColor`/`pergamenum-textAlign`.
+- **Duplicate a Link card** (`CardCommand.duplicate`)**: the title travels with the copy — every
+  other `unknown` key already does (`WorkspaceController+Duplicate.swift`'s documented behavior for
+  `pergamenum-crop`), and this key is copied by the same undifferentiated mechanism, no special
+  case needed.
+- **Rename while another card is also being title-edited**: only one node id can be
+  `editingTitleNodeID` at a time (mirrors `editingTextDraft`'s single-node-at-a-time model);
+  beginning a new title edit while one is in flight commits or discards the prior one first,
+  exactly as beginning a new `.editText` session does today.
+- **Malformed stored value** (e.g. a non-string JSON value under the key, from a hand-edited
+  file): reads as absent, never corrected, never removed — same rule as `CanvasCrop`/
+  `CardTextStyle`.
 
 ## Success criteria
 
-- [ ] R-01 — A new Workspace To Do card seeds one `- [ ] ` line as today; typing further
-      `- [ ] `-prefixed lines is supported with no card-size or line-count restriction beyond the
-      existing text card limits.
-- [ ] R-02 — Every task line (state markers `[ ]`, `[x]`, `[>]`, `[-]`) on a Workspace card renders
-      a real checkbox glyph in place of the coloured bracket characters, verified by a unit test
-      asserting the substitution is character-length-preserving (no paragraph-length change).
-- [ ] R-03 — The same real checkbox glyph renders on task lines in the note editor (PG-086),
-      sharing the substitution rule with R-02, verified by a unit test on `MarkdownAttributedText`.
-- [ ] R-04 — Clicking a rendered checkbox glyph toggles `[ ] `↔`[x] `, appends `@done(YYYY-MM-DD)`
-      on completion and removes it on reopen, via `TaskParser.line(for:settingState:today:)`,
-      verified by unit tests over that function's existing coverage extended for the toggle case.
-- [ ] R-05 — The click write-back uses one atomic undo step (`shouldChangeText`/`beginEditing`/
-      `replaceCharacters`/`endEditing`), verified by manual hand-check (no XCUITest, per CLAUDE.md's
-      established precedent for click/drag gesture interactions) (no-test: gesture/click hit-testing on a live NSTextView is verified by hand per this repo's established drag/resize/crop precedent, not by XCUITest).
-- [ ] R-06 — A `.text` `CanvasNode` inside a `.canvas` board whose task lines match the §7.1 state-marker
-      syntax is scanned during the existing vault rescan and produces `TaskItem`s with `sourcePath`
-      equal to the board's relative path, verified by a unit test against a fixture board.
-- [ ] R-07 — Tasks indexed from a To Do card appear in the Attività views (Oggi/Prossimi/etc.)
-      alongside note-sourced tasks, verified by a unit test on `IndexSnapshot`'s aggregated task list
-      including a board-sourced `TaskItem`.
-- [ ] R-08 — Completing, rescheduling, or setting a due date on a board-sourced task from any
-      Attività view writes the change back into the board's `.canvas` file (not a note), verified by
-      a unit test that the correct store (`CanvasStore` vs `NoteStore`) is resolved and written.
-- [ ] R-09 — A stale board-sourced task (its line index no longer matches the expected original
-      text) refuses the write rather than corrupting an unrelated line, verified by a unit test
-      reusing `TaskParser.rewrite`'s existing staleness guard.
-- [ ] R-10 — A `.canvas` file containing a To Do card round-trips through Obsidian unmodified — no
-      new JSON Canvas property, no new node type (no-test: verified by opening the fixture .canvas in Obsidian by hand, consistent with every prior ADR-0019/0020/0025/0026/0028 round-trip check in this repo's history).
-- [ ] R-11 — `test-cmd` (`-only-testing:PergamenumTests`) builds clean and passes 100% after this
-      chain's changes.
-- [ ] R-12 — TODO.md's PG-074 and PG-086 entries are both closed with a note describing the actual
-      implementation and cross-referencing each other (no-test: a documentation/bookkeeping obligation on TODO.md, not something a test asserts).
+- [ ] R-01 — `LinkCardTitle.read(from:)` returns the stored `pergamenum-title` string when present
+      and non-empty, `nil` when the key is absent, empty, or holds a non-string JSON value
+- [ ] R-02 — A `.link` `CanvasNode` with no `pergamenum-title` key round-trips through
+      `CanvasStore.save`/`.load` byte-identical to today (no key is ever written for the
+      never-set case)
+- [ ] R-03 — `CardCommand.available(for:isCroppable:hasCrop:)` includes a rename command for a
+      `.link` node and excludes it for every other node kind
+- [ ] R-04 — Invoking the rename command begins an inline title edit seeded from the node's
+      current title (or empty, when unset)
+- [ ] R-05 — Committing a non-empty title writes `pergamenum-title` on the node and the card
+      displays the title instead of the URL
+- [ ] R-06 — Committing an empty title removes the `pergamenum-title` key entirely (never writes
+      `""`) and the card falls back to displaying the URL
+- [ ] R-07 — Canceling an in-flight title edit (Esc) discards the draft and leaves the node's
+      stored title unchanged
+- [ ] R-08 — `NodeCard.linkCard(_:)` displays the stored title when present, the raw URL when
+      absent, for every existing (pre-feature) Link card with no `pergamenum-title` key
+- [ ] R-09 — Duplicating a Link card that has a title copies the `pergamenum-title` key to the new
+      node
+- [ ] R-10 — Double-click on a Link card still opens the destination via `NSWorkspace.open(URL)`
+      in every title state (set, unset, mid-edit-cancelled)
+- [ ] R-11 — test-cmd (`-only-testing:PergamenumTests`) builds clean and passes 100%
+- [ ] R-12 — `Pergamenum`, `perg`, and `pergamenum-mcp` schemes all build clean (no new file
+      needed in `sharedSources`, since this feature has no connector-facing surface)
+- [ ] R-13 — Manual hand-check on a live vault confirms: entering/committing/canceling the inline
+      title edit, the empty-clear fallback, and that the new `pergamenum-title` key survives an
+      open/edit/save round-trip in Obsidian unmodified (no-test: requires a human driving the
+      actual pointer/keyboard interaction and an external app, matching this repo's standing
+      precedent that drag/resize/inline-edit gestures are hand-checked, not XCUITest'd)

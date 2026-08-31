@@ -40,9 +40,9 @@ private func groupNode() -> CanvasNode {
 
 // ADR-0027 §D7 (Task 7): `.textColor` and `.textAlign` bring the catalogue from 10 to 12.
 // ADR-0028 §D8 (plan `2026-08-29-wysiwyg-markdown-in-workspace`, Task 7): `.foldHeadings`
-// brings it to 13.
-@Test func theCatalogueHasExactlyTheThirteenCommandsTheCardOffers() {
-    #expect(CardCommand.allCases.count == 13)
+// brings it to 13. PG-073: `.renameLink` brings it to 14.
+@Test func theCatalogueHasExactlyTheFourteenCommandsTheCardOffers() {
+    #expect(CardCommand.allCases.count == 14)
 }
 
 // MARK: - `available(for:isCroppable:hasCrop:)` (R-06)
@@ -111,10 +111,11 @@ private func groupNode() -> CanvasNode {
 }
 
 @Test func availableOnANonCroppableNodeOmitsEveryCropCommandButKeepsTheRest() {
-    for node in [linkNode(), markdownFileNode()] {
-        let commands = CardCommand.available(for: node, isCroppable: false, hasCrop: false)
-        #expect(commands == [.open, .copyLink, .color, .resize, .duplicate, .delete])
-    }
+    let linkCommands = CardCommand.available(for: linkNode(), isCroppable: false, hasCrop: false)
+    #expect(linkCommands == [.open, .copyLink, .color, .renameLink, .resize, .duplicate, .delete])
+
+    let markdownCommands = CardCommand.available(for: markdownFileNode(), isCroppable: false, hasCrop: false)
+    #expect(markdownCommands == [.open, .copyLink, .color, .resize, .duplicate, .delete])
 }
 
 // `isCroppable` is the caller's own placeholder/extension check
@@ -139,6 +140,7 @@ private func groupNode() -> CanvasNode {
         .textColor: "Colore testo",
         .textAlign: "Allineamento",
         .foldHeadings: "Ripiega titoli",
+        .renameLink: "Rinomina",
         .resize: "Ridimensiona",
         .fitToCrop: "Adatta al ritaglio",
         .crop: "Ritaglia",
@@ -180,6 +182,7 @@ private func groupNode() -> CanvasNode {
         // *this* section is folded. A menu entry that opens a list of every heading is asking
         // about all of them, so it may not borrow the icon that means one.
         .foldHeadings: "chevron.up.chevron.down",
+        .renameLink: "pencil",
         .resize: "arrow.up.left.and.arrow.down.right",
         .fitToCrop: "aspectratio",
         .crop: "crop",
@@ -230,6 +233,7 @@ private func groupNode() -> CanvasNode {
         .textColor: "board-card-textColor",
         .textAlign: "board-card-textAlign",
         .foldHeadings: "board-card-foldHeadings",
+        .renameLink: "board-card-renameLink",
         .resize: "board-card-resize",
         .fitToCrop: "board-card-fitToCrop",
         .crop: "board-card-crop",

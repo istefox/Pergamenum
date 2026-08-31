@@ -39,7 +39,7 @@ decision to reopen SPEC §14).
 
 ### Phase 4 — SPEC gaps
 - [x] PG-074 give the To Do tool an interactive checkbox and task indexing  (completed: 2026-08-31)
-- [ ] PG-073 add an editable title affordance to the Link card
+- [x] PG-073 add an editable title affordance to the Link card  (completed: 2026-08-31)
 - [ ] PG-075 conceal markdown markers in Workspace text cards like the note editor
 - [x] PG-086 draw a real checkbox glyph on task lines instead of coloured characters  (completed: 2026-08-31)
 - [ ] PG-085 compute list nesting depth by CommonMark's content-column rule
