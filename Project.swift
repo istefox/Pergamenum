@@ -77,6 +77,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Index/IndexCache.swift",
     "Sources/Index/IndexSnapshot.swift",
     "Sources/Calendar/TimeBlock.swift",
+    "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",
     "Sources/Vault/NoteFileOperations.swift",
     "Sources/Vault/NoteHistory.swift",

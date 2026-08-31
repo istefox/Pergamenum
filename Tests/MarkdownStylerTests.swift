@@ -147,15 +147,14 @@ private func emphasisMarkers(_ text: String) -> [String] {
 }
 
 @Test func stylesTaskMarkers() {
-    #expect(styled("- [ ] Da fare", .taskMarker(done: false)) == "- [ ]")
-    #expect(styled("- [x] Fatto", .taskMarker(done: true)) == "- [x]")
-    // `- [>]` is rescheduled and `- [-]` cancelled: both are open, not done.
-    #expect(spans("- [>] Rimandato").contains(.taskMarker(done: false)))
-    #expect(spans("- [-] Annullato").contains(.taskMarker(done: false)))
+    #expect(styled("- [ ] Da fare", .taskMarker(state: .open)) == "- [ ]")
+    #expect(styled("- [x] Fatto", .taskMarker(state: .done)) == "- [x]")
+    #expect(spans("- [>] Rimandato").contains(.taskMarker(state: .rescheduled)))
+    #expect(spans("- [-] Annullato").contains(.taskMarker(state: .cancelled)))
 }
 
 @Test func indentedTaskMarkersKeepTheirPosition() {
-    #expect(styled("    - [ ] Annidato", .taskMarker(done: false)) == "- [ ]")
+    #expect(styled("    - [ ] Annidato", .taskMarker(state: .open)) == "- [ ]")
 }
 
 @Test func stylesSchedulingMarkers() {
@@ -405,16 +404,16 @@ private func hasAnyListMarker(_ line: String) -> Bool {
     // §D2), so it must gain no list span at all, and it must keep exactly the
     // `.taskMarker` span it already had - nothing about today's checkbox rendering
     // may change.
-    let checkboxLines: [(line: String, done: Bool)] = [
-        ("- [ ] Da fare", false),
-        ("- [x] Fatto", true),
-        ("- [>] Rimandato", false),
-        ("- [-] Annullato", false),
-        ("    - [ ] Annidato", false),
+    let checkboxLines: [(line: String, state: TaskItem.State)] = [
+        ("- [ ] Da fare", .open),
+        ("- [x] Fatto", .done),
+        ("- [>] Rimandato", .rescheduled),
+        ("- [-] Annullato", .cancelled),
+        ("    - [ ] Annidato", .open),
     ]
-    for (line, done) in checkboxLines {
+    for (line, state) in checkboxLines {
         #expect(!hasAnyListMarker(line), "\"\(line)\" must not yield a list marker span")
-        #expect(spans(line).contains(.taskMarker(done: done)))
+        #expect(spans(line).contains(.taskMarker(state: state)))
     }
 }
 

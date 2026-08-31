@@ -244,11 +244,13 @@ final class VaultSession {
         let start = clock.now
         let cacheURL = cacheURL
         let cached = IndexCache(url: cacheURL).load()
+        let cachedBoardTasks = IndexCache(url: cacheURL).loadBoardTasks()
         let root = root
 
         let outcome = await Task.detached(priority: .userInitiated) {
             var scanner = VaultScanner(root: root)
             scanner.cached = cached
+            scanner.cachedBoardTasks = cachedBoardTasks
             return scanner.scan()
         }.value
         index.replaceAll(with: outcome, duration: clock.now - start)
@@ -256,8 +258,9 @@ final class VaultSession {
         // Written after the index is in place: the cache is an optimisation, and the
         // app must be usable whether or not it can be saved (SPEC §12).
         let records = outcome.records
+        let boardTaskRecords = outcome.boardTaskRecords
         let problem: String = await Task.detached(priority: .utility) {
-            IndexCache(url: cacheURL).save(records)
+            IndexCache(url: cacheURL).save(records, boardTasks: boardTaskRecords)
         }.value
         if !problem.isEmpty { problems.append("cache: \(problem)") }
     }

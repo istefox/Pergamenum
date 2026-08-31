@@ -136,6 +136,58 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     #expect(onDisk.contains("- [ ] Beta"))
 }
 
+// MARK: - Board-sourced tasks (PG-074, plan Section 5)
+
+@MainActor
+@Test func aSessionCompletesABoardSourcedTaskByRewritingItsCanvasNode() async throws {
+    let vault = try TemporaryVault()
+    let canvasStore = CanvasStore(root: vault.root)
+    let node = CanvasNode(id: "node1", kind: .text("- [ ] Alfa"), x: 0, y: 0, width: 260, height: 120)
+    try canvasStore.save(CanvasDocument(nodes: [node]), board: "Lavagna.canvas")
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+
+    let task = try #require(session.index.allTasks.first { $0.sourcePath == "Lavagna.canvas" })
+    guard case .written(let result) = session.apply(.state(.done), to: task) else {
+        Issue.record("la scrittura non è avvenuta: \(session.problems)")
+        return
+    }
+    #expect(result.text.contains("- [x] Alfa"))
+
+    // On the `.canvas` file's own node, never through `NoteStore`: a board is not a note.
+    let onDisk = try canvasStore.load(board: "Lavagna.canvas")
+    guard case .text(let text) = onDisk.nodes.first?.kind else {
+        Issue.record("il nodo non è più .text")
+        return
+    }
+    #expect(text.contains("- [x] Alfa"))
+}
+
+@MainActor
+@Test func aSessionReportsAStaleLineForABoardSourcedTaskRatherThanRewritingWhateverSitsThere() async throws {
+    let vault = try TemporaryVault()
+    let canvasStore = CanvasStore(root: vault.root)
+    let node = CanvasNode(id: "node1", kind: .text("- [ ] Alfa"), x: 0, y: 0, width: 260, height: 120)
+    try canvasStore.save(CanvasDocument(nodes: [node]), board: "Lavagna.canvas")
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    let task = try #require(session.index.allTasks.first { $0.sourcePath == "Lavagna.canvas" })
+
+    // Someone else edits the node's text.
+    var document = try canvasStore.load(board: "Lavagna.canvas")
+    document.nodes[0].kind = .text("- [ ] Beta")
+    try canvasStore.save(document, board: "Lavagna.canvas")
+
+    guard case .stale = session.apply(.state(.done), to: task) else {
+        Issue.record("una riga cambiata sotto deve dare .stale, non una riscrittura")
+        return
+    }
+    let onDisk = try canvasStore.load(board: "Lavagna.canvas")
+    guard case .text(let text) = onDisk.nodes.first?.kind else {
+        Issue.record("il nodo non è più .text")
+        return
+    }
+    #expect(text.contains("- [ ] Beta"))
+}
+
 // MARK: - The day
 
 @MainActor

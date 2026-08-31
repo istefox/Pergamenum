@@ -272,6 +272,7 @@ extension NoteTextView {
                 case .emphasisMarker: .emphasis
                 case .embedRun: .embed
                 case .listMarker: .list
+                case .taskMarker: .checkbox
                 default: nil
                 }
                 if let kind {

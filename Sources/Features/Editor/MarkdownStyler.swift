@@ -51,8 +51,8 @@ enum MarkdownStyler {
         case codeBlock
         /// One token inside a fenced block, from the local grammar.
         case codeToken(CodeSyntax.Token)
-        /// The `- [ ]` marker of a task line.
-        case taskMarker(done: Bool)
+        /// The `- [ ]` marker of a task line, and which of the four §7.1 states it is.
+        case taskMarker(state: TaskItem.State)
         /// A `>2026-08-15` scheduling marker.
         case scheduled
         /// A `!2026-08-20` due date.
@@ -212,7 +212,7 @@ enum MarkdownStyler {
         if let task {
             result.append(StyledRange(
                 range: absolute(indent, task.length),
-                span: .taskMarker(done: task.done)
+                span: .taskMarker(state: task.state)
             ))
         }
 
@@ -472,11 +472,17 @@ private func listMarkerLength(
     return afterDigits.dropFirst().hasPrefix(" ") ? (digits + 2, .ordered) : nil
 }
 
-private func taskMarker(in line: some StringProtocol) -> (length: Int, done: Bool)? {
+private func taskMarker(in line: some StringProtocol) -> (length: Int, state: TaskItem.State)? {
     guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
     let after = line.dropFirst()
     guard after.hasPrefix(" ["), after.count >= 4 else { return nil }
-    let state = Array(after)[2]
+    let marker = Array(after)[2]
     guard Array(after)[3] == "]" else { return nil }
-    return (5, state == "x" || state == "X")
+    let state: TaskItem.State = switch marker {
+    case "x", "X": .done
+    case ">": .rescheduled
+    case "-": .cancelled
+    default: .open
+    }
+    return (5, state)
 }

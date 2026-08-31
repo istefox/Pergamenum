@@ -229,14 +229,15 @@ private func makeEditor(_ text: String) -> (NSTextView, NoteTextView.Coordinator
         let (_, coordinator) = try makeCard(everyConstruct)
         let markers = coordinator.hiddenMarkers
 
-        // The premise, so this cannot pass vacuously over an empty table: five of the six lines
-        // are concealed - the heading, the three list items, the emphasis pair - and the checkbox
-        // line is not among them, since a checkbox is never a list marker (ADR-0028 §D11, R-06).
-        // A round trip that stayed identical only because nothing was being drawn over it would
+        // The premise, so this cannot pass vacuously over an empty table: all six lines are
+        // concealed - the heading, the three list items, the emphasis pair, and now the checkbox
+        // line too, drawn as a glyph rather than hidden as a list marker (PG-086, ADR-0028 §D11
+        // reopened): a checkbox is still never a list marker, it is its own `.checkbox` kind. A
+        // round trip that stayed identical only because nothing was being drawn over it would
         // prove nothing at all.
-        #expect(Set(markers.keys) == [Line.titolo, Line.primo, Line.annidato, Line.uno, Line.grassetto])
-        #expect(markers[Line.fai] == nil, "una riga con casella di spunta non entra nella tabella")
-        #expect(markers.values.reduce(0) { $0 + $1.count } == 6)
+        #expect(Set(markers.keys) == [Line.titolo, Line.primo, Line.annidato, Line.uno, Line.fai, Line.grassetto])
+        #expect(markers[Line.fai]?.contains { $0.kind == .checkbox } == true, "la riga con casella di spunta entra nella tabella con un marcatore .checkbox")
+        #expect(markers.values.reduce(0) { $0 + $1.count } == 7)
 
         for hides in [true, false] {
             for revealed in [Set<Int>(), Set(Line.all)] {
@@ -278,7 +279,7 @@ private func makeEditor(_ text: String) -> (NSTextView, NoteTextView.Coordinator
                 // The loop above must have had something to measure in the one configuration where
                 // every marker is concealed - otherwise its `continue` would carry the whole test.
                 if hides, revealed.isEmpty {
-                    #expect(substituted == 5, "\(label): \(substituted) paragrafi sostituiti invece di 5")
+                    #expect(substituted == 6, "\(label): \(substituted) paragrafi sostituiti invece di 6")
                 }
             }
         }

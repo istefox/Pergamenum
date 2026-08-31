@@ -123,7 +123,7 @@ enum MarkdownAttributedText {
         case .embedRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
-        case .taskMarker(let done): done ? .taskDone : .taskOpen
+        case .taskMarker(let state): state == .done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
         }

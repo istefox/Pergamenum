@@ -38,10 +38,10 @@ decision to reopen SPEC §14).
 - [x] PG-061 reuse WorkspaceBoardResolver.matches in BoardFileOperations renamePlan  (completed: 2026-08-31)
 
 ### Phase 4 — SPEC gaps
-- [ ] PG-074 give the To Do tool an interactive checkbox and task indexing
+- [x] PG-074 give the To Do tool an interactive checkbox and task indexing  (completed: 2026-08-31)
 - [ ] PG-073 add an editable title affordance to the Link card
 - [ ] PG-075 conceal markdown markers in Workspace text cards like the note editor
-- [ ] PG-086 draw a real checkbox glyph on task lines instead of coloured characters
+- [x] PG-086 draw a real checkbox glyph on task lines instead of coloured characters  (completed: 2026-08-31)
 - [ ] PG-085 compute list nesting depth by CommonMark's content-column rule
 - [ ] PG-084 make MarkdownStyler's inline-span parser recursive for nested spans
 

@@ -21,6 +21,16 @@ struct IndexCache {
         var modifiedAt: Date
     }
 
+    /// One cached board's tasks (PG-074, plan Section 4) - its own table, never a row in
+    /// `notes`: a `.canvas` masquerading as a `StoredRecord` would surface as a false note in
+    /// search, backlinks, the note tree and the connectors, reversing ADR-0025's board/note
+    /// separation (plan decision 2).
+    struct BoardEntry: Codable, Sendable {
+        var record: StoredBoardTaskRecord
+        var byteSize: Int
+        var modifiedAt: Date
+    }
+
     private var handle: OpaquePointer?
 
     init(url: URL) {
@@ -57,6 +67,36 @@ struct IndexCache {
         return entries
     }
 
+    /// Reads every cached board's tasks, keyed by the board's own path - `load()`'s sibling,
+    /// same version guard, same "missing means empty rather than partial" reasoning. A schema
+    /// version that fails the guard already made `load()` return nothing; this mirrors it
+    /// rather than being called from inside it, so a caller that wants only notes never pays
+    /// for a table it does not read.
+    func loadBoardTasks() -> [String: BoardEntry] {
+        guard let database = open(create: false) else { return [:] }
+        defer { sqlite3_close(database) }
+        guard schemaVersion(of: database) == Self.schemaVersion else { return [:] }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "SELECT path, payload FROM boardTasks;", -1, &statement, nil
+        ) == SQLITE_OK else { return [:] }
+        defer { sqlite3_finalize(statement) }
+
+        var entries: [String: BoardEntry] = [:]
+        let decoder = JSONDecoder()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let pathText = sqlite3_column_text(statement, 0),
+                  let blob = sqlite3_column_blob(statement, 1)
+            else { continue }
+            let length = Int(sqlite3_column_bytes(statement, 1))
+            let data = Data(bytes: blob, count: length)
+            guard let entry = try? decoder.decode(BoardEntry.self, from: data) else { continue }
+            entries[String(cString: pathText)] = entry
+        }
+        return entries
+    }
+
     // MARK: Writing
 
     /// Replaces the cache with these records.
@@ -64,8 +104,8 @@ struct IndexCache {
     /// One transaction: a cache half-written by an interrupted quit is exactly the
     /// state the version check above cannot detect, so it must never exist.
     @discardableResult
-    func save(_ records: [NoteRecord]) -> Bool {
-        save(records).isEmpty
+    func save(_ records: [NoteRecord], boardTasks: [BoardTaskRecord] = []) -> Bool {
+        save(records, boardTasks: boardTasks).isEmpty
     }
 
     /// The same save, returning what went wrong.
@@ -73,14 +113,17 @@ struct IndexCache {
     /// Reported rather than swallowed: the first version left a zero-byte `cache.db`
     /// behind with nothing to say why, which is indistinguishable from a cache that
     /// was simply never written.
-    func save(_ records: [NoteRecord]) -> String {
+    func save(_ records: [NoteRecord], boardTasks: [BoardTaskRecord] = []) -> String {
         guard let database = open(create: true) else {
             return "cache.db non apribile in scrittura"
         }
         defer { sqlite3_close(database) }
         guard prepareSchema(database) else { return "schema: \(message(database))" }
 
-        guard exec(database, "BEGIN IMMEDIATE;"), exec(database, "DELETE FROM notes;") else {
+        guard exec(database, "BEGIN IMMEDIATE;"),
+              exec(database, "DELETE FROM notes;"),
+              exec(database, "DELETE FROM boardTasks;")
+        else {
             return "transazione: \(message(database))"
         }
 
@@ -108,6 +151,35 @@ struct IndexCache {
                 sqlite3_bind_blob(statement, 2, bytes.baseAddress, Int32(data.count), Self.transient)
             }
             guard sqlite3_step(statement) == SQLITE_DONE else {
+                let reason = message(database)
+                _ = exec(database, "ROLLBACK;")
+                return "\(record.relativePath): \(reason)"
+            }
+        }
+
+        var boardStatement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "INSERT INTO boardTasks (path, payload) VALUES (?, ?);", -1, &boardStatement, nil
+        ) == SQLITE_OK else {
+            _ = exec(database, "ROLLBACK;")
+            return "insert board: \(message(database))"
+        }
+        defer { sqlite3_finalize(boardStatement) }
+
+        for record in boardTasks {
+            let entry = BoardEntry(
+                record: StoredBoardTaskRecord(record),
+                byteSize: record.byteSize,
+                modifiedAt: record.modifiedAt
+            )
+            guard let data = try? encoder.encode(entry) else { continue }
+
+            sqlite3_reset(boardStatement)
+            sqlite3_bind_text(boardStatement, 1, record.relativePath, -1, Self.transient)
+            _ = data.withUnsafeBytes { bytes in
+                sqlite3_bind_blob(boardStatement, 2, bytes.baseAddress, Int32(data.count), Self.transient)
+            }
+            guard sqlite3_step(boardStatement) == SQLITE_DONE else {
                 let reason = message(database)
                 _ = exec(database, "ROLLBACK;")
                 return "\(record.relativePath): \(reason)"
@@ -164,6 +236,7 @@ struct IndexCache {
 
     private func prepareSchema(_ database: OpaquePointer) -> Bool {
         exec(database, "CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, payload BLOB NOT NULL);")
+            && exec(database, "CREATE TABLE IF NOT EXISTS boardTasks (path TEXT PRIMARY KEY, payload BLOB NOT NULL);")
             && exec(database, "PRAGMA user_version = \(Self.schemaVersion);")
     }
 
@@ -266,5 +339,57 @@ struct StoredTask: Codable, Sendable {
     /// never disagree with what the parser would say about the same line today.
     var task: TaskItem? {
         TaskParser.parse(line: rawLine, sourcePath: sourcePath, lineIndex: lineIndex)
+    }
+}
+
+/// A `BoardTaskRecord` in a form that can be written down - `StoredRecord`'s sibling, one row
+/// per board rather than per note (plan Section 4).
+struct StoredBoardTaskRecord: Codable, Sendable {
+    var relativePath: String
+    var tasks: [StoredBoardTask]
+    var modifiedAt: Date
+    var byteSize: Int
+    var contentHash: String
+
+    init(_ record: BoardTaskRecord) {
+        relativePath = record.relativePath
+        tasks = record.tasks.map(StoredBoardTask.init)
+        modifiedAt = record.modifiedAt
+        byteSize = record.byteSize
+        contentHash = record.contentHash
+    }
+
+    var record: BoardTaskRecord {
+        BoardTaskRecord(
+            relativePath: relativePath,
+            tasks: tasks.compactMap(\.task),
+            modifiedAt: modifiedAt,
+            byteSize: byteSize,
+            contentHash: contentHash
+        )
+    }
+}
+
+/// `StoredTask`'s sibling for a board-sourced task: the same re-parse-from-`rawLine` rule, plus
+/// `nodeID` - `TaskParser.parse(line:sourcePath:lineIndex:)` has no parameter for it, so it is
+/// carried alongside the three re-parsed fields and set on the result afterward.
+struct StoredBoardTask: Codable, Sendable {
+    var rawLine: String
+    var sourcePath: String
+    var lineIndex: Int
+    var nodeID: String?
+
+    init(_ task: TaskItem) {
+        rawLine = task.rawLine
+        sourcePath = task.sourcePath
+        lineIndex = task.lineIndex
+        nodeID = task.nodeID
+    }
+
+    var task: TaskItem? {
+        guard var task = TaskParser.parse(line: rawLine, sourcePath: sourcePath, lineIndex: lineIndex)
+        else { return nil }
+        task.nodeID = nodeID
+        return task
     }
 }

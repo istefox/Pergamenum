@@ -29,8 +29,13 @@ struct TaskItem: Equatable, Sendable, Identifiable {
 
     /// Vault-relative path of the note or `.canvas` the task lives in.
     var sourcePath: String
-    /// Zero-based line index within that file.
+    /// Zero-based line index within that file - or, when `sourcePath` is a `.canvas`,
+    /// within `nodeID`'s own text, never the whole board file. A board can hold several
+    /// `.text` nodes with task lines, and `lineIndex` alone cannot tell them apart.
     var lineIndex: Int
+    /// The `CanvasNode.id` this task's line lives in, when `sourcePath` is a `.canvas`.
+    /// Nil for every note-sourced task (SPEC §7.4's plain case, unchanged).
+    var nodeID: String? = nil
 
     var state: State
     /// The text with its markers removed, which is what a task view shows.
@@ -73,7 +78,9 @@ struct TaskItem: Equatable, Sendable, Identifiable {
     /// time - the linter is what notices (R-12).
     var parentLocalID: Int?
 
-    var id: String { "\(sourcePath)#\(lineIndex)" }
+    var id: String {
+        if let nodeID { "\(sourcePath)#\(nodeID)#\(lineIndex)" } else { "\(sourcePath)#\(lineIndex)" }
+    }
 
     /// Late relative to a given day: due before it and still open.
     func isOverdue(on day: CalendarDate) -> Bool {

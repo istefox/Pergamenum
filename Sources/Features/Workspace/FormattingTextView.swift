@@ -25,6 +25,11 @@ final class FormattingTextView: NSTextView {
     /// test - and nil is also what makes the click fall through to `super` untouched.
     var onToggleFold: ((Int) -> Void)?
 
+    /// A click landed on a task line's checkbox glyph, naming the zero-based line the task is
+    /// on within the card's own text (SPEC §7.1, PG-074). Nil on a card whose board never asked
+    /// to be told, which is a preview or a test.
+    var onToggleTask: ((Int) -> Void)?
+
     /// Read from the raw event rather than from `cancelOperation(_:)`, which is what the key
     /// looks like it should arrive as: AppKit's standard key bindings send Esc inside a text view
     /// to `complete:`, word completion, so the responder method that reads as its obvious home is
@@ -142,6 +147,7 @@ final class FormattingTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if claimsFoldBadge(at: point) { return }
+        if claimsCheckbox(at: point) { return }
         super.mouseDown(with: event)
     }
 
@@ -193,6 +199,79 @@ final class FormattingTextView: NSTextView {
     private static func entry(atHeadingOffset offset: Int, in text: String) -> Int? {
         NoteOutline.entries(in: text).firstIndex { entry in
             NSRange(entry.range, in: text).location == offset
+        }
+    }
+
+    // MARK: - Checkbox toggling (PG-074, plan
+    // `2026-08-31-pg-074-give-the-to-do-tool-an-interactiv` Task 3)
+
+    /// A click on a task line's checkbox glyph, naming the line and toggling it.
+    ///
+    /// **Not gated on `isEditable`**, unlike `claimsFoldBadge(at:)` above - a task list you must
+    /// double-click into before ticking a box is not the interactive list SPEC §6.4 asks for
+    /// (plan decision 1). The click still has to land on the glyph's own drawn rect, never merely
+    /// somewhere on the task's line: a card at rest hands every other point to the board's own
+    /// tap/drag/double-click gestures untouched, exactly as `claimsFoldBadge` does for its badge.
+    ///
+    /// This view has no access to the coordinator's `hiddenMarkers` table - it only ever sees
+    /// what that table drew - so the marker is re-read from the raw characters here, the same
+    /// re-validation `EditorDecorationDelegate.stillSpellsATaskMarker` performs before drawing.
+    private func claimsCheckbox(at point: CGPoint) -> Bool {
+        guard let onToggleTask, let manager = textLayoutManager else { return false }
+        let origin = textContainerOrigin
+        let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let text = string as NSString
+
+        var handled = false
+        manager.enumerateTextLayoutFragments(
+            from: manager.documentRange.location, options: [.ensuresLayout]
+        ) { fragment in
+            let range = fragment.rangeInElement
+            let offset = manager.offset(from: manager.documentRange.location, to: range.location)
+            let length = manager.offset(from: range.location, to: range.endLocation)
+            guard length > 0, offset >= 0, offset + length <= text.length,
+                  let stateOffset = Self.checkboxStateOffset(
+                      in: text.substring(with: NSRange(location: offset, length: length))
+                  )
+            else { return true }
+
+            guard let stateStart = manager.location(range.location, offsetBy: stateOffset),
+                  let stateEnd = manager.location(stateStart, offsetBy: 1),
+                  let stateRange = NSTextRange(location: stateStart, end: stateEnd)
+            else { return true }
+
+            var glyphFrame: CGRect?
+            manager.enumerateTextSegments(in: stateRange, type: .standard) { _, frame, _, _ in
+                glyphFrame = frame
+                return true
+            }
+            guard let glyphFrame, glyphFrame.contains(inContainer) else { return true }
+
+            onToggleTask(Self.lineIndex(atParagraphOffset: offset, in: text as String))
+            handled = true
+            return false
+        }
+        return handled
+    }
+
+    /// The offset, within a paragraph's own text, of the state character in its task marker -
+    /// dash-or-star, space, `[`, state, `]`, after any leading indentation. Nil for a line that
+    /// is not a task line, or one too short to hold a whole five-character marker.
+    private static func checkboxStateOffset(in paragraph: String) -> Int? {
+        let indent = paragraph.prefix { $0 == " " || $0 == "\t" }.count
+        let characters = Array(paragraph)
+        guard characters.count >= indent + 5,
+              characters[indent] == "-" || characters[indent] == "*",
+              characters[indent + 1] == " ", characters[indent + 2] == "[", characters[indent + 4] == "]"
+        else { return nil }
+        return indent + 3
+    }
+
+    /// The zero-based line number of the paragraph starting at `offset` - `TaskParser`'s own
+    /// counting, so the index handed to `onToggleTask` is the one `TaskItem.lineIndex` means.
+    private static func lineIndex(atParagraphOffset offset: Int, in text: String) -> Int {
+        (text as NSString).substring(to: offset).reduce(into: 0) { count, character in
+            if character == "\n" { count += 1 }
         }
     }
 

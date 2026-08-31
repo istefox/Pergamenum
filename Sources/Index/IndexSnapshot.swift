@@ -13,6 +13,10 @@ import Foundation
 /// same code.
 struct IndexSnapshot: Sendable {
     private(set) var notes: [String: NoteRecord] = [:]
+    /// Tasks from every scanned `.canvas` board's own To Do card(s), keyed by the board's
+    /// relative path (PG-074, plan Section 4). A sibling of `notes`, never merged into it -
+    /// `allTasks` is where the two collections meet.
+    private(set) var boardTasks: [String: BoardTaskRecord] = [:]
     /// Files that failed to read during the last scan, surfaced in the UI.
     private(set) var failures: [String] = []
     private(set) var lastScanDuration: Duration = .zero
@@ -36,6 +40,7 @@ struct IndexSnapshot: Sendable {
 
     mutating func replaceAll(with outcome: VaultScanner.Outcome, duration: Duration) {
         notes = Dictionary(uniqueKeysWithValues: outcome.records.map { ($0.relativePath, $0) })
+        boardTasks = Dictionary(uniqueKeysWithValues: outcome.boardTaskRecords.map { ($0.relativePath, $0) })
         failures = outcome.failures.map { "\($0.path): \($0.reason)" }
         lastScanDuration = duration
         reusedFromCache = outcome.reusedFromCache
@@ -160,11 +165,17 @@ struct IndexSnapshot: Sendable {
 
     // MARK: Tasks
 
-    /// Every task in the vault, in note order.
+    /// Every task in the vault, note-sourced and board-sourced alike, in path order. The
+    /// single aggregation point every task query below reads - a board contributes here and
+    /// nowhere else, so every one of them inherits board tasks for free.
     var allTasks: [TaskItem] {
-        notes.values
+        let noteTasks = notes.values
             .sorted { $0.relativePath < $1.relativePath }
             .flatMap(\.tasks)
+        let boardTaskItems = boardTasks.values
+            .sorted { $0.relativePath < $1.relativePath }
+            .flatMap(\.tasks)
+        return noteTasks + boardTaskItems
     }
 
     /// Tasks whose text links to a title, for the "Task collegati" panel of a note or

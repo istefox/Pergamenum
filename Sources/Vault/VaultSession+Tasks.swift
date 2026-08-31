@@ -105,7 +105,7 @@ extension VaultSession {
     @discardableResult
     func apply(_ change: TaskChange, to task: TaskItem) -> WriteOutcome {
         do {
-            let (_, text) = try read(task.sourcePath)
+            let text = try taskSourceText(for: task)
             let newLine: String = switch change {
             case .state(let state):
                 TaskParser.line(for: task, settingState: state, today: .today)
@@ -131,11 +131,57 @@ extension VaultSession {
                 return .stale
             }
 
-            return .written(try write(updated, to: task.sourcePath))
+            return .written(try writeTaskSource(updated, for: task))
         } catch {
             recordProblem("\(task.sourcePath): \(error)")
             return .failed
         }
+    }
+
+    /// The text a task's line-rewrite is computed against: the note's own body for a
+    /// note-sourced task, or the owning `.text` node's own body for a board-sourced one
+    /// (ADR-0025's board/note separation, plan Section 5) - never the whole `.canvas`
+    /// file, whose JSON `TaskParser.rewrite`'s line-surgical `components(separatedBy:
+    /// "\n")` was never meant to see.
+    private func taskSourceText(for task: TaskItem) throws -> String {
+        guard task.sourcePath.hasSuffix(".\(CanvasStore.fileExtension)") else {
+            return try read(task.sourcePath).text
+        }
+        guard let nodeID = task.nodeID else {
+            throw TaskSourceError.missingNodeID(task.sourcePath)
+        }
+        let document = try CanvasStore(root: root).load(board: task.sourcePath)
+        guard let node = document.nodes.first(where: { $0.id == nodeID }),
+              case .text(let nodeText) = node.kind
+        else {
+            throw TaskSourceError.nodeNotFound(task.sourcePath, nodeID)
+        }
+        return nodeText
+    }
+
+    /// Writes a rewritten task line back to its owning file: `write(_:to:)` for a note,
+    /// or the owning node inside its `.canvas` board for a board-sourced task - the one
+    /// resolution point the plan asks for, so every caller of `apply` gets it for free.
+    private func writeTaskSource(_ updated: String, for task: TaskItem) throws -> WriteResult {
+        guard task.sourcePath.hasSuffix(".\(CanvasStore.fileExtension)") else {
+            return try write(updated, to: task.sourcePath)
+        }
+        guard let nodeID = task.nodeID else {
+            throw TaskSourceError.missingNodeID(task.sourcePath)
+        }
+        let canvasStore = CanvasStore(root: root)
+        var document = try canvasStore.load(board: task.sourcePath)
+        guard let index = document.nodes.firstIndex(where: { $0.id == nodeID }) else {
+            throw TaskSourceError.nodeNotFound(task.sourcePath, nodeID)
+        }
+        document.nodes[index].kind = .text(updated)
+        try canvasStore.save(document, board: task.sourcePath)
+        return WriteResult(path: task.sourcePath, text: updated)
+    }
+
+    enum TaskSourceError: Error {
+        case missingNodeID(String)
+        case nodeNotFound(String, String)
     }
 
     /// Quick capture (SPEC §7.4): appends the composed task to its destination note,
