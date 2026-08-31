@@ -109,14 +109,14 @@ extension WorkspaceView {
     }
 
     /// Renames the folder and keeps the open board on it (R-05, R-08).
+    ///
+    /// The destination is read from the rename outcome (PG-052) - `FolderFileOperations
+    /// .renamePlan` already computed it, `normalized()` trim included, so this no longer
+    /// keeps a second, looser spelling of the same rule beside it.
     private func renameWorkspace(_ folder: String, to newName: String) {
-        // The destination `FolderFileOperations.renamePlan` computed for itself: a rename
-        // is a new last component under the same parent, never a move (SPEC, out of scope).
-        let parent = (folder as NSString).deletingLastPathComponent
-        let newPath = parent.isEmpty ? newName : "\(parent)/\(newName)"
         performFolderVerb(
             { vault.renameFolder(at: folder, to: newName) },
-            landing: { open in
+            landing: { open, newPath in
                 WorkspaceFolderNavigation.folderAfterRename(
                     open: open, renamed: folder, to: newPath
                 )
@@ -130,24 +130,22 @@ extension WorkspaceView {
     /// time this runs the question has been answered.
     private func deleteWorkspace(_ folder: String) {
         performFolderVerb(
-            { vault.trashFolder(at: folder) },
-            landing: { open in
-                WorkspaceFolderNavigation.folderAfterDelete(open: open, deleted: folder)
+            { vault.trashFolder(at: folder) ? folder : nil },
+            landing: { open, deleted in
+                WorkspaceFolderNavigation.folderAfterDelete(open: open, deleted: deleted)
             }
         )
     }
 
     /// Renames the board file and follows it when it is the one on screen (R-08).
+    ///
+    /// The destination is read from the rename outcome (PG-052), the same as
+    /// `renameWorkspace` above - `BoardFileOperations.renamePlan` already computes the
+    /// new file name under the same folder.
     private func renameBoard(_ board: String, to newName: String) {
-        // The destination `BoardFileOperations.renamePlan` computes for itself: a new file
-        // name under the same folder, with the extension added there rather than here so
-        // the check and the write cannot disagree about which file they mean.
-        let folder = (board as NSString).deletingLastPathComponent
-        let fileName = "\(newName).\(CanvasStore.fileExtension)"
-        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
         performBoardVerb(
             { vault.renameBoard(at: board, to: newName) },
-            landing: { open in
+            landing: { open, newPath in
                 WorkspaceFolderNavigation.boardAfterRename(open: open, renamed: board, to: newPath)
             }
         )
@@ -159,9 +157,9 @@ extension WorkspaceView {
     /// been answered.
     private func deleteBoard(_ board: String) {
         performBoardVerb(
-            { vault.trashBoard(at: board) },
-            landing: { open in
-                WorkspaceFolderNavigation.boardAfterDelete(open: open, deleted: board)
+            { vault.trashBoard(at: board) ? board : nil },
+            landing: { open, deleted in
+                WorkspaceFolderNavigation.boardAfterDelete(open: open, deleted: deleted)
             }
         )
     }
@@ -176,16 +174,18 @@ extension WorkspaceView {
     /// order wrong.
     ///
     /// - Parameters:
-    ///   - mutate: the vault call, returning whether it happened.
-    ///   - landing: where the open board goes, given the folder it is on now.
-    private func performFolderVerb(_ mutate: () -> Bool, landing: (String) -> String) {
+    ///   - mutate: the vault call, answering with whatever the landing rule needs (a
+    ///     destination path, PG-052) or `nil` if it refused.
+    ///   - landing: where the open board goes, given the folder it is on now and what
+    ///     `mutate` answered with.
+    private func performFolderVerb<T>(_ mutate: () -> T?, landing: (_ open: String, _ result: T) -> String) {
         flushBoard()
-        guard mutate() else { return }
+        guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - with
         // nothing chosen there is nothing to move.
         guard workspace.isShowingBoard else { return }
 
-        let destination = landing(workspace.folder)
+        let destination = landing(workspace.folder, result)
         guard destination != workspace.folder else { return }
         // A board is a file with a name of its own (ADR-0025 §D1), so it follows its
         // folder under that name rather than being derived from where the folder landed.
@@ -220,18 +220,20 @@ extension WorkspaceView {
     /// row of its own (§D2), so there is nothing there to light.
     ///
     /// - Parameters:
-    ///   - mutate: the vault call, returning whether it happened.
-    ///   - landing: where the selection goes, given the board that is open now.
-    private func performBoardVerb(
-        _ mutate: () -> Bool, landing: (String) -> WorkspaceSelection
+    ///   - mutate: the vault call, answering with whatever the landing rule needs (a
+    ///     destination path, PG-052) or `nil` if it refused.
+    ///   - landing: where the selection goes, given the board that is open now and what
+    ///     `mutate` answered with.
+    private func performBoardVerb<T>(
+        _ mutate: () -> T?, landing: (_ open: String, _ result: T) -> WorkspaceSelection
     ) {
         flushBoard()
-        guard mutate() else { return }
+        guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - a rename
         // of one that is merely selected in the tree moves no document on screen.
         guard workspace.isShowingBoard else { return }
 
-        switch landing(workspace.board) {
+        switch landing(workspace.board, result) {
         case .board(let path):
             // Reopened rather than left alone: the document on screen was read from a file
             // that has moved, and `open(board:)` is what re-reads it, refreshes the

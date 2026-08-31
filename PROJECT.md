@@ -71,7 +71,7 @@ decision to reopen SPEC §14).
 - [x] PG-049 fix same-name folder rename admitted by the guard then thrown by the performer  (completed: 2026-08-31)
 - [x] PG-050 give folder verbs a named parameter type instead of bare same-typed String pairs  (completed: 2026-08-31)
 - [x] PG-051 stop WorkspaceBrowser constructing FolderFileOperations directly on the main actor  (completed: 2026-08-31)
-- [ ] PG-052 read WorkspaceView.renameWorkspace's destination from the rename outcome
+- [x] PG-052 read WorkspaceView.renameWorkspace's destination from the rename outcome  (completed: 2026-08-31)
 - [ ] PG-059 stop WorkspaceBrowser.targetFolder fabricating a .folder(...) case
 - [ ] PG-067 make WorkspaceController's gesture-transient state private(set)
 

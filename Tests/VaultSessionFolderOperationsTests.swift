@@ -129,7 +129,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     let renamed = controller.renameFolder(at: "01 Progetti/vecchio", to: "nuovo")
 
-    #expect(renamed == false)
+    #expect(renamed == nil)
     #expect(!controller.problems.isEmpty, "la rinomina rifiutata deve registrare un problema")
     controller.close()
 }
@@ -193,5 +193,33 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let counts = controller.contentCounts(at: "01 Progetti/vecchio")
 
     #expect(counts?.notes == 1)
+    controller.close()
+}
+
+// MARK: - Rename answers with the outcome's destination, not a bare Bool (PG-052)
+
+@MainActor
+@Test func vaultControllerRenameFolderAnswersWithTheOutcomesNewPath() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+
+    let newPath = controller.renameFolder(at: "01 Progetti/vecchio", to: "nuovo")
+
+    #expect(newPath == "01 Progetti/nuovo")
+    controller.close()
+}
+
+@MainActor
+@Test func vaultControllerRenameBoardAnswersWithTheOutcomesNewPath() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    _ = try CanvasStore(root: vault.root).createBoard(named: "vecchio", in: "")
+
+    let newPath = controller.renameBoard(at: "vecchio.canvas", to: "nuovo")
+
+    #expect(newPath == "nuovo.canvas")
     controller.close()
 }

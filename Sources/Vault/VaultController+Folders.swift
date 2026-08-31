@@ -33,9 +33,13 @@ extension VaultController {
 
     /// Renames a folder and repoints every card that pointed inside it (R-05, R-06,
     /// R-07). It renames no board file: that is `renameBoard` below (ADR-0025 §D6).
+    ///
+    /// Answers with the outcome's own `newPath` rather than a bare `Bool`, so a caller
+    /// navigating to where the folder landed reads it from here instead of recomputing
+    /// the same arithmetic `FolderFileOperations.renamePlan` already did (PG-052).
     @discardableResult
-    func renameFolder(at relativePath: String, to newName: String) -> Bool {
-        guard let session, canOperateOnFolder(relativePath) else { return false }
+    func renameFolder(at relativePath: String, to newName: String) -> String? {
+        guard let session, canOperateOnFolder(relativePath) else { return nil }
         do {
             let outcome = try session.renameFolder(at: relativePath, to: newName)
             for failure in outcome.failures {
@@ -45,10 +49,10 @@ extension VaultController {
                 movedNote(from: moved.old, to: moved.new)
             }
             Task { await rescan() }
-            return true
+            return outcome.newPath
         } catch {
             recordProblem("rinomina cartella: \(error)")
-            return false
+            return nil
         }
     }
 
@@ -82,18 +86,18 @@ extension VaultController {
     /// What is left is the same one: report what could not be repointed, then rescan so
     /// the browser tree rebuilds around the new name.
     @discardableResult
-    func renameBoard(at relativePath: String, to newName: String) -> Bool {
-        guard let session else { return false }
+    func renameBoard(at relativePath: String, to newName: String) -> String? {
+        guard let session else { return nil }
         do {
             let outcome = try session.renameBoard(at: relativePath, to: newName)
             for failure in outcome.failures {
                 recordProblem("riferimento non aggiornato: \(failure)")
             }
             Task { await rescan() }
-            return true
+            return outcome.newPath
         } catch {
             recordProblem("rinomina board: \(error)")
-            return false
+            return nil
         }
     }
 
