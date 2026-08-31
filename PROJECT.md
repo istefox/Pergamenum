@@ -30,7 +30,7 @@ decision to reopen SPEC §14).
 - [x] PG-071 split WorkspaceFolderActions pure rules from its DI closures  (completed: 2026-08-31)
 
 ### Phase 3 — Card and canvas debt
-- [ ] PG-078 share one accessor for the Nota-vs-Testo color check across three files
+- [x] PG-078 share one accessor for the Nota-vs-Testo color check across three files  (completed: 2026-08-31)
 - [ ] PG-079 make CardCommand's button-vs-submenu split a property instead of three switches
 - [ ] PG-068 report a problem on BoardCardMenu copyLink miss instead of a silent return
 - [ ] PG-069 make board-lookup nil fallbacks consistent instead of asymmetric

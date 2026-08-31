@@ -215,7 +215,7 @@ struct BoardFormatBar: View {
     /// `cardOrigin` must include it too, or the pill sits `spacing(.s)` points high on every
     /// Nota (found manually verifying Task 6, ADR-0027 §D10 area).
     private var cardOrigin: CGPoint {
-        let inset = node.color != nil ? theme.spacing(.s) : 0
+        let inset = node.isNote ? theme.spacing(.s) : 0
         return CGPoint(x: node.x + inset, y: node.y + inset)
     }
 

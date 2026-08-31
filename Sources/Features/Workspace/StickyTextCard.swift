@@ -22,7 +22,7 @@ struct StickyTextCard: View {
         if case .text(let text) = node.kind { text } else { "" }
     }
 
-    private var placeholder: String { node.color != nil ? "Nota" : "Testo" }
+    private var placeholder: String { node.isNote ? "Nota" : "Testo" }
 
     var body: some View {
         Group {

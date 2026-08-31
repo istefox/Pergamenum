@@ -131,6 +131,11 @@ struct CanvasNode: Identifiable, Equatable, Sendable {
         return false
     }
 
+    /// A coloured "Nota" rather than a plain "Testo" (ADR-0027 §D1) - re-implemented as
+    /// `color != nil` in three call sites before PG-078 gave it one name, which already
+    /// caused the Task 6 pill-alignment bug once (`BoardFormatBar.swift`'s own comment).
+    var isNote: Bool { color != nil }
+
     var typeName: String {
         switch kind {
         case .text: "text"

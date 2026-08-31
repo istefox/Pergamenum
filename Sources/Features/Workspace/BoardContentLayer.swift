@@ -184,7 +184,7 @@ struct BoardContentLayer: View {
     private func cardBody(_ node: CanvasNode) -> some View {
         if BoardGeometry.drawsPlaceholder(at: workspace.zoom) {
             RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
-                .fill(theme.color(node.color == nil ? .surfaceCard : .surfaceRaised))
+                .fill(theme.color(node.isNote ? .surfaceRaised : .surfaceCard))
                 .overlay(
                     RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                         .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
