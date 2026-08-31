@@ -295,6 +295,18 @@ private let sampleBoard = """
     #expect(!exists("01 Progetti/nuovo/nuovo.canvas", in: vault.root))
 }
 
+@Test func renameFolderToItsOwnCurrentNameSucceedsInsteadOfThrowingAlreadyExists() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "01 Progetti/vecchio/Nota.md")
+
+    let outcome = try vault.operations.renameFolder(
+        at: "01 Progetti/vecchio", to: "vecchio", knownPaths: ["01 Progetti/vecchio/Nota.md"]
+    )
+
+    #expect(outcome.newPath == "01 Progetti/vecchio")
+    #expect(exists("01 Progetti/vecchio/Nota.md", in: vault.root))
+}
+
 @Test func trashFolderMovesTheDirectoryToTheTrashAndReturnsTheResultingURL() throws {
     let vault = try FolderOpsVault()
     try vault.write(header, to: "01 Progetti/vecchio/Nota.md")
