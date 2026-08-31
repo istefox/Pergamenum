@@ -63,31 +63,23 @@ struct BoardCardControls: View {
     }
 
     /// One control per command, icon-only: the bar is a row over the board, and the title
-    /// is on the tooltip. `Colore` and `Ridimensiona` carry an argument, so they are the
-    /// same submenus the context menu builds; `Ritaglia` collapses its group into one
-    /// control here, where a row of icons has no room for a button per crop state.
+    /// is on the tooltip. Every `command.carriesArgument` command draws the same submenu
+    /// the context menu builds (`BoardCardMenuItems.argumentItems`); `Ritaglia` collapses
+    /// its group into one control here, where a row of icons has no room for a button per
+    /// crop state - a bar-layout choice, not a property of the command itself.
     @ViewBuilder
     private func control(
         _ command: CardCommand, node: CanvasNode, actions: BoardCardActions
     ) -> some View {
-        switch command {
-        case .color:
-            submenu(command) { BoardCardMenuItems.colorItems(node: node, actions: actions) }
-        case .textColor:
-            submenu(command) { BoardCardMenuItems.textColorItems(node: node, actions: actions) }
-        case .textAlign:
-            submenu(command) { BoardCardMenuItems.textAlignItems(node: node, actions: actions) }
-        case .foldHeadings:
-            submenu(command) { BoardCardMenuItems.foldItems(node: node, actions: actions) }
-        case .resize:
-            submenu(command) { BoardCardMenuItems.sizeItems(node: node, actions: actions) }
-        case .crop:
+        if command.carriesArgument {
+            submenu(command) { BoardCardMenuItems.argumentItems(for: command, node: node, actions: actions) }
+        } else if command == .crop {
             submenu(command) { BoardCardMenuItems.cropItems(node: node, actions: actions) }
-        case .fitToCrop, .removeCrop:
+        } else if command == .fitToCrop || command == .removeCrop {
             // Drawn inside «Ridimensiona» and «Ritaglia» respectively, exactly where the
             // context menu draws them: nothing of their own on the bar.
             EmptyView()
-        case .open, .editText, .copyLink, .duplicate, .delete:
+        } else {
             Button {
                 actions.run(command, on: node)
             } label: {
