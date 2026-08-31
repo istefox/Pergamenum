@@ -281,17 +281,23 @@ struct FolderFileOperations {
             MovedNote(old: $0, new: Self.repointing($0, from: oldFolder, to: plan.newPath))
         }
 
-        do {
-            let destination = store.root.appending(path: plan.newPath, directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try FileManager.default.moveItem(
-                at: store.root.appending(path: oldFolder, directoryHint: .isDirectory),
-                to: destination
-            )
-        } catch {
-            throw FileOperationError.failed("rinomina cartella: \(error.localizedDescription)")
+        // A same-name rename is admitted by the guard above (`newFolder == oldFolder`)
+        // but has nothing to move - unguarded, `moveItem` throws "file already exists"
+        // moving a directory onto itself (PG-049). `NoteFileOperations.rename` skips its
+        // own move the same way on a no-op.
+        if plan.newPath != oldFolder {
+            do {
+                let destination = store.root.appending(path: plan.newPath, directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
+                try FileManager.default.moveItem(
+                    at: store.root.appending(path: oldFolder, directoryHint: .isDirectory),
+                    to: destination
+                )
+            } catch {
+                throw FileOperationError.failed("rinomina cartella: \(error.localizedDescription)")
+            }
         }
 
         var outcome = RenameOutcome(
