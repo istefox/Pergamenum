@@ -85,7 +85,7 @@ struct BoardFileOperations {
         // references this rename never touched, so the name-level pass is dropped whole
         // and reported.
         let sharing = canvas.allBoards().filter {
-            ($0 as NSString).lastPathComponent.lowercased() == oldName.lowercased()
+            WorkspaceBoardResolver.matches($0, workspacePath: oldName)
         }
         if sharing.count > 1 {
             plan.failures.append(
