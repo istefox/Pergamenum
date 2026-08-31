@@ -66,7 +66,7 @@ decision to reopen SPEC §14).
 - [ ] PG-082 discriminate note vs folder ids by a typed lookup, not a .md suffix check
 
 ### Phase 8 — Workspace/folder debt (previously ungrouped)
-- [ ] PG-047 route "create workspace" through FolderFileOperations validation
+- [x] PG-047 route "create workspace" through FolderFileOperations validation  (completed: 2026-08-31)
 - [ ] PG-048 distinguish empty-folder from unreadable-folder in contentCounts
 - [ ] PG-049 fix same-name folder rename admitted by the guard then thrown by the performer
 - [ ] PG-050 give folder verbs a named parameter type instead of bare same-typed String pairs

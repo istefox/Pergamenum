@@ -713,7 +713,8 @@ final class WorkspaceController {
     @discardableResult
     func createFolder(named name: String, at point: CGPoint) throws -> String {
         guard let store else { throw CanvasStore.StoreError.alreadyExists("nessuna cartella note aperta") }
-        let relativePath = try store.createFolder(named: name, in: folder)
+        let relativePath = try FolderFileOperations(store: NoteStore(root: store.root))
+            .createFolder(named: name, in: folder)
         // No second `refreshContents()` here. The directory exists before `placeFile` runs,
         // and `placeFile` -> `addNode` already refreshed against this same document and this
         // same disk, so a call on the way out enumerated the folder twice for one new card
