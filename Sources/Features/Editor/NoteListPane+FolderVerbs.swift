@@ -159,14 +159,14 @@ extension NoteListPane {
     private var newFolderSheet: some View {
         NewWorkspaceSheet(
             kind: .folder,
-            parents: WorkspaceFolderSheets.parentOptions(from: diskFolders),
-            initialParent: targetFolder,
+            parents: WorkspaceFolderSheets.parentOptions(from: diskFolders.map { FolderPath($0) }),
+            initialParent: FolderPath(targetFolder),
             isNameAvailable: { name, parent in
-                folderOperations?.nameIsAvailable(name, in: parent) ?? true
+                folderOperations?.nameIsAvailable(name.value, in: parent.value) ?? true
             },
             onConfirm: { name, parent in
                 creatingFolder = false
-                createFolder(named: name, in: parent)
+                createFolder(named: name.value, in: parent.value)
             },
             onCancel: { creatingFolder = false }
         )
@@ -182,11 +182,11 @@ extension NoteListPane {
                 kind: .folder,
                 path: path,
                 isNameAvailable: { name, parent in
-                    folderOperations?.nameIsAvailable(name, in: parent) ?? true
+                    folderOperations?.nameIsAvailable(name.value, in: parent.value) ?? true
                 },
                 onConfirm: { newName in
                     renamingFolder = nil
-                    vault.renameFolder(at: path, to: newName)
+                    vault.renameFolder(at: path, to: newName.value)
                 },
                 onCancel: { renamingFolder = nil }
             )

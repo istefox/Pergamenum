@@ -22,8 +22,10 @@ enum WorkspaceNameField {
     /// The two failures are ordered rather than merged, deliberately: a name carrying a
     /// `/` is not meaningfully "taken", and asking the file system about it would be
     /// asking about a path the user never typed.
-    static func state(name: String, parent: String, available: (String, String) -> Bool) -> State {
-        let violations = FolderFileOperations.validate(name)
+    static func state(
+        name: FolderName, parent: FolderPath, available: (FolderName, FolderPath) -> Bool
+    ) -> State {
+        let violations = FolderFileOperations.validate(name.value)
         guard violations.isEmpty else { return .invalid(violations) }
         guard available(name, parent) else { return .taken }
         return .ok
@@ -47,9 +49,9 @@ enum WorkspaceFolderSheets {
     /// The incoming order is preserved rather than re-sorted: `allFolders()` sorts with
     /// `localizedStandardCompare`, which is the order both sidebars are read in ("9 Note"
     /// before "10 Note"), and a plain `sorted()` here would undo exactly that.
-    static func parentOptions(from folders: [String]) -> [String] {
-        var seen: Set<String> = [""]
-        var options: [String] = []
+    static func parentOptions(from folders: [FolderPath]) -> [FolderPath] {
+        var seen: Set<FolderPath> = [""]
+        var options: [FolderPath] = []
         for folder in folders where seen.insert(folder).inserted {
             options.append(folder)
         }
@@ -135,21 +137,21 @@ struct NewWorkspaceSheet: View {
     let kind: WorkspaceItemKind
     /// Every folder that can hold a new one, root first: `parentOptions(from:)` over the
     /// folder list the browser already has.
-    let parents: [String]
-    let isNameAvailable: (String, String) -> Bool
+    let parents: [FolderPath]
+    let isNameAvailable: (FolderName, FolderPath) -> Bool
     /// The chosen name and the chosen parent, in that order.
-    let onConfirm: (String, String) -> Void
+    let onConfirm: (FolderName, FolderPath) -> Void
     let onCancel: () -> Void
 
     @State private var name = ""
-    @State private var parent: String
+    @State private var parent: FolderPath
 
     init(
         kind: WorkspaceItemKind,
-        parents: [String],
-        initialParent: String,
-        isNameAvailable: @escaping (String, String) -> Bool,
-        onConfirm: @escaping (String, String) -> Void,
+        parents: [FolderPath],
+        initialParent: FolderPath,
+        isNameAvailable: @escaping (FolderName, FolderPath) -> Bool,
+        onConfirm: @escaping (FolderName, FolderPath) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.kind = kind
@@ -165,7 +167,7 @@ struct NewWorkspaceSheet: View {
     }
 
     private var state: WorkspaceNameField.State {
-        WorkspaceNameField.state(name: name, parent: parent, available: isNameAvailable)
+        WorkspaceNameField.state(name: FolderName(name), parent: parent, available: isNameAvailable)
     }
 
     private var canCreate: Bool { state == .ok }
@@ -178,12 +180,12 @@ struct NewWorkspaceSheet: View {
 
             TextField("Nome", text: $name)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { if canCreate { onConfirm(name, parent) } }
+                .onSubmit { if canCreate { onConfirm(FolderName(name), parent) } }
                 .accessibilityIdentifier("workspace-new-name")
 
             Picker("Dentro", selection: $parent) {
                 ForEach(parents, id: \.self) { folder in
-                    Text(folder.isEmpty ? "(radice)" : folder).tag(folder)
+                    Text(folder.isEmpty ? "(radice)" : folder.value).tag(folder)
                 }
             }
             .accessibilityIdentifier("workspace-new-parent")
@@ -198,7 +200,7 @@ struct NewWorkspaceSheet: View {
             HStack {
                 Spacer()
                 Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("Crea") { onConfirm(name, parent) }
+                Button("Crea") { onConfirm(FolderName(name), parent) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canCreate)
             }
@@ -231,8 +233,8 @@ struct RenameWorkspaceSheet: View {
     /// `.canvas` extension: a rename asks for a name, and the extension belongs to
     /// `BoardFileOperations`, which is the one place that spells it (ADR-0025 §D6).
     let path: String
-    let isNameAvailable: (String, String) -> Bool
-    let onConfirm: (String) -> Void
+    let isNameAvailable: (FolderName, FolderPath) -> Bool
+    let onConfirm: (FolderName) -> Void
     let onCancel: () -> Void
 
     @State private var name: String
@@ -240,8 +242,8 @@ struct RenameWorkspaceSheet: View {
     init(
         kind: WorkspaceItemKind,
         path: String,
-        isNameAvailable: @escaping (String, String) -> Bool,
-        onConfirm: @escaping (String) -> Void,
+        isNameAvailable: @escaping (FolderName, FolderPath) -> Bool,
+        onConfirm: @escaping (FolderName) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.kind = kind
@@ -253,10 +255,10 @@ struct RenameWorkspaceSheet: View {
     }
 
     private var currentName: String { (path as NSString).lastPathComponent }
-    private var parent: String { (path as NSString).deletingLastPathComponent }
+    private var parent: FolderPath { FolderPath((path as NSString).deletingLastPathComponent) }
 
     private var state: WorkspaceNameField.State {
-        WorkspaceNameField.state(name: name, parent: parent, available: isNameAvailable)
+        WorkspaceNameField.state(name: FolderName(name), parent: parent, available: isNameAvailable)
     }
 
     /// Unchanged is not an error, it is a no-op: the button is off rather than red, the
@@ -271,7 +273,7 @@ struct RenameWorkspaceSheet: View {
 
             TextField("Nome", text: $name)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { if canRename { onConfirm(name) } }
+                .onSubmit { if canRename { onConfirm(FolderName(name)) } }
                 .accessibilityIdentifier("workspace-rename-name")
 
             if name != currentName {
@@ -281,7 +283,7 @@ struct RenameWorkspaceSheet: View {
             HStack {
                 Spacer()
                 Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("Rinomina") { onConfirm(name) }
+                Button("Rinomina") { onConfirm(FolderName(name)) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canRename)
             }
@@ -303,7 +305,7 @@ struct RenameWorkspaceSheet: View {
 private struct WorkspaceNameProblems: View {
     @Environment(\.theme) private var theme
     let state: WorkspaceNameField.State
-    let parent: String
+    let parent: FolderPath
 
     var body: some View {
         ForEach(lines, id: \.self) { line in
@@ -319,7 +321,7 @@ private struct WorkspaceNameProblems: View {
                 relatedMissingInSection: [], relatedMissingInFrontmatter: []
             ))
         case .taken:
-            ["Esiste già un elemento con questo nome in \(parent.isEmpty ? "«(radice)»" : "«\(parent)»")"]
+            ["Esiste già un elemento con questo nome in \(parent.isEmpty ? "«(radice)»" : "«\(parent.value)»")"]
         case .ok:
             []
         }

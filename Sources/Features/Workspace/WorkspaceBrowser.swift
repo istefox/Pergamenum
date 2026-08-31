@@ -152,10 +152,10 @@ struct WorkspaceBrowser: View {
         .sheet(item: $creating) { kind in
             NewWorkspaceSheet(
                 kind: kind,
-                parents: WorkspaceFolderSheets.parentOptions(from: folders),
-                initialParent: targetFolder,
+                parents: WorkspaceFolderSheets.parentOptions(from: folders.map { FolderPath($0) }),
+                initialParent: FolderPath(targetFolder),
                 isNameAvailable: { name, parent in
-                    nameIsAvailable(name, in: parent, for: kind)
+                    nameIsAvailable(name.value, in: parent.value, for: kind)
                 },
                 onConfirm: { name, parent in
                     creating = nil
@@ -175,13 +175,13 @@ struct WorkspaceBrowser: View {
                 kind: pending.kind,
                 path: pending.seed,
                 isNameAvailable: { name, parent in
-                    nameIsAvailable(name, in: parent, for: pending.kind)
+                    nameIsAvailable(name.value, in: parent.value, for: pending.kind)
                 },
                 onConfirm: { newName in
                     renameTarget = nil
                     switch pending.kind {
-                    case .board: actions.renameBoard(pending.path, newName)
-                    case .folder: actions.rename(pending.path, newName)
+                    case .board: actions.renameBoard(FolderPath(pending.path), newName)
+                    case .folder: actions.rename(FolderPath(pending.path), newName)
                     }
                 },
                 onCancel: { renameTarget = nil }
@@ -203,8 +203,8 @@ struct WorkspaceBrowser: View {
             Button("Sposta nel Cestino", role: .destructive) {
                 pendingDelete = nil
                 switch pending {
-                case .board(let path): actions.deleteBoard(path)
-                case .folder(let path, _): actions.delete(path)
+                case .board(let path): actions.deleteBoard(FolderPath(path))
+                case .folder(let path, _): actions.delete(FolderPath(path))
                 }
             }
             .accessibilityIdentifier("workspace-delete-confirm")
@@ -554,7 +554,7 @@ struct WorkspaceBrowser: View {
     private func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
         dragging = []
         guard !items.isEmpty, Self.canDrop(items, onFolder: destination) else { return false }
-        let refusals = actions.move(items, destination)
+        let refusals = actions.move(items, FolderPath(destination))
         guard refusals.isEmpty else {
             moveConflict = WorkspaceMoveConflict(reasons: refusals)
             return false

@@ -5,13 +5,13 @@ import Foundation
 extension WorkspaceView {
     var folderActions: WorkspaceFolderActions {
         WorkspaceFolderActions(
-            createBoard: { name, parent in createBoard(named: name, in: parent) },
-            createFolder: { name, parent in createFolder(named: name, in: parent) },
-            rename: { folder, newName in renameWorkspace(folder, to: newName) },
-            delete: { folder in deleteWorkspace(folder) },
-            renameBoard: { board, newName in renameBoard(board, to: newName) },
-            deleteBoard: { board in deleteBoard(board) },
-            move: { items, destination in moveItems(items, into: destination) },
+            createBoard: { name, parent in createBoard(named: name.value, in: parent.value) },
+            createFolder: { name, parent in createFolder(named: name.value, in: parent.value) },
+            rename: { folder, newName in renameWorkspace(folder.value, to: newName.value) },
+            delete: { folder in deleteWorkspace(folder.value) },
+            renameBoard: { board, newName in renameBoard(board.value, to: newName.value) },
+            deleteBoard: { board in deleteBoard(board.value) },
+            move: { items, destination in moveItems(items, into: destination.value) },
             recordDesync: { message in workspace.recordProblem(message) }
         )
     }

@@ -17,7 +17,7 @@ import Foundation
 /// half easy to reference on its own.
 struct WorkspaceFolderActions {
     /// Writes a board called `<name>.canvas` inside `parent` and opens it (R-02).
-    let createBoard: (_ name: String, _ parent: String) -> Void
+    let createBoard: (_ name: FolderName, _ parent: FolderPath) -> Void
 
     /// Creates a folder called `name` inside `parent` and selects it, **writing no board
     /// inside it** (R-01, ADR-0025 §D7).
@@ -26,14 +26,14 @@ struct WorkspaceFolderActions {
     /// above is the point: they were one verb because a workspace was a folder *with a
     /// board named after it*, which is the identification this chain removes. A caller
     /// asks for the thing it wants, and neither verb makes the other's thing on the side.
-    let createFolder: (_ name: String, _ parent: String) -> Void
+    let createFolder: (_ name: FolderName, _ parent: FolderPath) -> Void
 
     /// Renames `folder` to `newName`, keeping the open board on it (R-05, R-08).
-    let rename: (_ folder: String, _ newName: String) -> Void
+    let rename: (_ folder: FolderPath, _ newName: FolderName) -> Void
 
     /// Moves `folder` to the Trash. The caller has already confirmed: this does not ask
     /// (R-11, R-12).
-    let delete: (_ folder: String) -> Void
+    let delete: (_ folder: FolderPath) -> Void
 
     /// The same two verbs for a **board** file, by its own vault-relative `.canvas` path
     /// (ADR-0025 §D6, R-08). Separate closures rather than one that branches: a board
@@ -43,11 +43,11 @@ struct WorkspaceFolderActions {
     /// `(board, newName)` is `rename`'s own shape: the sheet asks for the name and the
     /// browser hands both across, so the extension is added in exactly one place
     /// (`BoardFileOperations.renamePlan`) and `newName` never carries one.
-    let renameBoard: (_ board: String, _ newName: String) -> Void
+    let renameBoard: (_ board: FolderPath, _ newName: FolderName) -> Void
 
     /// Moves the `.canvas` at `board` to the Trash. The caller has already confirmed:
     /// this does not ask - `delete`'s contract, for a file rather than a directory.
-    let deleteBoard: (_ board: String) -> Void
+    let deleteBoard: (_ board: FolderPath) -> Void
 
     /// Moves `items` into `destination` - a folder path, the vault root spelled `""`
     /// (R-05) - and answers with what the batch **refused**, empty when it committed
@@ -60,7 +60,7 @@ struct WorkspaceFolderActions {
     ///
     /// One closure for both surfaces - a folder row's drop and «Sposta in» in every row's
     /// context menu - because they are two renderings of one command (ADR-0023 §D1).
-    let move: (_ items: [VaultItemRef], _ destination: String) -> [String]
+    let move: (_ items: [VaultItemRef], _ destination: FolderPath) -> [String]
 
     /// Records a non-modal problem the browser found on its own, the same visible channel
     /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -
