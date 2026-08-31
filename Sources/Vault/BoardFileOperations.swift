@@ -118,11 +118,10 @@ struct BoardFileOperations {
         return plan
     }
 
-    /// What a board rename actually did: its destination, every path it rewrote, and
-    /// anything that failed along the way.
+    /// What a board rename actually did: its destination and anything that failed
+    /// along the way.
     struct RenameOutcome {
         var newPath: String
-        var rewrittenPaths: [String] = []
         var failures: [String] = []
     }
 
@@ -158,7 +157,6 @@ struct BoardFileOperations {
         for change in plan.noteChanges {
             do {
                 try store.write(change.after, to: change.path)
-                outcome.rewrittenPaths.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
@@ -169,7 +167,6 @@ struct BoardFileOperations {
         for change in plan.boardChanges {
             do {
                 try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
-                outcome.rewrittenPaths.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
@@ -244,7 +241,6 @@ struct BoardFileOperations {
     /// What a board move actually did (ADR-0026 §D1).
     struct MoveOutcome: Equatable, Sendable {
         var newPath: String
-        var rewrittenPaths: [String] = []
         var failures: [String] = []
     }
 
@@ -285,7 +281,6 @@ struct BoardFileOperations {
         for change in plan.boardChanges {
             do {
                 try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
-                outcome.rewrittenPaths.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
