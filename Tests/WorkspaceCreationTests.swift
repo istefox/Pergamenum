@@ -121,7 +121,7 @@ private struct TemporaryRoot: ~Copyable {
     // "A/B", the ancestor is "A" (inserted) and then "" (loop stops). "A/B" itself is
     // never inserted - only ever an ancestor's ancestor is, never the leaf handed in -
     // so the folder that holds only a board is silently missing from the picker.
-    let folders = ["A", "A/B"]
+    let folders: [FolderPath] = ["A", "A/B"]
 
     let options = WorkspaceFolderSheets.parentOptions(from: folders)
 
