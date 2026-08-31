@@ -65,7 +65,17 @@ decision to reopen SPEC §14).
 - [ ] PG-039 document CanvasStore.allBoards' try? fallback as deliberate
 - [ ] PG-082 discriminate note vs folder ids by a typed lookup, not a .md suffix check
 
-### Phase 8 — Remaining SPEC milestones (M13/M14)
+### Phase 8 — Workspace/folder debt (previously ungrouped)
+- [ ] PG-047 route "create workspace" through FolderFileOperations validation
+- [ ] PG-048 distinguish empty-folder from unreadable-folder in contentCounts
+- [ ] PG-049 fix same-name folder rename admitted by the guard then thrown by the performer
+- [ ] PG-050 give folder verbs a named parameter type instead of bare same-typed String pairs
+- [ ] PG-051 stop WorkspaceBrowser constructing FolderFileOperations directly on the main actor
+- [ ] PG-052 read WorkspaceView.renameWorkspace's destination from the rename outcome
+- [ ] PG-059 stop WorkspaceBrowser.targetFolder fabricating a .folder(...) case
+- [ ] PG-067 make WorkspaceController's gesture-transient state private(set)
+
+### Phase 9 — Remaining SPEC milestones (M13/M14)
 - [ ] PG-014 finish M13 vault: rename/move/trash under the journal, prompts, export, import, AppIntents
 - [ ] PG-019 make outline section drag-to-move a real text rewrite through VaultSession.write
 - [ ] PG-030 fix status-* board columns refusing every drop per tag.md 5.1
