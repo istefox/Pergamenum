@@ -153,7 +153,10 @@ struct BoardCardActions {
     func copyLink(to node: CanvasNode) {
         // The path of the board actually open, not one derived from its folder
         // (ADR-0025 §D1) - so the link reopens this `.canvas` whatever it is called.
-        guard let url = PergamenumLink.canvas(path: workspace.board, nodeID: node.id) else { return }
+        guard let url = PergamenumLink.canvas(path: workspace.board, nodeID: node.id) else {
+            workspace.recordProblem("copia link: impossibile generare l'URL per \(workspace.board)")
+            return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
