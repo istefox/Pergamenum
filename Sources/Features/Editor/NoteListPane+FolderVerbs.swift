@@ -78,7 +78,7 @@ extension NoteListPane {
         guard let path = deletingFolder else { return "" }
         // `nil` when the folder could not be read (PG-048) - never defaulted to zero,
         // which is the answer for a folder that is genuinely empty.
-        guard let counts = folderOperations?.contentCounts(at: path) else {
+        guard let counts = vault.contentCounts(at: path) else {
             return "Non è stato possibile leggere il contenuto della cartella. "
                 + "Non è una cancellazione definitiva."
         }
@@ -162,7 +162,7 @@ extension NoteListPane {
             parents: WorkspaceFolderSheets.parentOptions(from: diskFolders.map { FolderPath($0) }),
             initialParent: FolderPath(targetFolder),
             isNameAvailable: { name, parent in
-                folderOperations?.nameIsAvailable(name.value, in: parent.value) ?? true
+                vault.nameIsAvailable(name.value, in: parent.value)
             },
             onConfirm: { name, parent in
                 creatingFolder = false
@@ -182,7 +182,7 @@ extension NoteListPane {
                 kind: .folder,
                 path: path,
                 isNameAvailable: { name, parent in
-                    folderOperations?.nameIsAvailable(name.value, in: parent.value) ?? true
+                    vault.nameIsAvailable(name.value, in: parent.value)
                 },
                 onConfirm: { newName in
                     renamingFolder = nil

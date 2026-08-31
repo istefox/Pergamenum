@@ -65,4 +65,17 @@ extension VaultSession {
     func trashBoard(at relativePath: String) throws -> URL? {
         try boardOperations.trashBoard(at: relativePath)
     }
+
+    /// Whether `name` is free inside `parent` - the live collision check both the Workspace
+    /// and Note sidebars ask on every keystroke of a create/rename sheet, read-only so
+    /// neither view needs its own `FolderFileOperations` (PG-051).
+    func nameIsAvailable(_ name: String, in parent: String) -> Bool {
+        folderOperations.nameIsAvailable(name, in: parent)
+    }
+
+    /// A folder's note/subfolder counts (R-10) - the read-only half of what `trashFolder`'s
+    /// own confirmation dialog needs, asked the same way (PG-051).
+    func contentCounts(at folder: String) -> (notes: Int, subfolders: Int)? {
+        folderOperations.contentCounts(at: folder)
+    }
 }

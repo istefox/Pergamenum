@@ -114,4 +114,17 @@ extension VaultController {
             return false
         }
     }
+
+    /// Whether `name` is free inside `parent`, read-only - `true` with no vault open,
+    /// matching every other "nothing to check yet" default in this file (PG-051).
+    func nameIsAvailable(_ name: String, in parent: String) -> Bool {
+        session?.nameIsAvailable(name, in: parent) ?? true
+    }
+
+    /// A folder's content counts (R-10), read-only - `nil` with no vault open or an
+    /// unreadable folder, exactly as `FolderFileOperations.contentCounts` itself answers
+    /// (PG-051).
+    func contentCounts(at folder: String) -> (notes: Int, subfolders: Int)? {
+        session?.contentCounts(at: folder)
+    }
 }

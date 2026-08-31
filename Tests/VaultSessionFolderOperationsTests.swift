@@ -149,3 +149,49 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(controller.problems.isEmpty)
     controller.close()
 }
+
+// MARK: - The read-only pair (PG-051): WorkspaceBrowser/NoteListPane read these through
+// VaultController instead of constructing their own FolderFileOperations.
+
+@MainActor
+@Test func sessionNameIsAvailableAsksTheFileSystemTheSameWayFolderFileOperationsDoes() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/Esistente/Nota.md")
+    let session = try await armedSession(vault)
+
+    #expect(session.nameIsAvailable("Nuova", in: "01 Progetti"))
+    #expect(!session.nameIsAvailable("Esistente", in: "01 Progetti"))
+}
+
+@MainActor
+@Test func sessionContentCountsCountsNotesAndSubfoldersInsideAFolder() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Uno.md")
+    try vault.write(note(), to: "01 Progetti/vecchio/Sub/Due.md")
+    let session = try await armedSession(vault)
+
+    let counts = session.contentCounts(at: "01 Progetti/vecchio")
+
+    #expect(counts?.notes == 2)
+    #expect(counts?.subfolders == 1)
+}
+
+@MainActor
+@Test func vaultControllerNameIsAvailableDefaultsToTrueWithNoVaultOpen() {
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+
+    #expect(controller.nameIsAvailable("Qualsiasi", in: ""))
+}
+
+@MainActor
+@Test func vaultControllerContentCountsReadsThroughToTheSession() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+
+    let counts = controller.contentCounts(at: "01 Progetti/vecchio")
+
+    #expect(counts?.notes == 1)
+    controller.close()
+}
