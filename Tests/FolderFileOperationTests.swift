@@ -104,6 +104,23 @@ private let sampleBoard = """
     #expect(FolderFileOperations.validate("Ricerca 2026").isEmpty)
 }
 
+// PG-045: `NoteName.validate` has no rule against "." or ".." (a note title is never a
+// relative path segment), so `FolderFileOperations.validate` adds its own check rather
+// than let a folder rename/creation resolve one of these harmlessly - previously
+// blocked only incidentally, by the pre-existing "already exists" collision check.
+@Test func validateRejectsABareDotOrDotDotAsAFolderName() {
+    #expect(!FolderFileOperations.validate(".").isEmpty)
+    #expect(!FolderFileOperations.validate("..").isEmpty)
+}
+
+@Test func createFolderThrowsInvalidTitleForADotDotName() throws {
+    let vault = try FolderOpsVault()
+
+    #expect(throws: FileOperationError.self) {
+        try vault.operations.createFolder(named: "..", in: "01 Progetti")
+    }
+}
+
 @Test func nameIsAvailableIsFalseWhenADirectoryAlreadyExists() throws {
     let vault = try FolderOpsVault()
     try vault.createDirectory("01 Progetti/Nuova")

@@ -27,9 +27,12 @@ struct FolderFileOperations {
     /// A delegation rather than a second rule set, deliberately: the sheets render the
     /// violations through `ConformanceText.lines`, so a folder that answered to
     /// different rules would produce violation text describing a rule the user has
-    /// never seen anywhere else in the app.
+    /// never seen anywhere else in the app. `.`/`..` are the one exception: reused as
+    /// `.containsForbiddenCharacter` rather than a new `NoteName.Violation` case (PG-045).
     static func validate(_ name: String) -> [NoteName.Violation] {
-        NoteName.validate(name)
+        var violations = NoteName.validate(name)
+        if name == "." || name == ".." { violations.append(.containsForbiddenCharacter(".")) }
+        return violations
     }
 
     /// Whether `name` is free inside `parent` - false for a directory *or* a file

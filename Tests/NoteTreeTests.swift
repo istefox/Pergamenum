@@ -217,7 +217,7 @@ private func note(_ path: String) -> NoteRecord {
     #expect(tree.map(\.kind) == [.note])
 }
 
-// MARK: - NoteListPane.opening(from:to:currentlyOpen:isComposingNote:) (ADR-0026 §D4)
+// MARK: - NoteListPane.opening(from:to:tree:currentlyOpen:isComposingNote:) (ADR-0026 §D4)
 // Plan `docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md`,
 // Task 6: the Note pane's own collapse rule, extracted as a RED-placeholder
 // `nonisolated static` on `NoteListPane` (`Sources/Features/Editor/NoteListPane.swift`,
@@ -225,14 +225,23 @@ private func note(_ path: String) -> NoteRecord {
 // wires the real body into the `Binding<Set<String>>` `selectedPath` becomes.
 //
 // Adapted from `WorkspaceBrowser.opening(from:to:currently:in:)` (Task 5,
-// `Tests/WorkspaceMultiSelectionTests.swift`): no `WorkspaceSelection` and no tree
-// lookup here (a `Set<String>` member already *is* the note's own vault-relative path),
-// and one extra fact Workspace's boards/folders have no equivalent of -
+// `Tests/WorkspaceMultiSelectionTests.swift`): no `WorkspaceSelection` here (a
+// `Set<String>` member already *is* the note's own vault-relative path once it clears
+// the note/folder guard), and one extra fact Workspace's boards/folders have no
+// equivalent of -
 // `isComposingNote` - because the same "one id, already open" case means two different
 // things here depending on it: `.leaveComposer` or nothing, never a bare `String?`
 // return (the shape a caller could not use to tell those two apart without redoing the
 // comparison the rule already made).
 //
+// A `.note` leaf for `opening`'s tree-lookup guard (PG-082, replacing the old
+// `id.hasSuffix(".md")` guess): `name`/`children`/`noteCount` are unread by the guard,
+// so a fixture built directly rather than through `NoteTree.build` needs only `id` and
+// `kind` right.
+private func noteNode(_ id: String) -> NoteTree.Node {
+    NoteTree.Node(id: id, name: id, kind: .note, children: nil, noteCount: 1)
+}
+
 // RED: the placeholder returns `nil` unconditionally - "do nothing" - which is the
 // *correct* answer for §D4's two-or-more-ids row, its empty-set row, and a re-clicked
 // already-visible row (composer not covering), so
@@ -246,7 +255,8 @@ private func note(_ path: String) -> NoteRecord {
 
 @Test func openingOpensADifferentNote_D4Row1() {
     let result = NoteListPane.opening(
-        from: [], to: ["01 Progetti/Brief.md"], currentlyOpen: nil, isComposingNote: false
+        from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
+        currentlyOpen: nil, isComposingNote: false
     )
 
     #expect(result == .open("01 Progetti/Brief.md"))
@@ -255,6 +265,7 @@ private func note(_ path: String) -> NoteRecord {
 @Test func openingOpensADifferentNoteWhileAnotherIsAlreadyOpen_D4Row1() {
     let result = NoteListPane.opening(
         from: ["Appunti.md"], to: ["01 Progetti/Brief.md"],
+        tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "Appunti.md", isComposingNote: false
     )
 
@@ -273,7 +284,7 @@ private func note(_ path: String) -> NoteRecord {
 // turn a `leaveComposer()` back into a discarding re-read.
 @Test func openingCallsLeaveComposerWhenTheCoveredNoteIsReselected() {
     let result = NoteListPane.opening(
-        from: [], to: ["01 Progetti/Brief.md"],
+        from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
     )
 
@@ -296,11 +307,12 @@ private func note(_ path: String) -> NoteRecord {
 // look at `from` at all.
 @Test func openingIgnoresTheOldSetEntirely_R04() {
     let masked = NoteListPane.opening(
-        from: [], to: ["01 Progetti/Brief.md"],
+        from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
     )
     let unmasked = NoteListPane.opening(
         from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
+        tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
     )
 
@@ -315,6 +327,7 @@ private func note(_ path: String) -> NoteRecord {
     // to answer every input it can be given.
     let result = NoteListPane.opening(
         from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
+        tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: false
     )
 
@@ -325,8 +338,10 @@ private func note(_ path: String) -> NoteRecord {
 // the general rule.
 
 @Test func openingLeavesTheOpenNoteAloneForTwoOrMoreSelectedIds_R10() {
+    // Two ids fail the count guard before the tree is ever consulted - `tree: []` is
+    // enough.
     let result = NoteListPane.opening(
-        from: ["01 Progetti"], to: ["01 Progetti/Brief.md", "Appunti.md"],
+        from: ["01 Progetti"], to: ["01 Progetti/Brief.md", "Appunti.md"], tree: [],
         currentlyOpen: "Appunti.md", isComposingNote: false
     )
 
@@ -337,7 +352,7 @@ private func note(_ path: String) -> NoteRecord {
     // The composer stays exactly where it is too - two rows lit answers only "what
     // would a drag carry" and never touches what is open (§D4).
     let result = NoteListPane.opening(
-        from: [], to: ["01 Progetti/Brief.md", "Appunti.md"],
+        from: [], to: ["01 Progetti/Brief.md", "Appunti.md"], tree: [],
         currentlyOpen: "Appunti.md", isComposingNote: true
     )
 
@@ -349,8 +364,10 @@ private func note(_ path: String) -> NoteRecord {
 // than introducing a "close the note" action that never existed.
 
 @Test func openingDoesNothingOnAnEmptySet_D4Row4() {
+    // An empty `new` fails the `new.first` guard before the tree is ever consulted -
+    // `tree: []` is enough.
     let result = NoteListPane.opening(
-        from: ["Appunti.md"], to: [], currentlyOpen: "Appunti.md", isComposingNote: false
+        from: ["Appunti.md"], to: [], tree: [], currentlyOpen: "Appunti.md", isComposingNote: false
     )
 
     #expect(result == nil)

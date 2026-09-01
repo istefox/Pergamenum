@@ -136,6 +136,23 @@ private let sampleBoard = """
     #expect(linkChange.after.contains("[[nuovo.canvas]]"))
 }
 
+// MARK: - Rename surfaces the real read error instead of a flat "non leggibile" (PG-063)
+
+@Test func renamePlanReportsTheRealStoreErrorWhenAKnownPathIsNotReadable() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/vecchio.canvas")
+    let binaryURL = vault.root.appending(path: "binaria.md")
+    try Data([0xFF, 0xFE, 0x00, 0x01]).write(to: binaryURL)
+
+    let plan = try vault.operations.renamePlan(
+        "A/vecchio.canvas", to: "nuovo", knownPaths: ["binaria.md"]
+    )
+
+    let failure = try #require(plan.failures.first { $0.contains("binaria.md") })
+    #expect(failure.contains("not valid UTF-8"))
+    #expect(!failure.contains("non leggibile"))
+}
+
 // MARK: - Rename repoints a `.canvas` node elsewhere, preserving unknown keys
 
 @Test func renamePlanRepointsACanvasNodeInAnotherBoardPreservingUnknownKeys() throws {

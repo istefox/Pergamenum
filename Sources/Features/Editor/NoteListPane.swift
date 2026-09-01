@@ -362,7 +362,7 @@ struct NoteListPane: View {
                 let previous = selectedRows
                 selectedRows = ids
                 switch Self.opening(
-                    from: previous, to: ids,
+                    from: previous, to: ids, tree: tree,
                     currentlyOpen: vault.openNote?.relativePath,
                     isComposingNote: vault.isComposingNote
                 ) {
@@ -412,9 +412,10 @@ struct NoteListPane: View {
 
     /// ADR-0026 §D4's collapse rule, adapted from `WorkspaceBrowser.opening(from:to:
     /// currently:in:)` (`WorkspaceBrowser.swift:758-780`) to the Note pane's own model:
-    /// there is no `WorkspaceSelection` and no tree lookup here, because a `Set<String>`'s
-    /// only member, once this rule reaches the "one id" case, already *is* the note's own
-    /// vault-relative path - nothing to resolve it against.
+    /// there is no `WorkspaceSelection` here, because a `Set<String>`'s only member, once
+    /// this rule clears the note/folder guard below, already *is* the note's own
+    /// vault-relative path - nothing left to resolve it against. The tree is read only for
+    /// that guard (PG-082), never to turn the id into something else.
     ///
     /// `currentlyOpen` is `vault.openNote?.relativePath`, read raw and never masked -
     /// masking that value is `:216-220`'s job for what `List` reads as selected, not this
@@ -438,6 +439,7 @@ struct NoteListPane: View {
     /// arguments, callable from a test's synchronous, non-actor context.
     nonisolated static func opening(
         from old: Set<String>, to new: Set<String>,
+        tree: [NoteTree.Node],
         currentlyOpen: String?, isComposingNote: Bool
     ) -> SelectionOutcome? {
         // Two or more: nothing opens and nothing closes (§D4 row 3, R-10). The set answers
@@ -449,15 +451,18 @@ struct NoteListPane: View {
         // action never existed here and is not introduced by turning the binding into a set
         // (§D4 row 4).
         guard let id = new.first else { return nil }
-        // A folder id never ends `.md` (every note path does, by the vault's own file
-        // convention, 2026-08-28 toolbar parity chain): a folder row now carries a `.tag`
-        // too, and this keeps it from being read as a note to open. Folder selection needs
-        // no side effect beyond `List` lighting the row - the toolbar reads it separately.
-        guard id.hasSuffix(".md") else { return nil }
+        // A folder row now carries a `.tag` too (2026-08-28 toolbar parity chain), so this
+        // still has to tell a folder id apart from a note id to open - but `NoteName
+        // .validate` never forbade a `.` in a folder name, so a folder literally named
+        // `Reunion.md` would pass a `.hasSuffix(".md")` guess. The real tree already knows
+        // which one it is (PG-082): resolve the id against it instead of guessing from the
+        // string's shape.
+        guard NoteTree.node(withID: id, in: tree)?.kind == .note else { return nil }
         // Exactly one id, different from what is open: that note opens (§D4 row 1). The id
         // *is* the note's vault-relative path - a `Set<String>` member here is a row's own
-        // `.tag`, so there is nothing to resolve it against, which is the whole difference
-        // from `WorkspaceBrowser.opening`'s tree lookup.
+        // `.tag`, so past the guard above there is nothing left to resolve it against
+        // (`WorkspaceBrowser.opening`'s tree lookup goes further, turning a folder id into
+        // the board it should open).
         guard id == currentlyOpen else { return .open(id) }
         // The same note again (§D4 row 2), and the two halves of it: step out of the
         // composer while it covers that note, and do nothing at all while it does not.
