@@ -53,7 +53,7 @@ decision to reopen SPEC §14).
 - [x] PG-042 add an app-wide right-click context menu exposing every command  (completed: 2026-09-01, already fixed by ADR-0023)
 
 ### Phase 6 — Lint and complexity debt
-- [ ] PG-056 bring WorkspaceController.swift under the type_body_length error threshold
+- [x] PG-056 bring WorkspaceController.swift under the type_body_length error threshold  (completed: 2026-09-01)
 - [ ] PG-055 clear the SwiftUI SwiftLint drift on WorkspaceBrowser.swift
 - [ ] PG-036 reduce bySubtasks cyclomatic complexity under the configured limit
 - [ ] PG-035 clear the file_length/type_body_length warning drift from ADR-0021
