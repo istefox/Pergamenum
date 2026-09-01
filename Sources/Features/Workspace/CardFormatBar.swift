@@ -115,6 +115,8 @@ struct CardFormatBar: View {
         }
         .buttonStyle(.plain)
         .help(entry.help)
+        .accessibilityLabel(entry.help)
+        .accessibilityAddTraits(entry.isOn ? [.isSelected] : [])
         .accessibilityIdentifier("card-format-\(entry.id)")
     }
 }
