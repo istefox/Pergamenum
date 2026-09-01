@@ -157,8 +157,7 @@ import Testing
         let imageURL = try Self.writeImage(named: "foto.png", in: root)
         let beforeCrop = try Self.sha256(of: imageURL)
 
-        let controller = WorkspaceController()
-        controller.attach(to: CanvasStore(root: root))
+        let controller = try openedWorkspaceController(rootURL: root)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
         controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
@@ -247,8 +246,7 @@ import Testing
         let root = try Self.makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try Self.writeImage(named: "foto.png", in: root)
-        let controller = WorkspaceController()
-        controller.attach(to: CanvasStore(root: root))
+        let controller = try openedWorkspaceController(rootURL: root)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
         controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)

@@ -312,12 +312,18 @@ final class WorkspaceController {
         }
         // Selecting a board-less folder, or nothing at all, is still leaving whatever
         // board was on screen, so it owes the same two obligations `load` discharges
-        // before replacing a document (ADR-0020 D5). What it does not do is load:
-        // `folder` and `document` stay as they are, unread until something is opened.
+        // before replacing a document (ADR-0020 D5). What it does not do is load: no
+        // read happens here. But it must not go on showing what was already read
+        // (PG-062): `board`/`document`/`contents` are reset the same way `detach()`
+        // resets them, so `current == nil`/`.folder` and "a board's data is on screen"
+        // can never disagree.
         endCrop(confirm: true)
         flushPendingSave()
         selection = []
         current = new
+        document = .empty
+        setContents(.init(subfolders: [], unplaced: []))
+        board = ""
     }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the
@@ -367,6 +373,11 @@ final class WorkspaceController {
         creatingOnDisk created: String? = nil,
         _ change: (inout CanvasDocument) -> Void
     ) {
+        // PG-062: `attach` opens nothing (ADR-0025 §D4), so without this guard a card
+        // created before any board is opened seemed to succeed - it returned an id and
+        // even scheduled a save - while `document` and the on-screen board silently
+        // disagreed with what `current` said was showing.
+        guard current?.hasBoard == true else { return }
         history.record(before: document, creatingOnDisk: created)
         change(&document)
         hasUnsavedChanges = true

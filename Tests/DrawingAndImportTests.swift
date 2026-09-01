@@ -190,8 +190,7 @@ private struct DrawingRoot: ~Copyable {
 @MainActor
 @Test func writesADrawingAsAnSVGAndPlacesItsCard() throws {
     let root = try DrawingRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: CGPoint(x: 10, y: 10), color: "#9A5B1F", width: 3, opacity: 1)
     controller.extendStroke(to: CGPoint(x: 60, y: 40))
@@ -214,8 +213,7 @@ private struct DrawingRoot: ~Copyable {
 @MainActor
 @Test func reopensItsOwnDrawingForEditingWithoutDuplicatingTheCard() throws {
     let root = try DrawingRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: .zero, color: "#000000", width: 2, opacity: 1)
     controller.extendStroke(to: CGPoint(x: 50, y: 50))
@@ -241,8 +239,7 @@ private struct DrawingRoot: ~Copyable {
     try Data("<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M 0 0\"/></svg>".utf8)
         .write(to: root.url.appending(path: "importato.svg"))
 
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("importato.svg", at: .zero)
 
     #expect(!controller.editDrawing(nodeID: id))
@@ -253,8 +250,7 @@ private struct DrawingRoot: ~Copyable {
 @MainActor
 @Test func erasesOnlyTheStrokesUnderThePointer() throws {
     let root = try DrawingRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: CGPoint(x: 0, y: 0), color: "#000000", width: 2, opacity: 1)
     controller.extendStroke(to: CGPoint(x: 10, y: 0))
@@ -270,8 +266,7 @@ private struct DrawingRoot: ~Copyable {
 @MainActor
 @Test func numbersDrawingsSequentiallyInAFolder() throws {
     let root = try DrawingRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let date = CalendarDate(iso: "2026-08-11")!
 
     for _ in 0..<3 {
@@ -302,8 +297,7 @@ private struct DrawingRoot: ~Copyable {
     """.utf8).write(to: source)
     defer { try? FileManager.default.removeItem(at: source) }
 
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let proposals = controller.importFiles([source], at: .zero)
     #expect(proposals.count == 1)
@@ -331,8 +325,7 @@ private struct DrawingRoot: ~Copyable {
     try Data([0x89, 0x50, 0x4E, 0x47]).write(to: source)
     defer { try? FileManager.default.removeItem(at: source) }
 
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let proposals = controller.importFiles([source], at: .zero)
     #expect(proposals[0].proposedName == source.lastPathComponent)
     controller.detach()
@@ -353,8 +346,7 @@ private struct DrawingRoot: ~Copyable {
         sources.append(url)
     }
 
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let proposals = controller.importFiles(sources, at: CGPoint(x: 100, y: 100))
 
     // Dropped together, they must not land exactly on top of each other.

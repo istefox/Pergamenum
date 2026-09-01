@@ -13,8 +13,7 @@ import Testing
     // restarted from the already-moved position and a 100-point drag threw the card
     // thousands of units away.
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addStickyNote("a", at: CGPoint(x: 100, y: 100))
     controller.selection = [id]
@@ -36,8 +35,7 @@ import Testing
 @MainActor
 @Test func aDragMovesEverySelectedCardTogether() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let first = controller.addStickyNote("a", at: .zero)
     let second = controller.addStickyNote("b", at: CGPoint(x: 300, y: 0))
@@ -57,8 +55,7 @@ import Testing
 @MainActor
 @Test func updatingADragOutsideOneDoesNothing() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.addStickyNote("a", at: CGPoint(x: 10, y: 10))
 
     // A stray callback after the gesture ended must not move anything.
@@ -70,8 +67,7 @@ import Testing
 @MainActor
 @Test func beginningADragTwiceKeepsTheOriginalOrigins() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.addStickyNote("a", at: .zero)
 
     controller.beginDrag(nodeIDs: [id])
@@ -90,8 +86,7 @@ import Testing
 @MainActor
 @Test func theArrowToolConnectsTheCardItIsReleasedOn() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let a = controller.addStickyNote("a", at: .zero)
     let b = controller.addStickyNote("b", at: CGPoint(x: 400, y: 0))
@@ -116,8 +111,7 @@ import Testing
 @MainActor
 @Test func anArrowReleasedOverEmptyBoardDrawsNothing() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let a = controller.addStickyNote("a", at: .zero)
     controller.tool = .arrow
@@ -134,8 +128,7 @@ import Testing
 @MainActor
 @Test func anArrowInFlightTracksThePointerWithoutTouchingTheDocument() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let a = controller.addStickyNote("a", at: CGPoint(x: 100, y: 100))
     let source = try #require(controller.document.node(id: a))
@@ -152,8 +145,7 @@ import Testing
 @MainActor
 @Test func anArrowFromACardThatIsGoneNeverStarts() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginArrow(from: "inesistente")
     #expect(controller.arrowSourceID == nil)
@@ -166,8 +158,7 @@ import Testing
 @MainActor
 @Test func confirmingACropWritesExactlyOneKeyAndOneHistoryStep() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("foto.png", at: .zero)
 
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
@@ -215,8 +206,7 @@ import Testing
 @MainActor
 @Test func croppingBackToTheWholeImageRemovesTheKeyRatherThanWritingAWholeRectangle() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("foto.png", at: .zero)
 
     // First crop it, confirmed, then drag every grip back out to the full image.
@@ -238,8 +228,7 @@ import Testing
 @MainActor
 @Test func undoRestoresTheUncroppedNodeAndCancelsAnInFlightCrop() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("foto.png", at: .zero)
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
     controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
@@ -266,6 +255,10 @@ import Testing
     let boardPath = try store.createBoard(named: "Altra", in: "Altra")
     let controller = WorkspaceController()
     controller.attach(to: store)
+    // ADR-0025 §D4: `attach` opens nothing, so the root board must be created and
+    // opened explicitly before `placeFile` below has anywhere to write to (PG-062).
+    let rootBoard = try store.createBoard(named: root.url.lastPathComponent, in: "")
+    controller.open(board: rootBoard)
     let id = controller.placeFile("foto.png", at: .zero)
 
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
@@ -279,8 +272,7 @@ import Testing
 @MainActor
 @Test func removingACropOutsideTheModeClearsTheKeyInOneMutation() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("foto.png", at: .zero)
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
     controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
@@ -300,8 +292,7 @@ import Testing
 @MainActor
 @Test func aNonCroppableFileNeverEntersCropMode() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
     let id = controller.placeFile("documento.pdf", at: .zero)
 
     controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))

@@ -174,6 +174,20 @@ struct CanvasTemporaryRoot: ~Copyable {
     }
 }
 
+/// A `WorkspaceController` attached to a fresh store with one board already created and
+/// open at the vault root - the fixture every controller test that mutates a document
+/// needs, since `attach` alone opens nothing (ADR-0025 §D4) and `mutate` now refuses to
+/// write without an open board (PG-062).
+@MainActor
+func openedWorkspaceController(rootURL: URL) throws -> WorkspaceController {
+    let store = CanvasStore(root: rootURL)
+    let controller = WorkspaceController()
+    controller.attach(to: store)
+    let board = try store.createBoard(named: rootURL.lastPathComponent, in: "")
+    controller.open(board: board)
+    return controller
+}
+
 @Test func createsARealDirectoryForAFolderCard() throws {
     let root = try CanvasTemporaryRoot()
     try root.makeDirectory("01 Progetti")

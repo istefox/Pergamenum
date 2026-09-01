@@ -69,9 +69,7 @@ import Testing
 
     @Test func duplicatingOneFileNodeAppendsACopyWithANewIdAndAGridStepOffset() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: CGPoint(x: 100, y: 200))
         controller.setColor(.preset(3), forNodeIDs: [id])
         let original = try #require(controller.document.node(id: id))
@@ -97,9 +95,7 @@ import Testing
 
     @Test func theCopysIdDiffersFromEveryIdAlreadyInTheDocumentAcrossNodesAndEdges() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let a = controller.placeFile("a.png", at: .zero)
         let b = controller.placeFile("b.png", at: CGPoint(x: 300, y: 0))
         let edgeID = try #require(controller.connect(from: a, to: b))
@@ -120,9 +116,7 @@ import Testing
 
     @Test func edgesAreUnchangedWhenDuplicatingANodeThatHasOneOnIt() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let a = controller.placeFile("a.png", at: .zero)
         let b = controller.placeFile("b.png", at: CGPoint(x: 300, y: 0))
         _ = controller.connect(from: a, to: b)
@@ -138,9 +132,7 @@ import Testing
 
     @Test func aNodeCarryingACropDuplicatesWithTheCropKeyIntact() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
         controller.updateCrop(handle: .bottomRight, translation: CGSize(width: -400, height: -200), lockAspect: false)
@@ -193,9 +185,7 @@ import Testing
 
     @Test func duplicatingANodeWhoseFileNoLongerExistsStillCreatesTheCopy() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         // No file written for "sparita.png" - the node is a pointer to nothing, the same
         // way a card whose source vanished from the Finder already renders (broken-file
         // placeholder), and duplicating it must not special-case that.
@@ -247,9 +237,7 @@ import Testing
 
     @Test func selectionAfterDuplicateIsExactlyTheNewIdsSoASecondDuplicaCascades() throws {
         let root = try TemporaryRoot()
-        let store = CanvasStore(root: root.url)
-        let controller = WorkspaceController()
-        controller.attach(to: store)
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.select(nodeID: id, adding: false)
 
