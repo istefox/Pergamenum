@@ -87,6 +87,16 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-01: **PG-043 (una cartella intermedia che sparisce dalla sidebar del Workspace quando
+  perde la sua unica board) chiuso senza modifiche al codice.** Stesso schema di PG-044,
+  verificato contro il codice vivo prima di agire: il ticket descriveva `WorkspaceBrowser.rebuild()`
+  come costruito esclusivamente dai path delle board (`CanvasStore.allBoards()`), quindi una
+  cartella senza board rimaste dentro spariva dall'outline. Il rework ADR-0025 (cartelle e board
+  come righe distinte dell'albero) ha già risolto il difetto come effetto collaterale:
+  `rebuild()` ora popola `folders` da `canvasStore?.allFolders()`, una vera scansione del
+  filesystem indipendente dalle board, e `WorkspaceTree.build(folders:boards:)` inserisce ogni
+  cartella reale come riga propria, con o senza board. Chiuso su indicazione di Stefano senza
+  hand-check manuale aggiuntivo, dato che il meccanismo è confermato in tre file distinti.
 - 2026-09-01: **PG-044 (affordance di deselezione per la sidebar del Workspace) chiuso senza
   modifiche al codice.** Verificato contro il codice vivo prima di agire, come da regola di
   comportamento standing: il ticket descriveva `selectedFolder` come sticky, senza modo di
