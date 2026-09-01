@@ -46,7 +46,7 @@ decision to reopen SPEC §14).
 - [x] PG-084 make MarkdownStyler's inline-span parser recursive for nested spans  (completed: 2026-08-31)
 
 ### Phase 5 — Accessibility and polish
-- [ ] PG-077 add accessibilityLabel to CardFormatBar's format buttons
+- [x] PG-077 add accessibilityLabel to CardFormatBar's format buttons  (completed: 2026-08-31)
 - [ ] PG-041 keep board content in the accessibility tree at low zoom
 - [ ] PG-044 add a deselect affordance for the Workspace sidebar folder selection
 - [ ] PG-043 stop an intermediate folder from vanishing when it loses its only board

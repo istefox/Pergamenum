@@ -87,6 +87,21 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-08-31: **PG-077 (accessibilityLabel e stato on/off sulle format bar del Workspace e
+  dell'editor note) implementato in plan mode nativo, 1991 test unitari verdi.** Il ticket
+  chiedeva solo `CardFormatBar.swift`; scope allargato deliberatamente, confermato con Stefano
+  prima dell'implementazione: `.accessibilityLabel(entry.help)` riusa la stringa italiana già
+  presente su ogni `Entry`, seguendo lo stesso schema già in uso in `BoardCardControls.swift`.
+  Aggiunto anche `.accessibilityAddTraits(isOn ? [.isSelected] : [])` su entrambe le barre,
+  perché lo stato acceso/spento di ogni pulsante-toggle era comunicato solo dal colore di sfondo
+  - stessa classe di difetto del nome mancante, stesso precedente già in `WorkspaceRow.swift`.
+  Il fix è stato applicato anche a `Sources/Features/Editor/FormatBar.swift` (la barra
+  dell'editor note, non nominata dal ticket): ADR-0027 §D6 lascia le due barre libere di
+  divergere nel catalogo dei pulsanti, non nell'igiene di accessibilità. Nessun test nuovo: le
+  due barre sono `SwiftUI View` senza test unitari propri per convenzione già documentata in
+  `Tests/BoardFormatBarTests.swift`; nessun `accessibilityIdentifier` toccato, quindi nessuna
+  query dei test UI è interessata. `xcodebuild build` verde. Verifica VoiceOver ancora dovuta,
+  accodata agli altri controlli manuali pendenti a fine sessione.
 - 2026-08-31: **PG-073 (titolo editabile per la card Link, SPEC §6.4 riga 7 / §6.5) implementato
   via catena `concept-to-code` hybrid, 1976 test unitari verdi.** Titolo memorizzato come nuova
   chiave prefissata `pergamenum-title` su `CanvasNode.unknown` (`LinkCardTitle.swift`, stesso

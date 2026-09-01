@@ -96,6 +96,8 @@ struct FormatBar: View {
         }
         .buttonStyle(.plain)
         .help(entry.help)
+        .accessibilityLabel(entry.help)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
         .accessibilityIdentifier("format-\(entry.id)")
     }
 }
