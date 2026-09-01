@@ -157,6 +157,12 @@ enum TaskParser {
         return String(body[start.upperBound..<end.lowerBound])
     }
 
+    /// A malformed value (`^id(abc)`, `^parent(abc)`) is dropped silently, not reported
+    /// (PG-040): consistent with this parser's existing style elsewhere - a line it
+    /// cannot make sense of is treated as if the annotation were never written, rather
+    /// than surfaced as a linter finding. Worth a real finding some day, but wiring one
+    /// in means threading a parse-failure signal up through `VaultSession+Search.swift`
+    /// into `TaskMarkerViolation`, which is a larger, separate piece of work.
     private static func caretInteger(in body: String, name: String) -> Int? {
         guard let value = caretAnnotation(in: body, name: name) else { return nil }
         return Int(value.trimmingCharacters(in: .whitespaces))

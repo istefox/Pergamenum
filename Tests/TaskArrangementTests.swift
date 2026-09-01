@@ -19,6 +19,14 @@ private func task(
     TaskParser.parse(line: line, sourcePath: path, lineIndex: index)!
 }
 
+/// The parent task of a "Progetti" group, `nil` for a plain one - reading through
+/// `TaskGroup.Kind` the same way production code does, rather than a shortcut this
+/// file alone would rely on.
+private func projectParent(of group: TaskGroup) -> TaskItem? {
+    if case .project(let parent, _) = group.kind { return parent }
+    return nil
+}
+
 @Test func groupingByNoteUsesTheNoteTitleAndSortsAlphabetically() {
     let tasks = [
         task("- [ ] Disegno", in: "01 Progetti/Presse idrauliche.md", at: 0),
@@ -141,9 +149,8 @@ private func task(
     )
 
     #expect(groups.count == 1)
-    #expect(groups[0].parent == parent)
+    #expect(groups[0].kind == .project(parent: parent, progress: TaskProgress(done: 1, total: 2)))
     #expect(groups[0].tasks.map(\.text) == ["Preventivo", "Sopralluogo"])
-    #expect(groups[0].progress == TaskProgress(done: 1, total: 2))
 }
 
 @Test func subtasksTasksWithNeitherIDNorParentLandInSenzaLast() {
@@ -161,8 +168,7 @@ private func task(
     #expect(groups.count == 2)
     #expect(groups.last?.title == TaskArrangement.noneTitle)
     #expect(groups.last?.tasks.map(\.text) == ["Nota sparsa"])
-    #expect(groups.last?.parent == nil)
-    #expect(groups.last?.progress == nil)
+    #expect(groups.last?.kind == .plain)
 }
 
 @Test func subtasksIDsAreNoteLocalTwoNotesEachWithIDOneProduceTwoGroups() {
@@ -181,8 +187,8 @@ private func task(
 
     #expect(groups.count == 2)
     #expect(Set(groups.map(\.id)) == Set([parentA.id, parentB.id]))
-    #expect(groups.first { $0.parent?.sourcePath == "A.md" }?.tasks.map(\.text) == ["Fase A"])
-    #expect(groups.first { $0.parent?.sourcePath == "B.md" }?.tasks.map(\.text) == ["Fase B"])
+    #expect(groups.first { projectParent(of: $0)?.sourcePath == "A.md" }?.tasks.map(\.text) == ["Fase A"])
+    #expect(groups.first { projectParent(of: $0)?.sourcePath == "B.md" }?.tasks.map(\.text) == ["Fase B"])
 }
 
 @Test func subtasksOrphanedParentStillAppearsInSenzaRatherThanVanishing() {
@@ -202,9 +208,9 @@ private func task(
     #expect(groups.count == 2)
     let senza = groups.first { $0.title == TaskArrangement.noneTitle }
     #expect(senza?.tasks.map(\.text) == ["Fase senza padre"])
-    #expect(senza?.parent == nil)
-    let project = groups.first { $0.parent != nil }
-    #expect(project?.parent == parent)
+    #expect(senza?.kind == .plain)
+    let project = groups.first { projectParent(of: $0) != nil }
+    #expect(project.flatMap(projectParent) == parent)
     #expect(project?.tasks.map(\.text) == ["Fase"])
 }
 

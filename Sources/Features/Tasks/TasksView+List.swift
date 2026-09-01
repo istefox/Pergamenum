@@ -21,7 +21,7 @@ extension TasksView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     ForEach(arranged) { group in
                         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-                            if let parent = group.parent {
+                            if case .project(let parent, _) = group.kind {
                                 project(group, parent: parent, rolledIDs: rolledIDs)
                             } else {
                                 // An ungrouped list has one group with no title, and no
@@ -140,7 +140,7 @@ extension TasksView {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
                 row(parent)
-                if let progress = group.progress {
+                if case .project(_, let progress) = group.kind {
                     Text("\(progress.done)/\(progress.total)")
                         .themedText(.mono, color: .textTertiary)
                         // Read out in words: "1/3" is a date to VoiceOver as often as a date.
@@ -158,10 +158,11 @@ extension TasksView {
                         // row(parent)'s own "task-row", one level up). Putting it on
                         // this Text - a leaf with no identifier of its own, and a
                         // sibling of row(parent) rather than a container of it - is
-                        // what keeps it from touching anything else. Safe because
-                        // TaskListOptions.bySubtasks(_:) always sets `progress`
-                        // together with `parent` - see its own comment - so this
-                        // branch runs whenever `project(_:parent:rolledIDs:)` does.
+                        // what keeps it from touching anything else. Progress is always
+                        // present here because `group.kind` is `.project`, which is why
+                        // this branch runs whenever `project(_:parent:rolledIDs:)` does -
+                        // the enum makes that a compile-time pairing (ADR-0021 D6),
+                        // not a convention `bySubtasks(_:)` merely has to remember.
                         .accessibilityIdentifier("task-project-group")
                 }
             }

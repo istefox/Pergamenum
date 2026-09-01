@@ -188,6 +188,10 @@ struct CanvasStore: Sendable {
         var folders: [String] = []
         var boards: [String] = []
         while let url = enumerator.nextObject() as? URL {
+            // Deliberate fallback (PG-039): resourceValues can fail on a transient race
+            // with the file system, and the URL's own last path component is the same
+            // display name the volume would have reported anyway - display only, no
+            // write depends on this value.
             let values = try? url.resourceValues(forKeys: Set(keys))
             let name = values?.name ?? url.lastPathComponent
 

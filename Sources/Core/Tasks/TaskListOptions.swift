@@ -125,21 +125,23 @@ struct TaskListOptions: Codable, Equatable, Sendable {
 
 /// One heading and the tasks under it.
 struct TaskGroup: Equatable, Sendable, Identifiable {
+    /// A "Progetti" group's parent task and its children's progress, always set together
+    /// (ADR-0021 D6) - one enum, since two optionals could not enforce that pairing.
+    enum Kind: Equatable, Sendable {
+        case plain
+        case project(parent: TaskItem, progress: TaskProgress)
+    }
+
     /// Empty when the list is not grouped, and the view draws no heading for it.
     var title: String
     var tasks: [TaskItem]
-    /// The project task this group is the children of, set only by `.subtasks`
-    /// (ADR-0021 D6). `nil` for every other grouping.
-    var parent: TaskItem?
-    /// How many of `parent`'s children are done, set only by `.subtasks`. `nil`
-    /// wherever `parent` is `nil`.
-    var progress: TaskProgress?
+    var kind: Kind = .plain
 
     /// Falls back to `title` so nothing that groups by project or by day changes;
     /// rises to the parent's own id when there is one, so two projects whose parent
     /// tasks read the same in two different notes are two rows rather than one
     /// (ADR-0021 D2, D6).
-    var id: String { parent?.id ?? title }
+    var id: String { if case .project(let parent, _) = kind { parent.id } else { title } }
 }
 
 /// Turns a view's tasks into the list the user asked for.
@@ -328,16 +330,12 @@ enum TaskArrangement {
 
         var groups = parentOrder.compactMap { key -> TaskGroup? in
             guard let parent = parents[key], let kids = children[key] else { return nil }
+            // The same count `IndexSnapshot.progress(ofProject:)` returns, over the children
+            // this list actually holds: a view that filters its tasks reports progress on
+            // what it is showing.
+            let progress = TaskProgress(done: kids.filter { $0.state == .done }.count, total: kids.count)
             return TaskGroup(
-                title: parent.text,
-                tasks: kids,
-                parent: parent,
-                // The same count `IndexSnapshot.progress(ofProject:)` returns, over the
-                // children this list actually holds: a view that filters its tasks reports
-                // progress on what it is showing.
-                progress: TaskProgress(
-                    done: kids.filter { $0.state == .done }.count, total: kids.count
-                )
+                title: parent.text, tasks: kids, kind: .project(parent: parent, progress: progress)
             )
         }
         if !ungrouped.isEmpty {

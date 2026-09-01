@@ -93,8 +93,11 @@ struct BoardFileOperations {
             )
         } else {
             for path in knownPaths {
-                guard let (_, text) = try? store.read(path) else {
-                    plan.failures.append("\(path): non leggibile")
+                let text: String
+                do {
+                    (_, text) = try store.read(path)
+                } catch {
+                    plan.failures.append("\(path): \(error)")
                     continue
                 }
                 guard let updated = NoteRename.rewritingLinks(
