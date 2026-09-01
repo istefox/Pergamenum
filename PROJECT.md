@@ -48,7 +48,7 @@ decision to reopen SPEC §14).
 ### Phase 5 — Accessibility and polish
 - [x] PG-077 add accessibilityLabel to CardFormatBar's format buttons  (completed: 2026-08-31)
 - [ ] PG-041 keep board content in the accessibility tree at low zoom
-- [ ] PG-044 add a deselect affordance for the Workspace sidebar folder selection
+- [x] PG-044 add a deselect affordance for the Workspace sidebar folder selection  (completed: 2026-09-01, already fixed by ADR-0024/0025)
 - [ ] PG-043 stop an intermediate folder from vanishing when it loses its only board
 - [ ] PG-042 add an app-wide right-click context menu exposing every command
 
