@@ -87,6 +87,19 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-01: **PG-056 (`type_body_length` a livello errore su `WorkspaceController.swift`)
+  risolto con uno spostamento puro di codice, nessun cambio di comportamento.** Riverificato
+  live prima di iniziare: `swiftlint` confermava l'errore ancora attuale, cresciuto da 383 a
+  495 righe rispetto alla soglia di errore di 350. Fix: estratto il cluster di CRUD/mutazione
+  sui nodi (`resize`, `setColor`, `setTextColor`, `setTextAlignment`, `setText`, `setTitle`,
+  `toggleTask`, `delete`, `addNode`, `connect`, `placeFile`, `addStickyNote`, `addFreeText`,
+  `addLink`, `createFolder` — nessuno detiene stato, passano tutti già da `mutate`) in un nuovo
+  `WorkspaceController+Nodes.swift`, seguendo lo stesso schema di file-estensione-per-concern
+  già in uso in questo codebase (`+Drawing`, `+Duplicate`, `+Gestures`, `+Import`, `+Tools`,
+  `+Viewport`, `+Crop`). `swiftlint` ri-eseguito conferma l'errore risolto: `type_body_length`
+  ora 344 righe, sotto la soglia di errore (344 fa scattare solo il warning a 250, come già
+  accettato altrove in `TODO.md` per `WorkspaceBrowser.swift`). `xcodebuild build` riuscito,
+  suite unit 1991/1991 verde.
 - 2026-09-01: **PG-042 (menu contestuale con tasto destro app-wide che espone ogni comando)
   chiuso senza modifiche al codice.** Avviata una chain `concept-to-code` standard, interrotta
   subito dopo Step 1 (prima di scrivere qualunque SPEC.md) quando la ricerca preliminare
