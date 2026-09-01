@@ -151,6 +151,14 @@ let project = Project(
                         "UTTypeConformsTo": ["public.data"],
                         "UTTypeTagSpecification": [:],
                     ],
+                    // PG-019: a dragged Outline heading row (`Sources/App/OutlineSectionDrag.swift`),
+                    // same reason and same shape as the entry above.
+                    [
+                        "UTTypeIdentifier": "it.stefer.pergamenum.outline-section",
+                        "UTTypeDescription": "Pergamenum outline section",
+                        "UTTypeConformsTo": ["public.data"],
+                        "UTTypeTagSpecification": [:],
+                    ],
                 ],
             ]),
             // Everything but the CLI: `Sources/CLI/main.swift` is top-level code, and a

@@ -42,6 +42,12 @@ struct EditorColumnView: View {
     @State var find = FindSession()
     /// The replacements the bar asked for, consumed once.
     @State var pendingReplacements: [(range: NSRange, text: String)]?
+    /// Whether the pending replacements above are an Outline section move rather than a
+    /// find/replace-all — the two share the same buffer mechanism, but only the move saves
+    /// immediately afterward (R-08). Consumed alongside `pendingReplacements`, in
+    /// `onReplacementsApplied` (`EditorColumn+Text.swift`), the one place that already knows
+    /// the coordinator just finished applying them.
+    @State var pendingReplacementsIsMove = false
     /// The tab whose close button was pressed while it had unsaved changes.
     @State var closing: NoteTab?
 
@@ -83,6 +89,14 @@ struct EditorColumnView: View {
         .onChange(of: navigation.outlineJump) { _, jump in
             guard isFocused else { return }
             pendingJump = jump
+        }
+        // Same focused-column guard as the jump above: without it both columns would apply
+        // the same move to whichever note they each have open (EditorColumn+Text.swift's
+        // documented reason for the identical guard on `pendingInsertion`/`pendingJump`).
+        .onChange(of: navigation.outlineMove) { _, move in
+            guard isFocused, let move else { return }
+            pendingReplacementsIsMove = true
+            pendingReplacements = move.replacements.map { ($0.range, $0.text) }
         }
         // **The second half of the focus contract (ADR-0012 D4).** A click in the text moves the
         // model onto this column, through `CompletingTextView.becomeFirstResponder`; this is the

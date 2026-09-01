@@ -80,7 +80,7 @@ extension EditorColumnView {
             matches: find.matches,
             currentMatch: find.matches.isEmpty ? nil : find.current,
             replacements: pendingReplacements,
-            onReplacementsApplied: { pendingReplacements = nil },
+            onReplacementsApplied: replacementsApplied,
             matchJump: find.currentMatch,
             focusRequest: focusRequest,
             scrollRequest: pendingJump,
@@ -107,6 +107,16 @@ extension EditorColumnView {
             text: note.text,
             isFocused: isFocused
         ))
+    }
+
+    /// Clears the applied replacements, and - for an outline move (PG-019) only - saves right
+    /// after: the buffer already carries the move by the time this fires, so the save persists
+    /// it and any pre-existing unsaved edits in one journalled write.
+    func replacementsApplied() {
+        pendingReplacements = nil
+        guard pendingReplacementsIsMove else { return }
+        pendingReplacementsIsMove = false
+        vault.saveOpenNote()
     }
 
     /// The slash menu's catalogue, filtered to what can run right now.
