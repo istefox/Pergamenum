@@ -252,6 +252,23 @@ move the previous copy aside rather than deleting it.
   notes nobody created is reaching one of those. `ps -Ao pid,command | grep
   Pergamenum.app/Contents/MacOS` shows the vault each instance opened; start by reading it,
   not by trusting the window.
+- **A stale instance left alive from a previous run poisons the next full UI run wholesale,
+  not just the test that left it.** A run started with stale instances still holding the
+  app's global hot key exclusively has produced 18 failures that were not real defects, every
+  one timing out at exactly 60.2 s — the launch timeout, not a broken feature. Kill every
+  instance before trusting a red run, and read the per-test timings `scripts/uitests.sh`
+  prints beside each failure before believing it: 60.2 s names the launch timeout, not the
+  app.
+- **`firstRect(forCharacterRange:)` returns a zero rectangle for a text range TextKit 2 has
+  not laid out yet** — reliably true at the end of a long note, since TextKit 2 lays out
+  lazily. A zero rectangle handed to a popover or panel's placement clamps it to the screen's
+  bottom-left corner instead of failing loudly, so a UI test asserting on a popup's position
+  can pass by accident there. Anything anchoring UI to a character range must confirm layout
+  has reached that range first, not assume `firstRect` always returns something meaningful.
+- **The UI-test runner's own temporary directory is unreadable from outside the sandbox, on
+  or off.** A screenshot or file written to it during a test cannot be inspected afterward by
+  reading the path directly. Attach it instead with `XCTAttachment`, run with
+  `-resultBundlePath`, and pull it back out with `xcrun xcresulttool export attachments`.
 - **`-recentVaults` needs the plist array form.** The key holds `[String]`, so
   `-recentVaults /path` leaves `stringArray(forKey:)` nil and no vault is reopened at
   launch; `-recentVaults '("/path")'` works. The launch argument outranks the persistent
