@@ -87,6 +87,25 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-01: **PG-042 (menu contestuale con tasto destro app-wide che espone ogni comando)
+  chiuso senza modifiche al codice.** Avviata una chain `concept-to-code` standard, interrotta
+  subito dopo Step 1 (prima di scrivere qualunque SPEC.md) quando la ricerca preliminare
+  dell'interview ha trovato che ADR-0023 (universal-command-surface-parity, PR #105, già
+  mergiata) implementa esattamente ciò che il ticket chiede. La stessa ADR-0023 cita nelle sue
+  References "SPEC.md — Universal command surface parity (PG-042), R-01…R-14" — lo stesso ID
+  ticket. I sei cluster che ADR-0023 dichiara di aver coperto (riga cartella Workspace, riga
+  nota, riga task, card canvas, embed nell'editor, cella giorno calendario) sono esattamente le
+  superfici che il testo raffinato del ticket nomina (Workspace, Note editor, Tasks, Calendar).
+  Il blocco citato dal ticket ("ADR-0022 §D8 ha scelto la toolbar come unica superficie") è
+  esplicitamente superato da ADR-0023 §D2-§D4 su quel punto preciso. Verificato nel codice vivo,
+  non dedotto: `WorkspaceRow.swift:277-286` ha già Rinomina/Elimina nel menu contestuale della
+  riga, con lo stesso gate della toolbar; `CardCommand.swift` copre la card canvas incluso
+  «Duplica»; `CalendarDayCommand.swift` copre le tre superfici calendario; `NoteRowMenu.swift`
+  copre la riga nota; `TaskDraft.subtask(of:)` copre la riga task; l'override `menu(for event:)`
+  in `CompletingTextView+Pasteboard.swift:67` copre l'embed disegnato nell'editor. L'unico
+  comando rimasto raggiungibile solo da scorciatoia, «Cattura rapida», è escluso
+  deliberatamente da ADR-0008, non una lacuna da riaprire. Chiuso su indicazione di Stefano
+  senza hand-check manuale aggiuntivo.
 - 2026-09-01: **PG-043 (una cartella intermedia che sparisce dalla sidebar del Workspace quando
   perde la sua unica board) chiuso senza modifiche al codice.** Stesso schema di PG-044,
   verificato contro il codice vivo prima di agire: il ticket descriveva `WorkspaceBrowser.rebuild()`
