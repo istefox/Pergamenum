@@ -6,9 +6,9 @@ mode: "greenfield"
 anonymize: false
 chain_path: hybrid
 created_at: "2026-09-01T11:14:49+00:00"
-last_updated_at: "2026-09-01T16:02:34+00:00"
-current_step: "step_h5_commit"
-status: "in_progress"
+last_updated_at: "2026-09-01T16:08:12+00:00"
+current_step: "completed"
+status: "completed"
 
 # Gate 0 routing result (ADR-0017)
 gate0:
