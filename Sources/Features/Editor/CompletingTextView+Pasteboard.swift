@@ -87,11 +87,12 @@ extension CompletingTextView {
     ///
     /// A screenshot comes as TIFF and a picture copied from a browser as PNG, so both
     /// are normalised here and the vault only ever receives one format. A file copied in
-    /// the Finder is deliberately left alone: it arrives as a URL and belongs to the drop
-    /// path, which keeps the name it already has.
+    /// the Finder and carrying no image bytes of its own is left alone: it arrives as a
+    /// bare URL and belongs to the drop path, which keeps the name it already has. A
+    /// screenshot tool that advertises both a `.fileURL` and real image data on the same
+    /// pasteboard (CleanShot X does) is not that case, and is treated as a picture.
     private static func pastedImagePNG() -> Data? {
         let pasteboard = NSPasteboard.general
-        guard pasteboard.data(forType: .fileURL) == nil else { return nil }
         if let png = pasteboard.data(forType: .png) { return png }
         guard let tiff = pasteboard.data(forType: .tiff),
               let bitmap = NSBitmapImageRep(data: tiff)
