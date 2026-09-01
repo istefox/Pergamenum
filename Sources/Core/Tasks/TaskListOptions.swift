@@ -308,16 +308,21 @@ enum TaskArrangement {
         // A second walk of the same sorted list rather than an `else` in the one above: the
         // "is this a heading" question cannot be answered until every child has been bucketed,
         // and walking `tasks` again is what keeps "Senza" in the order the sort asked for.
-        var ungrouped: [TaskItem] = []
-        for task in tasks {
+        // Nested, not inlined: a nested function's branches don't count toward `bySubtasks`'s
+        // own cyclomatic complexity, and it captures `parents`/`children` instead of taking them.
+        func isAlreadyGrouped(_ task: TaskItem) -> Bool {
             if let parentLocalID = task.parentLocalID,
                parents[ProjectKey(sourcePath: task.sourcePath, localID: parentLocalID)] != nil {
-                continue
+                return true
             }
             if let localID = task.localID,
                children[ProjectKey(sourcePath: task.sourcePath, localID: localID)] != nil {
-                continue
+                return true
             }
+            return false
+        }
+        var ungrouped: [TaskItem] = []
+        for task in tasks where !isAlreadyGrouped(task) {
             ungrouped.append(task)
         }
 
