@@ -56,8 +56,7 @@ import Testing
 @MainActor
 @Test func deletingANodeAlsoRemovesItsEdges() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let a = controller.addStickyNote("a", at: .zero)
     let b = controller.addStickyNote("b", at: CGPoint(x: 300, y: 0))
@@ -74,8 +73,7 @@ import Testing
 @MainActor
 @Test func refusesAnEdgeToAMissingOrIdenticalNode() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let a = controller.addStickyNote("a", at: .zero)
     #expect(controller.connect(from: a, to: a) == nil)
@@ -86,8 +84,7 @@ import Testing
 @MainActor
 @Test func beginTextEditSeedsTheDraftFromTheStoredTextAndCommitWritesItBack() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addStickyNote("appunto", at: .zero)
     controller.beginTextEdit(nodeID: id)
@@ -105,8 +102,7 @@ import Testing
 @MainActor
 @Test func endTextEditWithoutCommitDiscardsTheDraft() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addStickyNote("appunto", at: .zero)
     controller.beginTextEdit(nodeID: id)
@@ -122,8 +118,7 @@ import Testing
 @MainActor
 @Test func beginTextEditIgnoresANonTextNode() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = try controller.createFolder(named: "cartella", at: .zero)
     controller.beginTextEdit(nodeID: id)
@@ -135,8 +130,7 @@ import Testing
 @MainActor
 @Test func beginTitleEditSeedsTheDraftFromTheStoredTitleOrEmptyWhenUnset() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let untitled = controller.addLink("https://example.com", at: .zero)
     controller.beginTitleEdit(nodeID: untitled)
@@ -156,8 +150,7 @@ import Testing
 @MainActor
 @Test func beginTitleEditCommitWithNonEmptyDraftWritesTheTitleKey() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addLink("https://example.com", at: .zero)
     controller.beginTitleEdit(nodeID: id)
@@ -174,8 +167,7 @@ import Testing
 @MainActor
 @Test func endTitleEditCommitWithEmptyDraftRemovesTheTitleKeyRatherThanWritingEmpty() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addLink("https://example.com", at: .zero)
     controller.setTitle("Documentazione", forNodeID: id)
@@ -193,8 +185,7 @@ import Testing
 @MainActor
 @Test func endTitleEditWithoutCommitLeavesTheStoredTitleUnchanged() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addLink("https://example.com", at: .zero)
     controller.setTitle("Documentazione", forNodeID: id)
@@ -211,8 +202,7 @@ import Testing
 @MainActor
 @Test func beginTitleEditIgnoresANonLinkNode() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addStickyNote("appunto", at: .zero)
     controller.beginTitleEdit(nodeID: id)
@@ -224,8 +214,7 @@ import Testing
 @MainActor
 @Test func duplicatingATitledLinkNodeCarriesTheTitleAlong() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addLink("https://example.com", at: .zero)
     controller.setTitle("Documentazione", forNodeID: id)
@@ -240,8 +229,7 @@ import Testing
 @MainActor
 @Test func keepsNodesGrabbableWhenResizedToNothing() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addStickyNote("a", at: .zero)
     controller.resize(nodeID: id, to: CGSize(width: -50, height: 0))
@@ -255,8 +243,7 @@ import Testing
 @MainActor
 @Test func creatingAFolderCardCreatesTheDirectory() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     _ = try controller.createFolder(named: "Rilievi", at: CGPoint(x: 20, y: 20))
 
@@ -273,8 +260,7 @@ import Testing
 @MainActor
 @Test func clampsZoomToTheRangeOfTheSpec() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.zoom(by: 100)
     #expect(controller.zoom == WorkspaceController.zoomRange.upperBound)
@@ -288,8 +274,7 @@ import Testing
 @MainActor
 @Test func zoomToFitOnAnEmptyBoardResetsInsteadOfDividingByZero() throws {
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.zoomToFit(in: CGSize(width: 800, height: 600))
     #expect(controller.zoom == 1)
@@ -362,8 +347,7 @@ import Testing
     // R-02: "Creating a card with the unified tool always produces a plain (uncolored)
     // card; the existing 'Colore' command still changes its background afterward."
     let root = try CanvasTemporaryRoot()
-    let controller = WorkspaceController()
-    controller.attach(to: CanvasStore(root: root.url))
+    let controller = try openedWorkspaceController(rootURL: root.url)
 
     let id = controller.addFreeText("qualsiasi", at: CGPoint(x: 10, y: 20))
     let created = try #require(controller.document.node(id: id))

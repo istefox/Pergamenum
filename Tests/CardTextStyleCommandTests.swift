@@ -37,8 +37,7 @@ import Testing
 
     @Test func settingColorOnATextNodeWritesTheColorKeyAndNothingElseChanges() throws {
         let root = try TemporaryRoot()
-        let controller = WorkspaceController()
-        controller.attach(to: CanvasStore(root: root.url))
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         let before = try #require(controller.document.node(id: id))
 
@@ -60,8 +59,7 @@ import Testing
 
     @Test func settingThenClearingAlignmentLeavesTheNodesUnknownExactlyAsItStarted() throws {
         let root = try TemporaryRoot()
-        let controller = WorkspaceController()
-        controller.attach(to: CanvasStore(root: root.url))
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         let originalUnknown = try #require(controller.document.node(id: id)).unknown
 
@@ -78,8 +76,7 @@ import Testing
 
     @Test func deletingAllOfACardsTextLeavesColorAndAlignmentInPlace() throws {
         let root = try TemporaryRoot()
-        let controller = WorkspaceController()
-        controller.attach(to: CanvasStore(root: root.url))
+        let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         controller.setTextColor(.preset(2), forNodeIDs: [id])
         controller.setTextAlignment(.right, forNodeIDs: [id])
