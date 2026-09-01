@@ -200,6 +200,33 @@ final class Navigation {
         jumpToOutlineEntry(range: range, ordinal: ordinal)
     }
 
+    /// A drag in the Outline pane asking to move a section (PG-019).
+    ///
+    /// A request and not a call, for the same reason `OutlineJump` is one: the sidebar has
+    /// no reference to the editor's text view. `id` makes two identical moves two events,
+    /// the same reason `OutlineJump.id` exists.
+    struct OutlineMove: Equatable, Sendable {
+        /// One range/text pair, wrapped only because a bare tuple has no `Equatable`
+        /// Swift will synthesize - `OutlineMove.replacements` computes exactly what
+        /// `NoteTextView.Coordinator.apply(_:to:)` already takes, in the order it requires.
+        struct Replacement: Equatable, Sendable {
+            var range: NSRange
+            var text: String
+        }
+        var id: Int
+        var replacements: [Replacement]
+    }
+
+    private(set) var outlineMove: OutlineMove?
+
+    func moveOutlineSection(_ replacements: [(range: NSRange, text: String)]) {
+        outlineMove = OutlineMove(
+            id: (outlineMove?.id ?? 0) + 1,
+            replacements: replacements.map { OutlineMove.Replacement(range: $0.range, text: $0.text) }
+        )
+        pane = .notes
+    }
+
     // MARK: Folder reveal (2026-08-28, Note-pane breadcrumb chain)
 
     /// A folder `VaultTopBar`'s breadcrumb asked the Note tree to open and select.

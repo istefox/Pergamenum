@@ -71,8 +71,9 @@ enum NoteOutline {
     /// The level of an ATX heading, or nil when the line is not one.
     ///
     /// The same rule `MarkdownStyler` applies: at most six hashes and a space after them,
-    /// so `#tag` at the start of a line stays a tag.
-    private static func headingLevel(of trimmedLine: String) -> Int? {
+    /// so `#tag` at the start of a line stays a tag. Not `private`: `OutlineMove` reuses it
+    /// rather than reading the ATX rule a second time.
+    static func headingLevel(of trimmedLine: String) -> Int? {
         guard trimmedLine.hasPrefix("#") else { return nil }
         let hashes = trimmedLine.prefix(while: { $0 == "#" }).count
         guard hashes <= 6, trimmedLine.dropFirst(hashes).hasPrefix(" ") else { return nil }

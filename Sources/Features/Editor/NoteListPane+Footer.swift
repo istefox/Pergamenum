@@ -21,7 +21,9 @@ extension NoteListPane {
             OutlinePane(
                 entries: NoteOutline.entries(in: note.text),
                 onSelect: navigation.jumpToOutlineEntry(range:ordinal:),
-                text: note.text
+                text: note.text,
+                notePath: note.relativePath,
+                onMove: navigation.moveOutlineSection
             )
             // A share of the pane rather than half of it: the index is for finding your
             // way inside the open note, and the list of notes is how you got there.

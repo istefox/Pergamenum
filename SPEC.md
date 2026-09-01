@@ -1,177 +1,135 @@
-# SPEC — PG-085: compute list nesting depth by CommonMark's content-column rule
-
-**Topic slug:** pg-085-compute-list-nesting-depth-by-com
+# SPEC — PG-019: drag-to-reorder a section in the Outline pane
 
 ## Objectives
 
-`MarkdownStyler`'s list-nesting classifier computes a line's level from its own indentation alone
-(`level = min(1 + columns / 2, 6)`, one space = one column, one tab = four), independent of any
-other line. This disagrees with CommonMark (and Obsidian) whenever a list's actual nesting depends
-on a parent item's *content column* — the column where the parent's own text begins, which varies
-with marker width (`- ` is 2 columns wide, `12. ` is 4). A list authored inside Pergamenum never
-hits this, because Pergamenum's own list-continuation always emits indentation in multiples of the
-fixed rule; the gap is only observable on a list pasted in from Obsidian or another editor using
-CommonMark-correct indentation.
-
-This chain replaces the fixed-column formula with a genuine CommonMark content-column algorithm,
-shared as one pure function between the two places that compute it today.
-
-ADR-0028 (`docs/adr/0028-wysiwyg-markdown-in-workspace.md`), Consequences/Negative, declared this
-gap explicitly and declined to close it in that chain: *"The nesting rule is not CommonMark's
-(§D1). A list indented three spaces, or one whose nesting depends on the parent's content column,
-renders at a level this classifier computes from indentation alone and may disagree with what
-Obsidian draws. Nothing is written to disk, so the disagreement is cosmetic and reversible."*
+Let the user reorder a note's sections by dragging a heading row in `OutlinePane` to a new
+position, moving the heading and its entire body (nested subsections, paragraphs, embeds
+included) as one unit. The move is a real, journalled text rewrite through
+`VaultSession.write` — not a UI-only reordering of the outline's own display — and is a single
+undoable step in the editor.
 
 ## Scope
 
-**In scope:**
-- A new pure, shared function computing CommonMark-correct nesting level from the whole document
-  text and a target line's own range — a stack-based algorithm tracking each open list item's
-  content column, not a per-line fixed-column formula.
-- `MarkdownStyler.swift`'s `listMarkerSpan`/`listMarkerLength` (lines 458-498) call this shared
-  function instead of computing `1 + columns/2` inline.
-- `EditorDecorationDelegate+ListRendering.swift`'s `stillSpellsAListMarker` (lines 108-134) calls
-  the same shared function, re-derived from live characters at layout time exactly as today — the
-  no-caching invariant on `HiddenMarker.Kind.list` (documented at
-  `EditorDecorationDelegate.swift:37-48` and `NoteTextView+Coordinator.swift` around the
-  `hiddenMarker` factory) is preserved unchanged.
-- CommonMark's tie-breaking rule: an item whose indentation does not exactly match any open list's
-  content column attaches to the deepest open list whose content column is still ≤ the item's
-  indentation.
-- Tab handling unchanged (1 tab = 4 columns for indentation purposes — CommonMark's own rule,
-  already correctly implemented) but folded into the new content-column comparison rather than the
-  old fixed-division formula.
-- The existing level cap of 6 is preserved — `ListMarkerRendering.paragraphStyle(level:font:)`
-  already assumes `level ∈ 1...6`.
-- `Tests/MarkdownStylerTests.swift:429-440` and `Tests/MarkupHidingTests.swift:235-241,331`
-  rewritten to assert CommonMark-correct expectations (they currently assert the bug as correct
-  behavior). New tests for the ticket's own scenarios: 3-space indents, and sibling items under
-  ordered markers of different widths (`1. ` vs `12. `) producing different child thresholds.
+In scope:
+- Computing a section's full extent (heading line + everything down to the next heading of
+  equal-or-higher level), a concept `NoteOutline` does not currently have.
+- Drag-and-drop in `OutlinePane` (`Sources/Features/Editor/OutlinePane.swift`) using
+  `.draggable`/`.dropDestination`, with an insertion-line indicator during hover.
+- Automatic heading-level adjustment of the moved section (and, preserving relative depth, its
+  nested subsections) to fit the drop's new visual nesting.
+- Rewriting the buffer through the same NSTextView mechanism `EmbedAttachment`'s drag-resize
+  uses (ADR-0019: `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing`), so the
+  move is one `NSUndoManager` step, followed by an explicit `saveOpenNote()` call so the result
+  is written to disk immediately through `VaultSession.write` (journalled).
+- Manual verification of the drag gesture in the running app before closing the ticket.
 
-**Out of scope:**
-- `Sources/Core/Editor/ListContinuation.swift`'s own "level" grouping (raw indent-column count,
-  used only for Enter-key continuation/renumbering of ordered runs) is architecturally separate
-  from rendering depth and is **not touched** by this chain, unless implementation surfaces a
-  concrete correctness bug there (not merely a naming/consistency observation).
-- No change to `.canvas`/note file content, frontmatter, or index schema — this is a rendering
-  fix only, matching ADR-0028's own "nothing is written to disk" framing.
-- No change to `ListMarkerRendering.swift`'s glyph selection or paragraph-style geometry beyond
-  what a corrected `level` value naturally produces.
-- No manual hand-check — pure algorithm/rendering correctness fix, no new UI affordance, fully
-  reachable through existing offscreen test infrastructure (`MarkupHidingTests` already drives the
-  real `EditorDecorationDelegate` against a bare `NSTextContentStorage`).
+Out of scope:
+- Any change to `NoteOutline.Entry`'s public shape beyond adding section-extent computation —
+  `kind`/`title`/`range`/`level` are unchanged; a `sectionRange(for:in:)`-style helper is added
+  alongside, not a replacement.
+- Cross-note moves (dragging a section from one note into another).
+- Any change to `NoteOutline.entries(in:)`'s existing behavior (frontmatter/fenced-code-block
+  skipping stays exactly as-is; a `#`-looking line inside a fenced code block was never a
+  heading and remains not one).
+- Reordering entries that are not headings (the `.embed` case is never a drag source on its
+  own — it moves only as part of the section it is nested under).
+- A history/undo mechanism beyond the editor's own `NSUndoManager` — no interaction with
+  `WriteJournal`'s separate connector-facing `undo` command is added or changed.
 
 ## Stack
 
-Swift 6, Foundation-only for the new shared algorithm (no AppKit/SwiftUI dependency — consistent
-with `ListContinuation.swift`'s own precedent as a Foundation-only sibling type, and with
-`Sources/Core/**`'s constraint of being compiled into both command-line tools with no UI framework
-available, ADR-0001 §D1). Swift Testing for new/updated tests.
+No new dependency. Swift 6, SwiftUI (`.draggable`/`.dropDestination`, `Transferable`), the
+existing `Sources/Core/Markdown/NoteOutline.swift` pure model, `VaultSession.write`, and the
+editor's existing `NSTextView`-backed text storage (same layer ADR-0019's embed resize and
+ADR-0026's drag-and-drop already use).
 
 ## Architecture
 
-**New shared function**, in a new file `Sources/Core/Editor/ListNesting.swift` (Foundation-only,
-alongside `ListContinuation.swift`, which already models list-run state in the same file family):
-
-```swift
-enum ListNesting {
-    /// The CommonMark-correct nesting level of a list item, computed by walking the document
-    /// text backward from `lineStart` to find every enclosing open list item's own content
-    /// column, and comparing this item's indentation against that stack.
-    static func level(in text: String, lineStart: String.Index, indent: Int) -> Int
-}
-```
-
-Both existing call sites invoke this identically, from live characters, at their own separate
-times — no caching, no shared mutable state across calls, matching the existing "recompute from
-characters, never carry a stale value" invariant:
-
-- `MarkdownStyler.listMarkerSpan` (styling pass, walks `text` — the whole note) calls
-  `ListNesting.level(in:lineStart:indent:)` instead of `min(1 + columns / 2, 6)`.
-- `EditorDecorationDelegate+ListRendering.stillSpellsAListMarker` (layout-time re-read, already
-  receives `storage.string as NSString` — the whole document, not just the current paragraph)
-  calls the same function via a thin `String`-bridging call, instead of restating the fixed-column
-  formula inline.
-
-**Algorithm** (CommonMark's list-nesting rule, §5.2/§5.3 of the CommonMark spec, restated for this
-codebase's single-pass indentation-based grammar rather than a full block-parser):
-
-1. Walk backward from `lineStart` line by line, collecting the run of preceding list-item lines
-   that could be this line's ancestors — stop at the first blank line or first non-indented,
-   non-list line that closes every open list (a paragraph at column 0 with no list marker).
-2. For each collected ancestor line (in document order), compute its own *content column*: its
-   indentation width, plus its marker width (`"- "` → 2, `"1. "` → 3, `"12. "` → 4, etc.), i.e.
-   the column immediately after the marker and its one mandatory trailing space — this is where a
-   CommonMark-conformant child's own indentation must reach or exceed to nest under it.
-3. Maintain a stack of open content columns as the walk proceeds forward through the collected
-   ancestors: an ancestor whose own indentation is `<` the current stack top's content column pops
-   the stack (it closes that list and every deeper one) before its own content column is pushed.
-4. The target line's level is `1 +` the number of stack entries whose content column is `≤` the
-   target line's own indentation (CommonMark's tie-break: attach to the deepest list whose content
-   column still fits), capped at 6.
-5. Tabs count as 4 columns for both indentation and content-column arithmetic, matching today's
-   behavior (unchanged, confirmed CommonMark-correct).
-
-This is a bounded backward walk (stops at the nearest list-closing boundary, not the whole
-document), acceptable given `spans(in:)` and the layout re-read already run a comparable per-line
-walk on every keystroke (ADR-0028 §D-Negative already documents "every keystroke... runs one more
-full-text pass").
-
-**No change to `Span.listMarker`'s shape** (`kind:` and `level:` fields, `MarkdownStyler.swift:63-
-69`) — only how `level` is computed. No change to `ListItem`'s shape
-(`EditorDecorationDelegate+ListRendering.swift`) for the same reason.
+- **`NoteOutline`** (`Sources/Core/Markdown/NoteOutline.swift`) gains a pure function computing
+  a section's extent: given the note's text and an entry's index in `entries(in:)`'s result,
+  return the `Range<String.Index>` spanning from the heading line's start to the start of the
+  next entry whose `level <= self.level` (or the end of the text if none). No change to
+  `Entry` itself.
+- **A new pure function** computes the rewritten text for a move: given the full note text, the
+  source section's extent + level, the destination insertion point (expressed as "after entry
+  at index N" / "at the top", consistent with what the drop target can express) and the target
+  level (parent's level + 1, per the interview decision), it:
+  1. Extracts the source section's text.
+  2. Rewrites the heading-line `#` counts of the extracted text so the top heading becomes the
+     target level, shifting every nested heading inside it by the same delta (preserving
+     relative depth).
+  3. Removes the extracted range from the original text and re-inserts the rewritten text at
+     the destination.
+  Lives beside `NoteOutline` (e.g. `NoteOutline+Move.swift`), Foundation-only, no SwiftUI —
+  matching the existing split between pure logic and AppKit/SwiftUI call sites (ADR-0027 §D1's
+  "share pure logic, never AppKit classes" precedent).
+- **`OutlinePane`** gains: a `Transferable` payload identifying the dragged entry (its index),
+  `.draggable` on each row, `.dropDestination` between rows computing the insertion point from
+  hover position, and an insertion-line indicator view. On a valid drop it calls back into the
+  editor (through a new closure parameter, mirroring `onSelect`'s existing shape) with the
+  computed move.
+- **The editor** (wherever `CompletingTextView`/its coordinator already performs the
+  `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` sequence for embed resize)
+  gets a new entry point that runs that same sequence with the rewritten full text from the
+  move function, then calls `vault.saveOpenNote()`.
 
 ## Data model
 
-No new persisted data. `ListNesting.level(in:lineStart:indent:)` is a pure function over
-`String`/`String.Index` values already in scope at both call sites — no new stored type, no new
-`.canvas`/frontmatter key.
+No new persisted storage. No schema change, no index bump — the move is expressed entirely as
+plain markdown text, same principle as every other structural rewrite in this app (folder
+rename, board repoint).
 
 ## API
 
-Internal only — `ListNesting` is not exposed to `perg`/`pergamenum-mcp` (no connector surface for
-markdown rendering internals) and carries no public API of its own beyond the one static function
-above, callable from both `Sources/Features/Editor/` and `Sources/Features/Workspace/` (both
-already depend on `Sources/Core/Editor/` today via `ListContinuation`).
+No connector-facing (`VaultAPI`/CLI/MCP) surface is added. This is purely an in-app editor
+interaction.
 
 ## UI flows
 
-None — no new UI affordance. Existing rendering (note editor and Workspace `.text` card) is
-unchanged in every case except where today's fixed-column classifier and CommonMark's
-content-column rule disagree, where the displayed nesting level now matches CommonMark/Obsidian.
+1. User opens a note with headings; `OutlinePane` renders its outline as today (indented rows
+   by level, fold/unfold chevrons).
+2. User presses and drags a heading row.
+3. While dragging over other rows, an insertion line is drawn between rows at the hover
+   position, indicating: (a) the sibling position where the section will land, and (b) via the
+   line's indentation, the level it will land at (parent's level + 1).
+4. Dropping on the section's own current position, on a position inside its own extent
+   (including a nested subsection of itself), or with no insertion line shown, does nothing.
+5. On a valid drop: the buffer is rewritten via the NSTextView sequence (one undo step), then
+   `saveOpenNote()` writes to disk with the journal.
+6. `OutlinePane`'s displayed entries update to reflect the new text (recomputed from
+   `NoteOutline.entries(in:)` on the new `note.text`, same as any other edit).
+7. A section that was folded before the drag stays folded after (fold state keys off title/
+   position and is recomputed the same way it already is after any other edit).
 
 ## Edge cases
 
-- **Tabs**: 1 tab = 4 columns, unchanged (already CommonMark-correct) — folded into the new
-  content-column comparison.
-- **Tie-breaking**: an item's indentation between two valid content columns attaches to the
-  deepest open list whose content column is still ≤ its own indentation (CommonMark's rule) —
-  this is what fixes the ticket's named 3-space-indent scenario.
-- **Level cap**: preserved at 6, matching `ListMarkerRendering.paragraphStyle`'s existing
-  `level ∈ 1...6` assumption.
-- **Ordered markers of different widths** (`1. ` vs `12. `): the content-column algorithm
-  naturally produces different child thresholds for these, where the old `1 + columns/2` formula
-  did not distinguish marker width at all.
-- **A list authored entirely inside Pergamenum**: unaffected — Pergamenum's own
-  `ListContinuation`-driven indentation already happens to agree with both the old and new rule
-  for content produced by this app's own Enter-key continuation (not verified by a new test in
-  this chain, since it is a pre-existing, already-covered path; any regression here would show up
-  in the existing `ListContinuationTests.swift` suite, which is untouched).
-- **A malformed/ambiguous backward walk** (e.g. a line whose ancestor chain cannot be resolved,
-  or that sits at column 0 with no marker of its own): falls through to level 1, the same
-  behavior a non-nested list item gets today.
+- Dragging a folded section moves its hidden content too (decided).
+- Dropping past the end of the note (below the last row) inserts at the end, at root level (no
+  parent) unless dropped visually nested under the last section.
+- A section containing further nested subsections carries them all; their heading levels shift
+  by the same delta as the top-level moved heading, preserving relative nesting.
+- Dropping a section onto itself, or onto any position inside its own current extent (including
+  a child subsection), shows no insertion-line affordance and the drop is a no-op — same
+  asymmetric treatment ADR-0026 uses for a folder-into-itself cycle (no affordance on hover,
+  rather than an affordance that then errors).
+- Unsaved changes already in the buffer (`hasUnsavedChanges == true`) at drag time are not
+  discarded: the move is computed against the current in-memory `note.text` (not a fresh read
+  from disk), so the rewritten buffer already contains both the user's prior edits and the
+  move, and the subsequent `saveOpenNote()` persists both together atomically.
+- A `#`-prefixed line inside a fenced code block is not a heading and is never a drag source or
+  a valid drop target — unchanged, since `NoteOutline.entries(in:)` already excludes fenced
+  code blocks from heading detection.
+- A note with zero headings shows `OutlinePane`'s existing empty state; no drag source exists.
 
 ## Success criteria
 
-- [ ] R-01 — `ListNesting.level(in:lineStart:indent:)` exists in `Sources/Core/Editor/ListNesting.swift`, Foundation-only, and implements the CommonMark content-column stack algorithm described above.
-- [ ] R-02 — `MarkdownStyler.listMarkerSpan` calls `ListNesting.level` instead of the inline `1 + columns / 2` formula; `listMarkerLength`'s grammar (marker detection itself) is unchanged.
-- [ ] R-03 — `EditorDecorationDelegate+ListRendering.stillSpellsAListMarker` calls the same `ListNesting.level` function against live characters at layout time, preserving the existing no-caching invariant on `HiddenMarker.Kind.list` (§D-architecture above).
-- [ ] R-04 — A list item indented 3 spaces under a `- ` (2-column-wide) parent renders at level 2 (CommonMark: content column 2, indent 3 ≥ 2 → nests).
-- [ ] R-05 — A list item indented 3 spaces under a `12. ` (4-column-wide) parent renders at level 1, not level 2 (CommonMark: content column 4, indent 3 < 4 → does not nest, stays a sibling of the ordered item's own list).
-- [ ] R-06 — CommonMark's tie-break rule is exercised by at least one test: an indentation that falls strictly between two open lists' content columns attaches to the deeper one.
-- [ ] R-07 — The level cap of 6 is preserved for indentation deep enough to mathematically exceed it.
-- [ ] R-08 — `Tests/MarkdownStylerTests.swift:429-440`'s existing assertions are rewritten to assert CommonMark-correct expected levels for the same inputs (2 spaces, 4 spaces, one tab, 20 spaces), not the old fixed-column values.
-- [ ] R-09 — `Tests/MarkupHidingTests.swift:235-241,331`'s existing nesting-level assertions against the live `EditorDecorationDelegate` are rewritten to match, confirming the layout-time re-read agrees with the styling-pass computation for the same input.
-- [ ] R-10 — A list authored inside Pergamenum via the existing Enter-key continuation (`ListContinuation`) still renders at the same levels it did before this chain — no regression in `Tests/ListContinuationTests.swift` (no-test: ListContinuation.swift itself is explicitly out of scope and untouched by this chain, so this is a non-regression check on an unmodified suite, not a new assertion this chain writes).
-- [ ] R-11 — `Sources/Core/Editor/ListContinuation.swift` is not modified by this chain (no-test: a scope boundary confirmed by the diff at commit time, not a runtime behavior a unit test can assert).
-- [ ] R-12 — `xcodebuild` build succeeds for all three schemes (`Pergamenum`, `perg`, `pergamenum-mcp`) with the new `Sources/Core/Editor/ListNesting.swift` file added to `sharedSources` if it needs to be reachable from the connectors (verify against `Project.swift`'s existing glob for `Sources/Core/**`).
+- [ ] R-01 — `NoteOutline` exposes a pure function returning a section's full text extent (heading line through the start of the next heading of level ≤ its own, or end of text), covered by Swift Testing cases for a top-level section, a nested section, and the last section in a note
+- [ ] R-02 — A pure function rewrites a note's text moving one section's extent to a new position, shifting the moved section's own heading level and every nested heading inside it by the same delta so relative nesting is preserved, covered by Swift Testing cases for moving to a shallower level, a deeper level, and the same level
+- [ ] R-03 — `OutlinePane` supports dragging a heading row via `.draggable`, and shows an insertion-line indicator at valid drop positions between rows during hover (no-test: SwiftUI drag-and-drop gesture rendering has no reliable automated coverage in this repo per ADR-0026's own precedent, verified by hand instead)
+- [ ] R-04 — Dropping on the dragged section's own current position, or on any position inside its own extent (including a nested subsection of itself), shows no insertion-line affordance and performs no move
+- [ ] R-05 — On a valid drop, the target heading level is computed as the visual parent row's level + 1 (root level when dropped with no visual parent), covered by a Swift Testing case per the move function from R-02
+- [ ] R-06 — A folded section, when dragged, moves its full hidden extent along with the heading (no-test: depends on the same manual drag verification as R-03, since fold state and drag both live in the SwiftUI view layer)
+- [ ] R-07 — The move rewrites the editor's buffer through the same `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` sequence ADR-0019's embed resize uses, so the move is exactly one `Cmd+Z` step, verified by hand in the running app (no-test: NSUndoManager step-grouping across a real drag gesture is not exercisable from Swift Testing)
+- [ ] R-08 — Immediately after the buffer rewrite, `saveOpenNote()` is called, persisting the move to disk through `VaultSession.write` with the journal, including any unsaved edits already present in the buffer before the drag
+- [ ] R-09 — `xcodebuild ... -only-testing:PergamenumTests test` passes with the new tests from R-01/R-02/R-05 included and zero regressions
+- [ ] R-10 — Stefano manually verifies the drag gesture end-to-end in the running app (drag a section to a new position, confirm the file on disk and the outline both reflect the move, confirm Cmd+Z undoes it) before the ticket is closed (no-test: this is a human hand-check of a live UI gesture, not a claim any automated suite can assert)
