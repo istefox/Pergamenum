@@ -1,13 +1,10 @@
-<!-- project-tasks: prefix=PG lastId=90 -->
+<!-- project-tasks: prefix=PG lastId=92 -->
 # PROJECT TASKS
 
-Updated: 2026-09-01 · Open: 13 (P1: 0) · In progress: 0
+Updated: 2026-09-01 · Open: 12 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
-
-- [ ] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 runs:2 -->
-  - Pasting an image from the clipboard has no automated test on purpose: driving it would clobber the real system pasteboard.
 
 ## In Progress
 
@@ -139,6 +136,12 @@ Step 7 commit.
 
 ## Done
 
+- [x] `PG-091` **P2** Pasting a screenshot (Cmd+V) into a note silently falls back to plain text instead of embedding the image, when the source app also puts a `.fileURL` on the pasteboard alongside the image bytes (CleanShot X does) — `Sources/Features/Editor/CompletingTextView+Pasteboard.swift` <!-- src:manual opened:2026-09-01 closed:2026-09-01 runs:1 -->
+  - Found by Stefano during PG-006's manual verification. `pastedImagePNG()`'s `guard pasteboard.data(forType: .fileURL) == nil else { return nil }` unconditionally bailed whenever a file URL type was present, on the wrong assumption that a file-URL pasteboard always meant "a Finder-copied file, leave it to drag&drop" — CleanShot X's paste puts both a `.fileURL` and real PNG/TIFF bytes on the same pasteboard. Fixed by removing the `.fileURL` guard entirely: it was redundant once PNG/TIFF presence is checked directly (a bare file reference with no image bytes already falls through to `nil` on its own). `xcodebuild build` succeeded, unit suite 2007/2007, and Stefano confirmed the embed now appears on a real CleanShot paste.
+- [x] `PG-092` **P3** Selecting an embedded image in the editor shows the text format bar (bold/italic/strikethrough/lists/headings), which does nothing meaningful on an attachment — `Sources/Features/Editor/CompletingTextView+FormatBar.swift` <!-- src:manual opened:2026-09-01 closed:2026-09-01 runs:1 -->
+  - Found by Stefano during PG-006's manual verification. `refreshFormatBar` showed the bar for any non-empty selection outside a code fence, with no check for an embed selection. Fixed with a new `isEmbedMarker(_:)` guard reusing `Attachment.embed(inLine:)` — the same pure predicate `EditorDecorationDelegate` already applies to a marker line — against the trimmed selected substring: `selectEmbed(at:in:)` (ADR-0018 slice 3) selects the whole `![[foto.png]]` marker as ordinary text, so a full-marker selection is what the bar now recognises and hides for. `xcodebuild build` succeeded, unit suite 2007/2007, and Stefano confirmed the bar no longer appears on an embed selection while it still appears on ordinary text.
+- [x] `PG-006` **P2** Build 89: block deletion and images in notes never confirmed by hand — `docs/20260811_Pergamenum_SpecApp.md` <!-- src:manual opened:2026-08-16 closed:2026-09-01 runs:2 -->
+  - Verified by Stefano on a throwaway vault (Debug build). Block deletion (select a paragraph, Backspace): works, confirmed on disk. Image paste: confirmed broken, two real defects found and filed separately as `PG-091` and `PG-092` rather than fixed inline, since this item's own scope was verification, not a fix.
 - [x] `PG-082` **P3** `NoteListPane`'s selection set discriminates note vs. folder ids by `id.hasSuffix(".md")` rather than a typed lookup — `NoteName.validate` does not forbid `.` in a name, so a folder literally named `Reunion.md` would be misclassified as a note-open request; no test covers this — `Sources/Features/Editor/NoteListPane.swift:53,457-461` <!-- src:session opened:2026-08-29 closed:2026-09-01 runs:1 -->
   - Found at Gate 5.06 (type-design-analyzer) for ADR-0026. Fixed in the Batch 1 fast-cleanup round: `opening(from:to:currentlyOpen:isComposingNote:)` now takes a `tree: [NoteTree.Node]` parameter and resolves the id's real kind via `NoteTree.node(withID:in:)`, replacing the `.hasSuffix(".md")` guess. One call site inside `NoteListPane`'s body updated, plus ~8 fixture-passing call sites in `Tests/NoteTreeTests.swift`. `xcodebuild build` succeeded, unit suite green. PR #150 (merged), but the TODO.md closure was missed at the time — closed now on re-triage.
 - [x] `PG-063` **P2** `BoardFileOperations.renamePlan`'s note-rewrite loop swallows the real error — `try? store.read(path)` replaced with a flat "non leggibile" string <!-- src:review opened:2026-08-27 closed:2026-09-01 runs:2 -->

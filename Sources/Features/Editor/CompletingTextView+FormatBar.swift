@@ -13,7 +13,7 @@ extension CompletingTextView {
     /// callback already keeps in the same method.
     func refreshFormatBar(theme: Theme) {
         let selection = selectedRange()
-        guard selection.length > 0, !isInsideCodeFence(selection) else {
+        guard selection.length > 0, !isInsideCodeFence(selection), !isEmbedMarker(selection) else {
             formatBar.hide()
             return
         }
@@ -25,6 +25,21 @@ extension CompletingTextView {
             over: window,
             theme: theme
         )
+    }
+
+    /// No bar over a picture: `selectEmbed(at:in:)` (ADR-0018 slice 3) selects the whole
+    /// `![[foto.png]]` marker as ordinary text, so this selection reaches here just like
+    /// any other - and bold/italic/list markers wrapped around a picture's own marker are
+    /// meaningless, not merely inapplicable. Reuses `Attachment.embed(inLine:)`, the same
+    /// pure predicate `EditorDecorationDelegate` already applies to a marker line, rather
+    /// than a second reading of what counts as an embed.
+    private func isEmbedMarker(_ selection: NSRange) -> Bool {
+        guard selection.location != NSNotFound,
+              NSMaxRange(selection) <= (string as NSString).length
+        else { return false }
+        let marker = (string as NSString).substring(with: selection)
+            .trimmingCharacters(in: .whitespaces)
+        return Attachment.embed(inLine: marker) != nil
     }
 
     /// No bar inside ``` ``` ```: there `**` is two asterisks in a program, not emphasis.
