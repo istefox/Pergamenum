@@ -682,9 +682,22 @@ final class WorkspaceController {
     }
 
     /// The folder a card points at, when it points at one.
+    ///
+    /// Checked against the filesystem directly (PG-054), not `subfolderSet`: that set only
+    /// ever lists the *direct* children of the currently open board's own folder, so a card
+    /// whose target folder was later moved elsewhere in the tree - now a nested path like
+    /// `Nord/SudX` rather than a sibling of this board - would never match again no matter
+    /// how many times the board reloads. The move itself already repoints the card's stored
+    /// path correctly (`FolderFileOperations.repointBoardsPlan`); what was wrong was asking
+    /// the wrong question about the result.
     func subfolder(for node: CanvasNode) -> String? {
-        guard case .file(let path, _) = node.kind else { return nil }
-        return subfolderSet.contains(path) ? path : nil
+        guard case .file(let path, _) = node.kind, let store else { return nil }
+        var isDirectory: ObjCBool = false
+        let url = store.root.appending(path: path, directoryHint: .isDirectory)
+        let exists = FileManager.default.fileExists(
+            atPath: url.path(percentEncoded: false), isDirectory: &isDirectory
+        )
+        return exists && isDirectory.boolValue ? path : nil
     }
 
     // MARK: Saving
