@@ -29,6 +29,10 @@ extension VaultController {
         // «Apri in una nuova tab», and landing it in the preview tab would mean the next
         // click in the list overwrites the note you just decided to write.
         openNoteInNewTab(at: relativePath)
+        // Every other write that adds something to the vault already does this (PG-095):
+        // the write itself only updates the in-memory index, and the sidebar's own tree is
+        // rebuilt on `scanGeneration` alone, not on the index changing underneath it.
+        Task { await rescan() }
         return relativePath
     }
 
@@ -86,8 +90,12 @@ extension VaultController {
     @discardableResult
     func openDailyNote(for date: CalendarDate) throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
+        let existedAlready = session.exists(dailyNotePath(for: date))
         let relativePath = try session.dailyNote(for: date)
         openNote(at: relativePath)
+        // Only when this call is the one that created the file (PG-095) - re-opening an
+        // existing daily note changes nothing the sidebar tree needs to know about.
+        if !existedAlready { Task { await rescan() } }
         return relativePath
     }
 

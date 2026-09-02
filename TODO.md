@@ -1,7 +1,7 @@
 <!-- project-tasks: prefix=PG lastId=95 -->
 # PROJECT TASKS
 
-Updated: 2026-09-02 · Open: 9 (P1: 1) · In progress: 0
+Updated: 2026-09-02 · Open: 8 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -12,11 +12,11 @@ Updated: 2026-09-02 · Open: 9 (P1: 1) · In progress: 0
 
 ## Backlog / To Add
 
-- [ ] `PG-095` **P1** A newly created note never bumps `scanGeneration`, so it stays invisible in the Note sidebar tree until a manual rescan or relaunch — `Sources/Vault/VaultController+Notes.swift` (`createNote`, `openDailyNote`) <!-- src:session opened:2026-09-02 runs:1 -->
+- [x] `PG-095` **P1** A newly created note never bumps `scanGeneration`, so it stayed invisible in the Note sidebar tree until a manual rescan or relaunch — `Sources/Vault/VaultController+Notes.swift` (`createNote`, `openDailyNote`) <!-- src:session opened:2026-09-02 closed:2026-09-02 runs:2 -->
   - Found manually reproducing PG-029 on the real "Pergamena" vault: Stefano created a note ("Prova") via Cmd+N, it opened correctly in its own tab and was written to disk (`Prova.md` confirmed present at vault root), but never appeared in `NoteListPane`'s sidebar tree.
   - Root cause: `createNote` (`VaultController+Notes.swift:16`) writes via `session.createNote` → `VaultSession.write` (`VaultSession.swift:187`), which updates the in-memory index (`index.update(...)`, line 196) but never bumps `scanGeneration`. `NoteListPane.rebuild()` (`NoteListPane.swift:562`), which builds the `tree` the sidebar renders, only runs from `.task(id: vault.scanGeneration)` (line 134) — it does not react to `vault.index.allNotes` changing on its own, deliberately, per its own comment ("rebuilt when the index changes rather than in `body`... sorting every note on every keystroke is work nobody asked for"). `scanGeneration` is bumped only by `rescan()` and `clearCache()` (`VaultController.swift:217`, `:320`). Every other write path that adds/moves/removes something already knows this and explicitly follows its write with `Task { await rescan() }`: `VaultController+Move.swift:166`, all four sites in `VaultController+Folders.swift`, `VaultController+TaskDrop.swift:37`, two sites in `VaultController+Files.swift`. `createNote` and `openDailyNote` (same file, `:86-92`, which calls `session.dailyNote(for:)` directly) are the two write paths that skip it.
   - The note is not lost or corrupted — searchable and linkable immediately via the in-memory index, just absent from the one view that matters for finding it by eye. P1 because it silently defeats the primary way of using the app (create a note, expect to see it where notes live) with no error, no clue, and no workaround short of knowing to hit refresh.
-  - Proposed fix, not yet applied: add `Task { await rescan() }` after the write in both `createNote` and `openDailyNote`, mirroring the pattern every other write path already uses. One file, ~2 lines.
+  - Fixed by adding `Task { await rescan() }` after the write in `createNote`, mirroring the pattern every other write path already uses. `openDailyNote` got the same call, guarded by `!session.exists(dailyNotePath(for: date))` so re-opening an already-existing daily note (the common case) does not trigger an extra rescan for nothing. `xcodebuild build` succeeded, unit suite 2017/2017 green, and Stefano confirmed by hand on the real "Pergamena" vault that a note created via Cmd+N now appears in the sidebar tree immediately, with no manual refresh needed.
 
 - [ ] `PG-089` **P3** Hovering an Outline row (not a gap) during an outline-section drag shows macOS's default "+" cursor instead of a "not allowed" indicator — `Sources/Features/Editor/OutlinePane.swift` <!-- src:manual opened:2026-09-01 runs:2 -->
   - Found by Stefano during PG-019's manual R-10 hand-check. Functionally correct (no insertion line, no-op), just the system cursor over a row with no `.dropDestination` under it defaults to the generic "+" (copy) icon.
