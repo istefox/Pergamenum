@@ -56,7 +56,7 @@ struct BoardTopBar: View {
         switch WorkspaceBoardResolver.board(
             inFolder: folder, among: workspace.store?.allBoards() ?? []
         ) {
-        case .unique(let path): workspace.select(.board(path: path))
+        case .unique(let path): workspace.select(.board(path: path.value))
         case .ambiguous, .notFound: workspace.select(.folder(folder))
         }
     }

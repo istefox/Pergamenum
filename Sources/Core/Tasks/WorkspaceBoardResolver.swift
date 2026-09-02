@@ -8,9 +8,17 @@ import Foundation
 /// Callers supply the board list rather than a vault root: `CanvasStore.allBoards()` is an
 /// uncached, full recursive filesystem walk (`WorkspacePicker` already fetches it once into
 /// `@State` for this reason), and this resolver must not repeat that walk per call.
+/// A vault-relative path known to name a board file, distinct from a bare folder path (PG-065).
+/// Wraps only the payload `WorkspaceBoardResolution.unique` carries - it does not replace every
+/// `String` path in the Workspace layer, which stays out of scope for this narrow introduction.
+struct BoardPath: Hashable, Sendable, CustomStringConvertible {
+    let value: String
+    var description: String { value }
+}
+
 enum WorkspaceBoardResolution: Equatable, Sendable {
     /// Exactly one board on disk has this file name — the payload is its full vault-relative path.
-    case unique(String)
+    case unique(BoardPath)
     /// Two or more boards share this file name; which one was meant cannot be inferred.
     case ambiguous
     /// No board on disk has this file name — an orphaned marker.
@@ -35,7 +43,7 @@ enum WorkspaceBoardResolver {
         let hits = boards.filter { matches($0, workspacePath: workspacePath) }
         switch hits.count {
         case 0: return .notFound
-        case 1: return .unique(hits[0])
+        case 1: return .unique(BoardPath(value: hits[0]))
         default: return .ambiguous
         }
     }
@@ -53,7 +61,7 @@ enum WorkspaceBoardResolver {
         let hits = boards.filter { normalized(($0 as NSString).deletingLastPathComponent) == target }
         switch hits.count {
         case 0: return .notFound
-        case 1: return .unique(hits[0])
+        case 1: return .unique(BoardPath(value: hits[0]))
         default: return .ambiguous
         }
     }
