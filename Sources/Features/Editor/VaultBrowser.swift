@@ -93,8 +93,20 @@ struct VaultBrowser: View {
         ToolbarItemGroup(placement: .navigation) {
             Button { vault.beginNewNote() } label: {
                 Label("Nuova nota", systemImage: "square.and.pencil")
+                    // Same dot `NoteTabBar` uses for "modifiche non salvate" (PG-029): a
+                    // draft parked by stepping out of the composer (PG-028) is otherwise
+                    // invisible until the next `Cmd+N`.
+                    .overlay(alignment: .topTrailing) {
+                        if vault.hasParkedDraft {
+                            Circle()
+                                .fill(theme.color(.accentPrimary))
+                                .frame(width: 6, height: 6)
+                                .offset(x: 2, y: -2)
+                                .accessibilityLabel("bozza di nota parcheggiata")
+                        }
+                    }
             }
-            .help("Nuova nota")
+            .help(vault.hasParkedDraft ? "Nuova nota (bozza parcheggiata)" : "Nuova nota")
             .disabled(vault.root == nil)
 
             Button { vault.isShowingQuickSwitcher = true } label: {

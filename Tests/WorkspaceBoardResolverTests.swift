@@ -10,7 +10,7 @@ import Testing
         "vibrofer-emea.canvas", in: ["02 Clienti/Vibrofer/vibrofer-emea.canvas", "Altro/board.canvas"]
     )
 
-    #expect(resolution == .unique("02 Clienti/Vibrofer/vibrofer-emea.canvas"))
+    #expect(resolution == .unique(BoardPath(value: "02 Clienti/Vibrofer/vibrofer-emea.canvas")))
 }
 
 @Test func resolveMatchesCaseInsensitively() {
@@ -18,7 +18,7 @@ import Testing
         "Board.CANVAS", in: ["Cartella/board.canvas"]
     )
 
-    #expect(resolution == .unique("Cartella/board.canvas"))
+    #expect(resolution == .unique(BoardPath(value: "Cartella/board.canvas")))
 }
 
 @Test func resolveIsAmbiguousWhenTwoBoardsShareTheFileName() {
@@ -54,7 +54,7 @@ import Testing
 @Test func boardInFolderFindsTheUniqueBoardInThatFolder() {
     let resolution = WorkspaceBoardResolver.board(inFolder: "A", among: ["A/x.canvas"])
 
-    #expect(resolution == .unique("A/x.canvas"))
+    #expect(resolution == .unique(BoardPath(value: "A/x.canvas")))
 }
 
 @Test func boardInFolderIsAmbiguousWhenTwoBoardsShareTheFolder() {
@@ -78,11 +78,24 @@ import Testing
         inFolder: "", among: ["Pergamena.canvas", "A/x.canvas"]
     )
 
-    #expect(resolution == .unique("Pergamena.canvas"))
+    #expect(resolution == .unique(BoardPath(value: "Pergamena.canvas")))
 }
 
 @Test func boardInFolderIsNotFoundWhenTheFolderHasNoBoards() {
     let resolution = WorkspaceBoardResolver.board(inFolder: "A", among: [])
 
     #expect(resolution == .notFound)
+}
+
+// MARK: - PG-065: `BoardPath` carries the resolved value through unchanged
+
+@Test func boardPathCarriesTheValueThroughEqualityAndHashing() {
+    let a = BoardPath(value: "A/x.canvas")
+    let b = BoardPath(value: "A/x.canvas")
+    let c = BoardPath(value: "B/x.canvas")
+
+    #expect(a == b)
+    #expect(a != c)
+    #expect(Set([a, b, c]).count == 2)
+    #expect(a.description == "A/x.canvas")
 }

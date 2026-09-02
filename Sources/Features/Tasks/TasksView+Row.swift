@@ -118,9 +118,9 @@ extension TasksView {
         switch WorkspaceBoardResolver.resolve(task.workspacePath, in: boards) {
         case .unique(let path):
             Button {
-                vault.routeState.pendingCanvas = (path, nil)
+                vault.routeState.pendingCanvas = (path.value, nil)
             } label: {
-                Text("▦ \(path)").themedText(.caption, color: .accentPrimary)
+                Text("▦ \(path.value)").themedText(.caption, color: .accentPrimary)
             }
             .buttonStyle(.plain)
         case .ambiguous:

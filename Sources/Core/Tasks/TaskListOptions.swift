@@ -261,7 +261,7 @@ enum TaskArrangement {
         grouped(tasks, lastTitle: noWorkspaceTitle) { task in
             guard let workspacePath = task.workspacePath else { return noWorkspaceTitle }
             switch WorkspaceBoardResolver.resolve(workspacePath, in: boards) {
-            case .unique(let path): return path
+            case .unique(let path): return path.value
             case .ambiguous, .notFound: return workspacePath
             }
         }

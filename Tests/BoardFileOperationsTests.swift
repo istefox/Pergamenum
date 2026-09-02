@@ -296,7 +296,7 @@ private func isUnique(_ resolution: WorkspaceBoardResolution) -> Bool {
     )
     #expect(isUnique(resolutionBefore))
     #expect(isUnique(resolutionAfter))
-    #expect(resolutionAfter == .unique("B/x.canvas"))
+    #expect(resolutionAfter == .unique(BoardPath(value: "B/x.canvas")))
 }
 
 @Test func moveBoardRepointsACardOnAnotherBoardThatPointedAtItsOldPath() throws {

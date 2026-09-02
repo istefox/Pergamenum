@@ -132,6 +132,14 @@ extension VaultController {
         return noteDraft
     }
 
+    /// Whether a draft is parked and nobody is looking at it right now (PG-029) - the toolbar
+    /// badge's whole condition. `parkedDraft`'s non-empty-title threshold, not a bare
+    /// `noteDraft != nil` check: a folder or template chosen and then walked away from with no
+    /// title typed is not a draft worth flagging.
+    var hasParkedDraft: Bool {
+        parkedDraft != nil && !isComposingNote
+    }
+
     /// Keeps what was typed when the composer is stepped out of rather than dismissed.
     ///
     /// The guard is the whole mechanism: `endNewNote()` clears the draft, so cancelling
