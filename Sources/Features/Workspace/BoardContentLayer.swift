@@ -189,11 +189,33 @@ struct BoardContentLayer: View {
                     RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                         .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
                 )
+                .accessibilityLabel(accessibilitySummary(for: node))
         } else {
             NodeCard(
                 node: node, subfolder: workspace.subfolder(for: node), workspace: workspace,
                 modifiers: modifiers
             )
+        }
+    }
+
+    /// A short accessible description of what a node holds, for the placeholder branch
+    /// above - which draws no Text of its own below `BoardGeometry.placeholderZoom` (PG-041).
+    /// Approximates what `NodeCard` shows without any of its async state (email headers,
+    /// thumbnails): enough to identify the card, not a mirror of every visual detail.
+    private func accessibilitySummary(for node: CanvasNode) -> String {
+        switch node.kind {
+        case .text(let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "nota vuota" : trimmed
+        case .file(let path, _):
+            let name = (path as NSString).lastPathComponent
+            return workspace.subfolder(for: node) != nil ? "cartella \(name)" : name
+        case .link(let url):
+            return LinkCardTitle.read(from: node) ?? url
+        case .group(let label):
+            return label ?? "gruppo"
+        case .unknown(let type):
+            return "nodo «\(type)»"
         }
     }
 

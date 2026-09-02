@@ -93,6 +93,14 @@ final class WorkspaceBoardUITests: XCTestCase {
         XCTAssertGreaterThan(node.width, cardA.width + 20, "grip non afferrabile da zoomata")
     }
 
+    /// PG-041: below `BoardGeometry.placeholderZoom` the card draws no Text, but its
+    /// accessibility label must still say what the card holds.
+    func testAZoomedOutCardStillHasAReadableAccessibilityLabel() throws {
+        zoomOutWithTheControl(times: 6)
+        let card = try element(nodeID: "aaaa000000000001")
+        XCTAssertEqual(card.label, "CARD A", "la card senza testo non ha una label accessibile")
+    }
+
     // MARK: 2. The Freccia tool draws an edge
 
     func testTheArrowToolConnectsTwoCards() throws {
