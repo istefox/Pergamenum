@@ -104,6 +104,11 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
     /// markup is fully reversible with a toggle rather than a revert.
     nonisolated(unsafe) var hidesMarkup = false
+    /// The probe grid this build hands to a `TableAttachment` (ADR-0029 §D16 probe 2, Step
+    /// 4.5 tracer bullet - not Task 4's real `TableGridStore`). Not `private`:
+    /// `apply(tableGridView:)` and `tableParagraph(at:storage:)` in
+    /// `EditorDecorationDelegate+TableRendering.swift` read and write it.
+    nonisolated(unsafe) var tableGridView: TableGridView?
     /// Small enough to draw as nothing while still breaking the line the way a real
     /// character does - unlike a `\n` at this size, which is why folding uses a different
     /// mechanism: this hides a delimiter mid-paragraph, not a whole paragraph.
@@ -243,6 +248,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // would be hidden outright instead of drawn as a checkbox.
         if let checkbox = checkboxParagraph(at: range, storage: storage) {
             return checkbox
+        }
+
+        // The tracer-bullet table probe (ADR-0029 §D16 probe 2, Step 4.5): a fixed trigger
+        // word, not Task 3's `GFMTable` grammar, but the same substitution shape as every
+        // branch above it.
+        if let table = tableParagraph(at: range, storage: storage) {
+            return table
         }
 
         guard !revealedParagraphs.contains(range.location),

@@ -82,6 +82,18 @@ extension NoteTextView {
         /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
         /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
         var embedDrag: EmbedDrag?
+        /// Tracer-bullet probe for ADR-0029 §D16 probe 2 (Step 4.5) - the one grid this
+        /// build ever draws, created once so first responder survives every restyle (ADR
+        /// §D6: "the same view instance is returned across layout passes"). Not part of
+        /// any shipped feature; removed once Task 4 lands for real.
+        private lazy var tableProbeGrid: TableGridView = {
+            let grid = TableGridView()
+            grid.resignToTextView = { [weak self] in
+                guard let textView = self?.textView else { return }
+                textView.window?.makeFirstResponder(textView)
+            }
+            return grid
+        }()
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -305,6 +317,10 @@ extension NoteTextView {
             // painted over an arbitrary picture and has to be aimed at, which a tertiary
             // text grey on a photograph is not.
             decorations.handleColor = NSColor(theme.color(.accentPrimary))
+            // Tracer-bullet probe for ADR-0029 §D16 probe 2 (Step 4.5) - the same finished-
+            // value hand-over `apply(embeds:)` already makes, just above the real call this
+            // one is deliberately placed beside.
+            decorations.apply(tableGridView: tableProbeGrid)
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
