@@ -38,16 +38,74 @@ enum OutlineMove {
         guard let (insertionPoint, targetLevel) = target(
             in: text, entries: entries, destination: destination, excluding: extent
         ) else { return nil }
+        return assembled(
+            in: text, extent: extent, sourceLevel: sourceLevel,
+            insertionPoint: insertionPoint, targetLevel: targetLevel, before: destination != nil
+        )
+    }
 
+    /// The two range/text pairs that nest a section as the LAST child of `target`, or `nil`
+    /// when that is impossible or a no-op.
+    ///
+    /// "Last child" means right before whatever already ends `target`'s section - the next
+    /// heading of `target`'s own level or higher, elsewhere in the note - so an existing
+    /// child stays first and the moved section joins after it, matching the plain drop's own
+    /// "append, don't reorder what's already there" instinct. Reordering among children is
+    /// then this same pane's existing "drop before X" gesture, unchanged.
+    ///
+    /// Returns `nil` when either `entry` or `target` is not a heading, when `target` sits
+    /// inside the moved section's own extent (nesting a section under itself or one of its
+    /// own subsections), or when the drop is a no-op: the section is already `target`'s last
+    /// child at the level this would give it.
+    static func replacements(
+        in text: String,
+        moving entry: Int,
+        nestingUnder target: Int
+    ) -> [(range: NSRange, text: String)]? {
+        let entries = NoteOutline.entries(in: text)
+        guard entries.indices.contains(entry),
+              case .heading(let sourceLevel) = entries[entry].kind,
+              entries.indices.contains(target),
+              case .heading(let targetLevel) = entries[target].kind
+        else { return nil }
+        guard let extent = extentIncludingNewline(in: text, headingAt: entry) else { return nil }
+        // Refused: nesting a section under itself or one of its own subsections.
+        guard !extent.contains(entries[target].range.lowerBound) else { return nil }
+
+        var insertionPoint = text.endIndex
+        var before = false
+        for candidate in entries.indices where candidate > target {
+            guard !extent.contains(entries[candidate].range.lowerBound) else { continue }
+            guard case .heading(let level) = entries[candidate].kind, level <= targetLevel else { continue }
+            insertionPoint = entries[candidate].range.lowerBound
+            before = true
+            break
+        }
+        return assembled(
+            in: text, extent: extent, sourceLevel: sourceLevel,
+            insertionPoint: insertionPoint, targetLevel: min(targetLevel + 1, 6), before: before
+        )
+    }
+
+    // MARK: -
+
+    /// The two edits shared by both entry points, once each has worked out where the
+    /// section lands and what level it takes there.
+    private static func assembled(
+        in text: String,
+        extent: Range<String.Index>,
+        sourceLevel: Int,
+        insertionPoint: String.Index,
+        targetLevel: Int,
+        before: Bool
+    ) -> [(range: NSRange, text: String)]? {
         // Refused: dropping onto the section itself or a nested subsection of it.
         guard !extent.contains(insertionPoint) else { return nil }
         // Refused: dropping right back where it already is, unchanged.
         guard insertionPoint != extent.upperBound || targetLevel != sourceLevel else { return nil }
 
         let extracted = rewriteLevels(of: String(text[extent]), delta: targetLevel - sourceLevel)
-        let insertedText = insertionText(
-            for: extracted, in: text, extent: extent, before: destination != nil
-        )
+        let insertedText = insertionText(for: extracted, in: text, extent: extent, before: before)
         let deletion = (range: NSRange(extent, in: text), text: "")
         let insertion = (
             range: NSRange(location: insertionPoint.utf16Offset(in: text), length: 0),
@@ -55,8 +113,6 @@ enum OutlineMove {
         )
         return [deletion, insertion].sorted { $0.range.location > $1.range.location }
     }
-
-    // MARK: -
 
     /// `extracted`, given exactly the line break its new position needs - never assumed
     /// from whatever `extent` happened to carry, which is a fact about the OLD position.

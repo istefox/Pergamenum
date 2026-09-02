@@ -42,8 +42,10 @@ struct OutlinePane: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
-                            gap(toPrecede: index)
-                            row(entry, at: index)
+                            if !hiddenByFold.contains(index) {
+                                gap(toPrecede: index)
+                                row(entry, at: index)
+                            }
                         }
                         gap(toPrecede: nil)
                     }
@@ -66,6 +68,21 @@ struct OutlinePane: View {
         }
         .padding(.leading, CGFloat(entry.level - 1) * theme.spacing(.m))
         .modifier(HeadingDraggable(entry: entry, index: index, beginDrag: beginDrag))
+        .modifier(HeadingNestDropTarget(
+            entry: entry,
+            isValidDrag: draggingEntry.map {
+                OutlineMove.replacements(in: text, moving: $0, nestingUnder: index) != nil
+            } ?? false,
+            perform: { drag in
+                defer { draggingEntry = nil }
+                guard drag.notePath == notePath,
+                      let replacements = OutlineMove.replacements(in: text, moving: drag.entry, nestingUnder: index)
+                else { return false }
+                onMove(replacements)
+                return true
+            },
+            theme: theme
+        ))
     }
 
     /// The insertion zone before `destination` - or, for `nil`, at the end of the note.
@@ -146,6 +163,27 @@ struct OutlinePane: View {
         })
     }
 
+    /// The entries a folded ancestor hides from the index itself (PG-090), so folding `##
+    /// A.1` also takes its `### A.1.1` out of INDICE, not just out of the editor. The same
+    /// "next heading of the same or a higher level ends the section" rule
+    /// `NoteFolding.sectionEnd` applies to lines, applied here directly to entries instead:
+    /// there is no text offset to look up, only which entry follows which. An `.embed` never
+    /// ends a section (it has no level of its own), so it stays hidden along with the
+    /// section it sits inside.
+    private var hiddenByFold: Set<Int> {
+        guard !vault.foldedEntries.isEmpty else { return [] }
+        var hidden: Set<Int> = []
+        for index in vault.foldedEntries {
+            guard entries.indices.contains(index), case .heading(let level) = entries[index].kind
+            else { continue }
+            for next in entries.indices where next > index {
+                if case .heading(let nextLevel) = entries[next].kind, nextLevel <= level { break }
+                hidden.insert(next)
+            }
+        }
+        return hidden
+    }
+
     private func button(_ entry: NoteOutline.Entry, at index: Int, isCurrent: Bool) -> some View {
         Button {
             onSelect(NSRange(entry.range, in: text), index)
@@ -189,6 +227,37 @@ private struct HeadingDraggable: ViewModifier {
     func body(content: Content) -> some View {
         if case .heading = entry.kind {
             content.draggable(beginDrag(index))
+        } else {
+            content
+        }
+    }
+}
+
+/// The "nest as a child" drop target on a heading row itself (PG-093), distinct from
+/// `OutlineGap`'s between-rows line by the same convention every other container drop in this
+/// app already uses (`TaskDropTarget`, `NoteTreeRow`, `WorkspaceRow+Move`): a rounded outline
+/// AROUND the row means "into this", where a line between rows means "next to this". An embed
+/// row is never a nesting target - only a heading has a level to nest under.
+private struct HeadingNestDropTarget: ViewModifier {
+    let entry: NoteOutline.Entry
+    let isValidDrag: Bool
+    let perform: (OutlineSectionDrag) -> Bool
+    let theme: Theme
+
+    @State private var isTargeted = false
+
+    func body(content: Content) -> some View {
+        if case .heading = entry.kind {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+                        .strokeBorder(theme.color(.accentPrimary), lineWidth: 2)
+                        .opacity(isTargeted && isValidDrag ? 1 : 0)
+                )
+                .dropDestination(for: OutlineSectionDrag.self) { drops, _ in
+                    guard let drag = drops.first else { return false }
+                    return perform(drag)
+                } isTargeted: { isTargeted = $0 }
         } else {
             content
         }

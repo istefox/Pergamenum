@@ -28,6 +28,12 @@ private func moved(_ text: String, entry: Int, toPrecede destination: Int?) -> S
     return apply(replacements, to: text)
 }
 
+private func nested(_ text: String, entry: Int, under target: Int) -> String? {
+    guard let replacements = OutlineMove.replacements(in: text, moving: entry, nestingUnder: target)
+    else { return nil }
+    return apply(replacements, to: text)
+}
+
 // MARK: - R-01/R-02: extent and level rewrite
 
 @Test func movingATopLevelSectionCarriesItsWholeBodyToTheNewPosition() {
@@ -194,4 +200,64 @@ private func moved(_ text: String, entry: Int, toPrecede destination: Int?) -> S
 @Test func appendingTheOnlySectionAtTheEndOfTheNoteIsANoOp() {
     let note = "# A\ntesto"
     #expect(OutlineMove.replacements(in: note, moving: 0, toPrecede: nil) == nil)
+}
+
+// MARK: - Nesting as a child (PG-093)
+
+@Test func nestingASectionUnderAHeadingWithNoExistingChildrenAppendsItAtTheirLevelPlusOne() {
+    let note = """
+    # A
+    ## A.1
+    testo
+    # B
+    """
+    let result = nested(note, entry: 2, under: 0)
+    #expect(result == """
+    # A
+    ## A.1
+    testo
+    ## B
+    """)
+}
+
+@Test func nestingASectionUnderAHeadingWithExistingChildrenLandsAsTheLastOne() {
+    let note = """
+    # A
+    ## A.1
+    testo
+    # B
+    testo di B
+    # C
+    """
+    let result = nested(note, entry: 3, under: 0)
+    #expect(result == "# A\n## A.1\ntesto\n## C\n# B\ntesto di B\n")
+}
+
+@Test func aSectionCannotBeNestedUnderItself() {
+    let note = "# A\ntesto\n# B"
+    #expect(OutlineMove.replacements(in: note, moving: 0, nestingUnder: 0) == nil)
+}
+
+@Test func aSectionCannotBeNestedUnderItsOwnDescendant() {
+    let note = """
+    # A
+    ## A.1
+    testo
+    # B
+    """
+    #expect(OutlineMove.replacements(in: note, moving: 0, nestingUnder: 1) == nil)
+}
+
+@Test func nestingUnderAnEmbedOrANonHeadingTargetIsRefused() {
+    let note = "# A\n![[nota]]\n"
+    #expect(OutlineMove.replacements(in: note, moving: 0, nestingUnder: 1) == nil)
+}
+
+@Test func nestingDepthClampsAtLevelSixInsteadOfOverflowing() {
+    let note = """
+    ###### F
+    # G
+    """
+    let result = nested(note, entry: 1, under: 0)
+    #expect(result == "###### F\n###### G")
 }

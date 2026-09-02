@@ -29,6 +29,16 @@ extension NoteTextView {
         /// And for the find bar's, which is a location rather than a counter: the stepper
         /// moves between matches and it is arriving at a *different* one that scrolls.
         var lastMatchLocation: Int?
+        /// The replacements batch already applied, so a `updateNSView` pass that runs again
+        /// before `onReplacementsApplied()`'s `pendingReplacements = nil` has propagated back
+        /// down does not replay the same edits a second time against text they already
+        /// changed (PG-093: an Outline nest/move applied twice this way, its second pass
+        /// deleting and re-inserting ranges that no longer meant what they meant when
+        /// computed, corrupting the note). Compared by value, not identity - two genuinely
+        /// distinct requests never compute the same ranges and text, since `OutlineMove`
+        /// already refuses a move that would be a no-op.
+        var lastAppliedReplacements: [NSRange] = []
+        var lastAppliedReplacementTexts: [String] = []
         /// What the editor draws besides the note's characters - folds and transcluded
         /// notes. Here rather than on the view: it is a fact about this text view's layout,
         /// and the view struct is rebuilt on every update (M8).

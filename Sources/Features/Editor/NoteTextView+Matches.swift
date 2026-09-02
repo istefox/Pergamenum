@@ -74,8 +74,17 @@ extension NoteTextView.Coordinator {
     /// top, the first replacement moves every range after it by the difference in length and
     /// the second one lands in the wrong place; from the bottom, nothing an earlier range
     /// depends on has moved yet. `FindSession.replacements(in:)` is where that order is made.
+    /// Whether this exact batch (by value: same ranges, same replacement text, same order)
+    /// is the one `apply(_:to:)` just applied - see `lastAppliedReplacements`'s doc comment.
+    func alreadyApplied(_ replacements: [(range: NSRange, text: String)]) -> Bool {
+        replacements.map(\.range) == lastAppliedReplacements
+            && replacements.map(\.text) == lastAppliedReplacementTexts
+    }
+
     func apply(_ replacements: [(range: NSRange, text: String)], to textView: NSTextView) {
         guard !replacements.isEmpty else { return }
+        lastAppliedReplacements = replacements.map(\.range)
+        lastAppliedReplacementTexts = replacements.map(\.text)
         let length = (textView.string as NSString).length
         let ranges = replacements.map(\.range)
         let strings = replacements.map(\.text)

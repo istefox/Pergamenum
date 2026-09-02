@@ -306,7 +306,7 @@ struct NoteTextView: NSViewRepresentable {
             onFindApplied(textView.selectedRange())
         }
 
-        if let replacements {
+        if let replacements, !context.coordinator.alreadyApplied(replacements) {
             context.coordinator.apply(replacements, to: textView)
             onReplacementsApplied()
         }
