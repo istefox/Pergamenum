@@ -106,7 +106,11 @@ private func note(tags: [String]) -> String {
 private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note(tags: ["type-note", "topic-gomma"]), to: "Uno.md")
     try vault.write(note(tags: ["type-note", "topic-gomma", "project-presse"]), to: "Due.md")
-    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    let session = VaultSession(
+        root: vault.root,
+        stateBase: vault.stateBase,
+        bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
+    )
     await session.rescan()
     return session
 }
@@ -141,19 +145,35 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 }
 
 /// The guard that narrows §D5: the whole tag linter rather than the vocabulary table alone.
-/// `status-*` on a note is refused by tag.md 5.1 whatever the vocabulary says, and a gesture
-/// must not write what `perg lint` then reports.
+/// `status-final` on a note is refused by tag.md 5.1 (reserved for a Deliverable export,
+/// naming.md 6.1) whatever the vocabulary says, and a gesture must not write what `perg lint`
+/// then reports.
 @MainActor
 @Test func aDropThatWouldBreakTheTagRulesIsRefusedWithTheReason() async throws {
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.moveOnBoard("Uno.md", from: nil, to: try tag("status-active"))
+    let outcome = session.moveOnBoard("Uno.md", from: nil, to: try tag("status-final"))
 
     #expect(!outcome.didWrite)
-    #expect(outcome.introduced.contains(.statusNotAllowedOnNote(try tag("status-active"))))
+    #expect(outcome.introduced.contains(.statusNotAllowedOnNote(try tag("status-final"))))
     // Refused means untouched, not written and flagged afterwards.
     #expect(try session.read("Uno.md").text == note(tags: ["type-note", "topic-gomma"]))
+}
+
+/// tag.md 1.5: a note board grouped by `status-*` can now actually move a card between the
+/// non-`final` columns (M11's own acceptance criterion, PG-030) - the drop is no longer refused
+/// just because the destination is a status other than `inbox`.
+@MainActor
+@Test func aDropToANonFinalStatusIsAllowedOnANote() async throws {
+    let vault = try TemporaryVault()
+    let session = try await session(vault)
+
+    let outcome = session.moveOnBoard("Uno.md", from: nil, to: try tag("status-active"))
+
+    #expect(outcome.didWrite)
+    #expect(outcome.introduced.isEmpty)
+    #expect(try session.read("Uno.md").text.contains("  - status-active"))
 }
 
 /// Differential, not absolute: a note that was already non-conformant stays draggable, or the
