@@ -29,6 +29,10 @@ extension VaultController {
         // «Apri in una nuova tab», and landing it in the preview tab would mean the next
         // click in the list overwrites the note you just decided to write.
         openNoteInNewTab(at: relativePath)
+        // Every other write that adds something to the vault already does this (PG-095):
+        // the write itself only updates the in-memory index, and the sidebar's own tree is
+        // rebuilt on `scanGeneration` alone, not on the index changing underneath it.
+        Task { await rescan() }
         return relativePath
     }
 
@@ -86,8 +90,12 @@ extension VaultController {
     @discardableResult
     func openDailyNote(for date: CalendarDate) throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
+        let existedAlready = session.exists(dailyNotePath(for: date))
         let relativePath = try session.dailyNote(for: date)
         openNote(at: relativePath)
+        // Only when this call is the one that created the file (PG-095) - re-opening an
+        // existing daily note changes nothing the sidebar tree needs to know about.
+        if !existedAlready { Task { await rescan() } }
         return relativePath
     }
 
@@ -130,6 +138,14 @@ extension VaultController {
         guard let noteDraft, !noteDraft.title.trimmingCharacters(in: .whitespaces).isEmpty
         else { return nil }
         return noteDraft
+    }
+
+    /// Whether a draft is parked and nobody is looking at it right now (PG-029) - the toolbar
+    /// badge's whole condition. `parkedDraft`'s non-empty-title threshold, not a bare
+    /// `noteDraft != nil` check: a folder or template chosen and then walked away from with no
+    /// title typed is not a draft worth flagging.
+    var hasParkedDraft: Bool {
+        parkedDraft != nil && !isComposingNote
     }
 
     /// Keeps what was typed when the composer is stepped out of rather than dismissed.

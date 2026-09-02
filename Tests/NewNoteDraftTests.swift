@@ -162,6 +162,54 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.close()
 }
 
+// MARK: `hasParkedDraft` drives the toolbar badge (PG-029)
+
+@MainActor
+@Test func hasParkedDraftIsTrueOnlyWhileStoppedOutOfAComposerWithATitle() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    #expect(controller.hasParkedDraft == false)
+
+    controller.beginNewNote()
+    #expect(controller.hasParkedDraft == false)
+
+    controller.openNote(at: "Nexion.md")
+    controller.parkNewNote(.init(title: "Curva di trasmissibilità"))
+    #expect(controller.hasParkedDraft)
+
+    controller.beginNewNote()
+    #expect(controller.hasParkedDraft == false)
+    controller.close()
+}
+
+@MainActor
+@Test func hasParkedDraftIsFalseAfterDiscardingTheDraft() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.beginNewNote()
+    controller.parkNewNote(.init(title: "Curva di trasmissibilità"))
+    controller.openNote(at: "Nexion.md")
+    #expect(controller.hasParkedDraft)
+
+    controller.beginNewNote()
+    controller.endNewNote()
+
+    #expect(controller.hasParkedDraft == false)
+    controller.close()
+}
+
+@MainActor
+@Test func hasParkedDraftIsFalseForATitlelessDraft() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.beginNewNote(in: "Progetti")
+    controller.openNote(at: "Nexion.md")
+    controller.parkNewNote(.init(folder: "Progetti", title: "   "))
+
+    #expect(controller.hasParkedDraft == false)
+    controller.close()
+}
+
 @MainActor
 @Test func aFailedReadLeavesTheComposerAlone() async throws {
     // Closing the composer for a note that could not be read would take the draft off the

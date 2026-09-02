@@ -5,10 +5,11 @@ import Foundation
 /// **It narrows §D5 rather than contradicting it, and the reason is worth the paragraph.** The
 /// ADR says the drop goes through "the vocabulary check of §4.4 like any other tag write", on
 /// the stated premise that nothing in §4.4 says a note carries one status. It does: SPEC §4.4
-/// lists *massimo un `status-*` (T-05)*, and tag.md 5.1 forbids `status-*` on a note outright
-/// except `status-inbox` - `perg lint` reports both on a note the ADR's own example would
-/// produce. The vocabulary check alone would therefore let a gesture write a tag the app's own
-/// linter refuses, in a note nobody is looking at.
+/// lists *massimo un `status-*` (T-05)*, and tag.md 5.1 forbids `status-final` on a note
+/// outright (reserved for a Deliverable, naming.md 6.1 - an export, never a note) - `perg lint`
+/// reports both on a note the ADR's own example would produce. The vocabulary check alone would
+/// therefore let a gesture write a tag the app's own linter refuses, in a note nobody is
+/// looking at.
 ///
 /// So the guard here is the whole of the tag linter rather than the vocabulary table, and it is
 /// **differential**: the violations the note already has are compared with the ones it would

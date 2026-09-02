@@ -211,10 +211,10 @@ struct WorkspaceView: View {
             )
             return
         }
-        workspace.select(.board(path: path))
+        workspace.select(.board(path: path.value))
         // A board that could not be read leaves the previous one on screen (ADR-0025 §D4),
         // and the note must not be placed on it.
-        guard workspace.current == .board(path: path) else { return }
+        guard workspace.current == .board(path: path.value) else { return }
         if !workspace.document.nodes.contains(where: {
             if case .file(let path, _) = $0.kind { return path == pending } else { return false }
         }) {

@@ -75,7 +75,10 @@ enum TagViolation: Equatable, Sendable {
     case multipleStatus([Tag])
     /// A tag that encodes a date (T-07).
     case dateTag(Tag)
-    /// A note carrying a `status-*` other than `status-inbox` (tag.md 5.1).
+    /// A note carrying a `status-*` its category does not allow (tag.md 5.1): a daily note
+    /// carries none, a capture only `status-inbox`, an ordinary note anything but
+    /// `status-final` (reserved for the Deliverable naming.md 6.1 describes - an exported
+    /// file, never a note this linter judges).
     case statusNotAllowedOnNote(Tag)
     /// An ordinary note without `type-note` or without any `topic-*` (tag.md 5.1).
     case missingRequiredTag(String)
@@ -118,7 +121,7 @@ enum TagRules {
                     }
                 }
             }
-            if tag.namespace == .status, category.allowsStatus == false, tag.value != "inbox" {
+            if tag.namespace == .status, !category.allowsStatus(tag.value) {
                 violations.append(.statusNotAllowedOnNote(tag))
             }
         }
@@ -137,9 +140,10 @@ enum TagRules {
         // exception to the topic rule. It is recognised here, by the tag, rather than in
         // `NoteName.category`: that function is handed a file name and a path and knows
         // nothing about frontmatter, and a note is a capture because of what it declares
-        // rather than because of where it sits. `status-inbox` is the one status an
-        // ordinary note may carry (tag.md 5.1), and saying "not filed yet" is its whole
-        // job - so a note wearing it is exempt until somebody files it.
+        // rather than because of where it sits. `status-inbox` is one of several statuses
+        // an ordinary note may carry (tag.md 5.1/1.5), and saying "not filed yet" is its
+        // whole job - so a note wearing it is exempt until somebody files it. The other
+        // allowed statuses (active/waiting/archived) carry no such exemption.
         let isCapture = tags.contains { $0.namespace == .status && $0.value == "inbox" }
         if !isCapture, !tags.contains(where: { $0.namespace == .topic }) {
             missing.append(.missingRequiredTag("topic-*"))
@@ -190,7 +194,8 @@ enum TagRules {
 /// The note kinds whose tag rules differ (tag.md 5.1).
 enum NoteCategory: Equatable, Sendable {
     /// An ordinary note: needs `type-note` plus at least one `topic-*`, unless it is
-    /// wearing `status-inbox` - the one `status-*` it may carry.
+    /// wearing `status-inbox`. May carry any `status-*` from the closed vocabulary except
+    /// `status-final` - see `allowsStatus(_:)`.
     case note
     /// A daily note: `type-note` alone is correct and complete.
     case daily
@@ -203,5 +208,16 @@ enum NoteCategory: Equatable, Sendable {
     case capture
 
     var requiresTopic: Bool { self == .note }
-    var allowsStatus: Bool { false }
+
+    /// tag.md 5.1 (1.5): whether a note of this category may carry the given `status-*`
+    /// value. A daily note is zero-status and a capture only ever wears `status-inbox`;
+    /// an ordinary note may take anything from the closed vocabulary (4.6) except
+    /// `status-final`, reserved for a Deliverable - an exported file (naming.md 6.1),
+    /// never a note this app's linter judges.
+    func allowsStatus(_ value: String) -> Bool {
+        switch self {
+        case .note: value != "final"
+        case .daily, .capture: value == "inbox"
+        }
+    }
 }
