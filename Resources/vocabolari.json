@@ -1,5 +1,5 @@
 {
-  "_comment": "Declared replica of the closed tables of harness-system (SPEC 4.6). The repo is the source of truth: when a convention changes, re-run 'Importa convenzioni...' rather than editing this file. Replicated from tag.md 1.4 (sections 4.4, 4.6, 4.7, 4.8) and naming.md 1.2 (section 6.1) on 2026-08-11.",
+  "_comment": "Declared replica of the closed tables of harness-system (SPEC 4.6). The repo is the source of truth: when a convention changes, re-run 'Importa convenzioni...' rather than editing this file. Replicated from tag.md 1.5 (sections 4.4, 4.6, 4.7, 4.8) and naming.md 1.2 (section 6.1) on 2026-09-02. tag.md 1.5: status-* opened to Note category (was status-inbox only), status-final still deliverable-only per 4.6 - array unchanged, still the full 4.6 vocabulary; per-category enforcement (Tag.swift) is Pergamenum's own concern.",
   "type": [
     "offer", "report", "datasheet", "minutes", "presentation", "manual",
     "certificate", "pricelist", "standard", "paper", "catalog", "invoice",
