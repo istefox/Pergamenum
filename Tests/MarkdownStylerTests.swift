@@ -532,3 +532,98 @@ private func hasAnyListMarker(_ line: String) -> Bool {
 @Test func listMarkerSuppressesSpellCheck() {
     #expect(MarkdownStyler.suppressesSpellCheck(.listMarker(kind: .bullet, level: 1)))
 }
+
+// MARK: - ADR-0029 (plan 2026-09-02-editor-wysiwyg-unification, Task 1) -
+// blockquote, strikethrough marker, horizontal rule, CommonMark link syntax
+
+/// Whether `text` yields a `.blockquoteMarker`/`.strikethroughMarker`/`.horizontalRule`/
+/// `.linkSyntax` span at all - used by the fence and negative assertions below, which do
+/// not care about the exact level or range a false positive would claim.
+private func hasAnyBlockquoteMarker(_ text: String) -> Bool {
+    spans(text).contains { if case .blockquoteMarker = $0 { true } else { false } }
+}
+
+private func strikethroughMarkers(_ text: String) -> [String] {
+    MarkdownStyler.spans(in: text)
+        .filter { $0.span == .strikethroughMarker }
+        .map { String(text[$0.range]) }
+}
+
+@Test(arguments: [
+    (">", "citazione", 1, "> "),
+    (">>", "due", 2, ">> "),
+    (">>>>", "quattro", 4, ">>>> "),
+])
+func stylesBlockquoteMarkersAtAnyLevelUnbounded(prefix: String, rest: String, level: Int, marker: String) {
+    // R-03: unbounded nesting - no cap the way `.listMarker`'s level is capped at 6, and
+    // level 4 here is deliberately past `.headingMarker`'s own six-hash ceiling to show the
+    // two are unrelated limits.
+    let text = "\(prefix) \(rest)"
+    #expect(styled(text, .blockquoteMarker(level: level)) == marker)
+}
+
+@Test func aBlockquoteMarkerWithNoTrailingSpaceIsStillRecognised() {
+    // GFM allows the space after the last `>` to be omitted; the styled text is then the
+    // `>`s alone, with nothing to include after them.
+    #expect(styled(">>>senza spazio", .blockquoteMarker(level: 3)) == ">>>")
+}
+
+@Test(arguments: ["---", "- - -", "***", "___"])
+func stylesAWholeThematicBreakLineAsOneHorizontalRule(rule: String) {
+    #expect(styled(rule, .horizontalRule) == rule)
+    #expect(spans(rule).filter { $0 == .horizontalRule }.count == 1)
+}
+
+@Test func twoCharactersIsNotEnoughForARule() {
+    #expect(!spans("--").contains(.horizontalRule))
+}
+
+@Test func theFrontmatterDelimiterIsNeverAlsoAHorizontalRule() {
+    // Regression guard: `spans(in:)` starts at `bodyStart`, so the opening/closing `---` of
+    // a note's own frontmatter block must never double as a rule.
+    let note = "---\ndate: 2026-08-11\n---\ncorpo"
+    #expect(!spans(note).contains(.horizontalRule))
+}
+
+@Test func aStrikethroughRunYieldsTwoMarkersAndStillYieldsStrikethrough() {
+    #expect(strikethroughMarkers("~~testo~~") == ["~~", "~~"])
+    #expect(spans("~~testo~~").contains(.strikethrough))
+}
+
+@Test func anEmptyStrikethroughRunHasNoMarkerSpan() {
+    // The `emphasisMarkers` guard's twin: hiding an empty run's delimiters would collapse
+    // it to nothing.
+    #expect(strikethroughMarkers("~~~~").isEmpty)
+}
+
+@Test func stylesACommonMarkLinkSyntaxSeparatelyFromItsLabel() {
+    // Reuses the existing `.linkSyntax` case (ADR §D1) rather than adding a new one - the
+    // opening bracket and the `](url)` tail are each their own span, and the label text
+    // itself is left unspanned by either.
+    let text = "[testo](https://x.it)"
+    let linkSyntaxRanges = MarkdownStyler.spans(in: text)
+        .filter { $0.span == .linkSyntax }
+        .map { String(text[$0.range]) }
+    #expect(Set(linkSyntaxRanges) == Set(["[", "](https://x.it)"]))
+    #expect(!linkSyntaxRanges.contains("testo"))
+}
+
+@Test func everyADR0029ConstructInsideAFenceYieldsNoneOfItsSpans() {
+    // R-09's sibling for the four new constructs: inside a fence, markdown is not markdown,
+    // the same exclusion `spans(in:)` already applies to every other per-line and per-note
+    // span.
+    let note = "```md\n> citazione\n---\n~~testo~~\n[testo](https://x.it)\n```"
+    #expect(!hasAnyBlockquoteMarker(note))
+    #expect(!spans(note).contains(.horizontalRule))
+    #expect(strikethroughMarkers(note).isEmpty)
+    #expect(!spans(note).contains(.linkSyntax))
+}
+
+@Test func theFourADR0029ConstructsSuppressSpellCheck() {
+    // All four are syntax, never prose - the same shelf `.headingMarker`/`.emphasisMarker`/
+    // `.listMarker` already occupy.
+    #expect(MarkdownStyler.suppressesSpellCheck(.blockquoteMarker(level: 1)))
+    #expect(MarkdownStyler.suppressesSpellCheck(.strikethroughMarker))
+    #expect(MarkdownStyler.suppressesSpellCheck(.horizontalRule))
+    #expect(MarkdownStyler.suppressesSpellCheck(.tableRun))
+}

@@ -67,6 +67,28 @@ enum MarkdownStyler {
         /// capped at 6. Carries no range for the item's text and no paragraph range: the view
         /// derives the paragraph itself.
         case listMarker(kind: ListKind, level: Int)
+        /// A `>` blockquote marker (ADR-0029 §D1) - one or more `>` characters and, when
+        /// written, the single space after the last one. `level` is how many `>` the line
+        /// opens with. **Unbounded, on purpose** (R-03): unlike `.listMarker`'s level, which
+        /// is capped at 6, the file's own character count *is* the nesting depth here, so
+        /// there is nothing to cap.
+        case blockquoteMarker(level: Int)
+        /// One `~~` delimiter of a `.strikethrough` run - the exact twin of
+        /// `.emphasisMarker`, down to the two-sided pair and the "hiding it would collapse
+        /// an empty run" guard (ADR-0029 §D1).
+        case strikethroughMarker
+        /// A whole thematic-break line - `---`, `- - -`, `***`, `___` and their kin - GFM's
+        /// three-or-more-of-the-same-character rule, optionally space-separated, covering
+        /// the entire line (ADR-0029 §D1). Reuses `MarkdownBlockParser.isRule`'s grammar
+        /// rather than restating it, so the reading view and the editor never disagree on
+        /// what counts as a rule.
+        case horizontalRule
+        /// A whole GFM table's source run - header, delimiter and every body row - emitted
+        /// by `tableSpans(in:from:outside:)` (Task 3 of plan
+        /// `2026-09-02-editor-wysiwyg-unification`). Declared here, alongside the other
+        /// three ADR-0029 constructs, so the exhaustive tables below need editing only
+        /// once rather than twice.
+        case tableRun
     }
 
     struct StyledRange: Equatable, Sendable {
@@ -122,7 +144,10 @@ enum MarkdownStyler {
         case .frontmatter, .code, .codeBlock, .codeToken,
              .linkSyntax, .linkTarget, .embedTarget, .embedRun, .tag,
              .taskMarker, .scheduled, .due, .annotation, .headingMarker, .emphasisMarker,
-             .listMarker:
+             .listMarker,
+             // The four ADR-0029 constructs are markers/whole-syntax runs, not prose -
+             // the same reasoning as `.headingMarker`/`.emphasisMarker`/`.listMarker` above.
+             .blockquoteMarker, .strikethroughMarker, .horizontalRule, .tableRun:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.

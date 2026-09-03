@@ -121,6 +121,17 @@ enum MarkdownAttributedText {
         // keep this table exhaustive - the same shelf as `.heading`/`.linkTarget` above,
         // which never arrive here either.
         case .embedRun: .textTertiary
+        // Struck-through text: dimmer than the rest, for the same reason `.strikethrough`
+        // itself is below - the line already says what it is.
+        case .strikethroughMarker: .textTertiary
+        case .blockquoteMarker: .textTertiary
+        // A whole rule line, drawn as a syntax marker's colour even though `attributes(for:)`
+        // never routes it here in practice once Task 2 wires the collapsing branch.
+        case .horizontalRule: .textTertiary
+        // `.tableRun` has no arm of its own in `attributes(for:)` yet (Task 4 is what turns
+        // it into a real grid attachment) - this entry exists only to keep this table
+        // exhaustive, the same shelf as `.embedRun` above.
+        case .tableRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen

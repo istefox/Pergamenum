@@ -51,6 +51,23 @@ struct HiddenMarker: Equatable, Sendable {
         /// span itself, not at its paragraph's start - unlike `.list`, a checkbox's
         /// indentation is not part of what this kind collapses.
         case checkbox
+        /// A blockquote line's opening `>` run (ADR-0029 §D1; plan
+        /// `2026-09-02-editor-wysiwyg-unification`, Task 2) - like `.list`, anchored at its
+        /// paragraph's own start so the run's own level can be re-derived from the live
+        /// characters rather than carried on the marker, which would go stale between a
+        /// styling pass and a layout pass.
+        case blockquote
+        /// One `~~` delimiter of a strikethrough run - the exact twin of `.emphasis`.
+        case strikethrough
+        /// A wikilink's or a CommonMark link's own bracket run - `[[`/`]]`, or `[`/`](url)` -
+        /// never the label/target text between them. Drawn hidden with a hover tooltip
+        /// naming where it goes (R-04).
+        case link
+        /// A whole thematic-break line (`---`, `***`, `___`, ...), collapsed into
+        /// `collapsedFont` and drawn by a `HorizontalRuleFragment` rather than left as three
+        /// invisible characters - the one construct here that cannot length-preserve into a
+        /// full-width line the way the other three can.
+        case rule
     }
 
     let range: NSRange
@@ -437,6 +454,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // checkbox marker is drawn by its own dedicated `checkboxParagraph(at:storage:)`
         // branch, re-validated through `stillSpellsATaskMarker`.
         case .checkbox: false
+        // ADR-0029 (plan `2026-09-02-editor-wysiwyg-unification`, Task 2): these four cases
+        // exist so `HiddenMarker.Kind` stays exhaustive and the target keeps building.
+        // Stubbed to `false` here - which is what keeps this batch's tests genuinely red -
+        // for the coder to fill: each gets its own recogniser
+        // (`stillSpellsABlockquoteMarker`, `…AStrikethroughMarker`, `…ALinkDelimiter`,
+        // `…ARule`), and `.blockquote` may end up handled by its own dedicated
+        // `quoteParagraph(at:storage:)` branch instead, the same structural reason
+        // `.list`/`.checkbox`/`.embed` above are never handled here either.
+        case .blockquote, .strikethrough, .link, .rule: false
         }
     }
 
