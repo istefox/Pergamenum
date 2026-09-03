@@ -598,10 +598,12 @@ Key architectural decisions:
   text-editing session; the source markdown rewrite happens once per commit through the existing
   `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` atomic path (ADR-0019
   precedent), giving one `Cmd+Z` per structural edit.
-- **`MarkdownReadingView` is removed, `MarkdownBlocksView` is kept** — the two are not
-  interchangeable: `MarkdownBlocksView` is not dead code, `TranscludedNoteView.swift` still draws
-  every `![[nota]]` rendition with it, and `NoteExporter.swift` already uses it for HTML export.
-  Only the toggle and its wrapper (`MarkdownReadingView`) go.
+- **`MarkdownReadingView` is retained as dead code, not removed** — only the toggle goes.
+  `MarkdownBlocksView` is not dead code either way: `TranscludedNoteView.swift` still draws every
+  `![[nota]]` rendition with it, and `NoteExporter.swift` already uses it for HTML export.
+  `MarkdownReadingView` has no remaining call site after the toggle's removal, but stays in the
+  tree, commented per ADR-0029 §D14, as the seam for a future preview/print surface nobody has
+  designed yet — deleting it was explicitly out of scope for this chain.
 - **The toggle lived in six places, not the two the SPEC named** — `NoteTabBar.swift`,
   `VaultBrowser.swift`, `MenuCommands.swift`, `CommandActions.swift` (×2),
   `EditorColumnView.swift`, `VaultController+Tabs.swift`, `NoteTab.swift`, and

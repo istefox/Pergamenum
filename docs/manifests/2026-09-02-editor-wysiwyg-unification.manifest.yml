@@ -1,0 +1,142 @@
+manifest_schema_version: "1.3"
+topic: "editor-wysiwyg-unification"
+topic_full_title: "Editor WYSIWYG unification: remove the Modifica/Lettura toggle (PG-018)"
+project_root: "/Users/stefer/Developer/Pergamenum"
+mode: "greenfield"
+anonymize: false
+chain_path: standard
+created_at: "2026-09-02T18:04:16+00:00"
+last_updated_at: "2026-09-03T11:50:45+00:00"
+current_step: "step_6_review"
+status: "in_progress"
+
+# Gate 0 routing result (ADR-0017)
+gate0:
+  decision: "standard"
+  chain_path: "standard"
+  auto_detect_reason: "file_estimate=large,file_vote=standard,keyword_vote=express,spec_adr=false(root SPEC.md absent, project uses docs/) — raw vote would give hybrid; overridden to standard: multi-layer TextKit2 change reopening SPEC §14, ADR-0005 §D2, ADR-0018, needs a real ADR with explicit supersession"
+  criteria_spec_adr_exist: false
+  decided_at: "2026-09-02"
+
+# test-cmd tracking (ADR-0014)
+test_cmd_placeholder: false
+test_cmd_candidate: null
+test_cmd_provisional: false
+coder_model: "opus"
+
+# Autopilot mode (project-conductor): all HITL gates auto-select safe defaults
+autopilot: false
+
+# Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
+hook_verified: true
+step5_mode: "agent_batch"
+
+# Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
+recovery_baseline_sha: "c2f24e7afc87450df80258e9a9cb0e2cdbdbd3f1"
+
+# Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
+# set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
+# confirmed in the effective settings.json; it is NOT named worktree_hook_verified — no hook
+# is verified, and that name would collide with ADR-0016's unrelated hook_verified.
+# worktree_merges is an array, so manifest-set-flag.sh (true|false only) cannot write it;
+# it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
+# with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
+# sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
+worktree_baseref_verified: true
+worktree_merges: []
+
+# Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
+# here, not inert (inverts the ADR-0052/0053/0054 pattern) — see concept-to-code/SKILL.md
+# section '#### Proportional audit depth' for the resolution rule and the §D4 floor.
+risk: null
+task_type: null
+
+# External dependencies (ADR-0060 G13). Empty list means nobody declared any — NOT that
+# none exist (§D5); the gate is inert on an empty list. This is the OPPOSITE default
+# direction from risk/task_type above: those default to the strict profile on null because
+# they REMOVE a leniency; this feature ADDS a constraint, so absent/empty must equal the
+# pre-feature behaviour (ADR-0055 §D2's rule, applied here per ADR-0060). Populated at Gate
+# 2c from the architect's EXTERNAL DEPENDENCY: lines, confirmed by the operator.
+external_dependencies: []
+
+# Per-task checkpoint review in Step 5 (ADR-0039 D5-D9). Opt-in: 'none' | 'checkpoint'.
+# Flip with: sed -i '' 's/^step5_review_mode: none/step5_review_mode: checkpoint/' <manifest>
+# (not manifest-set-flag.sh — that helper only accepts true|false, same as step5_mode)
+step5_review_mode: none
+
+# Tracer-bullet probe (ADR-0057, Step 4.5, optional, between Gate 4 and Step 5). Absent/skip
+# means skipped — the OPPOSITE default direction from ADR-0055 §D2 (contrast: that feature
+# REMOVES a constraint so it defaults strict; this feature ADDS a step so inert must equal
+# the pre-feature behaviour). Flip with:
+# sed -i '' 's/^tracer_bullet_mode: skip/tracer_bullet_mode: probe/' <manifest>
+tracer_bullet_mode: probe
+tracer_bullet_verdict: "green"
+tracer_bullet_recommendation: "confirmed green by human hand check 2026-09-02: click-to-focus, Tab, Shift-Tab, Tab-from-last-to-textview, Escape-to-textview and no-completion-panel-while-cell-focused all pass (ADR-0029 D16 probe 2 criteria 1-4). Initial amber was a file-scope false positive (EditorDecorationDelegate.swift/NoteTextView+Coordinator.swift are already Task 4 budget files); no architecture rework needed."
+tracer_bullet_attempts: 1
+tracer_bullet_red_decision: null
+tracer_bullet_abort_reason: null
+
+# Scaffolding / repo bootstrap tracking (Gate 0d)
+git_init: true
+git_visibility: "private"
+license: "None"
+xcode_project: false
+initial_commit_push: "commit"
+git_remote_url: "https://github.com/istefox/Pergamenum.git"
+step6_mode: "skill_fallback"
+
+# Artifacts (absolute paths, populated as steps complete)
+artifacts:
+  spec: "/Users/stefer/Developer/Pergamenum/SPEC.md"
+  brainstorm: "/Users/stefer/Developer/Pergamenum/BRAINSTORM.md"
+  ux_blueprint: null
+  design_prompt: null
+  design: null
+  adr: "/Users/stefer/Developer/Pergamenum/docs/adr/0029-editor-wysiwyg-unification.md"
+  arch: null
+  plan: "/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-02-editor-wysiwyg-unification.md"
+  project_claude_md: "CLAUDE.md"
+
+# HITL gates audit trail
+hitl_gates:
+  - gate: 1
+    label: "spec_review"
+    status: "approved"
+    approved_at: "2026-09-02T18:11:24+00:00"
+    notes: "spec accepted"
+  - gate: 2
+    label: "architecture_review"
+    status: "approved"
+    approved_at: "2026-09-02T19:11:55+00:00"
+    notes: "re-confirmed after tracer-bullet amber (file-scope false positive); no architecture rework, D16 probe 2 confirmed green by human hand check"
+  - gate: 3
+    label: "project_memory_review"
+    status: "approved"
+    approved_at: "2026-09-02T19:11:56+00:00"
+    notes: "re-confirmed, CLAUDE.md ADR-0029 section already present, no regeneration needed"
+  - gate: 4
+    label: "implementation_mode"
+    status: "approved"
+    approved_at: "2026-09-02T19:11:56+00:00"
+    notes: "re-confirmed, same session, implementation continues"
+  - gate: 5
+    label: "review_cycle_decision"
+    status: "pending"
+    approved_at: null
+    notes: null
+
+# Session boundary tracking
+session_boundary:
+  pre_step_4_session_id: "68596318-c6cb-4e9c-a543-4d9373fd39ce"
+  fresh_session_started_at: null
+  resumed_at: null
+
+# Failure tracking (populated only on status=failed)
+failure:
+  failed_at: null
+  failed_step: null
+  failure_reason: null
+  partial_artifacts: []
+
+# Hint for next action (UX)
+next_action: "Fresh session: run /skill concept-to-code resume docs/manifests/2026-09-02-editor-wysiwyg-unification.manifest.yml — Step 4.5 tracer-bullet probe before Task 4 (tab focus across NSTextAttachmentViewProvider cells), then Step 5 coder dispatch (opus) for docs/superpowers/plans/2026-09-02-editor-wysiwyg-unification.md"

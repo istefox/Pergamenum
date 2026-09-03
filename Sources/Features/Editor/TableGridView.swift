@@ -29,6 +29,22 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         static let controlSide: CGFloat = 18
         static let controlGap: CGFloat = 3
         static let controlRow: CGFloat = 24
+        /// The gap on each side of a group's text label, between it and the pair of buttons
+        /// it names.
+        static let controlLabelGap: CGFloat = 4
+        /// The gap between the row group and the column group, wider than `controlGap` on
+        /// purpose - `plus.square`/`minus.square` and `plus.rectangle`/`minus.rectangle` read
+        /// nearly identically at 18pt, so a "Riga"/"Colonna" text label in front of each pair
+        /// (plus the divider `draw(_:)` paints at this gap's midpoint) is what actually says
+        /// which is which without a hover - a first pass at this used spacing and a dim
+        /// tertiary-tinted divider alone, both too faint to read at a glance.
+        static let controlGroupGap: CGFloat = 14
+        /// Horizontal breathing room between a pill's own edge and the label/buttons it
+        /// holds - the same reason `cellInset` exists for a cell's own text.
+        static let pillPadding: CGFloat = 6
+        static let pillVerticalInset: CGFloat = 2
+        static let pillCornerRadius: CGFloat = 6
+        static let labelWidthSlop: CGFloat = 3
     }
 
     /// Called on Tab from the last cell, Enter, and Escape - the return path to the enclosing
@@ -49,14 +65,31 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     /// anywhere in the note.
     private var fields: [[NSTextField]] = []
     private var widths: [CGFloat] = []
+    /// The rounded background each group's label-plus-buttons sits on, last computed by
+    /// `layoutGrid()` and read back by `draw(_:)` - the same "layout writes, draw reads"
+    /// split the grid lines already keep with `widths`. A filled pill per group, the Pages/
+    /// Numbers/Keynote table-toolbar shape, replaced a bare 1px divider line that read as
+    /// nothing next to the row of small icon buttons it was meant to separate.
+    private var rowPillRect: NSRect = .zero
+    private var columnPillRect: NSRect = .zero
     /// The cell last edited, which is what a structural button aims at.
     private var focused: (row: Int, column: Int)?
 
     private var gridColor: NSColor = .separatorColor
     private var cellColor: NSColor = .labelColor
     private var headerColor: NSColor = .secondaryLabelColor
+    /// Opaque `labelColor`, not `tertiaryLabelColor` - the dim tint the icons themselves keep
+    /// is fine for a glanced-at control, but the "Riga"/"Colonna" text exists specifically to
+    /// be read, so it uses this instead.
     private var controlColor: NSColor = .tertiaryLabelColor
+    private var controlLabelColor: NSColor = .labelColor
+    /// The pill fill behind each group - `decorations.badgeBackground`'s own token
+    /// (`.backgroundTertiary`), so a caption badge and this control group read as the same
+    /// family of "quiet chrome" rather than two unrelated designs.
+    private var pillColor: NSColor = .clear
 
+    private lazy var rowLabel = makeGroupLabel(text: "Riga", identifier: "editor-table-row-label")
+    private lazy var columnLabel = makeGroupLabel(text: "Colonna", identifier: "editor-table-column-label")
     private lazy var addRowButton = makeControl(
         symbol: "plus.square", title: "+r", tooltip: "Aggiungi una riga",
         identifier: "editor-table-add-row", action: #selector(addRowTapped)
@@ -76,6 +109,7 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     private var controlButtons: [NSButton] {
         [addRowButton, removeRowButton, addColumnButton, removeColumnButton]
     }
+    private var controlLabels: [NSTextField] { [rowLabel, columnLabel] }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -86,6 +120,7 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         setAccessibilityRole(.group)
         setAccessibilityLabel("Tabella")
         setAccessibilityIdentifier("editor-table")
+        for label in controlLabels { addSubview(label) }
         for button in controlButtons { addSubview(button) }
     }
 
@@ -107,7 +142,18 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     }
 
     private var controlsWidth: CGFloat {
-        CGFloat(controlButtons.count) * (Metrics.controlSide + Metrics.controlGap * 2)
+        Metrics.controlGroupGap
+            + groupWidth(labelWidth: rowLabel.intrinsicContentSize.width + Metrics.labelWidthSlop, buttonCount: 2)
+            + groupWidth(labelWidth: columnLabel.intrinsicContentSize.width + Metrics.labelWidthSlop, buttonCount: 2)
+    }
+
+    /// The width of one pill: padding on both sides, its label, the gap before the buttons,
+    /// then the buttons themselves - the one formula `controlsWidth` (before layout) and
+    /// `layout(label:buttons:startingAt:y:)` (during layout) both have to agree on, so it is
+    /// written once here rather than kept in sync by hand in two places.
+    private func groupWidth(labelWidth: CGFloat, buttonCount: Int) -> CGFloat {
+        Metrics.pillPadding * 2 + labelWidth + Metrics.controlLabelGap
+            + CGFloat(buttonCount) * (Metrics.controlSide + Metrics.controlGap * 2)
     }
 
     // MARK: Drawing what the note says
@@ -128,6 +174,9 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         cellColor = NSColor(theme.color(.textPrimary))
         headerColor = NSColor(theme.color(.textSecondary))
         controlColor = NSColor(theme.color(.textTertiary))
+        controlLabelColor = NSColor(theme.color(.textPrimary))
+        pillColor = NSColor(theme.color(.backgroundTertiary))
+        for label in controlLabels { label.textColor = controlLabelColor }
 
         let reshaped = self.table.map {
             $0.header.count != table.header.count || $0.rows.count != table.rows.count
@@ -218,16 +267,50 @@ final class TableGridView: NSView, NSTextFieldDelegate {
             }
             y += Metrics.rowHeight
         }
-        var x = Metrics.controlGap
-        for button in controlButtons {
+        // Flush with the grid's own left edge (x=0, the leftmost vertical grid line) rather
+        // than centred under it - the row of pills reads as belonging to the table only when
+        // it starts where the table itself starts.
+        var x: CGFloat = 0
+        // "Riga" [+][-]  ␣  "Colonna" [+][-] - the label goes in front of the pair it names,
+        // not above or below it, so no second line is needed and the row stays `controlRow`
+        // tall regardless of which font the system hands back for it.
+        (x, rowPillRect) = layout(label: rowLabel, buttons: [addRowButton, removeRowButton], startingAt: x, y: y)
+        x += Metrics.controlGroupGap
+        (_, columnPillRect) = layout(
+            label: columnLabel, buttons: [addColumnButton, removeColumnButton], startingAt: x, y: y
+        )
+        invalidateIntrinsicContentSize()
+        setFrameSize(intrinsicContentSize)
+    }
+
+    /// Places one group's label followed by its buttons, left to right, and returns both the
+    /// x just past the last button - what the caller needs to place the next group - and the
+    /// padded bounding pill `draw(_:)` fills behind the whole group.
+    private func layout(
+        label: NSTextField, buttons: [NSButton], startingAt startX: CGFloat, y: CGFloat
+    ) -> (nextX: CGFloat, pill: NSRect) {
+        var x = startX + Metrics.pillPadding
+        // `NSTextField.intrinsicContentSize` measures the string a hair narrower than the
+        // cell actually needs to draw its last glyph without truncating - the same rounding
+        // `Self.width(of:weight:)` never hits because a table cell has room to spare.
+        let labelWidth = label.intrinsicContentSize.width + Metrics.labelWidthSlop
+        label.frame = NSRect(
+            x: x, y: y + (Metrics.controlRow - label.intrinsicContentSize.height) / 2,
+            width: labelWidth, height: label.intrinsicContentSize.height
+        )
+        x += labelWidth + Metrics.controlLabelGap
+        for button in buttons {
             button.frame = NSRect(
                 x: x, y: y + Metrics.controlGap,
                 width: Metrics.controlSide, height: Metrics.controlSide
             )
             x += Metrics.controlSide + Metrics.controlGap * 2
         }
-        invalidateIntrinsicContentSize()
-        setFrameSize(intrinsicContentSize)
+        let pill = NSRect(
+            x: startX, y: y + Metrics.pillVerticalInset,
+            width: x - startX + Metrics.pillPadding, height: Metrics.controlRow - Metrics.pillVerticalInset * 2
+        )
+        return (x + Metrics.pillPadding, pill)
     }
 
     /// One width per column, from the widest cell in it - clamped at both ends so a column of
@@ -275,6 +358,23 @@ final class TableGridView: NSView, NSTextFieldDelegate {
             x += width
         }
         NSRect(x: totalWidth - 1, y: 0, width: 1, height: totalHeight).fill()
+
+        // The "Riga"/"Colonna" pills - a filled, gently-bordered rounded rect per group, the
+        // Pages/Numbers/Keynote table-toolbar shape. A first pass tried a single 1px divider
+        // line between the two groups and it read as nothing next to the icons it was meant
+        // to separate; grouping by an actual background, the way the rest of macOS groups a
+        // named pair of controls, is what reads at a glance instead of only on hover.
+        guard controlButtons.count == 4 else { return }
+        for pill in [rowPillRect, columnPillRect] {
+            let path = NSBezierPath(
+                roundedRect: pill, xRadius: Metrics.pillCornerRadius, yRadius: Metrics.pillCornerRadius
+            )
+            pillColor.setFill()
+            path.fill()
+            gridColor.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
     }
 
     // MARK: Committing a cell
@@ -436,5 +536,19 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         button.setAccessibilityLabel(tooltip)
         button.setAccessibilityIdentifier(identifier)
         return button
+    }
+
+    /// A static, non-editable, non-selectable text label ("Riga"/"Colonna") naming the pair
+    /// of buttons that follows it - not a fifth `NSControl` in the Tab chain, and not itself
+    /// an accessibility element (`isAccessibilityElement(false)`): `controlButtons` already
+    /// carry the same name as their tooltip/accessibility label, so a screen reader would
+    /// otherwise hear it twice.
+    private func makeGroupLabel(text: String, identifier: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
+        label.textColor = controlLabelColor
+        label.setAccessibilityElement(false)
+        label.setAccessibilityIdentifier(identifier)
+        return label
     }
 }
