@@ -16,4 +16,53 @@ final class HorizontalRuleFragment: NSTextLayoutFragment {
     /// `FoldedHeadingFragment.badgeColor` and `EmbedAttachment.handleColor` already are -
     /// never hardcoded (CLAUDE.md's design-system rule: "no hardcoded colour in a view").
     nonisolated(unsafe) var ruleColor: NSColor = .separatorColor
+
+    private static let thickness: CGFloat = 1
+
+    /// The width to draw across: the text container's, minus the padding a line fragment
+    /// hangs at on each side.
+    ///
+    /// Not `layoutFragmentFrame.width`, which is the *text's* width and, for a paragraph
+    /// whose `---` has just been collapsed to `collapsedFont`, is very nearly zero - a rule
+    /// drawn at it would be invisible. The container is the only thing here that knows how
+    /// wide a column is, and it is read at drawing time rather than pushed in for the reason
+    /// ADR-0019 §D2 gives for `attachmentBounds`: a number handed over from outside goes
+    /// stale on the next window resize.
+    private var ruleWidth: CGFloat {
+        guard let container = textLayoutManager?.textContainer else { return layoutFragmentFrame.width }
+        return max(0, container.size.width - container.lineFragmentPadding * 2)
+    }
+
+    /// Wide enough for the line, or the drawing is clipped at the collapsed text's own
+    /// width. The header is explicit that this "should be larger than
+    /// layoutFragmentFrame.size", which is what a decoration drawn past the end of the text
+    /// needs - `FoldedHeadingFragment` widens itself for its badge the same way.
+    override var renderingSurfaceBounds: CGRect {
+        let base = super.renderingSurfaceBounds
+        return CGRect(x: base.minX, y: base.minY, width: max(base.width, ruleWidth), height: base.height)
+    }
+
+    /// The line, centred in the row the paragraph's own newline still reserves.
+    ///
+    /// That row is why this works at all: the marker covers the `---` and stops before the
+    /// `\n`, so the newline keeps the body font and the paragraph keeps a full line's
+    /// height with nothing drawn in it - exactly the band a separator wants.
+    override func draw(at point: CGPoint, in context: CGContext) {
+        super.draw(at: point, in: context)
+        let width = ruleWidth
+        guard width > 0 else { return }
+        let height = layoutFragmentFrame.height
+        let line = CGRect(
+            x: point.x,
+            y: point.y + (height - Self.thickness) / 2,
+            width: width,
+            height: Self.thickness
+        )
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        ruleColor.setFill()
+        NSBezierPath(rect: line).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
 }

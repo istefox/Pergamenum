@@ -87,6 +87,12 @@ enum MarkdownAttributedText {
             // explicit `[:]` here keeps this step from painting a colour over a range
             // `default` was never asked to cover.
             [:]
+        case .tableRun:
+            // `.embedRun`'s arm above, verbatim and for the same reason: a `.tableRun` spans
+            // a whole table - several lines of it - and `default`'s single colour would grey
+            // out every cell's text. The grid that replaces those characters is Task 4's
+            // (ADR-0029 §D4); until then the pipes look exactly as they do today.
+            [:]
         default:
             [.foregroundColor: NSColor(theme.color(colorToken(for: span)))]
         }
@@ -128,9 +134,9 @@ enum MarkdownAttributedText {
         // A whole rule line, drawn as a syntax marker's colour even though `attributes(for:)`
         // never routes it here in practice once Task 2 wires the collapsing branch.
         case .horizontalRule: .textTertiary
-        // `.tableRun` has no arm of its own in `attributes(for:)` yet (Task 4 is what turns
-        // it into a real grid attachment) - this entry exists only to keep this table
-        // exhaustive, the same shelf as `.embedRun` above.
+        // `.tableRun` has its own explicit arm in `attributes(for:)` returning `[:]` (Task 4
+        // is what turns it into a real grid attachment) - this entry exists only to keep
+        // this table exhaustive, the same shelf as `.embedRun` above.
         case .tableRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken

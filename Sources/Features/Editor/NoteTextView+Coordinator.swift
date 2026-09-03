@@ -289,21 +289,18 @@ extension NoteTextView {
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
-                let kind: HiddenMarker.Kind? = switch styled.span {
-                case .headingMarker: .heading
-                case .emphasisMarker: .emphasis
-                case .embedRun: .embed
-                case .listMarker: .list
-                case .taskMarker: .checkbox
-                default: nil
-                }
-                if let kind {
+                if let kind = Self.hiddenKind(for: styled.span) {
                     let paragraphStart = nsText.paragraphRange(
                         for: NSRange(location: nsRange.location, length: 0)
                     ).location
-                    hiddenMarkers[paragraphStart, default: []].append(
-                        Self.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
-                    )
+                    let spans = kind == .link
+                        ? Self.linkDelimiters(in: nsRange, of: nsText)
+                        : [nsRange]
+                    for span in spans {
+                        hiddenMarkers[paragraphStart, default: []].append(
+                            Self.hiddenMarker(kind, at: span, paragraphStart: paragraphStart)
+                        )
+                    }
                 }
                 if case .embedRun = styled.span { embedRuns.append(nsRange) }
             }
@@ -317,6 +314,10 @@ extension NoteTextView {
             // painted over an arbitrary picture and has to be aimed at, which a tertiary
             // text grey on a photograph is not.
             decorations.handleColor = NSColor(theme.color(.accentPrimary))
+            // The thematic break's own line (ADR-0029 §D1), from `borderSubtle` and not
+            // from a text token: it is a separator between blocks, which is what that token
+            // names, and it is the only decoration here that is not drawn over text.
+            decorations.ruleColor = NSColor(theme.color(.borderSubtle))
             // Tracer-bullet probe for ADR-0029 §D16 probe 2 (Step 4.5) - the same finished-
             // value hand-over `apply(embeds:)` already makes, just above the real call this
             // one is deliberately placed beside.
@@ -341,6 +342,65 @@ extension NoteTextView {
         /// out of it, which it does at layout time because `HiddenMarker.Kind.list` carries
         /// no level of its own. Only the start moves; the end is the span's own, so the
         /// range still stops at the marker's trailing space.
+        /// Which kind of hidden marker a span becomes, or none for a span that is only
+        /// coloured.
+        ///
+        /// The note editor's own table and deliberately not the card's: `CardTextView`
+        /// keeps a switch of its own ending in `default: nil`, and that `default` is the
+        /// seam ADR-0029 §D17 relies on to keep this chain's four constructs - a live
+        /// `NSView` grid above all - out of a card whose text view is deallocated on every
+        /// culling-rect crossing. The two are one call apart on purpose.
+        static func hiddenKind(for span: MarkdownStyler.Span) -> HiddenMarker.Kind? {
+            switch span {
+            case .headingMarker: .heading
+            case .emphasisMarker: .emphasis
+            case .embedRun: .embed
+            case .listMarker: .list
+            case .taskMarker: .checkbox
+            // The four ADR-0029 constructs (plan `2026-09-02-editor-wysiwyg-unification`,
+            // Task 2). `.linkSyntax` is the one span here that was already emitted and only
+            // coloured before this chain (§D1) - and the one whose range is not itself a
+            // delimiter, which `linkDelimiters(in:of:)` below is what splits.
+            case .blockquoteMarker: .blockquote
+            case .strikethroughMarker: .strikethrough
+            case .horizontalRule: .rule
+            case .linkSyntax: .link
+            default: nil
+            }
+        }
+
+        /// The bracket runs of a `.linkSyntax` span - what is actually concealed, as
+        /// opposed to what the span covers (ADR-0029 §D1, R-04).
+        ///
+        /// The asymmetry this exists for: `wikilinkSpans(in:from:outside:)` emits one
+        /// `.linkSyntax` over the *whole* `[[Curva]]` and then paints `.linkTarget` on top
+        /// of the title, because later spans win on overlap - so mapping that span straight
+        /// to a `.link` marker would hide the title too and leave an empty line where a
+        /// reference was. `markdownLinkSpans(in:absolute:)` emits the CommonMark form's `[`
+        /// and `](url)` already split, and those are handed back untouched.
+        ///
+        /// An embed's `![[foto.png]]` gets none at all, and that is not only deference to
+        /// `embedParagraph(at:storage:)` owning that run (ADR-0018 slice 3, whose branch
+        /// runs first and would win anyway once a picture has resolved): the `!` is *inside*
+        /// the opening delimiter and is the whole of what makes the run an embed, so hiding
+        /// it would draw an embed as an ordinary link for as long as the render is in
+        /// flight - and, for an inline `![[…]]` that never becomes a picture, for good.
+        ///
+        /// In UTF-16 and not in characters, like every range in this table: a target
+        /// holding an emoji is two units per character, and offsets counted the other way
+        /// would put the closing bracket's range one unit short of where it is.
+        static func linkDelimiters(in span: NSRange, of text: NSString) -> [NSRange] {
+            guard span.length > 0, NSMaxRange(span) <= text.length else { return [] }
+            let run = text.substring(with: span)
+            guard !run.hasPrefix("![[") else { return [] }
+            let opening = run.hasPrefix("[[") ? 2 : 0
+            guard opening > 0, run.hasSuffix("]]"), span.length > opening + 2 else { return [span] }
+            return [
+                NSRange(location: span.location, length: opening),
+                NSRange(location: NSMaxRange(span) - 2, length: 2)
+            ]
+        }
+
         static func hiddenMarker(
             _ kind: HiddenMarker.Kind, at span: NSRange, paragraphStart: Int
         ) -> HiddenMarker {

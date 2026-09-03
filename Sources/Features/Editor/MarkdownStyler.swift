@@ -126,6 +126,7 @@ enum MarkdownStyler {
         }
 
         result.append(contentsOf: wikilinkSpans(in: text, from: bodyStart, outside: fences))
+        result.append(contentsOf: tableSpans(in: text, from: bodyStart, outside: fences))
         return result
     }
 
@@ -212,26 +213,28 @@ enum MarkdownStyler {
         let trimmed = line.drop(while: { $0 == " " })
         let indent = line.count - trimmed.count
 
-        if trimmed.hasPrefix("#") {
-            let hashes = trimmed.prefix(while: { $0 == "#" }).count
-            // A heading needs a space after the hashes; `#tag` at line start is a tag.
-            if hashes <= 6, trimmed.dropFirst(hashes).hasPrefix(" ") {
-                result.append(StyledRange(range: lineRange, span: .heading(level: hashes)))
-                // After the heading span, on purpose: later spans win on overlap, so the
-                // marker keeps the heading's font and gets its own colour on top.
-                //
-                // No marker for "# " or "#   " - a heading with no title yet. Hiding the
-                // hashes there would shrink the row to nothing the instant the caret leaves
-                // it, which is worse than showing four characters that do nothing yet.
-                let hasTitle = trimmed.dropFirst(hashes + 1).contains { $0 != " " }
-                if hasTitle {
-                    result.append(StyledRange(
-                        range: absolute(indent, hashes + 1),
-                        span: .headingMarker
-                    ))
-                }
-            }
+        // A thematic break is the whole line and nothing else, so it returns rather than
+        // falling through: `- - -` would otherwise also be read as a bullet, which is
+        // exactly the precedence `MarkdownBlockParser.Accumulator.take` already applies
+        // (it asks `isRule` before `bulletItem`). The grammar is that parser's own,
+        // reused rather than restated (ADR-0029 §D1).
+        if MarkdownBlockParser.isRule(trimmed) {
+            result.append(StyledRange(range: lineRange, span: .horizontalRule))
+            return result
         }
+
+        // Unbounded on purpose (R-03): the line's own `>` count *is* the nesting depth,
+        // so there is nothing to cap the way `.listMarker`'s level is capped at 6.
+        if let quote = blockquoteMarkerLength(in: trimmed) {
+            result.append(StyledRange(
+                range: absolute(indent, quote.length),
+                span: .blockquoteMarker(level: quote.level)
+            ))
+        }
+
+        result.append(contentsOf: headingSpans(
+            in: trimmed, at: lineRange, indent: indent, absolute: absolute
+        ))
 
         let task = taskMarker(in: trimmed)
         if let task {
@@ -257,6 +260,10 @@ enum MarkdownStyler {
         }
 
         result.append(contentsOf: inlineSpans(in: line, absolute: absolute))
+        // Per line rather than per note, unlike `wikilinkSpans`: this way the fence
+        // exclusion `spans(in:)` already applies to every line comes for free (R-09),
+        // instead of being a second `outside:` argument to keep in step.
+        result.append(contentsOf: markdownLinkSpans(in: line, absolute: absolute))
         return result
     }
 
@@ -275,8 +282,11 @@ enum MarkdownStyler {
             }
             result.append(StyledRange(range: absolute(index, length), span: span))
             // After the run span, on purpose - later spans win on overlap (ADR-0018 §D1).
-            if characters[index] == "*", span == .bold || span == .italic {
-                result.append(contentsOf: emphasisMarkers(at: index, length: length, span: span, absolute: absolute))
+            if let delimiter = delimiterSpan(for: span, opening: characters[index]),
+               let marker = markerLength(for: span) {
+                result.append(contentsOf: delimiterMarkers(
+                    at: index, length: length, markerLength: marker, span: delimiter, absolute: absolute
+                ))
             }
             // PG-084: a run's own inner content is itself line-shaped text and may contain
             // another marker pair the forward walk below would otherwise never see, since it
@@ -304,6 +314,22 @@ enum MarkdownStyler {
         switch span {
         case .bold, .strikethrough: 2
         case .italic: 1
+        default: nil
+        }
+    }
+
+    /// Which marker span a run's own opening/closing delimiters get, or none when they are
+    /// not marked at all.
+    ///
+    /// `_`/`__` is deliberately excluded from `.bold`/`.italic`, which is why this takes the
+    /// opening character rather than only the span: hiding an underscore pair would read as
+    /// `nomefilelungo` for `nome_file_lungo`, and `emphasis(_:at:)` parses that as italic
+    /// with no word-boundary rule of its own (ADR-0018 §D1, slice 2). `~~` has no such twin
+    /// spelling, so `.strikethrough` needs no character test (ADR-0029 §D1).
+    private static func delimiterSpan(for span: Span, opening: Character) -> Span? {
+        switch span {
+        case .bold, .italic: opening == "*" ? .emphasisMarker : nil
+        case .strikethrough: .strikethroughMarker
         default: nil
         }
     }
@@ -408,6 +434,23 @@ enum MarkdownStyler {
         return close + 1 - index
     }
 
+    /// Every GFM table's whole source run - header, delimiter and body rows - as one span
+    /// each (ADR-0029 §D10; plan `2026-09-02-editor-wysiwyg-unification`, Task 3).
+    ///
+    /// A note-level pass beside `wikilinkSpans(in:from:outside:)` and taking the same
+    /// `fences` argument, because a table is the one construct here that spans several
+    /// lines: the per-line walk above cannot see the delimiter row that makes a line of
+    /// pipes a header (R-10), and a fence's pipes are never a table (R-09).
+    private static func tableSpans(
+        in text: String,
+        from start: String.Index,
+        outside fences: [CodeFence.Region]
+    ) -> [StyledRange] {
+        GFMTable.runs(in: text, from: start, outside: fences).map {
+            StyledRange(range: $0.range, span: .tableRun)
+        }
+    }
+
     private static func wikilinkSpans(
         in text: String,
         from start: String.Index,
@@ -452,23 +495,127 @@ enum MarkdownStyler {
 /// File scope rather than a nested `private static func`: `MarkdownStyler`'s own body
 /// reached SwiftLint's length limit the moment the heading marker (ADR-0018 §D1) added a
 /// few lines to it, and this helper depends on nothing the type itself carries.
-/// The opening and closing `*`/`**` of an emphasis run, or none when hiding them would
-/// collapse the run to nothing (`****`, adjacent empty `**`). File scope for the same
-/// reason as `taskMarker` below (ADR-0018 §D1, slice 2).
-private func emphasisMarkers(
+/// The opening and closing delimiters of an inline run - `*`/`**` of an emphasis one,
+/// `~~` of a strikethrough one - or none when hiding them would collapse the run to
+/// nothing (`****`, `~~~~`, adjacent empty pairs). File scope for the same reason as
+/// `taskMarker` below (ADR-0018 §D1, slice 2; ADR-0029 §D1 for the second caller).
+///
+/// The width and the resulting span both come from the caller: `markerLength(for:)` and
+/// `delimiterSpan(for:opening:)` are the type's own, and this helper only does the two
+/// pieces of arithmetic they leave over.
+private func delimiterMarkers(
     at index: Int,
     length: Int,
+    markerLength: Int,
     span: MarkdownStyler.Span,
     absolute: (Int, Int) -> Range<String.Index>
 ) -> [MarkdownStyler.StyledRange] {
-    let markerLength = span == .bold ? 2 : 1
     guard length > 2 * markerLength else { return [] }
     return [
-        MarkdownStyler.StyledRange(range: absolute(index, markerLength), span: .emphasisMarker),
+        MarkdownStyler.StyledRange(range: absolute(index, markerLength), span: span),
         MarkdownStyler.StyledRange(
-            range: absolute(index + length - markerLength, markerLength), span: .emphasisMarker
+            range: absolute(index + length - markerLength, markerLength), span: span
         )
     ]
+}
+
+/// A heading line's own span and, unless the heading has no title yet, its `#` marker
+/// (ADR-0018 §D1, slice 1).
+///
+/// File scope for the same reason `listMarkerSpan` and `taskMarker` are: `MarkdownStyler`'s
+/// own body is at SwiftLint's length limit, and its per-line walk went over the function
+/// limit as well the moment ADR-0029's four constructs joined it. This helper depends on
+/// nothing the type carries.
+private func headingSpans(
+    in trimmed: some StringProtocol,
+    at lineRange: Range<String.Index>,
+    indent: Int,
+    absolute: (Int, Int) -> Range<String.Index>
+) -> [MarkdownStyler.StyledRange] {
+    guard trimmed.hasPrefix("#") else { return [] }
+    let hashes = trimmed.prefix(while: { $0 == "#" }).count
+    // A heading needs a space after the hashes; `#tag` at line start is a tag.
+    guard hashes <= 6, trimmed.dropFirst(hashes).hasPrefix(" ") else { return [] }
+
+    var result = [MarkdownStyler.StyledRange(range: lineRange, span: .heading(level: hashes))]
+    // After the heading span, on purpose: later spans win on overlap, so the marker keeps
+    // the heading's font and gets its own colour on top.
+    //
+    // No marker for "# " or "#   " - a heading with no title yet. Hiding the hashes there
+    // would shrink the row to nothing the instant the caret leaves it, which is worse than
+    // showing four characters that do nothing yet.
+    let hasTitle = trimmed.dropFirst(hashes + 1).contains { $0 != " " }
+    if hasTitle {
+        result.append(MarkdownStyler.StyledRange(
+            range: absolute(indent, hashes + 1), span: .headingMarker
+        ))
+    }
+    return result
+}
+
+/// How wide a line's opening `>` run is - the `>`s and the single space after the last
+/// one, when it is written - and how many `>`s that is, which is the nesting level.
+///
+/// Nil when the line does not open a blockquote at all, and nil for a lone `>` immediately
+/// followed by an ISO date: `>2026-08-15` is this app's own scheduling marker (SPEC §7.1),
+/// already spanned as `.scheduled` by `inlineSpan(in:at:)`, and reading its `>` as a quote
+/// bar would conceal the marker's own first character. GFM's "the space may be omitted"
+/// still holds for every other spelling, `>>>senza spazio` included.
+private func blockquoteMarkerLength(
+    in content: some StringProtocol
+) -> (length: Int, level: Int)? {
+    let carets = content.prefix(while: { $0 == ">" }).count
+    guard carets > 0 else { return nil }
+    let rest = content.dropFirst(carets)
+    if carets == 1, rest.count >= 10, CalendarDate(iso: String(rest.prefix(10))) != nil { return nil }
+    return (carets + (rest.hasPrefix(" ") ? 1 : 0), carets)
+}
+
+/// The `[` and `](url)` delimiters of a CommonMark `[testo](url)` link, as two
+/// `.linkSyntax` spans with the label between them left unspanned (ADR-0029 §D1).
+///
+/// The existing `.linkSyntax` case, reused rather than a fifth one added: this is the same
+/// second-spelling decision ADR-0018 §D3 took for `![alt](file.png)`, and for the same
+/// reason - this app's own writers emit the wikilink form, `EditorEdits.markdownLink`
+/// excepted, and a vault opened from elsewhere holds both.
+///
+/// Two forms are skipped rather than matched. `[[Nota]]` is a wikilink and
+/// `wikilinkSpans(in:from:outside:)` already owns it, whole run and target alike. An
+/// `![alt](foto.png)` is an embed, whose own `.embedRun` span covers the line and whose
+/// rendering is `embedParagraph(at:storage:)`'s (ADR-0018 slice 3) - two mechanisms over
+/// one run is exactly the overlap this skips.
+private func markdownLinkSpans(
+    in line: String,
+    absolute: (Int, Int) -> Range<String.Index>
+) -> [MarkdownStyler.StyledRange] {
+    let characters = Array(line)
+    var result: [MarkdownStyler.StyledRange] = []
+    var index = 0
+
+    while index < characters.count {
+        guard characters[index] == "[" else {
+            index += 1
+            continue
+        }
+        guard index + 1 < characters.count, characters[index + 1] != "[",
+              index == 0 || characters[index - 1] != "!",
+              let close = characters[(index + 1)...].firstIndex(of: "]"),
+              // An empty label would leave nothing on screen once both delimiters are
+              // hidden - the `****` guard's shape, one construct over.
+              close > index + 1,
+              close + 1 < characters.count, characters[close + 1] == "(",
+              let paren = characters[(close + 1)...].firstIndex(of: ")")
+        else {
+            index += 1
+            continue
+        }
+        result.append(MarkdownStyler.StyledRange(range: absolute(index, 1), span: .linkSyntax))
+        result.append(MarkdownStyler.StyledRange(
+            range: absolute(close, paren + 1 - close), span: .linkSyntax
+        ))
+        index = paren + 1
+    }
+    return result
 }
 
 /// The `- `/`* `/`+ `/`12. `/`12) ` marker opening a list item, as a span (ADR-0028 §D1).

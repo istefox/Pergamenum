@@ -87,6 +87,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// The colour a drawn embed's resize handle is painted in (ADR-0019 §D5), pushed in
     /// from a token the same way `badgeColor` above is and handed on to `EmbedAttachment`.
     nonisolated(unsafe) var handleColor: NSColor = .secondaryLabelColor
+    /// The colour a `HorizontalRuleFragment` paints its line in (ADR-0029 §D1), pushed in
+    /// from a token exactly the way `badgeColor` and `handleColor` above are - a view that
+    /// uses a colour without going through a token does not pass review (CLAUDE.md).
+    nonisolated(unsafe) var ruleColor: NSColor = .separatorColor
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
@@ -214,6 +218,27 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return fragment
         }
 
+        // A rule is the one ADR-0029 construct a length-preserving substitution cannot
+        // serve: three characters cannot span a column however they are drawn (§D1). Its
+        // own characters are collapsed by the generic path in
+        // `textContentStorage(_:textParagraphWith:)` and the line itself is drawn here, the
+        // shape `FoldedHeadingFragment` and `TranscludedLineFragment` are the two working
+        // instances of. Re-validated against the element's own characters for the same
+        // reason every other decoration is: this is a later pass than the one that recorded
+        // the marker.
+        if hidesMarkup, !revealedParagraphs.contains(start),
+           (hiddenMarkers[start] ?? []).contains(where: { $0.kind == .rule }),
+           let paragraph = textElement as? NSTextParagraph,
+           MarkdownBlockParser.isRule(
+               paragraph.attributedString.string.trimmingCharacters(in: .whitespacesAndNewlines)
+           ) {
+            let fragment = HorizontalRuleFragment(
+                textElement: textElement, range: textElement.elementRange
+            )
+            fragment.ruleColor = ruleColor
+            return fragment
+        }
+
         guard let hidden = foldedHeadings[start] else { return standard }
         let fragment = FoldedHeadingFragment(textElement: textElement, range: textElement.elementRange)
         fragment.hiddenLines = hidden
@@ -267,6 +292,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return checkbox
         }
 
+        // The blockquote branch, beside the list one and under the same length rule: each
+        // `>` is *substituted* by a bar, never inserted or removed (ADR-0029 §D1). Like
+        // list and checkbox it honours `revealedParagraphs` internally, and it must run
+        // before the generic path below or its `>` would be hidden outright instead of
+        // being drawn as one bar per level.
+        if let quote = quoteParagraph(at: range, storage: storage) {
+            return quote
+        }
+
         // The tracer-bullet table probe (ADR-0029 §D16 probe 2, Step 4.5): a fixed trigger
         // word, not Task 3's `GFMTable` grammar, but the same substitution shape as every
         // branch above it.
@@ -284,6 +318,11 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         for marker in survivors {
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
+        }
+        // Over the whole run and not only over the brackets: what is left on screen once
+        // they are collapsed is the label, and the label is what a person hovers (R-04).
+        for tooltip in Self.linkTooltips(among: survivors, of: range, in: storage.string as NSString) {
+            copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
         return NSTextParagraph(attributedString: copy)
     }
@@ -454,15 +493,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // checkbox marker is drawn by its own dedicated `checkboxParagraph(at:storage:)`
         // branch, re-validated through `stillSpellsATaskMarker`.
         case .checkbox: false
-        // ADR-0029 (plan `2026-09-02-editor-wysiwyg-unification`, Task 2): these four cases
-        // exist so `HiddenMarker.Kind` stays exhaustive and the target keeps building.
-        // Stubbed to `false` here - which is what keeps this batch's tests genuinely red -
-        // for the coder to fill: each gets its own recogniser
-        // (`stillSpellsABlockquoteMarker`, `…AStrikethroughMarker`, `…ALinkDelimiter`,
-        // `…ARule`), and `.blockquote` may end up handled by its own dedicated
-        // `quoteParagraph(at:storage:)` branch instead, the same structural reason
-        // `.list`/`.checkbox`/`.embed` above are never handled here either.
-        case .blockquote, .strikethrough, .link, .rule: false
+        // Never handled here, for the same structural reason as `.list`: a blockquote's `>`
+        // run is drawn by its own dedicated `quoteParagraph(at:storage:)` branch, which
+        // re-reads the characters through `stillSpellsABlockquoteMarker` because it needs
+        // what they *say* - the level, i.e. how many bars to draw - and not merely whether
+        // they are still there. Letting a `.blockquote` entry into this generic collapsing
+        // loop would hide the `>` outright instead of substituting a bar for it (ADR-0029 §D1).
+        case .blockquote: false
+        // The three ADR-0029 constructs the generic, font-collapsing path *does* serve: two
+        // `~~` delimiters are the exact twin of `.emphasis`, a link's brackets are collapsed
+        // and nothing is put in their place, and a rule's own characters are collapsed with
+        // the line itself drawn by `HorizontalRuleFragment` at layout time.
+        case .strikethrough: stillSpellsAStrikethroughMarker(text, at: range)
+        case .link: stillSpellsALinkDelimiter(text, at: range)
+        case .rule: stillSpellsARule(text, at: range)
         }
     }
 
@@ -497,6 +541,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
         let candidate = text.substring(with: range)
         return (candidate.count == 1 || candidate.count == 2) && candidate.allSatisfy { $0 == "*" }
+    }
+
+    /// Whether `range` still spells exactly `~~` - the emphasis re-check's twin, one
+    /// character pair over (ADR-0029 §D1).
+    private static func stillSpellsAStrikethroughMarker(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
+        let candidate = text.substring(with: range)
+        return candidate.count == 2 && candidate.allSatisfy { $0 == "~" }
+    }
+
+    /// Whether `range` still spells a whole thematic break - `MarkdownBlockParser.isRule`'s
+    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1).
+    private static func stillSpellsARule(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
+        return MarkdownBlockParser.isRule(text.substring(with: range))
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {
