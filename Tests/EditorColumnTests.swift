@@ -122,22 +122,19 @@ private func controller(
 }
 
 @MainActor
-@Test func foldsAndReadingModeBelongToTheColumnTheyWereSetIn() async throws {
+@Test func foldsBelongToTheColumnTheyWereSetIn() async throws {
     let vault = try TemporaryVault()
     let controller = try await controller(vault)
     controller.openNote(at: "Nexion.md")
     controller.toggleFold(1)
-    controller.isReadingMode = true
 
     controller.splitEditor()
 
     // The right-hand copy starts clean: it is the same note, not the same tab.
     #expect(controller.foldedEntries.isEmpty)
-    #expect(controller.isReadingMode == false)
 
     controller.focusColumn(0)
     #expect(controller.foldedEntries == [1])
-    #expect(controller.isReadingMode)
     controller.close()
 }
 

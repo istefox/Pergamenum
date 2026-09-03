@@ -68,6 +68,14 @@ struct HiddenMarker: Equatable, Sendable {
         /// invisible characters - the one construct here that cannot length-preserve into a
         /// full-width line the way the other three can.
         case rule
+        /// A GFM table's own header-line pipe syntax (ADR-0029 §D4; plan
+        /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - anchored at the header
+        /// paragraph's own start, the same convention `.list` and `.blockquote` use, since
+        /// the table's real shape is re-read from the live characters through
+        /// `GFMTable.parse` rather than carried on the marker. Never the delimiter row or a
+        /// body row: those leave the layout entirely through `apply(tableRows:)` (D5), a
+        /// fifth input kept deliberately separate from `hiddenLineOffsets`.
+        case table
     }
 
     let range: NSRange
@@ -79,6 +87,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// The UTF-16 offset at which each hidden line begins. A set, because this is asked
     /// once per paragraph on every layout pass.
     nonisolated(unsafe) private var hiddenLineOffsets: Set<Int> = []
+    /// Every table's own delimiter-row and body-row start offsets (ADR-0029 §D5; plan
+    /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - the fifth input, deliberately
+    /// never merged into `hiddenLineOffsets`: folding a heading and drawing a table are
+    /// two different reasons a paragraph leaves the layout, and `apply(tableRows:)`
+    /// clearing this set must never clear a fold in progress, nor the reverse. The header
+    /// row is never in here - it stays in the layout, carrying the `TableAttachment`.
+    nonisolated(unsafe) private var tableRowOffsets: Set<Int> = []
     /// Folded heading line offset to the number of lines it is hiding, which is what the
     /// badge says.
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
@@ -125,11 +140,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
     /// markup is fully reversible with a toggle rather than a revert.
     nonisolated(unsafe) var hidesMarkup = false
-    /// The probe grid this build hands to a `TableAttachment` (ADR-0029 §D16 probe 2, Step
-    /// 4.5 tracer bullet - not Task 4's real `TableGridStore`). Not `private`:
-    /// `apply(tableGridView:)` and `tableParagraph(at:storage:)` in
-    /// `EditorDecorationDelegate+TableRendering.swift` read and write it.
-    nonisolated(unsafe) var tableGridView: TableGridView?
+    /// The grid already vended for each table, by its header paragraph's own offset - the
+    /// same finished-value hand-over `embedRenditions` already makes (ADR-0029 §D6): this
+    /// object cannot be `@MainActor`, so it never asks `TableGridStore` for one itself, and
+    /// a dictionary rather than a single optional because a note can hold more than one
+    /// table at once. Not `private`: `tableParagraph(at:storage:)` in
+    /// `EditorDecorationDelegate+TableRendering.swift` reads it.
+    nonisolated(unsafe) var tableViews: [Int: TableGridView] = [:]
     /// Small enough to draw as nothing while still breaking the line the way a real
     /// character does - unlike a `\n` at this size, which is why folding uses a different
     /// mechanism: this hides a delimiter mid-paragraph, not a whole paragraph.
@@ -163,6 +180,24 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         )
     }
 
+    /// Registers a table's delimiter-row and body-row offsets as out of the layout - the
+    /// fifth producer of `shouldEnumerate`'s refusal, deliberately its own setter rather
+    /// than a second parameter on `apply(hiddenLines:foldedHeadings:)` above (ADR §D5):
+    /// *"two producers on one setter is precisely what the delegate's own header forbids."*
+    /// An empty set here clears only the table rows, never a fold already registered, and
+    /// the reverse holds too - `apply(hiddenLines:foldedHeadings:)` never touches this one.
+    func apply(tableRows offsets: Set<Int>) {
+        tableRowOffsets = offsets
+        Logger.folding.notice("tabelle: \(offsets.count, privacy: .public) righe nascoste")
+    }
+
+    /// Registers the grid view already vended for each table, by its header offset - the
+    /// same finished-value hand-over `apply(embeds:)` makes. Called from the Coordinator,
+    /// which owns `TableGridStore` (ADR-0029 §D6); this object never builds a view itself.
+    func apply(tableViews views: [Int: TableGridView]) {
+        tableViews = views
+    }
+
     /// Registers where the hidden markers are and whether they should be hidden at all.
     ///
     /// Guarded rather than unconditional: `applyStyling` calls this on every keystroke and
@@ -190,13 +225,18 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
     // MARK: Hiding
 
+    /// Refuses to enumerate a folded line or a table's own delimiter/body row - the union
+    /// of two independently-set inputs (ADR-0029 §D5), never one merged into the other.
     func textContentManager(
         _ textContentManager: NSTextContentManager,
         shouldEnumerate textElement: NSTextElement,
         options: NSTextContentManager.EnumerationOptions
     ) -> Bool {
-        guard !hiddenLineOffsets.isEmpty, let range = textElement.elementRange else { return true }
-        return !hiddenLineOffsets.contains(offset(of: range.location, in: textContentManager))
+        guard !hiddenLineOffsets.isEmpty || !tableRowOffsets.isEmpty,
+              let range = textElement.elementRange
+        else { return true }
+        let start = offset(of: range.location, in: textContentManager)
+        return !hiddenLineOffsets.contains(start) && !tableRowOffsets.contains(start)
     }
 
     // MARK: Marking
@@ -301,9 +341,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return quote
         }
 
-        // The tracer-bullet table probe (ADR-0029 §D16 probe 2, Step 4.5): a fixed trigger
-        // word, not Task 3's `GFMTable` grammar, but the same substitution shape as every
-        // branch above it.
+        // The table branch, beside the quote one and under the same length rule (ADR-0029
+        // §D4; plan `2026-09-02-editor-wysiwyg-unification`, Task 4): the header line's own
+        // pipe syntax is *substituted* for a `TableAttachment`, never inserted or removed.
+        // It does not honour `revealedParagraphs` the way list/checkbox/blockquote do - a
+        // drawn table does not reveal on caret, D5's exception for a grid the same way it
+        // is for a drawn embed (ADR-0018 §D5).
         if let table = tableParagraph(at: range, storage: storage) {
             return table
         }
@@ -507,6 +550,11 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         case .strikethrough: stillSpellsAStrikethroughMarker(text, at: range)
         case .link: stillSpellsALinkDelimiter(text, at: range)
         case .rule: stillSpellsARule(text, at: range)
+        // Never handled here, for the same structural reason as `.list`/`.blockquote`: a
+        // table's own re-validation reads the *whole* `GFMTable` shape back from the live
+        // characters (`GFMTable.parse`), not merely whether a marker range is still
+        // spelled - the coder's own branch inside `tableParagraph(at:storage:)` (Task 4).
+        case .table: false
         }
     }
 

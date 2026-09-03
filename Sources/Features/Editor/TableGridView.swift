@@ -1,16 +1,22 @@
 import AppKit
 
-/// Two `NSTextField`s, tracer-bullet probe for ADR-0029 §D16 probe 2 - not the production
-/// grid (Task 4/5's own `TableGridStore`/`TableEdit`, not built yet). Built only to answer:
-/// does clicking a cell make it first responder, does Tab move to the next cell and
-/// Shift-Tab to the previous, and do Tab from the last cell and Escape both hand first
-/// responder back to the enclosing text view.
+/// The GFM table grid (ADR-0029 §D4/§D6; plan `2026-09-02-editor-wysiwyg-unification`,
+/// Task 4/5) - an `NSView` behind `NSTextAttachmentViewProvider`, created and owned on the
+/// main actor by `TableGridStore` and handed to `TableAttachment` as a finished value.
+///
+/// Still the two-`NSTextField` shape the Step 4.5 tracer-bullet probe for ADR §D16 probe 2
+/// left behind (does clicking a cell make it first responder, does Tab move to the next
+/// cell and Shift-Tab to the previous, does Tab from the last cell and Escape both hand
+/// first responder back to the enclosing text view - the probe's question, already
+/// answered). Task 5's own job, not this one's: the real add/remove row and column
+/// affordances, and reading/writing a `GFMTable`'s actual cell count rather than a fixed
+/// two.
 final class TableGridView: NSView, NSTextFieldDelegate {
     private let left = NSTextField(string: "Cella 1")
     private let right = NSTextField(string: "Cella 2")
 
-    /// Called on Tab from the last cell and on Escape from either - the probe's own return
-    /// path to the enclosing `CompletingTextView`, set by the Coordinator that owns it
+    /// Called on Tab from the last cell and on Escape from either - the return path to the
+    /// enclosing `CompletingTextView`, set by the Coordinator that owns it
     /// (`NoteTextView+Coordinator.swift`), the same closure-ownership shape `onEmbedResize`
     /// already uses: "this view has exactly one owner, and a closure makes that owner's
     /// identity a non-issue" (ADR §D6).
@@ -18,6 +24,10 @@ final class TableGridView: NSView, NSTextFieldDelegate {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        // R-05's UI test (`DesignAndReadingUITests`, Task 6): found by this identifier,
+        // never by the words in a cell - the working agreement every UI test in this repo
+        // already keeps ("prose grows").
+        setAccessibilityIdentifier("editor-table")
         for field in [left, right] {
             field.translatesAutoresizingMaskIntoConstraints = false
             field.delegate = self

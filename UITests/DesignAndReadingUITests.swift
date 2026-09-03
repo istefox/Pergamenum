@@ -112,120 +112,61 @@ final class DesignAndReadingUITests: XCTestCase {
         )
     }
 
-    // MARK: Reading mode
+    // MARK: No Modifica/Lettura toggle
 
-    func testReadingModeRendersTheNoteAndTheEditorStillShowsTheSource() throws {
+    /// ADR-0029 (R-01/R-02): the toggle is gone outright, not merely defaulted to one
+    /// side - no radio buttons, no Vista menu entry, and the one editor left is always
+    /// showing the note's own source, since there is no second, rendering-only view left
+    /// to switch to.
+    func testNoReadingModeToggleOrMenuEntryExistsAndTheEditorAlwaysShowsTheSource() throws {
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
 
         let note = text(withValue: "20260812_Nota_Lettura")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
         note.click()
 
-        // The two modes are a segmented picker, so radio buttons.
-        XCTAssertTrue(app.radioButtons["Modifica"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textViews.firstMatch.exists, "l'editor non è quello di partenza")
-        app.radioButtons["Lettura"].click()
-
-        // Rendered: the heading is text, without its hashes, and the bold word is a
-        // word rather than a pair of asterisks.
-        XCTAssertTrue(
-            text(withValue: "Titolo della nota").waitForExistence(timeout: 5),
-            "il titolo non è reso"
+        XCTAssertFalse(app.radioButtons["Modifica"].exists, "il controllo Modifica è ancora presente")
+        XCTAssertFalse(app.radioButtons["Lettura"].exists, "il controllo Lettura è ancora presente")
+        XCTAssertFalse(
+            app.menuBars.menuItems["Modalità lettura"].exists, "la voce di menu è ancora presente"
         )
-        XCTAssertFalse(text(withValue: "# Titolo della nota").exists, "la sintassi è ancora visibile")
-        XCTAssertFalse(app.textViews.firstMatch.exists, "l'editor è ancora sullo schermo")
 
-        // Back to the editor, and the source is back with it.
-        app.radioButtons["Modifica"].click()
-        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 5), "l'editor non è tornato")
-
-        // And from the Vista menu, which is where SPEC §10 puts the switch. Clicked
-        // rather than typed: a shortcut hung on the picker itself did nothing at all,
-        // and this asserts the menu entry is really connected to the mode.
-        let item = app.menuBars.menuItems["Modalità lettura"]
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "la voce di menu non c'è")
-        item.click()
-        XCTAssertTrue(
-            text(withValue: "Titolo della nota").waitForExistence(timeout: 5),
-            "la voce di menu non passa in lettura"
-        )
+        // `NSTextView`'s own accessibility `value` is the raw source string regardless of
+        // what TextKit 2 conceals on screen (ADR-0018 §D3's display-only principle), so
+        // this is a content check, not a concealment one - concealment itself belongs to
+        // `Tests/MarkupHidingTests.swift`, offscreen, where the *displayed* paragraph can
+        // actually be inspected.
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "l'editor non c'è")
+        let source = editor.value as? String ?? ""
+        XCTAssertTrue(source.contains("Titolo della nota"), "l'editor non mostra il sorgente della nota")
     }
 
     // MARK: Tables
 
-    func testReadingModeRendersATableRatherThanItsPipes() throws {
-        try openNoteInReadingMode()
-
-        // Each cell is drawn on its own, so the header and a body cell are separate
-        // pieces of text rather than one line of pipes.
-        XCTAssertTrue(text(withValue: "Proprietà").waitForExistence(timeout: 5), "l'intestazione non è resa")
-        XCTAssertTrue(text(withValue: "layout").exists, "una cella del corpo non è resa")
-        XCTAssertTrue(text(withValue: "Template da usare").exists)
-
-        // And the markup is gone: before this the whole table came out verbatim,
-        // separator row included.
-        XCTAssertFalse(text(withValue: "| layout | stringa | Template da usare |").exists,
-                       "la riga è ancora testo grezzo")
-        XCTAssertFalse(text(withValue: "|:--|:-:|--:|").exists, "la riga separatrice è visibile")
-    }
-
-    // MARK: Keyboard scrolling
-
-    func testReadingModeScrollsWithTheKeyboard() throws {
-        try openNoteInReadingMode()
-
-        let anchor = text(withValue: "Titolo della nota")
-        XCTAssertTrue(anchor.waitForExistence(timeout: 5))
-        let before = anchor.frame.origin.y
-
-        // A SwiftUI ScrollView takes the wheel but is not focusable, so this key went
-        // nowhere and a note could only be read with a hand on the trackpad.
-        app.typeKey(XCUIKeyboardKey.pageDown, modifierFlags: [])
-        XCTAssertTrue(
-            waitForTop(of: anchor) { $0 < before - 50 },
-            "Page Down non ha fatto scorrere la nota"
-        )
-
-        // End reaches the bottom, and the last heading is on screen once it does.
-        app.typeKey(XCUIKeyboardKey.end, modifierFlags: [])
-        let bottom = text(withValue: "Fondo della nota")
-        XCTAssertTrue(bottom.waitForExistence(timeout: 5), "Fine non ha raggiunto il fondo")
-
-        // Home comes back, and the title is where it started.
-        app.typeKey(XCUIKeyboardKey.home, modifierFlags: [])
-        XCTAssertTrue(
-            waitForTop(of: anchor) { $0 >= before - 1 },
-            "Inizio non è tornato in cima"
-        )
-    }
-
-    /// Waits for an element's top edge to satisfy a condition.
-    ///
-    /// Polled rather than expressed as an `NSPredicate`: `frame` comes back as an
-    /// `NSValue`, which is not key-value coding compliant for `origin`, so a predicate
-    /// on `frame.origin.y` throws instead of evaluating.
-    private func waitForTop(
-        of element: XCUIElement,
-        timeout: TimeInterval = 5,
-        _ satisfies: (CGFloat) -> Bool
-    ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if satisfies(element.frame.origin.y) { return true }
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-        return false
-    }
-
-    /// Selects the fixture note and switches to reading mode.
-    private func openNoteInReadingMode() throws {
+    /// ADR-0029 §D4: a GFM table draws as a real editable grid, found by its own
+    /// `TableGridView`-carried identifier and never by the words in a cell (CLAUDE.md's
+    /// working agreement) - concealment is not checkable at this level (see the test
+    /// above), so this only asserts the grid itself is on screen.
+    func testTheEditorRendersATableAsAGridRatherThanItsPipes() throws {
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         let note = text(withValue: "20260812_Nota_Lettura")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
         note.click()
-        XCTAssertTrue(app.radioButtons["Lettura"].waitForExistence(timeout: 5))
-        app.radioButtons["Lettura"].click()
+
+        let grid = app.descendants(matching: .any).matching(identifier: "editor-table").firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5), "la tabella non è resa come griglia")
     }
+
+    // MARK: Keyboard scrolling
+    //
+    // `testReadingModeScrollsWithTheKeyboard` is deleted, not rewritten (plan
+    // `2026-09-02-editor-wysiwyg-unification`, Task 6): it exercised a SwiftUI
+    // `ScrollView`'s Page Down/Home/End handling, which no longer exists now that the
+    // Modifica/Lettura toggle and `MarkdownReadingView` are gone (ADR-0029 §D14). The one
+    // editor left is a plain `NSTextView`, and Page Down/Home/End on it are standard
+    // AppKit key-view-loop behaviour with no app-specific logic behind them to regress -
+    // there is nothing this repo wrote left for a test here to guard.
 
     /// A label the app draws as text: SwiftUI exposes it as the element's `value`,
     /// so the subscript form, which matches identifier or label, never finds it.

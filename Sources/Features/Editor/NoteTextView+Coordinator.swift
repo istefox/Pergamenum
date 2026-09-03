@@ -82,18 +82,12 @@ extension NoteTextView {
         /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
         /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
         var embedDrag: EmbedDrag?
-        /// Tracer-bullet probe for ADR-0029 §D16 probe 2 (Step 4.5) - the one grid this
-        /// build ever draws, created once so first responder survives every restyle (ADR
-        /// §D6: "the same view instance is returned across layout passes"). Not part of
-        /// any shipped feature; removed once Task 4 lands for real.
-        private lazy var tableProbeGrid: TableGridView = {
-            let grid = TableGridView()
-            grid.resignToTextView = { [weak self] in
-                guard let textView = self?.textView else { return }
-                textView.window?.makeFirstResponder(textView)
-            }
-            return grid
-        }()
+        /// The probe tracer-bullet grid this property used to hold (`tableProbeGrid`, ADR
+        /// §D16 probe 2, Step 4.5) is gone: that probe has already answered its one
+        /// question. Task 4's own `TableGridStore`, keyed by table identity rather than a
+        /// single fixed grid, is what a table pass now needs - not yet wired onto this
+        /// Coordinator, which is the coder's own deliverable (ADR §D6, budget line
+        /// `NoteTextView+Coordinator.swift:77`, beside `embeds` above).
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -318,10 +312,11 @@ extension NoteTextView {
             // from a text token: it is a separator between blocks, which is what that token
             // names, and it is the only decoration here that is not drawn over text.
             decorations.ruleColor = NSColor(theme.color(.borderSubtle))
-            // Tracer-bullet probe for ADR-0029 §D16 probe 2 (Step 4.5) - the same finished-
-            // value hand-over `apply(embeds:)` already makes, just above the real call this
-            // one is deliberately placed beside.
-            decorations.apply(tableGridView: tableProbeGrid)
+            // The table pass (ADR §D5) belongs here, beside `apply(hiddenMarkers:)` below -
+            // its own guard, since `applyFolding`'s early return does not cover it, and its
+            // own `apply(tableRows:)`/`apply(tableViews:)` calls once `GFMTable.runs` walks
+            // the note and `TableGridStore` vends a view per table. Not yet wired: the
+            // coder's own deliverable (Task 4).
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
