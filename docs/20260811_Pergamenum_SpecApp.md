@@ -82,10 +82,9 @@ Fonte di verità: repo `harness-system`, documenti `convenzioni/naming.md` (v1.2
 
 ```
 Labs/                           ← vault Obsidian esistente (o altro vault scelto)
-├── .pergamenum/                ← metadati app (cache, thumbnail, impostazioni, vocabolari)
-│   ├── cache.db
-│   ├── thumbnails/
+├── .pergamenum/                ← config app, mai stato derivato (ADR-0017)
 │   ├── settings.json
+│   ├── themes/                 ← temi DTCG, §12
 │   └── vocabolari.json         ← replica dichiarata delle tabelle chiuse di tag.md (§4.6)
 ├── 00 Inbox/                   ← capture in triage
 ├── 01 Progetti/
@@ -96,7 +95,7 @@ Labs/                           ← vault Obsidian esistente (o altro vault scel
 └── qualsiasi altra cartella e nota
 ```
 
-L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle proprie sono `.pergamenum/` e la cartella daily configurabile.
+L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle proprie sono `.pergamenum/` e la cartella daily configurabile. Cache indice, thumbnail e cronologia sono derivati e non stanno più qui: vivono fuori dal vault, in `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/` (ADR-0017), cancellabili senza perdere nulla e senza toccare il vault, che resta sincronizzabile via iCloud Drive senza portarsi dietro stato macchina-specifico.
 
 ### 4.2 Nomi dei file (naming.md §4.6)
 
@@ -167,16 +166,39 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
 
 ## 5. Editor markdown
 
-- Editor a **sorgente visibile con stile applicato** (grassetto reso in grassetto, heading ingranditi, sintassi visibile): livello "Obsidian source mode migliorato", NON live preview completa che nasconde la sintassi (fuori scope v1).
+- **Un editor solo, sempre editabile e sempre reso** (ADR-0029, 2026-09-02): non esiste un
+  toggle Modifica/Lettura e non esiste una vista non editabile della nota aperta. La sintassi
+  markdown è nascosta finché il cursore non raggiunge il paragrafo che la contiene; selezione,
+  digitazione IME o un match della ricerca che tocca il paragrafo la rivelano di nuovo
+  (meccanismo ADR-0018 §D1/§D2, invariato).
+- Costrutti che nascondono la loro sintassi: il `#` di un heading, il `*`/`_` dell'enfasi e un
+  embed immagine/PDF disegnato al posto di `![[file]]` o `![alt](file)` (ADR-0018, 2026-08-22);
+  il `~~` dello strikethrough, il `>` di una citazione — reso una barra per livello, quindi
+  nidificazione illimitata —, le parentesi di un link e di un wikilink, con il target risolto
+  esposto come tooltip sull'etichetta, e la riga `---` resa come filetto orizzontale (ADR-0029).
+  La regola non è più «i tre costrutti nominati»: ADR-0029 ne ha superato il confine di scope.
+- **Una tabella GFM è una griglia vera, editabile in posizione** (ADR-0029): un
+  `NSTextAttachmentViewProvider` ancorato alla riga di intestazione, celle attraversabili con
+  Tab, ogni cella riscritta nella sorgente markdown al commit — Tab, Invio o perdita del fuoco —
+  così che ogni `Cmd+Z` annulli esattamente un commit.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
-  - Wikilink con autocompletamento su `[[` (titoli esatti dal vault; gli alias F-07 servono la ricerca, mai il primo segmento del link, W-01)
+  - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
+    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera quelle ordinate; una
+    riga `- [ ]` resta una checkbox, mai un elemento di lista
+  - Wikilink con autocompletamento su `[[` (titoli esatti dal vault; gli alias F-07 servono la
+    ricerca, mai il primo segmento del link, W-01)
   - Tag con autocompletamento su `#` vincolato ai vocabolari (§4.4)
   - Checkbox task cliccabili nel testo
   - Comando "Aggiungi nota correlata": flusso guidato legame strutturale (motivo + simmetria, §4.5)
   - Trascinamento file nell'editor → copia secondo impostazione + embed `![[file.pdf]]`
   - Incolla URL su testo selezionato → link markdown
   - Comando "Apri nel canvas": crea/apre un canvas e aggiunge la nota come card
+  - Nel pannello INDICE, trascinare una sezione la sposta nel testo (`VaultSession.write`,
+    annullabile in un solo `Cmd+Z`); trascinarla sul titolo di un'altra sezione la annida come
+    suo ultimo figlio invece di riordinarla come sorella (ADR emendata dal drag originale,
+    2026-08-17→2026-09-01); una sezione ripiegata nasconde anche i suoi figli in INDICE, non
+    solo nel testo
 
 ---
 
@@ -237,7 +259,7 @@ Undici strumenti, dall'alto in basso, sul modello dello screenshot VisualOS di r
 
 **Card nota (.md)**: contenuto renderizzato in sola lettura; doppio click → editing inline; click su titolo → apre nell'editor principale.
 
-**Card PDF (requisito primario)**: immagine della prima pagina via `PDFPage.thumbnail(of:for:)`, cache in `.pergamenum/thumbnails/`; ridimensionabile liberamente, thumbnail rigenerata alla nuova risoluzione a fine resize; badge numero pagine, selettore pagina; doppio click → viewer PDFKit interno o app predefinita.
+**Card PDF (requisito primario)**: immagine della prima pagina via `PDFPage.thumbnail(of:for:)`, cache in `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/thumbnails/` (ADR-0017, fuori dal vault); ridimensionabile liberamente, thumbnail rigenerata alla nuova risoluzione a fine resize; badge numero pagine, selettore pagina; doppio click → viewer PDFKit interno o app predefinita.
 
 **Card email (requisito primario)**: file .eml (nodo `file`) con header From/Subject/Date letti da parser RFC 5322 interno, oppure link `message://` (nodo `link`); doppio click → apertura in Apple Mail. Ridimensionabile, nessun rendering del corpo.
 
@@ -414,8 +436,23 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
 
 ## 12. Ricerca, indice e impostazioni
 
-- Ricerca globale full-text (Cmd+Shift+F) su note, canvas e nomi file; operatori: `tag:`, `path:`, `task:open`, `"frase esatta"`. Quick switcher (Cmd+O) con fuzzy match su titoli e alias.
-- Indice in `.pergamenum/cache.db`: note, link, backlink, tag, task (con date e collegamenti §7.2), thumbnail. Watcher FSEvents sul vault: modifiche esterne (anche da Obsidian) recepite in tempo reale.
+- Ricerca globale full-text (Cmd+Shift+F) su note, canvas e nomi file, letta dai file — non
+  dall'indice, che tiene solo struttura. Operatori (completati M10, ADR-0012 §D8): `tag:`,
+  `path:`, `task:open`/`task:done`, `"frase esatta"`, `-termine` (esclusione), `regex:`,
+  `linked:<nota>`, `orphan:`, `modified:` (intervalli su `NoteRecord.modifiedAt`),
+  `is:starred`. Nessun `created:`: l'indice non conserva una data di creazione, e aggiungerla
+  sarebbe una decisione di schema, non un operatore.
+  Quick switcher (Cmd+O) con fuzzy match su titoli e alias, esteso (M10) a: recenti,
+  preferite, la daily note di oggi, "crea nota chiamata X", salto diretto a un heading.
+  Menzioni non linkate: scansione dell'intero vault calcolata su richiesta del pannello
+  backlink, mai alla semplice apertura di una nota e mai messa in cache nell'indice.
+- Indice in `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/cache.db`
+  (spostato fuori dal vault, ADR-0017 - **non più `.pergamenum/cache.db`**: quella cartella
+  resta nel vault solo per config/vocabolari/temi, mai per stato derivato). Note, link,
+  backlink, tag, task (con date e collegamenti §7.2, embedTargets dalla M11), thumbnail.
+  Sempre ricostruibile da una scansione del vault, mai la fonte di verità (principio 3).
+  Watcher FSEvents sul vault: modifiche esterne (anche da Obsidian) recepite in tempo reale.
+  Le viste (§17) interrogano lo stesso indice, mai una loro copia.
 - Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
 
 ---
@@ -443,7 +480,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Stack | SwiftUI nativo, non Electron | Requisito email ridotto a link+apertura; PDFKit ed EventKit nativi |
 | Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
 | Rendering corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente |
-| Live preview completa | Esclusa v1 | Voce di costo massima; source mode con stile è sufficiente |
+| Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |
 | Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file |
@@ -464,3 +501,75 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 - Modello scheduling/timeblocking NotePlan: https://help.noteplan.co/article/110-how-to-schedule-tasks · https://help.noteplan.co/article/121-time-blocking
 - Modello task Craft: https://support.craft.do/en/plan-and-do
 - Modello storage VisualOS: https://wiki.visualos.app/how-your-data-is-stored.html
+
+---
+
+## 16. Cattura
+
+*Aggiunta 2026-09-02 (ADR-0008, M7). Non descritta nello SPEC v2.2 originale, che a §7.4
+chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
+
+- **Scorciatoia globale** ⌃⌥Space (default, rebindabile in Impostazioni › Scorciatoie),
+  funziona da qualsiasi app, anche a schermo intero. Registrata via `RegisterEventHotKey`
+  (Carbon), non `NSEvent` globale: nessun permesso Accessibility richiesto, l'app riceve
+  un solo evento — "la combinazione è stata premuta" — e nient'altro.
+- **Un conflitto può essere rifiutato o silenzioso.** Se un'altra app tiene già la
+  combinazione in modo esclusivo, la registrazione fallisce ed è segnalata in Impostazioni
+  con l'invito a sceglierne un'altra. Se un'altra app la tiene senza esclusività (es. Craft),
+  la registrazione di Pergamenum riesce ma i tasti aprono l'altra app: nessuna API rileva
+  questo caso, e Impostazioni › Scorciatoie lo dice esplicitamente — l'unico modo per saperlo
+  è premere la combinazione e guardare cosa succede.
+- **Il pannello non attiva l'app**: `NSPanel` non-activating a livello `.floating`, l'app da
+  cui si è premuta la scorciatoia mantiene il focus. Il testo non inviato sopravvive 60
+  secondi dopo la chiusura del pannello.
+- **Quattro destinazioni**, ricordata l'ultima usata: nuova nota · task nell'Inbox · in coda
+  alla daily note di oggi (creata se assente) · in coda a una nota esistente scelta. L'Inbox
+  è un file reale, `00 Inbox/Capture.md` — distinto dalla vista task Inbox di §7.4, che
+  resta "task senza data né progetto": la cattura dà a un task acquisito un posto su disco
+  dal primo secondo, non sostituisce quella vista.
+- **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
+  `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
+  (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e
+  annullabile come ogni altra scrittura.
+- **Cosa non fa deliberatamente**: non converte il markdown in blocchi (le righe restano
+  come scritte); non resta residente come accessory app (un'icona nella barra dei menu,
+  disattivabile, copre cattura/oggi/inbox/ultima nota per chi preferisce quel gesto); non
+  legge la selezione dell'app in primo piano (richiederebbe di nuovo Accessibility).
+
+---
+
+## 17. Viste
+
+*Aggiunta 2026-09-02 (ADR-0009, M11). Motore query puro sopra l'indice, non descritto
+nello SPEC v2.2 originale.*
+
+- **Un blocco `pergamenum-view` in una nota qualunque**, sette chiavi tutte opzionali
+  tranne `render`: `from` (scope, solo `path()` combinati con `or`), `where` (filtro),
+  `sort`, `group`, `render`, `columns`, `limit`. Obsidian lo rende come codice inerte —
+  il comportamento corretto per chi non sa eseguirlo. Un blocco che non fa parsing è un
+  **errore che nomina la riga**, mai un risultato vuoto: una lista vuota è
+  indistinguibile da un vault che ha perso le note.
+- **Campi ammessi, elenco chiuso**: `title`, `path`, `folder`, `tags`, `date`, `aliases`,
+  `related`, `modified`, `size`, `links`, `linkedFrom`, `embedTargets`,
+  `tasks.open`/`tasks.done`/`tasks.total`, `deadline.next`, `scheduled.next`,
+  `unresolved`. Nessun campo utente, nessuna colonna calcolata, nessuna formula — ogni
+  campo è già in `NoteRecord` o derivato dall'indice intero, quindi una vista resta
+  rispondibile da una scansione del vault e il principio "indice ricostruibile" continua
+  a valere. `created` è deliberatamente assente: l'indice conserva solo `modifiedAt`.
+- **Grammatica `where`**: `path()`, `tag()`, `linksTo()`, `linkedFrom()`, `task(open|done)`,
+  `has(campo)`, `text()`, confronti su data (`>`, `>=`, `<`, `<=`, `=`), combinatori
+  booleani `and`/`or`/`not` con parentesi, glob per i pattern, nessuna regex.
+- **Cinque renderer**, tutti read-only tranne uno: tabella, galleria, calendario, lista —
+  e board, l'unico scrivibile. Trascinare una card su una board riscrive il tag nello
+  spazio dei nomi `status-*` del gruppo (mai un altro namespace), passa da
+  `VaultSession.write`, è giornalato e annullabile come ogni altra scrittura, e passa lo
+  stesso controllo differenziale del linter dei tag usato altrove. Una nota senza tag di
+  stato compare nella colonna "Senza stato" (o "Senza \<namespace\>" per un gruppo non
+  standard); una nota con più tag dello stesso namespace compare in ogni colonna
+  corrispondente, e trascinarla sostituisce solo il tag della colonna di partenza.
+- **Motore puro in `Core`, condiviso da CLI e MCP**: `perg view list` elenca i blocchi del
+  vault con la loro posizione, `perg view run <percorso>` esegue un blocco e stampa il
+  risultato. Lo stesso motore serve il pannello Viste nell'app.
+- **Nessuna vista è mai salvata o cache**: ricalcolata dall'indice ogni volta che viene
+  aperta o che l'indice cambia in un modo che tocca il suo `from`. Il costo dipende da
+  quando una vista viene eseguita, non dalla ricchezza della sua grammatica.

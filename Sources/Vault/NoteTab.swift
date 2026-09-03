@@ -2,10 +2,14 @@ import Foundation
 
 /// One note open in the editor, with everything that belongs to *looking at that note*.
 ///
-/// ADR-0012 D2. The folds, the index entry the caret is in and the Modifica/Lettura choice
-/// used to live on `Navigation`, cleared whenever the open note changed - the single-note
-/// spelling of what a tab makes structural. With two tabs open, clearing on change stops
-/// being a fix and becomes data loss, because the other tab's folds were real.
+/// ADR-0012 D2. The folds and the index entry the caret is in used to live on `Navigation`,
+/// cleared whenever the open note changed - the single-note spelling of what a tab makes
+/// structural. With two tabs open, clearing on change stops being a fix and becomes data
+/// loss, because the other tab's folds were real.
+///
+/// A third piece of per-tab state, the Modifica/Lettura choice, was here until ADR-0029 §D13:
+/// there is one editor now, always editable and always styled, so there is no mode for a tab
+/// to remember.
 struct NoteTab: Identifiable, Equatable, Sendable {
     let id: UUID
     var note: VaultController.OpenNote
@@ -13,10 +17,8 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// that would mean extending a frontmatter schema SPEC §4.3 closes.
     var foldedEntries: Set<Int> = []
     /// Which index entry the caret is inside, reported by the editor only when it changes.
-    /// Nil in reading mode, where there is no caret to be inside anything.
+    /// Nil until the editor has said, which is any note not yet clicked into.
     var currentOutlineEntry: Int?
-    /// Whether this note is shown rendered rather than as source (SPEC §10, Cmd+Shift+E).
-    var isReadingMode = false
     /// A tab opened by a single click in the list, which the next single click reuses.
     ///
     /// One per column at most. Without it, browsing a list of forty notes means opening forty

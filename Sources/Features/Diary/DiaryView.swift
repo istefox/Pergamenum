@@ -4,13 +4,17 @@ import SwiftUI
 /// The Diario pane: the day written in markdown on the left, the hours of the day on
 /// the right.
 ///
-/// Two halves of one record. The text is an ordinary markdown editor, with the rendered
-/// note beside it live rather than behind a mode switch - reading mode elsewhere in the
-/// app replaces the editor, and a diary is written and reread in the same minute.
+/// Two halves of one record, and the left one is the app's single editor - always
+/// editable, always styled, markup concealed until the caret reaches it. A diary is
+/// written and reread in the same minute, which used to buy it a second view of its own
+/// text beside the source and a picker to choose between them; it now buys nothing,
+/// because there is no second, non-editable view of the note being written left to
+/// switch to - here or in the Note pane.
 ///
-/// SPEC §14 rules out a live preview *inside* the editor, one that hides syntax while
-/// typing. This is not that: the source keeps its syntax and its styling, and the
-/// rendering is a second view of the same text (ADR-0005).
+/// ADR-0029 supersedes ADR-0005 §D2 on exactly that point and on nothing else here:
+/// §D1's "Diario is its own pane" and §D3-§D8 - the ten-minute grid, overlapping blocks,
+/// the hour window, the `## Diario` section, the pane saving itself, the key it takes -
+/// all stand as written, `DiaryTimeline` included.
 struct DiaryView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
@@ -58,7 +62,7 @@ struct DiaryView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            body(for: controller.layout)
+            editor
         }
     }
 
@@ -79,21 +83,6 @@ struct DiaryView: View {
 
     private var fileLabel: String { vault.diaryNotePath(for: controller.day) }
 
-    @ViewBuilder
-    private func body(for layout: DiaryController.Layout) -> some View {
-        switch layout {
-        case .editor:
-            editor
-        case .preview:
-            preview
-        case .both:
-            HSplitView {
-                editor.frame(minWidth: 220)
-                preview.frame(minWidth: 220)
-            }
-        }
-    }
-
     private var editor: some View {
         NoteTextView(
             text: Bindable(controller).prose,
@@ -111,19 +100,6 @@ struct DiaryView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("diary-editor")
-    }
-
-    private var preview: some View {
-        MarkdownReadingView(
-            text: controller.prose,
-            onFollowLink: follow,
-            notePath: fileLabel,
-            vaultRoot: vault.root,
-            thumbnails: vault.thumbnails,
-            takesFocus: false
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("diary-preview")
     }
 
     /// A wikilink in the diary goes to the note it names, in the pane that shows notes.

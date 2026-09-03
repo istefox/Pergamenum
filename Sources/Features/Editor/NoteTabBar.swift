@@ -5,7 +5,9 @@ import SwiftUI
 /// **It takes the editor header's place rather than sitting above it.** The header showed the
 /// note's title, and so does a tab; keeping both would put the title on screen twice and spend
 /// sixty points of the editor's height saying it. What the header carried and a tab cannot -
-/// the Modifica/Lettura choice and the save state - is here too, at the strip's right end.
+/// the save state - is here too, at the strip's right end. The Modifica/Lettura choice was
+/// there beside it until ADR-0029 §D13: there is one editor now, always editable and always
+/// styled, so there is no mode left to choose.
 ///
 /// The bar is present with one note open as with six. That costs nothing now that it replaced
 /// the header, and it means nothing on screen moves when the second note arrives.
@@ -59,26 +61,15 @@ struct NoteTabBar: View {
             // search field beside the filter above the list and the global search, for a note
             // either of those already opens. Cmd+T still does it from the keyboard.
             if activeID != nil {
-                // The two the header carried, unchanged in behaviour and moved in place.
+                // The save state the header used to carry, moved in place. The
+                // Modifica/Lettura picker stood beside it until ADR-0029 §D13 removed the
+                // mode itself.
                 //
-                // **Glyphs and not words, because of the split.** Spelled out, these three
+                // **A glyph and not a word, because of the split.** Spelled out, these
                 // controls took some 230 points of a column that is 585 wide when the editor
-                // is divided, and two tabs were all that fitted beside them. The words survive
-                // as the accessibility label of each `Label`, which is also what the UI tests
+                // is divided, and two tabs were all that fitted beside them. The word survives
+                // as the accessibility label of the `Label`, which is also what the UI tests
                 // click on.
-                Picker("", selection: Binding(
-                    get: { tabs.first { $0.id == activeID }?.isReadingMode ?? false },
-                    set: { reading in focus { vault.isReadingMode = reading } }
-                )) {
-                    Label("Modifica", systemImage: "pencil").tag(false)
-                    Label("Lettura", systemImage: "book").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelStyle(.iconOnly)
-                .labelsHidden()
-                .fixedSize()
-                .help("Modifica o lettura")
-
                 if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
                     Button { focus { vault.saveOpenNote() } } label: {
                         Label("Salva", systemImage: "arrow.down.doc")

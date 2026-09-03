@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// The Diario pane's toolbar: which day, what to write it with, and one button that
-/// blocks out time.
+/// The Diario pane's toolbar: which day, and one button that blocks out time.
+///
+/// It used to carry a third thing, a picker choosing between the editor, the rendering
+/// and both. There is one editor now and nothing to choose between (ADR-0029 §D15).
 ///
 /// The same shape as the Oggi pane's: day navigators on the left, the pane's own
 /// controls on the right, so the two sections of the app that are about a day are
@@ -41,18 +43,6 @@ struct DiaryToolbar: ToolbarContent {
             }
             .help("Blocca del tempo sulla giornata")
             .accessibilityIdentifier("diary-new-entry")
-
-            // A picker rather than a toggle: three states, and the one in the middle is
-            // the point of this pane - the note and its resa, side by side, live.
-            Picker("Vista", selection: $controller.layout) {
-                ForEach(DiaryController.Layout.allCases) { layout in
-                    Label(layout.title, systemImage: layout.symbol).tag(layout)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .help("Editor, anteprima, o entrambi")
-            .accessibilityIdentifier("diary-layout")
         }
     }
 }

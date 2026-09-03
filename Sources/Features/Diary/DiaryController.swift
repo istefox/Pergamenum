@@ -28,38 +28,6 @@ final class DiaryController {
     private(set) var entries: [DiaryEntry] = []
     private(set) var problems: [String] = []
 
-    /// What the writing column shows. Both at once by default: a diary is written and
-    /// reread in the same minute, and a mode switch between the two is a mode switch
-    /// nobody asked for.
-    enum Layout: String, CaseIterable, Identifiable, Sendable {
-        case editor
-        case both
-        case preview
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .editor: "Editor"
-            case .both: "Editor e anteprima"
-            case .preview: "Anteprima"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .editor: "square.and.pencil"
-            case .both: "rectangle.split.2x1"
-            case .preview: "eye"
-            }
-        }
-
-        var showsEditor: Bool { self != .preview }
-        var showsPreview: Bool { self != .editor }
-    }
-
-    var layout: Layout = .both
-
     /// The entry being composed or edited, and the sheet that shows it. Nil is closed.
     var draft: DiaryDraft?
     /// Raised by the toolbar's date button.

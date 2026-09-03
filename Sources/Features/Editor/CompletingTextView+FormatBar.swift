@@ -13,8 +13,21 @@ extension CompletingTextView {
     /// callback already keeps in the same method.
     func refreshFormatBar(theme: Theme) {
         let selection = selectedRange()
-        guard selection.length > 0, !isInsideCodeFence(selection), !isEmbedMarker(selection) else {
+        guard selection.length > 0, !isInsideCodeFence(selection), !isEmbedMarker(selection)
+        else {
             formatBar.hide()
+            return
+        }
+        if isInsideTable(selection) {
+            // AppKit's own undo re-selects exactly the range `replaceAtomically` replaced
+            // (§D7's atomic commit, over the table's whole multi-line source) - a table has no
+            // inline formatting of its own, so leaving that selection standing draws nothing
+            // but a wall-to-wall highlight over the grid. Collapsing to the end is what a
+            // cursor landing after any other undo already looks like; `setSelectedRange` fires
+            // this method again, but a zero-length range short-circuits at the guard above
+            // before `isInsideTable` runs a second time.
+            formatBar.hide()
+            setSelectedRange(NSRange(location: NSMaxRange(selection), length: 0))
             return
         }
         let anchor = formatBarAnchor(selection)
@@ -40,6 +53,27 @@ extension CompletingTextView {
         let marker = (string as NSString).substring(with: selection)
             .trimmingCharacters(in: .whitespaces)
         return Attachment.embed(inLine: marker) != nil
+    }
+
+    /// No bar over a table: `NoteTextView+Coordinator.swift`'s atomic commit
+    /// (`replaceAtomically` over the table's whole source range, §D7) leaves AppKit's own
+    /// undo re-selecting exactly that range, which is bold/italic-shaped text markup applied
+    /// to nothing - a table's source has no inline formatting of its own. Reuses
+    /// `EditorDecorationDelegate.tableRun(in:atParagraphStart:)`, the one implementation of
+    /// "is there still a table here" (`+TableRendering.swift`'s own doc comment), keyed the
+    /// same way `CompletingTextView+Accessibility.swift`'s `drawnTableGrids()` already reads
+    /// `decorations.tableViews`.
+    private func isInsideTable(_ selection: NSRange) -> Bool {
+        guard let decorations = textContentStorage?.delegate as? EditorDecorationDelegate,
+              !decorations.tableViews.isEmpty
+        else { return false }
+        let text = string as NSString
+        return decorations.tableViews.keys.contains { offset in
+            guard let run = EditorDecorationDelegate.tableRun(in: text, atParagraphStart: offset)
+            else { return false }
+            return NSIntersectionRange(run.range, selection).length > 0
+                || NSLocationInRange(selection.location, run.range)
+        }
     }
 
     /// No bar inside ``` ``` ```: there `**` is two asterisks in a program, not emphasis.

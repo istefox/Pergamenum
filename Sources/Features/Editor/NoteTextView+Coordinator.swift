@@ -82,6 +82,25 @@ extension NoteTextView {
         /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
         /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
         var embedDrag: EmbedDrag?
+        /// The grid every table on screen is drawn with, by table identity (ADR-0029 §D6) -
+        /// owned here for the reason `embeds` above is: `EditorDecorationDelegate` cannot be
+        /// `@MainActor` and so cannot build an `NSView`, and it is handed finished values
+        /// through `decorations.apply(tableViews:)`. Grew out of the Step 4.5 tracer-bullet
+        /// probe's single fixed `tableProbeGrid`, which answered §D16 probe 2 and is gone.
+        let tableGrids = TableGridStore()
+        /// The delimiter and body rows already taken out of the layout, so an unchanged set
+        /// does not re-invalidate it on every keystroke - the table pass's own change check,
+        /// which `applyFolding`'s early return does not cover (§D5). Not private for the
+        /// reason `lastRenditions` is not: the pass that fills it, `applyTables`, lives in
+        /// `NoteTextView+Tables.swift`.
+        var lastTableRows: Set<Int> = []
+        /// Each table on screen and the grid drawing it, by header offset - filled by
+        /// `applyTables` inside the storage's editing transaction and read by
+        /// `refreshTableGrids` once it has closed.
+        var drawnTables: [Int: DrawnTable] = [:]
+        /// Where the caret has to go once that transaction closes, when a row it was sitting
+        /// in has just left the layout (`rescueCaret`'s table twin, §D5).
+        var pendingTableCaret: Int?
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -262,6 +281,12 @@ extension NoteTextView {
             // space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
             var hiddenMarkers: [Int: [HiddenMarker]] = [:]
             var embedRuns: [NSRange] = []
+            /// Every GFM table's whole source run (ADR-0029 §D4). Collected here rather than
+            /// mapped to a `HiddenMarker` by `hiddenKind(for:)` like the other constructs:
+            /// a table's run spans several paragraphs and the delegate is asked about one at
+            /// a time, so `applyTables` is what splits it into the header's own marker and
+            /// the rows that leave the layout.
+            var tableRuns: [NSRange] = []
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -277,23 +302,21 @@ extension NoteTextView {
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
-                let kind: HiddenMarker.Kind? = switch styled.span {
-                case .headingMarker: .heading
-                case .emphasisMarker: .emphasis
-                case .embedRun: .embed
-                case .listMarker: .list
-                case .taskMarker: .checkbox
-                default: nil
-                }
-                if let kind {
+                if let kind = Self.hiddenKind(for: styled.span) {
                     let paragraphStart = nsText.paragraphRange(
                         for: NSRange(location: nsRange.location, length: 0)
                     ).location
-                    hiddenMarkers[paragraphStart, default: []].append(
-                        Self.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
-                    )
+                    let spans = kind == .link
+                        ? Self.linkDelimiters(in: nsRange, of: nsText)
+                        : [nsRange]
+                    for span in spans {
+                        hiddenMarkers[paragraphStart, default: []].append(
+                            Self.hiddenMarker(kind, at: span, paragraphStart: paragraphStart)
+                        )
+                    }
                 }
                 if case .embedRun = styled.span { embedRuns.append(nsRange) }
+                if case .tableRun = styled.span { tableRuns.append(nsRange) }
             }
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
@@ -305,13 +328,26 @@ extension NoteTextView {
             // painted over an arbitrary picture and has to be aimed at, which a tertiary
             // text grey on a photograph is not.
             decorations.handleColor = NSColor(theme.color(.accentPrimary))
+            // The thematic break's own line (ADR-0029 §D1), from `borderSubtle` and not
+            // from a text token: it is a separator between blocks, which is what that token
+            // names, and it is the only decoration here that is not drawn over text.
+            decorations.ruleColor = NSColor(theme.color(.borderSubtle))
+            // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
+            // guard, since `applyFolding`'s early return does not cover it, and its own
+            // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own
+            // `.table` marker to the table about to be handed over, rather than making a
+            // second `apply(hiddenMarkers:)` call of its own.
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
+            applyTables(to: textView, runs: tableRuns, markers: &hiddenMarkers)
             decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
             self.embedRuns = embedRuns
+            // After the transaction, deliberately: a grid resizes itself and a caret rescue
+            // moves the selection, and neither belongs inside an open editing session.
+            refreshTableGrids(in: textView, theme: theme)
         }
 
         /// One span's hidden marker, its range relative to its own paragraph's start - the
@@ -325,6 +361,72 @@ extension NoteTextView {
         /// out of it, which it does at layout time because `HiddenMarker.Kind.list` carries
         /// no level of its own. Only the start moves; the end is the span's own, so the
         /// range still stops at the marker's trailing space.
+        /// Which kind of hidden marker a span becomes, or none for a span that is only
+        /// coloured.
+        ///
+        /// The note editor's own table and deliberately not the card's: `CardTextView`
+        /// keeps a switch of its own ending in `default: nil`, and that `default` is the
+        /// seam ADR-0029 §D17 relies on to keep this chain's four constructs - a live
+        /// `NSView` grid above all - out of a card whose text view is deallocated on every
+        /// culling-rect crossing. The two are one call apart on purpose.
+        static func hiddenKind(for span: MarkdownStyler.Span) -> HiddenMarker.Kind? {
+            switch span {
+            case .headingMarker: .heading
+            case .emphasisMarker: .emphasis
+            case .embedRun: .embed
+            case .listMarker: .list
+            case .taskMarker: .checkbox
+            // The four ADR-0029 constructs (plan `2026-09-02-editor-wysiwyg-unification`,
+            // Task 2). `.linkSyntax` is the one span here that was already emitted and only
+            // coloured before this chain (§D1) - and the one whose range is not itself a
+            // delimiter, which `linkDelimiters(in:of:)` below is what splits.
+            case .blockquoteMarker: .blockquote
+            case .strikethroughMarker: .strikethrough
+            case .horizontalRule: .rule
+            case .linkSyntax: .link
+            // The one ADR-0029 construct that is *not* mapped here, and the reason is
+            // structural rather than an omission: a `.tableRun` covers the header line, the
+            // delimiter row and every body row, while a `HiddenMarker` is anchored to one
+            // paragraph and read back when the delegate is asked about that paragraph alone.
+            // `applyTables` (`NoteTextView+Tables.swift`) is what splits the run into the
+            // header's own `.table` marker and the rows that leave the layout entirely.
+            case .tableRun: nil
+            default: nil
+            }
+        }
+
+        /// The bracket runs of a `.linkSyntax` span - what is actually concealed, as
+        /// opposed to what the span covers (ADR-0029 §D1, R-04).
+        ///
+        /// The asymmetry this exists for: `wikilinkSpans(in:from:outside:)` emits one
+        /// `.linkSyntax` over the *whole* `[[Curva]]` and then paints `.linkTarget` on top
+        /// of the title, because later spans win on overlap - so mapping that span straight
+        /// to a `.link` marker would hide the title too and leave an empty line where a
+        /// reference was. `markdownLinkSpans(in:absolute:)` emits the CommonMark form's `[`
+        /// and `](url)` already split, and those are handed back untouched.
+        ///
+        /// An embed's `![[foto.png]]` gets none at all, and that is not only deference to
+        /// `embedParagraph(at:storage:)` owning that run (ADR-0018 slice 3, whose branch
+        /// runs first and would win anyway once a picture has resolved): the `!` is *inside*
+        /// the opening delimiter and is the whole of what makes the run an embed, so hiding
+        /// it would draw an embed as an ordinary link for as long as the render is in
+        /// flight - and, for an inline `![[…]]` that never becomes a picture, for good.
+        ///
+        /// In UTF-16 and not in characters, like every range in this table: a target
+        /// holding an emoji is two units per character, and offsets counted the other way
+        /// would put the closing bracket's range one unit short of where it is.
+        static func linkDelimiters(in span: NSRange, of text: NSString) -> [NSRange] {
+            guard span.length > 0, NSMaxRange(span) <= text.length else { return [] }
+            let run = text.substring(with: span)
+            guard !run.hasPrefix("![[") else { return [] }
+            let opening = run.hasPrefix("[[") ? 2 : 0
+            guard opening > 0, run.hasSuffix("]]"), span.length > opening + 2 else { return [span] }
+            return [
+                NSRange(location: span.location, length: opening),
+                NSRange(location: NSMaxRange(span) - 2, length: 2)
+            ]
+        }
+
         static func hiddenMarker(
             _ kind: HiddenMarker.Kind, at span: NSRange, paragraphStart: Int
         ) -> HiddenMarker {

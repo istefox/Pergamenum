@@ -51,6 +51,31 @@ struct HiddenMarker: Equatable, Sendable {
         /// span itself, not at its paragraph's start - unlike `.list`, a checkbox's
         /// indentation is not part of what this kind collapses.
         case checkbox
+        /// A blockquote line's opening `>` run (ADR-0029 §D1; plan
+        /// `2026-09-02-editor-wysiwyg-unification`, Task 2) - like `.list`, anchored at its
+        /// paragraph's own start so the run's own level can be re-derived from the live
+        /// characters rather than carried on the marker, which would go stale between a
+        /// styling pass and a layout pass.
+        case blockquote
+        /// One `~~` delimiter of a strikethrough run - the exact twin of `.emphasis`.
+        case strikethrough
+        /// A wikilink's or a CommonMark link's own bracket run - `[[`/`]]`, or `[`/`](url)` -
+        /// never the label/target text between them. Drawn hidden with a hover tooltip
+        /// naming where it goes (R-04).
+        case link
+        /// A whole thematic-break line (`---`, `***`, `___`, ...), collapsed into
+        /// `collapsedFont` and drawn by a `HorizontalRuleFragment` rather than left as three
+        /// invisible characters - the one construct here that cannot length-preserve into a
+        /// full-width line the way the other three can.
+        case rule
+        /// A GFM table's own header-line pipe syntax (ADR-0029 §D4; plan
+        /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - anchored at the header
+        /// paragraph's own start, the same convention `.list` and `.blockquote` use, since
+        /// the table's real shape is re-read from the live characters through
+        /// `GFMTable.parse` rather than carried on the marker. Never the delimiter row or a
+        /// body row: those leave the layout entirely through `apply(tableRows:)` (D5), a
+        /// fifth input kept deliberately separate from `hiddenLineOffsets`.
+        case table
     }
 
     let range: NSRange
@@ -62,6 +87,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// The UTF-16 offset at which each hidden line begins. A set, because this is asked
     /// once per paragraph on every layout pass.
     nonisolated(unsafe) private var hiddenLineOffsets: Set<Int> = []
+    /// Every table's own delimiter-row and body-row start offsets (ADR-0029 §D5; plan
+    /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - the fifth input, deliberately
+    /// never merged into `hiddenLineOffsets`: folding a heading and drawing a table are
+    /// two different reasons a paragraph leaves the layout, and `apply(tableRows:)`
+    /// clearing this set must never clear a fold in progress, nor the reverse. The header
+    /// row is never in here - it stays in the layout, carrying the `TableAttachment`.
+    nonisolated(unsafe) private var tableRowOffsets: Set<Int> = []
     /// Folded heading line offset to the number of lines it is hiding, which is what the
     /// badge says.
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
@@ -70,6 +102,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// The colour a drawn embed's resize handle is painted in (ADR-0019 §D5), pushed in
     /// from a token the same way `badgeColor` above is and handed on to `EmbedAttachment`.
     nonisolated(unsafe) var handleColor: NSColor = .secondaryLabelColor
+    /// The colour a `HorizontalRuleFragment` paints its line in (ADR-0029 §D1), pushed in
+    /// from a token exactly the way `badgeColor` and `handleColor` above are - a view that
+    /// uses a colour without going through a token does not pass review (CLAUDE.md).
+    nonisolated(unsafe) var ruleColor: NSColor = .separatorColor
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
@@ -104,6 +140,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
     /// markup is fully reversible with a toggle rather than a revert.
     nonisolated(unsafe) var hidesMarkup = false
+    /// The grid already vended for each table, by its header paragraph's own offset - the
+    /// same finished-value hand-over `embedRenditions` already makes (ADR-0029 §D6): this
+    /// object cannot be `@MainActor`, so it never asks `TableGridStore` for one itself, and
+    /// a dictionary rather than a single optional because a note can hold more than one
+    /// table at once. Not `private`: `tableParagraph(at:storage:)` in
+    /// `EditorDecorationDelegate+TableRendering.swift` reads it.
+    nonisolated(unsafe) var tableViews: [Int: TableGridView] = [:]
     /// Small enough to draw as nothing while still breaking the line the way a real
     /// character does - unlike a `\n` at this size, which is why folding uses a different
     /// mechanism: this hides a delimiter mid-paragraph, not a whole paragraph.
@@ -137,6 +180,24 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         )
     }
 
+    /// Registers a table's delimiter-row and body-row offsets as out of the layout - the
+    /// fifth producer of `shouldEnumerate`'s refusal, deliberately its own setter rather
+    /// than a second parameter on `apply(hiddenLines:foldedHeadings:)` above (ADR §D5):
+    /// *"two producers on one setter is precisely what the delegate's own header forbids."*
+    /// An empty set here clears only the table rows, never a fold already registered, and
+    /// the reverse holds too - `apply(hiddenLines:foldedHeadings:)` never touches this one.
+    func apply(tableRows offsets: Set<Int>) {
+        tableRowOffsets = offsets
+        Logger.folding.notice("tabelle: \(offsets.count, privacy: .public) righe nascoste")
+    }
+
+    /// Registers the grid view already vended for each table, by its header offset - the
+    /// same finished-value hand-over `apply(embeds:)` makes. Called from the Coordinator,
+    /// which owns `TableGridStore` (ADR-0029 §D6); this object never builds a view itself.
+    func apply(tableViews views: [Int: TableGridView]) {
+        tableViews = views
+    }
+
     /// Registers where the hidden markers are and whether they should be hidden at all.
     ///
     /// Guarded rather than unconditional: `applyStyling` calls this on every keystroke and
@@ -164,13 +225,18 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
     // MARK: Hiding
 
+    /// Refuses to enumerate a folded line or a table's own delimiter/body row - the union
+    /// of two independently-set inputs (ADR-0029 §D5), never one merged into the other.
     func textContentManager(
         _ textContentManager: NSTextContentManager,
         shouldEnumerate textElement: NSTextElement,
         options: NSTextContentManager.EnumerationOptions
     ) -> Bool {
-        guard !hiddenLineOffsets.isEmpty, let range = textElement.elementRange else { return true }
-        return !hiddenLineOffsets.contains(offset(of: range.location, in: textContentManager))
+        guard !hiddenLineOffsets.isEmpty || !tableRowOffsets.isEmpty,
+              let range = textElement.elementRange
+        else { return true }
+        let start = offset(of: range.location, in: textContentManager)
+        return !hiddenLineOffsets.contains(start) && !tableRowOffsets.contains(start)
     }
 
     // MARK: Marking
@@ -189,6 +255,27 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
                 textElement: textElement, range: textElement.elementRange
             )
             fragment.rendition = rendition
+            return fragment
+        }
+
+        // A rule is the one ADR-0029 construct a length-preserving substitution cannot
+        // serve: three characters cannot span a column however they are drawn (§D1). Its
+        // own characters are collapsed by the generic path in
+        // `textContentStorage(_:textParagraphWith:)` and the line itself is drawn here, the
+        // shape `FoldedHeadingFragment` and `TranscludedLineFragment` are the two working
+        // instances of. Re-validated against the element's own characters for the same
+        // reason every other decoration is: this is a later pass than the one that recorded
+        // the marker.
+        if hidesMarkup, !revealedParagraphs.contains(start),
+           (hiddenMarkers[start] ?? []).contains(where: { $0.kind == .rule }),
+           let paragraph = textElement as? NSTextParagraph,
+           MarkdownBlockParser.isRule(
+               paragraph.attributedString.string.trimmingCharacters(in: .whitespacesAndNewlines)
+           ) {
+            let fragment = HorizontalRuleFragment(
+                textElement: textElement, range: textElement.elementRange
+            )
+            fragment.ruleColor = ruleColor
             return fragment
         }
 
@@ -245,6 +332,25 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return checkbox
         }
 
+        // The blockquote branch, beside the list one and under the same length rule: each
+        // `>` is *substituted* by a bar, never inserted or removed (ADR-0029 §D1). Like
+        // list and checkbox it honours `revealedParagraphs` internally, and it must run
+        // before the generic path below or its `>` would be hidden outright instead of
+        // being drawn as one bar per level.
+        if let quote = quoteParagraph(at: range, storage: storage) {
+            return quote
+        }
+
+        // The table branch, beside the quote one and under the same length rule (ADR-0029
+        // §D4; plan `2026-09-02-editor-wysiwyg-unification`, Task 4): the header line's own
+        // pipe syntax is *substituted* for a `TableAttachment`, never inserted or removed.
+        // It does not honour `revealedParagraphs` the way list/checkbox/blockquote do - a
+        // drawn table does not reveal on caret, D5's exception for a grid the same way it
+        // is for a drawn embed (ADR-0018 §D5).
+        if let table = tableParagraph(at: range, storage: storage) {
+            return table
+        }
+
         guard !revealedParagraphs.contains(range.location),
               let markers = hiddenMarkers[range.location], !markers.isEmpty
         else { return nil }
@@ -255,6 +361,11 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         for marker in survivors {
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
+        }
+        // Over the whole run and not only over the brackets: what is left on screen once
+        // they are collapsed is the label, and the label is what a person hovers (R-04).
+        for tooltip in Self.linkTooltips(among: survivors, of: range, in: storage.string as NSString) {
+            copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
         return NSTextParagraph(attributedString: copy)
     }
@@ -425,6 +536,25 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // checkbox marker is drawn by its own dedicated `checkboxParagraph(at:storage:)`
         // branch, re-validated through `stillSpellsATaskMarker`.
         case .checkbox: false
+        // Never handled here, for the same structural reason as `.list`: a blockquote's `>`
+        // run is drawn by its own dedicated `quoteParagraph(at:storage:)` branch, which
+        // re-reads the characters through `stillSpellsABlockquoteMarker` because it needs
+        // what they *say* - the level, i.e. how many bars to draw - and not merely whether
+        // they are still there. Letting a `.blockquote` entry into this generic collapsing
+        // loop would hide the `>` outright instead of substituting a bar for it (ADR-0029 §D1).
+        case .blockquote: false
+        // The three ADR-0029 constructs the generic, font-collapsing path *does* serve: two
+        // `~~` delimiters are the exact twin of `.emphasis`, a link's brackets are collapsed
+        // and nothing is put in their place, and a rule's own characters are collapsed with
+        // the line itself drawn by `HorizontalRuleFragment` at layout time.
+        case .strikethrough: stillSpellsAStrikethroughMarker(text, at: range)
+        case .link: stillSpellsALinkDelimiter(text, at: range)
+        case .rule: stillSpellsARule(text, at: range)
+        // Never handled here, for the same structural reason as `.list`/`.blockquote`: a
+        // table's own re-validation reads the *whole* `GFMTable` shape back from the live
+        // characters (`GFMTable.parse`), not merely whether a marker range is still
+        // spelled - the coder's own branch inside `tableParagraph(at:storage:)` (Task 4).
+        case .table: false
         }
     }
 
@@ -459,6 +589,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
         let candidate = text.substring(with: range)
         return (candidate.count == 1 || candidate.count == 2) && candidate.allSatisfy { $0 == "*" }
+    }
+
+    /// Whether `range` still spells exactly `~~` - the emphasis re-check's twin, one
+    /// character pair over (ADR-0029 §D1).
+    private static func stillSpellsAStrikethroughMarker(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
+        let candidate = text.substring(with: range)
+        return candidate.count == 2 && candidate.allSatisfy { $0 == "~" }
+    }
+
+    /// Whether `range` still spells a whole thematic break - `MarkdownBlockParser.isRule`'s
+    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1).
+    private static func stillSpellsARule(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
+        return MarkdownBlockParser.isRule(text.substring(with: range))
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {

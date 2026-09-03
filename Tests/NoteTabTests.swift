@@ -92,19 +92,16 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     let firstTab = try #require(controller.focusedTab?.id)
     controller.toggleFold(1)
     controller.currentOutlineEntry = 1
-    controller.isReadingMode = true
 
     controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
 
     // The second tab starts clean, and asking the facade now asks *it*.
     #expect(controller.foldedEntries.isEmpty)
     #expect(controller.currentOutlineEntry == nil)
-    #expect(controller.isReadingMode == false)
 
     controller.focusTab(firstTab)
     #expect(controller.foldedEntries == [1])
     #expect(controller.currentOutlineEntry == 1)
-    #expect(controller.isReadingMode)
     controller.close()
 }
 
@@ -118,14 +115,12 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNote(at: "Nexion.md")
     let tab = try #require(controller.focusedTab?.id)
     controller.toggleFold(1)
-    controller.isReadingMode = true
 
     controller.openNote(at: "Progetti/Sospensione.md")
 
     #expect(controller.columns[0].tabs.count == 1)
     #expect(controller.focusedTab?.id == tab)
     #expect(controller.foldedEntries.isEmpty)
-    #expect(controller.isReadingMode == false)
     controller.close()
 }
 
@@ -175,7 +170,6 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     #expect(controller.isOpenNoteVisible == false)
     // The facade with nothing open answers the nothing-is-open value rather than trapping.
     #expect(controller.foldedEntries.isEmpty)
-    #expect(controller.isReadingMode == false)
     controller.close()
 }
 

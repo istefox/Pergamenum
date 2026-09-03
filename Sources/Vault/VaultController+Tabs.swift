@@ -21,12 +21,6 @@ extension VaultController {
         set { updateFocusedTab { $0.currentOutlineEntry = newValue } }
     }
 
-    /// Whether the focused tab shows its note rendered rather than as source.
-    var isReadingMode: Bool {
-        get { focusedTab?.isReadingMode ?? false }
-        set { updateFocusedTab { $0.isReadingMode = newValue } }
-    }
-
     func toggleFold(_ entry: Int) {
         updateFocusedTab { tab in
             if tab.foldedEntries.contains(entry) {

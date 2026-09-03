@@ -226,8 +226,6 @@ final class CommandActions {
             if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
                 navigation.pane = pane
             }
-        case .readingMode:
-            vault.isReadingMode.toggle()
         case .toggleInspector:
             navigation.isShowingInspector.toggle()
         case .runConformanceCheck:

@@ -87,6 +87,61 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-03: **ADR-0029 (un editor solo, sempre editabile; la tabella GFM come griglia vera)
+  implementato — tutte e quattro le probe di §D16 hanno ora una conferma umana agli atti.** Il
+  toggle Modifica/Lettura non esiste più da nessuna parte, `ShortcutCommand.readingMode`
+  (`Cmd+Shift+M`) compreso: chi lo aveva rimappato perde la voce in silenzio, che è il
+  comportamento voluto (§D13). Il pannello Diario ha perso la sua metà anteprima e il picker
+  `Layout` che le commutava (§D15); `DiaryTimeline`, il debounce da 600 ms e i suoi quattro
+  flush restano esattamente com'erano, perché ADR-0005 §D3-§D8 non è toccata da questa chain.
+  `MarkdownReadingView` è **conservata, non rimossa**: da qui in poi è codice morto per una
+  superficie di stampa o anteprima che nessuno ha ancora disegnato, con addosso il commento
+  di §D14 perché il prossimo lettore non la scambi per una dipendenza viva né la cancelli.
+  SPEC §14 ha ritirato la riga «Live preview completa | Esclusa v1» e SPEC §5 è riscritta di
+  conseguenza.
+
+  Le quattro probe di §D16, dette per quello che sono:
+
+  - **Probe 2 — fuoco annidato dentro un `NSTextAttachmentViewProvider`: passata, verificata a
+    mano.** Slice tracer-bullet dello Step 4.5, committata in `c2f24e7` («nested first responder
+    inside `NSTextAttachmentViewProvider`, confirmed working by hand check»). Era il gate vero e
+    non un controllo fra gli altri — un esito negativo avrebbe imposto l'Alternativa B o C, cioè
+    un'altra ADR, non una correzione a metà implementazione.
+  - **Probe 1 — tooltip su un range `[[` collassato: passata, verificata a mano.** Il tooltip
+    (`EditorDecorationDelegate+LinkRendering.swift`, `.toolTip` sul testo visibile del link)
+    mostra correttamente `pergamenum://note?title=...` al passaggio del mouse.
+  - **Probe 3 — `tracksTextAttachmentViewBounds` che alza il line fragment: passata, verificata
+    a mano.** Una tabella da tre righe di corpo dà un line fragment alto quanto la griglia intera,
+    e il testo sotto comincia correttamente sotto di essa.
+  - **Probe 4 — granularità di `Cmd+Z` per commit di cella: passata, verificata a mano.** Un
+    `Cmd+Z` annulla esattamente un commit di cella, contenuto compreso.
+
+  **Limite noto scoperto durante il probe 4, non un difetto di questa chain: il cursore non
+  lampeggia dopo il redirect di `NoteTextView+TableCaret.swift` (§D-sotto).** Premendo Invio
+  o Backspace subito accanto a una tabella (posizione trappola prima corretta da questa stessa
+  chain — vedi sotto), il testo viene inserito/cancellato correttamente nel punto giusto, ma
+  l'indicatore di inserimento non è visibile finché non si clicca o si digita qualcosa. Sei
+  tentativi di workaround applicativo (doppio `growToFitTheText`, `layoutViewport()`
+  incondizionato, `updateInsertionPointStateAndRestartTimer`, ciclo
+  resign/becomeFirstResponder, round-trip `moveLeft`/`moveRight` attraverso il dispatch reale
+  dei comandi AppKit) sono stati provati e verificati dal vivo, nessuno ha risolto — coerente
+  con un bug di piattaforma AppKit/TextKit 2 tuttora aperto (Apple FB17103305: l'indicatore
+  interno `NSTextInsertionIndicator` non segue in modo affidabile un cambio di selezione
+  programmatico, solo uno interattivo). Il codice applicativo è stato ripulito dai tentativi
+  inefficaci; resta solo la correzione della corruzione (confermata). Nessun rischio di
+  integrità dati: `selectedRange()`, `firstResponder` e il testo stesso sono sempre corretti.
+
+  **Bug di corruzione tabella-su-Invio, trovato e corretto durante l'hand-check del probe 4,
+  non coperto dalle quattro probe originali.** `EditorDecorationDelegate.shouldEnumerate`
+  esclude le righe delimitatore/corpo di una tabella dal layout, lasciando il solo paragrafo
+  header come elemento reale — e ogni click sotto o a fianco della griglia (compreso lo spazio
+  vuoto a destra dell'ultima colonna, quando i controlli riga/colonna sono più larghi delle
+  celle) risolve il cursore su una delle due stesse posizioni nel testo-sorgente (fine del
+  paragrafo header o suo `contentsEnd`). Premere Invio lì inseriva `\n` dentro il sorgente
+  grezzo della tabella, spezzandola in markdown non parsato. Corretto in
+  `NoteTextView+TableCaret.swift` (`NoteTextView.Coordinator.claimsTableCommand`, terzo
+  claimant nella catena `claimsCommand`), che ridirige Invio/Forward-Delete alla vera fine
+  della tabella. 7 test di regressione in `Tests/TableCaretTests.swift`.
 - 2026-09-01: **PG-056 (`type_body_length` a livello errore su `WorkspaceController.swift`)
   risolto con uno spostamento puro di codice, nessun cambio di comportamento.** Riverificato
   live prima di iniziare: `swiftlint` confermava l'errore ancora attuale, cresciuto da 383 a

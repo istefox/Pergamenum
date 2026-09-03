@@ -186,6 +186,11 @@ enum CardTextAttributes {
         case .strikethrough: .textSecondary
         case .frontmatter, .code, .annotation: .textSecondary
         case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun, .listMarker: .textTertiary
+        // The four ADR-0029 constructs (plan `2026-09-02-editor-wysiwyg-unification`, Task 1):
+        // Workspace `.text` cards are explicitly out of scope for the concealment mechanism
+        // itself (ADR §D17/CardTextView.swift stays untouched), but this table must still be
+        // exhaustive, so each gets the same shelf `.embedRun` already occupies above.
+        case .strikethroughMarker, .blockquoteMarker, .horizontalRule, .tableRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen

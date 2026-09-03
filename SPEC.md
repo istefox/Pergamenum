@@ -1,185 +1,165 @@
-# SPEC — PG-089 + PG-029 + PG-065
+# SPEC — Editor WYSIWYG unification (PG-018)
 
-**Topic slug:** pg-089-pg-029-pg-065-outline-drag-cursor
+**Topic slug:** editor-wysiwyg-unification
 
-Three grouped P3 findings, bundled into one hybrid chain at Stefano's explicit request. They
-share no code and are independent of one another; grouping is purely a scheduling convenience
-(one interview, one plan, one commit) — see TODO.md for each finding's own history.
+## 1. Objective
 
-## Objectives
+Collapse the note editor's two current modes — a source-visible editable view
+(`NoteTextView`, TextKit 2, with ADR-0018/0028's partial concealment) and a separate,
+non-editable, full block renderer (`MarkdownReadingView`/`MarkdownBlocksView`) toggled
+per tab via `isReadingMode` — into a single, always-editable, fully styled view. No
+Modifica/Lettura toggle remains. Everything the block renderer draws today, GFM tables
+included, must be achievable and editable inside the one surface. The same unification
+applies to the Diario pane (ADR-0005 §D2), whose reading half currently sits beside an
+unchanged source editor on the same premise this SPEC removes.
 
-1. **PG-089** — during an outline-section drag (PG-019), hovering a row with no valid drop
-   target shows macOS's default "+" (copy) cursor instead of a "not allowed" one. A first
-   attempt (`DropDelegate.dropUpdated(info:) -> .forbidden`) fired correctly but did not change
-   the system cursor, and was reverted. This chain retries with a lower-level `NSCursor` push,
-   the pattern already used elsewhere in this app (`BoardHandles.swift`, `BoardCropEditor.swift`,
-   `WorkspacePaneDivider.swift`, `EditorColumns.swift`) for cursor feedback outside a drag
-   session — the open question is whether it also works *during* a SwiftUI `.draggable`/
-   `.dropDestination` session, which none of those four precedents exercise.
-2. **PG-029** — nothing on screen shows that a note draft is parked (PG-028: stepping out of the
-   composer keeps title/folder/topic/template for the next `Cmd+N`). Add a badge on the
-   "Nuova nota" toolbar button (`VaultBrowser.swift`) when a draft is parked.
-3. **PG-065** — no wrapper type distinguishes a board-file path from a folder path;
-   `WorkspaceBoardResolution.unique(String)` (`Sources/Core/Tasks/WorkspaceBoardResolver.swift`)
-   is the reviewer-identified natural entry point. This chain introduces the wrapper there only
-   — `WorkspaceItemKind`, `WorkspaceTree.Node.Kind`, `WorkspaceSelection` and
-   `PendingWorkspaceDelete` are explicitly left untouched (scoped down from the reviewer's
-   broader four-type suggestion, Stefano's choice).
+## 2. Why (context)
 
-## Scope
+`ADR-0018` ("The editor hides the syntax it can draw") already established the
+mechanism — paragraph substitution at identical character length, reveal-on-caret — but
+scoped it deliberately to three constructs ("three named constructs, not the rule"):
+heading `#`, emphasis `*`/`_`, and inline image/PDF embeds. `ADR-0028` added list
+markers on the same mechanism. `SPEC §14` (the project's authoritative spec,
+`docs/20260811_Pergamenum_SpecApp.md`) still rules out "live preview completa" as the
+highest-cost item in the project, with the stated reasoning "source mode con stile è
+sufficiente" — a reasoning this feature directly contests, having now shipped three
+years... three weeks of evidence that the mechanism holds for more than three
+constructs. `ADR-0005 §D2` built the Diario pane on "the pane sits beside an unchanged
+source editor" — a premise this feature removes for the note editor and, per this
+session's interview, for the Diario pane as well.
 
-In scope:
-- `Sources/Features/Editor/OutlinePane.swift` — cursor feedback during outline-section drag.
-- `Sources/Vault/VaultController.swift`, `Sources/Vault/VaultController+Notes.swift` — expose
-  whether a draft is parked.
-- `Sources/Features/Editor/VaultBrowser.swift` — badge on the "Nuova nota" toolbar button.
-- `Sources/Core/Tasks/WorkspaceBoardResolver.swift` — new `BoardPath`/`FolderPath` wrapper types,
-  `WorkspaceBoardResolution` cases updated to carry `BoardPath` instead of `String`.
-- Every call site of `WorkspaceBoardResolution.unique(String)`'s payload (read, not redesigned).
+This SPEC's ADR must explicitly supersede `ADR-0005 §D2` and `ADR-0018`'s scope
+boundary, and amend `SPEC §14` and (already partially amended this session) `SPEC §5`.
 
-Out of scope:
-- `WorkspaceItemKind`, `WorkspaceTree.Node.Kind`, `WorkspaceSelection`, `PendingWorkspaceDelete`
-  — stay on bare `String`/existing shape (PG-065's own reviewer note: "the gap is the missing
-  conversion between them, not any one type's own design" — this chain narrows to the first,
-  lowest-risk introduction site only).
-- A "riprendi bozza" row in the note list (considered and declined for PG-029 — badge only).
-- PG-090 (folding an Outline heading doesn't hide nested children from the index) — unrelated,
-  already tracked separately.
+## 3. Scope
 
-## Stack
+**In scope:**
+- Extend paragraph-substitution concealment to: blockquote `>` (full nesting), horizontal
+  rule `---`, wikilink/link bracket concealment (with hover tooltip showing the resolved
+  target), strikethrough `~~`.
+- GFM tables as a real, editable cell grid — not a fourth delimiter-hiding case. Once text
+  forms a valid table, the raw pipe syntax is no longer directly editable as text; all
+  editing (cell content, add/remove row, add/remove column) goes through the grid. A new
+  table is created only via a slash-menu/Inserisci command (never by typing raw pipes).
+  Pasting a markdown table onto the editor renders it as a grid immediately, matching the
+  existing "paste URL → link" pattern (SPEC §5).
+- The Diario pane: same unification, its separate rendering half removed, editor becomes
+  the single view there too.
+- Removal of the per-tab `isReadingMode` toggle and its UI (`NoteTabBar.swift:70`,
+  `VaultBrowser.swift:132`).
+- `MarkdownReadingView`/`MarkdownBlocksView`: kept, decoupled from the toggle, reserved
+  for a future export/print feature (not designed here).
+- UI tests that currently exercise the mode toggle (same family as `PG-031`) updated to
+  match the new single-mode reality.
+- ADR superseding `ADR-0005 §D2` and `ADR-0018`'s "three constructs" boundary; amendment
+  of SPEC §14 and (further) SPEC §5.
 
-No new dependency. Swift 6, SwiftUI + AppKit interop (`NSCursor`), matching
-`Sources/Features/Workspace/BoardHandles.swift`'s existing push/pop pattern.
+**Out of scope:**
+- Workspace `.text` cards (ADR-0027/0028): already single-mode with no reading toggle,
+  nothing to unify there.
+- Any new markdown construct beyond the ones named above (e.g. footnotes, definition
+  lists) — not part of this app's CommonMark+GFM baseline today.
+- Export/print feature design for the retained block renderer.
 
-## Architecture
+**Phasing (single ADR, single chain, staged plan):** the implementation plan orders work
+by increasing risk — simple delimiter-style constructs first (blockquote, hr, link/wikilink
+concealment, strikethrough), then the table grid, then the Diario pane unification last —
+each phase verifiable on screen before the next starts, per this project's standing
+"one milestone at a time" convention.
 
-### PG-089 — cursor during outline-section drag
+## 4. Stack / constraints
 
-The existing drag mechanism (`OutlinePane.swift`, from the PG-019 chain) uses SwiftUI's
-`.draggable`/`.dropDestination` (Transferable-based), not `NSDraggingSource`. The four existing
-`NSCursor.push()/.pop()` precedents in this repo all live on plain `.onHover`, outside any drag
-session — `.onHover` may not fire, or may fire inconsistently, once AppKit's own drag session
-takes over cursor ownership, which is the likely reason the first attempt's `DropProposal
-.forbidden` had no visible effect (`DropProposal` only ever offered a copy/move/forbidden
-*badge* on the drag image, never full cursor replacement, and neither approach has been
-confirmed to fight a live `NSDraggingSession`'s own cursor management successfully in this
-SDK).
+- Swift 6, SwiftUI + AppKit (`NSViewRepresentable`), TextKit 2 `NSTextView`
+  (`NoteTextView`), macOS 26 Tahoe+.
+- Reuses `EditorDecorationDelegate` (`NSTextContentStorageDelegate`) — the existing
+  paragraph-substitution mechanism from ADR-0018 §D1 / ADR-0028 §D3. A protected
+  interface (`.claude/protected-interfaces`).
+- `MarkdownStyler` supplies the `Span` classification the delegate substitutes on; new
+  `Span` cases needed for each newly-concealed construct, same shape as the existing
+  `.heading`/`.bold`/`.italic`/list cases.
+- No new third-party dependency (GRDB is the only one this repo carries; a table grid
+  must be built on TextKit 2/AppKit primitives, not a new library).
+- File over app: the source markdown stays the single stored representation; a table's
+  pipe syntax on disk is the source of truth, the grid is a view over it, exactly as the
+  concealed heading `#`/emphasis markers are today.
 
-Approach: track drag-session state (`draggingEntry`, already present) plus per-row hover state,
-and push `NSCursor.operationNotAllowed` when hovering a row that is not a valid drop target
-while `draggingEntry != nil`, popping when the hover ends or the drag ends. If, after
-implementation, manual verification shows no visible cursor change (same outcome as the first
-attempt), the change is reverted cleanly and PG-089 is re-closed as attempted-and-reverted a
-second time, documented in TODO.md exactly as the first attempt was — this is an accepted,
-pre-agreed possible outcome, not a chain failure.
+## 5. Architecture (high level — the ADR resolves the details)
 
-### PG-029 — parked-draft badge
+- **Concealment extension (low risk):** four new `Span` cases in `MarkdownStyler`, four
+  new hidden-marker branches in `EditorDecorationDelegate`, following the exact shape of
+  the existing heading/emphasis/embed cases. Blockquote nesting draws one bar per level.
+  Link/wikilink concealment adds a hover-tooltip mechanism (new, not present for the
+  three existing constructs, which need none since they reveal on caret instead of
+  requiring a hover).
+- **Table grid (high risk, new mechanism):** a table's source lines are represented as an
+  `NSTextAttachment`-hosted grid view spanning the paragraph range that holds the pipe
+  syntax, edited only through that view (cell text fields, row/column add/remove
+  commands) — never through direct text editing of the pipe characters. Edits to the grid
+  rewrite the corresponding source lines through the same `shouldChangeText`/
+  `beginEditing`/`replaceCharacters`/`endEditing` atomic path the embed resize/delete
+  mechanisms already use (ADR-0019 precedent), so each structural edit (cell edit, row
+  add/remove, column add/remove) is one undo step. Slash-menu "Tabella" command inserts an
+  empty N×M table at the caret. A pasted markdown table is recognized and rendered as a
+  grid immediately (reuses the existing paste-recognition path SPEC §5 already describes
+  for URLs).
+- **Diario pane:** its rendering half is removed; the pane hosts the same unified editor
+  the note view uses. ADR-0005's other decisions (unrelated to the reading/source split)
+  are untouched.
+- **Toggle removal:** `isReadingMode`, `NoteTabBar`'s toggle control, and
+  `VaultBrowser.swift:132`'s `Toggle` are removed. `MarkdownReadingView`/
+  `MarkdownBlocksView` remain in the tree, unreferenced by the toggle, explicitly reserved
+  for a future export/print feature.
 
-`VaultController.noteDraft: NoteDraft?` (`VaultController.swift`) already holds the draft;
-`isComposingNote: Bool` is true while the composer sheet/pane is shown. A draft is "parked"
-exactly when `noteDraft != nil && !isComposingNote` (the existing private `parkedDraft`
-computed property in `VaultController+Notes.swift` already expresses "has a non-empty title";
-combine it with `!isComposingNote` to mean "and nobody's looking at it right now").
+## 6. Data model
 
-Add a public `var hasParkedDraft: Bool` to `VaultController` (or widen `parkedDraft`'s access
-and combine at the call site — coder's choice, whichever matches this file's existing visibility
-conventions). `VaultBrowser.swift`'s "Nuova nota" toolbar button (`Button { vault.beginNewNote()
-} label: { ... }`) gets a small badge (SF Symbol overlay or `.badge()`-style dot, matching this
-app's existing toolbar/badge visual language — no new design token) driven by that boolean.
+No new persisted state. The markdown source text remains the sole on-disk
+representation for every construct in scope, including tables (GFM pipe syntax). No
+index schema change (`IndexCache.schemaVersion` untouched — this is a rendering-layer
+feature, not a data-layer one).
 
-Clears when the draft is picked back up (`beginNewNote()` sets `isComposingNote = true`) or
-discarded (`endNewNote()`, which already nils `noteDraft`) — both already flip the boolean's
-inputs, so no new clearing logic is needed beyond reading `hasParkedDraft` reactively.
+## 7. UI flows
 
-### PG-065 — `BoardPath`/`FolderPath` wrapper
+- Opening any note or Diario entry: single view, always fully styled, always editable.
+  No mode indicator, no toggle.
+- Typing inside a concealed construct's paragraph reveals its syntax (existing
+  ADR-0018 §D2 rule, unchanged, extended to the four new constructs).
+- Hovering a concealed link/wikilink shows a tooltip with the resolved target.
+- Inserting a table: slash-menu or Inserisci menu command → empty N×M grid at the caret.
+- Editing a table: click into a cell to edit its text; row/column add-remove via
+  in-grid controls (exact affordance left to the architect/coder, following this app's
+  existing embed-resize-handle visual language where applicable).
+- Pasting a markdown table: renders as a grid immediately, same turn.
 
-Two small wrapper types in `Sources/Core/Tasks/WorkspaceBoardResolver.swift` (or a new sibling
-file in the same directory, coder's choice on file organization):
+## 8. Edge cases
 
-```swift
-struct BoardPath: Hashable, Sendable { let value: String }
-struct FolderPath: Hashable, Sendable { let value: String }
-```
+- A fenced code block containing something that looks like a table (pipes inside
+  ```lines```) must never be mistaken for a real table — table recognition only applies
+  outside fenced code, same rule the existing code-fence handling already enforces for
+  headings.
+- A malformed/partial pipe table (inconsistent column counts, no separator row) is left
+  as plain text, never force-rendered as a broken grid.
+- Undo/redo: each table structural edit (cell edit, row add/remove, column add/remove) is
+  exactly one `Cmd+Z` step, matching every other structured edit in this app (outline
+  move, embed resize, crop).
+- An external edit (FSEvents reload, "Ricarica da disco") replacing note text under an
+  open table grid must not corrupt the grid — same reload-replaces-whole-buffer discipline
+  ADR-0018 §D3 already establishes for embeds.
+- Blockquote nesting (`>`, `>>`, `>>>`, ...) draws one bar per level, unbounded.
 
-`WorkspaceBoardResolution.unique(String)` becomes `.unique(BoardPath)`. `resolve(_:in:)` and
-`board(inFolder:among:)` are updated to construct/return `BoardPath`; `board(inFolder:among:)`'s
-`folder` parameter becomes `FolderPath` (or stays `String` if the coder finds that call sites
-overwhelmingly pass a raw string with no folder-typed origin yet — judgment call, state which
-was chosen and why). Every call site reading `.unique(let path)`'s payload updates from `String`
-to `.value` access, or gains a small `.value` read at the point the raw string is actually
-needed (e.g. handing it to `CanvasStore`/file APIs that still take `String`).
+## 9. Success criteria
 
-No conversion between `BoardPath`/`FolderPath` and the four out-of-scope union types is
-introduced — they keep using bare `String` until (if ever) a future chain widens the pattern,
-per Stefano's explicit scope choice.
-
-## Data model
-
-No persisted data model changes. `BoardPath`/`FolderPath` are in-memory wrapper types only, not
-serialized, not stored on disk, not part of any cache schema (`IndexCache.schemaVersion`
-untouched).
-
-## API
-
-No connector surface (`VaultAPI`, CLI, MCP) touched by any of the three findings — all three are
-UI-affordance or internal-type-safety changes with no new capability a connector would expose.
-
-## UI flows
-
-- **PG-089**: user drags an Outline section row; while hovering a row that is not a valid
-  insertion point, the cursor shows "not allowed" instead of the default copy "+".
-- **PG-029**: user types a title in the note composer, steps out without saving (draft parked);
-  the "Nuova nota" toolbar button shows a small badge. Pressing `Cmd+N` (or clicking the badged
-  button) reopens the composer with the draft restored and the badge clears; discarding the
-  draft (Esc / explicit cancel, whichever `endNewNote()` is already wired to) also clears it.
-- **PG-065**: no user-visible UI change — internal type safety only.
-
-## Edge cases
-
-- **PG-089**: dragging over the insertion-line drop zones themselves (valid targets) must keep
-  the normal drag cursor — only rows with no `.dropDestination` underneath get the "not allowed"
-  cursor. Cursor must pop cleanly if the drag ends outside the Outline pane entirely (window
-  drag-out, Esc-cancel) — no permanently "stuck" forbidden cursor after the drag ends.
-- **PG-029**: a draft with an empty title is never "parked" (matches existing `parkedDraft`
-  threshold) — no badge for a folder-only or template-only draft with no title typed.
-- **PG-065**: `WorkspaceBoardResolution.ambiguous`/`.notFound` cases carry no path payload and
-  are unaffected. Every existing call site must compile against `BoardPath` instead of `String`
-  — a build break at any missed call site is expected and must be fixed, not routed around with
-  an implicit `String`-convertible conformance (that would defeat the type-safety purpose of the
-  wrapper).
-
-## Success criteria
-
-- [ ] R-01 — Hovering an Outline row with no valid drop target during a section drag shows
-      `NSCursor.operationNotAllowed` instead of the system default copy cursor.
-- [ ] R-02 — Hovering a valid insertion-line drop zone during the same drag still shows the
-      normal drag-copy cursor feedback (no regression to PG-019's existing behavior).
-- [ ] R-03 — The cursor is restored to normal when the drag ends, by drop or by cancellation,
-      with no stuck "not allowed" cursor afterward.
-- [ ] R-04 — If manual verification shows the NSCursor approach also has no visible effect, the
-      change is cleanly reverted and TODO.md documents this as a second attempted-and-reverted
-      outcome for PG-089, closing this requirement as "not achieved, documented" rather than
-      leaving a half-working change in the tree (no-test: manual visual judgment call on whether
-      the cursor changed, not something a unit test can assert).
-- [ ] R-05 — `VaultController` exposes whether a note draft is currently parked (has a
-      non-empty title and the composer is not showing).
-- [ ] R-06 — The "Nuova nota" toolbar button in `VaultBrowser.swift` shows a badge when a draft
-      is parked, and no badge otherwise.
-- [ ] R-07 — The badge disappears once the parked draft is picked back up via `Cmd+N`/the
-      toolbar button, or explicitly discarded.
-- [ ] R-08 — `WorkspaceBoardResolution.unique` carries a `BoardPath` wrapper instead of a bare
-      `String`; `WorkspaceBoardResolver`'s functions are updated accordingly.
-- [ ] R-09 — Every existing call site of `WorkspaceBoardResolution.unique`'s payload compiles
-      against the new `BoardPath` type with no implicit string-convertible bypass.
-- [ ] R-10 — `WorkspaceItemKind`, `WorkspaceTree.Node.Kind`, `WorkspaceSelection` and
-      `PendingWorkspaceDelete` are left unmodified by this chain (no-test: a scope boundary
-      confirmed by reading the diff, not an assertable runtime behavior).
-- [ ] R-11 — Unit suite green (`bash .claude/test-cmd`), including new/updated tests for
-      `WorkspaceBoardResolver`'s `BoardPath`-returning functions and for `VaultController`'s
-      parked-draft boolean.
-- [ ] R-12 — `xcodebuild build` succeeds with no new SwiftLint error-level violations.
-- [ ] R-13 — Manual hand-check on a throwaway vault (Definition of Done, blocking): drag an
-      Outline section and observe the cursor over an invalid row (R-01/R-02/R-03); park a draft
-      by stepping out of the composer and observe the toolbar badge, then clear it via Cmd+N and
-      via discard (R-06/R-07) (no-test: visual/manual confirmation, not something a unit test
-      can assert).
+- [ ] R-01 — Opening any note shows one always-editable, fully styled view; no Modifica/Lettura toggle is present anywhere in the note editor UI
+- [ ] R-02 — `isReadingMode` and its toggle controls (`NoteTabBar.swift`, `VaultBrowser.swift`) are removed from the codebase
+- [ ] R-03 — Blockquote `>` (unbounded nesting), horizontal rule `---`, wikilink/link brackets, and strikethrough `~~` conceal their syntax outside the caret's paragraph, following the same reveal-on-caret rule as headings/emphasis (ADR-0018 §D2)
+- [ ] R-04 — A concealed link/wikilink shows its resolved target in a hover tooltip
+- [ ] R-05 — A GFM table renders as an editable cell grid; cell content, row add/remove, and column add/remove are each editable through the grid and never through direct text editing of pipe characters
+- [ ] R-06 — A new table is created only via a slash-menu/Inserisci command, inserting an empty N×M grid
+- [ ] R-07 — Pasting a markdown table onto the editor renders it as an editable grid in the same turn
+- [ ] R-08 — Each table structural edit (cell edit, row add/remove, column add/remove) is exactly one `Cmd+Z` undo step
+- [ ] R-09 — A fenced code block's pipe-containing lines are never rendered as a table
+- [ ] R-10 — A malformed pipe table (inconsistent columns, no separator row) renders as plain text, not a broken grid
+- [ ] R-11 — The Diario pane hosts the same unified editor, with no separate reading-mode rendering left beside it
+- [ ] R-12 — `MarkdownReadingView`/`MarkdownBlocksView` remain in the codebase, unreferenced by any toggle, with a code comment or ADR note stating they are reserved for a future export/print feature (no-test: this is a documentation/retention decision, not an assertable behavior)
+- [ ] R-13 — UI tests exercising the removed mode toggle (the `PG-031` family) are updated to match the single-mode reality; `scripts/uitests.sh` passes before merge (no-test: this criterion is verified by running the existing suite, not by a new assertion)
+- [ ] R-14 — The ADR for this feature explicitly states it supersedes `ADR-0005 §D2` and `ADR-0018`'s three-construct scope boundary (no-test: an ADR content requirement, not a runtime behavior)
+- [ ] R-15 — `docs/20260811_Pergamenum_SpecApp.md` §14 is amended to reflect that "live preview completa" is no longer excluded, and §5 is updated to drop the two-mode description this session added (no-test: a documentation amendment, not a runtime behavior)

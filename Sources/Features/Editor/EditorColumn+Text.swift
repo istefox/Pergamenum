@@ -172,20 +172,9 @@ extension EditorColumnView {
     /// An external edit arrived while this note had unsaved changes. Neither side is
     /// discarded without the user choosing (ADR-0001 §D3.4).
 
-    /// The note as reading mode draws it, pictures and transcluded notes included.
-    func reading(_ note: VaultController.OpenNote) -> some View {
-        MarkdownReadingView(
-            text: note.text,
-            onFollowLink: follow(title:),
-            notePath: note.relativePath,
-            vaultRoot: vault.root,
-            thumbnails: vault.thumbnails,
-            transclusions: transclusionSource,
-            queries: viewQuerySource,
-            scrollToEntry: pendingJump?.ordinal,
-            onScrollApplied: { pendingJump = nil }
-        )
-    }
+    // `reading(_:)` built a `MarkdownReadingView` here until ADR-0029 §D13 removed the
+    // Modifica/Lettura choice it was the other half of. The view itself is retained,
+    // unreferenced (R-12, §D14); this column has one editor and draws it unconditionally.
 
     /// Where a `pergamenum-view` block gets its rows (ADR-0009 §D4).
     ///
@@ -193,6 +182,12 @@ extension EditorColumnView {
     /// global search does, and the reason §D7 states the cost as a rule rather than a number.
     /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
     /// not when a key is pressed.
+    ///
+    /// **Unreferenced since ADR-0029 §D13**, and left standing rather than deleted, for the
+    /// same reason `MarkdownReadingView` is: its only caller was `reading(_:)`, which handed
+    /// it to that view. It is the app's only `ViewQuerySource`, so whichever surface renders
+    /// an in-note `pergamenum-view` fence next will want exactly this - the Viste pane does
+    /// not, it calls `ViewEvaluator.evaluate` directly (`ViewsPane.swift:195`).
     var viewQuerySource: ViewQuerySource {
         ViewQuerySource(
             evaluate: { block in

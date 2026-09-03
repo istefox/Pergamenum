@@ -501,6 +501,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
+- **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -566,3 +567,55 @@ Key architectural decisions:
   rendering in both surfaces, unrelated to the new list-glyph mechanism.
 
 Detail: `docs/adr/0028-wysiwyg-markdown-in-workspace.md`.
+
+## Decisions from the editor WYSIWYG unification chain (ADR-0029)
+
+Collapses the note editor's Modifica/Lettura toggle into one always-editable, always-styled
+view and makes a GFM table a real editable grid: `docs/adr/0029-editor-wysiwyg-unification.md`.
+Supersedes ADR-0005 §D2 (Diario's "reading sits beside an unchanged source editor" premise) and
+ADR-0018's "three named constructs, not the rule" scope boundary — ADR-0018's mechanism itself
+(§D1 length-preserving substitution, §D2 reveal-on-caret, §D3 display-only, §D5 caret rules,
+§D7 the one setting) is untouched, this chain is that mechanism applied further.
+
+Key architectural decisions:
+- **Four more constructs join ADR-0018's substitution mechanism unchanged** — blockquote `>`
+  (substituted `▏` per level, character-for-character, so nesting is unbounded for free — the
+  file's own character count is the depth), strikethrough `~~` (exact twin of `.emphasisMarker`),
+  link/wikilink brackets (hidden marker + hover tooltip via `NSToolTipAttributeName`, a hook this
+  repo had never called), horizontal rule (the one case needing the heading-fold hook instead,
+  since three characters cannot length-preserve into a full-width line).
+- **A GFM table is one attachment anchored to its header paragraph, with the delegate's
+  enumeration hook refusing to lay out the body rows** — not a fourth length-preserving delimiter
+  substitution. This is why ADR-0018 §D4's "tables are out of reach at sane cost" verdict no
+  longer holds: that verdict assumed the grid had to fit inside one length-preserved paragraph.
+- **The grid is a real `NSView` via `NSTextAttachmentViewProvider`** (`NSTextAttachment.h`'s own
+  "this is where subclasses create their custom view hierarchy" hook, `YES` by default,
+  previously unused in this repo) — a genuine subview in the key-view loop, not a rectangle kept
+  aligned by hand. Created and owned by the Coordinator, handed to `EditorDecorationDelegate` as
+  a finished value — the delegate cannot be `@MainActor` (Swift 6 refuses both conformances) and
+  must own no view itself, the same crossing `embedRenditions` already makes.
+- **Cell edits commit on Tab/blur/Enter, never per keystroke** — each cell is its own scoped
+  text-editing session; the source markdown rewrite happens once per commit through the existing
+  `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` atomic path (ADR-0019
+  precedent), giving one `Cmd+Z` per structural edit.
+- **`MarkdownReadingView` is retained as dead code, not removed** — only the toggle goes.
+  `MarkdownBlocksView` is not dead code either way: `TranscludedNoteView.swift` still draws every
+  `![[nota]]` rendition with it, and `NoteExporter.swift` already uses it for HTML export.
+  `MarkdownReadingView` has no remaining call site after the toggle's removal, but stays in the
+  tree, commented per ADR-0029 §D14, as the seam for a future preview/print surface nobody has
+  designed yet — deleting it was explicitly out of scope for this chain.
+- **The toggle lived in six places, not the two the SPEC named** — `NoteTabBar.swift`,
+  `VaultBrowser.swift`, `MenuCommands.swift`, `CommandActions.swift` (×2),
+  `EditorColumnView.swift`, `VaultController+Tabs.swift`, `NoteTab.swift`, and
+  `ShortcutCommand.readingMode` (`Cmd+Shift+M`) — all removed together, not just the two
+  originally cited.
+- **Workspace `.text` cards are explicitly out of scope and structurally protected** — they share
+  `EditorDecorationDelegate` with the note editor (ADR-0028 §D1), so this chain's card exclusion
+  is not free: the card's own span switch (`CardTextView.swift`) is the seam that keeps a live
+  `NSView` grid from ever landing in a card, whose text view is deallocated on culling-rect
+  crossings.
+- **Blockquote nesting diverges between the editor and `MarkdownBlocksView`** — the editor draws
+  one bar per level (unbounded), `MarkdownBlocksView` still strips exactly one `>`. Named as
+  known debt, not fixed by this chain.
+
+Detail: `docs/adr/0029-editor-wysiwyg-unification.md`.

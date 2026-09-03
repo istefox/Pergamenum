@@ -63,11 +63,9 @@ struct EditorColumnView: View {
                     findBar(note)
                     Divider()
                 }
-                if tab?.isReadingMode == true {
-                    reading(note)
-                } else {
-                    editing(note)
-                }
+                // One editor, unconditionally (ADR-0029 §D13). A `if tab?.isReadingMode`
+                // branch drew `reading(note)` here until the mode itself was removed.
+                editing(note)
             } else {
                 emptyState
             }

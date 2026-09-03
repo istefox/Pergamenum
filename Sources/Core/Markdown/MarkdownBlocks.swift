@@ -57,6 +57,22 @@ enum MarkdownBlock: Equatable, Sendable {
     }
 }
 
+extension MarkdownBlock.Table.Column {
+    /// The reading view's own spelling of what `GFMTable` parsed (ADR-0029 §D10).
+    ///
+    /// Two enums rather than one shared: `MarkdownBlock.Table` is a value the reading view
+    /// and the HTML exporter already consume, and collapsing it onto `GFMTable`'s would be a
+    /// change to that shape for no gain - the extraction's promise is one *grammar*, not one
+    /// type.
+    init(_ alignment: GFMTable.Alignment) {
+        switch alignment {
+        case .leading: self = .leading
+        case .center: self = .center
+        case .trailing: self = .trailing
+        }
+    }
+}
+
 enum MarkdownBlockParser {
     /// Splits a note body into blocks. Frontmatter is expected to be gone already:
     /// `NoteDocument.parse` owns that, and reading mode shows the note, not its
@@ -125,83 +141,22 @@ enum MarkdownBlockParser {
     ///
     /// Consumes nothing unless it returns a table, so a paragraph that happens to
     /// contain a pipe is handed back untouched.
+    ///
+    /// The grammar itself moved to `GFMTable` (ADR-0029 §D10): the editor needs the same
+    /// recognition *with ranges*, and a second recogniser is exactly what ADR-0018 §D1
+    /// refused for the marker spans. `MarkdownBlock.Table`'s own shape is unchanged - only
+    /// the alignment enum is translated on the way out, one case for one case.
     private static func table(
         header: String,
         consuming lines: inout ArraySlice<String>
     ) -> MarkdownBlock? {
-        guard header.contains("|") else { return nil }
-        guard let delimiter = lines.first?.trimmingCharacters(in: .whitespaces) else { return nil }
-        let columns = cells(in: header)
-        guard let alignments = alignments(in: delimiter), alignments.count == columns.count else {
-            return nil
-        }
-
-        lines = lines.dropFirst()
-        var rows: [[String]] = []
-        // The table runs to the first blank line or the first line with no pipe in it,
-        // which is where GFM ends one.
-        while let next = lines.first?.trimmingCharacters(in: .whitespaces),
-              !next.isEmpty, next.contains("|") {
-            lines = lines.dropFirst()
-            rows.append(fit(cells(in: next), to: columns.count))
-        }
-        return .table(MarkdownBlock.Table(header: columns, alignments: alignments, rows: rows))
-    }
-
-    /// The column alignments a delimiter row declares, or nil when the line is not one.
-    private static func alignments(in line: String) -> [MarkdownBlock.Table.Column]? {
-        let parts = cells(in: line)
-        guard !parts.isEmpty else { return nil }
-        var result: [MarkdownBlock.Table.Column] = []
-        for part in parts {
-            let left = part.hasPrefix(":")
-            let right = part.hasSuffix(":")
-            let dashes = part.dropFirst(left ? 1 : 0).dropLast(right && part.count > 1 ? 1 : 0)
-            guard !dashes.isEmpty, dashes.allSatisfy({ $0 == "-" }) else { return nil }
-            switch (left, right) {
-            case (true, true): result.append(.center)
-            case (false, true): result.append(.trailing)
-            default: result.append(.leading)
-            }
-        }
-        return result
-    }
-
-    /// Splits a row on its unescaped pipes, dropping the optional outer ones.
-    private static func cells(in row: String) -> [String] {
-        var body = row.trimmingCharacters(in: .whitespaces)[...]
-        if body.hasPrefix("|") { body = body.dropFirst() }
-        if body.hasSuffix("|"), !body.hasSuffix("\\|") { body = body.dropLast() }
-
-        var result: [String] = []
-        var current = ""
-        var escaped = false
-        for character in body {
-            if escaped {
-                // Only `\|` is an escape here; anything else keeps its backslash,
-                // so a Windows path in a cell survives the trip.
-                if character != "|" { current.append("\\") }
-                current.append(character)
-                escaped = false
-            } else if character == "\\" {
-                escaped = true
-            } else if character == "|" {
-                result.append(current.trimmingCharacters(in: .whitespaces))
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        if escaped { current.append("\\") }
-        result.append(current.trimmingCharacters(in: .whitespaces))
-        return result
-    }
-
-    /// Pads a short row and drops a long one's extra cells, as GFM specifies.
-    private static func fit(_ row: [String], to width: Int) -> [String] {
-        if row.count == width { return row }
-        if row.count > width { return Array(row.prefix(width)) }
-        return row + Array(repeating: "", count: width - row.count)
+        guard let parsed = GFMTable.parsed(header: header, rest: lines) else { return nil }
+        lines = lines.dropFirst(parsed.bodyLines)
+        return .table(MarkdownBlock.Table(
+            header: parsed.header,
+            alignments: parsed.alignments.map(MarkdownBlock.Table.Column.init),
+            rows: parsed.rows
+        ))
     }
 
     /// The lines seen so far that have not yet become a block.
@@ -283,7 +238,15 @@ enum MarkdownBlockParser {
 
     // MARK: Line shapes
 
-    private static func isRule(_ line: String) -> Bool {
+    /// Whether a line is a thematic break: three or more of `-`, `*` or `_`, optionally
+    /// space-separated.
+    ///
+    /// Not `private`: `MarkdownStyler.spans(inLine:at:in:)` emits `.horizontalRule` from
+    /// this exact predicate (ADR-0029 §D1), and `EditorDecorationDelegate.stillSpellsARule`
+    /// re-asks it of the live characters at layout time. A second spelling of "this line is
+    /// a rule" is what would let the reading view and the editor disagree about a `- - -`,
+    /// the same argument `CodeFence.marks` was extracted on.
+    static func isRule(_ line: some StringProtocol) -> Bool {
         let stripped = line.replacingOccurrences(of: " ", with: "")
         guard stripped.count >= 3 else { return false }
         return stripped.allSatisfy { $0 == "-" } || stripped.allSatisfy { $0 == "*" }

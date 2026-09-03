@@ -67,7 +67,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneTags
     case paneViews
     case paneStarred
-    case readingMode
+    // `readingMode` was here, with a `Cmd+Shift+M` default (ADR-0029 §D13). Removing a case
+    // is not the same operation as moving one, which ADR-0005 §D8 forbids: the raw values are
+    // the keys of the overrides file, and `ShortcutStore.decode` already skips a key it does
+    // not recognise, so a rebound `Cmd+Shift+M` becomes an orphan entry rather than a crash -
+    // which is correct, because the command it named no longer exists.
     /// Backlinks, «task collegati» and the unlinked mentions of ADR-0012 D9 all live in
     /// the inspector, which had a toolbar button and nothing else.
     case toggleInspector
@@ -132,7 +136,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .insertWikilink, .insertRelated:
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
-             .paneDiary, .paneViews, .paneStarred, .readingMode, .toggleInspector,
+             .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
@@ -182,7 +186,6 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneTags: "Vai a Tag"
         case .paneViews: "Vai a Viste"
         case .paneStarred: "Vai a Preferite"
-        case .readingMode: "Modalità lettura"
         case .toggleInspector: "Ispettore"
         case .runConformanceCheck: "Verifica conformità"
         case .foldSection: "Ripiega la sezione"
@@ -272,7 +275,6 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // had changed.
         case .paneViews: KeyBinding("8", [.command, .control])
         case .paneStarred: KeyBinding("9", [.command, .control])
-        case .readingMode: KeyBinding("m", [.command, .shift])
         case .toggleInspector: KeyBinding("i", [.command, .option])
         case .runConformanceCheck: KeyBinding("l", [.command, .control])
         // The keys Xcode uses for the same thing. ⌘← and ⌘→ are already the

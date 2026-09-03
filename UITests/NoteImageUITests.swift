@@ -52,7 +52,7 @@ final class NoteImageUITests: XCTestCase {
         try? FileManager.default.removeItem(at: stateBase)
     }
 
-    func testReadingModeDrawsTheEmbeddedPictureAndSaysWhenOneIsMissing() throws {
+    func testTheEditorDrawsTheEmbeddedPictureAndSaysWhenOneIsMissing() throws {
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         let note = app.staticTexts.matching(
             NSPredicate(format: "value == %@", "20260814_Nota_Immagine")
@@ -60,41 +60,22 @@ final class NoteImageUITests: XCTestCase {
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
         note.click()
 
-        // `hidesMarkup` is on by default, so the editor draws the picture in the run's
-        // own place too (ADR-0018 slice 3) - Lettura is no longer the only mode that does.
-        XCTAssertTrue(app.radioButtons["Lettura"].waitForExistence(timeout: 5))
-        XCTAssertTrue(editorEmbed.waitForExistence(timeout: 5), "l'editor non sta disegnando l'immagine")
-
-        app.radioButtons["Lettura"].click()
-        XCTAssertTrue(embed.waitForExistence(timeout: 10), "l'immagine non è disegnata in lettura")
-        XCTAssertTrue(
-            app.staticTexts["Pressa 4"].exists,
-            "la didascalia dell'immagine non c'è"
-        )
-        // A file the vault does not have is said out loud rather than left as a gap.
-        XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "note-embed-missing")
-                .firstMatch.waitForExistence(timeout: 5),
-            "l'embed rotto non è segnalato"
-        )
-
-        app.radioButtons["Modifica"].click()
-        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 5), "l'editor non è tornato")
-        XCTAssertTrue(
-            editorEmbed.waitForExistence(timeout: 5), "l'editor non è tornato a disegnare l'immagine"
-        )
+        // ADR-0029: no Lettura toggle to switch to any more - `hidesMarkup` is on by
+        // default, so the one editor draws both embeds directly. Both share the same
+        // "editor-embed" identifier (`CompletingTextView+Accessibility.swift`), unlike
+        // Lettura's own separate "note-embed"/"note-embed-missing" - a drawn picture and
+        // a `.missing` placeholder are told apart only by their own accessibility label.
+        XCTAssertTrue(editorEmbeds.firstMatch.waitForExistence(timeout: 5), "l'editor non sta disegnando le immagini")
+        let labels = (0..<editorEmbeds.count).map { editorEmbeds.element(boundBy: $0).label }
+        XCTAssertTrue(labels.contains("Pressa 4"), "la didascalia dell'immagine disegnata non c'è: \(labels)")
+        XCTAssertTrue(labels.contains("assente.png"), "il file mancante non è segnalato: \(labels)")
     }
 
-    private var embed: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "note-embed").firstMatch
-    }
-
-    /// The editor's own drawn embed (ADR-0018 slice 3), distinct from `embed` above: that
-    /// one is `EmbeddedFileView`'s, Lettura's SwiftUI reading view, and never appears while
-    /// the editor is on screen. This one is the `NSAccessibilityElement` a resolved image
-    /// or PDF carries once `EditorDecorationDelegate` collapses its run into a picture.
-    private var editorEmbed: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "editor-embed").firstMatch
+    /// The editor's own drawn embeds (ADR-0018 slice 3): the `NSAccessibilityElement`s a
+    /// resolved image or PDF, and a `.missing` placeholder, each carry once
+    /// `EditorDecorationDelegate` collapses their run into a picture.
+    private var editorEmbeds: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "editor-embed")
     }
 
     /// A real PNG, so Quick Look has something it can actually render: a file with the

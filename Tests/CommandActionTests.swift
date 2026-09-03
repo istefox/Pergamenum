@@ -45,7 +45,7 @@ private func actions() -> CommandActions {
 @MainActor
 @Test func withNoNoteOpenTheCommandsThatActOnOneAreRefused() {
     let actions = actions()
-    for command: ShortcutCommand in [.copyLink, .revealInFinder, .insertRelated, .readingMode] {
+    for command: ShortcutCommand in [.copyLink, .revealInFinder, .insertRelated] {
         #expect(!actions.canRun(command), "«\(command.title)» dovrebbe essere spenta senza nota")
     }
     // `save` is stricter than the others and always was: an open note with nothing
