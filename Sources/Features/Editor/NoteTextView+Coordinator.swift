@@ -82,12 +82,25 @@ extension NoteTextView {
         /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
         /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
         var embedDrag: EmbedDrag?
-        /// The probe tracer-bullet grid this property used to hold (`tableProbeGrid`, ADR
-        /// §D16 probe 2, Step 4.5) is gone: that probe has already answered its one
-        /// question. Task 4's own `TableGridStore`, keyed by table identity rather than a
-        /// single fixed grid, is what a table pass now needs - not yet wired onto this
-        /// Coordinator, which is the coder's own deliverable (ADR §D6, budget line
-        /// `NoteTextView+Coordinator.swift:77`, beside `embeds` above).
+        /// The grid every table on screen is drawn with, by table identity (ADR-0029 §D6) -
+        /// owned here for the reason `embeds` above is: `EditorDecorationDelegate` cannot be
+        /// `@MainActor` and so cannot build an `NSView`, and it is handed finished values
+        /// through `decorations.apply(tableViews:)`. Grew out of the Step 4.5 tracer-bullet
+        /// probe's single fixed `tableProbeGrid`, which answered §D16 probe 2 and is gone.
+        let tableGrids = TableGridStore()
+        /// The delimiter and body rows already taken out of the layout, so an unchanged set
+        /// does not re-invalidate it on every keystroke - the table pass's own change check,
+        /// which `applyFolding`'s early return does not cover (§D5). Not private for the
+        /// reason `lastRenditions` is not: the pass that fills it, `applyTables`, lives in
+        /// `NoteTextView+Tables.swift`.
+        var lastTableRows: Set<Int> = []
+        /// Each table on screen and the grid drawing it, by header offset - filled by
+        /// `applyTables` inside the storage's editing transaction and read by
+        /// `refreshTableGrids` once it has closed.
+        var drawnTables: [Int: DrawnTable] = [:]
+        /// Where the caret has to go once that transaction closes, when a row it was sitting
+        /// in has just left the layout (`rescueCaret`'s table twin, §D5).
+        var pendingTableCaret: Int?
 
         init(parent: NoteTextView) {
             self.parent = parent
@@ -268,6 +281,12 @@ extension NoteTextView {
             // space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
             var hiddenMarkers: [Int: [HiddenMarker]] = [:]
             var embedRuns: [NSRange] = []
+            /// Every GFM table's whole source run (ADR-0029 §D4). Collected here rather than
+            /// mapped to a `HiddenMarker` by `hiddenKind(for:)` like the other constructs:
+            /// a table's run spans several paragraphs and the delegate is asked about one at
+            /// a time, so `applyTables` is what splits it into the header's own marker and
+            /// the rows that leave the layout.
+            var tableRuns: [NSRange] = []
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -297,6 +316,7 @@ extension NoteTextView {
                     }
                 }
                 if case .embedRun = styled.span { embedRuns.append(nsRange) }
+                if case .tableRun = styled.span { tableRuns.append(nsRange) }
             }
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
@@ -312,18 +332,22 @@ extension NoteTextView {
             // from a text token: it is a separator between blocks, which is what that token
             // names, and it is the only decoration here that is not drawn over text.
             decorations.ruleColor = NSColor(theme.color(.borderSubtle))
-            // The table pass (ADR §D5) belongs here, beside `apply(hiddenMarkers:)` below -
-            // its own guard, since `applyFolding`'s early return does not cover it, and its
-            // own `apply(tableRows:)`/`apply(tableViews:)` calls once `GFMTable.runs` walks
-            // the note and `TableGridStore` vends a view per table. Not yet wired: the
-            // coder's own deliverable (Task 4).
+            // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
+            // guard, since `applyFolding`'s early return does not cover it, and its own
+            // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own
+            // `.table` marker to the table about to be handed over, rather than making a
+            // second `apply(hiddenMarkers:)` call of its own.
             // Before `endEditing()`, not after: that call is what fires the document-wide
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
+            applyTables(to: textView, runs: tableRuns, markers: &hiddenMarkers)
             decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
             self.embedRuns = embedRuns
+            // After the transaction, deliberately: a grid resizes itself and a caret rescue
+            // moves the selection, and neither belongs inside an open editing session.
+            refreshTableGrids(in: textView, theme: theme)
         }
 
         /// One span's hidden marker, its range relative to its own paragraph's start - the
@@ -360,6 +384,13 @@ extension NoteTextView {
             case .strikethroughMarker: .strikethrough
             case .horizontalRule: .rule
             case .linkSyntax: .link
+            // The one ADR-0029 construct that is *not* mapped here, and the reason is
+            // structural rather than an omission: a `.tableRun` covers the header line, the
+            // delimiter row and every body row, while a `HiddenMarker` is anchored to one
+            // paragraph and read back when the delegate is asked about that paragraph alone.
+            // `applyTables` (`NoteTextView+Tables.swift`) is what splits the run into the
+            // header's own `.table` marker and the rows that leave the layout entirely.
+            case .tableRun: nil
             default: nil
             }
         }

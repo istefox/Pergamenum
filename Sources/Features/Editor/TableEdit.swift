@@ -35,13 +35,66 @@ enum TableEdit: Equatable, Sendable {
     /// apply cleanly (an out-of-range row/column, or a removal that would leave the table
     /// empty).
     ///
-    /// Stub for Task 5 (tester): the identity function, so every positive test below is red
-    /// until the coder fills in the five cases - reading and writing `table.header`/
-    /// `table.rows`/`table.alignments` directly, since a `TableEdit` never touches
-    /// `table.range`/`table.lineRanges` (those are `NoteTextView+Tables.swift`'s own
-    /// concern, re-derived from `GFMTable.parse` at commit time per D8's reload guard, not
-    /// carried through this pure function at all).
+    /// `table.range` and `table.lineRanges` are carried through untouched, and deliberately:
+    /// they describe the source this table was *read* from, and the commit re-derives them
+    /// from `GFMTable.parse` over the live characters at write time (D8's reload guard,
+    /// `NoteTextView+Tables.swift`). A pure function that tried to keep them current would be
+    /// inventing indices into a string it has never seen.
+    ///
+    /// **Returning `table` unchanged is how a refusal is spelled**, rather than an optional
+    /// or a throw: every caller here is a grid button whose only sane answer to "that would
+    /// leave the table with no columns" is to do nothing, and the commit path already treats
+    /// an unchanged table as nothing to write (R-10 - a malformed table must not exist, so it
+    /// is never produced in the first place).
     func applied(to table: GFMTable) -> GFMTable {
-        table
+        var result = table
+        switch self {
+        case .cell(let row, let column, let text):
+            guard column >= 0, column < result.header.count else { return table }
+            guard let row else {
+                result.header[column] = text
+                return result
+            }
+            guard row >= 0, row < result.rows.count else { return table }
+            result.rows[row][column] = text
+
+        case .addRow(let after):
+            let index = after.map { $0 + 1 } ?? 0
+            guard index >= 0, index <= result.rows.count else { return table }
+            result.rows.insert(Array(repeating: "", count: result.header.count), at: index)
+
+        case .removeRow(let index):
+            // The last body row stays: a grid drawing zero rows has nothing left to hold
+            // focus, and the person who wanted the table gone deletes its lines, which is
+            // what `hidesMarkup` off is for (§D9).
+            guard index >= 0, index < result.rows.count, result.rows.count > 1 else { return table }
+            result.rows.remove(at: index)
+
+        case .addColumn(let after):
+            let index = after.map { $0 + 1 } ?? 0
+            guard index >= 0, index <= result.header.count else { return table }
+            result.header.insert("", at: index)
+            // The delimiter row grows with the header or the result is not a table at all
+            // (R-10: a delimiter row that disagrees with the header parses as nothing).
+            // `.leading` is GFM's own default for a column that declares no alignment.
+            result.alignments.insert(.leading, at: index)
+            result.rows = result.rows.map { row in
+                var grown = row
+                grown.insert("", at: min(index, grown.count))
+                return grown
+            }
+
+        case .removeColumn(let index):
+            guard index >= 0, index < result.header.count, result.header.count > 1 else { return table }
+            result.header.remove(at: index)
+            result.alignments.remove(at: index)
+            result.rows = result.rows.map { row in
+                guard index < row.count else { return row }
+                var shrunk = row
+                shrunk.remove(at: index)
+                return shrunk
+            }
+        }
+        return result
     }
 }

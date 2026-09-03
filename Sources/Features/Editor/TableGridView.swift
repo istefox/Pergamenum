@@ -1,72 +1,440 @@
 import AppKit
+import SwiftUI
 
-/// The GFM table grid (ADR-0029 §D4/§D6; plan `2026-09-02-editor-wysiwyg-unification`,
+/// The GFM table grid (ADR-0029 §D4/§D6/§D7; plan `2026-09-02-editor-wysiwyg-unification`,
 /// Task 4/5) - an `NSView` behind `NSTextAttachmentViewProvider`, created and owned on the
 /// main actor by `TableGridStore` and handed to `TableAttachment` as a finished value.
 ///
-/// Still the two-`NSTextField` shape the Step 4.5 tracer-bullet probe for ADR §D16 probe 2
-/// left behind (does clicking a cell make it first responder, does Tab move to the next
-/// cell and Shift-Tab to the previous, does Tab from the last cell and Escape both hand
-/// first responder back to the enclosing text view - the probe's question, already
-/// answered). Task 5's own job, not this one's: the real add/remove row and column
-/// affordances, and reading/writing a `GFMTable`'s actual cell count rather than a fixed
-/// two.
+/// One `NSTextField` per cell, laid out by hand rather than by Auto Layout: the shape changes
+/// with every add/remove row and column, and a constraint set rebuilt each time is a second
+/// description of a geometry that is already fully determined by the table's own cells. The
+/// same reason `intrinsicContentSize` is computed here rather than read off a fitting size -
+/// `TableAttachment` asks for it while laying out the line the grid has not been placed in
+/// yet (§D16 probe 3).
+///
+/// **Nothing here writes to the note.** A commit is a `TableEdit` handed to `onCommit`, which
+/// the Coordinator turns into one `replaceAtomically` over the table's whole source range -
+/// so a structural edit is one `Cmd+Z` whatever moved (§D7), and this view never learns what
+/// an `NSTextStorage` is.
 final class TableGridView: NSView, NSTextFieldDelegate {
-    private let left = NSTextField(string: "Cella 1")
-    private let right = NSTextField(string: "Cella 2")
+    private enum Metrics {
+        static let rowHeight: CGFloat = 24
+        /// Breathing room inside a cell, on each side - the grid lines are drawn at the
+        /// column's own edges, so this is what keeps the text off them.
+        static let cellInset: CGFloat = 6
+        static let minimumColumn: CGFloat = 72
+        /// Wider than this and a cell truncates rather than pushing the note's own column
+        /// off the side - `MarkdownBlocksView.table`'s own bargain, one surface over.
+        static let maximumColumn: CGFloat = 220
+        static let controlSide: CGFloat = 18
+        static let controlGap: CGFloat = 3
+        static let controlRow: CGFloat = 24
+    }
 
-    /// Called on Tab from the last cell and on Escape from either - the return path to the
-    /// enclosing `CompletingTextView`, set by the Coordinator that owns it
-    /// (`NoteTextView+Coordinator.swift`), the same closure-ownership shape `onEmbedResize`
-    /// already uses: "this view has exactly one owner, and a closure makes that owner's
-    /// identity a non-issue" (ADR §D6).
+    /// Called on Tab from the last cell, Enter, and Escape - the return path to the enclosing
+    /// `CompletingTextView`, set by `TableGridStore` when the grid is built, the same
+    /// closure-ownership shape `onEmbedResize` already uses: "this view has exactly one
+    /// owner, and a closure makes that owner's identity a non-issue" (ADR §D6).
     var resignToTextView: (() -> Void)?
+    /// One committed edit on its way to the note's own characters, answering whether it was
+    /// written. `false` is a real answer and not a failure to report: D8's reload guard
+    /// refuses a commit whose table has moved, and a cell whose edit was refused is put back
+    /// to what the note still says rather than left showing a value nothing holds.
+    var onCommit: ((TableEdit) -> Bool)?
+
+    /// The table this grid is currently drawing, as of the last styling pass.
+    private var table: GFMTable?
+    /// Row 0 is the header; every later entry is a body row. Rebuilt only when the shape
+    /// changes - a rebuild costs first responder, and a styling pass runs on every keystroke
+    /// anywhere in the note.
+    private var fields: [[NSTextField]] = []
+    private var widths: [CGFloat] = []
+    /// The cell last edited, which is what a structural button aims at.
+    private var focused: (row: Int, column: Int)?
+
+    private var gridColor: NSColor = .separatorColor
+    private var cellColor: NSColor = .labelColor
+    private var headerColor: NSColor = .secondaryLabelColor
+    private var controlColor: NSColor = .tertiaryLabelColor
+
+    private lazy var addRowButton = makeControl(
+        symbol: "plus.square", title: "+r", tooltip: "Aggiungi una riga",
+        identifier: "editor-table-add-row", action: #selector(addRowTapped)
+    )
+    private lazy var removeRowButton = makeControl(
+        symbol: "minus.square", title: "-r", tooltip: "Rimuovi la riga",
+        identifier: "editor-table-remove-row", action: #selector(removeRowTapped)
+    )
+    private lazy var addColumnButton = makeControl(
+        symbol: "plus.rectangle", title: "+c", tooltip: "Aggiungi una colonna",
+        identifier: "editor-table-add-column", action: #selector(addColumnTapped)
+    )
+    private lazy var removeColumnButton = makeControl(
+        symbol: "minus.rectangle", title: "-c", tooltip: "Rimuovi la colonna",
+        identifier: "editor-table-remove-column", action: #selector(removeColumnTapped)
+    )
+    private var controlButtons: [NSButton] {
+        [addRowButton, removeRowButton, addColumnButton, removeColumnButton]
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        // R-05's UI test (`DesignAndReadingUITests`, Task 6): found by this identifier,
-        // never by the words in a cell - the working agreement every UI test in this repo
-        // already keeps ("prose grows").
+        // R-05's UI test (`DesignAndReadingUITests`) finds the grid by this identifier, never
+        // by the words in a cell - the working agreement every UI test in this repo keeps
+        // ("prose grows").
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("Tabella")
         setAccessibilityIdentifier("editor-table")
-        for field in [left, right] {
-            field.translatesAutoresizingMaskIntoConstraints = false
-            field.delegate = self
-            addSubview(field)
-        }
-        // Forward Tab: AppKit walks a field editor's `nextKeyView` chain for free, both
-        // ways - `right`'s implicit `previousKeyView` is the inverse of this, which is
-        // what makes Shift-Tab from `right` land back on `left` with no code here at all.
-        left.nextKeyView = right
-        NSLayoutConstraint.activate([
-            left.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            left.centerYAnchor.constraint(equalTo: centerYAnchor),
-            left.widthAnchor.constraint(equalToConstant: 100),
-            right.leadingAnchor.constraint(equalTo: left.trailingAnchor, constant: 6),
-            right.centerYAnchor.constraint(equalTo: centerYAnchor),
-            right.widthAnchor.constraint(equalToConstant: 100),
-            right.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2)
-        ])
+        for button in controlButtons { addSubview(button) }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var intrinsicContentSize: NSSize { NSSize(width: 216, height: 26) }
+    /// Top-down, so a row's index and its `y` grow together and the layout arithmetic below
+    /// reads the way the table does.
+    override var isFlipped: Bool { true }
 
-    /// Tab from the last cell and Escape from either cell both return to the text view
-    /// (D16 probe 2's third pass criterion). Shift-Tab from `right` to `left` needs no case
-    /// here - see `left.nextKeyView` above.
+    override var intrinsicContentSize: NSSize {
+        let cells = widths.reduce(0, +)
+        let rows = CGFloat(max(fields.count, 1)) * Metrics.rowHeight
+        return NSSize(
+            width: max(max(cells, controlsWidth), Metrics.minimumColumn),
+            height: rows + Metrics.controlRow
+        )
+    }
+
+    private var controlsWidth: CGFloat {
+        CGFloat(controlButtons.count) * (Metrics.controlSide + Metrics.controlGap * 2)
+    }
+
+    // MARK: Drawing what the note says
+
+    /// Redraws the grid for `table`, keeping the cells - and therefore first responder -
+    /// wherever the shape allows it.
+    ///
+    /// Called from the Coordinator's own table pass on every styling pass, which is every
+    /// keystroke anywhere in the note. The two things that make that affordable are here:
+    /// the fields are rebuilt only when the number of rows or columns changed, and a cell
+    /// currently being typed into is never written over.
+    ///
+    /// Colours arrive as theme tokens, pushed in the way `decorations.badgeColor` and
+    /// `decorations.handleColor` already are - a view that uses a colour without going
+    /// through a token does not pass review (CLAUDE.md).
+    func update(with table: GFMTable, theme: Theme) {
+        gridColor = NSColor(theme.color(.borderSubtle))
+        cellColor = NSColor(theme.color(.textPrimary))
+        headerColor = NSColor(theme.color(.textSecondary))
+        controlColor = NSColor(theme.color(.textTertiary))
+
+        let reshaped = self.table.map {
+            $0.header.count != table.header.count || $0.rows.count != table.rows.count
+        } ?? true
+        // Read before the rebuild, which is what would drop it.
+        let regainsFocus = reshaped && isEditingACell
+        let previous = focused
+
+        self.table = table
+        if reshaped { rebuildFields() }
+        applyCellValues()
+        applyColours()
+        layoutGrid()
+        if regainsFocus { restoreFocus(near: previous) }
+    }
+
+    private func rebuildFields() {
+        for field in fields.flatMap({ $0 }) { field.removeFromSuperview() }
+        fields = []
+        guard let table, !table.header.isEmpty else { return }
+        for row in 0...table.rows.count {
+            var line: [NSTextField] = []
+            for _ in 0..<table.header.count {
+                let field = makeCell(isHeader: row == 0)
+                addSubview(field)
+                line.append(field)
+            }
+            fields.append(line)
+        }
+        // Tab and Shift-Tab between cells come from AppKit walking this chain, both ways -
+        // `previousKeyView` is set implicitly by assigning `nextKeyView`, which is what makes
+        // Shift-Tab need no code of its own here.
+        let flat = fields.flatMap { $0 }
+        for (index, field) in flat.enumerated() where index + 1 < flat.count {
+            field.nextKeyView = flat[index + 1]
+        }
+    }
+
+    private func makeCell(isHeader: Bool) -> NSTextField {
+        let field = NSTextField(string: "")
+        field.delegate = self
+        field.isBordered = false
+        field.drawsBackground = false
+        field.isEditable = true
+        field.isSelectable = true
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        field.font = NSFont.systemFont(ofSize: 13, weight: isHeader ? .semibold : .regular)
+        field.setAccessibilityIdentifier(isHeader ? "editor-table-header-cell" : "editor-table-cell")
+        return field
+    }
+
+    private func applyCellValues() {
+        guard let table else { return }
+        for (rowIndex, line) in fields.enumerated() {
+            let values = rowIndex == 0 ? table.header : table.rows[rowIndex - 1]
+            for (columnIndex, field) in line.enumerated() where columnIndex < values.count {
+                field.alignment = Self.alignment(table.alignments[columnIndex])
+                // Never over a cell being typed into: a styling pass fires on every SwiftUI
+                // update of the pane, and writing the note's value back mid-word would take
+                // the word with it.
+                guard field.currentEditor() == nil else { continue }
+                if field.stringValue != values[columnIndex] { field.stringValue = values[columnIndex] }
+            }
+        }
+    }
+
+    private func applyColours() {
+        for (rowIndex, line) in fields.enumerated() {
+            for field in line { field.textColor = rowIndex == 0 ? headerColor : cellColor }
+        }
+        for button in controlButtons { button.contentTintColor = controlColor }
+        needsDisplay = true
+    }
+
+    private func layoutGrid() {
+        widths = computedWidths()
+        var y: CGFloat = 0
+        for line in fields {
+            var x: CGFloat = 0
+            for (columnIndex, field) in line.enumerated() {
+                let width = columnIndex < widths.count ? widths[columnIndex] : Metrics.minimumColumn
+                field.frame = NSRect(
+                    x: x + Metrics.cellInset, y: y,
+                    width: max(1, width - Metrics.cellInset * 2), height: Metrics.rowHeight
+                )
+                x += width
+            }
+            y += Metrics.rowHeight
+        }
+        var x = Metrics.controlGap
+        for button in controlButtons {
+            button.frame = NSRect(
+                x: x, y: y + Metrics.controlGap,
+                width: Metrics.controlSide, height: Metrics.controlSide
+            )
+            x += Metrics.controlSide + Metrics.controlGap * 2
+        }
+        invalidateIntrinsicContentSize()
+        setFrameSize(intrinsicContentSize)
+    }
+
+    /// One width per column, from the widest cell in it - clamped at both ends so a column of
+    /// empty cells is still clickable and a paragraph-length cell truncates instead of
+    /// pushing the rest of the table off the side of the editor.
+    private func computedWidths() -> [CGFloat] {
+        guard let table else { return [] }
+        return table.header.indices.map { column in
+            var widest = Self.width(of: table.header[column], weight: .semibold)
+            for row in table.rows where column < row.count {
+                widest = max(widest, Self.width(of: row[column], weight: .regular))
+            }
+            return min(Metrics.maximumColumn, max(Metrics.minimumColumn, widest + Metrics.cellInset * 2))
+        }
+    }
+
+    private static func width(of text: String, weight: NSFont.Weight) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        return (text as NSString)
+            .size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: weight)])
+            .width
+    }
+
+    private static func alignment(_ column: GFMTable.Alignment) -> NSTextAlignment {
+        switch column {
+        case .leading: .left
+        case .center: .center
+        case .trailing: .right
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard !fields.isEmpty, !widths.isEmpty else { return }
+        gridColor.setFill()
+        let totalWidth = widths.reduce(0, +)
+        let totalHeight = CGFloat(fields.count) * Metrics.rowHeight
+        for row in 0...fields.count {
+            let y = min(CGFloat(row) * Metrics.rowHeight, totalHeight - 1)
+            NSRect(x: 0, y: y, width: totalWidth, height: 1).fill()
+        }
+        var x: CGFloat = 0
+        for width in widths {
+            NSRect(x: x, y: 0, width: 1, height: totalHeight).fill()
+            x += width
+        }
+        NSRect(x: totalWidth - 1, y: 0, width: 1, height: totalHeight).fill()
+    }
+
+    // MARK: Committing a cell
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        focused = position(of: field)
+    }
+
+    /// The one place a cell edit becomes a commit: Tab, Shift-Tab, Enter and losing focus all
+    /// end the field editor's session and arrive here, so there is a single write path rather
+    /// than four that agree today (§D7).
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              let position = position(of: field), let table
+        else { return }
+        let current = value(at: position, in: table)
+        guard field.stringValue != current else { return }
+        let row: Int? = position.row == 0 ? nil : position.row - 1
+        let edit = TableEdit.cell(row: row, column: position.column, text: field.stringValue)
+        guard onCommit?(edit) == true else {
+            // Refused by D8's reload guard: the note is what it was, so the cell says what
+            // the note says. Leaving the typed value on screen would be a grid claiming an
+            // edit that is in no file.
+            field.stringValue = current
+            return
+        }
+    }
+
+    /// Tab from the last cell, Shift-Tab from the first, Enter and Escape - the four that
+    /// leave the grid. Every other selector is handed back to AppKit, which is what walks the
+    /// `nextKeyView` chain built in `rebuildFields()` and needs no help here.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        let flat = fields.flatMap { $0 }
         switch selector {
-        case #selector(NSResponder.insertTab(_:)) where control === right:
+        case #selector(NSResponder.insertTab(_:)):
+            guard control === flat.last else { return false }
+            resignToTextView?()
+            return true
+        case #selector(NSResponder.insertBacktab(_:)):
+            guard control === flat.first else { return false }
+            resignToTextView?()
+            return true
+        case #selector(NSResponder.insertNewline(_:)):
+            // Enter commits and leaves, rather than inserting a newline a GFM cell cannot
+            // hold: a row is a line, so a cell with a `\n` in it is not a cell.
             resignToTextView?()
             return true
         case #selector(NSResponder.cancelOperation(_:)):
+            restoreValue(of: control)
             resignToTextView?()
             return true
         default:
             return false
         }
+    }
+
+    // MARK: The structural affordances
+
+    @objc private func addRowTapped() { commit(.addRow(after: rowAnchor)) }
+
+    @objc private func removeRowTapped() {
+        guard let row = rowAnchor else { return }
+        commit(.removeRow(row))
+    }
+
+    @objc private func addColumnTapped() { commit(.addColumn(after: columnAnchor)) }
+
+    @objc private func removeColumnTapped() {
+        guard let column = columnAnchor else { return }
+        commit(.removeColumn(column))
+    }
+
+    /// Which body row a structural edit is aimed at: the one last edited, or - with the caret
+    /// in the header row or nowhere in this grid at all - the last one, so a click with
+    /// nothing focused adds at the end rather than silently at the top.
+    private var rowAnchor: Int? {
+        if let focused, focused.row > 0 { return focused.row - 1 }
+        guard let table, !table.rows.isEmpty else { return nil }
+        return table.rows.count - 1
+    }
+
+    private var columnAnchor: Int? {
+        if let focused { return focused.column }
+        guard let table, !table.header.isEmpty else { return nil }
+        return table.header.count - 1
+    }
+
+    private func commit(_ edit: TableEdit) {
+        // A cell still being typed into commits first. Clicking a button does not end a field
+        // editor's session by itself, so without this the structural edit would be computed
+        // against a table the pending cell has not reached yet - and then the cell's own
+        // commit would arrive second and be refused for a shape that had moved under it.
+        window?.endEditing(for: nil)
+        _ = onCommit?(edit)
+    }
+
+    // MARK: Reading the grid back
+
+    private func position(of control: NSControl) -> (row: Int, column: Int)? {
+        for (rowIndex, line) in fields.enumerated() {
+            if let columnIndex = line.firstIndex(where: { $0 === control }) {
+                return (rowIndex, columnIndex)
+            }
+        }
+        return nil
+    }
+
+    private func value(at position: (row: Int, column: Int), in table: GFMTable) -> String {
+        let values: [String]
+        if position.row == 0 {
+            values = table.header
+        } else {
+            guard position.row - 1 < table.rows.count else { return "" }
+            values = table.rows[position.row - 1]
+        }
+        guard position.column < values.count else { return "" }
+        return values[position.column]
+    }
+
+    private func restoreValue(of control: NSControl) {
+        guard let field = control as? NSTextField,
+              let position = position(of: field), let table
+        else { return }
+        field.stringValue = value(at: position, in: table)
+    }
+
+    private var isEditingACell: Bool {
+        fields.contains { line in line.contains { $0.currentEditor() != nil } }
+    }
+
+    private func restoreFocus(near previous: (row: Int, column: Int)?) {
+        guard let previous, !fields.isEmpty else { return }
+        let row = min(previous.row, fields.count - 1)
+        guard !fields[row].isEmpty else { return }
+        let column = min(previous.column, fields[row].count - 1)
+        window?.makeFirstResponder(fields[row][column])
+    }
+
+    /// A borderless square button, tinted from a token and kept out of the cells' own Tab
+    /// chain: `refusesFirstResponder` is what stops Tab from a cell landing on a button
+    /// instead of on the next cell.
+    ///
+    /// The title is a fallback for a symbol the running system does not have, rather than a
+    /// second design: a button with neither image nor title is a button nobody can find.
+    private func makeControl(
+        symbol: String, title: String, tooltip: String, identifier: String, action: Selector
+    ) -> NSButton {
+        let button: NSButton
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip) {
+            button = NSButton(image: image, target: self, action: action)
+        } else {
+            button = NSButton(title: title, target: self, action: action)
+        }
+        button.isBordered = false
+        button.bezelStyle = .accessoryBarAction
+        button.toolTip = tooltip
+        button.refusesFirstResponder = true
+        button.setAccessibilityLabel(tooltip)
+        button.setAccessibilityIdentifier(identifier)
+        return button
     }
 }

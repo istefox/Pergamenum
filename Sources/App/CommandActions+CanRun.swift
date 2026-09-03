@@ -37,7 +37,7 @@ extension CommandActions {
             vault.openNote?.hasUnsavedChanges == true
         case .newTab, .closeTab, .reopenTab:
             canRunTab(command)
-        case .copyLink, .revealInFinder, .insertRelated, .readingMode, .noteHistory,
+        case .copyLink, .revealInFinder, .insertRelated, .noteHistory,
              .toggleStar, .applyTemplate:
             canRunOnOpenNote(command)
         case .foldSection, .unfoldAll:
@@ -92,8 +92,11 @@ extension CommandActions {
     /// `swiftlint:disable`. The two conditions are the ones the Vista menu already had.
     private func canRunFolding(_ command: ShortcutCommand) -> Bool {
         switch command {
-        // Reading mode has no caret, so it has no current section either.
-        case .foldSection: vault.currentOutlineEntry != nil && !vault.isReadingMode
+        // One condition where there used to be two: the second excluded reading mode, which
+        // had no caret and therefore no current section (ADR-0029 §D13 removed it). There is
+        // one editor now and it always has a caret, so `currentOutlineEntry` is the whole
+        // question again.
+        case .foldSection: vault.currentOutlineEntry != nil
         case .unfoldAll: !vault.foldedEntries.isEmpty
         default: false
         }

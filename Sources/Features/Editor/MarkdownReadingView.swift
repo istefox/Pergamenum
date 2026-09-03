@@ -3,10 +3,22 @@ import SwiftUI
 
 /// A note, rendered rather than edited.
 ///
-/// The counterpart of the styled source editor, not a replacement for it: SPEC §7.1
-/// keeps the editor at "source visible with style applied" and §14 rules out a live
-/// preview that hides syntax while typing. Reading mode is the other thing §6.5 asks
-/// for, a read-only rendering of the same note, and it is a mode you switch into.
+/// **Retained, and on its way to unreferenced (SPEC R-12, ADR-0029 §D14).** The
+/// Modifica/Lettura toggle this was the reading half of is gone: there is one editor now,
+/// always editable and always styled, and `EditorColumn+Text.reading(_:)` went with it. The
+/// second call site, `DiaryView.preview`, goes with the Diario pane's own preview half
+/// (§D15). It is kept on purpose either way, for a print or preview surface nobody has
+/// designed yet - the user's decision, recorded here so the next reader does not mistake the
+/// retention for a live dependency and does not delete it as dead code.
+///
+/// Two things worth knowing before reaching for it:
+///
+/// - **the export feature R-12 reserves it for already exists and does not use it.**
+///   `NoteExporter` writes HTML and PDF through `NoteExport.html(from:title:)`, a separate
+///   generator (`NoteExporter.swift:43-47`);
+/// - **`MarkdownBlocksView`, which this wraps, is *not* in the same position.** It is live and
+///   load-bearing - `TranscludedNoteView.swift` draws every `![[nota]]` rendition with it - and
+///   carries no retention note of its own, deliberately.
 ///
 /// Every colour, size and spacing comes from the theme, so a customised theme changes
 /// this view too.

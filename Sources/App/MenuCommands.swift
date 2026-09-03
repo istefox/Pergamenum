@@ -41,16 +41,15 @@ struct ViewCommands: Commands {
             Button("Chiudi la colonna") { vault.closeColumn(vault.focusedColumnIndex) }
                 .disabled(vault.columns.count < 2)
             Divider()
-            Toggle("Modalità lettura", isOn: Bindable(vault).isReadingMode)
-                .keyboardShortcut(shortcuts.shortcut(for: .readingMode))
-                .disabled(!actions.canRun(.readingMode))
+            // «Modalità lettura» was here (ADR-0029 §D13). There is one editor now, always
+            // editable and always styled, so there is no mode to pick between.
             // The inspector had a toolbar button and nothing else, so backlinks, linked
             // tasks and the unlinked mentions were three answers with no key between them.
             Button("Ispettore") { actions.run(.toggleInspector) }
                 .keyboardShortcut(shortcuts.shortcut(for: .toggleInspector))
             // The Workspace's own trailing column (ADR-0021 D7): nuovi elementi, task
-            // collegati, task assegnati, note referenziate. A `Toggle` for the same
-            // reason "Modalità lettura" is one - the checkmark beside it is the state.
+            // collegati, task assegnati, note referenziate. A `Toggle` and not a `Button`
+            // because the checkmark beside it is the state.
             // No shortcut and no `ShortcutCommand` case: the UX blueprint asks for none,
             // and "Dividi l'editor" above is the precedent for a keyless Vista entry.
             Toggle("Pannello Workspace", isOn: Bindable(navigation).isShowingTray)

@@ -129,12 +129,8 @@ struct VaultBrowser: View {
             .help("Salva la nota")
             .disabled(vault.openNote?.hasUnsavedChanges != true)
 
-            Toggle(isOn: Bindable(vault).isReadingMode) {
-                Label("Modalità lettura", systemImage: "book")
-            }
-            .help("Modalità lettura")
-            .disabled(vault.openNote == nil)
-            .accessibilityIdentifier("notes-reading-mode-toggle")
+            // «Modalità lettura» was here (ADR-0029 §D13): one editor now, always editable
+            // and always styled, so there is no mode for a toolbar to toggle.
 
             // Was a plain Button that never lit up (2026-08-28, toolbar parity chain).
             // «Nuovi elementi» in Workspace is the same kind of control for the other

@@ -18,16 +18,43 @@ import AppKit
 /// pass rather than carried anywhere stable of its own.
 @MainActor
 final class TableGridStore {
-    /// Stub for Task 4 (tester): never caches, so two requests for the same identity are
-    /// two different `TableGridView` instances - the coder's own deliverable is keeping a
-    /// `[Int: TableGridView]` (or equivalent) here and returning the same one back, exactly
-    /// as `EmbedTable`'s own render cache already does for a resolved picture.
+    /// The grid already built for each table identity. Never pruned by this property's own
+    /// accessors: `views(for:in:)` below is the one call that decides which identities are
+    /// still on screen, so a grid is dropped exactly once per styling pass rather than
+    /// whenever a lookup happens to miss.
+    private var grids: [Int: TableGridView] = [:]
+
+    /// The grid for `identity`, built on first ask and handed back unchanged after that.
     ///
-    /// `textView` is not read by this stub. The real implementation uses it the way the
-    /// probe's own `tableProbeGrid` lazy property already did in
-    /// `NoteTextView+Coordinator.swift`, before this task removed it: wiring a freshly
-    /// created grid's `resignToTextView` closure back to `textView.window?.makeFirstResponder(textView)`.
+    /// `textView` is read for one thing only, and only when a grid is actually built: the
+    /// new grid's `resignToTextView` closure, which Tab-from-the-last-cell and Escape both
+    /// call to hand first responder back to the enclosing editor. Held weakly, so a grid
+    /// outliving its text view resigns to nothing rather than to a dangling view.
     func view(for identity: Int, in textView: NSTextView) -> TableGridView {
-        TableGridView()
+        if let existing = grids[identity] { return existing }
+        let grid = TableGridView()
+        grid.resignToTextView = { [weak textView] in
+            guard let textView else { return }
+            textView.window?.makeFirstResponder(textView)
+        }
+        grids[identity] = grid
+        return grid
+    }
+
+    /// The grids for every table the note spells right now, and **only** those - the
+    /// identities absent from `identities` are dropped here.
+    ///
+    /// Pruning belongs on this call rather than on `view(for:in:)` because a styling pass
+    /// is the one moment that knows the whole set: a note whose tables are edited for an
+    /// afternoon would otherwise accumulate a grid per offset any table ever started at,
+    /// each holding an `NSView` hierarchy. The map it returns is what the Coordinator hands
+    /// to `EditorDecorationDelegate.apply(tableViews:)` as a finished value (ADR-0029 §D6).
+    func views(for identities: [Int], in textView: NSTextView) -> [Int: TableGridView] {
+        var kept: [Int: TableGridView] = [:]
+        for identity in identities {
+            kept[identity] = view(for: identity, in: textView)
+        }
+        grids = kept
+        return kept
     }
 }
