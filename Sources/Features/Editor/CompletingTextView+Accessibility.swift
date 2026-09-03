@@ -20,7 +20,33 @@ import AppKit
 /// no rendition-lands-later state to keep synchronised with a push.
 extension CompletingTextView {
     override func accessibilityChildren() -> [Any]? {
-        (super.accessibilityChildren() ?? []) + drawnEmbedElements()
+        (super.accessibilityChildren() ?? []) + drawnEmbedElements() + drawnTableGrids()
+    }
+
+    /// Every table grid TextKit 2 currently has in this view's hierarchy (ADR-0029 §D6).
+    ///
+    /// A `TableGridView` is a real `NSView`, unlike the embed elements below - but being a
+    /// real view is not enough to be reachable. `NSTextAttachmentViewProvider`'s view is
+    /// hosted inside the private `_NSTextViewportElementView` TextKit 2 makes per laid-out
+    /// fragment, and `NSTextView` answers `accessibilityChildren()` from its *text*, not
+    /// from its subviews: measured in the failing run of R-05's own UI test, the whole
+    /// `TextView` node came back a leaf in XCUITest's accessibility snapshot while the grid
+    /// was on screen, in the window, at 286×96. So the same hand-over `drawnEmbedElements()`
+    /// makes for a drawn picture is what a hosted view needs too - it is added here, not
+    /// left to AppKit to find.
+    ///
+    /// `superview != nil` is the whole of "on screen right now": TextKit 2 takes an
+    /// attachment view out of the hierarchy when its fragment leaves the viewport and puts
+    /// it back when it returns, so a grid the store still holds for a table scrolled far
+    /// away is deliberately not offered here. Sorted by header offset so the order is the
+    /// note's own rather than a dictionary's.
+    private func drawnTableGrids() -> [TableGridView] {
+        guard let decorations = textContentStorage?.delegate as? EditorDecorationDelegate
+        else { return [] }
+        return decorations.tableViews
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+            .filter { $0.superview != nil }
     }
 
     /// One element per paragraph currently drawing an embed, reusing the one from the

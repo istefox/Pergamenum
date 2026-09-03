@@ -201,3 +201,51 @@ private enum TableFixture {
         #expect(third !== first, "un'identità diversa deve restituire una view diversa")
     }
 }
+
+// MARK: - The grid reaches the accessibility tree (ADR §D6, R-05)
+
+@MainActor
+@Suite struct TableGridAccessibility {
+    /// The gap between "drawn" and "reachable", which every other test in this file was on
+    /// the wrong side of: R-05's UI test failed while the grid was on screen, in the
+    /// window, at 286×96, because `NSTextView` answers `accessibilityChildren()` from its
+    /// *text* and a view hosted by `NSTextAttachmentViewProvider` lives inside the private
+    /// `_NSTextViewportElementView` TextKit 2 makes per laid-out fragment - nothing
+    /// promotes a subview of one into the editor's accessibility subtree. Measured:
+    /// `super.accessibilityChildren()` came back empty on the very pass that had the grid
+    /// hosted, and XCUITest's snapshot showed the whole `TextView` node as a leaf.
+    ///
+    /// **What this can and cannot measure.** A window that is never ordered in has an empty
+    /// visible rect, so `NSTextViewportLayoutController` builds no rendering surfaces and
+    /// TextKit never hosts the attachment's view - measured, with `ensureLayout` and an
+    /// explicit `layoutViewport()` both called and the grid's `superview` still nil, while
+    /// the text view carried its usual `_NSTextContentView`. So the hosting half is the UI
+    /// test's to prove (`DesignAndReadingUITests`, R-05), and what is checked here is the
+    /// rule the fix actually states: a grid TextKit has *not* placed is not offered, and the
+    /// same grid placed in the hierarchy - which is all TextKit does when the fragment
+    /// enters the viewport - is.
+    @Test func aHostedTableGridIsOfferedAsAnAccessibilityChildOfTheEditor() throws {
+        let fixture = EmbedEditorFixtures.editor(
+            text: TableFixture.note, hidesMarkup: true, root: nil, thumbnails: nil
+        )
+        fixture.coordinator.applyStyling(to: fixture.textView, theme: .emergency)
+        let grid = try #require(fixture.coordinator.decorations.tableViews[TableFixture.headerOffset])
+
+        #expect(
+            childGrids(of: fixture.textView).isEmpty,
+            "una griglia che TextKit non ha ancora piazzato non deve essere offerta"
+        )
+
+        fixture.textView.addSubview(grid)
+        let offered = childGrids(of: fixture.textView)
+        #expect(offered == [grid], "la griglia disegnata non è tra i figli accessibili dell'editor")
+        #expect(
+            offered.first?.accessibilityIdentifier() == "editor-table",
+            "la griglia esposta non porta l'identificatore che la suite UI cerca"
+        )
+    }
+
+    private func childGrids(of textView: NSTextView) -> [TableGridView] {
+        (textView.accessibilityChildren() ?? []).compactMap { $0 as? TableGridView }
+    }
+}
