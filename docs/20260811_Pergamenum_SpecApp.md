@@ -166,17 +166,21 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
 
 ## 5. Editor markdown
 
-- Editor a **sorgente visibile con stile applicato**: livello "Obsidian source mode
-  migliorato", non live preview completa (SPEC §14 esclude quella voce di costo). Un'unica
-  eccezione, aggiunta 2026-08-22 (ADR-0018): tre costrutti nascondono la loro sintassi quando
-  il cursore non è nel paragrafo — il `#` di un heading, il `*`/`_` dell'enfasi, e un embed
-  immagine/PDF disegnato al posto di `![[file]]` o `![alt](file)`. Selezione, digitazione IME
-  o un match della ricerca che tocca il paragrafo la rivelano di nuovo. Nessun altro costrutto
-  è coinvolto: la regola resta i tre costrutti nominati, non un principio generale.
-- **Due modalità distinte, non una**: l'editor sorgente sopra descritto (`NoteTextView`,
-  editabile) e una modalità Lettura separata (`MarkdownReadingView`/`MarkdownBlocksView`,
-  blocchi renderizzati per intero incluse le tabelle GFM come griglia vera, non editabile),
-  commutate da un toggle per-tab. Vedi la nota di apertura sotto per il piano di unificazione.
+- **Un editor solo, sempre editabile e sempre reso** (ADR-0029, 2026-09-02): non esiste un
+  toggle Modifica/Lettura e non esiste una vista non editabile della nota aperta. La sintassi
+  markdown è nascosta finché il cursore non raggiunge il paragrafo che la contiene; selezione,
+  digitazione IME o un match della ricerca che tocca il paragrafo la rivelano di nuovo
+  (meccanismo ADR-0018 §D1/§D2, invariato).
+- Costrutti che nascondono la loro sintassi: il `#` di un heading, il `*`/`_` dell'enfasi e un
+  embed immagine/PDF disegnato al posto di `![[file]]` o `![alt](file)` (ADR-0018, 2026-08-22);
+  il `~~` dello strikethrough, il `>` di una citazione — reso una barra per livello, quindi
+  nidificazione illimitata —, le parentesi di un link e di un wikilink, con il target risolto
+  esposto come tooltip sull'etichetta, e la riga `---` resa come filetto orizzontale (ADR-0029).
+  La regola non è più «i tre costrutti nominati»: ADR-0029 ne ha superato il confine di scope.
+- **Una tabella GFM è una griglia vera, editabile in posizione** (ADR-0029): un
+  `NSTextAttachmentViewProvider` ancorato alla riga di intestazione, celle attraversabili con
+  Tab, ogni cella riscritta nella sorgente markdown al commit — Tab, Invio o perdita del fuoco —
+  così che ogni `Cmd+Z` annulli esattamente un commit.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
@@ -195,10 +199,6 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
     suo ultimo figlio invece di riordinarla come sorella (ADR emendata dal drag originale,
     2026-08-17→2026-09-01); una sezione ripiegata nasconde anche i suoi figli in INDICE, non
     solo nel testo
-
-*Nota 2026-09-02: è allo studio l'unificazione delle due modalità in un unico editor
-completamente WYSIWYG (nessun toggle Modifica/Lettura), che riaprirebbe SPEC §14, ADR-0005
-§D2 e i confini di ADR-0018 — vedi TODO.md.*
 
 ---
 
@@ -480,7 +480,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Stack | SwiftUI nativo, non Electron | Requisito email ridotto a link+apertura; PDFKit ed EventKit nativi |
 | Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
 | Rendering corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente |
-| Live preview completa | Esclusa v1 | Voce di costo massima; source mode con stile è sufficiente |
+| Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |
 | Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file |

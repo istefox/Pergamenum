@@ -87,6 +87,44 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-03: **ADR-0029 (un editor solo, sempre editabile; la tabella GFM come griglia vera)
+  implementato — delle quattro probe di §D16 una sola ha una conferma umana agli atti.** Il
+  toggle Modifica/Lettura non esiste più da nessuna parte, `ShortcutCommand.readingMode`
+  (`Cmd+Shift+M`) compreso: chi lo aveva rimappato perde la voce in silenzio, che è il
+  comportamento voluto (§D13). Il pannello Diario ha perso la sua metà anteprima e il picker
+  `Layout` che le commutava (§D15); `DiaryTimeline`, il debounce da 600 ms e i suoi quattro
+  flush restano esattamente com'erano, perché ADR-0005 §D3-§D8 non è toccata da questa chain.
+  `MarkdownReadingView` è **conservata, non rimossa**: da qui in poi è codice morto per una
+  superficie di stampa o anteprima che nessuno ha ancora disegnato, con addosso il commento
+  di §D14 perché il prossimo lettore non la scambi per una dipendenza viva né la cancelli.
+  SPEC §14 ha ritirato la riga «Live preview completa | Esclusa v1» e SPEC §5 è riscritta di
+  conseguenza.
+
+  Le quattro probe di §D16, dette per quello che sono:
+
+  - **Probe 2 — fuoco annidato dentro un `NSTextAttachmentViewProvider`: passata, verificata a
+    mano.** È l'unica delle quattro con una conferma umana agli atti in questa chain: slice
+    tracer-bullet dello Step 4.5, committata in `c2f24e7` («nested first responder inside
+    `NSTextAttachmentViewProvider`, confirmed working by hand check»). Era il gate vero e non
+    un controllo fra gli altri — un esito negativo avrebbe imposto l'Alternativa B o C, cioè
+    un'altra ADR, non una correzione a metà implementazione.
+  - **Probe 1 — tooltip su un range `[[` collassato: in attesa di hand-check.** Il codice c'è
+    (`EditorDecorationDelegate+LinkRendering.swift` applica `.toolTip` al testo visibile del
+    link), ma nessuno ha ancora passato il mouse sopra a schermo. Finché non lo fa, R-04 è
+    scritta, non dimostrata; il fallback resta quello di §D3, cioè togliere il tooltip.
+  - **Probe 3 — `tracksTextAttachmentViewBounds` che alza il line fragment: in attesa di
+    hand-check.** La proprietà è impostata (`TableAttachment.swift:36`); che una griglia da tre
+    righe dia un line fragment alto quanto la griglia, e che il testo sotto cominci sotto di
+    essa, è una misura che si prende guardando lo schermo.
+  - **Probe 4 — granularità di `Cmd+Z` per commit di cella: in attesa di hand-check.** I
+    trigger di commit ci sono tutti (`insertTab`, `insertBacktab`, `insertNewline`,
+    `cancelOperation`, `controlTextDidEndEditing`), ma «ogni `Cmd+Z` annulla esattamente un
+    commit» è proprio il tipo di claim che ADR-0018 §D6 probe 4 chiama *«quello che ha più
+    probabilità di fallire in silenzio e che un utente segnalerebbe come 'undo non fa
+    niente'»*.
+
+  Le tre pendenti non si chiudono fuori schermo: §D16 lo dice esplicitamente, sono hand-check
+  con esito scritto, e questo è il posto dove l'esito va quando qualcuno li avrà fatti.
 - 2026-09-01: **PG-056 (`type_body_length` a livello errore su `WorkspaceController.swift`)
   risolto con uno spostamento puro di codice, nessun cambio di comportamento.** Riverificato
   live prima di iniziare: `swiftlint` confermava l'errore ancora attuale, cresciuto da 383 a

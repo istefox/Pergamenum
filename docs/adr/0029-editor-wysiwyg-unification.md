@@ -1,14 +1,5 @@
 # ADR-0029: One editor, always editable, and a table is a grid
 
-> **File placement note (for the operator, delete on move).** This project's convention puts
-> every ADR under `docs/adr/`, numbered `0029-editor-wysiwyg-unification.md` beside its
-> twenty-eight siblings. The agent that wrote this file is denied writes outside
-> `docs/architecture/**` and `docs/superpowers/plans/**` by `test-write-scope.sh`, so it landed
-> here instead. Move it:
-> `git mv docs/architecture/ADR-0029-editor-wysiwyg-unification.md docs/adr/0029-editor-wysiwyg-unification.md`
-> and remove `docs/architecture/` if it is otherwise empty. The plan at
-> `docs/superpowers/plans/2026-09-02-editor-wysiwyg-unification.md` names both paths.
-
 - Status: proposed
 - Date: 2026-09-02. Written after reading every file it names, at the line, on the working tree
   at `bbe09a9`. The mechanisms below are the ones already in this repository plus two SDK hooks
