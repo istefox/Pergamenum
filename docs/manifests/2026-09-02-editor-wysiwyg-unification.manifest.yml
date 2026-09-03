@@ -6,9 +6,9 @@ mode: "greenfield"
 anonymize: false
 chain_path: standard
 created_at: "2026-09-02T18:04:16+00:00"
-last_updated_at: "2026-09-03T11:50:45+00:00"
-current_step: "step_6_review"
-status: "in_progress"
+last_updated_at: "2026-09-03T18:03:24+00:00"
+current_step: "completed"
+status: "completed"
 
 # Gate 0 routing result (ADR-0017)
 gate0:
@@ -121,9 +121,9 @@ hitl_gates:
     notes: "re-confirmed, same session, implementation continues"
   - gate: 5
     label: "review_cycle_decision"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-09-03T17:59:03+00:00"
+    notes: "hand-check review-triage-fix cycle completed: all four ADR-0029 §D16 manual probes confirmed passing; table-corruption-on-Enter fix (7 regression tests, both click-position variants) and caret-blink cleanup (accepted as known AppKit/TextKit 2 limitation, Apple FB17103305) both landed"
 
 # Session boundary tracking
 session_boundary:
@@ -139,4 +139,4 @@ failure:
   partial_artifacts: []
 
 # Hint for next action (UX)
-next_action: "Fresh session: run /skill concept-to-code resume docs/manifests/2026-09-02-editor-wysiwyg-unification.manifest.yml — Step 4.5 tracer-bullet probe before Task 4 (tab focus across NSTextAttachmentViewProvider cells), then Step 5 coder dispatch (opus) for docs/superpowers/plans/2026-09-02-editor-wysiwyg-unification.md"
+next_action: "Chain complete. PR #164 merged to main at b171a90 (2026-09-03). scripts/uitests.sh was explicitly skipped for this merge per operator request — no CI is configured in this repo. Nothing further to run for PG-018."
