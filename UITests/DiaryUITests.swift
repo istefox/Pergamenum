@@ -54,12 +54,14 @@ final class DiaryUITests: XCTestCase {
         }
     }
 
-    /// Both halves of the page are there at once: the markdown on one side and the
-    /// same text rendered on the other, with no mode to switch into.
-    func testTheEditorAndThePreviewAreBothOnScreen() throws {
+    /// The pane hosts the one unified editor and nothing beside it: no separate preview
+    /// rendering, and no picker to switch into a mode that no longer exists (R-11,
+    /// ADR-0029 - supersedes ADR-0005 §D2's "editor and preview side by side" premise).
+    func testTheEditorIsTheOnlyWritingSurfaceOnScreen() throws {
         XCTAssertTrue(element("diary-editor").waitForExistence(timeout: 5), "manca l'editor")
-        XCTAssertTrue(element("diary-preview").waitForExistence(timeout: 5), "manca l'anteprima")
         XCTAssertTrue(element("diary-timeline").waitForExistence(timeout: 5), "manca la giornata")
+        XCTAssertFalse(element("diary-preview").exists, "l'anteprima separata non deve più esistere")
+        XCTAssertFalse(element("diary-layout").exists, "il selettore di modalità non deve più esistere")
     }
 
     /// The whole point of the pane: block out a couple of hours, give them a name, and
