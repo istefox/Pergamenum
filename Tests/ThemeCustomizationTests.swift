@@ -168,6 +168,137 @@ private struct TemporaryDirectory: ~Copyable {
     #expect(engine.customization == nil)
 }
 
+// MARK: - Font customisation (ADR-0030 §D9, Task 7, R-11/R-12)
+
+@Test func aFontOverrideRoundTripsByteForByteIncludingANamedFamilyWithASpace() throws {
+    let directory = try TemporaryDirectory()
+    // "Avenir Next" is the case `TypographyValue.Family.rawValue`'s round trip
+    // (Task 1) exists to protect: a family name is carried verbatim, space and all,
+    // never mistaken for the `system`/`monospace`/`serif` keywords.
+    let draft = ThemeCustomization.Draft(
+        appearance: .light,
+        colors: [:],
+        fonts: [.prose: TypographyValue(family: .named("Avenir Next"), size: 18, weight: 500, lineHeight: 1.45)]
+    )
+    try ThemeCustomization.write(draft, to: directory.url)
+    #expect(ThemeCustomization.load(from: directory.url) == draft)
+}
+
+@Test func theSameFontDraftWrittenTwiceIsByteIdentical() throws {
+    let first = try TemporaryDirectory()
+    let second = try TemporaryDirectory()
+    let draft = ThemeCustomization.Draft(
+        appearance: .light,
+        colors: [:],
+        fonts: [
+            .prose: TypographyValue(family: .named("Avenir Next"), size: 18, weight: 400, lineHeight: 1.4),
+            .proseTitle: TypographyValue(family: .named("Avenir Next"), size: 26, weight: 700, lineHeight: 1.2),
+        ]
+    )
+    try ThemeCustomization.write(draft, to: first.url)
+    try ThemeCustomization.write(draft, to: second.url)
+    // Same discipline `object(from:)`'s comment already states for colours, extended
+    // to the second token type: a save that changed nothing must not diff.
+    #expect(
+        try Data(contentsOf: ThemeCustomization.url(in: first.url))
+            == (try Data(contentsOf: ThemeCustomization.url(in: second.url)))
+    )
+}
+
+@Test func loadOnAFileWithNoFontSectionReturnsEmptyFontsAndKeepsTheColours() throws {
+    let directory = try TemporaryDirectory()
+    // Hand-written, the shape a build before this chain would have produced: no
+    // "font" key at all (R-12, "written by an older build").
+    try """
+    { "meta": {
+        "name": { "$type": "string", "$value": "Personalizzato" },
+        "appearance": { "$type": "string", "$value": "light" } },
+      "color": { "accent": { "primary": { "$type": "color", "$value": "#123456" } } } }
+    """.write(to: ThemeCustomization.url(in: directory.url), atomically: true, encoding: .utf8)
+
+    let reloaded = try #require(ThemeCustomization.load(from: directory.url))
+    #expect(reloaded.fonts.isEmpty)
+    #expect(reloaded.colors[.accentPrimary] == RGBA(hex: "#123456")!)
+}
+
+@Test func loadOnAFileWithAFontSectionAndNoColoursReturnsTheFontsAndEmptyColours() throws {
+    let directory = try TemporaryDirectory()
+    try """
+    { "meta": {
+        "name": { "$type": "string", "$value": "Personalizzato" },
+        "appearance": { "$type": "string", "$value": "light" } },
+      "font": { "prose": { "$type": "typography", "$value": {
+        "fontFamily": "Georgia", "fontSize": 20, "fontWeight": 400, "lineHeight": 1.4 } } } }
+    """.write(to: ThemeCustomization.url(in: directory.url), atomically: true, encoding: .utf8)
+
+    let reloaded = try #require(ThemeCustomization.load(from: directory.url))
+    #expect(reloaded.colors.isEmpty)
+    #expect(
+        reloaded.fonts[.prose]
+            == TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4)
+    )
+}
+
+@Test func isEmptyIsFalseWithEitherFontsOrColoursAndTrueWithNeither() {
+    let font = TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4)
+    #expect(!ThemeCustomization.Draft(appearance: .light, colors: [:], fonts: [.prose: font]).isEmpty)
+    #expect(!ThemeCustomization.Draft(appearance: .light, colors: [.accentPrimary: RGBA(hex: "#AABBCC")!], fonts: [:]).isEmpty)
+    #expect(ThemeCustomization.Draft(appearance: .light, colors: [:], fonts: [:]).isEmpty)
+}
+
+@MainActor
+@Test func clearingFontsRemovesTheFileWhenNoColourOverrideIsLeft() throws {
+    let vault = try TemporaryDirectory()
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+    let directory = try #require(engine.userThemesDirectory)
+
+    // Written directly rather than through `setCustomFont` (itself under test
+    // separately, and also a stub): this test only needs a font-only customisation
+    // file already on disk before asking `clearCustomFonts()` to remove it, matching
+    // what `clearCustomColor` already does through `resetCustomization()` (R-12).
+    try ThemeCustomization.write(
+        ThemeCustomization.Draft(
+            appearance: .light,
+            colors: [:],
+            fonts: [.prose: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4)]
+        ),
+        to: directory
+    )
+    #expect(FileManager.default.fileExists(atPath: ThemeCustomization.url(in: directory).path(percentEncoded: false)))
+
+    engine.clearCustomFonts()
+
+    #expect(!FileManager.default.fileExists(atPath: ThemeCustomization.url(in: directory).path(percentEncoded: false)))
+}
+
+@MainActor
+@Test func withoutAVaultAFontCannotBeSavedAndSaysSo() {
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
+    // The same guard `setCustomColor` has: silently doing nothing would look like a
+    // picker that ignores the user.
+    #expect(engine.customizationProblem != nil)
+    #expect(engine.customization == nil)
+}
+
+@MainActor
+@Test func aWrittenFontOverrideReachesTheEngineAfterLoadUserThemes() throws {
+    let vault = try TemporaryDirectory()
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+
+    engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
+
+    #expect(engine.customizationProblem == nil)
+    #expect(engine.selection == .named(ThemeCustomization.id))
+    // The assertion that proves the whole path rather than the file format: the
+    // override has to reach the face an `NSTextView` actually draws with. The
+    // bundled themes' `font.prose` is 16pt, so a mismatch here cannot pass by
+    // accident.
+    #expect(engine.current.nsFont(.prose).pointSize == 20)
+}
+
 @MainActor
 @Test func aRememberedThemeThatThisVaultDoesNotHaveIsDropped() throws {
     let vault = try TemporaryDirectory()

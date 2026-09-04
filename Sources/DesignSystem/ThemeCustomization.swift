@@ -21,8 +21,14 @@ enum ThemeCustomization {
     struct Draft: Equatable, Sendable {
         var appearance: ThemeAppearance
         var colors: [ColorToken: RGBA]
+        /// The prose face overrides (ADR-0030 §D9): `.prose`/`.proseTitle` only, but
+        /// keyed by the whole `FontToken` rather than a narrower pair type, the same
+        /// way `colors` is keyed by the whole `ColorToken` rather than the subset a
+        /// given theme happens to override. Defaulted so every existing call site
+        /// that only ever set colours keeps compiling unchanged.
+        var fonts: [FontToken: TypographyValue] = [:]
 
-        var isEmpty: Bool { colors.isEmpty }
+        var isEmpty: Bool { colors.isEmpty && fonts.isEmpty }
     }
 
     static func url(in directory: URL) -> URL {
@@ -50,7 +56,12 @@ enum ThemeCustomization {
                   let rgba = RGBA(hex: raw) else { continue }
             colors[token] = rgba
         }
-        return Draft(appearance: ThemeAppearance(rawValue: declared) ?? .light, colors: colors)
+        // Coder-owned (ADR-0155 §D1, Task 7): read `.prose`/`.proseTitle` back from
+        // the `font.*` group the way the loop above reads `color.*`, into `fonts`.
+        // Left empty for now, which is also the correct answer for a file an older
+        // build wrote with no `font` section at all (R-12).
+        let fonts: [FontToken: TypographyValue] = [:]
+        return Draft(appearance: ThemeAppearance(rawValue: declared) ?? .light, colors: colors, fonts: fonts)
     }
 
     /// Follows a dotted token path down the nested object and returns its `$value`.
@@ -106,6 +117,12 @@ enum ThemeCustomization {
                 into: &root
             )
         }
+        // Coder-owned (ADR-0155 §D1, Task 7): a typography branch mirroring the
+        // colour loop above, sorted the same way for the same byte-stability
+        // guarantee, writing `draft.fonts` as `$type: "typography"` nodes with
+        // `fontFamily`/`fontSize`/`fontWeight`/`lineHeight` (`TypographyValue.Family`'s
+        // `rawValue` round trip, Task 1). `draft.fonts` is deliberately unread here —
+        // that omission is what keeps the round-trip test red.
         return root
     }
 
