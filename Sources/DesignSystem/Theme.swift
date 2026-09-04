@@ -60,7 +60,26 @@ struct Theme: Identifiable, Equatable, Sendable {
             return NSFont(descriptor: descriptor, size: value.size) ?? system
         case .system:
             return NSFont.systemFont(ofSize: value.size, weight: weight)
+        case .named:
+            // TESTER STUB (ADR-0030 §D3): coder replaces this arm with
+            // `NSFont(name: name, size:)`, `>= 600` promoted through
+            // `withSymbolicTraits(.bold)`, falling back to this same system-font call
+            // when the named family is not installed. Left unresolved on purpose so
+            // `TypographyResolutionTests`'s named-family assertions stay red.
+            return NSFont.systemFont(ofSize: value.size, weight: weight)
         }
+    }
+
+    /// The AppKit face `font(_:)`'s SwiftUI value is meant to match - same resolution
+    /// `nsFont(_:)` uses, so the two surfaces never draw two different faces for one
+    /// token (ADR-0030 §D3). Exists so a test can pin that equivalence down without
+    /// reaching into SwiftUI's opaque `Font`.
+    ///
+    /// TESTER STUB: forwards to `nsFont(_:)` unconditionally. Once the coder wires
+    /// `font(_:)`'s `.named` arm through `Font.custom(name:size:)`, this should keep
+    /// reporting the name that call actually uses.
+    func resolvedFontName(_ token: FontToken) -> String {
+        nsFont(token).fontName
     }
 
     /// SwiftUI takes spacing *between* lines, while DTCG expresses a multiple of the
@@ -237,8 +256,26 @@ extension Theme {
             .body: TypographyValue(family: .system, size: 13, weight: 400, lineHeight: 1.5),
             .caption: TypographyValue(family: .system, size: 11, weight: 400, lineHeight: 1.35),
             .mono: TypographyValue(family: .monospace, size: 12, weight: 400, lineHeight: 1.45),
+            // TESTER STUB (ADR-0030 §D2): placeholder system-family entries, only
+            // here so `fonts[token] ?? Theme.emergency.fonts[token]!` cannot force-
+            // unwrap `nil` and crash the test process before a bundled theme defines
+            // these. The coder's real values are Avenir Next 16/1.4 and Avenir Next
+            // Bold 24 (ADR-0030 §D2) - deliberately not guessed here so
+            // `bundledThemesDefineEveryToken` and the `.prose`/`.proseTitle`
+            // resolution tests stay red until the coder adds them to both theme
+            // JSON files.
+            .prose: TypographyValue(family: .system, size: 13, weight: 400, lineHeight: 1.5),
+            .proseTitle: TypographyValue(family: .system, size: 22, weight: 600, lineHeight: 1.2),
         ],
-        spacings: [.xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40],
+        spacings: [
+            .xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40,
+            // TESTER STUB (ADR-0030 §D7): same reasoning as `.prose` above - a
+            // placeholder so `spacing(.readable)` cannot force-unwrap `nil`. The
+            // coder's real value is 720; deliberately not 720 here so
+            // `theme.spacing(.readable) == 720` stays red until the coder adds it to
+            // both theme JSON files.
+            .readable: 24,
+        ],
         radii: [.card: 10, .control: 6, .sticky: 4],
         shadows: [
             .card: ShadowValue(color: RGBA(hex: "#00000014")!, offsetX: 0, offsetY: 1, blur: 3, spread: 0),
@@ -290,6 +327,12 @@ private extension TypographyValue.Family {
         case .system: .default
         case .monospace: .monospaced
         case .serif: .serif
+        // TESTER STUB (ADR-0030 §D3): `Font.Design` has no "named family" case, so
+        // this can never be the coder's real answer - `font(_:)`'s `.named` arm has
+        // to stop calling `Font.system(design:)` altogether and build a
+        // `Font.custom(name:size:)` instead. Left as `.default` only so this switch
+        // stays exhaustive.
+        case .named: .default
         }
     }
 }

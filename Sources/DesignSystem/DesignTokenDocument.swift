@@ -159,7 +159,14 @@ private struct Collector {
         guard let size = (object["fontSize"] as? NSNumber).map({ CGFloat($0.doubleValue) }) else {
             return .failure("typography is missing fontSize")
         }
-        let family = TypographyValue.Family(rawValue: object["fontFamily"] as? String ?? "system") ?? .system
+        // `Family.init(rawValue:)` is non-failable now (ADR-0030 §D3), so the old
+        // `?? .system` no longer compiles - dropping it is the whole fix, and it is
+        // what makes a declared `"Avenir Next"` parse to `.named("Avenir Next")`
+        // instead of `.system` (`TypographyResolutionTests`). The rest of the
+        // `.named` journey - whether that family is actually installed, its bold
+        // face - is still unresolved until the coder fills `Theme.nsFont(_:)`'s
+        // `.named` arm.
+        let family = TypographyValue.Family(rawValue: object["fontFamily"] as? String ?? "system")
         let weight = (object["fontWeight"] as? NSNumber)?.intValue ?? 400
         let lineHeight = (object["lineHeight"] as? NSNumber)?.doubleValue ?? 1.4
         return .success(.typography(TypographyValue(

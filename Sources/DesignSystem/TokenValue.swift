@@ -12,10 +12,38 @@ enum TokenValue: Equatable, Sendable {
 }
 
 struct TypographyValue: Equatable, Sendable {
-    enum Family: String, Equatable, Sendable {
+    /// Not `RawRepresentable`: that protocol's `init?(rawValue:)` is failable, and a
+    /// theme naming any installed font family is not a parse-time error (ADR-0030
+    /// §D3) — whether the family is actually installed is resolved later, at draw
+    /// time, in `Theme.nsFont(_:)`. The hand-written `rawValue`/`init(rawValue:)`
+    /// below keep the same call shape the DTCG parser already used, minus the
+    /// optional.
+    enum Family: Equatable, Sendable {
         case system
         case monospace
         case serif
+        /// Any font family name that is not one of the three built-in design
+        /// keywords, e.g. `"Avenir Next"`. Carried verbatim; not checked against
+        /// installed fonts here.
+        case named(String)
+
+        init(rawValue: String) {
+            switch rawValue {
+            case "system": self = .system
+            case "monospace": self = .monospace
+            case "serif": self = .serif
+            default: self = .named(rawValue)
+            }
+        }
+
+        var rawValue: String {
+            switch self {
+            case .system: "system"
+            case .monospace: "monospace"
+            case .serif: "serif"
+            case .named(let name): name
+            }
+        }
     }
 
     var family: Family

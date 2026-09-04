@@ -74,6 +74,12 @@ enum FontToken: String, TokenKey {
     case caption = "font.caption"
     case mono = "font.mono"
 
+    // The page faces (ADR-0030): a named family (Avenir Next), read by
+    // `ProseTypography`, never by the eleven chrome call sites that still use
+    // `.title`/`.body` above.
+    case prose = "font.prose"
+    case proseTitle = "font.proseTitle"
+
     var path: String { rawValue }
 }
 
@@ -83,6 +89,10 @@ enum SpacingToken: String, TokenKey {
     case m = "spacing.m"
     case l = "spacing.l"
     case xl = "spacing.xl"
+
+    // The editor's readable-width column (ADR-0030 §D7): 720pt, the horizontal
+    // inset a text container clamps to rather than tracking the whole window.
+    case readable = "spacing.readable"
 
     var path: String { rawValue }
 }

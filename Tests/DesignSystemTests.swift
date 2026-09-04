@@ -93,6 +93,17 @@ func rejectsMalformedHex(_ input: String) {
 
         let theme = Theme(document: document, id: id, inheriting: .emergency)
         #expect(theme.inheritedTokens.isEmpty, "\(id) is missing: \(theme.inheritedTokens)")
+
+        // ADR-0030: the three page tokens are expected here explicitly, not only
+        // through `inheritedTokens.isEmpty` above - named individually so a red run
+        // says which of the three is still missing rather than requiring the reader
+        // to diff `FontToken`/`SpacingToken` against the JSON by hand. Red until the
+        // coder adds `font.prose`, `font.proseTitle` and `spacing.readable` to both
+        // bundled theme files.
+        #expect(!theme.inheritedTokens.contains("font.prose"), "\(id) should define font.prose")
+        #expect(!theme.inheritedTokens.contains("font.proseTitle"), "\(id) should define font.proseTitle")
+        #expect(!theme.inheritedTokens.contains("spacing.readable"), "\(id) should define spacing.readable")
+        #expect(theme.spacing(.readable) == 720, "\(id): spacing.readable should resolve to 720")
     }
 }
 
