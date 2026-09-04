@@ -55,9 +55,20 @@ enum MarkdownAttributedText {
     ) -> [NSAttributedString.Key: Any] {
         switch span {
         case .heading(let level):
+            // The paragraph style is named here and not left to `base(theme:)`: that one carries
+            // `font.prose`'s line-height multiple, and a multiple applies to the run's *own* font,
+            // so a 24pt H1 under a 16pt-derived multiple reserves body-proportioned slack against
+            // a much taller face — surplus AppKit puts above the glyphs, which is what pushed the
+            // fold badge `FoldedHeadingFragment` centres in the line box away from the heading it
+            // marks. Composed onto the base style rather than replacing it, per ADR-0030 §D5.
             [
                 .font: ProseTypography.heading(level: level, theme),
                 .foregroundColor: NSColor(theme.color(.textPrimary)),
+                .paragraphStyle: ProseTypography.paragraphStyle(
+                    theme,
+                    font: ProseTypography.heading(level: level, theme),
+                    basedOn: base(theme: theme)[.paragraphStyle] as? NSParagraphStyle
+                ),
             ]
         case .bold:
             [.font: ProseTypography.proseBold(theme)]
