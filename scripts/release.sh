@@ -45,6 +45,50 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "$branch" = "main" ] || fail "sei su $branch: una release si taglia da main"
 [ -z "$(git status --porcelain)" ] || fail "l'albero di lavoro non è pulito: committa o metti da parte prima"
 
+# --- Preflight -------------------------------------------------------------------
+#
+# ADR-0031 §D12. The same philosophy the script already states at «Check what came out,
+# before asking Apple to bless it», applied one step earlier. All four checks are
+# instantaneous, and all four would otherwise surface after roughly ten minutes of
+# archiving and notarizing - the moment a release is least recoverable.
+
+# Resolution order for a Sparkle command-line tool: $SPARKLE_BIN, then the pinned unpack
+# scripts/fetch-sparkle-tools.sh writes, then PATH (ADR-0031 §D11). Prints the path it
+# found, returns non-zero when there is none.
+sparkle_tool() {
+    local name="$1"
+    if [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/$name" ]; then
+        echo "$SPARKLE_BIN/$name"
+        return 0
+    fi
+    if [ -x "$REPO/build/tools/sparkle/bin/$name" ]; then
+        echo "$REPO/build/tools/sparkle/bin/$name"
+        return 0
+    fi
+    command -v "$name" 2>/dev/null || return 1
+}
+
+step "Preflight"
+
+SIGN_UPDATE="$(sparkle_tool sign_update)" \
+    || fail "sign_update non trovato: esegui scripts/fetch-sparkle-tools.sh (oppure indica \$SPARKLE_BIN)"
+readonly SIGN_UPDATE
+echo "sign_update: $SIGN_UPDATE"
+
+gh auth status >/dev/null 2>&1 \
+    || fail "gh non autenticato: esegui gh auth login (serve a pubblicare la release)"
+
+# Sparkle's generate_keys stores the private key as a generic password under the service
+# "https://sparkle-project.org" and the account "ed25519": Sparkle 2.9.6,
+# generate_keys/main.swift:15-29 (commonKeychainItemAttributes - kSecAttrService at :22,
+# kSecAttrAccount at :25) and :160-161 (the --account option defaults to "ed25519");
+# sign_update/main.swift:13-18 reads the same pair back. `-w` is never passed here: the
+# presence of the item is the check, its contents are never printed.
+security find-generic-password -s "https://sparkle-project.org" -a "ed25519" >/dev/null 2>&1 \
+    || fail "chiave privata EdDSA assente dal portachiavi: esegui \"\$(sparkle_tool generate_keys)\" una volta"
+
+command -v python3 >/dev/null 2>&1 || fail "python3 non trovato: serve a scripts/appcast.py"
+
 readonly BUILD="$(git rev-list --count HEAD)"
 [ -n "$BUILD" ] && [ "$BUILD" -gt 0 ] || fail "numero di build non calcolabile da git"
 readonly SHA="$(git rev-parse --short HEAD)"
@@ -135,6 +179,21 @@ grep -q 'source=Notarized Developer ID' <<<"$verdict" \
     || fail "Gatekeeper non la riconosce come notarizzata"
 
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
+
+# --- The distributable -----------------------------------------------------------
+#
+# ADR-0031 §D8. Cut here and nowhere earlier: $zip above is what notarytool was handed
+# and has no ticket by construction, and $BUILD-notarization.txt is the log describing
+# it. This archive is the one a user's copy of the app downloads, so it must come from
+# the bundle after `stapler staple` - and it gets its own name, because that name
+# becomes a public URL. --sequesterRsrc is what Sparkle's publishing documentation asks
+# for; it is a no-op on a bundle with no resource forks, and costs nothing to be right
+# about.
+
+step "Impacchetto la build firmata e ticketata"
+readonly DIST="$OUTPUT/Pergamenum-$version-$BUILD.zip"
+ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$DIST"
+
 cat <<SUMMARY
 
 ==> Pronta: Pergamenum $version ($BUILD), da $SHA
