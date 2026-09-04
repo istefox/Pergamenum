@@ -313,6 +313,24 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
         }
     }
 
+    /// Restated for Task 4 of `2026-09-04-editor-page-typography-noteplan` (ADR-0028 §D2): this
+    /// task changes `ListMarkerRendering.paragraphStyle`'s signature and, later,
+    /// `listParagraph(at:storage:)`'s own call to it to compose a line-height multiple onto the
+    /// indentation (ADR-0030 §D6) - the length invariant this whole substitution mechanism
+    /// depends on must still hold once that composition lands. Already covered by
+    /// `theDisplayedParagraphKeepsItsStoredLength` above; restated here under this task's own
+    /// name so a regression introduced by the composition change fails on an assertion that
+    /// names Task 4, not only on the pre-existing one.
+    @Test func theDisplayedParagraphLengthInvariantHoldsForTask4sListCases() {
+        for (note, offset, markers) in Self.everyCase {
+            let displayed = displayedParagraph(note, markers: markers, at: offset)
+            #expect(
+                displayed?.attributedString.length == firstParagraphLength(of: note, at: offset),
+                "«\(note)»"
+            )
+        }
+    }
+
     @Test func anUnorderedMarkerIsDrawnAsABullet() {
         let displayed = displayedParagraph(Self.unordered, markers: [Self.unorderedMarker])
 
@@ -460,6 +478,108 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
             (displayed?.attributedString.attribute(.font, at: 13, effectiveRange: nil) as? NSFont)
                 == EditorDecorationDelegate.collapsedFont
         )
+    }
+}
+
+// MARK: - ListMarkerRendering.paragraphStyle(level:font:basedOn:) composition (ADR-0030 §D6, R-07)
+//
+// Task 4 of `2026-09-04-editor-page-typography-noteplan`. Driven directly against
+// `ListMarkerRendering`, not through `EditorDecorationDelegate`: the composition rule belongs to
+// this one function, and a unit test on it is a smaller, more exact fixture than building a whole
+// styled paragraph through the delegate to observe the same value - `MarkupHidingLists` above
+// never sets a font on its storage at all, so `bodyFont(of:after:)`'s own fallback
+// (`NSFont.systemFontSize`) is what it exercises, not a font this suite controls directly.
+
+@Suite struct ListMarkerRenderingComposition {
+    /// Formula pinned from `ListMarkerRendering.swift`'s own doc comments: `stepInEms = 1.5`,
+    /// `glyphInEms = 0.75`, `depth` clamped to 1...6.
+    ///
+    /// PLAN DEVIATION (ADR-0073 §D2): the dispatch brief asks to "reuse the exact font/depth
+    /// fixtures [of] the existing `ListMarkerRendering` test file" - grepped for
+    /// `ListMarkerRendering` across `Tests/` before writing this suite and found no such file.
+    /// The only existing coverage of this arithmetic is `MarkupHidingLists`'s relative
+    /// "deeper > top-level" assertions above, which compare two computed styles to each other
+    /// and never pin an exact value, over a font neither fixture sets explicitly. This test
+    /// fixes a concrete font/depth pair instead, read from the file's own documented constants,
+    /// so the exact multiplier survives Task 4's composition change rather than only staying
+    /// "more indented than before".
+    @Test func theIndentArithmeticIsUnchangedByAddingTheBasedOnParameter() {
+        let font = NSFont.systemFont(ofSize: 20)
+        for level in [1, 3, 6] {
+            let depth = CGFloat(level)
+            let style = ListMarkerRendering.paragraphStyle(level: level, font: font)
+            #expect(style.firstLineHeadIndent == 20 * 1.5 * depth, "livello \(level)")
+            #expect(style.headIndent == style.firstLineHeadIndent + 20 * 0.75, "livello \(level)")
+        }
+        // A level past the documented 1...6 clamp still steps at depth 6, never further.
+        let clamped = ListMarkerRendering.paragraphStyle(level: 99, font: font)
+        #expect(clamped.firstLineHeadIndent == 20 * 1.5 * 6)
+    }
+
+    /// **Red on purpose.** The Task 4 stub (`ListMarkerRendering.swift`) accepts `basedOn` but
+    /// does not yet compose it, so a style already carrying `lineHeightMultiple` 1.4 - the value
+    /// `ProseTypography.paragraphStyle(_:basedOn:)` would have set on the paragraph before this
+    /// function ever sees it (ADR-0030 §D6) - is dropped the moment the paragraph also becomes a
+    /// list item. `ProseTypography.paragraphStyle(_:basedOn:)` already performs exactly this
+    /// composition for its own case (`style.setParagraphStyle(basedOn)`); this is the same rule
+    /// applied to the list-indent side, which the coder's job for this task is to add.
+    @Test func paragraphStyleComposesOntoAnIncomingLineHeightWithoutDroppingItOrTheIndent() {
+        let base = NSMutableParagraphStyle()
+        base.lineHeightMultiple = 1.4
+        let font = NSFont.systemFont(ofSize: 20)
+
+        let composed = ListMarkerRendering.paragraphStyle(level: 2, font: font, basedOn: base)
+
+        #expect(composed.lineHeightMultiple == 1.4, "il moltiplicatore di interlinea in ingresso è stato perso")
+        #expect(composed.firstLineHeadIndent == 20 * 1.5 * 2, "l'indentazione del livello non è cambiata")
+        #expect(composed.headIndent == composed.firstLineHeadIndent + 20 * 0.75)
+    }
+}
+
+// MARK: - Faces pushed onto the decoration delegate and the fold badge (ADR-0030 §D1/§D5)
+//
+// Task 4 of `2026-09-04-editor-page-typography-noteplan`. Both properties are declared as plain
+// stored values with system-face defaults (tester stubs, ADR-0155 §D1): the coder wires
+// `applyStyling`/`textLayoutManager(_:textLayoutFragmentFor:in:)` to push `ProseTypography`
+// values into them next. What is asserted here is the interface itself - default and settable -
+// not a drawn pixel, which is out of reach without a pixel-level harness this repo does not have
+// for either type.
+
+@Suite struct EditorDecorationDelegateProseFaces {
+    @Test func proseFontDefaultsToASystemFaceAndIsSettable() {
+        let delegate = EditorDecorationDelegate()
+        #expect(delegate.proseFont.pointSize == NSFont.systemFontSize)
+
+        let pushed = NSFont(name: "Avenir Next", size: 16) ?? NSFont.systemFont(ofSize: 16)
+        delegate.proseFont = pushed
+        #expect(delegate.proseFont == pushed)
+    }
+
+    @Test func badgeFontDefaultsToATenPointSystemFaceAndIsSettable() {
+        let delegate = EditorDecorationDelegate()
+        #expect(delegate.badgeFont.pointSize == 10)
+
+        let pushed = NSFont.systemFont(ofSize: 9)
+        delegate.badgeFont = pushed
+        #expect(delegate.badgeFont == pushed)
+    }
+}
+
+@Suite struct FoldedHeadingFragmentBadgeFont {
+    /// `NSTextLayoutFragment` has no niladic initialiser - `EditorDecorationDelegate` always
+    /// builds one from a real `textElement` (`EditorDecorationDelegate.swift:293`). A bare
+    /// `NSTextParagraph` is enough of one for a property-only test that never lays anything out.
+    private static func fragment() -> FoldedHeadingFragment {
+        FoldedHeadingFragment(textElement: NSTextParagraph(attributedString: NSAttributedString(string: "x")), range: nil)
+    }
+
+    @Test func badgeFontDefaultsToATenPointSystemFaceAndIsSettable() {
+        let fragment = Self.fragment()
+        #expect(fragment.badgeFont.pointSize == 10)
+
+        let pushed = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        fragment.badgeFont = pushed
+        #expect(fragment.badgeFont == pushed)
     }
 }
 

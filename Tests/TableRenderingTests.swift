@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import Testing
 @testable import Pergamenum
 
@@ -247,5 +248,87 @@ private enum TableFixture {
 
     private func childGrids(of textView: NSTextView) -> [TableGridView] {
         (textView.accessibilityChildren() ?? []).compactMap { $0 as? TableGridView }
+    }
+}
+
+// MARK: - Cell and measurement faces (ADR-0030 §D1/§D5, R-13)
+//
+// Task 4 of `2026-09-04-editor-page-typography-noteplan`. `TableGridView.swift` is the coder's
+// file for this task (dispatch budget) - both tests below observe the result only through
+// `TableGridView`'s existing public surface (`update(with:theme:)`, `subviews`, a cell's own
+// `accessibilityIdentifier()` already set by `makeCell`), no new accessor added here.
+
+@MainActor
+@Suite struct TableGridProseFaces {
+    /// A `Theme` inheriting everything from `.emergency` except `font.prose`, which a test
+    /// controls directly - the same fixture shape `Tests/ProseTypographyTests.swift` uses for
+    /// the identical reason.
+    private static func theme(proseFamily: String = "Avenir Next", proseSize: CGFloat = 16) throws -> Theme {
+        let json = """
+        {
+          "font": {
+            "prose": {
+              "$type": "typography",
+              "$value": {
+                "fontFamily": "\(proseFamily)",
+                "fontSize": \(proseSize),
+                "fontWeight": 400,
+                "lineHeight": 1.4
+              }
+            }
+          }
+        }
+        """
+        let document = try DesignTokenDocument(data: Data(json.utf8), fallbackName: "table-grid-prose-test")
+        return Theme(document: document, id: "table-grid-prose-test", inheriting: .emergency)
+    }
+
+    private func cell(_ grid: TableGridView, identifier: String) -> NSTextField? {
+        grid.subviews.compactMap { $0 as? NSTextField }.first { $0.accessibilityIdentifier() == identifier }
+    }
+
+    /// R-13: a table cell is drawn in the page's own `font.prose`, not the 13pt system font
+    /// `makeCell` assigns once at creation and `update(with:theme:)` never revisits today.
+    @Test func headerAndBodyCellsAreDrawnInTheThemesProseFaceAfterUpdate() throws {
+        let grid = TableGridView()
+        let table = try #require(GFMTable.parse(["| a |", "|---|", "| 1 |"][...]))
+        let theme = try Self.theme(proseFamily: "Avenir Next", proseSize: 21)
+
+        grid.update(with: table, theme: theme)
+
+        let header = try #require(cell(grid, identifier: "editor-table-header-cell"))
+        let body = try #require(cell(grid, identifier: "editor-table-cell"))
+        let prose = theme.nsFont(.prose)
+
+        #expect(header.font?.familyName == prose.familyName, "intestazione: famiglia del font")
+        #expect(header.font?.pointSize == prose.pointSize, "intestazione: corpo del font")
+        #expect(body.font?.familyName == prose.familyName, "cella: famiglia del font")
+        #expect(body.font?.pointSize == prose.pointSize, "cella: corpo del font")
+    }
+
+    /// The same face used to draw a cell must be the one column-width measurement uses, or a
+    /// column sized for a 13pt system font truncates or overflows a page actually drawn in
+    /// `font.prose` (ADR-0030 §D5's "receive fonts as pushed values" applies to measurement, not
+    /// only to drawing).
+    ///
+    /// `computedWidths()`/`width(of:weight:)` are both `private` to `TableGridView`, so this is
+    /// asserted indirectly and deliberately at two extreme, far-apart prose sizes (8pt / 200pt):
+    /// today `width(of:weight:)` always measures at a hardcoded 13pt regardless of theme, so a
+    /// one-character header column clamps to the same `Metrics.minimumColumn`/`.maximumColumn`
+    /// bound at both sizes and this assertion is genuinely red. A real implementation tracking
+    /// the theme's own prose size clamps to the *opposite* bound at each extreme, which is what
+    /// the inequality below actually needs - not a specific pair of numbers, since the coder's
+    /// exact measurement formula is not this test's business.
+    @Test func columnWidthMeasurementTracksTheSameProseFaceTheCellsAreDrawnIn() throws {
+        let grid = TableGridView()
+        let table = try #require(GFMTable.parse(["| A |", "|---|", "| x |"][...]))
+
+        grid.update(with: table, theme: try Self.theme(proseSize: 8))
+        let narrow = try #require(cell(grid, identifier: "editor-table-header-cell")).frame.width
+
+        grid.update(with: table, theme: try Self.theme(proseSize: 200))
+        let wide = try #require(cell(grid, identifier: "editor-table-header-cell")).frame.width
+
+        #expect(narrow != wide, "la larghezza della colonna non segue il font prose del tema")
     }
 }

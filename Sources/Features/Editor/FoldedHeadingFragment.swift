@@ -16,6 +16,12 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var hiddenLines = 0
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// The badge's own face (ADR-0030 §D1/§D5), pushed in from `EditorDecorationDelegate`'s own
+    /// `badgeFont` (`textLayoutManager(_:textLayoutFragmentFor:in:)` assigns it beside
+    /// `badgeColor`/`badgeBackground` above). Declared here as a stored property only, Task 4
+    /// (tester): the `badge` computed property below still draws the line-31 literal until the
+    /// coder reads this instead.
+    nonisolated(unsafe) var badgeFont: NSFont = .systemFont(ofSize: 10, weight: .regular)
     /// The UTF-16 offset of the heading's own line, which is how a click on the badge says
     /// *which* section to open. The fold itself is held by index-entry ordinal, so this is
     /// translated on the way out rather than stored twice.

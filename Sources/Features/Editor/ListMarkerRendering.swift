@@ -42,7 +42,19 @@ enum ListMarkerRendering {
     /// `level` is `MarkdownStyler.Span.listMarker`'s own level - 1 for a top-level item,
     /// capped at 6 - and the step has to be strictly monotonic in it: R-05 is satisfied by
     /// a nested item being *visibly deeper*, not merely different.
-    static func paragraphStyle(level: Int, font: NSFont) -> NSParagraphStyle {
+    ///
+    /// `basedOn` is composed onto, never replaced by the indentation computed here (ADR-0030
+    /// §D6, the same rule `ProseTypography.paragraphStyle(_:basedOn:)` already follows for its
+    /// own `lineHeightMultiple`) - a list line's paragraph style is built wholesale today, so a
+    /// line-height multiple pushed in through `basedOn` would otherwise be silently dropped the
+    /// moment a paragraph is also a list item.
+    ///
+    /// **Stub (Task 4, tester; ADR-0155 §D1).** `basedOn` is accepted but not yet composed -
+    /// the body below is byte-for-byte the pre-Task-4 two-argument implementation, so every
+    /// existing caller's behaviour is unchanged until the coder fills this in. This is what
+    /// makes `Tests/MarkupHidingTests.swift`'s composition assertion genuinely red: a `basedOn`
+    /// style's own `lineHeightMultiple` does not yet survive a call here.
+    static func paragraphStyle(level: Int, font: NSFont, basedOn: NSParagraphStyle? = nil) -> NSParagraphStyle {
         let em = max(font.pointSize, 1)
         let depth = CGFloat(min(max(level, 1), 6))
         let style = NSMutableParagraphStyle()
