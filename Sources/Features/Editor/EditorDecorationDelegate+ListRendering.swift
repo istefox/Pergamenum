@@ -63,7 +63,16 @@ extension EditorDecorationDelegate {
         copy.addAttribute(
             .paragraphStyle,
             value: ListMarkerRendering.paragraphStyle(
-                level: item.level, font: Self.bodyFont(of: copy, after: marker.range),
+                // The page's own body face, pushed in from `ProseTypography.prose(_:)` by
+                // `applyStyling` (ADR-0030 §D1/§D5) - never a font read back out of the
+                // paragraph. The character just past the marker is not the body run it was
+                // assumed to be: every other marker in the paragraph has already been
+                // collapsed into `collapsedFont` a few lines above, so an item whose text
+                // opens with any markup at all (`- **grassetto**`, `- \`codice\``) probed a
+                // 0.01pt face and stepped 1.5pt per level instead of 24pt. An item's
+                // indentation is a property of the page it sits on, not of whatever run
+                // happens to start it.
+                level: item.level, font: proseFont,
                 // The style the paragraph already carries, composed onto rather than replaced
                 // (ADR-0030 §D5): `MarkdownAttributedText.base(theme:)` puts the page's
                 // `lineHeightMultiple` on every character of the note, and this attribute is
@@ -76,19 +85,6 @@ extension EditorDecorationDelegate {
             range: NSRange(location: 0, length: copy.length)
         )
         return NSTextParagraph(attributedString: copy)
-    }
-
-    /// The font a list item's own text is drawn in, read from the character just past its
-    /// marker - the one place in the paragraph guaranteed to be neither indentation nor
-    /// marker, and so to carry the body font `ListMarkerRendering.paragraphStyle` steps in
-    /// proportion to. The system font when the storage carries no font at all, which is
-    /// what an offscreen harness building a paragraph out of a bare string has.
-    private static func bodyFont(of paragraph: NSAttributedString, after marker: NSRange) -> NSFont {
-        let probe = NSMaxRange(marker)
-        guard probe < paragraph.length,
-              let font = paragraph.attribute(.font, at: probe, effectiveRange: nil) as? NSFont
-        else { return .systemFont(ofSize: NSFont.systemFontSize) }
-        return font
     }
 
     /// The paragraph style the displayed paragraph already carries, read at its first
