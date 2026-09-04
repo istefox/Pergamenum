@@ -64,6 +64,26 @@ struct TranscludedRendition: Equatable {
 final class TranscludedLineFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var rendition: TranscludedRendition?
 
+    /// The text container's own width, minus the padding a line fragment hangs at on each
+    /// side - the same reasoning as `HorizontalRuleFragment.ruleWidth`.
+    ///
+    /// **Declared by the tester** (bugfix red test, `TranscludedLineFragmentWidthTests`);
+    /// `draw(at:in:)` below must read the body's layout width from this property instead of
+    /// `layoutFragmentFrame.width`, which is the *source line's own text* width (the short
+    /// `![[Nota]]` wikilink), not the column width - `HorizontalRuleFragment.swift:25-34`
+    /// documents why that value cannot be used for anything that must span the container.
+    ///
+    /// TODO(coder): implement by reading `textLayoutManager?.textContainer`, mirroring
+    /// `HorizontalRuleFragment.ruleWidth` exactly:
+    /// `max(0, container.size.width - container.lineFragmentPadding * 2)`, falling back to
+    /// `layoutFragmentFrame.width` only when there is no container to ask.
+    var containerWidth: CGFloat {
+        // Placeholder: intentionally still reads the wrong value so the red test in
+        // TranscludedLineFragmentWidthTests.swift fails for the right reason (the bug this
+        // stub exists to pin down), not because the property is missing.
+        layoutFragmentFrame.width
+    }
+
     override func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
         guard let rendition, let line = textLineFragments.first else { return }
