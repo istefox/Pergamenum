@@ -60,13 +60,28 @@ final class SparkleUpdateController {
     }
 
     /// Called once, from `armCapture()` (ADR §D3) - never from `init`.
+    ///
+    /// The `isIsolated` return comes before any mention of `controller`, so the lazy
+    /// `SPUStandardUpdaterController` is never built under `-disableUpdater YES` - which is
+    /// what keeps a modal update alert off the screen in the UI suite (ADR §D4) and out of
+    /// the unit-test host entirely.
     func start() {
-        // TODO(coder, ADR-0031 §D3/§D5): return immediately when `isIsolated`; otherwise
-        // `controller.startUpdater()` plus the KVO observation on `controller.updater`,
-        // storing the token in `observation`.
+        guard !isIsolated else { return }
+        controller.startUpdater()
+        // `MainActor.assumeIsolated` and not `Task { @MainActor in … }`: Sparkle posts this
+        // change on the main thread already, and a hop would make the menu item lag its own
+        // state by a runloop turn (ADR §D5). `.initial` so the first value arrives without
+        // waiting for a change - the menu is built before the updater settles.
+        observation = controller.updater.observe(
+            \.canCheckForUpdates, options: [.initial, .new]
+        ) { [weak self] updater, _ in
+            MainActor.assumeIsolated {
+                self?.canCheckForUpdates = updater.canCheckForUpdates
+            }
+        }
     }
 
     func checkForUpdates() {
-        // TODO(coder, ADR-0031 §D3): controller.updater.checkForUpdates()
+        controller.updater.checkForUpdates()
     }
 }
