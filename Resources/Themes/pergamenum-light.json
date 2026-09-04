@@ -80,6 +80,12 @@
     },
     "mono": {
       "$value": { "fontFamily": "monospace", "fontSize": 12, "fontWeight": 400, "lineHeight": 1.45 }
+    },
+    "prose": {
+      "$value": { "fontFamily": "Avenir Next", "fontSize": 16, "fontWeight": 400, "lineHeight": 1.4 }
+    },
+    "proseTitle": {
+      "$value": { "fontFamily": "Avenir Next", "fontSize": 24, "fontWeight": 700, "lineHeight": 1.2 }
     }
   },
   "spacing": {
@@ -88,7 +94,8 @@
     "s": { "$value": { "value": 8, "unit": "px" } },
     "m": { "$value": { "value": 16, "unit": "px" } },
     "l": { "$value": { "value": 24, "unit": "px" } },
-    "xl": { "$value": { "value": 40, "unit": "px" } }
+    "xl": { "$value": { "value": 40, "unit": "px" } },
+    "readable": { "$value": { "value": 720, "unit": "px" } }
   },
   "radius": {
     "$type": "dimension",
