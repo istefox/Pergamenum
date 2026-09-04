@@ -134,11 +134,14 @@ let project = Project(
                 // - the exception to CLAUDE.md principle 2 covers the update check and
                 // nothing else, least of all telemetry.
                 "SUFeedURL": .string("https://istefox.github.io/pergamenum-updates/appcast.xml"),
-                // PLACEHOLDER. Replaced by Task 9 with the real EdDSA public key that
-                // `generate_keys` prints; the private half never leaves this Mac's login
-                // Keychain. A placeholder still here at Task 10 is what R-08's hand check
-                // is looking for.
-                "SUPublicEDKey": .string("SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER"),
+                // The public half of the EdDSA signing pair, read out of the login
+                // Keychain with `generate_keys -p` (Sparkle 2.9.6,
+                // generate_keys/main.swift:163 - it looks up and prints, it never
+                // generates). The pair already existed on this Mac before this chain, so
+                // it was never regenerated: overwriting it would orphan every signature
+                // already made with it, and Sparkle refuses an update signed by a
+                // different key. The other half is in the Keychain and in no file here.
+                "SUPublicEDKey": .string("+rTbWH+mFiGxEZtf/WKqWhA60u4exXrSyejVpDJZlbU="),
                 "SUEnableAutomaticChecks": .boolean(false),
                 "SUSendsSystemProfile": .boolean(false),
                 // Without this the about panel prints "Copyright ©. All rights

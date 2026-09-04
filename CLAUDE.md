@@ -34,7 +34,15 @@ handoff; the spec wins on any conflict.
 1. **File over app.** Every piece of content lives as a readable file on disk (md,
    canvas, pdf, eml, svg). If Pergamenum disappeared, the data stays usable.
 2. **Fully offline.** No network call in any feature. No server, no account, no
-   telemetry.
+   telemetry. **One named exception, and only one** (ADR-0031 §D13): the update check,
+   which happens when the person chooses «Cerca Aggiornamenti…» and at no other moment -
+   no timer, no launch check, no background task. It carries the app's own version
+   identifiers and nothing else: no vault content, no note text, no path, no file name,
+   no tag, no task, no calendar data, ever. `SUSendsSystemProfile` stays `false`, so
+   Sparkle's optional hardware profile is off and the telemetry sentence above is
+   untouched. The exception is scoped to the updater and does not travel: no feature of
+   the vault, Workspace, tasks, calendar, editor or index gains network access from it,
+   and neither `perg` nor `pergamenum-mcp` knows Sparkle exists.
 3. **Rebuildable index.** The SQLite cache (links, backlinks, tasks, thumbnails)
    regenerates entirely from a vault scan. It is never the source of truth; deleting
    it loses nothing. Since ADR-0017 (`PG-004`) it lives with the rest of a vault's
@@ -113,7 +121,9 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'pl
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
 xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build    # the CLI
 xcodebuild -workspace Pergamenum.xcworkspace -scheme pergamenum-mcp -destination 'platform=macOS' build
-scripts/release.sh                                                                              # signed, notarized, numbered build
+scripts/release.sh                                                                              # signed, notarized, numbered build, published with its appcast
+scripts/fetch-sparkle-tools.sh                                                                  # Sparkle's sign_update/generate_keys into build/, checksum-pinned
+scripts/appcast.py --self-test                                                                  # the appcast generator's own assertions, offline, writes no feed
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
 scripts/uitests.sh                                                                              # the UI suite, run the way it has to be - before every merge to main

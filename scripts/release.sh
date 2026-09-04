@@ -194,10 +194,96 @@ step "Impacchetto la build firmata e ticketata"
 readonly DIST="$OUTPUT/Pergamenum-$version-$BUILD.zip"
 ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$DIST"
 
+# --- Firma, release, appcast -----------------------------------------------------
+#
+# ADR-0031 §D9 e §D10. Da qui in poi si esce in rete, e ogni valore pubblicato viene
+# letto dall'artefatto appena costruito invece che riscritto a mano: il feed deve
+# puntare dove la copia installata andrà davvero a guardare, e l'unico posto che lo sa
+# è l'Info.plist del bundle. Nessun secondo worktree e nessun checkout: :46 rifiuta un
+# albero sporco, e questo script non può essere la cosa che ne crea uno. L'appcast
+# viene scritto in build/release/ (gitignorata) e pubblicato via API.
+
+readonly UPDATES_REPO="istefox/pergamenum-updates"
+readonly TAG="v$version-$BUILD"
+
+step "Firmo $DIST"
+# Sparkle 2.9.6, sign_update/main.swift:287: per un archivio stampa esattamente una
+# riga, `sparkle:edSignature="…" length="…"`. La grafia `sparkle:length` che si legge
+# in giro è il ramo :285, quello dei file di note di rilascio, e qui non si applica
+# mai - letto dal sorgente del tag agganciato, non dalla documentazione, perché i due
+# rami differiscono proprio nel nome dell'attributo. La chiave privata non compare qui:
+# sign_update se la prende dal portachiavi da solo.
+sig_line="$("$SIGN_UPDATE" "$DIST")"
+signature="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"$sig_line")"
+length="$(sed -n 's/.* length="\([^"]*\)".*/\1/p' <<<"$sig_line")"
+[ -n "$signature" ] || fail "firma non estraibile da sign_update, che ha stampato: $sig_line"
+[ -n "$length" ] || fail "lunghezza non estraibile da sign_update, che ha stampato: $sig_line"
+echo "firmato: $length byte"
+
+# Le note le scrive una persona. Una release con il corpo vuoto è una release che
+# nessuno può leggere, e i non-goal della SPEC escludono un CHANGELOG.md: questa è prosa
+# per la singola release, non un file da mantenere.
+notes="$OUTPUT/$BUILD-notes.md"
+[ -s "$notes" ] || fail "note di rilascio assenti o vuote: scrivi $notes prima di pubblicare"
+
+step "Pubblico la release $TAG su $UPDATES_REPO"
+gh release create "$TAG" --repo "$UPDATES_REPO" \
+    --title "Pergamenum $version ($BUILD)" \
+    --notes-file "$notes" "$DIST" \
+    || fail "gh release create ha fallito per $TAG"
+
+readonly RELEASE_URL="https://github.com/$UPDATES_REPO/releases/tag/$TAG"
+download_url="https://github.com/$UPDATES_REPO/releases/download/$TAG/$(basename "$DIST")"
+
+# Entrambi dal plist costruito, mai da un secondo letterale qui: se un giorno il feed o
+# il minimo di sistema cambiano nel manifest, l'appcast li segue senza che nessuno debba
+# ricordarsi di questo file.
+feed_url="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$BUNDLE/Contents/Info.plist")" \
+    || fail "SUFeedURL assente da $BUNDLE/Contents/Info.plist"
+min_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$BUNDLE/Contents/Info.plist")" \
+    || fail "LSMinimumSystemVersion assente da $BUNDLE/Contents/Info.plist"
+
+step "Rigenero l'appcast"
+appcast="$OUTPUT/appcast.xml"
+python3 scripts/appcast.py \
+    --feed-url "$feed_url" \
+    --version "$BUILD" \
+    --short-version "$version" \
+    --min-system "$min_system" \
+    --download-url "$download_url" \
+    --signature "$signature" \
+    --length "$length" \
+    --notes-link "$RELEASE_URL" \
+    --output "$appcast" \
+    || fail "scripts/appcast.py non ha scritto $appcast"
+
+step "Pubblico $feed_url"
+# Lo sha del file già pubblicato serve alla API per sapere che cosa si sta sostituendo, e
+# manca esattamente una volta, prima della primissima release: il 404 è la strada felice
+# di quel giorno soltanto, quindi si distingue il caso invece di ignorare l'errore.
+appcast_sha="$(gh api "repos/$UPDATES_REPO/contents/appcast.xml" --jq '.sha' 2>/dev/null || true)"
+appcast_body="$(base64 <"$appcast" | tr -d '\n')"
+if [ -n "$appcast_sha" ]; then
+    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
+        -f message="appcast: Pergamenum $version ($BUILD)" \
+        -f content="$appcast_body" \
+        -f sha="$appcast_sha" >/dev/null \
+        || fail "pubblicazione dell'appcast fallita (sostituzione)"
+else
+    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
+        -f message="appcast: Pergamenum $version ($BUILD)" \
+        -f content="$appcast_body" >/dev/null \
+        || fail "pubblicazione dell'appcast fallita (primo caricamento)"
+fi
+
 cat <<SUMMARY
 
-==> Pronta: Pergamenum $version ($BUILD), da $SHA
+==> Pronta e pubblicata: Pergamenum $version ($BUILD), da $SHA
     $BUNDLE
+    $DIST
+
+    Release:  $RELEASE_URL
+    Appcast:  $feed_url
 
     Per installarla:
       osascript -e 'tell application "Pergamenum" to quit'

@@ -1,12 +1,5 @@
 # ADR-0031: The app can fetch its own next build, and nothing else on it goes near a network
 
-> **Filing note for the orchestrator.** The architect's write scope is `docs/architecture/**`
-> (`test-write-scope.sh`), but this repo files its ADRs under `docs/adr/NNNN-slug.md`. Relocate
-> this file to `docs/adr/0031-sparkle-auto-update-integration.md` and delete this note, exactly
-> as was done for ADR-0030 on 2026-09-04. The plan
-> (`docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md`) already cites the
-> final path.
-
 - Status: proposed
 - Date: 2026-09-04. Every external fact below was **checked live on this machine on this date**,
   not recalled: Sparkle's latest release and its `Package.swift` (GitHub API), the contents of
