@@ -154,22 +154,41 @@ final class ThemeEngine {
     // MARK: Font customisation (ADR-0030 §D9)
 
     /// Writes one prose font token into the vault's customisation file and switches
-    /// to it. Meant to mirror `setCustomColor`'s write-then-select ordering and its
+    /// to it. Mirrors `setCustomColor`'s write-then-select ordering and its
     /// "no vault, no save" guard exactly — `Draft.fonts` is `colors`' sibling, not a
     /// second mechanism.
-    ///
-    /// Coder-owned body (ADR-0155 §D1, Task 7): stubbed as a no-op so the target
-    /// builds; this is what keeps `withoutAVaultAFontCannotBeSavedAndSaysSo` and the
-    /// round-trip-through-the-engine test red until it is filled in.
-    func setCustomFont(_ token: FontToken, to value: TypographyValue) {}
+    func setCustomFont(_ token: FontToken, to value: TypographyValue) {
+        guard let directory = userThemesDirectory else {
+            customizationProblem = "nessuna cartella note aperta: non c'è dove salvare il carattere"
+            return
+        }
+        var draft = customization ?? ThemeCustomization.Draft(appearance: current.appearance, colors: [:])
+        draft.fonts[token] = value
+        apply(draft, in: directory)
+    }
 
     /// Drops both prose font overrides (`.prose` and `.proseTitle` together — Settings
     /// never offers one without the other) back to the theme underneath, removing the
     /// file when no colour override is left either, mirroring `clearCustomColor`
     /// through `resetCustomization()` (R-12).
     ///
-    /// Coder-owned body (ADR-0155 §D1, Task 7): stubbed as a no-op.
-    func clearCustomFonts() {}
+    /// Unlike `clearCustomColor` it falls back to reading the file when the in-memory
+    /// copy is nil: the file is the customisation (CLAUDE.md principle 1) and it can
+    /// be there without this engine having written it — a vault attached after a font
+    /// was chosen by hand, or written while this window was open. Refusing then would
+    /// leave a reset button that does nothing on a file that plainly exists.
+    func clearCustomFonts() {
+        guard let directory = userThemesDirectory,
+              var draft = customization ?? ThemeCustomization.load(from: directory) else { return }
+        for token in ThemeCustomization.customizableFonts {
+            draft.fonts.removeValue(forKey: token)
+        }
+        if draft.isEmpty {
+            resetCustomization()
+            return
+        }
+        apply(draft, in: directory)
+    }
 
     /// Rebuilds the customisation on the appearance showing right now, keeping the
     /// colours already chosen. This is what makes a light customisation usable as a
