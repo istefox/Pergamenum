@@ -8,6 +8,7 @@ import SwiftUI
 struct ConformanceView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(ThemeEngine.self) private var themeEngine
     @State private var results: [Result] = []
     @State private var isChecking = false
     @State private var hasRun = false
@@ -27,12 +28,14 @@ struct ConformanceView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button(action: check) {
                     Label("Verifica ora", systemImage: "checkmark.seal")
                 }
                 .help("Verifica le note contro le convenzioni harness")
                 .disabled(isChecking || vault.root == nil)
+
+                themeToggleToolbarItem(themeEngine)
             }
         }
         // Asked for from the Vista menu, which cannot call into a view. The pane is

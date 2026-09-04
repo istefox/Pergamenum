@@ -20,6 +20,7 @@ struct ViewsPane: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
+    @Environment(ThemeEngine.self) private var themeEngine
 
     @State private var entries: [ViewEntry] = []
     @State private var isScanning = false
@@ -44,6 +45,7 @@ struct ViewsPane: View {
         .onDayChange { scan() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("views-pane")
+        .toolbar { ToolbarItemGroup(placement: .primaryAction) { themeToggleToolbarItem(themeEngine) } }
     }
 
     private var header: some View {

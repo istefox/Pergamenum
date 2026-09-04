@@ -8,6 +8,7 @@ struct TodayView: View {
 
     /// Created at app level so the Calendario menu can act on the same day (SPEC §10).
     @Environment(DayController.self) private var controller
+    @Environment(ThemeEngine.self) private var themeEngine
 
     /// The note column's width, handed to the month so it tracks the divider.
     @State private var columnWidth: CGFloat = 0
@@ -31,7 +32,7 @@ struct TodayView: View {
         .background(theme.color(.backgroundPrimary))
         .onAppear { controller.scale = DayScale(rawValue: storedScale) ?? .day }
         .onChange(of: controller.scale) { _, newScale in storedScale = newScale.rawValue }
-        .toolbar { DayToolbar(controller: controller, calendar: calendar, vault: vault) }
+        .toolbar { DayToolbar(controller: controller, calendar: calendar, vault: vault, themeEngine: themeEngine) }
         .task(id: day) { await controller.load() }
         // Reloads when EventKit says the store moved, or when the app comes back to
         // the front having been granted access in the meantime. Without this the

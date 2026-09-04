@@ -14,6 +14,7 @@ struct DayToolbar: ToolbarContent {
     @Bindable var controller: DayController
     let calendar: EventKitStore
     let vault: VaultController
+    let themeEngine: ThemeEngine
 
     private var day: CalendarDate { controller.day }
 
@@ -104,6 +105,8 @@ struct DayToolbar: ToolbarContent {
                 Label("Aggiorna da EventKit", systemImage: "arrow.clockwise")
             }
             .help("Rilegge eventi e promemoria")
+
+            themeToggleToolbarItem(themeEngine)
         }
     }
 }

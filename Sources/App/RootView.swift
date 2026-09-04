@@ -212,7 +212,6 @@ struct RootView: View {
         .scrollContentBackground(.hidden)
         .background(theme.color(.backgroundSecondary))
         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
-        .safeAreaInset(edge: .bottom) { themePicker }
         // A pane switcher row's own label ("Note", "Workspace") collides with the
         // bare-root segment `VaultTopBar`/`BoardChrome` draw for that same pane when
         // nothing is open in it (2026-08-28, recovery checkpoint) - both read the pane
@@ -357,30 +356,4 @@ struct RootView: View {
         }
     }
 
-    /// The M0 acceptance criterion is a runtime theme switch, so the control sits in
-    /// the window rather than only in Settings, which does not exist yet.
-    private var themePicker: some View {
-        @Bindable var engine = engine
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("TEMA")
-                .themedText(.caption, color: .textTertiary)
-            Picker("Tema", selection: $engine.selection) {
-                Text("Sistema").tag(ThemeEngine.Selection.followSystem)
-                Text("Chiaro").tag(ThemeEngine.Selection.light)
-                Text("Scuro").tag(ThemeEngine.Selection.dark)
-                ForEach(engine.selectableThemes.filter { !$0.id.hasPrefix("pergamenum-") }) { custom in
-                    Text(custom.name).tag(ThemeEngine.Selection.named(custom.id))
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-
-            if !engine.problems.isEmpty {
-                Label("\(engine.problems.count) problemi nei token", systemImage: "exclamationmark.triangle")
-                    .themedText(.caption, color: .taskOverdue)
-                    .help(engine.problems.joined(separator: "\n"))
-            }
-        }
-        .padding(theme.spacing(.s))
-    }
 }
