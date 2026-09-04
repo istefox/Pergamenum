@@ -10,6 +10,7 @@ import SwiftUI
 /// driven the same way.
 struct DiaryToolbar: ToolbarContent {
     @Bindable var controller: DiaryController
+    let themeEngine: ThemeEngine
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
@@ -43,6 +44,8 @@ struct DiaryToolbar: ToolbarContent {
             }
             .help("Blocca del tempo sulla giornata")
             .accessibilityIdentifier("diary-new-entry")
+
+            themeToggleToolbarItem(themeEngine)
         }
     }
 }

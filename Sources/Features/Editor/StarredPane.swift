@@ -17,6 +17,7 @@ struct StarredPane: View {
     /// own binding, never the default, or the pane would teach a shortcut that does
     /// nothing.
     @Environment(ShortcutStore.self) private var shortcuts
+    @Environment(ThemeEngine.self) private var themeEngine
 
     private var notes: [NoteRecord] { vault.starredNotes }
 
@@ -36,6 +37,7 @@ struct StarredPane: View {
         .background(theme.color(.backgroundPrimary))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("starred-pane")
+        .toolbar { ToolbarItemGroup(placement: .primaryAction) { themeToggleToolbarItem(themeEngine) } }
     }
 
     private var header: some View {

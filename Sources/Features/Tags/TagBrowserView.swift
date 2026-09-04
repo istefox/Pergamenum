@@ -16,6 +16,7 @@ struct TagBrowserView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
+    @Environment(ThemeEngine.self) private var themeEngine
 
     /// The chosen tags. View state: a filter being held is a fact about looking, not about the
     /// vault, and it does not deserve to outlive the window.
@@ -61,6 +62,7 @@ struct TagBrowserView: View {
                 renaming = nil
             }
         }
+        .toolbar { ToolbarItemGroup(placement: .primaryAction) { themeToggleToolbarItem(themeEngine) } }
     }
 
     /// What the rename left behind, and the only way back. Shown until it is used or replaced.

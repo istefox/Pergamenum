@@ -12,6 +12,7 @@ struct WorkspaceView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
     @Environment(Navigation.self) private var navigation
+    @Environment(ThemeEngine.self) private var themeEngine
     /// The **window's** undo manager, which is the one `NSTextView` already registers its
     /// text edits on (ADR-0026 §D8): one window, one undo history, and Cmd+Z means "undo
     /// the last thing I did here" whatever had focus. Read here and handed to
@@ -330,6 +331,8 @@ struct WorkspaceView: View {
             }
             .help("Mostra o nasconde l'albero delle cartelle e delle board")
             .accessibilityIdentifier("workspace-tree-toggle")
+
+            themeToggleToolbarItem(themeEngine)
         }
     }
 
