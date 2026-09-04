@@ -15,6 +15,20 @@ import XCTest
 // Launches with **both** `-disableCalendar YES` and `-disableUpdater YES`, per CLAUDE.md's
 // working agreement that every file under `UITests/` carries both flags, not only the ones
 // that would otherwise notice.
+//
+// **Why the About item is not found by its Italian title.** The app's own strings are
+// Italian, but every menu item macOS supplies itself (About, Settings, Services, Hide, Quit)
+// renders in English: `CFBundleDevelopmentRegion` is `en` and the built bundle ships no
+// `.lproj`, so AppKit localizes the standard app menu to English regardless of the app's UI
+// language. Measured 2026-09-04 from a UI-test accessibility snapshot (see
+// `.claude/agent-memory/coder/topics/batch-2-macos-standard-menu-items-english.md`):
+// `MenuItem, identifier: 'orderFrontStandardAboutPanel:', title: 'About Pergamenum'`. The
+// precondition below therefore looks the item up by its `accessibilityIdentifier`
+// (`orderFrontStandardAboutPanel:`, stable regardless of locale), falling back to the English
+// title only if the identifier does not resolve. This is not a violation of CLAUDE.md's
+// "never find a control by its title" rule: that rule is about app-authored controls, which
+// have an `accessibilityIdentifier` the app itself sets; this is a system-provided item whose
+// identifier happens to be a stable AppKit selector name, not app-authored text.
 final class UpdateMenuUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -49,13 +63,25 @@ final class UpdateMenuUITests: XCTestCase {
         XCTAssertTrue(pergamenumMenu.waitForExistence(timeout: 5), "manca il menu «Pergamenum»")
         pergamenumMenu.click()
 
-        let about = app.menuBars.menuItems["Informazioni su Pergamenum"]
-        XCTAssertTrue(about.waitForExistence(timeout: 5), "manca «Informazioni su Pergamenum»")
+        // Locale-independent handle first (see file header): the system renders this item in
+        // English in this bundle, so its Italian title never matches.
+        let aboutByIdentifier = app.menuBars.menuItems["orderFrontStandardAboutPanel:"]
+        if !aboutByIdentifier.waitForExistence(timeout: 5) {
+            let aboutByEnglishTitle = app.menuBars.menuItems["About Pergamenum"]
+            XCTAssertTrue(
+                aboutByEnglishTitle.waitForExistence(timeout: 5),
+                "manca la voce About, né per identifier 'orderFrontStandardAboutPanel:' né per titolo inglese 'About Pergamenum'"
+            )
+        }
 
         let checkForUpdates = app.menuBars.menuItems["Cerca Aggiornamenti…"]
         XCTAssertTrue(
             checkForUpdates.waitForExistence(timeout: 5),
             "manca «Cerca Aggiornamenti…» nel menu Pergamenum"
+        )
+        XCTAssertFalse(
+            checkForUpdates.isEnabled,
+            "«Cerca Aggiornamenti…» dovrebbe essere disabilitato sotto -disableUpdater YES (R-03)"
         )
 
         // Never clicked - see the file header.
