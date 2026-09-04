@@ -24,4 +24,11 @@ filter by that struct's name (`-only-testing:PergamenumTests/SuiteName`) — thi
 Do not conclude "0 executed" means the filter syntax is broken globally; it means this
 particular file has no addressable suite type.
 
+**The struct name is often not the file's base name** — e.g. `EmbedResizeGestureTests.swift`
+declares `@Suite struct EmbedResizeGesture` (no `Tests` suffix), `EmbedCaretTests.swift`
+declares `@Suite struct EmbedCaret`. `grep -n "@Suite struct" <file>` first and pass that
+exact identifier to `-only-testing:PergamenumTests/<StructName>` — guessing the file's base
+name minus `.swift` reproduces the same "0 executed" silent-empty result this memory exists
+to warn about (hit again on 2026-09-04, ADR-0030 chain, despite having this note loaded).
+
 See also [[pergamenum-tester-stub-pattern]].

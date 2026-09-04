@@ -109,9 +109,54 @@ enum EmbedEditorFixtures {
         return found.offsetBy(dx: origin.x, dy: origin.y)
     }
 
+    /// The drawn picture's own frame for the embed whose paragraph starts at `offset`, in
+    /// the view's own coordinates - the same frame production hit-tests against
+    /// (`Coordinator.drawnPictureFrame(at:in:)`, `NoteTextView+EmbedCaret.swift`), not
+    /// `fragmentFrame(at:in:)`'s layout-fragment frame.
+    ///
+    /// The two frames coincided under the old 13pt mono base font by accident -
+    /// `EmbedAttachment.attachmentBounds` anchors the picture at `.zero` (ADR-0019 §D3), so
+    /// the fragment came out numerically equal to the picture for a standalone embed
+    /// paragraph. Since ADR-0030 moved the base font to the taller `font.prose` (Avenir
+    /// Next 16), the fragment is taller than the picture by roughly the font's descent, so
+    /// a caller measuring the picture itself - a handle corner, a drag ratio - needs this
+    /// one, not `fragmentFrame`. `fragmentFrame` stays exactly as it was for callers that
+    /// genuinely want the paragraph's own frame: ordinary prose, a `.missing` placeholder,
+    /// or a run with `hidesMarkup` off, none of which draw a picture at all.
+    static func pictureFrame(
+        at offset: Int, in textView: NSTextView, coordinator: NoteTextView.Coordinator
+    ) -> CGRect {
+        guard let manager = textView.textLayoutManager, let content = manager.textContentManager
+        else { return .null }
+        let text = textView.string as NSString
+        var found: CGRect = .null
+        let start = manager.documentRange.location
+        manager.enumerateTextLayoutFragments(from: start, options: [.ensuresLayout]) { fragment in
+            let fragmentStart = content.offset(
+                from: content.documentRange.location, to: fragment.rangeInElement.location
+            )
+            guard fragmentStart == offset else { return true }
+            guard let run = coordinator.decorations.drawnEmbedRange(
+                atParagraphStart: fragmentStart, in: text
+            ),
+                let attachmentLocation = content.location(
+                    content.documentRange.location, offsetBy: run.location
+                ),
+                let picture = NoteTextView.Coordinator.drawnPictureFrame(
+                    at: attachmentLocation, in: fragment
+                )
+            else { return false }
+            found = picture
+            return false
+        }
+        guard !found.isNull else { return .null }
+        let origin = textView.textContainerOrigin
+        return found.offsetBy(dx: origin.x, dy: origin.y)
+    }
+
     /// The shared setup every resize-drag test needs: a landed render, real layout, and
     /// the drawn picture's own frame - the same three steps the caret tests each repeat by
-    /// hand (`waitForRendition` then `ensureLayout` then `fragmentFrame`), factored once
+    /// hand (`waitForRendition` then `ensureLayout` then `pictureFrame`), factored once
     /// here because the drag and commit suites add enough tests that copying it a further
     /// dozen times would grow them for no reason a reader would thank later.
     ///
@@ -132,7 +177,7 @@ enum EmbedEditorFixtures {
         coordinator.applyEmbeds(to: textView)
         _ = await waitForRendition(at: embedOffset, in: coordinator)
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
-        return (fixture, fragmentFrame(at: embedOffset, in: textView))
+        return (fixture, pictureFrame(at: embedOffset, in: textView, coordinator: coordinator))
     }
 
     static let note = "prima\n![[foto.png]]\ndopo\n"
