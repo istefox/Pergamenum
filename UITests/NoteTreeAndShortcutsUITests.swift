@@ -35,6 +35,7 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         var arguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                          "-disableCalendar", "YES",
+                         "-disableUpdater", "YES",
                          "-stateBase", stateBase.path(percentEncoded: false)]
         if let shortcuts {
             arguments += ["-shortcutOverrides", shortcuts]
