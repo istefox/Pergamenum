@@ -1,0 +1,142 @@
+manifest_schema_version: "1.3"
+topic: "sparkle-auto-update-integration"
+topic_full_title: "Sparkle auto-update integration (PG-096) for Pergamenum"
+project_root: "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle"
+mode: "greenfield"
+anonymize: false
+chain_path: "standard"
+created_at: "2026-09-04T06:37:42+00:00"
+last_updated_at: "2026-09-04T09:38:47+00:00"
+current_step: "step_4_session_boundary"
+status: "in_progress"
+
+# Gate 0 routing result (ADR-0017)
+gate0:
+  decision: null
+  chain_path: "standard"
+  auto_detect_reason: "file_estimate=714,file_vote=standard,keyword_vote=express,spec_adr=false -> hybrid; orchestrator overrides to standard: new external dependency, security-sensitive EdDSA signing, touches release/notarization pipeline"
+  criteria_spec_adr_exist: false
+  decided_at: null
+
+# test-cmd tracking (ADR-0014)
+test_cmd_placeholder: false
+test_cmd_candidate: "xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath \"/Users/stefer/Developer/Pergamenum/.build/DerivedData\" -only-testing:PergamenumTests test"
+test_cmd_provisional: false
+coder_model: "opus"
+
+# Autopilot mode (project-conductor): all HITL gates auto-select safe defaults
+autopilot: false
+
+# Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
+hook_verified: false
+step5_mode: null
+
+# Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
+recovery_baseline_sha: null
+
+# Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
+# set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
+# confirmed in the effective settings.json; it is NOT named worktree_hook_verified — no hook
+# is verified, and that name would collide with ADR-0016's unrelated hook_verified.
+# worktree_merges is an array, so manifest-set-flag.sh (true|false only) cannot write it;
+# it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
+# with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
+# sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
+worktree_baseref_verified: false
+worktree_merges: []
+
+# Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
+# here, not inert (inverts the ADR-0052/0053/0054 pattern) — see concept-to-code/SKILL.md
+# section '#### Proportional audit depth' for the resolution rule and the §D4 floor.
+risk: "high"
+task_type: "novel-algorithm"
+
+# External dependencies (ADR-0060 G13). Empty list means nobody declared any — NOT that
+# none exist (§D5); the gate is inert on an empty list. This is the OPPOSITE default
+# direction from risk/task_type above: those default to the strict profile on null because
+# they REMOVE a leniency; this feature ADDS a constraint, so absent/empty must equal the
+# pre-feature behaviour (ADR-0055 §D2's rule, applied here per ADR-0060). Populated at Gate
+# 2c from the architect's EXTERNAL DEPENDENCY: lines, confirmed by the operator.
+external_dependencies: []
+
+# Per-task checkpoint review in Step 5 (ADR-0039 D5-D9). Opt-in: 'none' | 'checkpoint'.
+# Flip with: sed -i '' 's/^step5_review_mode: none/step5_review_mode: checkpoint/' <manifest>
+# (not manifest-set-flag.sh — that helper only accepts true|false, same as step5_mode)
+step5_review_mode: none
+
+# Tracer-bullet probe (ADR-0057, Step 4.5, optional, between Gate 4 and Step 5). Absent/skip
+# means skipped — the OPPOSITE default direction from ADR-0055 §D2 (contrast: that feature
+# REMOVES a constraint so it defaults strict; this feature ADDS a step so inert must equal
+# the pre-feature behaviour). Flip with:
+# sed -i '' 's/^tracer_bullet_mode: skip/tracer_bullet_mode: probe/' <manifest>
+tracer_bullet_mode: skip
+tracer_bullet_verdict: null
+tracer_bullet_recommendation: null
+tracer_bullet_attempts: 0
+tracer_bullet_red_decision: null
+tracer_bullet_abort_reason: null
+
+# Scaffolding / repo bootstrap tracking (Gate 0d)
+git_init: true
+git_visibility: "private"
+license: "None"
+xcode_project: false
+initial_commit_push: "commit"
+git_remote_url: "https://github.com/istefox/Pergamenum.git"
+step6_mode: null
+
+# Artifacts (absolute paths, populated as steps complete)
+artifacts:
+  spec: "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/SPEC.md"
+  brainstorm: null
+  ux_blueprint: null
+  design_prompt: null
+  design: null
+  adr: "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/adr/0031-sparkle-auto-update-integration.md"
+  arch: null
+  plan: "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md"
+  project_claude_md: null
+
+# HITL gates audit trail
+hitl_gates:
+  - gate: 1
+    label: "spec_review"
+    status: "approved"
+    approved_at: "2026-09-04T07:08:50+00:00"
+    notes: "spec accepted"
+  - gate: 2
+    label: "architecture_review"
+    status: "approved"
+    approved_at: "2026-09-04T09:18:57+00:00"
+    notes: "architecture accepted; D9 hosting amendment (public istefox/pergamenum-updates repo) approved explicitly"
+  - gate: 3
+    label: "project_memory_review"
+    status: "approved"
+    approved_at: "2026-09-04T09:38:40+00:00"
+    notes: "CLAUDE.md updated"
+  - gate: 4
+    label: "implementation_mode"
+    status: "pending"
+    approved_at: null
+    notes: null
+  - gate: 5
+    label: "review_cycle_decision"
+    status: "pending"
+    approved_at: null
+    notes: null
+
+# Session boundary tracking
+session_boundary:
+  pre_step_4_session_id: null
+  fresh_session_started_at: null
+  resumed_at: null
+
+# Failure tracking (populated only on status=failed)
+failure:
+  failed_at: null
+  failed_step: null
+  failure_reason: null
+  partial_artifacts: []
+
+# Hint for next action (UX)
+next_action: "Run /skill concept-to-code sparkle-auto-update-integration to start Step 1 interview"
