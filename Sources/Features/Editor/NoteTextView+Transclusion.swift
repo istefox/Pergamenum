@@ -33,7 +33,7 @@ extension NoteTextView.Coordinator {
         // paragraph style included. Reserving once and skipping afterwards is exactly the
         // first version of this, and it drew nothing at all - the space was bought and then
         // wiped by the next update.
-        reserveSpace(in: textView, for: renditions)
+        reserveSpace(in: textView, for: renditions, theme: theme)
         Logger.folding.notice(
             "transclusioni: \(occurrences.count, privacy: .public) righe, \(renditions.count, privacy: .public) rese"
         )
@@ -51,18 +51,26 @@ extension NoteTextView.Coordinator {
     /// Measured before it was designed (`TransclusionLayoutTests`): the reserved space lands
     /// inside that line's own layout fragment, and the note's text is not touched - an
     /// attribute is not the file, and what reaches the disk is `textView.string`.
-    private func reserveSpace(in textView: NSTextView, for renditions: [Int: TranscludedRendition]) {
+    private func reserveSpace(
+        in textView: NSTextView,
+        for renditions: [Int: TranscludedRendition],
+        theme: Theme
+    ) {
         guard let storage = textView.textStorage else { return }
         let text = storage.string as NSString
         storage.beginEditing()
         for (offset, rendition) in renditions where offset < text.length {
+            let range = text.paragraphRange(for: NSRange(location: offset, length: 0))
+            // Composed onto the style already on the line, never a fresh one (ADR-0030 §D5):
+            // `applyStyling` runs immediately before this and puts `font.prose`'s line-height
+            // multiple on every paragraph, so overwriting the style here would buy the
+            // transclusion's height at the cost of the page's own line height on that one line.
+            let existing = storage.attribute(.paragraphStyle, at: offset, effectiveRange: nil)
+                as? NSParagraphStyle
             let style = NSMutableParagraphStyle()
+            style.setParagraphStyle(ProseTypography.paragraphStyle(theme, basedOn: existing))
             style.paragraphSpacing = rendition.reservedHeight
-            storage.addAttribute(
-                .paragraphStyle,
-                value: style,
-                range: text.paragraphRange(for: NSRange(location: offset, length: 0))
-            )
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
         }
         storage.endEditing()
     }
