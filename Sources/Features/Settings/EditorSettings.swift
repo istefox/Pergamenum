@@ -28,6 +28,17 @@ struct EditorSettings: View {
                  + "quando non si vedono.")
                 .themedText(.caption, color: .textTertiary)
 
+            Toggle("Larghezza di lettura", isOn: Binding(
+                get: { vault.settings.readableWidth },
+                set: { value in vault.updateSettings { $0.readableWidth = value } }
+            ))
+            .accessibilityIdentifier("settings-readable-width")
+
+            Text("La colonna di testo resta larga quanto una pagina e si centra da sola in una "
+                 + "finestra ampia, invece di allargarsi da un bordo all'altro. Su una finestra "
+                 + "stretta non cambia nulla: il testo occupa già tutto lo spazio che c'è.")
+                .themedText(.caption, color: .textTertiary)
+
             Toggle("Correttore ortografico", isOn: Binding(
                 get: { vault.settings.spellCheck.isEnabled },
                 set: { isOn in

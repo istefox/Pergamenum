@@ -128,7 +128,12 @@ struct NoteTextView: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         apply(spellCheck, to: textView)
-        textView.textContainerInset = NSSize(width: 24, height: 20)
+        // The horizontal half is recomputed from the pane's width as soon as there is one
+        // (ADR-0030 §D6); this is its floor, which is the value the editor has always had
+        // and the value it keeps when the setting is off or the pane is narrow.
+        textView.textContainerInset = NSSize(
+            width: Coordinator.minimumHorizontalInset, height: Coordinator.verticalInset
+        )
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.linkTextAttributes = [:]
@@ -151,6 +156,12 @@ struct NoteTextView: NSViewRepresentable {
         scrollView.drawsBackground = false
 
         context.coordinator.textView = textView
+        // After the text view is the scroll view's document view, so the coordinator can
+        // reach the clip view whose width it reads (ADR-0030 §D6). `updateNSView` does not
+        // run on a window resize, so this observation is the only thing that keeps the
+        // column centred as the pane grows.
+        context.coordinator.observeWidthChanges(of: scrollView)
+        context.coordinator.applyReadableWidth(to: textView)
         textView.textContentStorage?.delegate = context.coordinator.decorations
         textView.textLayoutManager?.delegate = context.coordinator.decorations
         textView.string = text
@@ -268,6 +279,11 @@ struct NoteTextView: NSViewRepresentable {
         // Re-applied on every update rather than only at build time: turning the checker on
         // in Impostazioni has to reach the note already open, not the next one.
         apply(spellCheck, to: textView)
+        // The same reason, for the readable-width column: the frame observation answers a
+        // resize, and this answers the setting being turned on or off (ADR-0030 §D6, R-10).
+        // Before the styling below, since the inset decides where the text wraps and every
+        // height measured after it depends on that.
+        context.coordinator.applyReadableWidth(to: textView)
 
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
