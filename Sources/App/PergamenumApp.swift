@@ -44,6 +44,11 @@ struct PergamenumApp: App {
     /// any one view: it was written, unit-tested and never instantiated, so the
     /// markers parsed correctly and no notification was ever scheduled.
     @State private var reminders = ReminderScheduler()
+    /// Sparkle (ADR-0031). A plain inline default, unlike `navigation`/`history`: nothing in
+    /// `init` needs it, and `init` is precisely where the updater must not be touched - the
+    /// object is allocated here but only `start()`, called from `armCapture()`, builds and
+    /// starts the real `SPUStandardUpdaterController` (ADR-0031 §D3).
+    @State private var updater = SparkleUpdateController()
     /// The day view's controller, created here rather than inside the view so the
     /// Calendario menu can act on the day being shown (SPEC §10).
     @State private var day: DayController
@@ -127,6 +132,10 @@ struct PergamenumApp: App {
         hotkey.onPress = { [capturePanel] in capturePanel.toggle() }
         hotkey.register(shortcuts.binding(for: .globalCapture))
         menuBarItem.setShown(showsMenuBarItem)
+        // Here and not in `init` (ADR-0031 §D3): `startUpdater()` is `NSApp`-adjacent work
+        // that can put a modal alert on screen, and a scene's constructor is the one place
+        // it must never run from. A no-op under `-disableUpdater YES`.
+        updater.start()
     }
 
     var body: some Scene {
@@ -212,6 +221,7 @@ struct PergamenumApp: App {
             )
             ThemeCommands(engine: themeEngine)
             HelpCommands(navigation: navigation)
+            UpdateCommands(updater: updater)
         }
 
         // After the WindowGroup on purpose: the first scene in the body is the app's

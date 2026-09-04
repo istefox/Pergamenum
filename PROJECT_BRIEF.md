@@ -87,6 +87,35 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-04: **ADR-0031 (aggiornamento automatico via Sparkle) implementato nel codice e nella
+  pipeline; restano aperti i gate che non sono di un agente.** «Cerca Aggiornamenti…» è nel menu
+  dell'app ed è l'unico modo di far partire un controllo: `SUEnableAutomaticChecks` è `false`, non
+  c'è timer, non c'è controllo all'avvio. È l'unica eccezione nominata al principio 2 di CLAUDE.md,
+  scritta per esteso in ADR-0031 §D13: passano gli identificatori di versione dell'app e nient'altro,
+  `SUSendsSystemProfile` resta `false`. Sparkle entra da un solo file sotto `Sources/App/`, quindi
+  `perg` e `pergamenum-mcp` non sanno che esista.
+  `SUPublicEDKey` porta ora la chiave pubblica vera, **letta** dal portachiavi con `generate_keys -p`
+  e non rigenerata: la coppia EdDSA esisteva già su questo Mac, e rifarla avrebbe orfanato ogni firma
+  fatta con la precedente. La metà privata resta nel portachiavi e in nessun file del repository.
+  `scripts/release.sh` ora firma l'archivio ticketato, pubblica la release e rigenera l'appcast;
+  `scripts/fetch-sparkle-tools.sh` scarica gli strumenti Sparkle con il checksum agganciato e
+  `scripts/appcast.py --self-test` verifica il generatore del feed senza rete.
+
+  Cosa manca, e perché non lo fa un agente:
+
+  - **Creare `istefox/pergamenum-updates` come repository pubblico** e attivarne Pages. È una
+    decisione di visibilità su un account personale (ADR-0031 §D9). Oggi il repository non esiste:
+    `gh api repos/istefox/pergamenum-updates` risponde 404. Se il gate viene rifiutato, la
+    ricaduta è §A7 (un branch orfano `gh-pages` su `istefox/Pergamenum`) e `SUFeedURL` cambia —
+    è un task nuovo, non una pezza.
+  - **Lanciare `scripts/release.sh`.** Lo lancia Stefano: quell'invocazione *è* il gate.
+  - **La prova di R-08, a mano, quando esisterà la prima release:** installare la build rilasciata
+    sopra `/Applications` (spostando di lato la copia precedente, mai cancellandola), tagliare una
+    seconda release, e dalla copia vecchia ancora in esecuzione scegliere «Cerca Aggiornamenti…» per
+    vedere l'aggiornamento offerto, scaricato, verificato nella firma e installato con il riavvio.
+    Poi il caso «nessun aggiornamento» e quello senza rete (Wi-Fi spento → l'avviso di Sparkle, non
+    un crash).
+
 - 2026-09-03: **ADR-0029 (un editor solo, sempre editabile; la tabella GFM come griglia vera)
   implementato — tutte e quattro le probe di §D16 hanno ora una conferma umana agli atti.** Il
   toggle Modifica/Lettura non esiste più da nessuna parte, `ShortcutCommand.readingMode`

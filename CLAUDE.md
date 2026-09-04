@@ -34,7 +34,15 @@ handoff; the spec wins on any conflict.
 1. **File over app.** Every piece of content lives as a readable file on disk (md,
    canvas, pdf, eml, svg). If Pergamenum disappeared, the data stays usable.
 2. **Fully offline.** No network call in any feature. No server, no account, no
-   telemetry.
+   telemetry. **One named exception, and only one** (ADR-0031 §D13): the update check,
+   which happens when the person chooses «Cerca Aggiornamenti…» and at no other moment -
+   no timer, no launch check, no background task. It carries the app's own version
+   identifiers and nothing else: no vault content, no note text, no path, no file name,
+   no tag, no task, no calendar data, ever. `SUSendsSystemProfile` stays `false`, so
+   Sparkle's optional hardware profile is off and the telemetry sentence above is
+   untouched. The exception is scoped to the updater and does not travel: no feature of
+   the vault, Workspace, tasks, calendar, editor or index gains network access from it,
+   and neither `perg` nor `pergamenum-mcp` knows Sparkle exists.
 3. **Rebuildable index.** The SQLite cache (links, backlinks, tasks, thumbnails)
    regenerates entirely from a vault scan. It is never the source of truth; deleting
    it loses nothing. Since ADR-0017 (`PG-004`) it lives with the rest of a vault's
@@ -113,7 +121,9 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'pl
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
 xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build    # the CLI
 xcodebuild -workspace Pergamenum.xcworkspace -scheme pergamenum-mcp -destination 'platform=macOS' build
-scripts/release.sh                                                                              # signed, notarized, numbered build
+scripts/release.sh                                                                              # signed, notarized, numbered build, published with its appcast
+scripts/fetch-sparkle-tools.sh                                                                  # Sparkle's sign_update/generate_keys into build/, checksum-pinned
+scripts/appcast.py --self-test                                                                  # the appcast generator's own assertions, offline, writes no feed
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
 scripts/uitests.sh                                                                              # the UI suite, run the way it has to be - before every merge to main
@@ -240,6 +250,11 @@ move the previous copy aside rather than deleting it.
   widens itself to reach an event outside that window by design, so the assertion failed
   on the afternoon there was a real meeting at 16:30. A new UI-test file wants the flag
   too.
+- **A UI test that launches the app risks a Sparkle update-check alert on screen**, the same
+  shape of trap as `-disableCalendar` above. The suite passes `-disableUpdater YES` (ADR-0031),
+  which keeps `SparkleUpdateController` from starting the updater at all. Every UI-test file
+  passes it, not only the one that would need it — a stray modal alert during `launch()` reads
+  as the app hanging, not as an update being offered. A new UI-test file wants the flag too.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to
@@ -502,6 +517,8 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
+- **ADR-0030** — Editor page typography: prose faces (`font.prose`/`font.proseTitle`, Avenir Next) and `spacing.readable` read through tokens by one `ProseTypography` helper, readable-width inset, prose font picker persisted in `personalizzato.json`; amends ADR-0027 §D1 and ADR-0028 §D3, reopens nothing of ADR-0018/0029 → `docs/adr/0030-editor-page-typography-noteplan.md`
+- **ADR-0031** — Sparkle auto-update integration: explicit narrow exception to Principle 2 (network) for the updater only, manual-only checks, EdDSA key in Keychain, appcast/binaries hosted on a dedicated public repo `istefox/pergamenum-updates` (amends the SPEC's original private-repo hosting, which live verification found broken), `scripts/release.sh` extended end-to-end → `docs/adr/0031-sparkle-auto-update-integration.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -619,3 +636,85 @@ Key architectural decisions:
   known debt, not fixed by this chain.
 
 Detail: `docs/adr/0029-editor-wysiwyg-unification.md`.
+
+## Decisions from the editor page typography chain (ADR-0030)
+
+Makes the note editor read as a page instead of a code buffer, Phase A of
+`docs/20260904_Editor_Page_Roadmap.md`: `docs/adr/0030-editor-page-typography-noteplan.md`.
+Amends ADR-0027 §D1 (card body font moves to `font.prose`) and ADR-0028 §D3 (list paragraph
+style gains a base style); reopens no mechanism of ADR-0018/0028/0029.
+
+Key architectural decisions:
+- **One helper, `ProseTypography`, under `Sources/DesignSystem/`, is the only file in
+  `Sources/Features/Editor` + `Sources/Features/Workspace` scope allowed to construct an
+  `NSFont`** — the allow-list of what may still say `NSFont.` there is ADR-0030 §D8
+  (`collapsedFont`, ADR-0018's concealment non-font; the `NSFont.Weight` type name;
+  `NSFont.systemFontSize` as last resort; type annotations). Never `Sources/Core`: AppKit there
+  breaks the `perg`/`pergamenum-mcp` builds.
+- **Two new tokens, `font.prose` (Avenir Next 16, lineHeight 1.4) and `font.proseTitle` (Avenir
+  Next Bold 24), beside an untouched `font.body`/`font.title`** — eleven chrome call sites depend
+  on the interface faces; the page and the interface are different things.
+- **A named font family is a fourth `TypographyValue.Family` case resolved with
+  `NSFont(name: family, size:)`, bold/italic through `withSymbolicTraits`, never a weight trait**
+  — measured: a `.weight: .bold` trait on Avenir Next silently returns `AvenirNext-Regular`.
+  Missing family degrades to the system face. SwiftUI's `Theme.font(_:)` probes with `NSFont`
+  first and passes the resolved `fontName`, or `Font.custom` substitutes a different face
+  silently.
+- **`EditorDecorationDelegate`, `FoldedHeadingFragment` and `TableGridView` receive fonts as
+  pushed values** (`decorations.proseFont`/`badgeFont` assigned in `applyStyling` beside the
+  colours already pushed there) — the delegate is not `@MainActor` and cannot read `Theme`.
+- **Heading scale is `max(prose + 1, proseTitle − (level − 1) × 2)`**, the rule
+  `CardTextAttributes.headingSize` already shipped, moved into the helper; no per-level tokens.
+- **Line height is one `lineHeightMultiple` composed onto existing paragraph styles, never
+  overwriting them, and no `paragraphSpacing`** — three sites build their own style wholesale
+  (list markers, transclusion `reservedHeight`, card alignment) and each would silently drop it.
+  Workspace `.text` cards take the prose faces but deliberately **not** the line height.
+- **Readable width is the horizontal `textContainerInset`, `max(24, (viewWidth − 720) / 2)`**,
+  with `widthTracksTextView` left `true` and no frame ever set — `growToFitTheText`'s header
+  records why `setFrameSize` on this text view once cost the Diario its typed text.
+  `spacing.readable` is a `SpacingToken`; `DesignGalleryView` stops iterating `allCases` for its
+  swatch ramp, or it draws a 720×720 square.
+- **The prose font picker writes `font.prose`/`font.proseTitle` overrides into
+  `.pergamenum/themes/personalizzato.json` through `ThemeCustomization.Draft.fonts`**, the same
+  file and path the colour overrides use; only those two tokens are writable from Impostazioni.
+- **No index field, no frontmatter key, no `.canvas` property, no migration, no protected
+  interface touched.** `IndexCache.schemaVersion` stays 3.
+
+Detail: `docs/adr/0030-editor-page-typography-noteplan.md`.
+
+## Decisions from the Sparkle auto-update integration chain (ADR-0031)
+
+Adds Sparkle-based auto-update: manual-only check, EdDSA-signed releases, and an extended
+`scripts/release.sh` publishing pipeline: `docs/adr/0031-sparkle-auto-update-integration.md`.
+
+Key architectural decisions:
+- **Explicit, narrow exception to Principle 2 ("Fully offline")** — the update check is a network
+  call by nature, scoped exclusively to the updater: no vault content, no note text, no telemetry
+  (`SUSendsSystemProfile` stays `false`). No other feature gains network access as a result of
+  this chain.
+- **Checks are manual-only, triggered from "Cerca Aggiornamenti…" in the app menu** —
+  `SUEnableAutomaticChecks: false`, no timer, no background task, no Settings surface. Sparkle's
+  own stock update UI (`SPUStandardUserDriver`) is used as-is and is explicitly out of scope for
+  the design-token binding rule — it is a system framework window, not a view this app authors.
+- **Sparkle enters through exactly one file under `Sources/App/`**, an ordinary SPM dependency in
+  `Tuist/Package.swift`, never touching `Sources/Core`/`Sources/Connector` or any `sharedSources`
+  glob — `perg` and `pergamenum-mcp` stay unaware Sparkle exists, the same boundary EventKit
+  already respects.
+- **The distributable zip is built from the already-stapled bundle, in a new variable, never by
+  reusing `scripts/release.sh`'s pre-existing `$zip`** — that zip is notarized *before* stapling and
+  was never the distributable; Sparkle's archive must be built after `xcrun stapler staple`, which
+  is a correctness fix to a pre-existing gap in the script, not new behavior grafted on.
+- **Appcast/binaries are hosted on a dedicated public repository, `istefox/pergamenum-updates`, not
+  on `istefox/Pergamenum`** — live verification during this chain found the SPEC's original
+  private-repo hosting plan broken two independent ways (release assets on a private repo need
+  authentication Sparkle never sends; Pages on a private repo is either unreachable to Sparkle or
+  makes this repo's `docs/` world-readable). The dedicated repo holds only the appcast and signed
+  release archives, nothing else.
+- **The appcast item is hand-built by a new `scripts/appcast.py`, not Sparkle's own
+  `generate_appcast`** — that tool assumes one download-URL prefix and a local folder as the feed's
+  full history, neither of which fits a per-tag GitHub Release; it also generates binary deltas,
+  an explicit non-goal for this app.
+- **The EdDSA private key lives only in this Mac's login Keychain**, generated once via Sparkle's
+  own `generate_keys` tool; never written to disk in cleartext, never committed.
+
+Detail: `docs/adr/0031-sparkle-auto-update-integration.md`.
