@@ -69,7 +69,29 @@ enum ProseTypography {
     /// `basedOn` rather than replacing it — list markers, transclusion `reservedHeight` and card
     /// alignment all build their own style first, and this must not drop their indentation,
     /// alignment or existing `paragraphSpacing`.
-    static func paragraphStyle(_ theme: Theme, basedOn: NSParagraphStyle? = nil) -> NSParagraphStyle {
+    ///
+    /// `font` names the actual run this style is being built for. It defaults to `nil`, which
+    /// keeps every existing call site (`base(theme:)`, `NoteTextView+Transclusion.swift`, the
+    /// three `ProseTypographyTests` call sites above) reading exactly `font.prose`'s own line
+    /// height, unchanged. A caller building a style for a *larger* face — a heading run, whose
+    /// font is `ProseTypography.heading(level:_:)` rather than `prose(theme)` — passes that font
+    /// explicitly so the multiple scales with it instead of silently staying `prose`-sized
+    /// (`MarkdownAttributedText.attributes(for: .heading)`'s bug: it set `.font` and
+    /// `.foregroundColor` but never `.paragraphStyle`, so a heading run kept `base(theme:)`'s
+    /// single body-sized style regardless of level).
+    ///
+    /// STUB (tester-owns-interface, ADR-0155 §D1): body intentionally left as `fatalError` — the
+    /// coder fills in the actual scaling rule. `lineHeightMultipleTests` in
+    /// `Tests/ProseTypographyTests.swift` is the red suite this signature exists to satisfy at
+    /// compile time.
+    static func paragraphStyle(
+        _ theme: Theme,
+        font: NSFont? = nil,
+        basedOn: NSParagraphStyle? = nil
+    ) -> NSParagraphStyle {
+        guard font == nil else {
+            fatalError("ProseTypography.paragraphStyle(_:font:basedOn:) not yet implemented for an explicit font")
+        }
         let style = NSMutableParagraphStyle()
         // `setParagraphStyle` copies every property, including the ones this file has no reason
         // to know about — a property added to `NSParagraphStyle` later survives composition
