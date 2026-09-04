@@ -77,6 +77,9 @@ Tuist/.build/
 
 # Claude Code session artifacts
 .remember/
+.claude/agent-memory/
+nimbalyst-local/
+CLAUDE.md.bak-*
 
 # Session context written by the SessionStart hook: generated state, not source.
 .claude/context.md
