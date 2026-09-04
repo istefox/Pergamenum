@@ -502,6 +502,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
+- **ADR-0030** — Editor page typography: prose faces (`font.prose`/`font.proseTitle`, Avenir Next) and `spacing.readable` read through tokens by one `ProseTypography` helper, readable-width inset, prose font picker persisted in `personalizzato.json`; amends ADR-0027 §D1 and ADR-0028 §D3, reopens nothing of ADR-0018/0029 → `docs/adr/0030-editor-page-typography-noteplan.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -619,3 +620,48 @@ Key architectural decisions:
   known debt, not fixed by this chain.
 
 Detail: `docs/adr/0029-editor-wysiwyg-unification.md`.
+
+## Decisions from the editor page typography chain (ADR-0030)
+
+Makes the note editor read as a page instead of a code buffer, Phase A of
+`docs/20260904_Editor_Page_Roadmap.md`: `docs/adr/0030-editor-page-typography-noteplan.md`.
+Amends ADR-0027 §D1 (card body font moves to `font.prose`) and ADR-0028 §D3 (list paragraph
+style gains a base style); reopens no mechanism of ADR-0018/0028/0029.
+
+Key architectural decisions:
+- **One helper, `ProseTypography`, under `Sources/DesignSystem/`, is the only file in
+  `Sources/Features/Editor` + `Sources/Features/Workspace` scope allowed to construct an
+  `NSFont`** — the allow-list of what may still say `NSFont.` there is ADR-0030 §D8
+  (`collapsedFont`, ADR-0018's concealment non-font; the `NSFont.Weight` type name;
+  `NSFont.systemFontSize` as last resort; type annotations). Never `Sources/Core`: AppKit there
+  breaks the `perg`/`pergamenum-mcp` builds.
+- **Two new tokens, `font.prose` (Avenir Next 16, lineHeight 1.4) and `font.proseTitle` (Avenir
+  Next Bold 24), beside an untouched `font.body`/`font.title`** — eleven chrome call sites depend
+  on the interface faces; the page and the interface are different things.
+- **A named font family is a fourth `TypographyValue.Family` case resolved with
+  `NSFont(name: family, size:)`, bold/italic through `withSymbolicTraits`, never a weight trait**
+  — measured: a `.weight: .bold` trait on Avenir Next silently returns `AvenirNext-Regular`.
+  Missing family degrades to the system face. SwiftUI's `Theme.font(_:)` probes with `NSFont`
+  first and passes the resolved `fontName`, or `Font.custom` substitutes a different face
+  silently.
+- **`EditorDecorationDelegate`, `FoldedHeadingFragment` and `TableGridView` receive fonts as
+  pushed values** (`decorations.proseFont`/`badgeFont` assigned in `applyStyling` beside the
+  colours already pushed there) — the delegate is not `@MainActor` and cannot read `Theme`.
+- **Heading scale is `max(prose + 1, proseTitle − (level − 1) × 2)`**, the rule
+  `CardTextAttributes.headingSize` already shipped, moved into the helper; no per-level tokens.
+- **Line height is one `lineHeightMultiple` composed onto existing paragraph styles, never
+  overwriting them, and no `paragraphSpacing`** — three sites build their own style wholesale
+  (list markers, transclusion `reservedHeight`, card alignment) and each would silently drop it.
+  Workspace `.text` cards take the prose faces but deliberately **not** the line height.
+- **Readable width is the horizontal `textContainerInset`, `max(24, (viewWidth − 720) / 2)`**,
+  with `widthTracksTextView` left `true` and no frame ever set — `growToFitTheText`'s header
+  records why `setFrameSize` on this text view once cost the Diario its typed text.
+  `spacing.readable` is a `SpacingToken`; `DesignGalleryView` stops iterating `allCases` for its
+  swatch ramp, or it draws a 720×720 square.
+- **The prose font picker writes `font.prose`/`font.proseTitle` overrides into
+  `.pergamenum/themes/personalizzato.json` through `ThemeCustomization.Draft.fonts`**, the same
+  file and path the colour overrides use; only those two tokens are writable from Impostazioni.
+- **No index field, no frontmatter key, no `.canvas` property, no migration, no protected
+  interface touched.** `IndexCache.schemaVersion` stays 3.
+
+Detail: `docs/adr/0030-editor-page-typography-noteplan.md`.

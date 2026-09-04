@@ -1,165 +1,230 @@
-# SPEC — Editor WYSIWYG unification (PG-018)
+# SPEC — Editor page typography: closing the distance to NotePlan (Phase A)
 
-**Topic slug:** editor-wysiwyg-unification
+**Topic slug:** editor-page-typography-noteplan
+
+**Date:** 2026-09-04
+**Chain:** concept-to-code, standard path. Target ADR: 0030 (supersedes nothing; amends SPEC
+§5 and §14 of `docs/20260811_Pergamenum_SpecApp.md`).
+**Source roadmap:** `docs/20260904_Editor_Page_Roadmap.md` — this SPEC is its Phase A only.
+Phases B (inline code, fenced code and frontmatter concealment) and C (click-reveal, mouse
+selection, TextKit 2 viewport measurements) are out of scope and documented there for later chains.
 
 ## 1. Objective
 
-Collapse the note editor's two current modes — a source-visible editable view
-(`NoteTextView`, TextKit 2, with ADR-0018/0028's partial concealment) and a separate,
-non-editable, full block renderer (`MarkdownReadingView`/`MarkdownBlocksView`) toggled
-per tab via `isReadingMode` — into a single, always-editable, fully styled view. No
-Modifica/Lettura toggle remains. Everything the block renderer draws today, GFM tables
-included, must be achievable and editable inside the one surface. The same unification
-applies to the Diario pane (ADR-0005 §D2), whose reading half currently sits beside an
-unchanged source editor on the same premise this SPEC removes.
+Make the note editor read as a page rather than a code buffer, without touching the concealment
+mechanism ADR-0018/0028/0029 built. The roadmap established, with sources, that NotePlan's editor
+is the same hybrid model Pergamenum already ships (markers hidden, revealed at the caret,
+paragraph-local refresh); what still separates the two is typography and page geometry. Phase A
+closes exactly that: the prose face, the heading scale, the line height, and a readable-width
+column, all expressed as design tokens, plus the user's ability to pick a prose font and size
+from Impostazioni the way NotePlan's Preferences allow.
 
-## 2. Why (context)
+A second, equally binding goal: the editor currently violates CLAUDE.md's rule that a view using a
+font without going through a token does not pass review. Nine `NSFont.` sites across five editor
+files bypass `Theme.nsFont(_:)`. Phase A removes all of them.
 
-`ADR-0018` ("The editor hides the syntax it can draw") already established the
-mechanism — paragraph substitution at identical character length, reveal-on-caret — but
-scoped it deliberately to three constructs ("three named constructs, not the rule"):
-heading `#`, emphasis `*`/`_`, and inline image/PDF embeds. `ADR-0028` added list
-markers on the same mechanism. `SPEC §14` (the project's authoritative spec,
-`docs/20260811_Pergamenum_SpecApp.md`) still rules out "live preview completa" as the
-highest-cost item in the project, with the stated reasoning "source mode con stile è
-sufficiente" — a reasoning this feature directly contests, having now shipped three
-years... three weeks of evidence that the mechanism holds for more than three
-constructs. `ADR-0005 §D2` built the Diario pane on "the pane sits beside an unchanged
-source editor" — a premise this feature removes for the note editor and, per this
-session's interview, for the Diario pane as well.
+## 2. Decisions already taken (interview of 2026-09-04)
 
-This SPEC's ADR must explicitly supersede `ADR-0005 §D2` and `ADR-0018`'s scope
-boundary, and amend `SPEC §14` and (already partially amended this session) `SPEC §5`.
+| Question | Decision |
+|---|---|
+| Editor model | Hybrid NotePlan-style concealment, unchanged. No marker-free WYSIWYG. |
+| Prose face | **Avenir Next**, 16pt, bold and italic from the same family; fallback to the system face when the family is not installed. NotePlan's own default theme values (verified on a public copy of its built-in "Toothpaste" theme: `AvenirNext-Regular` 16, `AvenirNext-Bold` 24 for H1). |
+| Tokens | Two **new** tokens, `font.prose` and `font.proseTitle`. `font.body` / `font.title` stay SF 13 / 22 for the interface (11 UI call sites depend on them). `font.mono` stays for code, fences and frontmatter. |
+| Heading scale | Interpolation between `font.proseTitle` and `font.prose`, the rule `CardTextAttributes.headingSize` already implements: `size = max(prose + 1, proseTitle − (level − 1) × 2)`. No per-level tokens, no ratio scale. |
+| Shared rules | Extract the three typographic rules (body face, heading face per level, italic with fallback) into one pure helper used by both `MarkdownAttributedText` and `CardTextAttributes`. The two tables stay separate for what genuinely differs (clickable links, colours, embeds). |
+| Line height | `lineHeight` multiple from the `font.prose` token (1.4), applied through `NSParagraphStyle`. **No** `paragraphSpacing`: in markdown the blank line is the paragraph separator and extra spacing would double it. |
+| Readable width | Spacing token `spacing.readable` = 720pt, text column centred when the view is wider, full width below. A `VaultSettings` toggle, on by default, turns the cap off. Applies wherever `NoteTextView` is drawn (Editor, Diario, Oggi). |
+| Workspace cards | `.text` cards move to the prose tokens too, consistent with ADR-0028's "same rendering on both surfaces". Card size scaling is unchanged. |
+| Font picker | Impostazioni → Editor gains a prose font family and size picker, persisted through the existing `ThemeCustomization` mechanism (a DTCG file in `.pergamenum/themes/`), extended from colours-only to colours plus the two prose typography tokens. |
 
 ## 3. Scope
 
-**In scope:**
-- Extend paragraph-substitution concealment to: blockquote `>` (full nesting), horizontal
-  rule `---`, wikilink/link bracket concealment (with hover tooltip showing the resolved
-  target), strikethrough `~~`.
-- GFM tables as a real, editable cell grid — not a fourth delimiter-hiding case. Once text
-  forms a valid table, the raw pipe syntax is no longer directly editable as text; all
-  editing (cell content, add/remove row, add/remove column) goes through the grid. A new
-  table is created only via a slash-menu/Inserisci command (never by typing raw pipes).
-  Pasting a markdown table onto the editor renders it as a grid immediately, matching the
-  existing "paste URL → link" pattern (SPEC §5).
-- The Diario pane: same unification, its separate rendering half removed, editor becomes
-  the single view there too.
-- Removal of the per-tab `isReadingMode` toggle and its UI (`NoteTabBar.swift:70`,
-  `VaultBrowser.swift:132`).
-- `MarkdownReadingView`/`MarkdownBlocksView`: kept, decoupled from the toggle, reserved
-  for a future export/print feature (not designed here).
-- UI tests that currently exercise the mode toggle (same family as `PG-031`) updated to
-  match the new single-mode reality.
-- ADR superseding `ADR-0005 §D2` and `ADR-0018`'s "three constructs" boundary; amendment
-  of SPEC §14 and (further) SPEC §5.
+**In scope**
 
-**Out of scope:**
-- Workspace `.text` cards (ADR-0027/0028): already single-mode with no reading toggle,
-  nothing to unify there.
-- Any new markdown construct beyond the ones named above (e.g. footnotes, definition
-  lists) — not part of this app's CommonMark+GFM baseline today.
-- Export/print feature design for the retained block renderer.
+1. `EditorTypography` (name indicative; the ADR decides): a pure, Foundation/AppKit-only helper
+   exposing `proseFont(theme)`, `proseBoldFont(theme)`, `proseItalicAttributes(theme)`,
+   `headingFont(level, theme)`, `monoFont(theme)`, `paragraphStyle(theme)` (line-height only).
+   Lives where `CardTextAttributes` and `MarkdownAttributedText` can both reach it; it is the
+   **only** file under `Sources/Features/Editor` and `Sources/Features/Workspace` allowed to
+   name `NSFont.`.
+2. `MarkdownAttributedText.attributes(for:theme:links:)` reads body, bold, italic, heading and
+   code faces from the helper. `.bold` becomes the prose family's bold face, never
+   `monospacedSystemFont`. `.italic` uses the real italic face where the family has one, the
+   existing `.obliqueness: 0.2` otherwise. `.code`, `.codeBlock`, `.codeToken`, `.frontmatter`
+   keep `font.mono`.
+3. The remaining eight hardcoded `NSFont.` sites (`TableGridView+Rendering` ×3,
+   `TableGridView+CellCommit` ×1, `EditorDecorationDelegate` ×1,
+   `EditorDecorationDelegate+ListRendering` ×1, `MarkdownAttributedText` ×3 counted above)
+   route through the helper. A table cell reads in the same face and size as the paragraph
+   above it.
+4. `CardTextAttributes` switches `bodyFont`/`headingSize`/`italicAttributes` to the helper and
+   from `.body`/`.title` to `.prose`/`.proseTitle`. `Tests/CardTextViewTests.swift` is updated,
+   not weakened: the assertions "bold is not monospaced" and "italic is oblique or italic" stay.
+5. Token file changes in **both** `Resources/Themes/pergamenum-light.json` and
+   `pergamenum-dark.json`: `font.prose` (`fontFamily: "Avenir Next"`, 16, 400, lineHeight 1.4),
+   `font.proseTitle` (`fontFamily: "Avenir Next"`, 24, 700, lineHeight 1.2),
+   `spacing.readable` (720). `TokenKeys.swift` gains `FontToken.prose`, `.proseTitle` and the
+   spacing key; `Theme.emergency` gains matching fallbacks so a theme file missing them still
+   loads.
+6. `TypographyValue.Family` gains a **named family** case (e.g. `.named(String)`), parsed from any
+   `fontFamily` string that is not `system`/`monospace`/`serif`. `Theme.nsFont(_:)` resolves it
+   with `NSFont(name:size:)` on the family name (AppKit accepts a family name there, verified)
+   and derives bold/italic through `withSymbolicTraits`, never through a weight trait, which
+   silently returns the regular face on a named family (ADR-0030 §D3); falls back to
+   `NSFont.systemFont` when the face is absent. `Theme.font(_:)` (SwiftUI) gets the same
+   resolution through `Font.custom(_:size:)` with the same fallback.
+7. Readable width in `NoteTextView`: the text container's width is capped at
+   `spacing.readable` and centred inside the scroll view when the view is wider; below the cap
+   the text tracks the view width exactly as today. The mechanism is the horizontal
+   `textContainerInset`, `max(24, (viewWidth − 720) / 2)`, so 24 stays the floor and no frame is
+   ever set (ADR-0030 §D6); the vertical inset 20 is unchanged. Governed by
+   a new `VaultSettings.readableWidth: Bool` (default `true`), decoded with a fallback like
+   `hidesMarkup`, and applied live when the setting changes.
+8. Impostazioni → Editor: a "Larghezza di lettura" toggle beside the existing "Nascondi la
+   sintassi" switch, and a "Carattere della nota" group with a font-family picker (system font
+   list via `NSFontManager.availableFontFamilies`, plus "Sistema") and a size stepper/picker
+   (12…24). Choosing writes `font.prose` and `font.proseTitle` overrides into the
+   `personalizzato.json` theme through `ThemeCustomization`, whose `Draft` gains a
+   `fonts: [FontToken: TypographyValue]` map beside `colors`. Title size follows body size by
+   the fixed ratio 24/16 unless the theme file says otherwise. "Ripristina" removes the override
+   like a colour reset does.
+9. ADR-0030 and the SPEC amendments to `docs/20260811_Pergamenum_SpecApp.md` §5 (editor
+   typography, readable width, font picker), §14 (the *Temi* row: user-customisable tokens now
+   include prose typography, not colours only) and §11.3 (the token-examples list). The
+   «Live preview completa» row of §14 is **not** touched: ADR-0029 already retired it, and the
+   earlier premise that this chain amends it was wrong (ADR-0030 §D14). `PROJECT_BRIEF.md`
+   status line if the brief tracks editor milestones.
 
-**Phasing (single ADR, single chain, staged plan):** the implementation plan orders work
-by increasing risk — simple delimiter-style constructs first (blockquote, hr, link/wikilink
-concealment, strikethrough), then the table grid, then the Diario pane unification last —
-each phase verifiable on screen before the next starts, per this project's standing
-"one milestone at a time" convention.
+**Out of scope**
 
-## 4. Stack / constraints
+- Concealing fence backticks, inline-code backticks or the frontmatter block (Phase B).
+- Click-reveal caret re-mapping, mouse-selection probes, TextKit 2 viewport measurements
+  (Phase C).
+- Any change to `EditorDecorationDelegate`'s substitution or enumeration hooks, to
+  `HiddenMarker`, `MarkupReveal`, `VaultSettings.hidesMarkup`.
+- Per-level heading tokens, a modular ratio scale, `paragraphSpacing`.
+- Changing `font.body`, `font.title`, `font.heading`, `font.caption` values or any UI text.
+- A per-theme font choice UI beyond the single prose override (no per-token font editing).
+- Print/export surfaces (`MarkdownBlocksView`, `NoteExporter`): they keep their own fonts.
+- Obsidian file compatibility: nothing here writes to a note.
 
-- Swift 6, SwiftUI + AppKit (`NSViewRepresentable`), TextKit 2 `NSTextView`
-  (`NoteTextView`), macOS 26 Tahoe+.
-- Reuses `EditorDecorationDelegate` (`NSTextContentStorageDelegate`) — the existing
-  paragraph-substitution mechanism from ADR-0018 §D1 / ADR-0028 §D3. A protected
-  interface (`.claude/protected-interfaces`).
-- `MarkdownStyler` supplies the `Span` classification the delegate substitutes on; new
-  `Span` cases needed for each newly-concealed construct, same shape as the existing
-  `.heading`/`.bold`/`.italic`/list cases.
-- No new third-party dependency (GRDB is the only one this repo carries; a table grid
-  must be built on TextKit 2/AppKit primitives, not a new library).
-- File over app: the source markdown stays the single stored representation; a table's
-  pipe syntax on disk is the source of truth, the grid is a view over it, exactly as the
-  concealed heading `#`/emphasis markers are today.
+## 4. Stack and constraints
 
-## 5. Architecture (high level — the ADR resolves the details)
+- Swift 6 strict concurrency, SwiftUI + AppKit (`NSViewRepresentable`), macOS 26 SDK, Tuist 4,
+  Swift Testing. No new dependency.
+- `EditorDecorationDelegate` is not `@MainActor` and cannot read `Theme`; any font it needs
+  continues to be handed in as a value from the view (existing pattern). The helper must
+  therefore be usable both from the main actor (views) and as pre-resolved `NSFont` values.
+- `perg`/`pergamenum-mcp` compile `Sources/Core/**` and `Sources/Connector/**`; nothing in this
+  feature may put AppKit into `Sources/Core`. `EditorTypography` lives under `Sources/Features`
+  or `Sources/DesignSystem`, never `Sources/Core`.
+- Binding design rule: no hardcoded colour or font in a view. This feature is its enforcement in
+  the editor.
+- `.claude/protected-interfaces` is not touched: `IndexCache.schemaVersion` and
+  `VaultAPI.LintFinding` are unrelated.
+- The unit suite runs through `.claude/test-cmd` (`-only-testing:PergamenumTests`), the UI suite
+  by hand through `scripts/uitests.sh` before merge (CLAUDE.md).
 
-- **Concealment extension (low risk):** four new `Span` cases in `MarkdownStyler`, four
-  new hidden-marker branches in `EditorDecorationDelegate`, following the exact shape of
-  the existing heading/emphasis/embed cases. Blockquote nesting draws one bar per level.
-  Link/wikilink concealment adds a hover-tooltip mechanism (new, not present for the
-  three existing constructs, which need none since they reveal on caret instead of
-  requiring a hover).
-- **Table grid (high risk, new mechanism):** a table's source lines are represented as an
-  `NSTextAttachment`-hosted grid view spanning the paragraph range that holds the pipe
-  syntax, edited only through that view (cell text fields, row/column add/remove
-  commands) — never through direct text editing of the pipe characters. Edits to the grid
-  rewrite the corresponding source lines through the same `shouldChangeText`/
-  `beginEditing`/`replaceCharacters`/`endEditing` atomic path the embed resize/delete
-  mechanisms already use (ADR-0019 precedent), so each structural edit (cell edit, row
-  add/remove, column add/remove) is one undo step. Slash-menu "Tabella" command inserts an
-  empty N×M table at the caret. A pasted markdown table is recognized and rendered as a
-  grid immediately (reuses the existing paste-recognition path SPEC §5 already describes
-  for URLs).
-- **Diario pane:** its rendering half is removed; the pane hosts the same unified editor
-  the note view uses. ADR-0005's other decisions (unrelated to the reading/source split)
-  are untouched.
-- **Toggle removal:** `isReadingMode`, `NoteTabBar`'s toggle control, and
-  `VaultBrowser.swift:132`'s `Toggle` are removed. `MarkdownReadingView`/
-  `MarkdownBlocksView` remain in the tree, unreferenced by the toggle, explicitly reserved
-  for a future export/print feature.
+## 5. Architecture
+
+```
+Resources/Themes/*.json  ──DTCG──▶ DesignTokenDocument ──▶ Theme(fonts: [FontToken: TypographyValue])
+                                                             │  nsFont(.prose) / nsFont(.proseTitle) / nsFont(.mono)
+                                                             ▼
+                                   EditorTypography (pure rules: body, bold, italic, heading(level), paragraphStyle)
+                                     │                                   │
+                                     ▼                                   ▼
+                     MarkdownAttributedText (note editor)      CardTextAttributes (Workspace .text card)
+                     TableGridView (+Rendering, +CellCommit)   
+                     EditorDecorationDelegate (+ListRendering) ← fonts handed in as values
+                                     │
+                                     ▼
+                     NoteTextView: textContainer width = min(viewWidth, spacing.readable) if settings.readableWidth
+```
+
+`ThemeCustomization.Draft { appearance, colors, fonts }` → `personalizzato.json` (only overridden
+tokens written) → `ThemeEngine` merges over the bundled theme exactly as colours are merged today.
 
 ## 6. Data model
 
-No new persisted state. The markdown source text remains the sole on-disk
-representation for every construct in scope, including tables (GFM pipe syntax). No
-index schema change (`IndexCache.schemaVersion` untouched — this is a rendering-layer
-feature, not a data-layer one).
+- `FontToken`: `+ prose = "font.prose"`, `+ proseTitle = "font.proseTitle"`.
+- `SpacingToken` (or the existing spacing enum): `+ readable = "spacing.readable"`.
+- `TypographyValue.Family`: `system | monospace | serif | named(String)`; `rawValue` round-trips
+  the family name so `ThemeCustomization` can write it back verbatim.
+- `VaultSettings`: `+ readableWidth: Bool = true`, Codable with `decodeIfPresent` fallback.
+- `ThemeCustomization.Draft`: `+ fonts: [FontToken: TypographyValue]`; `isEmpty` is
+  `colors.isEmpty && fonts.isEmpty`.
+- No index field, no frontmatter key, no `.canvas` property, no migration.
 
 ## 7. UI flows
 
-- Opening any note or Diario entry: single view, always fully styled, always editable.
-  No mode indicator, no toggle.
-- Typing inside a concealed construct's paragraph reveals its syntax (existing
-  ADR-0018 §D2 rule, unchanged, extended to the four new constructs).
-- Hovering a concealed link/wikilink shows a tooltip with the resolved target.
-- Inserting a table: slash-menu or Inserisci menu command → empty N×M grid at the caret.
-- Editing a table: click into a cell to edit its text; row/column add-remove via
-  in-grid controls (exact affordance left to the architect/coder, following this app's
-  existing embed-resize-handle visual language where applicable).
-- Pasting a markdown table: renders as a grid immediately, same turn.
+1. **Open a note.** Body in Avenir Next 16, headings 24/22/20/18/17/17 semibold from the same
+   family, code spans and fences in `font.mono`, line height 1.4. On a window wider than 720 +
+   insets the text column is centred at 720; narrower windows behave as today.
+2. **Toggle "Larghezza di lettura" off.** The column returns to full width immediately, no
+   reopen. Persisted in `.pergamenum/settings.json` like `hidesMarkup`.
+3. **Pick a font in Impostazioni → Editor.** A `Picker` lists "Sistema" plus the installed
+   families; a size control offers 12…24. On change the editor re-styles live; the choice is
+   written to `.pergamenum/themes/personalizzato.json` as `font.prose` / `font.proseTitle`
+   overrides. "Ripristina carattere" deletes the two overrides; if no colour override remains,
+   the file is removed as it is today for colours.
+4. **Theme names a missing family.** `Theme.nsFont(.prose)` returns the system face at the
+   token's size and weight; nothing is logged as an error, nothing crashes; Impostazioni shows
+   the family name the file declares.
+5. **Workspace `.text` card.** Same family and heading scale as the editor; card-level size
+   scaling multiplies the prose size as it multiplies `.body` today.
+6. **`hidesMarkup` off.** Typography is unaffected: markers are drawn, in the prose face.
 
 ## 8. Edge cases
 
-- A fenced code block containing something that looks like a table (pipes inside
-  ```lines```) must never be mistaken for a real table — table recognition only applies
-  outside fenced code, same rule the existing code-fence handling already enforces for
-  headings.
-- A malformed/partial pipe table (inconsistent column counts, no separator row) is left
-  as plain text, never force-rendered as a broken grid.
-- Undo/redo: each table structural edit (cell edit, row add/remove, column add/remove) is
-  exactly one `Cmd+Z` step, matching every other structured edit in this app (outline
-  move, embed resize, crop).
-- An external edit (FSEvents reload, "Ricarica da disco") replacing note text under an
-  open table grid must not corrupt the grid — same reload-replaces-whole-buffer discipline
-  ADR-0018 §D3 already establishes for embeds.
-- Blockquote nesting (`>`, `>>`, `>>>`, ...) draws one bar per level, unbounded.
+- **List glyph alignment.** `ListMarkerRendering.paragraphStyle(level:font:)` builds its own
+  `NSParagraphStyle`; the line-height multiple must be carried into it (or composed onto it),
+  otherwise list paragraphs would be tighter than prose paragraphs.
+- **Transclusion `reservedHeight`.** `NoteTextView+Transclusion` sets `paragraphSpacing` on the
+  source line's style to make room for the rendition. The prose paragraph style must not
+  overwrite it; the reserved height is recomputed with the larger body face.
+- **`EmbedAttachment` / `TableAttachment` line fragments.** Both compute against the paragraph's
+  font. A 16pt body changes fragment heights; the D16 probes of ADR-0029 (table fragment
+  height, nested first responder) are re-run by hand.
+- **Heading fold badge and `HorizontalRuleFragment`.** Both draw with a font handed in; they take
+  the prose or heading face from the helper, not a literal.
+- **Avenir Next has no monospace.** Code stays `font.mono`; a `.code` span inside a heading keeps
+  the mono face at the heading's size, as today.
+- **Named family without a bold or italic face** (a user picks a single-weight font). Bold falls
+  back to `NSFontManager.convert(_:toHaveTrait:)` result or the regular face; italic falls back
+  to `.obliqueness`. Never a crash, never an empty attribute dictionary.
+- **Two theme files disagree.** Light and dark must both declare the new tokens; a unit test
+  loads both bundled themes and asserts the three keys resolve.
+- **`personalizzato.json` written by an older build** (no `fonts`). `ThemeCustomization.load`
+  returns `fonts: [:]`; nothing else changes.
+- **Readable width with the Outline pane / Diario split.** The cap is on the text container, so a
+  narrow editor column is unaffected; only a column wider than 720 + insets centres.
+- **Find bar highlight rectangles** come from layout, so they follow the new metrics without
+  code; noted for the hand-check.
+- **`Theme.font(_:)` for SwiftUI** with a named family uses `Font.custom`; if the family is
+  absent SwiftUI silently substitutes — the fallback must be explicit (`NSFont` probe first) so
+  SwiftUI and AppKit agree on the face.
 
-## 9. Success criteria
+## 9. Acceptance and Definition of Done
 
-- [ ] R-01 — Opening any note shows one always-editable, fully styled view; no Modifica/Lettura toggle is present anywhere in the note editor UI
-- [ ] R-02 — `isReadingMode` and its toggle controls (`NoteTabBar.swift`, `VaultBrowser.swift`) are removed from the codebase
-- [ ] R-03 — Blockquote `>` (unbounded nesting), horizontal rule `---`, wikilink/link brackets, and strikethrough `~~` conceal their syntax outside the caret's paragraph, following the same reveal-on-caret rule as headings/emphasis (ADR-0018 §D2)
-- [ ] R-04 — A concealed link/wikilink shows its resolved target in a hover tooltip
-- [ ] R-05 — A GFM table renders as an editable cell grid; cell content, row add/remove, and column add/remove are each editable through the grid and never through direct text editing of pipe characters
-- [ ] R-06 — A new table is created only via a slash-menu/Inserisci command, inserting an empty N×M grid
-- [ ] R-07 — Pasting a markdown table onto the editor renders it as an editable grid in the same turn
-- [ ] R-08 — Each table structural edit (cell edit, row add/remove, column add/remove) is exactly one `Cmd+Z` undo step
-- [ ] R-09 — A fenced code block's pipe-containing lines are never rendered as a table
-- [ ] R-10 — A malformed pipe table (inconsistent columns, no separator row) renders as plain text, not a broken grid
-- [ ] R-11 — The Diario pane hosts the same unified editor, with no separate reading-mode rendering left beside it
-- [ ] R-12 — `MarkdownReadingView`/`MarkdownBlocksView` remain in the codebase, unreferenced by any toggle, with a code comment or ADR note stating they are reserved for a future export/print feature (no-test: this is a documentation/retention decision, not an assertable behavior)
-- [ ] R-13 — UI tests exercising the removed mode toggle (the `PG-031` family) are updated to match the single-mode reality; `scripts/uitests.sh` passes before merge (no-test: this criterion is verified by running the existing suite, not by a new assertion)
-- [ ] R-14 — The ADR for this feature explicitly states it supersedes `ADR-0005 §D2` and `ADR-0018`'s three-construct scope boundary (no-test: an ADR content requirement, not a runtime behavior)
-- [ ] R-15 — `docs/20260811_Pergamenum_SpecApp.md` §14 is amended to reflect that "live preview completa" is no longer excluded, and §5 is updated to drop the two-mode description this session added (no-test: a documentation amendment, not a runtime behavior)
+Build green, SwiftLint 0 errors, unit suite green, `scripts/uitests.sh` green before merge, then
+the criteria below.
+
+## Success criteria
+
+- [ ] R-01 — `grep -rn "NSFont\." Sources/Features/Editor Sources/Features/Workspace` returns no font *construction* outside the allow-list of ADR-0030 §D8 (`EditorDecorationDelegate.collapsedFont`, ADR-0018's concealment non-font; the `NSFont.Weight` type name in `TableGridView+Rendering`; the `NSFont.systemFontSize` last-resort constant in `EditorDecorationDelegate+ListRendering`; `NSFont` type annotations and default property values); every former construction site, `FoldedHeadingFragment` included, reads through the shared typography helper under `Sources/DesignSystem`.
+- [ ] R-02 — `MarkdownAttributedText` styles body, bold, italic and headings from `Theme.nsFont(.prose)` / `.proseTitle`; `.bold` is never `monospacedSystemFont`; `.code`, `.codeBlock`, `.codeToken` and `.frontmatter` use `Theme.nsFont(.mono)`.
+- [ ] R-03 — Heading sizes follow `max(prose + 1, proseTitle − (level − 1) × 2)` for levels 1…6, computed from the tokens; changing `font.proseTitle` in the theme JSON changes every level with no code change.
+- [ ] R-04 — Both bundled themes declare `font.prose` (Avenir Next, 16, 400, lineHeight 1.4), `font.proseTitle` (Avenir Next, 24, 700) and `spacing.readable` (720), and `Theme.emergency` resolves all three when a theme file omits them.
+- [ ] R-05 — `TypographyValue.Family` parses an arbitrary `fontFamily` string as a named family; `Theme.nsFont(_:)` returns that family's regular face when installed and `NSFont.systemFont` at the same size and weight when it is not.
+- [ ] R-06 — Italic uses the family's real italic face when one exists, `.obliqueness: 0.2` otherwise; bold uses the family's bold face, falling back to the regular face rather than to a monospaced one.
+- [ ] R-07 — Prose paragraphs carry a paragraph style whose line-height multiple equals the `font.prose` token's `lineHeight`; no `paragraphSpacing` is added to plain paragraphs; list paragraphs keep their marker indentation and gain the same line height.
+- [ ] R-08 — `CardTextAttributes` reads its body, heading and italic faces from the shared helper on the prose tokens; `CardTextViewTests` still asserts bold is non-monospaced and italic is oblique or italic.
+- [ ] R-09 — With `VaultSettings.readableWidth == true` and a text view wider than `spacing.readable` plus insets, the text container width equals `spacing.readable` and the column is horizontally centred; with the setting off, or a narrower view, the container tracks the view width as before.
+- [ ] R-10 — `VaultSettings.readableWidth` defaults to `true`, decodes with a fallback when absent from an older `settings.json`, and toggling it in Impostazioni → Editor re-lays out an open note without reopening it.
+- [ ] R-11 — Impostazioni → Editor offers a prose font-family picker ("Sistema" plus installed families) and a size control in 12…24; a change writes `font.prose` and `font.proseTitle` overrides to `.pergamenum/themes/personalizzato.json` through `ThemeCustomization`, and the open editor re-styles live.
+- [ ] R-12 — `ThemeCustomization.Draft` gains `fonts: [FontToken: TypographyValue]`; `load` reads a file without a `fonts` section as an empty map; "Ripristina" removes the two font overrides and removes the file when no override of any kind remains.
+- [ ] R-13 — A table cell (`TableGridView`) renders in the prose face at the prose size, and `TableRenderingTests` covers it.
+- [ ] R-14 — Hand-check on a throwaway vault, recorded in the manifest notes: embed and table line-fragment heights, list glyph baseline, transclusion reserved height, heading fold badge and horizontal rule, find-bar highlight, in light and dark, with the body at 16pt and with a missing family forced through the theme file. (no-test: visual layout probes that need a real window, same class as ADR-0029 §D16)
+- [ ] R-15 — ADR-0030 written under `docs/adr/` with the decisions of §2, and SPEC §5, §14 (*Temi* row) and §11.3 of `docs/20260811_Pergamenum_SpecApp.md` amended in place with the literal text of ADR-0030 §D14. (no-test: documentation obligation, verified by reading the diff)
+- [ ] R-16 — `scripts/uitests.sh` run before the merge to `main`; `DesignAndReadingUITests` and `NoteImageUITests` stay green without any assertion being relaxed. (no-test: the UI suite runs outside test-cmd by CLAUDE.md rule and is recorded in the manifest, not asserted by a unit test)
