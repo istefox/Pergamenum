@@ -280,6 +280,9 @@ suite after each task, not just the touched file's tests.**
 ### Task 7 — the release preflight, and the distributable cut from the stapled bundle (R-06)
 
 - Budget: `scripts/release.sh` (~90 lines)
+- Textual guard, written by the tester before the coder (Step 5 record): `Tests/ReleasePipelineTests.swift`
+  asserts the `$DIST`/staple ordering, `sparkle_tool()`, the pinned checksum of Task 6 and the
+  self-test of Task 8 (R-06, R-07).
 - **Two insertions, both in one task because the first exists to protect the second.**
 - **Preflight**, immediately after the branch/clean-tree guards at `:44-46`, before the
   ten-minute archive:
@@ -430,6 +433,21 @@ suite after each task, not just the touched file's tests.**
 - **Before merge:** `scripts/uitests.sh` with no argument (the full bundle), plus explicit builds
   of the `perg` and `pergamenum-mcp` schemes, plus `scripts/mcp-smoke.py` if any connector file
   was touched (it must not have been). `interface-check.sh` must be silent.
+
+**Deviation, recorded at Gate 5.06 (specialized review), applied post-snapshot per ADR-0158:**
+- `SparkleUpdateController.controller` was `internal` in the Task 3 implementation, defeating
+  ADR-0031 §D2's single-entry-point promise (any file in the module could reach `SPUUpdater`
+  without `import Sparkle`, bypassing `isIsolated`). Made `private`; no call site existed outside
+  the file. `checkForUpdates()` was also missing the `isIsolated` guard `start()` already has —
+  inherited verbatim from the ADR §D3 code sample, not a Task 3 deviation, but fixed alongside
+  since it is the same file and the same invariant.
+- `scripts/release.sh`'s publish stage (Task 10) committed the appcast via the GitHub Contents API
+  and declared success without ever confirming `SUFeedURL` (GitHub Pages) actually serves the
+  published bytes — Pages rebuilds asynchronously and can be unconfigured, stale, or failed
+  silently. Added a bounded poll (`curl` the live feed for the just-signed EdDSA signature, 6
+  tries × 10s) after the `gh api PUT`; `fail`s naming the URL if the feed never reflects the
+  release within 60s. Not yet exercised end-to-end — `scripts/release.sh` still has not been run
+  (Gate 2 of this task remains Stefano's alone).
 
 ---
 

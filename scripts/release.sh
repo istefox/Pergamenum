@@ -261,7 +261,13 @@ step "Pubblico $feed_url"
 # Lo sha del file già pubblicato serve alla API per sapere che cosa si sta sostituendo, e
 # manca esattamente una volta, prima della primissima release: il 404 è la strada felice
 # di quel giorno soltanto, quindi si distingue il caso invece di ignorare l'errore.
-appcast_sha="$(gh api "repos/$UPDATES_REPO/contents/appcast.xml" --jq '.sha' 2>/dev/null || true)"
+# Il segnale è l'exit status di gh, non lo stdout: su un 404 `gh api` applica il --jq
+# soltanto alle risposte 2xx e stampa il JSON dell'errore su stdout (misurato il
+# 2026-09-04 contro questo stesso repository), quindi un test sulla stringa prenderebbe
+# il ramo «sostituzione» con quel JSON come sha, proprio alla prima release.
+if ! appcast_sha="$(gh api "repos/$UPDATES_REPO/contents/appcast.xml" --jq '.sha' 2>/dev/null)"; then
+    appcast_sha=""
+fi
 appcast_body="$(base64 <"$appcast" | tr -d '\n')"
 if [ -n "$appcast_sha" ]; then
     gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
@@ -274,6 +280,25 @@ else
         -f message="appcast: Pergamenum $version ($BUILD)" \
         -f content="$appcast_body" >/dev/null \
         || fail "pubblicazione dell'appcast fallita (primo caricamento)"
+fi
+
+# Il commit sui Contents API prova solo che git ha accettato il file: GitHub Pages lo
+# ricostruisce in modo asincrono, e senza questo controllo lo script dichiarerebbe
+# successo mentre ogni copia installata continua a interrogare un feed non aggiornato
+# (o mai stato configurato). Si interroga $feed_url stesso, non l'API, perché è quello
+# che Sparkle legge davvero; si cerca la firma appena calcolata perché è l'unico valore
+# di questa release che non può comparire per caso in una build precedente del feed.
+step "Verifico che $feed_url serva la release appena pubblicata"
+feed_confirmed=false
+for _ in 1 2 3 4 5 6; do
+    if curl -fsSL "$feed_url" 2>/dev/null | grep -qF "$signature"; then
+        feed_confirmed=true
+        break
+    fi
+    sleep 10
+done
+if [ "$feed_confirmed" != true ]; then
+    fail "$feed_url non serve ancora la firma della release $version ($BUILD) dopo 60s - GitHub Pages potrebbe non essere configurato o non aver ancora ricostruito. Verificare manualmente prima di considerare la release pubblicata."
 fi
 
 cat <<SUMMARY

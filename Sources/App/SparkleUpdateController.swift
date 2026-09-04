@@ -60,7 +60,7 @@ final class SparkleUpdateController {
     /// property (`init accessor cannot refer to property '_controller'`, measured). Nothing
     /// reads `controller` from a view, so it never needed observation tracking anyway.
     @ObservationIgnored
-    lazy var controller: SPUStandardUpdaterController = {
+    private lazy var controller: SPUStandardUpdaterController = {
         SPUStandardUpdaterController(
             startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
     }()
@@ -115,6 +115,7 @@ final class SparkleUpdateController {
     }
 
     func checkForUpdates() {
+        guard !isIsolated else { return }
         controller.updater.checkForUpdates()
     }
 }

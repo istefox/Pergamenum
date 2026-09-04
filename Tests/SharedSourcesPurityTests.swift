@@ -3,7 +3,8 @@ import Testing
 @testable import Pergamenum
 
 // ADR-0031 (Sparkle auto-update integration), plan
-// docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md, Task 2.
+// docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md, Task 2 — R-01:
+// Sparkle is linked into the app target and into nothing else.
 //
 // Sparkle enters through exactly one file, `Sources/App/SparkleUpdateController.swift`
 // (ADR §D2). This walks the repository from `#filePath` and asserts that none of the
