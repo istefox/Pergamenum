@@ -100,6 +100,52 @@ import Testing
         }
     }
 
+    /// Regression for the bug reported against this file (attributes(for: .heading(level:)),
+    /// ~lines 57-61): a heading run's `.font`/`.foregroundColor` are set, but `.paragraphStyle`
+    /// is left unset entirely, so `NSMutableAttributedString.addAttributes(range:)` never
+    /// overwrites the single `base(theme:)`-supplied style every paragraph starts with. That
+    /// base style's `lineHeightMultiple` is computed from `font.prose`'s 16pt size
+    /// (`ProseTypography.lineHeightMultiple`), never from the actual heading font, which can be
+    /// as large as `font.proseTitle`'s 24pt at H1 (`ProseTypography.heading(level:_:)`). The
+    /// laid-out line box for a heading is therefore body-sized regardless of level, and the
+    /// extra space that should scale with the heading's own font does not — this is what pushes
+    /// `FoldedHeadingFragment`'s badge (centered on `typographicBounds`) out of alignment with
+    /// the heading glyphs at H1/H2, though the badge's own centering math is correct and out of
+    /// scope for this fix (do not touch `FoldedHeadingFragment.badgeFrame`).
+    ///
+    /// This asserts the invariant the coder must restore: an H1 heading's effective paragraph
+    /// line height must differ from (be proportionately taller than) the plain-body paragraph
+    /// style's line height, tracking the H1/prose font-size ratio — not merely be non-nil, and
+    /// not merely be present, since a `.paragraphStyle` equal to the body's would still keep the
+    /// bug (it is the not-scaling that is wrong, not the absence of a key). The `1` sentinel
+    /// check on `bodyStyle.lineHeightMultiple` guards against a body style that already reads as
+    /// "no line height applied" making this comparison vacuous.
+    @Test func headingParagraphStyleLineHeightScalesWithTheHeadingsOwnFontSize() throws {
+        let theme = Theme.emergency
+
+        let bodyStyle = try #require(MarkdownAttributedText.base(theme: theme)[.paragraphStyle] as? NSParagraphStyle)
+        #expect(bodyStyle.lineHeightMultiple != 1, "fixture sanity: the body style must carry a real line height")
+
+        let headingAttributes = MarkdownAttributedText.attributes(for: .heading(level: 1), theme: theme)
+        let headingStyle = try #require(
+            headingAttributes[.paragraphStyle] as? NSParagraphStyle,
+            "a heading run must carry its own .paragraphStyle, scaled to the heading's font size, not silently inherit the body-sized style base(theme:) already applied to the paragraph"
+        )
+
+        let proseSize = ProseTypography.prose(theme).pointSize
+        let headingSize = ProseTypography.heading(level: 1, theme).pointSize
+        let expectedMultiple = bodyStyle.lineHeightMultiple * (headingSize / proseSize)
+
+        #expect(
+            headingStyle.lineHeightMultiple != bodyStyle.lineHeightMultiple,
+            "H1's line height must not be identical to the body's — it must scale with the larger heading font"
+        )
+        #expect(
+            abs(headingStyle.lineHeightMultiple - expectedMultiple) < 0.01,
+            "H1's lineHeightMultiple (\(headingStyle.lineHeightMultiple)) must track the heading/prose font-size ratio (expected ~\(expectedMultiple))"
+        )
+    }
+
     // MARK: - .bold (R-01, R-02)
 
     @Test func boldIsTheProseFamilysBoldFaceAndNeverMonospaced() throws {
