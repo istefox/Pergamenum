@@ -19,9 +19,13 @@ extension NoteTextView.Coordinator {
         // makes.
         guard !occurrences.isEmpty || !lastRenditions.isEmpty else { return }
 
-        let width = TranscludedRendition.bodyWidth(
-            inContainerOf: textView.textContainer?.size.width ?? textView.bounds.width
-        )
+        let containerWidth: CGFloat
+        if let container = textView.textContainer {
+            containerWidth = max(0, container.size.width - container.lineFragmentPadding * 2)
+        } else {
+            containerWidth = textView.bounds.width
+        }
+        let width = TranscludedRendition.bodyWidth(inContainerOf: containerWidth)
         var renditions: [Int: TranscludedRendition] = [:]
         for occurrence in occurrences {
             guard let rendition = rendition(for: occurrence, width: width, theme: theme) else { continue }

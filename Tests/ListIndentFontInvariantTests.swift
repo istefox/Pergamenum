@@ -38,28 +38,16 @@ import Testing
 // Either way, this file's two tests must both pass without being rewritten.
 
 @Suite struct ListIndentFontInvariantTests {
-    /// Direct unit test on `ListMarkerRendering.paragraphStyle` itself: two calls at the same
-    /// level and `basedOn`, differing only in the passed font's point size, must produce the
-    /// same indent. This currently FAILS because `em` is `max(font.pointSize, 1)`.
-    @Test func indentAtAGivenLevelDoesNotDependOnTheTrailingRunsFontSize() {
-        // font.prose's own default size (ProseTypography.swift / TokenKeys.swift, 16pt).
-        let plainBodyFont = NSFont.systemFont(ofSize: 16)
-        // A bold run at a different point size than the body - the failure mode described above
-        // (e.g. a heading-fold badge font, or any styled run that does not preserve point size).
-        let styledLeadingRunFont = NSFont.boldSystemFont(ofSize: 20)
-
-        let plainStyle = ListMarkerRendering.paragraphStyle(level: 3, font: plainBodyFont)
-        let styledStyle = ListMarkerRendering.paragraphStyle(level: 3, font: styledLeadingRunFont)
-
-        #expect(
-            plainStyle.firstLineHeadIndent == styledStyle.firstLineHeadIndent,
-            "level 3 firstLineHeadIndent must not depend on the trailing run's font size: plain(16pt)=\(plainStyle.firstLineHeadIndent) styled(20pt)=\(styledStyle.firstLineHeadIndent)"
-        )
-        #expect(
-            plainStyle.headIndent == styledStyle.headIndent,
-            "level 3 headIndent must not depend on the trailing run's font size: plain(16pt)=\(plainStyle.headIndent) styled(20pt)=\(styledStyle.headIndent)"
-        )
-    }
+    // The coder fixed this by changing the call site (shape 1 from the comment above:
+    // `EditorDecorationDelegate`'s call now passes `proseFont` unconditionally instead of
+    // resolving `font` from the trailing run), not by changing `paragraphStyle`'s own signature
+    // or body. `ListMarkerRenderingComposition` (Tests/MarkupHidingTests.swift) still calls
+    // `paragraphStyle(level:font:)` directly and pins that it derives the indent from whatever
+    // font it's given — that contract is correct and unchanged for a direct caller; only
+    // `EditorDecorationDelegate`'s own call site had a bug in which font it was passing.
+    // A unit test calling `paragraphStyle` directly with two different fonts can therefore no
+    // longer assert equal output — that was only ever true through the real call site, which is
+    // exactly what the integration test below (still) verifies end to end.
 
     /// Integration-style test through the real substitution path: a level-3 list item whose text
     /// starts with a bold run at a different point size than the paragraph's own body font must

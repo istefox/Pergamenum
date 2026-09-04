@@ -112,12 +112,15 @@ import Testing
 
     @Test func theBodyWidthMatchesWhatReserveSpaceMeasuredTheHeightAgainst() {
         // The other half of the bug: NoteTextView+Transclusion.swift's reservation measures
-        // TranscludedRendition.height(of:width:) against textContainer?.size.width
-        // (NoteTextView+Transclusion.swift:22-23). Whatever draw(at:in:) lays the body out at
-        // must be the same number, or the reserved height and the drawn content disagree and
-        // the content clips.
+        // TranscludedRendition.height(of:width:) against the container's width minus its
+        // line-fragment padding (NoteTextView+Transclusion.swift's applyTransclusions), the same
+        // formula containerWidth uses below. Whatever draw(at:in:) lays the body out at must be
+        // the same number, or the reserved height and the drawn content disagree and the content
+        // clips.
         let built = Self.fragment()
-        let reservedAgainst = TranscludedRendition.bodyWidth(inContainerOf: Self.containerWidth)
+        let reservedAgainst = TranscludedRendition.bodyWidth(
+            inContainerOf: Self.containerWidth - Self.padding * 2
+        )
         let drawnAgainst = TranscludedRendition.bodyWidth(inContainerOf: built.fragment.containerWidth)
         #expect(drawnAgainst == reservedAgainst)
     }
