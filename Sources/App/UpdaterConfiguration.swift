@@ -16,17 +16,41 @@ struct UpdaterConfiguration: Equatable, Sendable {
     let checksAutomatically: Bool
     let sendsSystemProfile: Bool
 
-    /// Stub declaration (ADR-0155 §D1): the tester owns this signature, the coder fills
-    /// the body. Must eventually succeed when `SUFeedURL` is a valid `https://` URL and
-    /// `SUPublicEDKey` is present, and fail (return `nil`) when either key is missing or
-    /// malformed beyond what `problems` can describe (e.g. `SUFeedURL` unparsable as a
-    /// `URL` at all). Currently always returns `nil`.
+    /// Fails - returns `nil` - only for what cannot be described any other way: an absent
+    /// `SUFeedURL`, or one that is not parsable as a `URL` at all. Everything else that is
+    /// wrong is reported by `problems` on a value that exists, because a test that can read
+    /// the offending value back says more than one that got nothing.
     init?(infoDictionary: [String: Any]) {
-        return nil
+        guard let rawFeedURL = infoDictionary["SUFeedURL"] as? String,
+              let feedURL = URL(string: rawFeedURL) else { return nil }
+        self.feedURL = feedURL
+        // Absent and empty are the same defect here, and `problems` names it either way.
+        self.publicEDKey = infoDictionary["SUPublicEDKey"] as? String ?? ""
+        // A missing flag is the value this app wants, so its absence is not a problem:
+        // the keys exist to pin Sparkle's own defaults down, not to be read for state.
+        self.checksAutomatically = infoDictionary["SUEnableAutomaticChecks"] as? Bool ?? false
+        self.sendsSystemProfile = infoDictionary["SUSendsSystemProfile"] as? Bool ?? false
     }
 
-    /// Stub declaration: the coder fills this in. Must eventually report, non-fatally:
-    /// `SUFeedURL` not using `https://`; `SUPublicEDKey` empty; `SUEnableAutomaticChecks`
-    /// `true` (R-03); `SUSendsSystemProfile` `true` (R-04). Currently always empty.
-    var problems: [String] { [] }
+    /// Every way the four keys can be present and still wrong, reported non-fatally and
+    /// one line each. The feed problem quotes the offending URL verbatim: the value is the
+    /// only part of that message worth reading.
+    var problems: [String] {
+        var problems: [String] = []
+        if feedURL.scheme?.lowercased() != "https" {
+            problems.append("SUFeedURL must use https, found: \(feedURL.absoluteString)")
+        }
+        if publicEDKey.isEmpty {
+            problems.append("SUPublicEDKey is empty: the appcast signature cannot be verified")
+        }
+        // R-03: checks are manual-only, so the key exists precisely to be false.
+        if checksAutomatically {
+            problems.append("SUEnableAutomaticChecks must be false: update checks are manual-only")
+        }
+        // R-04: the one place CLAUDE.md principle 2's exception must not widen into telemetry.
+        if sendsSystemProfile {
+            problems.append("SUSendsSystemProfile must be false: no system profile is ever sent")
+        }
+        return problems
+    }
 }

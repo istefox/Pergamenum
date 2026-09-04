@@ -30,5 +30,13 @@ let package = Package(
         // it is a 0.x dependency that lags, and that is a risk the ADR records rather
         // than hides.
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
+        // ADR-0031 §D1. The updater, and the one narrow exception to CLAUDE.md principle 2.
+        // Attached to the `Pergamenum` app target alone in `Project.swift`: a Tuist
+        // dependency is per target, so resolving it here links it into nothing that does
+        // not ask. Deliberately absent from `productTypes` above - Sparkle ships as a
+        // `.binaryTarget` whose product type the `.xcframework` fixes, and the consumer is
+        // an `.app` that has a `Contents/Frameworks` to embed it into, so an entry there
+        // would be ineffective and misleading rather than merely redundant.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6"),
     ]
 )

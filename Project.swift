@@ -76,6 +76,11 @@ let sharedSources: [SourceFileGlob] = [
     .glob("Sources/Connector/**"),
     "Sources/Index/IndexCache.swift",
     "Sources/Index/IndexSnapshot.swift",
+    // Not optional beside the file above: it carries `tagUsage()` and the snapshot's own
+    // `ViewCorpus` conformance, both of which `Sources/Vault` and `Sources/Connector` call.
+    // Its absence broke `perg` and `pergamenum-mcp` outright - the failure CLAUDE.md's
+    // "a file outside those globs that a tool needs must be added by hand" predicts.
+    "Sources/Index/IndexSnapshot+Search.swift",
     "Sources/Calendar/TimeBlock.swift",
     "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",
@@ -121,6 +126,21 @@ let project = Project(
                 // without these every build ever made claimed to be the same one.
                 "CFBundleShortVersionString": .string(marketingVersion),
                 "CFBundleVersion": .string(buildNumber),
+                // ADR-0031 §D6. The updater's whole configuration, declared rather than
+                // written from code: `Sources/App/UpdaterConfiguration.swift` reads these
+                // four back off the *built* plist, because the manifest is not what ships.
+                // `SUEnableAutomaticChecks` false is the entirety of R-03 (checks are
+                // manual-only, no timer anywhere), and `SUSendsSystemProfile` false is R-04
+                // - the exception to CLAUDE.md principle 2 covers the update check and
+                // nothing else, least of all telemetry.
+                "SUFeedURL": .string("https://istefox.github.io/pergamenum-updates/appcast.xml"),
+                // PLACEHOLDER. Replaced by Task 9 with the real EdDSA public key that
+                // `generate_keys` prints; the private half never leaves this Mac's login
+                // Keychain. A placeholder still here at Task 10 is what R-08's hand check
+                // is looking for.
+                "SUPublicEDKey": .string("SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER"),
+                "SUEnableAutomaticChecks": .boolean(false),
+                "SUSendsSystemProfile": .boolean(false),
                 // Without this the about panel prints "Copyright ©. All rights
                 // reserved." with nothing between the symbol and the full stop, which
                 // is the panel the build number is read from.
@@ -168,7 +188,10 @@ let project = Project(
                 .glob("Sources/**", excluding: ["Sources/CLI/**", "Sources/MCPServer/**"]),
             ]),
             resources: ["Resources/**"],
-            dependencies: [],
+            // ADR-0031 §D1. The app is the only target that links Sparkle: `perg` keeps
+            // `[]` and `pergamenum-mcp` keeps `[.external(name: "MCP")]`, so neither
+            // connector learns the framework exists.
+            dependencies: [.external(name: "Sparkle")],
             // Repeated on the target because a target-level value wins over the
             // project base, and the generated target carries "-" by default.
             settings: .settings(base: baseSettings, configurations: appConfigurations)
