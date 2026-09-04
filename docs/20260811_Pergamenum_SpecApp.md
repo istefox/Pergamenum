@@ -181,6 +181,24 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   `NSTextAttachmentViewProvider` ancorato alla riga di intestazione, celle attraversabili con
   Tab, ogni cella riscritta nella sorgente markdown al commit — Tab, Invio o perdita del fuoco —
   così che ogni `Cmd+Z` annulli esattamente un commit.
+- **La tipografia dell'editor è una pagina, non un buffer di codice** (ADR-0030,
+  2026-09-04): il corpo della nota è reso con il token `font.prose` (Avenir Next 16,
+  interlinea 1.4) e i titoli con la scala interpolata fra `font.proseTitle` e `font.prose` —
+  `max(prose + 1, proseTitle − (livello − 1) × 2)`, sei livelli, nessun token per livello. Il
+  monospazio resta solo per il codice, i fence e il frontmatter (`font.mono`). Nessuna vista
+  dell'editor nomina più un carattere: le facce arrivano dai token come i colori, e la regola
+  vincolante di §11.3 vale ora anche per i font.
+- **Larghezza di lettura**: la colonna di testo è limitata a `spacing.readable` (720pt) e
+  centrata quando la vista è più larga; sotto quella soglia il testo segue la larghezza della
+  vista esattamente come prima. È un'impostazione della cartella note
+  (`VaultSettings.readableWidth`, attiva di default) e vale su tutte e tre le superfici che
+  disegnano l'editor: Nota, Diario e Oggi.
+- **Il carattere della nota si sceglie in Impostazioni → Editor**: famiglia fra quelle
+  installate più «Sistema», corpo da 12 a 24. La scelta è scritta come override dei token
+  `font.prose` e `font.proseTitle` in `.pergamenum/themes/personalizzato.json`, attraverso lo
+  stesso meccanismo dei colori (§11.3): resta un file DTCG nel vault, mai uno stato dell'app.
+  Una famiglia dichiarata da un tema e non installata degrada al carattere di sistema, senza
+  errore e senza crash.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
@@ -427,7 +445,7 @@ La GUI è progettata **con Claude in fase di design** (mockup, componenti e toke
 Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabile direttamente a un'app SwiftUI, dove non esiste un DOM su cui applicare fogli di stile; sarebbe applicabile solo incapsulando le viste in WKWebView, scelta scartata (rinuncerebbe ai vantaggi nativi decisi in §14). L'equivalente nativo, adottato **dall'inizio**, è un sistema di **design token**:
 
 - File tema in JSON, formato allineato alla spec W3C Design Tokens (DTCG), in `.pergamenum/themes/`: `pergamenum-light.json`, `pergamenum-dark.json` più eventuali temi aggiuntivi.
-- Token semantici, mai riferimenti diretti a colori nelle viste: `color.background.primary`, `color.text.secondary`, `color.accent`, `color.canvas.grid`, `color.task.overdue`, `font.body`, `font.title`, `spacing.s/m/l`, `radius.card`, `shadow.card`, ecc.
+- Token semantici, mai riferimenti diretti a colori nelle viste: `color.background.primary`, `color.text.secondary`, `color.accent`, `color.canvas.grid`, `color.task.overdue`, `font.body`, `font.title`, `font.prose`, `font.proseTitle`, `spacing.s/m/l`, `spacing.readable`, `radius.card`, `shadow.card`, ecc.
 - Un `ThemeEngine` carica i token a runtime e li espone alle viste SwiftUI via Environment; il cambio tema è istantaneo, senza riavvio. Chiaro/scuro seguono il sistema o si forzano.
 - Vantaggio del formato DTCG: gli stessi file token sono leggibili da strumenti web e da Claude in fase di design; un tema disegnato come CSS variables si converte meccanicamente in token JSON. È il ponte richiesto con il mondo CSS/HTML, senza portare un webview nell'app.
 - Regola di sviluppo vincolante: una vista che usa un colore o un font non passando dai token non supera la review.
@@ -484,7 +502,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |
 | Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file |
-| Temi | Design token JSON (DTCG), no CSS/WKWebView | Il CSS richiederebbe webview; i token danno lo stesso risultato in nativo e restano interoperabili con gli strumenti web di design |
+| Temi | Design token JSON (DTCG), no CSS/WKWebView; dal 2026-09-04 i token personalizzabili dall'utente comprendono anche la tipografia del corpo nota, non più i soli colori (ADR-0030) | Il CSS richiederebbe webview; i token danno lo stesso risultato in nativo e restano interoperabili con gli strumenti web di design. La scelta del carattere resta un file di tema nel vault, mai una preferenza dell'app: stesso meccanismo, una classe di token in più |
 | Ricorrenze infinite | Delegate a Promemoria Apple | Evita un motore di ricorrenze completo |
 | Sync | iCloud Drive sulla cartella vault | Nessun server; pattern validato da VisualOS e NotePlan |
 | Quick Look per .eml | Non usato come renderer | Da Catalina mostra solo gli header; il parser interno basta |
