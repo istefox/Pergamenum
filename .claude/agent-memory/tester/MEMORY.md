@@ -6,3 +6,4 @@
 - [spec-coverage.sh MALFORMED on this SPEC.md](spec-coverage-malformed-success-criteria.md) — script chokes on the `- [ ] R-NN —` bullet format; read §9 directly instead.
 - [Theme.emergency force-unwrap crash](pergamenum-emergency-theme-force-unwrap.md) — a new TokenKey case needs a placeholder in `Theme.emergency` too, or a red test crashes the whole xctest process.
 - [ADR-0030 plan "SPEC §N" refs](adr-0030-plan-section-refs-not-spec.md) — those section numbers are the plan's own, not the real SPEC; the roadmap doc it also cites doesn't exist in-tree.
+- [Swift Testing comment concat fails](swift-testing-comment-concat.md) — `"a " + "b"` as a `#expect`/`#require` message errors "Cannot convert String to Comment?"; keep the message on one line.
