@@ -7,8 +7,8 @@ anonymize: false
 chain_path: "express"
 created_at: "2026-08-30T20:57:31+00:00"
 last_updated_at: "2026-08-30T21:33:05+00:00"
-current_step: "step_e4_commit"
-status: "in_progress"
+current_step: "completed"
+status: "completed"
 
 # Gate 0 routing result (ADR-0017)
 gate0:
@@ -139,4 +139,4 @@ failure:
   partial_artifacts: []
 
 # Hint for next action (UX)
-next_action: "Run /skill concept-to-code pg-081-deduplicate-breadcrumb-rendering to start Step 1 interview"
+next_action: "Chain complete retroactively — work shipped via PR #120 (bddc299) outside the tracked chain steps. Nothing further to run."

@@ -146,7 +146,10 @@ final class WorkspaceController {
     /// board reopened after navigation reuses the same in-memory renders.
     private(set) var thumbnails: ThumbnailStore?
     /// Header lines for `.eml` cards, keyed by vault path. Parsed once per file.
-    private(set) var emailHeaders: [String: EmailHeaders] = [:]
+    ///
+    /// Not `private(set)`: the only writer, `loadEmailHeaders(for:)`, lives in
+    /// `WorkspaceController+Files.swift`.
+    var emailHeaders: [String: EmailHeaders] = [:]
     private var saveTask: Task<Void, Never>?
     /// Autosave delay of SPEC §6.1.
     private let autosaveDelay = Duration.seconds(1)
@@ -530,82 +533,12 @@ final class WorkspaceController {
     /// this file should know about (see `CardTextSelection`).
     let cardTextSelection = CardTextSelection()
 
-    /// Enters inline editing on a `.text` node - a double click, the «Modifica testo»
-    /// command, or straight after Testo/To Do creates one (SPEC §6.3).
-    func beginTextEdit(nodeID: String) {
-        guard case .text(let text) = document.node(id: nodeID)?.kind else { return }
-        // No two editors of different kinds open at once, the same rule `beginCrop` follows.
-        if croppingNodeID != nil { endCrop(confirm: true) }
-        select(nodeID: nodeID, adding: false)
-        editingTextNodeID = nodeID
-        editingTextDraft = text
-    }
-
-    /// Leaves inline editing. `commit` writes `editingTextDraft` through the existing
-    /// `setText`; `false` discards it (Esc is the only caller that ever does).
-    func endTextEdit(commit: Bool) {
-        guard let id = editingTextNodeID else { return }
-        if commit {
-            setText(editingTextDraft, forNodeID: id)
-        }
-        editingTextNodeID = nil
-    }
-
     /// The `.link` card's title being written into (PG-073), transient like `editingTextNodeID`
     /// above and for the same reason: the document is mutated once, at `endTitleEdit(commit:)`.
     var editingTitleNodeID: String?
     /// The field's own draft, same reasoning as `editingTextDraft`: Esc, an outside click and a
     /// focus change all commit the same value instead of each holding their own copy.
     var editingTitleDraft: String = ""
-
-    /// Enters inline editing on a `.link` node's title - the «Rinomina» command, the only
-    /// trigger (double click is already spoken for: `NSWorkspace.open(URL)`, SPEC §6.4 row 7).
-    func beginTitleEdit(nodeID: String) {
-        guard case .link = document.node(id: nodeID)?.kind else { return }
-        // No two editors of different kinds open at once, the same rule `beginCrop`/
-        // `beginTextEdit` already follow for each other - a `.link` node is never a `.text`
-        // node, so the two sessions can never legitimately overlap, but a stale
-        // `editingTextNodeID` left over from a different card still has to be closed cleanly.
-        if croppingNodeID != nil { endCrop(confirm: true) }
-        if editingTextNodeID != nil { endTextEdit(commit: true) }
-        select(nodeID: nodeID, adding: false)
-        editingTitleNodeID = nodeID
-        editingTitleDraft = LinkCardTitle.read(from: document.node(id: nodeID)!) ?? ""
-    }
-
-    /// Leaves title editing. `commit` writes `editingTitleDraft` through `setTitle`; `false`
-    /// discards it (Esc is the only caller that ever does).
-    func endTitleEdit(commit: Bool) {
-        guard let id = editingTitleNodeID else { return }
-        if commit {
-            setTitle(editingTitleDraft, forNodeID: id)
-        }
-        editingTitleNodeID = nil
-    }
-
-    /// «Ripiega titoli» (ADR-0028 §D8): folds or unfolds one heading of one `.text` card,
-    /// the card-side mirror of `VaultController.toggleFold(_:)`.
-    ///
-    /// Deliberately **not** through `mutate`: a fold changes no node, writes no file and
-    /// records no history step (R-12). It is a way of looking at a card, so it must not make
-    /// the board dirty, must not schedule a save, and must not put a step between the person
-    /// and the board undo they meant.
-    func toggleFold(_ entry: Int, forNodeID id: String) {
-        var folded = foldedHeadings[id] ?? []
-        if folded.contains(entry) {
-            folded.remove(entry)
-        } else {
-            folded.insert(entry)
-        }
-        // Removed rather than left as an empty set: "this card folds nothing" and "this card
-        // is not in the table" are the same state, and keeping only one of them spelled means
-        // a rebuilt card cannot read a stale empty entry as anything else.
-        if folded.isEmpty {
-            foldedHeadings.removeValue(forKey: id)
-        } else {
-            foldedHeadings[id] = folded
-        }
-    }
 
     /// The arrow being drawn with the Freccia tool (SPEC §6.4, tool 11): the card it
     /// started from and how far the pointer has travelled from there, in board units.
@@ -614,91 +547,6 @@ final class WorkspaceController {
     /// written once, on release, not on every frame of the gesture.
     var arrowSourceID: String?
     var arrowTranslation: CGSize = .zero
-
-    /// Absolute URL of the file a node points at, when it points at one.
-    func fileURL(for node: CanvasNode) -> URL? {
-        guard let store, case .file(let path, _) = node.kind else { return nil }
-        return store.root.appending(path: path, directoryHint: .notDirectory)
-    }
-
-    /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).
-    ///
-    /// The empty-selection exit is not tidiness: this walks every node in the document
-    /// and stats each file it keeps, and the board redraws far more often than anything
-    /// is selected. Nothing selected can only ever produce an empty list anyway.
-    var selectedFileURLs: [URL] {
-        guard !selection.isEmpty else { return [] }
-        return document.nodes
-            .filter { selection.contains($0.id) }
-            .compactMap { node in
-                // A folder card previews as a folder, which Quick Look renders as an
-                // icon; the file cards are what the panel is useful for.
-                subfolder(for: node) == nil ? fileURL(for: node) : nil
-            }
-            .filter { FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }
-    }
-
-    /// Reads and memoises the headers of an `.eml` card.
-    ///
-    /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
-    /// cheap even for a message with a large attachment: the file is mapped rather than
-    /// copied, and only the bytes before the blank line are decoded.
-    func loadEmailHeaders(for relativePath: String) {
-        guard let store, emailHeaders[relativePath] == nil else { return }
-        let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return }
-        let headerBytes = Self.headerBlock(of: data)
-
-        // Latin-1 as the fallback: an .eml whose headers are not UTF-8 still has
-        // readable ASCII field names, and refusing the file would leave the card blank.
-        let text = String(data: headerBytes, encoding: .utf8)
-            ?? String(data: headerBytes, encoding: .isoLatin1)
-            ?? ""
-        emailHeaders[relativePath] = EmailHeaderParser.parse(text)
-    }
-
-    /// The bytes up to the blank line that ends an `.eml`'s header block.
-    ///
-    /// `EmailHeaderParser` stops at that line anyway, but only after the whole message
-    /// has been decoded into a `String` - which for a base64 attachment is megabytes of
-    /// UTF-8 validation done to be thrown away. Cutting at the boundary in bytes keeps
-    /// the cost proportional to the headers.
-    ///
-    /// The search is capped: a file with no blank line in its first 64 KB is not a
-    /// message these cards can describe, and the fallback cut lands on the last newline
-    /// so a multi-byte character is never split - half a character fails UTF-8 and
-    /// silently lands in the Latin-1 fallback as mojibake.
-    private static func headerBlock(of data: Data) -> Data {
-        let limit = min(data.count, 64 * 1024)
-        let window = data[data.startIndex..<data.index(data.startIndex, offsetBy: limit)]
-
-        let separators = [Data([0x0A, 0x0A]), Data([0x0D, 0x0A, 0x0D, 0x0A])]
-        if let end = separators.compactMap({ window.range(of: $0)?.lowerBound }).min() {
-            return window[window.startIndex..<end]
-        }
-        // Headers-only file shorter than the cap: nothing was truncated, keep it whole.
-        guard limit < data.count, let lastNewline = window.lastIndex(of: 0x0A) else { return window }
-        return window[window.startIndex..<lastNewline]
-    }
-
-    /// The folder a card points at, when it points at one.
-    ///
-    /// Checked against the filesystem directly (PG-054), not `subfolderSet`: that set only
-    /// ever lists the *direct* children of the currently open board's own folder, so a card
-    /// whose target folder was later moved elsewhere in the tree - now a nested path like
-    /// `Nord/SudX` rather than a sibling of this board - would never match again no matter
-    /// how many times the board reloads. The move itself already repoints the card's stored
-    /// path correctly (`FolderFileOperations.repointBoardsPlan`); what was wrong was asking
-    /// the wrong question about the result.
-    func subfolder(for node: CanvasNode) -> String? {
-        guard case .file(let path, _) = node.kind, let store else { return nil }
-        var isDirectory: ObjCBool = false
-        let url = store.root.appending(path: path, directoryHint: .isDirectory)
-        let exists = FileManager.default.fileExists(
-            atPath: url.path(percentEncoded: false), isDirectory: &isDirectory
-        )
-        return exists && isDirectory.boolValue ? path : nil
-    }
 
     // MARK: Saving
 
