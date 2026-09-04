@@ -18,9 +18,9 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
     /// The badge's own face (ADR-0030 §D1/§D5), pushed in from `EditorDecorationDelegate`'s own
     /// `badgeFont` (`textLayoutManager(_:textLayoutFragmentFor:in:)` assigns it beside
-    /// `badgeColor`/`badgeBackground` above). Declared here as a stored property only, Task 4
-    /// (tester): the `badge` computed property below still draws the line-31 literal until the
-    /// coder reads this instead.
+    /// `badgeColor`/`badgeBackground` above), never resolved here: this fragment has no `Theme`
+    /// and, like the delegate that builds it, cannot hold one. The system-face default is what a
+    /// fragment built by a test harness draws with, and the app overwrites it on every pass.
     nonisolated(unsafe) var badgeFont: NSFont = .systemFont(ofSize: 10, weight: .regular)
     /// The UTF-16 offset of the heading's own line, which is how a click on the badge says
     /// *which* section to open. The fold itself is held by index-entry ordinal, so this is
@@ -34,7 +34,7 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
         NSAttributedString(
             string: "⌄ \(hiddenLines) \(hiddenLines == 1 ? "riga" : "righe")",
             attributes: [
-                .font: NSFont.systemFont(ofSize: 10, weight: .regular),
+                .font: badgeFont,
                 .foregroundColor: badgeColor,
             ]
         )

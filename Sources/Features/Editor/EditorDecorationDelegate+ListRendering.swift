@@ -11,8 +11,8 @@ extension EditorDecorationDelegate {
     /// character replaced by `ListMarkerRendering.glyph(for:)`, an ordered marker's digits
     /// left exactly as the file spells them (ADR-0028 §D4), the indentation it hangs at
     /// collapsed into `collapsedFont` so the paragraph style is the only thing indenting the
-    /// line, and `ListMarkerRendering.paragraphStyle(level:font:)` applied over the whole
-    /// displayed paragraph.
+    /// line, and `ListMarkerRendering.paragraphStyle(level:font:basedOn:)` applied over the
+    /// whole displayed paragraph, composed onto the style that paragraph already carries.
     ///
     /// One character out, one character in, never more: the displayed paragraph keeps its
     /// stored length, which is `NSTextContentManager.h:120`'s constraint and the reason a
@@ -63,7 +63,13 @@ extension EditorDecorationDelegate {
         copy.addAttribute(
             .paragraphStyle,
             value: ListMarkerRendering.paragraphStyle(
-                level: item.level, font: Self.bodyFont(of: copy, after: marker.range)
+                level: item.level, font: Self.bodyFont(of: copy, after: marker.range),
+                // The style the paragraph already carries, composed onto rather than replaced
+                // (ADR-0030 §D5): `MarkdownAttributedText.base(theme:)` puts the page's
+                // `lineHeightMultiple` on every character of the note, and this attribute is
+                // written over the whole displayed paragraph - so without handing it back in,
+                // a line's interline spacing would collapse the moment it became a list item.
+                basedOn: Self.bodyParagraphStyle(of: copy)
             ),
             // The whole displayed paragraph, not only the marker: an item that wrapped
             // would otherwise lose its indentation on its second line (R-05).
@@ -83,6 +89,18 @@ extension EditorDecorationDelegate {
               let font = paragraph.attribute(.font, at: probe, effectiveRange: nil) as? NSFont
         else { return .systemFont(ofSize: NSFont.systemFontSize) }
         return font
+    }
+
+    /// The paragraph style the displayed paragraph already carries, read at its first
+    /// character - a paragraph style is a property of the whole paragraph, so any offset
+    /// inside it answers the same and offset 0 is the one always present.
+    ///
+    /// `nil` when the storage carries none, which is what an offscreen harness building a
+    /// paragraph out of a bare string has; `ListMarkerRendering.paragraphStyle` then builds a
+    /// fresh style exactly as it did before ADR-0030.
+    private static func bodyParagraphStyle(of paragraph: NSAttributedString) -> NSParagraphStyle? {
+        guard paragraph.length > 0 else { return nil }
+        return paragraph.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
     }
 
     /// Whether `range` still spells a list item's whole opening run - an optional

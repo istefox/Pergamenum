@@ -332,6 +332,16 @@ extension NoteTextView {
             // from a text token: it is a separator between blocks, which is what that token
             // names, and it is the only decoration here that is not drawn over text.
             decorations.ruleColor = NSColor(theme.color(.borderSubtle))
+            // The two faces the delegate draws with (ADR-0030 §D2), resolved here for the same
+            // reason the three colours above are: `EditorDecorationDelegate` is not
+            // `@MainActor` and cannot read a `Theme` itself, so it is handed finished values.
+            decorations.proseFont = ProseTypography.prose(theme)
+            // The fold badge, at the caption token's size rather than the token's own: the
+            // badge is chrome counting hidden lines, so it takes the mono face - a number that
+            // changes width as it grows would make the badge twitch - at the size the rest of
+            // this app's captions use. Pushed here and not in `applyFolding`, which returns
+            // early for a note with nothing folded, i.e. for most notes.
+            decorations.badgeFont = ProseTypography.mono(theme, size: theme.nsFont(.caption).pointSize)
             // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
             // guard, since `applyFolding`'s early return does not cover it, and its own
             // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own

@@ -49,15 +49,19 @@ enum ListMarkerRendering {
     /// line-height multiple pushed in through `basedOn` would otherwise be silently dropped the
     /// moment a paragraph is also a list item.
     ///
-    /// **Stub (Task 4, tester; ADR-0155 §D1).** `basedOn` is accepted but not yet composed -
-    /// the body below is byte-for-byte the pre-Task-4 two-argument implementation, so every
-    /// existing caller's behaviour is unchanged until the coder fills this in. This is what
-    /// makes `Tests/MarkupHidingTests.swift`'s composition assertion genuinely red: a `basedOn`
-    /// style's own `lineHeightMultiple` does not yet survive a call here.
+    /// `nil` is a full answer and not a missing one: a caller with no style to compose onto -
+    /// an offscreen harness, or a paragraph the styling pass never reached - gets exactly the
+    /// style this function built before ADR-0030, which is what keeps the indent arithmetic
+    /// below the only thing that ever changed here.
     static func paragraphStyle(level: Int, font: NSFont, basedOn: NSParagraphStyle? = nil) -> NSParagraphStyle {
         let em = max(font.pointSize, 1)
         let depth = CGFloat(min(max(level, 1), 6))
         let style = NSMutableParagraphStyle()
+        // `setParagraphStyle` and not a field-by-field copy, for `ProseTypography`'s own reason:
+        // a property added to `NSParagraphStyle` later survives composition without an edit
+        // here. It runs *before* the two indents below, so a base style carrying indentation of
+        // its own is overruled on exactly the two fields this function owns and on nothing else.
+        if let basedOn { style.setParagraphStyle(basedOn) }
         // A top-level item is already indented - `depth` starts at 1, never at 0 - because
         // the source's own indentation is drawn in `collapsedFont` and this style is the
         // only thing left holding the line off the margin (ADR-0028 §D4, R-05).

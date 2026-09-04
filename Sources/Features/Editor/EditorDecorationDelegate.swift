@@ -109,12 +109,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// The page's own body face (ADR-0030 §D1/§D5), pushed in from `ProseTypography.prose(_:)`
     /// exactly the way `badgeColor`/`handleColor`/`ruleColor` above are: this object is not
     /// `@MainActor` and cannot read `Theme` itself, so `applyStyling` resolves the token once
-    /// and hands the finished `NSFont` in. A system-face default is a placeholder only - Task 4
-    /// (tester) declares the property, the coder wires `applyStyling` to push a real value.
+    /// and hands the finished `NSFont` in. The system-face default is what a delegate built by
+    /// an offscreen harness draws with; the app overwrites it on every styling pass.
     nonisolated(unsafe) var proseFont: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
-    /// The fold badge's own face (ADR-0030 §D1/§D5), read by `FoldedHeadingFragment` in place
-    /// of the literal 10pt system face it drew before this task - pushed in the same way
-    /// `proseFont` above is, never resolved by the fragment itself.
+    /// The fold badge's own face (ADR-0030 §D1/§D5), handed on to `FoldedHeadingFragment` in
+    /// `textLayoutManager(_:textLayoutFragmentFor:in:)` beside `badgeColor`/`badgeBackground`,
+    /// in place of the literal 10pt system face the fragment drew before this task - pushed in
+    /// the same way `proseFont` above is, never resolved by the fragment itself.
     nonisolated(unsafe) var badgeFont: NSFont = .systemFont(ofSize: 10, weight: .regular)
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
@@ -296,6 +297,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         fragment.headingOffset = start
         fragment.badgeColor = badgeColor
         fragment.badgeBackground = badgeBackground
+        fragment.badgeFont = badgeFont
         return fragment
     }
 
