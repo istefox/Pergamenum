@@ -5,12 +5,9 @@ import Sparkle
 // ADR-0031 (Sparkle auto-update integration), plan
 // docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md, Task 3 (R-02, R-03).
 //
-// Declaration only (tester-first, ADR-0155 §D1). The coder fills:
-// - `start()`: return immediately when `isIsolated`; otherwise `controller.startUpdater()`
-//   and install the KVO observation on `\.canCheckForUpdates`, storing the returned token
-//   (`Tests/SparkleUpdateControllerTests.swift` cannot cover this half - see that file's
-//   header for why).
-// - `checkForUpdates()`: `controller.updater.checkForUpdates()`.
+// `Tests/SparkleUpdateControllerTests.swift` covers only what can be asserted without touching
+// a real `SPUStandardUpdaterController` - see that file's header for why `start()`'s
+// `startUpdater()`/KVO half is left to the UI test and the hand check instead.
 //
 // Deviation from the ADR §D3 code sample, recorded here as instructed:
 // - `isIsolated` there is `private let isIsolated = UserDefaults.standard.bool(forKey:
@@ -47,10 +44,10 @@ import Sparkle
 // `VaultState.isRunningUnderTest` already established (ADR-0017) -
 // `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil` - and reused here
 // directly rather than re-derived, since `Sources/Vault` and `Sources/App` compile into the same
-// module. `init` below only *declares* the new input (tester-first, ADR-0155 §D1): `isIsolated`'s
-// computation still ignores it, on purpose, so
-// `Tests/SparkleUpdateControllerTests.swift`'s new assertions are RED until the coder ORs
-// `isTestHost` into `isIsolated`.
+// module. `init` below therefore computes `isIsolated` as
+// `defaults.bool(forKey: "disableUpdater") || isTestHost`: either input alone keeps `start()`
+// from ever reaching `controller.startUpdater()`, so the unit-test host is isolated without
+// depending on a launch argument it has no way to pass.
 @MainActor
 @Observable
 final class SparkleUpdateController {
@@ -75,7 +72,8 @@ final class SparkleUpdateController {
     private(set) var canCheckForUpdates = false
 
     /// Whether this launch keeps Sparkle out entirely: `-disableUpdater YES` (ADR §D4),
-    /// the exact shape of `EventKitStore.isIsolated` (`CalendarService.swift:151`).
+    /// the exact shape of `EventKitStore.isIsolated` (`CalendarService.swift:151`), **or**
+    /// `isTestHost` below - either input alone is enough (see this file's header).
     let isIsolated: Bool
 
     /// Whether this *process* is a unit-test host, independent of `-disableUpdater` (see this
@@ -85,12 +83,12 @@ final class SparkleUpdateController {
     /// so `SparkleUpdateController()` at the production call site (`PergamenumApp.swift`) still
     /// gets exactly today's behavior outside a test host, and a test can override it explicitly.
     ///
-    /// Not yet read by `isIsolated` below - that OR is the coder's fill (ADR-0155 §D1), left
-    /// undone here so `Tests/SparkleUpdateControllerTests.swift`'s new assertions are RED.
+    /// ORed into `isIsolated` below: a unit-test host is isolated whatever `-disableUpdater`
+    /// says, which is what keeps `startUpdater()`'s modal alert out of `.claude/test-cmd`.
     let isTestHost: Bool
 
     init(defaults: UserDefaults = .standard, isTestHost: Bool = VaultState.isRunningUnderTest) {
-        isIsolated = defaults.bool(forKey: "disableUpdater")
+        isIsolated = defaults.bool(forKey: "disableUpdater") || isTestHost
         self.isTestHost = isTestHost
     }
 
