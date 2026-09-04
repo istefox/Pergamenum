@@ -65,23 +65,38 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var rendition: TranscludedRendition?
 
     /// The text container's own width, minus the padding a line fragment hangs at on each
-    /// side - the same reasoning as `HorizontalRuleFragment.ruleWidth`.
+    /// side - the same reasoning, and the same formula, as `HorizontalRuleFragment.ruleWidth`.
     ///
-    /// **Declared by the tester** (bugfix red test, `TranscludedLineFragmentWidthTests`);
-    /// `draw(at:in:)` below must read the body's layout width from this property instead of
-    /// `layoutFragmentFrame.width`, which is the *source line's own text* width (the short
-    /// `![[Nota]]` wikilink), not the column width - `HorizontalRuleFragment.swift:25-34`
-    /// documents why that value cannot be used for anything that must span the container.
+    /// Never `layoutFragmentFrame.width`, which is the *source line's own text* width (a
+    /// six-character `![[Nota]]` wikilink), not the column width. Laying the body out at that
+    /// number wraps the transcluded note one word per line, and since
+    /// `NoteTextView+Transclusion.swift`'s `reserveSpace` measures `reservedHeight` against
+    /// the container's width instead, the reserved space and the drawn content are computed
+    /// at two different widths and the note is clipped.
     ///
-    /// TODO(coder): implement by reading `textLayoutManager?.textContainer`, mirroring
-    /// `HorizontalRuleFragment.ruleWidth` exactly:
-    /// `max(0, container.size.width - container.lineFragmentPadding * 2)`, falling back to
-    /// `layoutFragmentFrame.width` only when there is no container to ask.
+    /// Read at drawing time rather than pushed in, for the reason ADR-0019 §D2 gives for
+    /// `attachmentBounds`: a number handed over from outside goes stale on the next window
+    /// resize. Falls back to the fragment's own width only when there is no container to ask.
     var containerWidth: CGFloat {
-        // Placeholder: intentionally still reads the wrong value so the red test in
-        // TranscludedLineFragmentWidthTests.swift fails for the right reason (the bug this
-        // stub exists to pin down), not because the property is missing.
-        layoutFragmentFrame.width
+        guard let container = textLayoutManager?.textContainer else { return layoutFragmentFrame.width }
+        return max(0, container.size.width - container.lineFragmentPadding * 2)
+    }
+
+    /// Wide enough for the note drawn underneath, or the body is clipped at the source
+    /// line's own width - the same widening `HorizontalRuleFragment` and
+    /// `FoldedHeadingFragment` each do, for the same reason: the header asks for a surface
+    /// "larger than layoutFragmentFrame.size" whenever a decoration is drawn past the end of
+    /// the text. Free until `containerWidth` became the layout width; before that the body
+    /// wrapped narrow enough to fit inside the frame by accident.
+    override var renderingSurfaceBounds: CGRect {
+        let base = super.renderingSurfaceBounds
+        guard rendition != nil else { return base }
+        return CGRect(
+            x: base.minX,
+            y: base.minY,
+            width: max(base.width, containerWidth),
+            height: base.height
+        )
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
@@ -90,7 +105,9 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
 
         let top = point.y + line.typographicBounds.maxY + TranscludedRendition.padding
         let left = point.x + TranscludedRendition.gutter
-        let width = TranscludedRendition.bodyWidth(inContainerOf: layoutFragmentFrame.width)
+        // The same number `reserveSpace` measured the reserved height against, or the drawn
+        // note is taller than the space bought for it.
+        let width = TranscludedRendition.bodyWidth(inContainerOf: containerWidth)
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
@@ -128,11 +145,22 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
     /// The whole area under the source line: the rendition is one target, not a set of
     /// them, and asking a person to hit the header exactly would be a worse gesture than
     /// none at all.
+    ///
+    /// Width comes from `containerWidth`, not from `layoutFragmentFrame.width`, for the same
+    /// reason `draw(at:in:)` does: the frame is only as wide as the short `![[Nota]]` line's
+    /// own text, so a target sized from it would cover a sliver of the drawn note and leave
+    /// most of it unclickable. The origin still is the fragment's, because that is where the
+    /// drawing starts.
     var renditionFrame: CGRect {
         guard rendition != nil, let line = textLineFragments.first else { return .null }
         let frame = layoutFragmentFrame
         let top = frame.minY + line.typographicBounds.maxY
-        return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, frame.maxY - top))
+        return CGRect(
+            x: frame.minX,
+            y: top,
+            width: max(frame.width, containerWidth),
+            height: max(0, frame.maxY - top)
+        )
     }
 
     private func caption(_ text: String, color: NSColor) -> NSAttributedString {
