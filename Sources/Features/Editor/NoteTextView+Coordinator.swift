@@ -506,5 +506,23 @@ extension NoteTextView {
             // moment ago and left short of the end.
             if revealingCaret { textView.scrollRangeToVisible(textView.selectedRange()) }
         }
+
+        /// The horizontal `textContainerInset` that keeps the text column readable
+        /// (ADR-0030 §D6): `max(minimum, (viewWidth - cap) / 2)` when `isOn`, `minimum`
+        /// otherwise - `minimum` is today's fixed `24`, unconditionally, when the setting
+        /// is off or the view is narrower than `cap`.
+        ///
+        /// Pure and static on purpose, mirroring `hiddenMarker(_:at:paragraphStart:)` above:
+        /// the geometry itself needs a live window, but this arithmetic does not, so it is
+        /// tested without one.
+        ///
+        /// TODO(PG-TASK-6): stub only - always returns `minimum`. The real body is the
+        /// coder's next step; every `ReadableWidthTests` case above the `isOn == false`/
+        /// narrow-view ones must currently fail.
+        nonisolated static func horizontalInset(
+            viewWidth: CGFloat, cap: CGFloat, minimum: CGFloat, isOn: Bool
+        ) -> CGFloat {
+            minimum
+        }
     }
 }

@@ -22,6 +22,12 @@ struct NoteTextView: NSViewRepresentable {
     /// `spellCheck`'s default: a text view with no vault behind it behaves exactly as
     /// before, and the vault's own default is what a real note editor reads through.
     var hidesMarkup = false
+    /// Whether the text column is capped to a readable width and centred, rather than
+    /// filling the whole pane (ADR-0030 §D6). **`false` here, `true` in `VaultSettings`,
+    /// deliberately** - the same contrast `hidesMarkup` above documents: a text view with
+    /// no vault behind it behaves exactly as before, and the vault's own default is what a
+    /// real note editor reads through.
+    var readableWidth = false
     /// The slash menu's catalogue, already filtered to what can run (M8). Passed in
     /// rather than built here: whether a command can run is a fact about the app, and
     /// the editor is not the place that knows it.
