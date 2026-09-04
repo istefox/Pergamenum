@@ -60,13 +60,24 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     /// One computation for the drawing and for the hit test (PG-021). Two would drift, and
     /// the way they would drift is a badge that looks right and cannot be clicked - the
     /// same shape of defect the transclusion card had a slice ago.
+    ///
+    /// Centers on the heading's own glyph box, not on `line.typographicBounds.height`. Since
+    /// ADR-0030, `ProseTypography` composes a `lineHeightMultiple` scaled to the heading's
+    /// larger font, and TextKit adds that slack BELOW the glyphs, not split symmetrically
+    /// (the same asymmetric-slack assumption `TranscludedLineFragment.swift` already relies
+    /// on for `typographicBounds.maxY`). Centering on the full inflated box therefore pulled
+    /// the badge down into the slack, well below the heading text.
     func badgeFrame(at point: CGPoint) -> CGRect {
         guard hiddenLines > 0, let line = textLineFragments.first else { return .null }
         let size = badge.size()
+        let font = (line.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            ?? badgeFont
+        let glyphBoxMinY = line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
+        let glyphBoxHeight = font.ascender - font.descender
         return CGRect(
             x: point.x + line.typographicBounds.maxX + Self.gap,
-            y: point.y + line.typographicBounds.minY
-                + (line.typographicBounds.height - size.height - Self.padding.height * 2) / 2,
+            y: point.y + glyphBoxMinY
+                + (glyphBoxHeight - size.height - Self.padding.height * 2) / 2,
             width: size.width + Self.padding.width * 2,
             height: size.height + Self.padding.height * 2
         )
