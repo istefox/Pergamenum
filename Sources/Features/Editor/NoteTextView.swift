@@ -103,9 +103,11 @@ struct NoteTextView: NSViewRepresentable {
     /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
     /// behind the editor, and then the line stays the plain link it was.
     var transclusions: TransclusionSource?
-    /// Called with an index entry whose fold badge was clicked (PG-021). The same call the
-    /// index's chevron makes, so a section opened from the editor and one opened from the
-    /// sidebar are one gesture with two doors.
+    /// Called with the UTF-16 offset of the heading whose fold badge was clicked (PG-021) -
+    /// the folded heading's own live layout offset, never re-derived through `outlineRanges`.
+    /// `OutlinePane`'s chevron reaches the same `VaultController.toggleFold`, so a section
+    /// opened from the editor and one opened from the sidebar are one gesture with two doors,
+    /// both handing it an offset.
     var onToggleFold: ((Int) -> Void)?
     /// Called when the editor takes the keyboard. The split view uses it to move the focus
     /// to the column that was clicked into (ADR-0012 D4).

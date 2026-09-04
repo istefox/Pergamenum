@@ -167,18 +167,19 @@ extension NoteTextView.Coordinator {
     /// Opens the section a folded heading is hiding, when the click landed on its badge
     /// (PG-021).
     ///
-    /// The fold is held by index-entry ordinal and the fragment knows a character offset,
-    /// so the two are joined by `outlineRanges` - the list the sidebar draws from. Anything
-    /// else would be a second opinion about which section is which.
+    /// Reports the fragment's own `headingOffset` straight to `onToggleFold`, with no
+    /// `outlineRanges` lookup in between. `outlineRanges` is a snapshot taken at the last
+    /// SwiftUI render, and joining it to a live layout offset by position is exactly the
+    /// stale-index bug `FoldStateOrdinalIndexStalenessTests` pins: a click landing between a
+    /// text change and the next render reconciling `outlineRanges` used to resolve against
+    /// the wrong heading. `headingOffset` never goes stale, because it names *where in the
+    /// text* the heading is rather than *which position it holds in some earlier scan*.
     func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard decorations.isFolding, let onToggleFold = parent.onToggleFold else { return false }
         return decoration(at: point, in: textView) { (fragment: FoldedHeadingFragment) in
-            guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView)),
-                  let entry = parent.outlineRanges.firstIndex(where: {
-                      $0.location == fragment.headingOffset
-                  })
+            guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView))
             else { return false }
-            onToggleFold(entry)
+            onToggleFold(fragment.headingOffset)
             return true
         }
     }

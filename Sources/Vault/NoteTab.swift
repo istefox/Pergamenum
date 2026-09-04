@@ -13,8 +13,12 @@ import Foundation
 struct NoteTab: Identifiable, Equatable, Sendable {
     let id: UUID
     var note: VaultController.OpenNote
-    /// The index entries whose sections are folded, by ordinal. Not written to the file:
-    /// that would mean extending a frontmatter schema SPEC §4.3 closes.
+    /// The sections folded in this tab, each keyed by its own heading's UTF-16 character
+    /// offset - not by ordinal position in `NoteOutline.entries(in:)`, which an edit above a
+    /// fold silently reassigns to a different heading (`FoldStateOrdinalIndexStalenessTests`).
+    /// Resolved back to an ordinal at the boundary, fresh against the current text, by
+    /// `foldedOrdinals(ofOffsets:in:)` before reaching `NoteFolding`. Not written to the
+    /// file: that would mean extending a frontmatter schema SPEC §4.3 closes.
     var foldedEntries: Set<Int> = []
     /// Which index entry the caret is inside, reported by the editor only when it changes.
     /// Nil until the editor has said, which is any note not yet clicked into.

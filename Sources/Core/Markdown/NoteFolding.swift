@@ -1,5 +1,33 @@
 import Foundation
 
+/// Turns a set of UTF-16 character offsets - each a folded heading's own start, the identity
+/// `NoteTab.foldedEntries` now carries - into the ordinal `Set<Int>` `NoteFolding.layout`/
+/// `hiddenParagraphs` expect, by resolving every offset against a FRESH
+/// `NoteOutline.entries(in:)` call.
+///
+/// This is the boundary a stale ordinal index cannot cross: an offset names *where in the
+/// text* a heading is, so it keeps meaning the same heading across an edit that shifts every
+/// later entry's position in the array (`FoldStateOrdinalIndexStalenessTests`). An offset with
+/// no current match - its heading deleted, or genuinely stale - is dropped rather than
+/// resolved to whatever now sits at some leftover position.
+///
+/// A free function beside `NoteFolding` rather than a member of it: this is the note editor's
+/// own translation from its storage convention to `NoteFolding`'s input, not a fact about
+/// folding itself - `NoteFolding` and its existing ordinal-index callers (Workspace `.text`
+/// cards, ADR-0028 §D8) are untouched.
+func foldedOrdinals(ofOffsets offsets: Set<Int>, in text: String) -> Set<Int> {
+    guard !offsets.isEmpty else { return [] }
+    let entries = NoteOutline.entries(in: text)
+    var ordinals: Set<Int> = []
+    for offset in offsets {
+        guard let index = entries.firstIndex(where: {
+            text.utf16.distance(from: text.startIndex, to: $0.range.lowerBound) == offset
+        }) else { continue }
+        ordinals.insert(index)
+    }
+    return ordinals
+}
+
 /// Which lines disappear when a section is folded, and what the folded heading has to say
 /// about it.
 ///

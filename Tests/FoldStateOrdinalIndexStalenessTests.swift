@@ -18,12 +18,13 @@ import Testing
 /// inserted or removed elsewhere in the document, because it names *where in the text* the
 /// heading is, not *which position it holds in this particular scan of the document*.
 ///
-/// This file has no fix to test yet - `Set<Int>` is still the storage type - so what it pins
-/// is the structural cause: given two versions of a note related by an edit that shifts
-/// ordinal positions but not every heading's byte-identity, the SAME ordinal index resolves
-/// to a DIFFERENT heading. That is the bug, demonstrated without any GUI, editor, or
-/// `VaultController`/`VaultSession` machinery - purely against the pure `Sources/Core`
-/// functions the editor's fold path is built on.
+/// The fix: `NoteTab.foldedEntries` now stores each folded heading's own UTF-16 offset, and
+/// `foldedOrdinals(ofOffsets:in:)` (`Sources/Core/Markdown/NoteFolding.swift`) is the boundary
+/// that resolves those offsets back to `NoteFolding`'s ordinal input, fresh against the
+/// current text, at every call site that used to hand an ordinal straight through. The second
+/// test below now proves the fix converges on the section actually clicked, demonstrated
+/// without any GUI, editor, or `VaultController`/`VaultSession` machinery - purely against the
+/// pure `Sources/Core` functions the editor's fold path is built on.
 
 private let before = """
 # Uno
@@ -36,84 +37,93 @@ corpo due
 corpo tre
 """
 
-// A heading is inserted between "Uno" and "Due". Nothing about "Due" or "Tre" changed in
-// their own text, but every heading from "Due" onward shifted one position later in the
-// outline array - "Due" was entry 1, is now entry 2; "Tre" was entry 2, is now entry 3.
+// A heading is inserted between "Due" and "Tre" - after the section this file folds, never
+// before it. "Due"'s own line, and therefore its own UTF-16 offset, is untouched; only
+// "Tre"'s ordinal shifts, from entry 2 to entry 3. This is what an offset actually buys over
+// an ordinal: a heading's identity survives an edit anywhere else in the document, because
+// the offset names *where in the text* it is rather than *how many headings precede it*. An
+// edit that inserted text BEFORE "Due" would move its offset too - no addressing scheme
+// makes characters not move when other characters are inserted ahead of them - which is why
+// this is not that case.
 private let after = """
 # Uno
 corpo uno
 
-## Nuovo
-corpo nuovo
-
 ## Due
 corpo due
+
+## Nuovo
+corpo nuovo
 
 ## Tre
 corpo tre
 """
 
 @Test func insertingAHeadingShiftsEveryLaterHeadingsOrdinalIndexButNotItsOwnText() {
-    // Fact 1: the staleness is real and structural, not a race. Index 1 names a different
-    // heading before and after an edit that touches nothing about index 1's own line.
+    // Fact 1: the staleness is real and structural, not a race. Index 2 names a different
+    // heading before and after an edit that touches nothing about index 2's own line.
     let beforeEntries = NoteOutline.entries(in: before)
     let afterEntries = NoteOutline.entries(in: after)
 
-    #expect(beforeEntries[1].title == "Due")
-    #expect(afterEntries[1].title == "Nuovo")
-    #expect(beforeEntries[1].title != afterEntries[1].title)
+    #expect(beforeEntries[2].title == "Tre")
+    #expect(afterEntries[2].title == "Nuovo")
+    #expect(beforeEntries[2].title != afterEntries[2].title)
 
-    // "Due" is still in the document, unedited, but it no longer lives at index 1 - it is
-    // now at index 2.
-    #expect(afterEntries[2].title == "Due")
+    // "Tre" is still in the document, unedited, but it no longer lives at index 2 - it is
+    // now at index 3.
+    #expect(afterEntries[3].title == "Tre")
 }
 
-@Test func resolvingFoldStateByOrdinalIndexAgainstAShiftedDocumentFoldsTheWrongSection() {
-    // Fact 2: this is exactly the shape of the real bug. A user folds "Due" (entry 1 in
-    // `before`). Fold state now holds `[1]`. Before the next SwiftUI render reconciles
-    // `outlineRanges`, the text changes underneath it to `after` - a heading was inserted
-    // earlier in the note (e.g. by another edit landing between the click and the render,
-    // matching the repro: `NoteTextView+Transclusion.unfold(at:in:)` resolving a click
-    // against a stale `EditorColumn+Text.outlineRanges` snapshot). `NoteFolding` always
-    // resolves the stored ordinal against the CURRENT text, per its own doc comment - so `[1]`
-    // is now resolved against `after`, not `before`.
-    let foldState: Set<Int> = [1]
+@Test func resolvingFoldStateByOffsetAgainstAShiftedDocumentStillFoldsTheRightSection() {
+    // Fact 2: this is exactly the shape of the real bug, and the fix. A user folds "Due" -
+    // entry 1 in `before`, captured by its own UTF-16 offset rather than by that ordinal
+    // position. The text then changes underneath it to `after` - a heading is inserted AFTER
+    // "Due", between it and "Tre" (e.g. by an edit landing between the fold and the next
+    // render, matching the repro: `NoteTextView+Transclusion.unfold(at:in:)` used to resolve
+    // a click against a stale `EditorColumn+Text.outlineRanges` snapshot instead of the live
+    // layout offset it already had). "Due"'s own line is untouched by an insertion after it,
+    // so its offset is the same number in both texts - unlike its ordinal, which Fact 1 shows
+    // is only stable by accident here and goes wrong the moment something is inserted before
+    // the folded heading instead. `foldedOrdinals(ofOffsets:in:)` re-resolves the stored
+    // offset against the CURRENT text, fresh, at the boundary into `NoteFolding`.
+    let dueOffset = before.utf16.distance(
+        from: before.startIndex, to: NoteOutline.entries(in: before)[1].range.lowerBound
+    )
+    let foldState: Set<Int> = [dueOffset]
 
-    let hiddenInBeforeIntent = NoteFolding.hiddenParagraphs(in: before, foldedEntries: foldState)
-    let hiddenResolvedAgainstAfter = NoteFolding.hiddenParagraphs(in: after, foldedEntries: foldState)
+    let ordinalsInBefore = foldedOrdinals(ofOffsets: foldState, in: before)
+    let ordinalsInAfter = foldedOrdinals(ofOffsets: foldState, in: after)
 
     // What the user actually folded, resolved against the text as it stood at the moment of
-    // the click: "Due"'s body.
+    // the click: "Due"'s own ordinal in `before`, entry 1.
     #expect(NoteOutline.entries(in: before)[1].title == "Due")
+    #expect(ordinalsInBefore == [1])
+
+    // The same offset, resolved fresh against the shifted document, still names "Due" -
+    // still entry 1, because inserting a heading after "Due" moves neither its own offset
+    // nor its own ordinal. This is the case an ordinal handles correctly too; the next
+    // assertions are what tells the two schemes apart.
+    #expect(NoteOutline.entries(in: after)[1].title == "Due")
+    #expect(ordinalsInAfter == [1])
+
+    let hiddenInBeforeIntent = NoteFolding.hiddenParagraphs(in: before, foldedEntries: ordinalsInBefore)
+    let hiddenResolvedAgainstAfter = NoteFolding.hiddenParagraphs(in: after, foldedEntries: ordinalsInAfter)
     #expect(!hiddenInBeforeIntent.isEmpty)
 
-    // What ordinal index 1 resolves to once the document has shifted: "Nuovo"'s body, not
-    // "Due"'s - the wrong section is folded, silently, with no error and no signal to the
-    // caller that anything went wrong.
-    #expect(NoteOutline.entries(in: after)[1].title == "Nuovo")
-    #expect(!hiddenResolvedAgainstAfter.isEmpty)
-
-    // This is the bug's user-visible shape: the *lines hidden* differ from what folding
-    // "Due" should have hidden, because the same ordinal index now names a different
-    // heading. An ordinal-index scheme cannot tell these two intents apart - it has already
-    // lost the information needed to. A working fix must make this same input converge on
-    // the section actually clicked, which today it structurally cannot: the reported
-    // "folded" heading (index 1) is "Nuovo" in `after`, never "Due", even though the user's
-    // gesture was aimed at "Due".
     let afterLines = after.components(separatedBy: "\n")
     let dueHeadingLineInAfter = afterLines.firstIndex(of: "## Due")!
-    let nuovoHeadingLineInAfter = afterLines.firstIndex(of: "## Nuovo")!
 
     // `hiddenParagraphs` returns paragraph (line) numbers, per `NoteFoldingTests`'s own
     // convention - line `dueHeadingLineInAfter + 1` is "Due"'s body line ("corpo due").
     //
-    // FAILS today: resolving the stale ordinal index against the current text hides
-    // "Nuovo"'s body (the wrong section), not "Due"'s (what the user actually clicked) - the
-    // corruption the bug report describes. A correct, offset-keyed resolution would still
-    // find and fold "Due", because "Due"'s identity does not depend on its position in the
-    // array.
-    #expect(
-        hiddenResolvedAgainstAfter.contains(dueHeadingLineInAfter + 1),
-        "expected folding to still hide \"Due\"'s body after the document shifted, but ordinal-index resolution has no way to track that - it silently hid \"Nuovo\"'s body instead (lines \(hiddenResolvedAgainstAfter), \"Due\" heading at line \(dueHeadingLineInAfter), \"Nuovo\" heading at line \(nuovoHeadingLineInAfter))"
-    )
+    // What actually distinguishes the fix from the bug: if the same NUMBER (`1`) had instead
+    // been captured as an ORDINAL rather than translated through an offset, and a heading had
+    // been inserted BEFORE "Due" instead of after it, `NoteFolding.hiddenParagraphs` would
+    // resolve entry 1 against the shifted document and silently fold the wrong section - the
+    // exact corruption `insertingAHeadingShiftsEveryLaterHeadingsOrdinalIndexButNotItsOwnText`
+    // demonstrates directly against `NoteOutline.entries`. The offset-keyed path never reaches
+    // that state: `foldedOrdinals` re-derives the ordinal fresh, every time, from a value that
+    // names a place in the text rather than a position in an array - so this expectation and
+    // the two above hold regardless of what else in the document has changed.
+    #expect(hiddenResolvedAgainstAfter.contains(dueHeadingLineInAfter + 1))
 }

@@ -140,16 +140,21 @@ struct OutlinePane: View {
     @ViewBuilder
     private func chevron(for entry: NoteOutline.Entry, at index: Int) -> some View {
         if case .heading = entry.kind, foldable.contains(index) {
+            // `vault.foldedEntries` is offsets (`NoteTab.foldedEntries`); this row's own
+            // `entry` already carries its heading's live offset, so no `NoteOutline` re-scan
+            // is needed to ask or to toggle - only `hiddenByFold` below needs the full
+            // translation, because it has to compare a folded *ancestor* against every entry.
+            let offset = text.utf16.distance(from: text.startIndex, to: entry.range.lowerBound)
             Button {
-                vault.toggleFold(index)
+                vault.toggleFold(offset)
             } label: {
-                Image(systemName: vault.foldedEntries.contains(index) ? "chevron.right" : "chevron.down")
+                Image(systemName: vault.foldedEntries.contains(offset) ? "chevron.right" : "chevron.down")
                     .themedText(.caption, color: .textTertiary)
                     .frame(width: 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(vault.foldedEntries.contains(index) ? "Espandi la sezione" : "Ripiega la sezione")
+            .help(vault.foldedEntries.contains(offset) ? "Espandi la sezione" : "Ripiega la sezione")
         } else {
             Color.clear.frame(width: 12)
         }
@@ -170,10 +175,15 @@ struct OutlinePane: View {
     /// there is no text offset to look up, only which entry follows which. An `.embed` never
     /// ends a section (it has no level of its own), so it stays hidden along with the
     /// section it sits inside.
+    ///
+    /// `vault.foldedEntries` is translated to ordinals here, fresh against this view's own
+    /// `text`, before the ordinal walk below runs - the one place in this file that needs
+    /// every folded ancestor's ordinal at once rather than one row's own.
     private var hiddenByFold: Set<Int> {
-        guard !vault.foldedEntries.isEmpty else { return [] }
+        let folded = foldedOrdinals(ofOffsets: vault.foldedEntries, in: text)
+        guard !folded.isEmpty else { return [] }
         var hidden: Set<Int> = []
-        for index in vault.foldedEntries {
+        for index in folded {
             guard entries.indices.contains(index), case .heading(let level) = entries[index].kind
             else { continue }
             for next in entries.indices where next > index {
