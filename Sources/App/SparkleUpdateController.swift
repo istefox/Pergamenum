@@ -28,6 +28,29 @@ import Sparkle
 //   `start()`'s stub body below does not read `controller`, and a test never calls `start()`
 //   on a non-isolated instance, so the property statically exists (the class builds) without
 //   ever instantiating `SPUStandardUpdaterController` in-process during `.claude/test-cmd`.
+//
+// Defect measured 2026-09-04 13:02-13:12 (`sample` of the hung unit-test host): `.claude/test-cmd`
+// (`-only-testing:PergamenumTests`) hosts the suite inside the real `Pergamenum.app`, launched by
+// xctest WITHOUT `-disableUpdater`. `PergamenumApp.armCapture()` still calls
+// `SparkleUpdateController.start()`; `isIsolated` reads `false` because `defaults` holds nothing;
+// `controller.startUpdater()` runs Sparkle's placeholder-key configuration, which is invalid until
+// plan Task 9 installs the real EdDSA key, and its startup block puts `-[NSAlert runModal]` on the
+// main thread (`__44-[SPUStandardUpdaterController startUpdater]_block_invoke`,
+// `SPUStandardUpdaterController.m:99`). The main thread blocks forever and the next test waiting on
+// a main-thread callback hangs at 0% CPU. Two earlier runs passed only because the alert lost the
+// race against the suite finishing first.
+//
+// ADR-0031 §D4 isolates the updater under `-disableUpdater YES`; that rule alone does not cover
+// this host, since `.claude/test-cmd` never passes that flag (it cannot - it launches through
+// `xcodebuild test`, not this app's own argv). The fix is a second, independent isolation input:
+// whether the *process* is a unit-test host at all, using the exact precedent
+// `VaultState.isRunningUnderTest` already established (ADR-0017) -
+// `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil` - and reused here
+// directly rather than re-derived, since `Sources/Vault` and `Sources/App` compile into the same
+// module. `init` below only *declares* the new input (tester-first, ADR-0155 §D1): `isIsolated`'s
+// computation still ignores it, on purpose, so
+// `Tests/SparkleUpdateControllerTests.swift`'s new assertions are RED until the coder ORs
+// `isTestHost` into `isIsolated`.
 @MainActor
 @Observable
 final class SparkleUpdateController {
@@ -55,8 +78,20 @@ final class SparkleUpdateController {
     /// the exact shape of `EventKitStore.isIsolated` (`CalendarService.swift:151`).
     let isIsolated: Bool
 
-    init(defaults: UserDefaults = .standard) {
+    /// Whether this *process* is a unit-test host, independent of `-disableUpdater` (see this
+    /// file's header, defect measured 2026-09-04). Defaults to
+    /// `VaultState.isRunningUnderTest`'s own `XCTestConfigurationFilePath` check (ADR-0017),
+    /// reused rather than re-derived since `Sources/Vault` and `Sources/App` share one module -
+    /// so `SparkleUpdateController()` at the production call site (`PergamenumApp.swift`) still
+    /// gets exactly today's behavior outside a test host, and a test can override it explicitly.
+    ///
+    /// Not yet read by `isIsolated` below - that OR is the coder's fill (ADR-0155 §D1), left
+    /// undone here so `Tests/SparkleUpdateControllerTests.swift`'s new assertions are RED.
+    let isTestHost: Bool
+
+    init(defaults: UserDefaults = .standard, isTestHost: Bool = VaultState.isRunningUnderTest) {
         isIsolated = defaults.bool(forKey: "disableUpdater")
+        self.isTestHost = isTestHost
     }
 
     /// Called once, from `armCapture()` (ADR §D3) - never from `init`.
