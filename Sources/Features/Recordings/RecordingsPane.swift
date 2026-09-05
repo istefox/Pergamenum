@@ -176,7 +176,7 @@ struct RecordingsPane: View {
         RecordingRow(
             recording: recording,
             presentation: RecordingRowPresentation.make(
-                state: recording.state,
+                state: Self.effectiveState(recording: recording, pollingIDs: recordings.pollingRecordingIDs),
                 rowError: recordings.rowErrors[recording.id] ?? recording.lastError.map(PlaudError.readableLastError),
                 stepName: recordings.pollSteps[recording.id]
             ),
@@ -250,14 +250,15 @@ extension RecordingsPane {
     /// first caller that is not on the main actor, and a unit test calling it synchronously
     /// is exactly that caller.
     ///
-    /// Tester-declared stub (ADR-0155): still ignores `pollingIDs` and returns `recording.state`
-    /// unconditionally - `Tests/RecordingsViewModelTests.swift` asserts the polling case red
-    /// against this body. The coder's job is the one-line fix (`pollingIDs.contains(recording.id)
-    /// ? .processing : recording.state`) plus updating `row(_:)` above to call this instead of
-    /// reading `recording.state` directly.
+    /// The poll's own set wins over the wire value while a poll is in flight, and only then:
+    /// the list is fetched once per «Aggiorna» and never on a timer (ADR §D4), so a recording
+    /// whose job is running still carries whatever state the last fetch happened to see. The
+    /// set is the only thing that knows better, and
+    /// `RecordingsController.finishPolling(_:expired:)` drops the id from it only after the
+    /// re-fetch has landed - so the fallback below is never a value the poll has outrun.
     nonisolated static func effectiveState(
         recording: PlaudRecording, pollingIDs: Set<String>
     ) -> PlaudRecordingState {
-        recording.state
+        pollingIDs.contains(recording.id) ? .processing : recording.state
     }
 }

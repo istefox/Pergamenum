@@ -202,7 +202,7 @@ final class RecordingsController {
                 guard ContinuousClock.now < deadline else {
                     // Past the bound a silent repeating request stops being something the
                     // person asked for: the row says so and offers «Aggiorna» instead.
-                    finishPolling(recordingID, expired: true)
+                    await finishPolling(recordingID, expired: true)
                     return
                 }
                 guard await askJob(id: jobID, for: recordingID) else { return }
@@ -218,11 +218,11 @@ final class RecordingsController {
             if let step = job.step, !step.isEmpty { pollSteps[recordingID] = step }
             if let failure = job.error, !failure.isEmpty {
                 rowErrors[recordingID] = PlaudError.readableLastError(failure)
-                finishPolling(recordingID, expired: false)
+                await finishPolling(recordingID, expired: false)
                 return false
             }
             if job.proposalId != nil {
-                finishPolling(recordingID, expired: false)
+                await finishPolling(recordingID, expired: false)
                 return false
             }
             if job.state == "failed" {
@@ -231,20 +231,41 @@ final class RecordingsController {
                 rowErrors[recordingID] = PlaudError.readableLastError(
                     job.error ?? "il servizio non ha indicato un motivo"
                 )
-                finishPolling(recordingID, expired: false)
+                await finishPolling(recordingID, expired: false)
                 return false
             }
             return true
         } catch {
             rowErrors[recordingID] = readableMessage(error)
-            finishPolling(recordingID, expired: false)
+            await finishPolling(recordingID, expired: false)
             return false
         }
     }
 
-    private func finishPolling(_ recordingID: String, expired: Bool) {
-        pollingRecordingIDs.remove(recordingID)
+    /// Ends one recording's poll and re-reads `GET /recordings`, so the row lands on the state
+    /// the service now reports without anyone pressing «Aggiorna» (Task 10's live walkthrough:
+    /// nothing here re-fetched, so even the *final* state of a job appeared only after a manual
+    /// refresh - the whole processing run was invisible).
+    ///
+    /// `async`, awaited at every call site, rather than an unstructured `Task { await refresh() }`:
+    /// every call site is already inside the poll's own `Task`, so the re-fetch stays part of
+    /// the poll's lifetime and `stop()` ends it with everything else - a detached task would
+    /// outlive the poll that owns it and could repopulate `recordings` for a vault that has
+    /// changed underneath it (R-12).
+    ///
+    /// Order matters twice over, which is why the poll's own state is dropped *after* the
+    /// await rather than before it. `refresh()` reloads the ledger, and `reloadLedger()` clears
+    /// `pollExpired` whenever it builds the store - including the very first build, when no
+    /// vault has been switched at all - so a marker written before the await would be wiped by
+    /// the refresh that follows it. And while the re-fetch is in flight the row is better left
+    /// saying «in corso» (`RecordingsPane.effectiveState`) than flashing the stale wire state
+    /// it is about to replace.
+    private func finishPolling(_ recordingID: String, expired: Bool) async {
+        // Cleared first, and only this: `refresh()` may reach `stop()`, which cancels every
+        // task still in this dictionary - including, otherwise, the one running this line.
         pollTasks[recordingID] = nil
+        await refresh()
+        pollingRecordingIDs.remove(recordingID)
         pollSteps[recordingID] = nil
         if expired { pollExpired.insert(recordingID) }
     }
