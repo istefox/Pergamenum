@@ -1,83 +1,82 @@
-# UX Blueprint — Workspace browser, Task↔Workspace/Note relations, project sub-tasks
+# UX Blueprint — Plaud recording import into Pergamenum
 
 ## Window inventory
 
 | Window | Type | SwiftUI Scene / Style | Notes |
 |--------|------|-----------------------|-------|
-| Main window | WindowGroup | NavigationSplitView (existing, 2–3 column) | No new window type introduced. This feature extends the existing sidebar and canvas content area. |
-| Settings | Settings (existing) | TabView | Unchanged — no new preferences introduced by this feature. |
-
-No new window, no new scene. Everything lives inside the existing single main window.
+| Main window | WindowGroup (existing) | NavigationSplitView, sidebar + content | Unchanged pattern; gains one sidebar row |
+| Recordings review | .sheet (new, on main window) | Form-based, scrollable content | Modal, focused start-to-end flow (review → import or cancel) |
+| Settings | Settings (existing) | Existing tabs, unchanged structure | Gains one numeric field in an existing tab |
 
 ## Navigation structure
 
-The existing sidebar (`NavigationSplitView`, `.listStyle(.sidebar)`) already carries Note and Task
-top-level sections. This feature adds a third top-level section, **Workspace**, using the same
-folder-tree component already used for the Note section — filtered to `.canvas` files, same
-disclosure-group/expand-collapse behavior, same card/thumbnail conventions. No new navigation
-pattern; this is an additional entry in an existing list, not a structural change.
-
-The canvas content area (right side, when a Workspace is open) gains a **trailing inspector
-column** for the new dashboard panel — the same structural slot the existing "Backlink" / "Task
-collegati" panels already occupy on the note editor. Toggled via the existing **Vista** menu, not
-a new window or sheet.
-
-The Attività section (existing sidebar list) gains a new grouping mode, **Progetti**, alongside
-the existing Inbox / Oggi / Progetto / Tutti groupings — selected the same way the existing
-groupings are selected (no new UI chrome, just a new list entry).
+No new navigation pattern. The existing sidebar (`Note`, `Workspace`, `Attività`, `Calendario`)
+gains a fifth row, **"Registrazioni"**, placed last — after `Calendario`. Selecting it shows the
+recording list in the content area, exactly like the other four sections today. No new column is
+introduced; the review flow is a `.sheet` presented over this content area, not a third column,
+because it is a bounded, terminal flow (ends in import or cancel) rather than a persistent
+browsing surface.
 
 ## Settings layout
 
-No settings change. This feature introduces no new preference.
+No new tab. The existing Impostazioni tab that already holds comparable single-purpose numeric/
+text fields (the one nearest in spirit to "giorni catalogo") gains one field: **"Giorni
+registrazioni Plaud"**, a numeric stepper/text field, default 14. Exact tab placement is an
+architect-level detail (whichever existing tab already groups vault/sync-adjacent settings);
+no new Settings tab is justified for a single field.
 
 ## Menu bar map
 
 | Menu | Item | Shortcut | Action |
 |------|------|----------|--------|
-| Task (existing) | Aggiungi sotto-task | Cmd+Shift+Return | Creates a sub-task line under the selected task: auto-assigns `^id` to the parent if absent, assigns the new sub-task's `^parent`, and its own auto-`^id`. |
-| Vista (existing) | Pannello Workspace | — (no dedicated shortcut, consistent with Backlink/Task collegati) | Toggles the new trailing inspector panel on the open canvas. |
+| View (or equivalent existing menu) | Aggiorna registrazioni | Cmd+R | Re-fetches `/recordings` for the current vault, only enabled while "Registrazioni" is the active sidebar section |
 
-No other menu bar changes. The Workspace field assignment on a task and the Progetti grouping in
-Attività are reached through existing UI (Task detail panel, Attività section), not new menu
-items.
+No new top-level menu. Per-row actions (Elabora/Rivedi/Riprova/Elimina/Rielabora/Apri nota) stay
+row-level (button + context menu), not promoted to the menu bar — they act on a specific list item,
+not a global mode, matching this app's existing convention for row-scoped actions (e.g. Workspace
+folder rename/delete).
 
 ## Toolbar items
 
-No new toolbar items. The canvas toolbar and the sidebar toolbar are unchanged by this feature —
-the dashboard panel is reached via the Vista menu (see above), consistent with how Backlink/Task
-collegati are already reached on notes (no toolbar icon for those either).
+| Item | Symbol | Placement | Shortcut | Notes |
+|------|--------|-----------|----------|-------|
+| Aggiorna | `arrow.clockwise` | .primaryAction | Cmd+R | Only toolbar item this feature adds; mirrors the menu entry above |
 
 ## Keyboard shortcuts
 
 | Action | Shortcut | Source |
 |--------|----------|--------|
-| Aggiungi sotto-task | Cmd+Shift+Return | New — Task menu + task context menu |
-| Completa/riapri task | Cmd+Invio | Existing, unchanged |
-| Pianifica oggi/domani/+2/settimana | Cmd+0/1/2/3 | Existing, unchanged |
-| Pannello Workspace (toggle) | none | New menu item, no shortcut — matches existing Backlink/Task collegati panels |
+| Aggiorna registrazioni | Cmd+R | Toolbar + menu, both wired to the same action |
+| Close sheet / Annulla revisione | Esc | Standard sheet dismissal, no custom binding needed |
+| Close window | Cmd+W | Auto-provided, unchanged |
+
+Row-level actions (Elabora, Rivedi, Riprova, Elimina, Rielabora, Apri nota) get no dedicated
+shortcut — they are contextual to a selected row, consistent with how comparable row actions work
+elsewhere in the app (e.g. Workspace board rows).
 
 ## Accessibility checklist
 
-- [ ] VoiceOver labels on the new Workspace sidebar section header and its folder-tree rows (reuse the existing note-tree row's accessibility label pattern, substituting "Nota" → "Workspace")
-- [ ] VoiceOver labels on the new dashboard panel's two section headers ("Task assegnati", "Note referenziate") and each listed row, consistent with the existing Backlink/Task collegati panel labels
-- [ ] VoiceOver label on the "Progetti" grouping's expand/collapse disclosure control and its progress indicator ("3 di 5 completati" spoken form, not a bare fraction)
-- [ ] Semantic fonts used throughout (no fixed point sizes) — matches existing app-wide token usage (`font.body`, `font.title`)
-- [ ] Cmd+Shift+Return reachable via Task menu even with no toolbar/mouse action, satisfying full keyboard access for "Aggiungi sotto-task"
-- [ ] Progress indicator and dashboard panel content are read-only-derived — no interactive control introduced that would need a new focus stop beyond the existing completable checkbox rows (which already carry their own accessibility label)
+- [ ] VoiceOver labels on every row action button (Elabora/Rivedi/Riprova/Elimina/Rielabora/Apri
+  nota) — icon-only buttons must not rely on symbol alone.
+- [ ] VoiceOver labels on every task checkbox in the review sheet, including the task title so a
+  checkbox reads meaningfully out of visual context.
+- [ ] Status badges (nuova/in corso/pronta/fallita/importata) exposed as accessible text, not
+  color alone.
+- [ ] Semantic fonts throughout (no fixed sizes), matching the rest of the app.
+- [ ] The review sheet's per-theme sections and task lists reachable via keyboard navigation
+  (Tab/arrow keys) without the mouse.
 
 ## Notes for the architect
 
-- No new SwiftUI Scene, no new Window type — every surface here extends an existing container
-  (sidebar list, trailing inspector slot, Attività list). Treat this as additive UI, not a new
-  navigation structure.
-- The trailing dashboard panel should reuse whatever view/container abstraction already backs the
-  Backlink/Task collegati panels on the note editor, rather than introducing a second inspector
-  mechanism for the canvas — same HIG slot, same interaction pattern, different data source.
-- The Workspace sidebar section should reuse the existing folder-tree view component (used today
-  for notes) with a file-type filter, not a parallel tree implementation — this keeps the "reuse
-  the existing folder browser" decision from the SPEC binding at the architecture level too.
-- `Cmd+Shift+Return` is currently unused in the app's shortcut map (confirmed against SPEC §menu
-  bar mapping and ShortcutStore-configurable set, line 296) — safe to bind without conflict, but
-  the architect/coder should still register it through the existing `ShortcutStore` mechanism
-  (user-configurable, per Impostazioni) rather than hardcoding it, consistent with how the existing
-  Opt+Cmd+0…3 rescheduling shortcuts are handled.
+- The review flow's `.sheet` needs its own local `@State`/observable draft (accept/reject per
+  task, per-speaker rename text) that survives independently of the sheet being dismissed
+  accidentally — this is the same state SPEC.md's R-10 requires to be persisted locally and
+  restored on relaunch, not just kept in-memory for the sheet's lifetime.
+- The "Registrazioni" section's list view should follow the same row/detail visual language as
+  the existing four sidebar sections (list styling, section headers, badge conventions) rather
+  than inventing a new visual idiom — no new design tokens needed for this feature.
+- Cmd+R must be free in the current key-binding map before wiring it — verify against
+  `ShortcutCommand` (the app's existing rebindable-shortcut catalogue) at Step 2, since a
+  collision would silently shadow an existing binding.
+- The "Elimina" row action reuses the existing Trash-confirmation dialog pattern (role: destructive,
+  confirm/cancel), not a new custom alert type.
