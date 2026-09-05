@@ -20,9 +20,6 @@ struct PlaudHealth: Decodable, Equatable, Sendable {
 /// Tolerant wrapper for a recording's `state`. Never a bare `RawRepresentable` enum that
 /// throws on decode: a service upgrade adding a state must not break the whole
 /// `/recordings` list decode.
-///
-/// STUB (RED baseline, not yet implemented): `init(from:)` always yields `.unknown(raw)`,
-/// never mapping a known raw value to its named case. The coder adds the five-way switch.
 enum PlaudRecordingState: Decodable, Equatable, Sendable {
     case new
     case processing
@@ -33,14 +30,19 @@ enum PlaudRecordingState: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
-        self = .unknown(raw)
+        switch raw {
+        case "new": self = .new
+        case "processing": self = .processing
+        case "ready": self = .ready
+        case "failed": self = .failed
+        case "imported": self = .imported
+        default: self = .unknown(raw)
+        }
     }
 }
 
 /// Tolerant wrapper for a proposal's `recording_kind`, same shape and same reason as
 /// `PlaudRecordingState`.
-///
-/// STUB (RED baseline, not yet implemented): always `.unknown(raw)`.
 enum PlaudRecordingKind: Decodable, Equatable, Sendable {
     case meeting
     case lecture
@@ -50,7 +52,13 @@ enum PlaudRecordingKind: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
-        self = .unknown(raw)
+        switch raw {
+        case "meeting": self = .meeting
+        case "lecture": self = .lecture
+        case "update": self = .update
+        case "personal": self = .personal
+        default: self = .unknown(raw)
+        }
     }
 }
 

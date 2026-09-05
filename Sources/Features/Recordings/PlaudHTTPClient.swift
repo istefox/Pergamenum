@@ -9,11 +9,6 @@ import Foundation
 // in exactly this one file - the mechanical half of R-15 and the enforcement of D14's "the
 // exception does not travel".
 //
-// STUB for this batch (ADR-0155, tester owns the interface / coder owns the body): every
-// method below throws a placeholder `PlaudError` without making a request. Building the
-// actual `URLRequest`s, decoding responses through `PlaudError.map(status:body:)`, and the
-// one-time loopback probe (`GET /health`, reported rather than automated into the suite)
-// are the coder's next task - explicitly **not** this batch's job per the dispatch brief.
 struct PlaudHTTPClient: PlaudService, Sendable {
     /// ADR §D2: the one permitted force-unwrap-shaped construct, one named constant, one
     /// file. `127.0.0.1`, never `localhost` - `lsof` shows the service listening on IPv4
@@ -22,37 +17,140 @@ struct PlaudHTTPClient: PlaudService, Sendable {
     /// leaving a bad edit to surface only at the client's first real call.
     static let base = URL(string: "http://127.0.0.1:3777")!
 
-    /// `.ephemeral`, `timeoutIntervalForRequest = 10`, `waitsForConnectivity = false`,
-    /// `httpCookieStorage = nil`, `urlCache = nil`, `httpShouldSetCookies = false` (ADR §D2) -
-    /// built by the coder. The stub only reserves the stored property, so the type holds
-    /// exactly one `URLSession` and stays `Sendable`.
+    /// The one session this app owns, holding exactly the five settings ADR §D2 names. Each
+    /// of them is a way of not accumulating state about a machine talking to itself, and
+    /// `URLSession.shared` is rejected there by name: its cache would make «Aggiorna» a lie.
+    static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.waitsForConnectivity = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        configuration.httpShouldSetCookies = false
+        return URLSession(configuration: configuration)
+    }
+
     let session: URLSession
 
-    init(session: URLSession = URLSession(configuration: .ephemeral)) {
+    init(session: URLSession = PlaudHTTPClient.makeSession()) {
         self.session = session
     }
 
     func health() async throws -> PlaudHealth {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.health: not yet implemented")
+        try await decoded(PlaudHealth.self, from: get(Self.base.appending(path: "health")))
     }
 
     func recordings(days: Int) async throws -> [PlaudRecording] {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.recordings: not yet implemented")
+        let url = try query(
+            on: Self.base.appending(path: "recordings"),
+            items: [URLQueryItem(name: "days", value: String(days))]
+        )
+        return try await decoded(PlaudRecordingsResponse.self, from: get(url)).recordings
     }
 
     func process(id: String, force: Bool) async throws -> PlaudJobHandle {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.process: not yet implemented")
+        let endpoint = Self.base
+            .appending(path: "recordings")
+            .appending(path: id)
+            .appending(path: "process")
+        // `force=1` is appended only when asked: an unconditional force would start real
+        // transcription work on a recording that already has a proposal (plan, Risks).
+        let url = force
+            ? try query(on: endpoint, items: [URLQueryItem(name: "force", value: "1")])
+            : endpoint
+        return try await decoded(PlaudJobHandle.self, from: post(url))
     }
 
     func job(id: String) async throws -> PlaudJob {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.job: not yet implemented")
+        try await decoded(PlaudJob.self, from: get(Self.base.appending(path: "jobs").appending(path: id)))
     }
 
     func proposal(recordingID: String) async throws -> PlaudProposal {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.proposal: not yet implemented")
+        let url = Self.base.appending(path: "proposals").appending(path: recordingID)
+        return try await decoded(PlaudProposal.self, from: get(url))
     }
 
     func confirmImported(recordingID: String, taskIDs: [String]) async throws {
-        throw PlaudError.decodeFailure("PlaudHTTPClient.confirmImported: not yet implemented")
+        let url = Self.base
+            .appending(path: "proposals")
+            .appending(path: recordingID)
+            .appending(path: "imported")
+        var request = post(url)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            request.httpBody = try JSONEncoder().encode(ImportedBody(taskIDs: taskIDs))
+        } catch {
+            // Encoding an array of strings cannot realistically fail, but the error domain
+            // above this line is closed to `PlaudError` and stays that way.
+            throw PlaudError.decodeFailure("richiesta non serializzabile: \(error)")
+        }
+        // 204 No Content: the response body is empty and nothing is decoded from it.
+        _ = try await responseData(for: request)
+    }
+
+    // MARK: - Requests
+
+    private func get(_ url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    private func post(_ url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    /// A query string added through `URLComponents` rather than by string concatenation, so
+    /// the percent-encoding is the framework's job and not this file's.
+    private func query(on url: URL, items: [URLQueryItem]) throws -> URL {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.queryItems = items
+        guard let built = components?.url else {
+            throw PlaudError.transportFailure("URL non costruibile per \(url.path)")
+        }
+        return built
+    }
+
+    /// The one place a transport failure, a non-2xx status and an unreadable body become the
+    /// three `PlaudError` cases the pane knows how to show (R-07).
+    private func responseData(for request: URLRequest) async throws -> Data {
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw PlaudError.transportFailure(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw PlaudError.transportFailure("risposta non HTTP da \(request.url?.path ?? "-")")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PlaudError.map(status: http.statusCode, body: data)
+        }
+        return data
+    }
+
+    private func decoded<T: Decodable>(_ type: T.Type, from request: URLRequest) async throws -> T {
+        let data = try await responseData(for: request)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw PlaudError.decodeFailure(String(describing: error))
+        }
+    }
+
+    /// `POST /proposals/{id}/imported`'s body, the one payload this app sends rather than
+    /// reads - snake_case here too, spelled out rather than converted (ADR §D2's contract
+    /// lives in another repo).
+    private struct ImportedBody: Encodable {
+        let taskIDs: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case taskIDs = "task_ids"
+        }
     }
 }
