@@ -299,6 +299,91 @@ private struct TemporaryDirectory: ~Copyable {
     #expect(engine.current.nsFont(.prose).pointSize == 20)
 }
 
+// MARK: - Stale customisation appearance (bug: picking a font while dark silently
+// switches the app to light, and "Ripristina" then reads as switching back)
+
+@MainActor
+@Test func choosingAFontWhileTheExplicitSelectionIsDarkKeepsTheCustomisationDark() throws {
+    let vault = try TemporaryDirectory()
+    let themes = vault.url
+        .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
+        .appending(path: VaultLayout.themesDirectory, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+    // A `personalizzato.json` already on disk, declaring `light` - written in an
+    // earlier session, or (as happened) by hand while testing a missing-font-family
+    // fallback theme. Nothing about picking a font today should care which
+    // appearance an old file on disk happens to declare.
+    try ThemeCustomization.write(
+        ThemeCustomization.Draft(appearance: .light, colors: [.accentPrimary: RGBA(hex: "#AABBCC")!]),
+        to: themes
+    )
+
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+    // The explicit selection the person is actually looking at: dark, not the stale
+    // file's light.
+    engine.selection = .dark
+    #expect(engine.current.appearance == .dark)
+
+    engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
+
+    // The bug: without a fix, `setCustomFont` reused the stale file's `.light` and
+    // the app visibly flipped to the light theme the moment the font was picked.
+    #expect(engine.current.appearance == .dark, "picking a font must not silently change the app's appearance")
+    #expect(engine.customization?.appearance == .dark)
+    let directory = try #require(engine.userThemesDirectory)
+    #expect(ThemeCustomization.load(from: directory)?.appearance == .dark)
+    // The colour chosen under the stale file survives the reconciliation - only the
+    // appearance is corrected, nothing else about the customisation is discarded.
+    #expect(engine.customization?.colors[.accentPrimary] == RGBA(hex: "#AABBCC")!)
+}
+
+@MainActor
+@Test func choosingAColourWhileTheExplicitSelectionIsDarkKeepsTheCustomisationDark() throws {
+    let vault = try TemporaryDirectory()
+    let themes = vault.url
+        .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
+        .appending(path: VaultLayout.themesDirectory, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+    try ThemeCustomization.write(
+        ThemeCustomization.Draft(appearance: .light, colors: [:]),
+        to: themes
+    )
+
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+    engine.selection = .dark
+
+    engine.setCustomColor(.accentPrimary, to: RGBA(hex: "#112233")!)
+
+    #expect(engine.current.appearance == .dark, "picking a colour must not silently change the app's appearance")
+    #expect(engine.customization?.appearance == .dark)
+}
+
+@MainActor
+@Test func choosingAFontWhileFollowingASystemDarkAppearanceKeepsTheCustomisationDark() throws {
+    let vault = try TemporaryDirectory()
+    let themes = vault.url
+        .appending(path: VaultLayout.privateDirectory, directoryHint: .isDirectory)
+        .appending(path: VaultLayout.themesDirectory, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+    try ThemeCustomization.write(
+        ThemeCustomization.Draft(appearance: .light, colors: [:]),
+        to: themes
+    )
+
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+    // `.followSystem` is the default selection; the system itself is in dark mode.
+    engine.systemAppearance = .dark
+    #expect(engine.selection == .followSystem)
+    #expect(engine.current.appearance == .dark)
+
+    engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
+
+    #expect(engine.current.appearance == .dark)
+}
+
 @MainActor
 @Test func aRememberedThemeThatThisVaultDoesNotHaveIsDropped() throws {
     let vault = try TemporaryDirectory()
