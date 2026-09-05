@@ -139,12 +139,11 @@ struct OutlinePane: View {
     /// section, and a heading with nothing under it would fold to nothing.
     @ViewBuilder
     private func chevron(for entry: NoteOutline.Entry, at index: Int) -> some View {
-        if case .heading = entry.kind, foldable.contains(index) {
+        if let offset = foldableOffset(for: entry, at: index) {
             // `vault.foldedEntries` is offsets (`NoteTab.foldedEntries`); this row's own
             // `entry` already carries its heading's live offset, so no `NoteOutline` re-scan
             // is needed to ask or to toggle - only `hiddenByFold` below needs the full
             // translation, because it has to compare a folded *ancestor* against every entry.
-            let offset = text.utf16.distance(from: text.startIndex, to: entry.range.lowerBound)
             Button {
                 vault.toggleFold(offset)
             } label: {
@@ -163,14 +162,11 @@ struct OutlinePane: View {
     /// The heading's own UTF-16 offset, when this entry can be folded - nil for anything else
     /// (an embed, or a heading with nothing under it), which is what makes it safe to call from
     /// both the chevron and the row's own double-click without duplicating the `foldable` guard.
-    ///
-    /// STUB (RED baseline, not yet implemented): always returns nil. The real body is
-    /// `chevron(for:at:)`'s own guard and offset computation above (`foldable.contains(index)`
-    /// then `text.utf16.distance(...)`), moved here unchanged. Internal, not `private`, so
-    /// `@testable import Pergamenum` can call it directly
+    /// Internal, not `private`, so `@testable import Pergamenum` can call it directly
     /// (`Tests/OutlinePaneFoldableOffsetTests.swift`).
     func foldableOffset(for entry: NoteOutline.Entry, at index: Int) -> Int? {
-        nil
+        guard case .heading = entry.kind, foldable.contains(index) else { return nil }
+        return text.utf16.distance(from: text.startIndex, to: entry.range.lowerBound)
     }
 
     /// The entries that have at least one line under them. Computed once per rebuild rather
@@ -234,6 +230,12 @@ struct OutlinePane: View {
         }
         .buttonStyle(.plain)
         .help(entry.title)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                guard let offset = foldableOffset(for: entry, at: index) else { return }
+                vault.toggleFold(offset)
+            }
+        )
     }
 }
 

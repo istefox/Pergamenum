@@ -12,6 +12,7 @@ import Testing
 /// `@Environment(VaultController.self)`. A plain memberwise `OutlinePane(...)` is enough -
 /// no environment injection, no view render pass, matching how `NoteListPane+Footer.swift`
 /// constructs one for the real UI.
+@MainActor
 private func pane(text: String) -> OutlinePane {
     OutlinePane(
         entries: NoteOutline.entries(in: text),
@@ -22,6 +23,7 @@ private func pane(text: String) -> OutlinePane {
     )
 }
 
+@MainActor
 @Test func foldableOffsetMatchesTheChevronsOwnOffsetForAFoldableHeading() {
     // "Uno" has a body line under it ("corpo uno"), so it is foldable - the same
     // condition `chevron(for:at:)` guards with `foldable.contains(index)`.
@@ -36,6 +38,7 @@ private func pane(text: String) -> OutlinePane {
     #expect(subject.foldableOffset(for: entries[index], at: index) == expectedOffset)
 }
 
+@MainActor
 @Test func foldableOffsetIsNilForAHeadingWithNothingUnderIt() {
     // "Due" is the last line in the note - nothing sits under it, so folding it would
     // fold to nothing and the chevron draws a blank spacer instead of a button.
@@ -48,6 +51,7 @@ private func pane(text: String) -> OutlinePane {
     #expect(subject.foldableOffset(for: entries[index], at: index) == nil)
 }
 
+@MainActor
 @Test func foldableOffsetIsNilForAnEmbedEntry() {
     // An embed has no section of its own to fold - `chevron(for:at:)` never even reaches
     // the offset computation for one, guarded by `case .heading = entry.kind`.
