@@ -61,8 +61,20 @@ extension CommandActions {
              .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
              .paneDiary, .paneTags, .paneViews, .paneStarred, .toggleInspector,
              .taskToday, .taskTomorrow,
-             .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay:
+             .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay,
+             // Every other "go to this pane" command is unconditionally available - the same
+             // convention applies here, with no vault-open guard any of the nine others carry
+             // either (ADR-0032 §D15).
+             .paneRecordings:
             true
+        // ADR-0032 (Plaud recording import into Pergamenum), plan
+        // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md,
+        // Task 8 - R-01. Tester-declared stub (ADR-0155): the real predicate is
+        // `navigation.pane == .recordings` per the blueprint, and cannot be written yet since
+        // `Navigation.Pane.recordings` does not exist in this batch. `false` is the safe
+        // placeholder that keeps this exhaustive switch compiling; Task 8's coder replaces it.
+        case .refreshRecordings:
+            false
         }
     }
 

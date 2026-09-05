@@ -237,6 +237,35 @@ Il corpo della nota.
     #expect(document.serialized().contains("cssclass: wide"))
 }
 
+// ADR-0032 (Plaud recording import into Pergamenum), plan
+// docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 9 -
+// R-05; ADR §D6. Added beside `preservesForeignKeysInsteadOfDroppingThem` rather than
+// replacing it, per the plan's own instruction: an ordinary foreign key must still be
+// reported, only a `pergamenum-`-prefixed one stops being one.
+//
+// `FrontmatterRules.validate` (`Frontmatter.swift:335`) does not yet special-case the
+// prefix, so this is red until Task 9's coder adds the four-line allowance. The Task 4
+// linter assertion (`Tests/TranscriptNoteTests.swift`, "The linter (D6/D7, Task 9)") turns
+// green at the same time - confirm it there, it is not duplicated here.
+@Test func aPergamenumPrefixedForeignKeyProducesNoFinding() {
+    let note = """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+      - topic-trascrizione
+    pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+    ---
+    corpo
+    """
+    let document = NoteDocument.parse(note)
+    #expect(document.frontmatter.foreignKeys.map(\.name) == ["pergamenum-plaud-id"])
+    #expect(!FrontmatterRules.validate(document).contains(.foreignKey("pergamenum-plaud-id")))
+    // Still preserved verbatim - the parser and the serializer are not touched, only the
+    // linter's opinion of the key (ADR §D6: "the change is four lines in one function").
+    #expect(document.serialized().contains(#"pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6""#))
+}
+
 @Test func reordersTagsOnSave() {
     let note = """
     ---

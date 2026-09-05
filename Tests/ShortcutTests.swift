@@ -82,6 +82,20 @@ import Testing
     #expect(ShortcutCommand.taskAddSubtask.defaultBinding == KeyBinding("return", [.command, .shift]))
 }
 
+// MARK: - ADR-0032 (plan 2026-09-05-plaud-recording-import-into-pergamenum), Task 8
+//
+// R-01, R-11, R-15; ADR §D15. `noTwoCommandsShipOnTheSameKeys` and `everyShippedDefaultIsUsable`
+// above already walk `ShortcutCommand.allCases`, so both new commands are exercised by them
+// with no edit to either test - this pins the two facts those generic checks cannot: which key
+// each carries and which section it lives in, per the measurement ADR §D15 records.
+
+@Test func bothNewRecordingsCommandsBindToTheirMeasuredFreeKeysInTheViewSection() {
+    #expect(ShortcutCommand.paneRecordings.section == .view)
+    #expect(ShortcutCommand.paneRecordings.defaultBinding == KeyBinding("0", [.command, .control]))
+    #expect(ShortcutCommand.refreshRecordings.section == .view)
+    #expect(ShortcutCommand.refreshRecordings.defaultBinding == KeyBinding("r", .command))
+}
+
 // MARK: - The store
 
 /// A throwaway suite, so these never touch the real preferences.
