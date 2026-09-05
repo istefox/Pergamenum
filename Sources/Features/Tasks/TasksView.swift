@@ -5,6 +5,7 @@ struct TasksView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
     @Environment(ShortcutStore.self) var shortcuts
+    @Environment(ThemeEngine.self) private var themeEngine
     @State var view: IndexSnapshot.TaskView = .today
     /// Every board's vault-relative path, for the Workspace segment on each row and the
     /// `.workspace` grouping. Fetched once per scan rather than per row: `CanvasStore.allBoards()`
@@ -137,6 +138,8 @@ struct TasksView: View {
             }
             .help("Apre la nota in cui il task è scritto")
             .disabled(selected == nil)
+
+            themeToggleToolbarItem(themeEngine)
         }
     }
 

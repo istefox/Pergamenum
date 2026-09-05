@@ -45,6 +45,50 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "$branch" = "main" ] || fail "sei su $branch: una release si taglia da main"
 [ -z "$(git status --porcelain)" ] || fail "l'albero di lavoro non è pulito: committa o metti da parte prima"
 
+# --- Preflight -------------------------------------------------------------------
+#
+# ADR-0031 §D12. The same philosophy the script already states at «Check what came out,
+# before asking Apple to bless it», applied one step earlier. All four checks are
+# instantaneous, and all four would otherwise surface after roughly ten minutes of
+# archiving and notarizing - the moment a release is least recoverable.
+
+# Resolution order for a Sparkle command-line tool: $SPARKLE_BIN, then the pinned unpack
+# scripts/fetch-sparkle-tools.sh writes, then PATH (ADR-0031 §D11). Prints the path it
+# found, returns non-zero when there is none.
+sparkle_tool() {
+    local name="$1"
+    if [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/$name" ]; then
+        echo "$SPARKLE_BIN/$name"
+        return 0
+    fi
+    if [ -x "$REPO/build/tools/sparkle/bin/$name" ]; then
+        echo "$REPO/build/tools/sparkle/bin/$name"
+        return 0
+    fi
+    command -v "$name" 2>/dev/null || return 1
+}
+
+step "Preflight"
+
+SIGN_UPDATE="$(sparkle_tool sign_update)" \
+    || fail "sign_update non trovato: esegui scripts/fetch-sparkle-tools.sh (oppure indica \$SPARKLE_BIN)"
+readonly SIGN_UPDATE
+echo "sign_update: $SIGN_UPDATE"
+
+gh auth status >/dev/null 2>&1 \
+    || fail "gh non autenticato: esegui gh auth login (serve a pubblicare la release)"
+
+# Sparkle's generate_keys stores the private key as a generic password under the service
+# "https://sparkle-project.org" and the account "ed25519": Sparkle 2.9.6,
+# generate_keys/main.swift:15-29 (commonKeychainItemAttributes - kSecAttrService at :22,
+# kSecAttrAccount at :25) and :160-161 (the --account option defaults to "ed25519");
+# sign_update/main.swift:13-18 reads the same pair back. `-w` is never passed here: the
+# presence of the item is the check, its contents are never printed.
+security find-generic-password -s "https://sparkle-project.org" -a "ed25519" >/dev/null 2>&1 \
+    || fail "chiave privata EdDSA assente dal portachiavi: esegui \"\$(sparkle_tool generate_keys)\" una volta"
+
+command -v python3 >/dev/null 2>&1 || fail "python3 non trovato: serve a scripts/appcast.py"
+
 readonly BUILD="$(git rev-list --count HEAD)"
 [ -n "$BUILD" ] && [ "$BUILD" -gt 0 ] || fail "numero di build non calcolabile da git"
 readonly SHA="$(git rev-parse --short HEAD)"
@@ -135,10 +179,136 @@ grep -q 'source=Notarized Developer ID' <<<"$verdict" \
     || fail "Gatekeeper non la riconosce come notarizzata"
 
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
+
+# --- The distributable -----------------------------------------------------------
+#
+# ADR-0031 §D8. Cut here and nowhere earlier: $zip above is what notarytool was handed
+# and has no ticket by construction, and $BUILD-notarization.txt is the log describing
+# it. This archive is the one a user's copy of the app downloads, so it must come from
+# the bundle after `stapler staple` - and it gets its own name, because that name
+# becomes a public URL. --sequesterRsrc is what Sparkle's publishing documentation asks
+# for; it is a no-op on a bundle with no resource forks, and costs nothing to be right
+# about.
+
+step "Impacchetto la build firmata e ticketata"
+readonly DIST="$OUTPUT/Pergamenum-$version-$BUILD.zip"
+ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$DIST"
+
+# --- Firma, release, appcast -----------------------------------------------------
+#
+# ADR-0031 §D9 e §D10. Da qui in poi si esce in rete, e ogni valore pubblicato viene
+# letto dall'artefatto appena costruito invece che riscritto a mano: il feed deve
+# puntare dove la copia installata andrà davvero a guardare, e l'unico posto che lo sa
+# è l'Info.plist del bundle. Nessun secondo worktree e nessun checkout: :46 rifiuta un
+# albero sporco, e questo script non può essere la cosa che ne crea uno. L'appcast
+# viene scritto in build/release/ (gitignorata) e pubblicato via API.
+
+readonly UPDATES_REPO="istefox/pergamenum-updates"
+readonly TAG="v$version-$BUILD"
+
+step "Firmo $DIST"
+# Sparkle 2.9.6, sign_update/main.swift:287: per un archivio stampa esattamente una
+# riga, `sparkle:edSignature="…" length="…"`. La grafia `sparkle:length` che si legge
+# in giro è il ramo :285, quello dei file di note di rilascio, e qui non si applica
+# mai - letto dal sorgente del tag agganciato, non dalla documentazione, perché i due
+# rami differiscono proprio nel nome dell'attributo. La chiave privata non compare qui:
+# sign_update se la prende dal portachiavi da solo.
+sig_line="$("$SIGN_UPDATE" "$DIST")"
+signature="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"$sig_line")"
+length="$(sed -n 's/.* length="\([^"]*\)".*/\1/p' <<<"$sig_line")"
+[ -n "$signature" ] || fail "firma non estraibile da sign_update, che ha stampato: $sig_line"
+[ -n "$length" ] || fail "lunghezza non estraibile da sign_update, che ha stampato: $sig_line"
+echo "firmato: $length byte"
+
+# Le note le scrive una persona. Una release con il corpo vuoto è una release che
+# nessuno può leggere, e i non-goal della SPEC escludono un CHANGELOG.md: questa è prosa
+# per la singola release, non un file da mantenere.
+notes="$OUTPUT/$BUILD-notes.md"
+[ -s "$notes" ] || fail "note di rilascio assenti o vuote: scrivi $notes prima di pubblicare"
+
+step "Pubblico la release $TAG su $UPDATES_REPO"
+gh release create "$TAG" --repo "$UPDATES_REPO" \
+    --title "Pergamenum $version ($BUILD)" \
+    --notes-file "$notes" "$DIST" \
+    || fail "gh release create ha fallito per $TAG"
+
+readonly RELEASE_URL="https://github.com/$UPDATES_REPO/releases/tag/$TAG"
+download_url="https://github.com/$UPDATES_REPO/releases/download/$TAG/$(basename "$DIST")"
+
+# Entrambi dal plist costruito, mai da un secondo letterale qui: se un giorno il feed o
+# il minimo di sistema cambiano nel manifest, l'appcast li segue senza che nessuno debba
+# ricordarsi di questo file.
+feed_url="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$BUNDLE/Contents/Info.plist")" \
+    || fail "SUFeedURL assente da $BUNDLE/Contents/Info.plist"
+min_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$BUNDLE/Contents/Info.plist")" \
+    || fail "LSMinimumSystemVersion assente da $BUNDLE/Contents/Info.plist"
+
+step "Rigenero l'appcast"
+appcast="$OUTPUT/appcast.xml"
+python3 scripts/appcast.py \
+    --feed-url "$feed_url" \
+    --version "$BUILD" \
+    --short-version "$version" \
+    --min-system "$min_system" \
+    --download-url "$download_url" \
+    --signature "$signature" \
+    --length "$length" \
+    --notes-link "$RELEASE_URL" \
+    --output "$appcast" \
+    || fail "scripts/appcast.py non ha scritto $appcast"
+
+step "Pubblico $feed_url"
+# Lo sha del file già pubblicato serve alla API per sapere che cosa si sta sostituendo, e
+# manca esattamente una volta, prima della primissima release: il 404 è la strada felice
+# di quel giorno soltanto, quindi si distingue il caso invece di ignorare l'errore.
+# Il segnale è l'exit status di gh, non lo stdout: su un 404 `gh api` applica il --jq
+# soltanto alle risposte 2xx e stampa il JSON dell'errore su stdout (misurato il
+# 2026-09-04 contro questo stesso repository), quindi un test sulla stringa prenderebbe
+# il ramo «sostituzione» con quel JSON come sha, proprio alla prima release.
+if ! appcast_sha="$(gh api "repos/$UPDATES_REPO/contents/appcast.xml" --jq '.sha' 2>/dev/null)"; then
+    appcast_sha=""
+fi
+appcast_body="$(base64 <"$appcast" | tr -d '\n')"
+if [ -n "$appcast_sha" ]; then
+    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
+        -f message="appcast: Pergamenum $version ($BUILD)" \
+        -f content="$appcast_body" \
+        -f sha="$appcast_sha" >/dev/null \
+        || fail "pubblicazione dell'appcast fallita (sostituzione)"
+else
+    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
+        -f message="appcast: Pergamenum $version ($BUILD)" \
+        -f content="$appcast_body" >/dev/null \
+        || fail "pubblicazione dell'appcast fallita (primo caricamento)"
+fi
+
+# Il commit sui Contents API prova solo che git ha accettato il file: GitHub Pages lo
+# ricostruisce in modo asincrono, e senza questo controllo lo script dichiarerebbe
+# successo mentre ogni copia installata continua a interrogare un feed non aggiornato
+# (o mai stato configurato). Si interroga $feed_url stesso, non l'API, perché è quello
+# che Sparkle legge davvero; si cerca la firma appena calcolata perché è l'unico valore
+# di questa release che non può comparire per caso in una build precedente del feed.
+step "Verifico che $feed_url serva la release appena pubblicata"
+feed_confirmed=false
+for _ in 1 2 3 4 5 6; do
+    if curl -fsSL "$feed_url" 2>/dev/null | grep -qF "$signature"; then
+        feed_confirmed=true
+        break
+    fi
+    sleep 10
+done
+if [ "$feed_confirmed" != true ]; then
+    fail "$feed_url non serve ancora la firma della release $version ($BUILD) dopo 60s - GitHub Pages potrebbe non essere configurato o non aver ancora ricostruito. Verificare manualmente prima di considerare la release pubblicata."
+fi
+
 cat <<SUMMARY
 
-==> Pronta: Pergamenum $version ($BUILD), da $SHA
+==> Pronta e pubblicata: Pergamenum $version ($BUILD), da $SHA
     $BUNDLE
+    $DIST
+
+    Release:  $RELEASE_URL
+    Appcast:  $feed_url
 
     Per installarla:
       osascript -e 'tell application "Pergamenum" to quit'

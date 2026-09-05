@@ -11,6 +11,7 @@ struct VaultBrowser: View {
     @Environment(CommandActions.self) var commandActions
     /// Read for the key combinations the slash menu shows beside each app command.
     @Environment(ShortcutStore.self) var shortcuts
+    @Environment(ThemeEngine.self) private var themeEngine
 
     var body: some View {
         VStack(spacing: 0) {
@@ -161,6 +162,8 @@ struct VaultBrowser: View {
             }
             .help("Mostra o nasconde l'elenco delle note e delle cartelle")
             .accessibilityIdentifier("notes-tree-toggle")
+
+            themeToggleToolbarItem(themeEngine)
         }
     }
 

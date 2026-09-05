@@ -230,6 +230,28 @@ struct HelpCommands: Commands {
     }
 }
 
+/// «Cerca Aggiornamenti…» in the Pergamenum menu (ADR-0031, R-02).
+///
+/// `after: .appInfo` is Sparkle's own documented placement and the standard macOS one:
+/// straight under «Informazioni su Pergamenum».
+///
+/// **No `import Sparkle` here.** This file speaks to `SparkleUpdateController` and nothing
+/// else (ADR-0031 §D2): Sparkle enters the app through that one file under `Sources/App/`,
+/// and the menu layer has no business knowing which framework answers the button.
+///
+/// No `ShortcutCommand` case and no `.keyboardShortcut`: ADR-0023 §D5 - the catalogue is the
+/// set of *rebindable* shortcuts, not of all commands, and this one never had a key.
+struct UpdateCommands: Commands {
+    let updater: SparkleUpdateController
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Cerca Aggiornamenti…") { updater.checkForUpdates() }
+                .disabled(!updater.canCheckForUpdates)
+        }
+    }
+}
+
 /// The Modifica-menu entries SPEC §10 adds to the standard ones.
 struct EditCommands: Commands {
     let navigation: Navigation

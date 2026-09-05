@@ -34,7 +34,15 @@ handoff; the spec wins on any conflict.
 1. **File over app.** Every piece of content lives as a readable file on disk (md,
    canvas, pdf, eml, svg). If Pergamenum disappeared, the data stays usable.
 2. **Fully offline.** No network call in any feature. No server, no account, no
-   telemetry.
+   telemetry. **One named exception, and only one** (ADR-0031 §D13): the update check,
+   which happens when the person chooses «Cerca Aggiornamenti…» and at no other moment -
+   no timer, no launch check, no background task. It carries the app's own version
+   identifiers and nothing else: no vault content, no note text, no path, no file name,
+   no tag, no task, no calendar data, ever. `SUSendsSystemProfile` stays `false`, so
+   Sparkle's optional hardware profile is off and the telemetry sentence above is
+   untouched. The exception is scoped to the updater and does not travel: no feature of
+   the vault, Workspace, tasks, calendar, editor or index gains network access from it,
+   and neither `perg` nor `pergamenum-mcp` knows Sparkle exists.
 3. **Rebuildable index.** The SQLite cache (links, backlinks, tasks, thumbnails)
    regenerates entirely from a vault scan. It is never the source of truth; deleting
    it loses nothing. Since ADR-0017 (`PG-004`) it lives with the rest of a vault's
@@ -113,7 +121,9 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'pl
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
 xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build    # the CLI
 xcodebuild -workspace Pergamenum.xcworkspace -scheme pergamenum-mcp -destination 'platform=macOS' build
-scripts/release.sh                                                                              # signed, notarized, numbered build
+scripts/release.sh                                                                              # signed, notarized, numbered build, published with its appcast
+scripts/fetch-sparkle-tools.sh                                                                  # Sparkle's sign_update/generate_keys into build/, checksum-pinned
+scripts/appcast.py --self-test                                                                  # the appcast generator's own assertions, offline, writes no feed
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
 scripts/uitests.sh                                                                              # the UI suite, run the way it has to be - before every merge to main
@@ -240,6 +250,11 @@ move the previous copy aside rather than deleting it.
   widens itself to reach an event outside that window by design, so the assertion failed
   on the afternoon there was a real meeting at 16:30. A new UI-test file wants the flag
   too.
+- **A UI test that launches the app risks a Sparkle update-check alert on screen**, the same
+  shape of trap as `-disableCalendar` above. The suite passes `-disableUpdater YES` (ADR-0031),
+  which keeps `SparkleUpdateController` from starting the updater at all. Every UI-test file
+  passes it, not only the one that would need it — a stray modal alert during `launch()` reads
+  as the app hanging, not as an update being offered. A new UI-test file wants the flag too.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to
@@ -503,6 +518,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
 - **ADR-0030** — Editor page typography: prose faces (`font.prose`/`font.proseTitle`, Avenir Next) and `spacing.readable` read through tokens by one `ProseTypography` helper, readable-width inset, prose font picker persisted in `personalizzato.json`; amends ADR-0027 §D1 and ADR-0028 §D3, reopens nothing of ADR-0018/0029 → `docs/adr/0030-editor-page-typography-noteplan.md`
+- **ADR-0031** — Sparkle auto-update integration: explicit narrow exception to Principle 2 (network) for the updater only, manual-only checks, EdDSA key in Keychain, appcast/binaries hosted on a dedicated public repo `istefox/pergamenum-updates` (amends the SPEC's original private-repo hosting, which live verification found broken), `scripts/release.sh` extended end-to-end → `docs/adr/0031-sparkle-auto-update-integration.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -665,3 +681,40 @@ Key architectural decisions:
   interface touched.** `IndexCache.schemaVersion` stays 3.
 
 Detail: `docs/adr/0030-editor-page-typography-noteplan.md`.
+
+## Decisions from the Sparkle auto-update integration chain (ADR-0031)
+
+Adds Sparkle-based auto-update: manual-only check, EdDSA-signed releases, and an extended
+`scripts/release.sh` publishing pipeline: `docs/adr/0031-sparkle-auto-update-integration.md`.
+
+Key architectural decisions:
+- **Explicit, narrow exception to Principle 2 ("Fully offline")** — the update check is a network
+  call by nature, scoped exclusively to the updater: no vault content, no note text, no telemetry
+  (`SUSendsSystemProfile` stays `false`). No other feature gains network access as a result of
+  this chain.
+- **Checks are manual-only, triggered from "Cerca Aggiornamenti…" in the app menu** —
+  `SUEnableAutomaticChecks: false`, no timer, no background task, no Settings surface. Sparkle's
+  own stock update UI (`SPUStandardUserDriver`) is used as-is and is explicitly out of scope for
+  the design-token binding rule — it is a system framework window, not a view this app authors.
+- **Sparkle enters through exactly one file under `Sources/App/`**, an ordinary SPM dependency in
+  `Tuist/Package.swift`, never touching `Sources/Core`/`Sources/Connector` or any `sharedSources`
+  glob — `perg` and `pergamenum-mcp` stay unaware Sparkle exists, the same boundary EventKit
+  already respects.
+- **The distributable zip is built from the already-stapled bundle, in a new variable, never by
+  reusing `scripts/release.sh`'s pre-existing `$zip`** — that zip is notarized *before* stapling and
+  was never the distributable; Sparkle's archive must be built after `xcrun stapler staple`, which
+  is a correctness fix to a pre-existing gap in the script, not new behavior grafted on.
+- **Appcast/binaries are hosted on a dedicated public repository, `istefox/pergamenum-updates`, not
+  on `istefox/Pergamenum`** — live verification during this chain found the SPEC's original
+  private-repo hosting plan broken two independent ways (release assets on a private repo need
+  authentication Sparkle never sends; Pages on a private repo is either unreachable to Sparkle or
+  makes this repo's `docs/` world-readable). The dedicated repo holds only the appcast and signed
+  release archives, nothing else.
+- **The appcast item is hand-built by a new `scripts/appcast.py`, not Sparkle's own
+  `generate_appcast`** — that tool assumes one download-URL prefix and a local folder as the feed's
+  full history, neither of which fits a per-tag GitHub Release; it also generates binary deltas,
+  an explicit non-goal for this app.
+- **The EdDSA private key lives only in this Mac's login Keychain**, generated once via Sparkle's
+  own `generate_keys` tool; never written to disk in cleartext, never committed.
+
+Detail: `docs/adr/0031-sparkle-auto-update-integration.md`.

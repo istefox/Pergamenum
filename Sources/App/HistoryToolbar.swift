@@ -44,6 +44,48 @@ struct HistoryToolbar: ToolbarContent {
     }
 }
 
+/// The Sistema/Chiaro/Scuro toggle, appended as the trailing-most item of a pane's own
+/// `.primaryAction` group (ADR-0015-adjacent: same reasoning as `HistoryToolbar`, but this
+/// one cannot itself live in the single global attachment point `.windowHistory` uses -
+/// SwiftUI merges every `.primaryAction` contribution from an outer `.toolbar` call before
+/// the pane's own, regardless of which one is textually declared first in source, so a
+/// `ToolbarItem` placed there always lands to the pane group's *left*, never its right.
+/// Each pane calls this once, last, inside its own `ToolbarItemGroup(placement: .primaryAction)`
+/// - a plain view, not a nested `ToolbarContent`, since that group's own placement already
+/// covers it.
+@MainActor
+@ViewBuilder
+func themeToggleToolbarItem(_ engine: ThemeEngine) -> some View {
+    Button {
+        switch engine.selection {
+        case .followSystem: engine.selection = .light
+        case .light: engine.selection = .dark
+        case .dark, .named: engine.selection = .followSystem
+        }
+    } label: {
+        Label("Tema", systemImage: themeToggleIcon(for: engine.selection))
+    }
+    .help("Tema: \(themeToggleLabel(for: engine.selection)). Clic per cambiare.")
+    .accessibilityIdentifier("theme-toggle-button")
+}
+
+private func themeToggleIcon(for selection: ThemeEngine.Selection) -> String {
+    switch selection {
+    case .followSystem, .named: "circle.lefthalf.filled"
+    case .light: "sun.max"
+    case .dark: "moon"
+    }
+}
+
+private func themeToggleLabel(for selection: ThemeEngine.Selection) -> String {
+    switch selection {
+    case .followSystem: "Segue il sistema"
+    case .light: "Chiaro"
+    case .dark: "Scuro"
+    case .named: "Personalizzato"
+    }
+}
+
 extension View {
     /// The two arrows, and the one observer that fills the history behind them (ADR-0015 §D2).
     ///

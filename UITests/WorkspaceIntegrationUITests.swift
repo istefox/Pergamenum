@@ -184,6 +184,7 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
+                               "-disableUpdater", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 15), "il vault non si è aperto")

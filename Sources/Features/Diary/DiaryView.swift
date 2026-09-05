@@ -20,6 +20,7 @@ struct DiaryView: View {
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
     @Environment(DiaryController.self) private var controller
+    @Environment(ThemeEngine.self) private var themeEngine
 
     var body: some View {
         HSplitView {
@@ -29,7 +30,7 @@ struct DiaryView: View {
                 .frame(minWidth: 280, idealWidth: 360, maxWidth: 640)
         }
         .background(theme.color(.backgroundPrimary))
-        .toolbar { DiaryToolbar(controller: controller) }
+        .toolbar { DiaryToolbar(controller: controller, themeEngine: themeEngine) }
         .task { controller.load() }
         // Every way out of this pane writes the day: switching pane takes the view
         // away, and quitting or clicking on another app does not go through here at

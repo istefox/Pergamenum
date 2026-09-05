@@ -19,6 +19,7 @@ final class WorkspaceFocusUITests: XCTestCase {
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
+                               "-disableUpdater", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
