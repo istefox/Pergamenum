@@ -26,6 +26,11 @@ extension TableGridView {
         controlLabelColor = NSColor(theme.color(.textPrimary))
         pillColor = NSColor(theme.color(.backgroundTertiary))
         for label in controlLabels { label.textColor = controlLabelColor }
+        // Before the rebuild below, so a cell made by `makeCell` is born with the right face
+        // rather than corrected a line later - and read again on every update, because a theme
+        // change reaches a grid whose shape has not moved and so is never rebuilt.
+        proseFont = ProseTypography.prose(theme)
+        proseBoldFont = ProseTypography.proseBold(theme)
 
         let reshaped = self.table.map {
             $0.header.count != table.header.count || $0.rows.count != table.rows.count
@@ -37,6 +42,7 @@ extension TableGridView {
         self.table = table
         if reshaped { rebuildFields() }
         applyCellValues()
+        applyFonts()
         applyColours()
         layoutGrid()
         if regainsFocus { restoreFocus(near: previous) }
@@ -73,7 +79,7 @@ extension TableGridView {
         field.isSelectable = true
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail
-        field.font = NSFont.systemFont(ofSize: 13, weight: isHeader ? .semibold : .regular)
+        field.font = isHeader ? proseBoldFont : proseFont
         field.setAccessibilityIdentifier(isHeader ? "editor-table-header-cell" : "editor-table-cell")
         return field
     }
@@ -90,6 +96,16 @@ extension TableGridView {
                 guard field.currentEditor() == nil else { continue }
                 if field.stringValue != values[columnIndex] { field.stringValue = values[columnIndex] }
             }
+        }
+    }
+
+    /// The counterpart of `applyColours()` for the faces: `makeCell` sets one on a cell it
+    /// creates, and a rebuild only happens when the *shape* changed - so without this, a theme
+    /// whose `font.prose` moved would repaint a table in the right colour and the wrong face
+    /// until somebody added a row.
+    private func applyFonts() {
+        for (rowIndex, line) in fields.enumerated() {
+            for field in line { field.font = rowIndex == 0 ? proseBoldFont : proseFont }
         }
     }
 
@@ -141,7 +157,7 @@ extension TableGridView {
         var x = startX + Metrics.pillPadding
         // `NSTextField.intrinsicContentSize` measures the string a hair narrower than the
         // cell actually needs to draw its last glyph without truncating - the same rounding
-        // `Self.width(of:weight:)` never hits because a table cell has room to spare.
+        // `width(of:isHeader:)` never hits because a table cell has room to spare.
         let labelWidth = label.intrinsicContentSize.width + Metrics.labelWidthSlop
         label.frame = NSRect(
             x: x, y: y + (Metrics.controlRow - label.intrinsicContentSize.height) / 2,
@@ -168,18 +184,22 @@ extension TableGridView {
     private func computedWidths() -> [CGFloat] {
         guard let table else { return [] }
         return table.header.indices.map { column in
-            var widest = Self.width(of: table.header[column], weight: .semibold)
+            var widest = width(of: table.header[column], isHeader: true)
             for row in table.rows where column < row.count {
-                widest = max(widest, Self.width(of: row[column], weight: .regular))
+                widest = max(widest, width(of: row[column], isHeader: false))
             }
             return min(Metrics.maximumColumn, max(Metrics.minimumColumn, widest + Metrics.cellInset * 2))
         }
     }
 
-    private static func width(of text: String, weight: NSFont.Weight) -> CGFloat {
+    /// How wide a cell's text is *in the face that cell is drawn in* - `isHeader` rather than a
+    /// weight, and an instance method rather than a static one, precisely so the two cannot
+    /// diverge: measuring at a fixed 13pt while drawing at the theme's own `font.prose` sizes
+    /// every column for a page nobody is looking at (ADR-0030 §D2, R-13).
+    private func width(of text: String, isHeader: Bool) -> CGFloat {
         guard !text.isEmpty else { return 0 }
         return (text as NSString)
-            .size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: weight)])
+            .size(withAttributes: [.font: isHeader ? proseBoldFont : proseFont])
             .width
     }
 

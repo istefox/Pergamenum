@@ -14,11 +14,12 @@ import Testing
     // MARK: - Resize handle hit-test (Task 5)
 
     /// R-01: with `hidesMarkup` on and a landed render, the handle's hit rect exists and
-    /// sits inside the picture's own frame - `fragmentFrame(at:in:)` reports the whole
-    /// paragraph's frame, which for a standalone embed paragraph is the picture's frame,
-    /// the same equivalence `aClickOnTheDrawnPictureSelectsItsWholeRun` in `EmbedCaret`
-    /// already leans on. The probed point is the picture's own bottom-right corner, where
-    /// `EmbedResize.handleRect(in:)` paints the square.
+    /// sits inside the picture's own frame - `pictureFrame(at:in:coordinator:)` reports
+    /// that frame directly (`Coordinator.drawnPictureFrame(at:in:)`), rather than
+    /// `fragmentFrame(at:in:)`'s layout-fragment frame, which is taller than the picture by
+    /// the prose font's descent since ADR-0030 (`EmbedEditorTestSupport.swift`). The probed
+    /// point is the picture's own bottom-right corner, where `EmbedResize.handleRect(in:)`
+    /// paints the square.
     @Test func handleRectAnswersARectInsideThePictureFrameWhenMarkupIsHidden() async throws {
         let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -39,8 +40,8 @@ import Testing
         )
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
 
-        let box = EmbedEditorFixtures.fragmentFrame(
-            at: EmbedEditorFixtures.embedOffset, in: textView
+        let box = EmbedEditorFixtures.pictureFrame(
+            at: EmbedEditorFixtures.embedOffset, in: textView, coordinator: coordinator
         )
         #expect(box.width > 0)
         let corner = CGPoint(x: box.maxX - 5, y: box.maxY - 5)

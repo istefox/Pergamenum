@@ -58,6 +58,7 @@ extension EditorColumnView {
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
+            readableWidth: vault.settings.readableWidth,
             editorCommands: slashCommands,
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
@@ -92,10 +93,17 @@ extension EditorColumnView {
                 NSRange($0.range, in: note.text)
             },
             onOutlineEntryChanged: { entry in focused { vault.currentOutlineEntry = entry } },
-            foldedEntries: tab?.foldedEntries ?? [],
+            // `NoteTab.foldedEntries` is offsets; `NoteTextView`/`NoteFolding` still want the
+            // ordinal `NoteOutline.entries(in:)` index. Translated here, fresh against this
+            // render's own `note.text`, rather than trusting a value computed against a
+            // possibly older version of it.
+            foldedEntries: foldedOrdinals(ofOffsets: tab?.foldedEntries ?? [], in: note.text),
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,
+            // `entry` here is the heading's own offset, straight from `NoteTextView`'s
+            // fold-badge click (`unfold(at:in:)`) - never re-derived through `outlineRanges`,
+            // which is exactly the stale lookup that used to name the wrong section.
             onToggleFold: { entry in focused { vault.toggleFold(entry) } },
             // Clicking into the text is how a person says which half they are working in, and
             // the column's own tap gesture never sees that click: the text view takes it.

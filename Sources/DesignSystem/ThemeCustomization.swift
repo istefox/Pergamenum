@@ -21,9 +21,22 @@ enum ThemeCustomization {
     struct Draft: Equatable, Sendable {
         var appearance: ThemeAppearance
         var colors: [ColorToken: RGBA]
+        /// The prose face overrides (ADR-0030 §D9): `.prose`/`.proseTitle` only, but
+        /// keyed by the whole `FontToken` rather than a narrower pair type, the same
+        /// way `colors` is keyed by the whole `ColorToken` rather than the subset a
+        /// given theme happens to override. Defaulted so every existing call site
+        /// that only ever set colours keeps compiling unchanged.
+        var fonts: [FontToken: TypographyValue] = [:]
 
-        var isEmpty: Bool { colors.isEmpty }
+        var isEmpty: Bool { colors.isEmpty && fonts.isEmpty }
     }
+
+    /// The only font tokens Impostazioni writes, and therefore the only ones read
+    /// back (ADR-0030 §D9): the page's two faces, never the interface's. Named once
+    /// here because the reader, the writer and `ThemeEngine.clearCustomFonts()` all
+    /// have to agree on the same pair — three separate lists would be three chances
+    /// for a token to be written and never cleared.
+    static let customizableFonts: [FontToken] = [.prose, .proseTitle]
 
     static func url(in directory: URL) -> URL {
         directory.appending(path: "\(id).json", directoryHint: .notDirectory)
@@ -50,7 +63,17 @@ enum ThemeCustomization {
                   let rgba = RGBA(hex: raw) else { continue }
             colors[token] = rgba
         }
-        return Draft(appearance: ThemeAppearance(rawValue: declared) ?? .light, colors: colors)
+        // The page's two faces (ADR-0030 §D9), read the way the loop above reads
+        // `color.*`: a token the file does not carry is simply not in the draft,
+        // which is also the whole answer for a file an older build wrote with no
+        // `font` section at all (R-12).
+        var fonts: [FontToken: TypographyValue] = [:]
+        for token in customizableFonts {
+            guard let raw = value(at: token.path, in: root) as? [String: Any],
+                  let typography = typography(from: raw) else { continue }
+            fonts[token] = typography
+        }
+        return Draft(appearance: ThemeAppearance(rawValue: declared) ?? .light, colors: colors, fonts: fonts)
     }
 
     /// Follows a dotted token path down the nested object and returns its `$value`.
@@ -61,6 +84,25 @@ enum ThemeCustomization {
             node = object[String(component)]
         }
         return (node as? [String: Any])?["$value"]
+    }
+
+    /// A DTCG typography `$value`, in the four fields this file writes.
+    ///
+    /// Read here as well as in `DesignTokenDocument` because the two answer different
+    /// questions: that one builds the theme the app renders with, this one is what the
+    /// settings controls open on, and it is read before any theme is built from the
+    /// file. The defaults are deliberately the same as the parser's, so a hand-written
+    /// file missing `fontWeight` reads the same way twice.
+    private static func typography(from object: [String: Any]) -> TypographyValue? {
+        guard let size = (object["fontSize"] as? NSNumber).map({ CGFloat($0.doubleValue) }) else {
+            return nil
+        }
+        return TypographyValue(
+            family: TypographyValue.Family(rawValue: object["fontFamily"] as? String ?? "system"),
+            size: size,
+            weight: (object["fontWeight"] as? NSNumber)?.intValue ?? 400,
+            lineHeight: (object["lineHeight"] as? NSNumber)?.doubleValue ?? 1.4
+        )
     }
 
     // MARK: Writing
@@ -102,6 +144,28 @@ enum ThemeCustomization {
             guard let rgba = draft.colors[token] else { continue }
             insert(
                 ["$type": "color", "$value": rgba.hexString],
+                at: token.path.split(separator: ".").map(String.init),
+                into: &root
+            )
+        }
+        // The same loop for the page's faces, sorted the same way for the same
+        // byte-stability guarantee. The family goes out through
+        // `TypographyValue.Family.rawValue`, which carries a named family verbatim —
+        // "Avenir Next" stays two words and never collapses into the `system` keyword
+        // (ADR-0030 §D3). `.sortedKeys` orders the four fields inside `$value` too, so
+        // a second save of the same choice is byte-identical here as well.
+        for token in draft.fonts.keys.sorted(by: { $0.path < $1.path }) {
+            guard let font = draft.fonts[token] else { continue }
+            insert(
+                [
+                    "$type": "typography",
+                    "$value": [
+                        "fontFamily": font.family.rawValue,
+                        "fontSize": font.size,
+                        "fontWeight": font.weight,
+                        "lineHeight": font.lineHeight,
+                    ] as [String: Any],
+                ],
                 at: token.path.split(separator: ".").map(String.init),
                 into: &root
             )

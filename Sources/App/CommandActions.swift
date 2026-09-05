@@ -237,8 +237,17 @@ final class CommandActions {
         case .foldSection:
             // The section the caret is in, which the editor reports as it moves. Without a
             // caret there is no "this section", and the command is disabled rather than
-            // guessing at the first one.
-            if let entry = vault.currentOutlineEntry { vault.toggleFold(entry) }
+            // guessing at the first one. `currentOutlineEntry` is an ordinal, `toggleFold`
+            // now wants the heading's own offset - translated here, fresh against the open
+            // note's own text, rather than handing the ordinal through and letting it be
+            // misread as an offset at the other end.
+            if let entry = vault.currentOutlineEntry, let text = vault.openNote?.text {
+                let entries = NoteOutline.entries(in: text)
+                if entries.indices.contains(entry) {
+                    let offset = text.utf16.distance(from: text.startIndex, to: entries[entry].range.lowerBound)
+                    vault.toggleFold(offset)
+                }
+            }
         case .unfoldAll:
             vault.foldedEntries = []
         case .goBack, .goForward:

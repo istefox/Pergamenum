@@ -124,6 +124,44 @@ final class ThemeEngine {
         customization?.colors[token] ?? current.rawColor(token)
     }
 
+    /// What a *new* write to the customisation should declare, independent of
+    /// whatever a `personalizzato.json` already on disk happens to say.
+    ///
+    /// `current.appearance` is not safe for this once the customisation is already
+    /// selected (`selection == .named(ThemeCustomization.id)`): it would just read
+    /// back the very file a stale write is about to perpetuate, which is how a font
+    /// or colour picked while looking at dark could silently keep re-saving a light
+    /// file left over from an earlier session. For every other selection - explicit
+    /// light/dark, or following the system - the intended appearance is exactly what
+    /// `current` already resolves to, since there is no customisation to be circular
+    /// about yet.
+    private var intendedAppearance: ThemeAppearance {
+        switch selection {
+        case .followSystem: systemAppearance
+        case .light: .light
+        case .dark: .dark
+        case .named: systemAppearance
+        }
+    }
+
+    /// Corrects a draft's appearance to match `intendedAppearance` before a write,
+    /// so a customisation file left over from a different appearance never silently
+    /// carries a new colour or font choice into the wrong theme. Surfaces what
+    /// happened next to the wells the same way any other customisation problem
+    /// does, rather than reconciling in total silence.
+    private func reconciled(_ draft: ThemeCustomization.Draft) -> ThemeCustomization.Draft {
+        var draft = draft
+        guard draft.appearance != intendedAppearance else { return draft }
+        customizationProblem =
+            "il tema personalizzato era per \(appearanceName(draft.appearance)), riportato a \(appearanceName(intendedAppearance))"
+        draft.appearance = intendedAppearance
+        return draft
+    }
+
+    private func appearanceName(_ appearance: ThemeAppearance) -> String {
+        appearance == .dark ? "scuro" : "chiaro"
+    }
+
     /// Writes one colour into the vault's customisation file and switches to it.
     ///
     /// The write happens first and the selection follows it: selecting a theme whose
@@ -135,7 +173,7 @@ final class ThemeEngine {
             customizationProblem = "nessuna cartella note aperta: non c'è dove salvare il tema"
             return
         }
-        var draft = customization ?? ThemeCustomization.Draft(appearance: current.appearance, colors: [:])
+        var draft = reconciled(customization ?? ThemeCustomization.Draft(appearance: intendedAppearance, colors: [:]))
         draft.colors[token] = value
         apply(draft, in: directory)
     }
@@ -144,6 +182,45 @@ final class ThemeEngine {
     func clearCustomColor(_ token: ColorToken) {
         guard let directory = userThemesDirectory, var draft = customization else { return }
         draft.colors.removeValue(forKey: token)
+        if draft.isEmpty {
+            resetCustomization()
+            return
+        }
+        apply(draft, in: directory)
+    }
+
+    // MARK: Font customisation (ADR-0030 §D9)
+
+    /// Writes one prose font token into the vault's customisation file and switches
+    /// to it. Mirrors `setCustomColor`'s write-then-select ordering and its
+    /// "no vault, no save" guard exactly — `Draft.fonts` is `colors`' sibling, not a
+    /// second mechanism.
+    func setCustomFont(_ token: FontToken, to value: TypographyValue) {
+        guard let directory = userThemesDirectory else {
+            customizationProblem = "nessuna cartella note aperta: non c'è dove salvare il carattere"
+            return
+        }
+        var draft = reconciled(customization ?? ThemeCustomization.Draft(appearance: intendedAppearance, colors: [:]))
+        draft.fonts[token] = value
+        apply(draft, in: directory)
+    }
+
+    /// Drops both prose font overrides (`.prose` and `.proseTitle` together — Settings
+    /// never offers one without the other) back to the theme underneath, removing the
+    /// file when no colour override is left either, mirroring `clearCustomColor`
+    /// through `resetCustomization()` (R-12).
+    ///
+    /// Unlike `clearCustomColor` it falls back to reading the file when the in-memory
+    /// copy is nil: the file is the customisation (CLAUDE.md principle 1) and it can
+    /// be there without this engine having written it — a vault attached after a font
+    /// was chosen by hand, or written while this window was open. Refusing then would
+    /// leave a reset button that does nothing on a file that plainly exists.
+    func clearCustomFonts() {
+        guard let directory = userThemesDirectory,
+              var draft = customization ?? ThemeCustomization.load(from: directory) else { return }
+        for token in ThemeCustomization.customizableFonts {
+            draft.fonts.removeValue(forKey: token)
+        }
         if draft.isEmpty {
             resetCustomization()
             return

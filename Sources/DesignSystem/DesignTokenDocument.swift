@@ -159,7 +159,13 @@ private struct Collector {
         guard let size = (object["fontSize"] as? NSNumber).map({ CGFloat($0.doubleValue) }) else {
             return .failure("typography is missing fontSize")
         }
-        let family = TypographyValue.Family(rawValue: object["fontFamily"] as? String ?? "system") ?? .system
+        // `Family.init(rawValue:)` is non-failable (ADR-0030 §D3), and that is what
+        // makes a declared `"Avenir Next"` parse to `.named("Avenir Next")` rather
+        // than being discarded to `.system` by the `?? .system` this line used to
+        // carry - which is why nobody could put a font name in a theme file before.
+        // Whether the family is installed is not a parse-time question: it is
+        // answered at draw time, in `Theme.nsFont(_:)`.
+        let family = TypographyValue.Family(rawValue: object["fontFamily"] as? String ?? "system")
         let weight = (object["fontWeight"] as? NSNumber)?.intValue ?? 400
         let lineHeight = (object["lineHeight"] as? NSNumber)?.doubleValue ?? 1.4
         return .success(.typography(TypographyValue(

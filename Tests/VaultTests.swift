@@ -676,3 +676,17 @@ private func makeRecord(
     let turnedOff = Data(#"{"dailyFolder":"Calendar","hidesMarkup":false}"#.utf8)
     #expect(try JSONDecoder().decode(VaultSettings.self, from: turnedOff).hidesMarkup == false)
 }
+
+/// `readableWidth` (ADR-0030 §D6): on by default, and a settings file written before the
+/// key existed must decode to `true` - the same "older file, plain `Bool`, defaults `true`"
+/// contract `hidesMarkup` above already exercises.
+@Test func readableWidthDefaultsToTrueAndAnOlderSettingsFileStillReadsTrue() throws {
+    #expect(VaultSettings.default.readableWidth)
+
+    let older = Data(#"{"dailyFolder":"Calendar","blockMinutes":45}"#.utf8)
+    let settings = try JSONDecoder().decode(VaultSettings.self, from: older)
+    #expect(settings.readableWidth)
+
+    let turnedOff = Data(#"{"dailyFolder":"Calendar","readableWidth":false}"#.utf8)
+    #expect(try JSONDecoder().decode(VaultSettings.self, from: turnedOff).readableWidth == false)
+}

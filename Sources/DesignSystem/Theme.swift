@@ -40,7 +40,18 @@ struct Theme: Identifiable, Equatable, Sendable {
 
     func font(_ token: FontToken) -> Font {
         let value = fonts[token] ?? Theme.emergency.fonts[token]!
-        return Font.system(size: value.size, weight: value.weight.asFontWeight, design: value.family.asDesign)
+        guard case .named(let family) = value.family else {
+            return Font.system(size: value.size, weight: value.weight.asFontWeight, design: value.family.asDesign)
+        }
+        // ADR-0030 §D3: probe the family with AppKit and hand SwiftUI the resolved
+        // *PostScript* name (`AvenirNext-Bold`, not `Avenir Next`). `Font.custom` on a
+        // name it cannot find substitutes a different face and reports nothing, so the
+        // two surfaces would draw two faces from one token; going through the same
+        // resolver `nsFont(_:)` uses is what keeps the fallback explicit.
+        guard let resolved = Theme.namedFont(family, value) else {
+            return Font.system(size: value.size, weight: value.weight.asFontWeight)
+        }
+        return Font.custom(resolved.fontName, size: value.size)
     }
 
     /// The same face as `font(_:)`, for the AppKit views the app bridges to.
@@ -60,7 +71,43 @@ struct Theme: Identifiable, Equatable, Sendable {
             return NSFont(descriptor: descriptor, size: value.size) ?? system
         case .system:
             return NSFont.systemFont(ofSize: value.size, weight: weight)
+        case .named(let family):
+            // A family nobody installed is not an error worth shouting about: the page
+            // degrades to the system face at the token's own size and weight, which is
+            // what SPEC §8 means by an explicit fallback (ADR-0030 §D3).
+            return Theme.namedFont(family, value) ?? NSFont.systemFont(ofSize: value.size, weight: weight)
         }
+    }
+
+    /// The face a named family resolves to, or `nil` when the family is not installed.
+    ///
+    /// Shared by `nsFont(_:)` and `font(_:)` on purpose: two independent resolutions of
+    /// one token are two faces waiting to disagree.
+    ///
+    /// Bold comes from the *symbolic* trait and the weight is read as one `>= 600` step,
+    /// never as the nine-stop weight map the other families use. Measured (ADR-0030
+    /// §Context): `descriptor.addingAttributes([.traits: [.weight: .bold]])` returns
+    /// `AvenirNext-Regular` and reports nothing. A family ships whatever weights it
+    /// ships; the bold trait is the only axis AppKit reaches reliably on an arbitrary
+    /// one, so a token declaring 700 gets the bold face and one declaring 500 gets the
+    /// regular face - stated rather than pretended otherwise.
+    private static func namedFont(_ family: String, _ value: TypographyValue) -> NSFont? {
+        guard let base = NSFont(name: family, size: value.size) else { return nil }
+        guard value.weight >= 600 else { return base }
+        let bold = base.fontDescriptor.withSymbolicTraits(.bold)
+        return NSFont(descriptor: bold, size: value.size) ?? base
+    }
+
+    /// The AppKit face `font(_:)`'s SwiftUI value is meant to match - same resolution
+    /// `nsFont(_:)` uses, so the two surfaces never draw two different faces for one
+    /// token (ADR-0030 §D3). Exists so a test can pin that equivalence down without
+    /// reaching into SwiftUI's opaque `Font`.
+    ///
+    /// Reading `nsFont(_:)` is not an approximation of what `font(_:)` does: for a named
+    /// family `font(_:)` passes `Font.custom` exactly this name, and for the other three
+    /// families both calls describe the same system face.
+    func resolvedFontName(_ token: FontToken) -> String {
+        nsFont(token).fontName
     }
 
     /// SwiftUI takes spacing *between* lines, while DTCG expresses a multiple of the
@@ -237,8 +284,20 @@ extension Theme {
             .body: TypographyValue(family: .system, size: 13, weight: 400, lineHeight: 1.5),
             .caption: TypographyValue(family: .system, size: 11, weight: 400, lineHeight: 1.35),
             .mono: TypographyValue(family: .monospace, size: 12, weight: 400, lineHeight: 1.45),
+            // The page faces (ADR-0030 §D2), the same values the bundled themes carry.
+            // Naming a family here rather than `.system` is deliberate: the emergency
+            // theme is what a broken bundle degrades to, and a page that silently reads
+            // as chrome would hide exactly that.
+            .prose: TypographyValue(family: .named("Avenir Next"), size: 16, weight: 400, lineHeight: 1.4),
+            .proseTitle: TypographyValue(family: .named("Avenir Next"), size: 24, weight: 700, lineHeight: 1.2),
         ],
-        spacings: [.xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40],
+        spacings: [
+            .xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40,
+            // The editor's readable column (ADR-0030 §D7). Not a step of the ramp above:
+            // it is a measure, which is why `DesignGalleryView` draws the five steps by
+            // name instead of iterating `allCases` and rendering a 720x720 swatch.
+            .readable: 720,
+        ],
         radii: [.card: 10, .control: 6, .sticky: 4],
         shadows: [
             .card: ShadowValue(color: RGBA(hex: "#00000014")!, offsetX: 0, offsetY: 1, blur: 3, spread: 0),
@@ -290,6 +349,12 @@ private extension TypographyValue.Family {
         case .system: .default
         case .monospace: .monospaced
         case .serif: .serif
+        // `Font.Design` has no "named family" case, so a named family never reaches
+        // here: `font(_:)` peels `.named` off and builds a `Font.custom(name:size:)`
+        // before ever asking for a design (ADR-0030 §D3). `.default` is what this
+        // answers if a future caller forgets that, and it is the same face
+        // `nsFont(_:)` falls back to for an uninstalled family - not a third answer.
+        case .named: .default
         }
     }
 }

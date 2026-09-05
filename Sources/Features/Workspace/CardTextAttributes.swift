@@ -5,16 +5,22 @@ import SwiftUI
 /// `MarkdownStyler.Span` the note editor already classifies source into.
 ///
 /// Deliberately **not** `MarkdownAttributedText.attributes(for:theme:)`, and this file must
-/// never call into it: that table's `.bold` arm returns
-/// `NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)` (`MarkdownAttributedText.swift:56`),
-/// the note editor's source-mode look, wrong on a canvas card where bold must simply be bold.
-/// This table is the sibling ADR-0027 §D1 names - a card renders through this table only, and
-/// the note editor's own styling is never touched by this feature.
+/// never call into it. The two tables no longer disagree about *faces*: since ADR-0030 §D1 both
+/// read every face from `ProseTypography`, and the note editor's own `.bold` arm is
+/// `ProseTypography.proseBold(theme)` as well - not the `NSFont.monospacedSystemFont(ofSize: 13,
+/// weight: .bold)` source-mode look it carried when ADR-0027 §D1 first split the two tables.
+/// What still separates them is everything else: a card's `.linkTarget`/`.embedTarget` are never
+/// clickable (below), the two colour tables are free to diverge, and a card takes the prose faces
+/// but deliberately **not** the page's line height (ADR-0030 §D10), so `base(theme:)` here sets no
+/// `.paragraphStyle` where the note editor's does. This table is the sibling ADR-0027 §D1 names -
+/// a card renders through this table only, and the note editor's own styling is never touched by
+/// this feature.
 ///
 /// The rules this table satisfies, held to by `Tests/CardTextViewTests.swift`:
 ///
-/// - `.bold` -> a genuinely bold, non-monospaced font, e.g.
-///   `NSFont.systemFont(ofSize: 13, weight: .bold)`. Never `NSFont.monospacedSystemFont`.
+/// - `.bold` -> a genuinely bold, non-monospaced font: the prose family's own bold face through
+///   `ProseTypography.proseBold(_:)`. Never `NSFont.monospacedSystemFont`, whatever the note
+///   editor happens to draw its own bold in at the time.
 /// - `.italic` -> an oblique/italic font. Also never `.monospacedSystemFont`.
 /// - `.strikethrough` -> `.strikethroughStyle`, `NSUnderlineStyle.single`.
 /// - Every colour comes from a theme token (`Theme.color(_:)` / `Theme.rawColor(_:)`), never a
@@ -32,13 +38,21 @@ import SwiftUI
 ///   it") - the To Do prefix is a `.taskMarker` span of its own, entirely outside `.bold`'s
 ///   range, and this table must stay indifferent to it.
 enum CardTextAttributes {
-    /// The card's base attributes - a genuinely proportional font, unlike the note editor's
-    /// monospaced `MarkdownAttributedText.base(theme:)`. Everything `attributes(for:theme:)`
-    /// returns layers on top of these via `NSMutableAttributedString.addAttributes(_:range:)`,
-    /// the same merge-not-replace rule `MarkdownAttributedText.attributed(_:theme:)` documents.
+    /// The card's base attributes: the page's own prose face, `ProseTypography.prose(theme)` -
+    /// `font.prose`, not the `font.body` chrome face this read until ADR-0030 §D1, and never
+    /// `.heading`, which is what a plain `.text` card used to be drawn in (a card whose body text
+    /// is already heading-sized has no way left to show a real `#` heading, R-05, and one
+    /// component drawing both states, R-08, can only have one base).
+    ///
+    /// No `.paragraphStyle`, unlike `MarkdownAttributedText.base(theme:)`: a card takes the prose
+    /// faces but deliberately not the page's line height (ADR-0030 §D10).
+    ///
+    /// Everything `attributes(for:theme:)` returns layers on top of these via
+    /// `NSMutableAttributedString.addAttributes(_:range:)`, the same merge-not-replace rule
+    /// `MarkdownAttributedText.attributed(_:theme:)` documents.
     static func base(theme: Theme) -> [NSAttributedString.Key: Any] {
         [
-            .font: bodyFont(theme),
+            .font: ProseTypography.prose(theme),
             .foregroundColor: NSColor(theme.color(.textPrimary)),
         ]
     }
@@ -95,30 +109,40 @@ enum CardTextAttributes {
     ) -> [NSAttributedString.Key: Any] {
         switch span {
         case .heading(let level):
+            // The whole face, not a size handed to `NSFont.systemFont`: `ProseTypography.heading`
+            // resizes `font.proseTitle`'s own descriptor (ADR-0030 §D1), so a theme that gives
+            // that token a family or a weight of its own is followed on a card at every level -
+            // which rebuilding the font from the system family here would silently discard.
             [
-                .font: NSFont.systemFont(ofSize: headingSize(level, theme: theme), weight: .semibold),
+                .font: ProseTypography.heading(level: level, theme),
                 .foregroundColor: NSColor(theme.color(.textPrimary)),
             ]
         case .bold:
-            // The system family, chosen here rather than inherited from the `.body` token: ADR-0027
-            // §D1 requires a card's bold to be genuinely bold and never the note editor's
-            // monospaced bold, and a theme is free to declare `.body` monospaced. Only the size
-            // comes from the token.
-            [.font: NSFont.systemFont(ofSize: bodyFont(theme).pointSize, weight: .bold)]
+            // The prose family's real bold face. ADR-0027 §D1's requirement is unchanged - a
+            // card's bold is genuinely bold and never the note editor's old monospaced bold -
+            // but the family is no longer picked here: `proseBold` falls back to the upright
+            // prose face rather than to a substitute from another family, which is what kept a
+            // monospaced face out of this arm before and still does.
+            [.font: ProseTypography.proseBold(theme)]
         case .italic:
-            italicAttributes(theme)
+            // `ProseTypography` owns the real-italic-or-`.obliqueness` rule for both surfaces
+            // (ADR-0030 §D1); this table no longer carries a second copy of it.
+            ProseTypography.proseItalicAttributes(theme)
         case .strikethrough:
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         case .code:
+            // The mono token's face at the *prose* size, passed explicitly: the two tokens carry
+            // different point sizes, and code set at the chrome size beside 16pt prose reads as a
+            // different paragraph rather than as a run inside one.
             [
-                .font: NSFont.monospacedSystemFont(ofSize: bodyFont(theme).pointSize, weight: .regular),
+                .font: ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize),
                 .foregroundColor: NSColor(theme.color(.textSecondary)),
             ]
         case .codeBlock:
             // A monospaced face and a background; the colour is left to whatever grammar found
             // something inside, exactly as the note editor's own table leaves it.
             [
-                .font: NSFont.monospacedSystemFont(ofSize: bodyFont(theme).pointSize, weight: .regular),
+                .font: ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize),
                 .backgroundColor: NSColor(theme.color(.surfaceSunken)),
             ]
         case .linkTarget, .embedTarget:
@@ -141,34 +165,12 @@ enum CardTextAttributes {
     }
 
     // MARK: Fonts
-
-    /// The card's base face: the `.body` typography token, proportional where the theme says so.
-    /// Deliberately not `.heading`, which is what a plain `.text` card used to be drawn in - a
-    /// card whose body text is already heading-sized has no way left to show a real `#` heading
-    /// (R-05), and one component drawing both states (R-08) can only have one base.
-    private static func bodyFont(_ theme: Theme) -> NSFont { theme.nsFont(.body) }
-
-    /// A heading's size, interpolated between the `.title` and `.body` tokens so the six levels
-    /// stay inside the theme's own scale instead of naming point sizes of their own.
-    private static func headingSize(_ level: Int, theme: Theme) -> CGFloat {
-        let title = theme.nsFont(.title).pointSize
-        let body = bodyFont(theme).pointSize
-        return max(body + 1, title - CGFloat(level - 1) * 2)
-    }
-
-    /// A real italic face where the family has one. Where it has none, the upright face is
-    /// slanted instead (`.obliqueness`, the note editor's own choice) rather than left looking
-    /// identical to the text around it.
-    private static func italicAttributes(_ theme: Theme) -> [NSAttributedString.Key: Any] {
-        let base = bodyFont(theme)
-        let descriptor = base.fontDescriptor.withSymbolicTraits(.italic)
-        guard let italic = NSFont(descriptor: descriptor, size: base.pointSize),
-              italic.fontDescriptor.symbolicTraits.contains(.italic)
-        else {
-            return [.obliqueness: 0.2]
-        }
-        return [.font: italic]
-    }
+    //
+    // There are none left here. `bodyFont`, `headingSize` and `italicAttributes` all lived in
+    // this file until ADR-0030 §D1 made `ProseTypography` the only place in
+    // `Sources/Features/Workspace` scope allowed to construct an `NSFont`: the heading scale and
+    // the real-italic-or-`.obliqueness` rule are both that helper's now, so the card and the page
+    // cannot drift apart on either. A face named here again would be exactly that drift.
 
     // MARK: Colours
 

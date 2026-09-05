@@ -20,11 +20,56 @@ import Testing
 @Suite struct CardTextViewTests {
     private let theme = Theme.emergency
 
+    // MARK: - R-08: the card's base font is the page's prose face, not the interface's body face
+
+    /// `CardTextAttributes.base(theme:)` used to read `.body` (`Theme.emergency`: System, 13pt) -
+    /// the same face the interface's chrome uses. ADR-0030 §D1/Task 5 moves the card onto
+    /// `.prose` (Avenir Next, 16pt) through `ProseTypography`, the same helper the note editor's
+    /// page already reads, so a card's plain text stops looking like chrome copy.
+    @Test func baseFontIsTheProsePageFontNotTheBodyChromeFont() throws {
+        let attributes = CardTextAttributes.base(theme: theme)
+        let font = try #require(attributes[.font] as? NSFont, "base(theme:) must set an NSFont")
+        let expected = ProseTypography.prose(theme)
+
+        #expect(
+            font.fontName == expected.fontName,
+            "base(theme:) must resolve through ProseTypography.prose(theme), not theme.nsFont(.body)"
+        )
+        #expect(font.pointSize == expected.pointSize)
+    }
+
+    // MARK: - R-08: heading sizes come from the one shared scale
+
+    /// The card must not compute its own heading scale independently of the note editor's - both
+    /// must read `ProseTypography.heading(level:_:)`, or the two surfaces silently drift apart.
+    /// In `Theme.emergency` every one of the six levels lands on a different point size between
+    /// the card's own `headingSize` (interpolating `.title`/`.body`) and `ProseTypography.heading`
+    /// (interpolating `.proseTitle`/`.prose`), so this is red at every level, not only some.
+    @Test func headingSizesMatchProseTypographyForEveryLevel() throws {
+        for level in 1...6 {
+            let attributes = CardTextAttributes.attributes(for: .heading(level: level), theme: theme)
+            let font = try #require(
+                attributes[.font] as? NSFont,
+                "a .heading(level: \(level)) span must set an NSFont"
+            )
+            let expectedSize = ProseTypography.heading(level: level, theme).pointSize
+            #expect(
+                font.pointSize == expectedSize,
+                "heading level \(level) must match ProseTypography.heading(level:_:)'s scale, not CardTextAttributes' own headingSize"
+            )
+        }
+    }
+
     // MARK: - The regression this task exists to prevent (ADR §D1)
 
-    /// `MarkdownAttributedText`'s `.bold` arm returns
-    /// `NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)` - the note editor's source-mode
-    /// look. A canvas card must never draw bold that way: bold is bold, not typewriter-bold.
+    /// `MarkdownAttributedText`'s `.bold` arm now resolves through `ProseTypography.proseBold`
+    /// (Avenir Next, non-monospaced) rather than `NSFont.monospacedSystemFont(ofSize: 13, weight:
+    /// .bold)` - the note editor's own bold stopped being typewriter-bold in an earlier task of
+    /// this same chain. The comparison below is kept anyway, unweakened: a canvas card's bold
+    /// must never be monospaced regardless of what the note editor currently does, and comparing
+    /// against a literal monospaced-bold font (rather than against whatever the editor happens to
+    /// return today) is what keeps this assertion meaningful even as the editor's own font changes
+    /// again later.
     @Test func boldSpanIsAGenuinelyNonMonospacedBoldFont() throws {
         let attributes = CardTextAttributes.attributes(for: .bold, theme: theme)
         let font = try #require(attributes[.font] as? NSFont, "a .bold span must set an NSFont")
@@ -69,6 +114,73 @@ import Testing
         #expect(
             NSDictionary(dictionary: plainRun) == NSDictionary(dictionary: todoRun),
             "a bold span must attribute identically whether or not the line carries a To Do prefix"
+        )
+    }
+
+    // MARK: - R-08: italic moves to the prose face too
+
+    /// PLAN DEVIATION (ADR-0073 §D2): the plan's Task 5 brief claims an existing ".italic is
+    /// still oblique-or-italic (the existing assertion, kept verbatim)" test to preserve - no
+    /// such assertion exists anywhere in the suite. `Tests/CardFormattingTests.swift` has italic
+    /// tests, but they cover `InlineFormat`'s markdown-wrapping toggle (source text mutation),
+    /// never `CardTextAttributes.italicAttributes`/`.attributes(for: .italic, theme:)`. This is a
+    /// new test, not a kept one, mirroring `italicAttributes(theme)`'s own two-path shape (a real
+    /// italic face on the font key, or `.obliqueness` on the upright face otherwise) the same way
+    /// `boldSpanIsAGenuinelyNonMonospacedBoldFont` above mirrors `.bold`'s shape - and then, since
+    /// `italicAttributes` is being replaced by a call to `ProseTypography.proseItalicAttributes`
+    /// wholesale (plan: "replaces headingSize and italicAttributes with helper calls"), pins the
+    /// exact output to that helper rather than only to the oblique/italic property, which today's
+    /// `.body`-based implementation already happens to satisfy and would leave this test green
+    /// for the wrong reason.
+    @Test func italicSpanMatchesProseTypographysItalicFace() {
+        let attributes = CardTextAttributes.attributes(for: .italic, theme: theme)
+
+        if let font = attributes[.font] as? NSFont {
+            #expect(
+                font.fontDescriptor.symbolicTraits.contains(.italic),
+                "a card's italic span with a real italic face must actually render italic"
+            )
+        } else {
+            #expect(
+                attributes[.obliqueness] != nil,
+                "a card's italic span with no real italic face must fall back to .obliqueness"
+            )
+        }
+
+        let expected = ProseTypography.proseItalicAttributes(theme)
+        #expect(
+            NSDictionary(dictionary: attributes) == NSDictionary(dictionary: expected),
+            "a card's italic span must resolve through ProseTypography.proseItalicAttributes(theme) exactly, not its own body-token-based italicAttributes"
+        )
+    }
+
+    // MARK: - R-08: code faces stay monospaced, but move to the prose size
+
+    /// `.code`'s size used to track `bodyFont(theme)` (`.body`, 13pt in `Theme.emergency`). It
+    /// must now track `ProseTypography.mono(theme, size:)` sized off `.prose` (16pt) - a real
+    /// behavior change, not a rename, since the two tokens carry different point sizes.
+    @Test func codeSpanIsMonospacedAtTheProseSize() throws {
+        let attributes = CardTextAttributes.attributes(for: .code, theme: theme)
+        let font = try #require(attributes[.font] as? NSFont, "a .code span must set an NSFont")
+        let expected = ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize)
+
+        #expect(font.fontDescriptor.symbolicTraits.contains(.monoSpace), "a .code span must stay monospaced")
+        #expect(
+            font.pointSize == expected.pointSize,
+            "a .code span's size must track ProseTypography.prose(theme), not .body"
+        )
+    }
+
+    /// Same rule as `.code`, for the whole-block variant.
+    @Test func codeBlockSpanIsMonospacedAtTheProseSize() throws {
+        let attributes = CardTextAttributes.attributes(for: .codeBlock, theme: theme)
+        let font = try #require(attributes[.font] as? NSFont, "a .codeBlock span must set an NSFont")
+        let expected = ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize)
+
+        #expect(font.fontDescriptor.symbolicTraits.contains(.monoSpace), "a .codeBlock span must stay monospaced")
+        #expect(
+            font.pointSize == expected.pointSize,
+            "a .codeBlock span's size must track ProseTypography.prose(theme), not .body"
         )
     }
 }

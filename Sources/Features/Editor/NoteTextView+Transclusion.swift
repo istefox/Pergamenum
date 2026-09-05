@@ -19,9 +19,13 @@ extension NoteTextView.Coordinator {
         // makes.
         guard !occurrences.isEmpty || !lastRenditions.isEmpty else { return }
 
-        let width = TranscludedRendition.bodyWidth(
-            inContainerOf: textView.textContainer?.size.width ?? textView.bounds.width
-        )
+        let containerWidth: CGFloat
+        if let container = textView.textContainer {
+            containerWidth = max(0, container.size.width - container.lineFragmentPadding * 2)
+        } else {
+            containerWidth = textView.bounds.width
+        }
+        let width = TranscludedRendition.bodyWidth(inContainerOf: containerWidth)
         var renditions: [Int: TranscludedRendition] = [:]
         for occurrence in occurrences {
             guard let rendition = rendition(for: occurrence, width: width, theme: theme) else { continue }
@@ -33,7 +37,7 @@ extension NoteTextView.Coordinator {
         // paragraph style included. Reserving once and skipping afterwards is exactly the
         // first version of this, and it drew nothing at all - the space was bought and then
         // wiped by the next update.
-        reserveSpace(in: textView, for: renditions)
+        reserveSpace(in: textView, for: renditions, theme: theme)
         Logger.folding.notice(
             "transclusioni: \(occurrences.count, privacy: .public) righe, \(renditions.count, privacy: .public) rese"
         )
@@ -51,18 +55,26 @@ extension NoteTextView.Coordinator {
     /// Measured before it was designed (`TransclusionLayoutTests`): the reserved space lands
     /// inside that line's own layout fragment, and the note's text is not touched - an
     /// attribute is not the file, and what reaches the disk is `textView.string`.
-    private func reserveSpace(in textView: NSTextView, for renditions: [Int: TranscludedRendition]) {
+    private func reserveSpace(
+        in textView: NSTextView,
+        for renditions: [Int: TranscludedRendition],
+        theme: Theme
+    ) {
         guard let storage = textView.textStorage else { return }
         let text = storage.string as NSString
         storage.beginEditing()
         for (offset, rendition) in renditions where offset < text.length {
+            let range = text.paragraphRange(for: NSRange(location: offset, length: 0))
+            // Composed onto the style already on the line, never a fresh one (ADR-0030 §D5):
+            // `applyStyling` runs immediately before this and puts `font.prose`'s line-height
+            // multiple on every paragraph, so overwriting the style here would buy the
+            // transclusion's height at the cost of the page's own line height on that one line.
+            let existing = storage.attribute(.paragraphStyle, at: offset, effectiveRange: nil)
+                as? NSParagraphStyle
             let style = NSMutableParagraphStyle()
+            style.setParagraphStyle(ProseTypography.paragraphStyle(theme, basedOn: existing))
             style.paragraphSpacing = rendition.reservedHeight
-            storage.addAttribute(
-                .paragraphStyle,
-                value: style,
-                range: text.paragraphRange(for: NSRange(location: offset, length: 0))
-            )
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
         }
         storage.endEditing()
     }
@@ -155,18 +167,19 @@ extension NoteTextView.Coordinator {
     /// Opens the section a folded heading is hiding, when the click landed on its badge
     /// (PG-021).
     ///
-    /// The fold is held by index-entry ordinal and the fragment knows a character offset,
-    /// so the two are joined by `outlineRanges` - the list the sidebar draws from. Anything
-    /// else would be a second opinion about which section is which.
+    /// Reports the fragment's own `headingOffset` straight to `onToggleFold`, with no
+    /// `outlineRanges` lookup in between. `outlineRanges` is a snapshot taken at the last
+    /// SwiftUI render, and joining it to a live layout offset by position is exactly the
+    /// stale-index bug `FoldStateOrdinalIndexStalenessTests` pins: a click landing between a
+    /// text change and the next render reconciling `outlineRanges` used to resolve against
+    /// the wrong heading. `headingOffset` never goes stale, because it names *where in the
+    /// text* the heading is rather than *which position it holds in some earlier scan*.
     func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard decorations.isFolding, let onToggleFold = parent.onToggleFold else { return false }
         return decoration(at: point, in: textView) { (fragment: FoldedHeadingFragment) in
-            guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView)),
-                  let entry = parent.outlineRanges.firstIndex(where: {
-                      $0.location == fragment.headingOffset
-                  })
+            guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView))
             else { return false }
-            onToggleFold(entry)
+            onToggleFold(fragment.headingOffset)
             return true
         }
     }

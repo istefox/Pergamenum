@@ -101,10 +101,25 @@ extension NoteTextView {
         /// Where the caret has to go once that transaction closes, when a row it was sitting
         /// in has just left the layout (`rescueCaret`'s table twin, §D5).
         var pendingTableCaret: Int?
+        /// The observation that keeps the readable-width inset right as the pane is resized
+        /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
+        /// window resize - nothing in the SwiftUI graph changed - so without it a column
+        /// centred at one width stays centred for that width until the next keystroke.
+        ///
+        /// `nonisolated(unsafe)` for the reason `GlobalHotkey`'s two C handles are: a
+        /// `deinit` on a `@MainActor` type is not itself main-actor isolated, and this
+        /// token is exactly the thing that outlives the object if nobody unregisters it.
+        /// Every other access is on the main actor, and `deinit` runs when no other can be
+        /// in flight.
+        private nonisolated(unsafe) var frameObserver: NSObjectProtocol?
 
         init(parent: NoteTextView) {
             self.parent = parent
             embeds.attach(decorations: decorations)
+        }
+
+        deinit {
+            if let frameObserver { NotificationCenter.default.removeObserver(frameObserver) }
         }
 
         /// Takes the caret to a line the index pointed at, or to a match the find bar
@@ -332,6 +347,16 @@ extension NoteTextView {
             // from a text token: it is a separator between blocks, which is what that token
             // names, and it is the only decoration here that is not drawn over text.
             decorations.ruleColor = NSColor(theme.color(.borderSubtle))
+            // The two faces the delegate draws with (ADR-0030 §D2), resolved here for the same
+            // reason the three colours above are: `EditorDecorationDelegate` is not
+            // `@MainActor` and cannot read a `Theme` itself, so it is handed finished values.
+            decorations.proseFont = ProseTypography.prose(theme)
+            // The fold badge, at the caption token's size rather than the token's own: the
+            // badge is chrome counting hidden lines, so it takes the mono face - a number that
+            // changes width as it grows would make the badge twitch - at the size the rest of
+            // this app's captions use. Pushed here and not in `applyFolding`, which returns
+            // early for a note with nothing folded, i.e. for most notes.
+            decorations.badgeFont = ProseTypography.mono(theme, size: theme.nsFont(.caption).pointSize)
             // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
             // guard, since `applyFolding`'s early return does not cover it, and its own
             // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own
@@ -495,6 +520,86 @@ extension NoteTextView {
             // After the resize, so the scroll is not clamped to the height the note had a
             // moment ago and left short of the end.
             if revealingCaret { textView.scrollRangeToVisible(textView.selectedRange()) }
+        }
+
+        /// The vertical `textContainerInset`, unchanged by ADR-0030 and named here only so
+        /// the two places that assign the pair cannot disagree about it.
+        static let verticalInset: CGFloat = 20
+        /// The horizontal inset the editor has always had, now the floor of the readable
+        /// width rather than the whole of it (ADR-0030 §D6).
+        static let minimumHorizontalInset: CGFloat = 24
+
+        /// Recomputes the readable-width inset whenever the scroll view's own frame changes.
+        ///
+        /// On the clip view rather than on the text view: with `widthTracksTextView` left at
+        /// its default `true`, the text view's width *follows* the clip view's, so the clip
+        /// view is the one that knows the new width first - and reading the width the column
+        /// is about to have, rather than the one it still has, is what keeps the inset from
+        /// lagging a resize by a frame.
+        ///
+        /// Torn down in `deinit` through `frameObserver`: the block-based observer is not
+        /// removed for us, and a coordinator is created per editor pane.
+        func observeWidthChanges(of scrollView: NSScrollView) {
+            scrollView.contentView.postsFrameChangedNotifications = true
+            frameObserver = NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification,
+                object: scrollView.contentView,
+                queue: .main
+            ) { [weak self] _ in
+                // The queue is `.main`, so this block runs on the main thread by
+                // construction and the assumption is checked rather than asserted blind.
+                MainActor.assumeIsolated {
+                    guard let self, let textView = self.textView else { return }
+                    self.applyReadableWidth(to: textView)
+                }
+            }
+        }
+
+        /// Applies `horizontalInset` to the text view at its current width.
+        ///
+        /// Called from three places - `makeNSView`, `updateNSView` and the frame
+        /// observation above - because the width can change without the SwiftUI graph
+        /// changing (a window resize) and the setting can change without the width changing
+        /// (Impostazioni, R-10). Both have to reach an already-open note.
+        ///
+        /// **Nothing here sets a frame**, deliberately: `growToFitTheText`'s header above
+        /// records what `setFrameSize` on this text view cost the Diario. The whole effect
+        /// is one inset, and `widthTracksTextView` stays `true`.
+        func applyReadableWidth(to textView: NSTextView) {
+            let width = textView.enclosingScrollView?.contentView.bounds.width
+                ?? textView.frame.width
+            let inset = Self.horizontalInset(
+                viewWidth: width,
+                cap: parent.theme.spacing(.readable),
+                minimum: Self.minimumHorizontalInset,
+                isOn: parent.readableWidth
+            )
+            // Assigning an inset invalidates the layout, so an unchanged one is not assigned:
+            // a resize drag posts a notification per frame and each would otherwise relayout
+            // the whole note for nothing.
+            guard abs(textView.textContainerInset.width - inset) > 0.5 else { return }
+            textView.textContainerInset = NSSize(width: inset, height: Self.verticalInset)
+        }
+
+        /// The horizontal `textContainerInset` that keeps the text column readable
+        /// (ADR-0030 §D6): `max(minimum, (viewWidth - cap) / 2)` when `isOn`, `minimum`
+        /// otherwise - `minimum` is today's fixed `24`, unconditionally, when the setting
+        /// is off or the view is narrower than `cap`.
+        ///
+        /// Pure and static on purpose, mirroring `hiddenMarker(_:at:paragraphStart:)` above:
+        /// the geometry itself needs a live window, but this arithmetic does not, so it is
+        /// tested without one.
+        ///
+        /// The `max` is the whole of the degenerate-width handling: a view no wider than
+        /// `cap` - and a view of zero or negative width, which is what a text view not yet
+        /// in a window reports - yields a negative half-difference and floors at `minimum`,
+        /// so an inset out of this function is never smaller than today's fixed one and
+        /// never negative.
+        nonisolated static func horizontalInset(
+            viewWidth: CGFloat, cap: CGFloat, minimum: CGFloat, isOn: Bool
+        ) -> CGFloat {
+            guard isOn else { return minimum }
+            return max(minimum, (viewWidth - cap) / 2)
         }
     }
 }

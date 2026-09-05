@@ -16,6 +16,12 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var hiddenLines = 0
     nonisolated(unsafe) var badgeColor: NSColor = .secondaryLabelColor
     nonisolated(unsafe) var badgeBackground: NSColor = .quaternaryLabelColor
+    /// The badge's own face (ADR-0030 §D1/§D5), pushed in from `EditorDecorationDelegate`'s own
+    /// `badgeFont` (`textLayoutManager(_:textLayoutFragmentFor:in:)` assigns it beside
+    /// `badgeColor`/`badgeBackground` above), never resolved here: this fragment has no `Theme`
+    /// and, like the delegate that builds it, cannot hold one. The system-face default is what a
+    /// fragment built by a test harness draws with, and the app overwrites it on every pass.
+    nonisolated(unsafe) var badgeFont: NSFont = .systemFont(ofSize: 10, weight: .regular)
     /// The UTF-16 offset of the heading's own line, which is how a click on the badge says
     /// *which* section to open. The fold itself is held by index-entry ordinal, so this is
     /// translated on the way out rather than stored twice.
@@ -28,7 +34,7 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
         NSAttributedString(
             string: "⌄ \(hiddenLines) \(hiddenLines == 1 ? "riga" : "righe")",
             attributes: [
-                .font: NSFont.systemFont(ofSize: 10, weight: .regular),
+                .font: badgeFont,
                 .foregroundColor: badgeColor,
             ]
         )
@@ -54,13 +60,24 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     /// One computation for the drawing and for the hit test (PG-021). Two would drift, and
     /// the way they would drift is a badge that looks right and cannot be clicked - the
     /// same shape of defect the transclusion card had a slice ago.
+    ///
+    /// Centers on the heading's own glyph box, not on `line.typographicBounds.height`. Since
+    /// ADR-0030, `ProseTypography` composes a `lineHeightMultiple` scaled to the heading's
+    /// larger font, and TextKit adds that slack BELOW the glyphs, not split symmetrically
+    /// (the same asymmetric-slack assumption `TranscludedLineFragment.swift` already relies
+    /// on for `typographicBounds.maxY`). Centering on the full inflated box therefore pulled
+    /// the badge down into the slack, well below the heading text.
     func badgeFrame(at point: CGPoint) -> CGRect {
         guard hiddenLines > 0, let line = textLineFragments.first else { return .null }
         let size = badge.size()
+        let font = (line.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            ?? badgeFont
+        let glyphBoxMinY = line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
+        let glyphBoxHeight = font.ascender - font.descender
         return CGRect(
             x: point.x + line.typographicBounds.maxX + Self.gap,
-            y: point.y + line.typographicBounds.minY
-                + (line.typographicBounds.height - size.height - Self.padding.height * 2) / 2,
+            y: point.y + glyphBoxMinY
+                + (glyphBoxHeight - size.height - Self.padding.height * 2) / 2,
             width: size.width + Self.padding.width * 2,
             height: size.height + Self.padding.height * 2
         )

@@ -75,7 +75,9 @@ struct DesignSystemSettings: View {
             } footer: {
                 Text(
                     """
-                    Tipografia, spaziature, raggi e ombre restano definiti dal file del tema. \
+                    Il carattere della nota si sceglie nella scheda Editor e viene salvato \
+                    in questo stesso file. Spaziature, raggi, ombre e i caratteri \
+                    dell'interfaccia restano definiti dal file del tema. \
                     I mockup sono il materiale di riferimento del design: una schermata nuova \
                     si approva lì prima di essere costruita.
                     """

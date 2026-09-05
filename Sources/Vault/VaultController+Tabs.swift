@@ -9,7 +9,7 @@ import Foundation
 /// nothing-is-open value and writing is a no-op: reading mode with no note is not a state,
 /// it is a question about nothing.
 extension VaultController {
-    /// The index entries whose sections are folded in the focused tab.
+    /// The folded sections' own heading offsets, in the focused tab (`NoteTab.foldedEntries`).
     var foldedEntries: Set<Int> {
         get { focusedTab?.foldedEntries ?? [] }
         set { updateFocusedTab { $0.foldedEntries = newValue } }
@@ -21,12 +21,15 @@ extension VaultController {
         set { updateFocusedTab { $0.currentOutlineEntry = newValue } }
     }
 
-    func toggleFold(_ entry: Int) {
+    /// Folds or unfolds the section whose heading starts at `offset` (a UTF-16 character
+    /// offset, `NoteTab.foldedEntries`'s own key - never an ordinal, which is the identity
+    /// that goes stale across an edit).
+    func toggleFold(_ offset: Int) {
         updateFocusedTab { tab in
-            if tab.foldedEntries.contains(entry) {
-                tab.foldedEntries.remove(entry)
+            if tab.foldedEntries.contains(offset) {
+                tab.foldedEntries.remove(offset)
             } else {
-                tab.foldedEntries.insert(entry)
+                tab.foldedEntries.insert(offset)
             }
         }
     }

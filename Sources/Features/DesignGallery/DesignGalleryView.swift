@@ -150,7 +150,11 @@ struct DesignGalleryView: View {
             ThemedCard {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     HStack(alignment: .bottom, spacing: theme.spacing(.m)) {
-                        ForEach(SpacingToken.allCases, id: \.self) { token in
+                        // The five steps of the ramp, named rather than iterated:
+                        // `spacing.readable` is a 720pt measure, not a step, and
+                        // `allCases` would draw it here as a 720x720 swatch
+                        // (ADR-0030 §D7).
+                        ForEach([SpacingToken.xs, .s, .m, .l, .xl], id: \.self) { token in
                             VStack(spacing: theme.spacing(.xs)) {
                                 Rectangle()
                                     .fill(theme.color(.accentPrimary))

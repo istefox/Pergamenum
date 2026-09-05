@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+@testable import Pergamenum
 
 /// The one fact ADR-0010 rests on: an embed line can reserve vertical space under itself
 /// without the note gaining a character.
@@ -153,5 +154,43 @@ private func frames(
                 : before.frame.minY
             #expect(after.frame.minY == expected)
         }
+    }
+
+    // ADR-0030 §D5, plan 2026-09-04-editor-page-typography-noteplan, Task 3 (R-07).
+    //
+    // The composition regression `reserveSpace` (`NoteTextView+Transclusion.swift:54-68`) has
+    // to satisfy once the coder changes it to build its style as a mutable copy of the style
+    // already on the line, rather than a fresh `NSMutableParagraphStyle()`: the reserved
+    // height and the page's own line-height multiple must both survive on the same source
+    // line. `reserveSpace` is `private` and unreachable from this file, so - matching this
+    // file's own idiom of recreating the SDK mechanism rather than calling into the app's
+    // private internals - this builds the storage through the real, public
+    // `MarkdownAttributedText.base(theme:)` (the actual production entry point this task adds
+    // a `.paragraphStyle` to) and then performs the same "mutable copy of what's already
+    // there" step `reserveSpace` is being asked to perform. What is genuinely under test is
+    // `base(theme:)`'s own output: today it carries no `.paragraphStyle` at all, so `existing`
+    // below is `nil`, the copy starts from a fresh style with `lineHeightMultiple == 0`, and
+    // this goes red on that comparison alone - not on anything this test invents itself.
+    //
+    // Leaves the existing fixture (`frames(...)`, `:78`'s explicit monospaced 13pt font)
+    // untouched, per the plan.
+    @Test func theSourceLinesReservedSpaceKeepsTheProseLineHeightToo() throws {
+        let theme = Theme.emergency
+        let reserved: CGFloat = 200
+        let text = "![[Altra nota]]\n"
+        let storage = NSTextStorage(string: text, attributes: MarkdownAttributedText.base(theme: theme))
+
+        let existing = storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let mutable = (existing?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+        mutable.paragraphSpacing = reserved
+        let wholeRange = NSRange(location: 0, length: (text as NSString).length)
+        storage.addAttribute(.paragraphStyle, value: mutable, range: wholeRange)
+
+        let result = try #require(storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        #expect(result.paragraphSpacing == reserved)
+        #expect(
+            result.lineHeightMultiple == ProseTypography.paragraphStyle(theme).lineHeightMultiple,
+            "R-07: reserving the transclusion's height must not drop the page's own line height"
+        )
     }
 }

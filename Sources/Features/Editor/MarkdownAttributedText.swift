@@ -13,10 +13,17 @@ import SwiftUI
 /// command-line tools, which have neither (ADR-0001 §D1).
 enum MarkdownAttributedText {
     /// The editor's base attributes: everything else is applied on top of these.
+    ///
+    /// The face is `font.prose` and not the monospaced 13pt this carried until ADR-0030 §D2:
+    /// the page and the interface are different things, and a note read as a code buffer was
+    /// the whole of what that chain set out to fix. The paragraph style is set here for the
+    /// same reason — `applyStyling` rewrites every attribute on each keystroke, so the line
+    /// height has to arrive with the base rather than be applied once and wiped (R-07).
     static func base(theme: Theme) -> [NSAttributedString.Key: Any] {
         [
-            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+            .font: ProseTypography.prose(theme),
             .foregroundColor: NSColor(theme.color(.textPrimary)),
+            .paragraphStyle: ProseTypography.paragraphStyle(theme),
         ]
     }
 
@@ -48,14 +55,28 @@ enum MarkdownAttributedText {
     ) -> [NSAttributedString.Key: Any] {
         switch span {
         case .heading(let level):
+            // The paragraph style is named here and not left to `base(theme:)`: that one carries
+            // `font.prose`'s line-height multiple, and a multiple applies to the run's *own* font,
+            // so a 24pt H1 under a 16pt-derived multiple reserves body-proportioned slack against
+            // a much taller face — surplus AppKit puts above the glyphs, which is what pushed the
+            // fold badge `FoldedHeadingFragment` centres in the line box away from the heading it
+            // marks. Composed onto the base style rather than replacing it, per ADR-0030 §D5.
             [
-                .font: NSFont.systemFont(ofSize: max(15, 24 - CGFloat(level) * 2), weight: .semibold),
+                .font: ProseTypography.heading(level: level, theme),
                 .foregroundColor: NSColor(theme.color(.textPrimary)),
+                .paragraphStyle: ProseTypography.paragraphStyle(
+                    theme,
+                    font: ProseTypography.heading(level: level, theme),
+                    basedOn: base(theme: theme)[.paragraphStyle] as? NSParagraphStyle
+                ),
             ]
         case .bold:
-            [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)]
+            [.font: ProseTypography.proseBold(theme)]
         case .italic:
-            [.obliqueness: 0.2]
+            // The prose family's own italic face where it has one, `[.obliqueness: 0.2]` on
+            // the upright face where it does not (ADR-0030 §D6) - the blanket obliqueness this
+            // used to return is a slanted roman, which is what the page stops looking like.
+            ProseTypography.proseItalicAttributes(theme)
         case .strikethrough:
             // A line through the whole run, markers included - true of strikethrough, which
             // is what SPEC §5's styled source means for this span. It is not universal any
@@ -63,10 +84,25 @@ enum MarkdownAttributedText {
             // emphasis, and the image/PDF embed), and strikethrough is not one.
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
         case .codeBlock:
-            // Only a background. The colour is left to whatever the grammar found inside,
-            // and to `textPrimary` where it found nothing - a fence in a language nobody
-            // wrote a grammar for still reads as code because of this.
-            [.backgroundColor: NSColor(theme.color(.surfaceSunken))]
+            // A background and the mono face. The *colour* is still left to whatever the
+            // grammar found inside, and to `textPrimary` where it found nothing - a fence in
+            // a language nobody wrote a grammar for still reads as code because of this.
+            //
+            // The face has to be named here since ADR-0030 §D2: with the base now `font.prose`
+            // there is no longer an incidental monospaced background for code to inherit, so
+            // every code-carrying span asks for `font.mono` explicitly (R-02).
+            [
+                .font: ProseTypography.mono(theme),
+                .backgroundColor: NSColor(theme.color(.surfaceSunken)),
+            ]
+        case .code, .frontmatter, .codeToken:
+            // `.codeBlock`'s reasoning, for the spans that used to fall through to `default`
+            // and take a colour alone. The colour each of them already had is unchanged - it
+            // still comes from the one exhaustive table below.
+            [
+                .font: ProseTypography.mono(theme),
+                .foregroundColor: NSColor(theme.color(colorToken(for: span))),
+            ]
         case .linkTarget(let target):
             clickable(theme.color(.accentPrimary), url: links ? noteURL(for: target) : nil)
         case .embedTarget(let target):

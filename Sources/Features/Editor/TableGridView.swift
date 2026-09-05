@@ -95,6 +95,15 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     /// (`.backgroundTertiary`), so a caption badge and this control group read as the same
     /// family of "quiet chrome" rather than two unrelated designs.
     var pillColor: NSColor = .clear
+    /// The page's own body face, pushed in from `font.prose` by `update(with:theme:)` exactly
+    /// the way the colours above are (ADR-0030 §D2/§D13): a table is part of the note, so its
+    /// cells are drawn in the note's face rather than in the 13pt interface font this grid used
+    /// before. The default is what a grid built and never updated draws with.
+    var proseFont: NSFont = .systemFont(ofSize: 13)
+    /// The same family's bold face, for the header row - `ProseTypography.proseBold` falls back
+    /// to the upright face of the *right* family rather than to a bold of a different one, so a
+    /// header never diverges from its own body cells.
+    var proseBoldFont: NSFont = .systemFont(ofSize: 13, weight: .semibold)
 
     lazy var rowLabel = makeGroupLabel(text: "Riga", identifier: "editor-table-row-label")
     lazy var columnLabel = makeGroupLabel(text: "Colonna", identifier: "editor-table-column-label")
