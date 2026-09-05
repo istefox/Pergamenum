@@ -3,10 +3,16 @@ import Foundation
 /// The closed four-key note frontmatter of SPEC §4.3.
 ///
 /// `date` and `tags` are required, `related` and `aliases` optional, and no other key
-/// is allowed. The parser still keeps any other key it finds, verbatim, in
-/// `foreignKeys`: F-02 makes an extra key a non-conformity to report, and dropping it
-/// on the next save would destroy data the user put there. Reporting and preserving
-/// are not in tension - "file over app" means the file wins even when it is wrong.
+/// is allowed **except this app's own `pergamenum-` namespace** (ADR-0032 §D6, R-05:
+/// `^pergamenum-[a-z0-9]+(-[a-z0-9]+)*$`, mirroring ADR-0020's `pergamenum-crop`
+/// property on a canvas node). The parser still keeps any other key it finds, verbatim,
+/// in `foreignKeys`: F-02 makes an extra key outside that namespace a non-conformity to
+/// report, and dropping it on the next save would destroy data the user put there.
+/// Reporting and preserving are not in tension - "file over app" means the file wins
+/// even when it is wrong.
+///
+/// The allowance lives in `FrontmatterRules.validate` alone: a prefixed key is still a
+/// `ForeignKey` here and still round-trips byte for byte, it is only no longer reported.
 struct Frontmatter: Equatable, Sendable {
     /// F-03, the document's date, always present in a conformant note.
     var date: CalendarDate?
@@ -332,12 +338,32 @@ enum FrontmatterRules {
         if frontmatter.tags.isEmpty { violations.append(.missingTags) }
         if frontmatter.usedInlineTagList { violations.append(.inlineTagList) }
 
-        violations.append(contentsOf: frontmatter.foreignKeys.map { .foreignKey($0.name) })
+        violations.append(
+            contentsOf: frontmatter.foreignKeys
+                .filter { !isAppNamespaced($0.name) }
+                .map { .foreignKey($0.name) }
+        )
         violations.append(contentsOf: frontmatter.unparsableTags.map { .unparsableTag($0) })
 
         if frontmatter.aliases.count > Frontmatter.maximumAliases {
             violations.append(.tooManyAliases(count: frontmatter.aliases.count))
         }
         return violations
+    }
+
+    // ADR-0032 (Plaud recording import into Pergamenum), plan
+    // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 9 -
+    // R-05; ADR §D6.
+    //
+    /// Whether a foreign key belongs to this app's own namespace and is therefore not
+    /// reported: `^pergamenum-[a-z0-9]+(-[a-z0-9]+)*$`, exactly - a wrong-case
+    /// `Pergamenum-Plaud-Id`, the bare word `pergamenum`, and any other vendor's
+    /// `obsidian-foo` all stay non-conformities.
+    ///
+    /// The whole namespace rather than the three `pergamenum-plaud-*` keys by name: the
+    /// prefix is what makes an app-written key greppable, and a fourth one is then free of
+    /// a second decision here.
+    private static func isAppNamespaced(_ name: String) -> Bool {
+        name.range(of: "^pergamenum-[a-z0-9]+(-[a-z0-9]+)*$", options: .regularExpression) != nil
     }
 }

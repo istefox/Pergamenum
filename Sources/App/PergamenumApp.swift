@@ -56,6 +56,17 @@ struct PergamenumApp: App {
     /// switch to another pane and back: as view state it would be rebuilt, and the
     /// unsaved end of a sentence would go with it.
     @State private var diary: DiaryController
+    /// The Registrazioni pane's controller (ADR-0032). Built in `init` beside `day` and
+    /// `diary`, for the same two reasons: `CommandActions` is assembled there and «Aggiorna
+    /// registrazioni» is one of its commands, and a poll started from the pane must outlive
+    /// a switch to another pane rather than being cancelled by the view going away.
+    ///
+    /// Nothing in the constructor opens a socket: `PlaudHTTPClient` holds one ephemeral HTTP
+    /// session and issues nothing until asked, and under `-disablePlaud YES` (or the unit
+    /// suite's own host) the controller refuses every request outright. The client's type is
+    /// named here and its transport is not, deliberately - `Tests/PlaudIsolationTests.swift`
+    /// matches the transport type's name as a plain string, comments included.
+    @State private var recordings: RecordingsController
     /// Global capture (ADR-0008). All three live at app level because the panel has to
     /// work with no window in front of the user - it is the whole point of the feature -
     /// and because the hot key is registered with the system once, not per window.
@@ -82,6 +93,7 @@ struct PergamenumApp: App {
         let navigation = Navigation()
         let day = DayController(store: calendar, vault: vault)
         let history = NavigationHistory()
+        let recordings = RecordingsController(service: PlaudHTTPClient(), vault: vault)
 
         _themeEngine = State(initialValue: engine)
         _vault = State(initialValue: vault)
@@ -92,6 +104,7 @@ struct PergamenumApp: App {
         _hotkey = State(initialValue: hotkey)
         _day = State(initialValue: day)
         _diary = State(initialValue: DiaryController(vault: vault))
+        _recordings = State(initialValue: recordings)
 
         let panel = CapturePanel(
             controller: capture,
@@ -119,7 +132,8 @@ struct PergamenumApp: App {
             day: day,
             calendar: calendar,
             capturePanel: panel,
-            history: history
+            history: history,
+            recordings: recordings
         )
     }
 
@@ -154,6 +168,7 @@ struct PergamenumApp: App {
                 .environment(reminders)
                 .environment(day)
                 .environment(diary)
+                .environment(recordings)
                 .environment(shortcuts)
                 .environment(commandActions)
                 .themed(by: themeEngine)
@@ -238,6 +253,10 @@ struct PergamenumApp: App {
                 // is a trap at run time, not a compile error.
                 .environment(reminders)
                 .environment(hotkey)
+                // Generali's «Giorni registrazioni Plaud» writes through this controller and
+                // not through `vault.updateSettings` (ADR §D12), so this scene needs it too:
+                // an object injected into the main window is invisible here.
+                .environment(recordings)
                 .themed(by: themeEngine)
         }
     }
