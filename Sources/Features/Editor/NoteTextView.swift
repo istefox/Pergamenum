@@ -96,9 +96,11 @@ struct NoteTextView: NSViewRepresentable {
     /// arrow key.
     var outlineRanges: [NSRange] = []
     var onOutlineEntryChanged: ((Int?) -> Void)?
-    /// The index entries whose sections are folded (M8). Held by ordinal and not by
-    /// character offset: an edit above a fold moves every offset, and a fold anchored to a
-    /// number would end up somewhere else on the next keystroke.
+    /// The index entries whose sections are folded (M8). Held by each heading's own UTF-16
+    /// character offset, not by ordinal position: an edit elsewhere in the note can shift
+    /// which array position a heading sits at between one SwiftUI render pass and the next,
+    /// and a fold anchored to a position rather than to the heading itself would silently
+    /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
     var foldedEntries: Set<Int> = []
     /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
     /// behind the editor, and then the line stays the plain link it was.
