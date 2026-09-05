@@ -38,6 +38,13 @@ private func sampleTask(id: String, quote: String, dueHint: String? = nil) -> Pl
     PlaudTask(id: id, title: "Titolo \(id)", quote: quote, urgency: 4, importance: 5, dueHint: dueHint)
 }
 
+private func sampleRecording(id: String = "rec-1", state: PlaudRecordingState) -> PlaudRecording {
+    PlaudRecording(
+        id: id, name: "Registrazione", recordedAt: "2026-09-04T11:00:00", durationMs: 60_000,
+        deviceSerial: "device-1", state: state, lastError: nil
+    )
+}
+
 // MARK: - Row status -> badge + available actions (R-01, R-02, R-07, R-09)
 
 @Test func aNewRecordingOffersOnlyElabora() {
@@ -75,6 +82,31 @@ private func sampleTask(id: String, quote: String, dueHint: String? = nil) -> Pl
     let row = RecordingRowPresentation.make(state: .imported)
     #expect(row.badgeText == "importata")
     #expect(row.actions == [.apriNota, .elimina, .rielabora])
+}
+
+// MARK: - Row's effective state while a poll is in progress (Task 10 bug-fix follow-up)
+//
+// Task 10's live HITL walkthrough of ADR-0032: `RecordingsPane.row(_:)` built its presentation
+// straight off the recording's own cached wire `state`, never consulting
+// `RecordingsController.pollingRecordingIDs` - a recording being polled showed its stale
+// "fallita"/"nuova" badge for the whole poll instead of "in corso". `effectiveState` is the
+// pure function `row(_:)` must be rewritten to call; its body is still a tester-declared stub
+// (ignores `pollingIDs` unconditionally), so the first assertion below is red until the coder
+// implements it.
+
+@Test func aRecordingBeingPolledShowsProcessingRegardlessOfItsOwnCachedState() {
+    let stale = sampleRecording(state: .failed)
+    let effective = RecordingsPane.effectiveState(recording: stale, pollingIDs: [stale.id])
+    #expect(effective == .processing)
+}
+
+@Test func aRecordingNotBeingPolledKeepsItsOwnCachedState() {
+    // Passes trivially against the stub, which always returns `recording.state`: kept anyway
+    // so a future fix that always reports `.processing` regardless of `pollingIDs` is caught,
+    // the same reasoning `noActionItemsShowsItsBannerButLeavesImportEnabled` documents above.
+    let ready = sampleRecording(state: .ready)
+    let effective = RecordingsPane.effectiveState(recording: ready, pollingIDs: ["some-other-id"])
+    #expect(effective == .ready)
 }
 
 // MARK: - Health banner (R-02)

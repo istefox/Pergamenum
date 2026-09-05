@@ -310,6 +310,49 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
     controllerVault.close()
 }
 
+@MainActor
+@Test func finishingAPollRefreshesTheRecordingsListAutomatically() async throws {
+    // Task 10's live HITL walkthrough of ADR-0032 (bug-fix follow-up to Tasks 7/8, not a new
+    // task number): `finishPolling(_:expired:)` never triggers a re-fetch of `/recordings`
+    // when a poll ends, so even the final state does not appear on its own - only a manual
+    // refresh (Cmd+R / reopening the pane) shows it. This asserts `sut.recordings` reflects
+    // the fake's *current* answer once the poll ends, with no explicit `sut.refresh()` call
+    // from the test after `process()` starts it.
+    let vault = try TemporaryVault()
+    let controllerVault = await openVaultController(vault.root)
+    let fake = FakePlaudService()
+    await fake.setRecordingsResult(.success([sampleRecording(id: "rec-1", state: .new)]))
+    await fake.setProcessResult(.success(PlaudJobHandle(jobId: "job-1", state: "queued")))
+    await fake.setJobResult(.success(PlaudJob(state: "processing", step: nil, error: nil, proposalId: nil)))
+
+    let sut = RecordingsController(
+        service: fake, vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false,
+        pollInterval: .milliseconds(5), pollTimeout: .seconds(30)
+    )
+
+    await sut.refresh()
+    #expect(sut.recordings.map(\.state) == [.new])
+
+    await sut.process("rec-1")
+    try await Task.sleep(for: .milliseconds(20))
+    #expect(sut.pollingRecordingIDs.contains("rec-1"))
+
+    // What a real re-fetch of `/recordings` would report once the job has produced a
+    // proposal - set on the fake before the poll's next tick sees `proposalId` non-nil and
+    // ends it, never through a `sut.refresh()` call from this test.
+    await fake.setRecordingsResult(.success([sampleRecording(id: "rec-1", state: .imported)]))
+    await fake.setJobResult(.success(PlaudJob(state: "ready", step: nil, error: nil, proposalId: "prop-1")))
+    try await Task.sleep(for: .milliseconds(60))
+
+    #expect(!sut.pollingRecordingIDs.contains("rec-1"))
+    #expect(
+        sut.recordings.map(\.state) == [.imported],
+        "finishPolling(_:expired:) must re-fetch the recordings list automatically when a poll ends"
+    )
+
+    controllerVault.close()
+}
+
 // MARK: - Readable errors (R-07, R-13)
 
 @MainActor

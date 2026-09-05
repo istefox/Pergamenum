@@ -232,3 +232,32 @@ struct RecordingsPane: View {
         navigation.pane = .notes
     }
 }
+
+// Task 10's live HITL walkthrough of ADR-0032 (bug-fix follow-up to Tasks 7/8, not a new task
+// number) - `row(_:)` above builds `RecordingRowPresentation` straight from
+// `recording.state`, the wire value as last fetched by `refresh()`, and never consults
+// `RecordingsController.pollingRecordingIDs`. A recording being polled after `process()`
+// therefore keeps showing its OLD status ("fallita"/"nuova") for the whole poll: the person
+// watching sees nothing move until a manual refresh, by which point the job has usually
+// already finished and the "in corso" state was never shown at all.
+extension RecordingsPane {
+    /// The state a row must present: `.processing` while `pollingIDs` says a poll for this
+    /// recording is in flight, `recording.state` (the wire value) otherwise. A static, pure
+    /// function of its two arguments so `Tests/RecordingsViewModelTests.swift` can drive it
+    /// with no `View`/environment in the picture - `nonisolated` for the same reason
+    /// `WorkspaceBrowser+Tree.swift`'s own statics are (`selection(for:)` et al.): a pure
+    /// function that silently carries this `View`'s main-actor isolation is a trap for the
+    /// first caller that is not on the main actor, and a unit test calling it synchronously
+    /// is exactly that caller.
+    ///
+    /// Tester-declared stub (ADR-0155): still ignores `pollingIDs` and returns `recording.state`
+    /// unconditionally - `Tests/RecordingsViewModelTests.swift` asserts the polling case red
+    /// against this body. The coder's job is the one-line fix (`pollingIDs.contains(recording.id)
+    /// ? .processing : recording.state`) plus updating `row(_:)` above to call this instead of
+    /// reading `recording.state` directly.
+    nonisolated static func effectiveState(
+        recording: PlaudRecording, pollingIDs: Set<String>
+    ) -> PlaudRecordingState {
+        recording.state
+    }
+}
