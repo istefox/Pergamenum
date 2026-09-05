@@ -160,6 +160,19 @@ struct OutlinePane: View {
         }
     }
 
+    /// The heading's own UTF-16 offset, when this entry can be folded - nil for anything else
+    /// (an embed, or a heading with nothing under it), which is what makes it safe to call from
+    /// both the chevron and the row's own double-click without duplicating the `foldable` guard.
+    ///
+    /// STUB (RED baseline, not yet implemented): always returns nil. The real body is
+    /// `chevron(for:at:)`'s own guard and offset computation above (`foldable.contains(index)`
+    /// then `text.utf16.distance(...)`), moved here unchanged. Internal, not `private`, so
+    /// `@testable import Pergamenum` can call it directly
+    /// (`Tests/OutlinePaneFoldableOffsetTests.swift`).
+    func foldableOffset(for entry: NoteOutline.Entry, at index: Int) -> Int? {
+        nil
+    }
+
     /// The entries that have at least one line under them. Computed once per rebuild rather
     /// than per row, because each answer costs a pass over the note.
     private var foldable: Set<Int> {
