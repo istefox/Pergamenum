@@ -108,6 +108,29 @@ enum ImportNaming {
         "immagine-\(date.compactForm).png"
     }
 
+    // ADR-0032 (Plaud recording import into Pergamenum), plan
+    // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 4 - R-05.
+    //
+    // The note title is derived from the recording, never taken from it (ADR §D5): a
+    // recording's own `name` can be a human title with a colon in it and no length limit,
+    // or the old `2026-09-04 13:44:51` timestamp form - neither is a conformant `NoteName`.
+    // Four rules the coder implements: (1) a leading date-like token in `name` is dropped
+    // before slugging; (2) the slug is truncated at a word boundary so the whole title is
+    // ≤ `NoteName.maximumLength`, and never ends in a hyphen; (3) collisions are somebody
+    // else's job (`uniqueFileName`, above); (4) the date is `recordedAt`'s own **local**
+    // calendar date, never today's.
+    //
+    // Tester-declared signature only (this dispatch's brief, task 4: "Tester first. Red
+    // before any body."): the body below is an obviously-wrong-but-compiling placeholder
+    // so `Tests/ConventionsTests.swift` can reference the real symbol and run red until the
+    // coder implements the four rules above. Also `.claude/protected-interfaces`
+    // (ADR-0053): a silent signature/behavior change here orphans every note already
+    // imported, since re-import matches an existing transcript note by the name this
+    // function derives.
+    static func recordingNoteTitle(recordedAt: Date, name: String) -> String {
+        ""
+    }
+
     static func uniqueFileName(
         _ proposed: String,
         in directory: URL,
