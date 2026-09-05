@@ -10,10 +10,11 @@ import Observation
 // the shape this follows - separated from the view so a suite with no window can drive it
 // against `FakePlaudService` (`Tests/FakePlaudService.swift`), never a real socket.
 //
-// Tester-declared signature only (this dispatch's brief, task 6: "Tester first... Red
-// first."). Every method body below is an intentional no-op placeholder; the coder
-// implements the real behaviour each doc comment names. `Tests/RecordingsControllerTests.swift`
-// is written against the behaviour these comments describe and is red until it exists.
+// Two things are true of every method here and stated once rather than repeated: none of
+// them makes a request while `isIsolated`, and none of them lets a thrown error reach a
+// person as `"\(error)"` (R-13) - the failure lands on `bannerMessage` when it is about the
+// service and on `rowErrors`/`confirmationFailures` when it is about one recording.
+// `Tests/RecordingsControllerTests.swift` drives all of it through `FakePlaudService`.
 @MainActor
 @Observable
 final class RecordingsController {
@@ -75,6 +76,19 @@ final class RecordingsController {
     /// through `@testable import`, since `private` is file-scoped in Swift.
     let isIsolated: Bool
 
+    /// The local files this vault's ledger and drafts live in (ADR §D12), `nil` until a
+    /// vault is open. Rebuilt, never merged, when `vault.session` changes identity (R-12).
+    private var store: PlaudVaultStore?
+    /// Which session `store` was built for, as its own state directory - the identity
+    /// ADR-0017 gives a vault, rather than the root path a rename would change.
+    private var storeIdentity: String?
+    private var ledger: PlaudVaultStore.Ledger = .empty
+    private var pollTasks: [String: Task<Void, Never>] = [:]
+
+    /// Shown verbatim by the pane's banner while `-disablePlaud YES` (or a test host) is in
+    /// force: the person is told the app is not asking, not that the service is down.
+    static let isolatedMessage = "Importazione Plaud disattivata per questa sessione: nessuna richiesta al servizio."
+
     init(
         service: any PlaudService,
         vault: VaultController,
@@ -88,6 +102,7 @@ final class RecordingsController {
         self.isIsolated = defaults.bool(forKey: "disablePlaud") || isTestHost
         self.pollInterval = pollInterval
         self.pollTimeout = pollTimeout
+        if self.isIsolated { health = .unavailable(message: Self.isolatedMessage) }
     }
 
     // MARK: - Loading
@@ -97,11 +112,38 @@ final class RecordingsController {
     ///
     /// A no-op under `isIsolated`, per this file's header - a test asserts the fake receives
     /// zero calls.
-    func refresh() async {}
+    func refresh() async {
+        guard !isIsolated else { return isolate() }
+        reloadLedger()
+        guard store != nil else {
+            bannerMessage = Self.noVaultMessage
+            return
+        }
+        do {
+            recordings = try await service.recordings(days: ledger.days)
+            bannerMessage = nil
+        } catch {
+            bannerMessage = readableMessage(error)
+        }
+    }
 
     /// `GET /health` (R-02). Never called by anything else in this file automatically - no
     /// timer, no launch check (ADR §D4/§D14).
-    func checkHealth() async {}
+    func checkHealth() async {
+        guard !isIsolated else { return isolate() }
+        do {
+            let reported = try await service.health()
+            health = .available
+            // Reachable but with no recorder attached is a different sentence from
+            // unreachable, and it belongs on the banner rather than on the health state:
+            // the list still loads, it is simply empty of anything new.
+            bannerMessage = reported.plaud == "connected" ? nil : PlaudError.serviceDisconnected.message
+        } catch {
+            let message = readableMessage(error)
+            health = .unavailable(message: message)
+            bannerMessage = message
+        }
+    }
 
     // MARK: - Processing / polling
 
@@ -112,11 +154,92 @@ final class RecordingsController {
     /// joins `pollExpired`. A thrown `PlaudError` from either the initial `process` call or
     /// a polled job's `error` string is mapped to `rowErrors[recordingID]` (R-07, R-13) -
     /// never a crash, never a raw `Error` interpolation.
-    func process(_ recordingID: String, force: Bool = false) async {}
+    func process(_ recordingID: String, force: Bool = false) async {
+        guard !isIsolated else { return isolate() }
+        rowErrors[recordingID] = nil
+        pollExpired.remove(recordingID)
+        do {
+            let handle = try await service.process(id: recordingID, force: force)
+            startPolling(recordingID: recordingID, jobID: handle.jobId)
+        } catch {
+            // The request itself failed: there is no job to watch, so no poll starts.
+            rowErrors[recordingID] = readableMessage(error)
+        }
+    }
 
     /// Cancels every in-flight poll. Called by the scene when the pane's owner goes away
     /// (ADR §D4) - never by anything inside this file automatically.
-    func stop() {}
+    func stop() {
+        for task in pollTasks.values { task.cancel() }
+        pollTasks.removeAll()
+        pollingRecordingIDs.removeAll()
+    }
+
+    /// One structured `Task` per recording, sleeping rather than firing a `Timer` (ADR §D4):
+    /// a cancelled sleep ends the poll immediately, which a repeating timer cannot do.
+    private func startPolling(recordingID: String, jobID: String) {
+        pollTasks[recordingID]?.cancel()
+        pollingRecordingIDs.insert(recordingID)
+
+        let interval = pollInterval
+        // Computed once, here: a deadline recomputed inside the loop would move with every
+        // iteration and the 30-minute bound would never arrive.
+        let deadline = ContinuousClock.now.advanced(by: pollTimeout)
+        pollTasks[recordingID] = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: interval)
+                } catch {
+                    return // cancelled while sleeping: `stop()` has already cleared the state
+                }
+                guard let self, !Task.isCancelled else { return }
+                guard ContinuousClock.now < deadline else {
+                    // Past the bound a silent repeating request stops being something the
+                    // person asked for: the row says so and offers «Aggiorna» instead.
+                    finishPolling(recordingID, expired: true)
+                    return
+                }
+                guard await askJob(id: jobID, for: recordingID) else { return }
+            }
+        }
+    }
+
+    /// One `GET /jobs/{id}`. `true` while the job is still running, `false` once it has
+    /// ended - with a proposal, with an error, or with a state that says it failed.
+    private func askJob(id jobID: String, for recordingID: String) async -> Bool {
+        do {
+            let job = try await service.job(id: jobID)
+            if let failure = job.error, !failure.isEmpty {
+                rowErrors[recordingID] = PlaudError.readableLastError(failure)
+                finishPolling(recordingID, expired: false)
+                return false
+            }
+            if job.proposalId != nil {
+                finishPolling(recordingID, expired: false)
+                return false
+            }
+            if job.state == "failed" {
+                // A failed job that carried no `error` at all would otherwise be polled
+                // until the 30-minute bound for a result that is never coming.
+                rowErrors[recordingID] = PlaudError.readableLastError(
+                    job.error ?? "il servizio non ha indicato un motivo"
+                )
+                finishPolling(recordingID, expired: false)
+                return false
+            }
+            return true
+        } catch {
+            rowErrors[recordingID] = readableMessage(error)
+            finishPolling(recordingID, expired: false)
+            return false
+        }
+    }
+
+    private func finishPolling(_ recordingID: String, expired: Bool) {
+        pollingRecordingIDs.remove(recordingID)
+        pollTasks[recordingID] = nil
+        if expired { pollExpired.insert(recordingID) }
+    }
 
     // MARK: - Two-phase import (ADR §D13)
 
@@ -132,12 +255,90 @@ final class RecordingsController {
         proposal: PlaudProposal,
         acceptedTaskIDs: Set<String>,
         speakerRenames: [String: String]
-    ) async {}
+    ) async {
+        guard !isIsolated else { return isolate() }
+        reloadLedger()
+        guard let session = vault.session, let store else {
+            rowErrors[recordingID] = Self.noVaultMessage
+            return
+        }
+
+        var entry = ledger.recordings[recordingID] ?? PlaudVaultStore.Entry(status: "new")
+        // The note is the source of truth (principle 1): what it already holds suppresses a
+        // task just as the ledger does, and it is read here rather than remembered.
+        let existingText = entry.notePath.flatMap { try? session.read($0).text }
+        let text = TranscriptNote.render(
+            proposal: proposal,
+            acceptedTaskIDs: acceptedTaskIDs,
+            speakerRenames: speakerRenames,
+            ledgerFingerprints: entry.quoteFingerprints,
+            existingNoteText: existingText
+        )
+        let path = entry.notePath ?? notePath(for: proposal, in: session)
+
+        // Phase 1: the file first. A failure here means nothing was imported at all, so
+        // nothing is recorded and no confirmation is owed.
+        do {
+            try session.write(text, to: path)
+        } catch {
+            rowErrors[recordingID] = "Scrittura della nota non riuscita: \(path)"
+            return
+        }
+
+        entry.status = "imported"
+        entry.notePath = path
+        entry.quoteFingerprints = fingerprints(
+            ofAccepted: acceptedTaskIDs, in: proposal, added: entry.quoteFingerprints
+        )
+        entry.pendingConfirmation = acceptedTaskIDs.sorted()
+        entry.lastImportedAt = Date.now.ISO8601Format()
+        record(entry, for: recordingID)
+
+        // Phase 2, and only now: a confirmation the vault cannot honour would mark the
+        // recording imported service-side with nothing to show for it (ADR §D13).
+        await confirm(recordingID: recordingID, taskIDs: entry.pendingConfirmation)
+    }
 
     /// Re-issues only phase 2 of `importAccepted` for the ids already recorded as
     /// `pendingConfirmation` - no note write, no proposal re-fetch, one `confirmImported`
     /// call.
-    func retryConfirmation(recordingID: String) async {}
+    func retryConfirmation(recordingID: String) async {
+        guard !isIsolated else { return isolate() }
+        guard let entry = entries[recordingID], !entry.pendingConfirmation.isEmpty else { return }
+        await confirm(recordingID: recordingID, taskIDs: entry.pendingConfirmation)
+    }
+
+    /// `POST /proposals/{id}/imported` with exactly the accepted ids and nothing else
+    /// (R-06). On success the debt is cleared; on failure the note stays written and the
+    /// debt stays owed, which is the whole point of recording it before asking (ADR §D13).
+    private func confirm(recordingID: String, taskIDs: [String]) async {
+        do {
+            try await service.confirmImported(recordingID: recordingID, taskIDs: taskIDs)
+            confirmationFailures[recordingID] = nil
+            guard var entry = ledger.recordings[recordingID] else { return }
+            entry.pendingConfirmation = []
+            record(entry, for: recordingID)
+        } catch {
+            confirmationFailures[recordingID] = readableMessage(error)
+        }
+    }
+
+    /// Every accepted task's quote fingerprint, added to the ones already recorded. The
+    /// ledger only ever grows (ADR §D9): that is what makes a task the person deleted from
+    /// the note stay deleted instead of returning on the next forced re-run.
+    private func fingerprints(
+        ofAccepted acceptedTaskIDs: Set<String>, in proposal: PlaudProposal, added existing: [String]
+    ) -> [String] {
+        var known = existing
+        for theme in proposal.themes {
+            for task in theme.tasks where acceptedTaskIDs.contains(task.id) {
+                let fingerprint = PlaudQuote.fingerprint(task.quote)
+                guard !known.contains(fingerprint) else { continue }
+                known.append(fingerprint)
+            }
+        }
+        return known
+    }
 
     // MARK: - Delete (R-09)
 
@@ -145,5 +346,103 @@ final class RecordingsController {
     /// (`VaultController+Files.swift:70`) and marks the ledger entry deleted - no service
     /// method is called at all, per the contract having no delete endpoint (ADR §D9's
     /// "asking the service" rejection).
-    func delete(recordingID: String) {}
+    func delete(recordingID: String) {
+        guard !isIsolated else { return isolate() }
+        guard var entry = ledger.recordings[recordingID] else { return }
+
+        if let path = entry.notePath {
+            guard vault.trashNote(at: path) else {
+                // `trashNote` already recorded why (an unsaved note, a failed move): the
+                // ledger must not say deleted while the note is still there.
+                rowErrors[recordingID] = "Nota non eliminata: \(path)"
+                return
+            }
+        }
+        entry.status = "deleted"
+        // The note is gone, so the path is no longer an anchor for anything: a later import
+        // of the same recording writes a new note rather than resurrecting this one.
+        entry.notePath = nil
+        // `quoteFingerprints` survives on purpose - a deletion is a decision, and the
+        // suppression set is what keeps it (ADR §D9).
+        entry.pendingConfirmation = []
+        record(entry, for: recordingID)
+    }
+}
+
+// MARK: - Ledger, vault scoping (R-12) and readable failure (R-13)
+
+// In an extension purely for length: the class body above is already at SwiftLint's
+// `type_body_length` limit, and nothing here is part of what the pane calls.
+extension RecordingsController {
+    static let noVaultMessage = "Nessun vault aperto: apri un vault prima di importare una registrazione."
+
+    /// Rebuilds the store when `vault.session` has changed identity and rereads the ledger
+    /// from disk, which is where every other writer of these files leaves its state.
+    private func reloadLedger() {
+        guard let session = vault.session else {
+            store = nil
+            storeIdentity = nil
+            ledger = .empty
+            entries = [:]
+            recordings = []
+            stop()
+            return
+        }
+
+        let identity = session.state.directory.path(percentEncoded: false)
+        if identity != storeIdentity {
+            // A poll belongs to the vault that started it, and so does everything a row
+            // was saying about it (R-12).
+            stop()
+            storeIdentity = identity
+            store = PlaudVaultStore(directory: session.state.directory)
+            recordings = []
+            rowErrors = [:]
+            confirmationFailures = [:]
+            pollExpired = []
+        }
+        ledger = store?.loadLedger() ?? .empty
+        entries = ledger.recordings
+    }
+
+    /// Writes one entry through, disk first: `pendingConfirmation` that never reached the
+    /// file is a debt nothing would retry after a relaunch (ADR §D13).
+    private func record(_ entry: PlaudVaultStore.Entry, for recordingID: String) {
+        ledger.recordings[recordingID] = entry
+        entries = ledger.recordings
+        do {
+            try store?.saveLedger(ledger)
+        } catch {
+            rowErrors[recordingID] = "Stato locale non salvato: la conferma non verrà ritentata dopo la chiusura."
+        }
+    }
+
+    /// Where a recording's note goes the first time it is imported: `<notes folder>/` at the
+    /// vault root, named by `ImportNaming.recordingNoteTitle` (ADR §D5) and made unique the
+    /// way every other import already is.
+    private func notePath(for proposal: PlaudProposal, in session: VaultSession) -> String {
+        let recordedAt = PlaudTimestamp.parse(proposal.recording.recordedAt) ?? Date.now
+        let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: proposal.recording.name)
+        let folder = ledger.notesFolder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        let directory = folder.isEmpty
+            ? session.root
+            : session.root.appending(path: folder, directoryHint: .isDirectory)
+        let fileName = ImportNaming.uniqueFileName(NoteName.fileName(for: title), in: directory)
+        return folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+    }
+
+    /// The one state an isolated launch ever reports, set on every entry point rather than
+    /// once: a method that returned silently would leave a banner from before the flag.
+    private func isolate() {
+        health = .unavailable(message: Self.isolatedMessage)
+        bannerMessage = Self.isolatedMessage
+    }
+
+    /// R-13: a readable sentence for anything thrown, never `"\(error)"`. `PlaudError` owns
+    /// its own wording; anything else is reported through the transport case, which is what
+    /// a failure that never reached the mapping table actually was.
+    private func readableMessage(_ error: any Error) -> String {
+        if let plaud = error as? PlaudError { return plaud.message }
+        return PlaudError.transportFailure(error.localizedDescription).message
+    }
 }
