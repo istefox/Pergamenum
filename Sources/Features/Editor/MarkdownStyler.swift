@@ -469,19 +469,20 @@ enum MarkdownStyler {
     /// through closing ones, inclusive - as one `.viewBlockRun` span each (ADR-0033 §D1;
     /// plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1).
     ///
-    /// TESTER STUB (Task 1): returns `[]` unconditionally. `Tests/ViewBlockSpanTests.swift`
-    /// asserts the real behaviour this must eventually have; the coder fills this in from
-    /// `fences` (already computed by `spans(in:)` at the call site, the same array
-    /// `tableSpans(in:from:outside:)` above takes), filtered to `ViewBlock.language` and to
-    /// a fence that is genuinely **closed** - a `CodeFence.Region` synthesised for an
-    /// unclosed fence has `body.upperBound == range.upperBound == text.endIndex`, which a
-    /// closed one never does, since a real closing fence line sits after the body. The span
-    /// does not read `render:` at all; which renderer a fence names is Task 5's concern.
+    /// Filters `fences` (already computed by `spans(in:)` at the call site, the same array
+    /// `tableSpans(in:from:outside:)` above takes) to `ViewBlock.language` and to a fence
+    /// that is genuinely **closed**: a `CodeFence.Region` synthesised for an unclosed fence
+    /// has `body.upperBound == range.upperBound == text.endIndex`, which a closed one never
+    /// does, since a real closing fence line sits after the body. The span does not read
+    /// `render:` at all; which renderer a fence names is Task 5's concern.
     private static func viewBlockRuns(
         in text: String,
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
-        []
+        fences
+            .filter { $0.language == ViewBlock.language }
+            .filter { $0.body.upperBound != $0.range.upperBound }
+            .map { StyledRange(range: $0.range, span: .viewBlockRun) }
     }
 
     private static func wikilinkSpans(
