@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=98 -->
+<!-- project-tasks: prefix=PG lastId=99 -->
 # PROJECT TASKS
 
-Updated: 2026-09-06 · Open: 4 (P1: 0) · In progress: 0
+Updated: 2026-09-06 · Open: 5 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -11,6 +11,11 @@ Updated: 2026-09-06 · Open: 4 (P1: 0) · In progress: 0
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-099` **P2** The M11 Views/board renderer (ADR-0009, `RenderedViewBlock`) is orphaned by ADR-0029's editor unification: a `pergamenum-view` fence never renders as a table/gallery/calendar/kanban board anywhere reachable in the live app, only as raw fenced text — `Sources/Features/Editor/EditorDecorationDelegate.swift`, `Sources/Features/Views/RenderedViewBlock.swift` <!-- src:session opened:2026-09-06 kind:roadmap -->
+  - Found during a chain-memory consistency audit, cross-checked against NotePlan's own live-rendering feature set at Stefano's request. `PG-012` (closed 2026-08-20) shipped the board/table/gallery/calendar renderers and the board's guarded drag-to-write, but that rendering lived exclusively in the separate Lettura mode (`MarkdownBlocksView`). ADR-0029 (2026-09-02/03, `editor-wysiwyg-unification`) removed the Modifica/Lettura toggle everywhere and unified editing into one always-editable `NoteTextView`, but never re-wired `RenderedViewBlock` into the new editor's live styling path (`EditorDecorationDelegate`/`applyStyling` has zero references to it, to `pergamenum-view`, or to any table/gallery/board rendering). Confirmed the single remaining call site of `RenderedViewBlock` in the whole repo is inside `MarkdownBlocksView.swift`, itself explicitly retained only as dead code for the main editor (ADR-0029 §D14) — its only live callers today are `TranscludedNoteView` (read-only preview of a `![[nota]]` transclusion) and `NoteExporter` (HTML export). The "Viste" sidebar pane (`ViewsPane.swift`) only catalogues views (name, renderer, filter, match count) and opens the note at the block's location — it does not render the board itself. Net effect: today there is no way to see or drag a kanban card, or see a rendered table/gallery/calendar view, anywhere in the live app. Not a regression anyone flagged: `PG-012`'s closure predates ADR-0029 by two weeks, and neither ADR-0029's own manifest nor its Consequences section mentions the Views feature at all.
+  - Comparison against NotePlan (researched on request): NotePlan's own board/kanban view is *also* a separate, non-inline surface (Folder Cards view, not drawn inside a note's text flow) — so the fix here is not "make it render inline like a table," it is "give `RenderedViewBlock` *any* live surface again," matching what already shipped once under `PG-012`. Every other construct checked against NotePlan (headings, emphasis, lists, checkboxes, blockquotes, hr, wikilinks, tables, code fences with syntax highlighting) already matches or exceeds NotePlan's live-rendering behavior in this app; highlight (`::text::`) and underline (`~text~`) are NotePlan features Pergamenum's SPEC never scoped in, so their absence is a deliberate scope difference, not a gap.
+  - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 - [ ] `PG-096` **P3** Sparkle integration for signed update delivery — code and pipeline shipped, only the manual update-flow hand-check (R-08) remains <!-- src:session opened:2026-09-04 updated:2026-09-05 -->
   - **Entry corrected 2026-09-05: the "not started" note below is stale, superseded the same day it was written.** ADR-0031 was designed and implemented after this entry was opened: `docs/adr/0031-sparkle-auto-update-integration.md` exists, `Tuist/Package.swift` carries the Sparkle 2.9.6 dependency, and PR #167 (`feat(app): add Sparkle auto-update integration (PG-096)`, commit `d4c65ad`) is merged into `main`. `istefox/pergamenum-updates` is live and public (verified via `gh api`, created 2026-09-04), holds `appcast.xml`, and already has one published release, `v1.1-641` (`Pergamenum-1.1-641.zip` asset, published 2026-09-04T21:46Z) — so `scripts/release.sh` has already been run for real, not just built.
