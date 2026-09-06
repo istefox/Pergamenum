@@ -16,6 +16,12 @@ enum PlaudError: Error, Equatable, Sendable {
     case proposalNotFound
     case payloadTooLarge
     case serviceDisconnected
+    /// `POST /proposals/{id}/imported`'s `invalid_json` 400: the request body itself did not
+    /// parse as JSON.
+    case invalidImportBody
+    /// `POST /proposals/{id}/imported`'s `invalid_task_ids` 400: the body parsed, but named
+    /// task ids the proposal does not have.
+    case invalidTaskIDs
     case transportFailure(String)
     case decodeFailure(String)
     /// Any HTTP status/body combination the mapping table below does not name.
@@ -36,6 +42,10 @@ enum PlaudError: Error, Equatable, Sendable {
             return "Richiesta troppo grande: il servizio ha rifiutato l'elenco delle attività."
         case .serviceDisconnected:
             return "Plaud non è collegato: collega il registratore e riprova."
+        case .invalidImportBody:
+            return "Richiesta di conferma non valida: riprova la revisione delle attività."
+        case .invalidTaskIDs:
+            return "Alcune attività selezionate non appartengono più a questa proposta: aggiorna e riprova."
         case let .transportFailure(detail):
             return "Servizio Plaud non raggiungibile su 127.0.0.1:3777. Dettaglio: \(detail)"
         case let .decodeFailure(detail):
@@ -50,14 +60,17 @@ enum PlaudError: Error, Equatable, Sendable {
     }
 
     /// Maps an HTTP status and the raw `{"error": "..."}` response body to a case, per the
-    /// measured table: 400 `invalid_days`; 404 `recording_not_found` / `job_not_found` /
-    /// `proposal_not_found`; 413 `payload_too_large`; 503 by status alone (Plaud
-    /// disconnected - the contract documents no informative body for it).
+    /// measured table: 400 `invalid_days` / `invalid_json` / `invalid_task_ids`; 404
+    /// `recording_not_found` / `job_not_found` / `proposal_not_found`; 413
+    /// `payload_too_large`; 503 by status alone (Plaud disconnected - the contract documents
+    /// no informative body for it).
     static func map(status: Int, body: Data?) -> PlaudError {
         let data = body ?? Data()
         let code = (try? JSONDecoder().decode(WireError.self, from: data))?.error
         switch (status, code) {
         case (400, "invalid_days"): return .invalidDays
+        case (400, "invalid_json"): return .invalidImportBody
+        case (400, "invalid_task_ids"): return .invalidTaskIDs
         case (404, "recording_not_found"): return .unknownRecording
         case (404, "job_not_found"): return .unknownJob
         case (404, "proposal_not_found"): return .proposalNotFound
