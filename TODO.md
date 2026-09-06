@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=96 -->
+<!-- project-tasks: prefix=PG lastId=98 -->
 # PROJECT TASKS
 
-Updated: 2026-09-04 · Open: 4 (P1: 0) · In progress: 0
+Updated: 2026-09-06 · Open: 6 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -11,6 +11,15 @@ Updated: 2026-09-04 · Open: 4 (P1: 0) · In progress: 0
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-098` **P2** No test exercises `PlaudHTTPClient` directly — `Sources/Features/Recordings/PlaudHTTPClient.swift:56-60` <!-- src:review opened:2026-09-06 -->
+  - Found by an agent verifying the Plaud API client (ADR-0032, chain `plaud-recording-import-into-pergamenum`) field-by-field against the plaud-service v0.2 contract. The models and route wiring are correct and well fixture-tested (`Tests/PlaudPayloadTests.swift` decodes live-captured recordings/proposals), but `RecordingsControllerTests.swift` exercises everything through `FakePlaudService`, never the real HTTP client. `PlaudIsolationTests.swift` only checks the base URL literal parses.
+  - Concretely untested: URL/query-string construction (`query(on:items:)`), whether `force=1` actually lands in the query when `PlaudHTTPClient.swift:56-60`'s conditional appends it, request headers, and JSON encoding of `ImportedBody` for `POST /proposals/{id}/imported`. A bug in any of these would ship silently — no test would fail.
+  - No crash risk, no data-loss risk. P2 rather than P3 because it is a genuine blind spot on a network boundary, not cosmetic.
+
+- [ ] `PG-097` **P3** `PlaudError` does not distinguish the 400 sub-codes of `POST /proposals/{id}/imported` — `Sources/Features/Recordings/PlaudError.swift:59-69` <!-- src:review opened:2026-09-06 -->
+  - Found in the same verification pass as PG-098. The contract documents two distinct 400 bodies for this route, `invalid_json` and `invalid_task_ids`; both currently fall through to the generic `.unrecognised(status, body)` case instead of a tailored case like the route's other documented errors (404 `proposal_not_found`, 413 `payload_too_large`) already get.
+  - Not a silent failure: the raw status and body still reach the user via `.unrecognised`, just as "Errore del servizio (HTTP 400): invalid_json" rather than a purpose-written sentence. Low severity, cosmetic-adjacent.
 
 - [ ] `PG-096` **P3** Sparkle integration for signed update delivery — no dependency, no ADR, no code exists yet <!-- src:session opened:2026-09-04 -->
   - Not started. `scripts/release.sh` produces a signed, notarized, numbered build (`CFBundleVersion` = commit count) but has no update-check or appcast path; `Tuist/Package.swift` carries no Sparkle dependency; nothing under `docs/adr/` mentions it.
