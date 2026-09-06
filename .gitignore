@@ -85,3 +85,6 @@ CLAUDE.md.bak-*
 .claude/context.md
 .claude/.triage-fix-last-*.json
 .claude/.refactor-snapshot.txt
+
+# Pre-existing, unrelated to app source.
+AGENTS.md
