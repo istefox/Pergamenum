@@ -180,6 +180,19 @@ import Testing
         )
     }
 
+    @Test func mapsFourHundredOnTheImportedRouteAcrossItsTwoSubCodes() {
+        // PG-097: `POST /proposals/{id}/imported` documents two distinct 400 bodies, both of
+        // which used to fall through to the generic `.unrecognised`.
+        #expect(
+            PlaudError.map(status: 400, body: Data(#"{"error":"invalid_json"}"#.utf8))
+                == .invalidImportBody
+        )
+        #expect(
+            PlaudError.map(status: 400, body: Data(#"{"error":"invalid_task_ids"}"#.utf8))
+                == .invalidTaskIDs
+        )
+    }
+
     @Test func mapsFourHundredThirteenPayloadTooLarge() {
         // Not reproduced live (it needs a >64KiB confirm body); the exact wire shape is
         // documented in `/Users/stefer/Developer/Plaud/docs/PERGAMENUM-API.md`, read-only,
@@ -202,7 +215,7 @@ import Testing
         // read, and it must not be the wire's own error token verbatim.
         let cases: [PlaudError] = [
             .invalidDays, .unknownRecording, .unknownJob, .proposalNotFound,
-            .payloadTooLarge, .serviceDisconnected,
+            .payloadTooLarge, .serviceDisconnected, .invalidImportBody, .invalidTaskIDs,
         ]
         for error in cases {
             #expect(!error.message.isEmpty, "\(error) has no readable message")
