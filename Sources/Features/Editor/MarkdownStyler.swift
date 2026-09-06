@@ -89,6 +89,14 @@ enum MarkdownStyler {
         /// three ADR-0029 constructs, so the exhaustive tables below need editing only
         /// once rather than twice.
         case tableRun
+        /// A whole `pergamenum-view` fence's source run - opening backticks through
+        /// closing ones, inclusive - emitted by `viewBlockRuns(in:outside:)` below
+        /// (ADR-0033 §D1; plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`,
+        /// Task 1). **Closed fences only**: an unclosed one at the end of a note yields no
+        /// span at all, so typing the opening backticks never takes the rest of the note
+        /// out of the layout mid-keystroke (ADR §D6). The span never reads `render:` -
+        /// which renderer a fence names is Task 5's concern, not the classifier's.
+        case viewBlockRun
     }
 
     struct StyledRange: Equatable, Sendable {
@@ -127,6 +135,9 @@ enum MarkdownStyler {
 
         result.append(contentsOf: wikilinkSpans(in: text, from: bodyStart, outside: fences))
         result.append(contentsOf: tableSpans(in: text, from: bodyStart, outside: fences))
+        // After every `.codeBlock` span above, so a `.viewBlockRun` wins on overlap
+        // (ADR-0033 §D14) - `spans(in:)`'s own header rule that later spans win.
+        result.append(contentsOf: viewBlockRuns(in: text, outside: fences))
         return result
     }
 
@@ -148,7 +159,10 @@ enum MarkdownStyler {
              .listMarker,
              // The four ADR-0029 constructs are markers/whole-syntax runs, not prose -
              // the same reasoning as `.headingMarker`/`.emphasisMarker`/`.listMarker` above.
-             .blockquoteMarker, .strikethroughMarker, .horizontalRule, .tableRun:
+             .blockquoteMarker, .strikethroughMarker, .horizontalRule, .tableRun,
+             // A whole fence's own source run, the same shelf as `.tableRun` immediately
+             // above and for the identical reason (ADR-0033 §D1, Task 1).
+             .viewBlockRun:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
@@ -449,6 +463,25 @@ enum MarkdownStyler {
         GFMTable.runs(in: text, from: start, outside: fences).map {
             StyledRange(range: $0.range, span: .tableRun)
         }
+    }
+
+    /// Every **closed** `pergamenum-view` fence's whole source run - opening backticks
+    /// through closing ones, inclusive - as one `.viewBlockRun` span each (ADR-0033 §D1;
+    /// plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1).
+    ///
+    /// TESTER STUB (Task 1): returns `[]` unconditionally. `Tests/ViewBlockSpanTests.swift`
+    /// asserts the real behaviour this must eventually have; the coder fills this in from
+    /// `fences` (already computed by `spans(in:)` at the call site, the same array
+    /// `tableSpans(in:from:outside:)` above takes), filtered to `ViewBlock.language` and to
+    /// a fence that is genuinely **closed** - a `CodeFence.Region` synthesised for an
+    /// unclosed fence has `body.upperBound == range.upperBound == text.endIndex`, which a
+    /// closed one never does, since a real closing fence line sits after the body. The span
+    /// does not read `render:` at all; which renderer a fence names is Task 5's concern.
+    private static func viewBlockRuns(
+        in text: String,
+        outside fences: [CodeFence.Region]
+    ) -> [StyledRange] {
+        []
     }
 
     private static func wikilinkSpans(
