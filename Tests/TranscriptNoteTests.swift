@@ -87,6 +87,38 @@ private func extractedQuote(fromLine line: String) -> String? {
     #expect(durationLines.contains { $0.contains("1236000") })
 }
 
+/// A recording id or timestamp carrying a `"` or a line break is untrusted service data
+/// (RTF review finding, 2026-09-06): unescaped, either would close the YAML scalar early
+/// and let the rest of the string be read as new frontmatter keys. `NoteDocument.parse`
+/// round-tripping the value back out, unmangled, is the same proof the test above uses.
+@Test func escapesQuotesAndLineBreaksInForeignKeyValues() throws {
+    let maliciousID = "abc\"\ninjected-key: true"
+    let maliciousRecordedAt = "2026-09-04T11:48:07\"\nmalicious: yes"
+    let proposal = makeProposal(recordingID: maliciousID, recordedAt: maliciousRecordedAt, themes: [])
+    let text = TranscriptNote.render(
+        proposal: proposal, acceptedTaskIDs: [], speakerRenames: [:],
+        ledgerFingerprints: [], existingNoteText: nil
+    )
+
+    let document = NoteDocument.parse(text)
+    #expect(document.hasFrontmatterBlock)
+    // A byte-identical round trip through the real parser is only possible if the written
+    // scalar was valid YAML - an unescaped `"` or line break would desync `serialized()`
+    // from `text`, or `parse` would not recover the original value at all.
+    #expect(document.serialized() == text)
+
+    let idLines = document.frontmatter.foreignKeys.first { $0.name == "pergamenum-plaud-id" }?.lines ?? []
+    #expect(idLines.contains { $0.contains(#"abc\"\ninjected-key: true"#) })
+    #expect(!idLines.contains { $0.contains("injected-key: true\"") && !$0.contains(#"\n"#) })
+
+    let recordedAtLines = document.frontmatter.foreignKeys.first { $0.name == "pergamenum-plaud-recorded-at" }?.lines ?? []
+    #expect(recordedAtLines.contains { $0.contains(#"\"\nmalicious: yes"#) })
+
+    // No stray top-level key was introduced by the malicious value.
+    #expect(document.frontmatter.foreignKeys.map(\.name).filter { $0 == "malicious" }.isEmpty)
+    #expect(document.frontmatter.foreignKeys.map(\.name).filter { $0 == "injected-key" }.isEmpty)
+}
+
 // MARK: - Tags (D7)
 
 @Test func writesTheThreeTagsOnlyForAMeetingRecording() {

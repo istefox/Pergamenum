@@ -117,6 +117,39 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
 
 // MARK: - Two-phase import (ADR §D13)
 
+/// An unparseable `recorded_at` used to fall through silently to today's date in both the
+/// note's file name and its frontmatter (RTF review finding, 2026-09-06) - filing a
+/// malformed recording under the wrong date instead of surfacing it. The import must be
+/// rejected before either fallback is reached: no note write, no confirmation.
+@MainActor
+@Test func rejectsTheImportWhenRecordedAtCannotBeParsed() async throws {
+    let vault = try TemporaryVault()
+    let controllerVault = await openVaultController(vault.root)
+    let fake = FakePlaudService()
+    let sut = RecordingsController(
+        service: fake, vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false
+    )
+
+    let proposal = PlaudProposal(
+        recording: PlaudProposalRecording(
+            id: "rec-1", name: "Riunione", recordedAt: "not-a-timestamp", durationMs: 60_000
+        ),
+        recordingKind: .meeting,
+        themes: [],
+        transcript: PlaudTranscript(language: "it", text: "Speaker 1: prova.", speakers: ["Speaker 1"]),
+        warnings: [],
+        generatedAt: "2026-09-05T07:55:24.906Z"
+    )
+
+    await sut.importAccepted(recordingID: "rec-1", proposal: proposal, acceptedTaskIDs: [], speakerRenames: [:])
+
+    #expect(sut.rowErrors["rec-1"] != nil)
+    #expect(sut.entries["rec-1"]?.notePath == nil)
+    #expect(await fake.confirmImportedCalls.isEmpty)
+
+    controllerVault.close()
+}
+
 @MainActor
 @Test func aFailedConfirmationLeavesTheNoteWrittenAndRetryReissuesOnlyThePost() async throws {
     let vault = try TemporaryVault()
@@ -154,6 +187,45 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
 
     let secondBytes = try String(contentsOf: noteURL, encoding: .utf8)
     #expect(secondBytes == firstBytes)
+
+    controllerVault.close()
+}
+
+/// ADR §D13's two-phase import rests on the ledger write reaching disk before the
+/// confirmation is sent - a directory that refuses the write (`0o555`, no execute-only
+/// trick needed: the parent already exists, so only the write bit inside it matters)
+/// reproduces that failure without touching `PlaudVaultStore` from the test.
+@MainActor
+@Test func aFailedLedgerWriteNeverSendsTheConfirmation() async throws {
+    let vault = try TemporaryVault()
+    let controllerVault = await openVaultController(vault.root)
+    let fake = FakePlaudService()
+    let sut = RecordingsController(
+        service: fake, vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false
+    )
+
+    let stateDirectory = try #require(controllerVault.session?.state.directory)
+    try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o555], ofItemAtPath: stateDirectory.path(percentEncoded: false)
+    )
+    defer {
+        // Restored before `TemporaryVault.deinit` tries to remove the tree.
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: stateDirectory.path(percentEncoded: false)
+        )
+    }
+
+    let proposal = sampleProposal(recordingID: "rec-1", themes: [
+        PlaudTheme(name: "Azioni", tasks: [
+            PlaudTask(id: "t1", title: "Fare qualcosa", quote: "una prova", urgency: 3, importance: 3, dueHint: nil),
+        ]),
+    ])
+
+    await sut.importAccepted(recordingID: "rec-1", proposal: proposal, acceptedTaskIDs: ["t1"], speakerRenames: [:])
+
+    #expect(await fake.confirmImportedCalls.isEmpty)
+    #expect(sut.rowErrors["rec-1"] != nil)
 
     controllerVault.close()
 }
@@ -374,6 +446,35 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
     #expect(message == PlaudError.serviceDisconnected.message)
     #expect(!message.contains("PlaudError"))
     #expect(!message.contains("serviceDisconnected"))
+
+    controllerVault.close()
+}
+
+/// Cmd+R and the toolbar button must mean the same thing (RTF review finding, 2026-09-06):
+/// before this, Cmd+R called only `refresh()`, so a service that had recovered since a prior
+/// failed health check still showed the health banner in place of the freshly-fetched rows.
+@MainActor
+@Test func refreshAndCheckHealthClearsAStaleUnavailableBannerOnceTheServiceAnswersAgain() async throws {
+    let vault = try TemporaryVault()
+    let controllerVault = await openVaultController(vault.root)
+    let fake = FakePlaudService()
+    await fake.setHealthResult(.failure(.serviceDisconnected))
+    let sut = RecordingsController(
+        service: fake, vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false
+    )
+
+    await sut.checkHealth()
+    guard case .unavailable = sut.health else {
+        Issue.record("expected .unavailable after the failed health check, got \(sut.health)")
+        return
+    }
+
+    await fake.setHealthResult(.success(PlaudHealth(status: "ok", plaud: "connected", version: "0.2.0")))
+    await fake.setRecordingsResult(.success([sampleRecording(id: "rec-1")]))
+    await sut.refreshAndCheckHealth()
+
+    #expect(sut.health == .available)
+    #expect(sut.recordings.map(\.id) == ["rec-1"])
 
     controllerVault.close()
 }

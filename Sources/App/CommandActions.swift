@@ -279,7 +279,7 @@ final class CommandActions {
             // Only ever reached while the pane is showing (`canRun`), so unlike «Verifica
             // conformità» it does not bring its pane forward first: Cmd+R from anywhere else
             // is disabled rather than being a navigation in disguise.
-            Task { await recordings?.refresh() }
+            Task { await recordings?.refreshAndCheckHealth() }
             return
         }
         if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {

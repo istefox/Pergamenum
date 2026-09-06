@@ -112,6 +112,16 @@ final class RecordingsController {
 
     // MARK: - Loading
 
+    /// The one sequence «Aggiorna registrazioni» ever means, whether it comes from the
+    /// toolbar button or the Cmd+R shortcut: `checkHealth()` first, so a service that has come
+    /// back since a previous failure clears the health banner, then `refresh()`. Two separate
+    /// call sites each doing only `refresh()` is exactly how the banner used to stay up after
+    /// a successful refresh proved the service reachable (RTF review finding, 2026-09-06).
+    func refreshAndCheckHealth() async {
+        await checkHealth()
+        await refresh()
+    }
+
     /// Reloads the local ledger when `vault.session` has changed identity (R-12) and fetches
     /// `GET /recordings?days=N` for the days window the ledger holds (ADR §D12).
     ///
@@ -291,6 +301,15 @@ final class RecordingsController {
             rowErrors[recordingID] = Self.noVaultMessage
             return
         }
+        // An unparseable `recorded_at` used to fall through silently to today's date, both
+        // in the note's frontmatter and in its file name (`notePath`/`TranscriptNote.render`
+        // each default to "now" when parsing fails) - filing a malformed recording under the
+        // wrong date instead of surfacing it (RTF review finding, 2026-09-06). Rejected here,
+        // before either fallback is ever reached.
+        guard PlaudTimestamp.parse(proposal.recording.recordedAt) != nil else {
+            rowErrors[recordingID] = "Data di registrazione non valida: \"\(proposal.recording.recordedAt)\""
+            return
+        }
 
         var entry = ledger.recordings[recordingID] ?? PlaudVaultStore.Entry(status: "new")
         // The note is the source of truth (principle 1): what it already holds suppresses a
@@ -321,7 +340,12 @@ final class RecordingsController {
         )
         entry.pendingConfirmation = acceptedTaskIDs.sorted()
         entry.lastImportedAt = Date.now.ISO8601Format()
-        record(entry, for: recordingID)
+        guard record(entry, for: recordingID) else {
+            // The ledger write failed: the pending-confirmation debt never reached disk, so
+            // telling the service "imported" now would leave nothing to retry it from
+            // (ADR §D13). `rowErrors[recordingID]` is already set by `record`.
+            return
+        }
 
         // Phase 2, and only now: a confirmation the vault cannot honour would mark the
         // recording imported service-side with nothing to show for it (ADR §D13).
@@ -435,14 +459,19 @@ extension RecordingsController {
     }
 
     /// Writes one entry through, disk first: `pendingConfirmation` that never reached the
-    /// file is a debt nothing would retry after a relaunch (ADR §D13).
-    private func record(_ entry: PlaudVaultStore.Entry, for recordingID: String) {
+    /// file is a debt nothing would retry after a relaunch (ADR §D13). Returns whether the
+    /// write actually reached disk, so a caller about to tell the service "imported" can
+    /// refuse to when it did not (`importAccepted`).
+    @discardableResult
+    private func record(_ entry: PlaudVaultStore.Entry, for recordingID: String) -> Bool {
         ledger.recordings[recordingID] = entry
         entries = ledger.recordings
         do {
             try store?.saveLedger(ledger)
+            return true
         } catch {
             rowErrors[recordingID] = "Stato locale non salvato: la conferma non verrà ritentata dopo la chiusura."
+            return false
         }
     }
 

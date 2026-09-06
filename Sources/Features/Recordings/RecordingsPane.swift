@@ -62,8 +62,14 @@ struct RecordingsPane: View {
         // When the pane is shown, and at no other moment: no timer, no launch check, no
         // background task (ADR §D4/§D14). Choosing the row is the ask; `isIsolated` makes
         // this a no-op under `-disablePlaud YES` and inside the unit suite's host.
+        //
+        // No `.onDisappear` stopping polls here: `recordings` lives at scene level precisely
+        // so a poll survives the person switching to another sidebar section (ADR §D4 - "a
+        // poll that dies because the person went to look at a note would leave a job running
+        // with nothing watching it"). `RecordingsController.stop()` is still called on vault
+        // change (`reloadLedger`) and each poll still ends itself when its job completes or
+        // its 30-minute cap expires.
         .task { await load() }
-        .onDisappear { recordings.stop() }
         .sheet(item: $review) { ReviewSheet(context: $0) }
         .confirmationDialog(
             "Eliminare la nota di «\(pendingDeletion?.name ?? "")»?",
@@ -190,8 +196,7 @@ struct RecordingsPane: View {
     // MARK: Actions
 
     private func load() async {
-        await recordings.checkHealth()
-        await recordings.refresh()
+        await recordings.refreshAndCheckHealth()
     }
 
     private func perform(_ action: RecordingRowPresentation.Action, on recording: PlaudRecording) {

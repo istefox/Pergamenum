@@ -125,23 +125,40 @@ enum TranscriptNote {
     }
 
     /// The service's own strings, byte for byte (D8): this app never re-serializes a value it
-    /// did not author, so a re-import compares strings that cannot have drifted.
+    /// did not author, so a re-import compares strings that cannot have drifted. "Byte for
+    /// byte" is about content, not about YAML syntax: `id`/`recordedAt` are untrusted wire
+    /// values placed inside a double-quoted scalar, so a `"` or a line break from the service
+    /// is escaped rather than passed through, or it would close the scalar early and let the
+    /// rest of the value be read as new frontmatter keys (RTF review finding, 2026-09-06).
     private static func foreignKeys(for proposal: PlaudProposal) -> [Frontmatter.ForeignKey] {
         let recording = proposal.recording
         return [
             Frontmatter.ForeignKey(
                 name: "pergamenum-plaud-id",
-                lines: ["pergamenum-plaud-id: \"\(recording.id)\""]
+                lines: ["pergamenum-plaud-id: \"\(yamlEscaped(recording.id))\""]
             ),
             Frontmatter.ForeignKey(
                 name: "pergamenum-plaud-recorded-at",
-                lines: ["pergamenum-plaud-recorded-at: \"\(recording.recordedAt)\""]
+                lines: ["pergamenum-plaud-recorded-at: \"\(yamlEscaped(recording.recordedAt))\""]
             ),
             Frontmatter.ForeignKey(
                 name: "pergamenum-plaud-duration-ms",
                 lines: ["pergamenum-plaud-duration-ms: \(recording.durationMs)"]
             ),
         ]
+    }
+
+    /// Escapes a value for a double-quoted YAML scalar: backslash and `"` are the two
+    /// characters that scalar syntax itself reserves, and a literal line break would end the
+    /// block's single-line key before the parser ever sees a closing quote. YAML's own
+    /// double-quoted-scalar grammar defines `\\` and `\n` as valid escapes for exactly this.
+    private static func yamlEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r\n", with: "\\n")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\n")
     }
 
     // MARK: - Task lines (C7, D9, D10)

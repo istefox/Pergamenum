@@ -30,7 +30,11 @@ import Testing
 @Test func treatsNfcAndNfdFormsAsEqual() {
     let nfc = "società".precomposedStringWithCanonicalMapping
     let nfd = "società".decomposedStringWithCanonicalMapping
-    #expect(nfc != nfd, "the fixture must actually exercise two different Unicode forms")
+    // `String`'s `==` compares by canonical equivalence (grapheme clusters), so `nfc != nfd`
+    // is false here even though the two are stored as different scalar sequences - comparing
+    // as `String` would make this guard always fail and hide a fixture that stopped exercising
+    // two distinct Unicode forms. Compare the scalar sequences themselves instead.
+    #expect(Array(nfc.unicodeScalars) != Array(nfd.unicodeScalars), "the fixture must actually exercise two different Unicode forms")
     #expect(PlaudQuote.fingerprint(nfc) == PlaudQuote.fingerprint(nfd))
 }
 
