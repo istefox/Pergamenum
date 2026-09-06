@@ -76,6 +76,17 @@ struct HiddenMarker: Equatable, Sendable {
         /// body row: those leave the layout entirely through `apply(tableRows:)` (D5), a
         /// fifth input kept deliberately separate from `hiddenLineOffsets`.
         case table
+        /// A `pergamenum-view` fence's own opening-line run (ADR-0033 §D1/§D4; plan
+        /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 2) - anchored at the
+        /// opening fence paragraph's own start, the same convention `.table` uses, since the
+        /// fence's real shape is re-read from the live characters through a fresh fence parse
+        /// rather than carried on the marker. Never the body lines or the closing fence line:
+        /// those leave the layout entirely through `apply(viewBlockLines:)`, a sixth input
+        /// kept deliberately separate from both `hiddenLineOffsets` and `tableRowOffsets`
+        /// (ADR §Context C4: unlike a table, whose last hidden row is its own last body row,
+        /// a fence has no equivalent - it ends at a line of backticks that must leave the
+        /// layout too, or it would sit under the drawn attachment as stray text).
+        case viewBlock
     }
 
     let range: NSRange
@@ -207,6 +218,29 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// which owns `TableGridStore` (ADR-0029 §D6); this object never builds a view itself.
     func apply(tableViews views: [Int: TableGridView]) {
         tableViews = views
+    }
+
+    /// Registers a view block's body-line and closing-fence offsets as out of the layout -
+    /// the sixth producer of `shouldEnumerate`'s refusal (plan
+    /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 2), deliberately never
+    /// merged into `hiddenLineOffsets` or `tableRowOffsets` - the same isolation
+    /// `apply(tableRows:)`'s own header already states, extended to a third input rather
+    /// than restated as a special case of the second.
+    ///
+    /// **Stub.** The tester's own declaration (Task 2): storage and the
+    /// `textContentManager(_:shouldEnumerate:options:)` widening that actually excludes
+    /// these offsets from a real layout pass are the coder's work.
+    func apply(viewBlockLines offsets: Set<Int>) {
+        // Task 2, coder.
+    }
+
+    /// Registers the host view already vended for each view block, by its opening fence's
+    /// own paragraph offset - the same finished-value hand-over `apply(tableViews:)` makes.
+    ///
+    /// **Stub.** The tester's own declaration (Task 2); wiring a real `NSView` through is
+    /// Task 4's own deliverable (`ViewBlockHostStore`).
+    func apply(viewBlockHosts hosts: [Int: NSView]) {
+        // Task 2, coder.
     }
 
     /// Registers where the hidden markers are and whether they should be hidden at all.
@@ -527,6 +561,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return tinted
     }()
 
+    /// The view-block branch of the substitution in
+    /// `textContentStorage(_:textParagraphWith:)` - **stubbed to return `nil`
+    /// unconditionally** (plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 2,
+    /// tester). Reading a `.viewBlock` marker back, re-validating it against a fresh fence
+    /// parse of the live characters, and drawing the real `ViewBlockAttachment` from
+    /// `viewBlockHosts[range.location]` is Task 5's own deliverable, not this one's - the
+    /// same shape `tableParagraph(at:storage:)`'s own header comment describes for its own
+    /// chain (`EditorDecorationDelegate+TableRendering.swift`). Not called from
+    /// `textContentStorage(_:textParagraphWith:)` yet either: wiring the call site into that
+    /// chain is also Task 5's.
+    func viewBlockParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
+        nil
+    }
+
     private static func stillSpells(_ kind: HiddenMarker.Kind, _ text: NSString, at range: NSRange) -> Bool {
         switch kind {
         case .heading: stillSpellsAHeadingMarker(text, at: range)
@@ -567,6 +615,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // characters (`GFMTable.parse`), not merely whether a marker range is still
         // spelled - the coder's own branch inside `tableParagraph(at:storage:)` (Task 4).
         case .table: false
+        // Never handled here, for the same structural reason as `.table`: a view block's
+        // own re-validation reads the whole fence shape back from the live characters, not
+        // merely whether a marker range is still spelled - the coder's own branch inside
+        // `viewBlockParagraph(at:storage:)` (plan
+        // `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 5).
+        case .viewBlock: false
         }
     }
 
