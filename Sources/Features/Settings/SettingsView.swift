@@ -64,6 +64,11 @@ struct SettingsView: View {
             }
             Button("Apri un'altra cartella…") { VaultOpenPanel.chooseVault(into: vault) }
 
+            // ADR-0032 (Plaud recording import), R-11. Its own type rather than another
+            // row inline here: `SettingsView`'s body is at SwiftLint's `type_body_length`
+            // limit, and this tab is the one that keeps growing.
+            PlaudDaysField()
+
             LabeledContent("Viste di esempio") {
                 VStack(alignment: .leading, spacing: 2) {
                     Button("Scrivi in Templates/") { installSamples() }
@@ -292,5 +297,38 @@ struct SettingsView: View {
         let milliseconds = vault.index.lastScanDuration.components.attoseconds / 1_000_000_000_000_000
         let seconds = vault.index.lastScanDuration.components.seconds
         return seconds > 0 ? "\(seconds),\(milliseconds / 100) s" : "\(milliseconds) ms"
+    }
+}
+
+/// «Giorni registrazioni Plaud», the one field ADR-0032 R-11 adds, in the Generali tab.
+///
+/// **This value is not a `VaultSettings` key.** It is written through
+/// `RecordingsController.updateDays`, into the vault's own `plaud.json` beside its index
+/// under Application Support (ADR §D12) - never through `vault.updateSettings`. Looking for
+/// it in `.pergamenum/settings.json` is looking for something that does not exist.
+///
+/// In Generali and not in a tab of its own: it is a vault-scoped operational setting and
+/// this tab already holds the vault-identity rows (blueprint - no new tab for one field).
+private struct PlaudDaysField: View {
+    @Environment(VaultController.self) private var vault
+    @Environment(RecordingsController.self) private var recordings
+
+    var body: some View {
+        LabeledContent("Giorni registrazioni Plaud") {
+            VStack(alignment: .leading, spacing: 2) {
+                TextField(
+                    "",
+                    value: Binding(get: { recordings.days }, set: { recordings.updateDays($0) }),
+                    format: .number
+                )
+                .frame(width: 80)
+                .disabled(vault.root == nil)
+                .accessibilityIdentifier("plaud-days")
+                // Clamped by `updateDays` rather than refused: the service answers 400
+                // `invalid_days` outside 1…3650, so a number outside it can only fail.
+                Text("Da 1 a 3650. Predefinito 14.")
+                    .themedText(.caption, color: .textTertiary)
+            }
+        }
     }
 }

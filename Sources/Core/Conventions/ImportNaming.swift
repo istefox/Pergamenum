@@ -108,6 +108,72 @@ enum ImportNaming {
         "immagine-\(date.compactForm).png"
     }
 
+    // ADR-0032 (Plaud recording import into Pergamenum), plan
+    // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 4 - R-05.
+    //
+    // The note title is derived from the recording, never taken from it (ADR §D5): a
+    // recording's own `name` can be a human title with a colon in it and no length limit,
+    // or the old `2026-09-04 13:44:51` timestamp form - neither is a conformant `NoteName`.
+    // Four rules the coder implements: (1) a leading date-like token in `name` is dropped
+    // before slugging; (2) the slug is truncated at a word boundary so the whole title is
+    // ≤ `NoteName.maximumLength`, and never ends in a hyphen; (3) collisions are somebody
+    // else's job (`uniqueFileName`, above); (4) the date is `recordedAt`'s own **local**
+    // calendar date, never today's.
+    //
+    // Also `.claude/protected-interfaces` (ADR-0053): a silent signature/behavior change
+    // here orphans every note already imported, since re-import matches an existing
+    // transcript note by the name this function derives.
+    //
+    // A slug whose very first word is on its own longer than the budget leaves the title
+    // as `YYYYMMDD_Registrazione` with no slug at all: cutting inside that word is what
+    // rule 2 forbids, and a name made of one enormous word carries no word boundary to cut
+    // at. The date and the kind still say what the note is.
+    static func recordingNoteTitle(recordedAt: Date, name: String) -> String {
+        let stem = "\(CalendarDate(recordedAt).compactForm)_Registrazione"
+        let slug = truncatedAtWordBoundary(
+            kebabCase(droppingLeadingDateToken(name)),
+            toFit: NoteName.maximumLength - stem.count - 1
+        )
+        return slug.isEmpty ? stem : "\(stem)_\(slug)"
+    }
+
+    /// Rule 1: a `09-04 ` or `2026-09-04 ` head is the recording's own date repeated, and
+    /// the title already opens with that date in compact form. Only the first
+    /// space-separated token is considered, and only when every one of its two or three
+    /// hyphen-separated parts is numeric - «Linea 4 - revisione» keeps its first word.
+    private static func droppingLeadingDateToken(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard let space = trimmed.firstIndex(of: " ") else {
+            return isDateLikeToken(trimmed) ? "" : trimmed
+        }
+        guard isDateLikeToken(String(trimmed[trimmed.startIndex..<space])) else { return trimmed }
+        return String(trimmed[trimmed.index(after: space)...]).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func isDateLikeToken(_ token: String) -> Bool {
+        let parts = token.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2 || parts.count == 3 else { return false }
+        return parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+    }
+
+    /// Rule 2: whole words only, so the title never ends mid-word and never ends in the
+    /// hyphen that joined one - `NoteName.maximumLength` is the budget the caller has
+    /// already subtracted its own prefix from.
+    private static func truncatedAtWordBoundary(_ slug: String, toFit budget: Int) -> String {
+        guard budget > 0 else { return "" }
+        guard slug.count > budget else { return slug }
+
+        var kept: [Substring] = []
+        var length = 0
+        for word in slug.split(separator: "-") {
+            let addition = kept.isEmpty ? word.count : word.count + 1
+            guard length + addition <= budget else { break }
+            kept.append(word)
+            length += addition
+        }
+        return kept.joined(separator: "-")
+    }
+
     static func uniqueFileName(
         _ proposed: String,
         in directory: URL,

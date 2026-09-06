@@ -78,7 +78,10 @@ enum SidebarItem: Hashable, Identifiable, Sendable {
             case .day:
                 [.pane(.today), .scale(.week), .scale(.month), .dailyNote, .pane(.diary)]
             case .work:
-                [.pane(.tasks), .pane(.conformance)]
+                // «Registrazioni» last (ADR-0032 §D15): the blueprint asks for the new row
+                // at the end of the sidebar, and LAVORO is the group it belongs to - an
+                // import is work done on the vault, not a place inside it.
+                [.pane(.tasks), .pane(.conformance), .pane(.recordings)]
             }
         }
     }

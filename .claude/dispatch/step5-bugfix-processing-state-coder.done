@@ -1,0 +1,1 @@
+RecordingsPane.effectiveState now reports .processing for a polled recording and row(_:) reads through it; RecordingsController.finishPolling is async and awaits refresh() on every poll-end path (proposal, job error, failed state, transport catch, timeout), so the final state appears with no manual Cmd+R - both new tests green, only known red left is treatsNfcAndNfdFormsAsEqual.

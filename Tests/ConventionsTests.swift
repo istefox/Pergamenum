@@ -237,6 +237,35 @@ Il corpo della nota.
     #expect(document.serialized().contains("cssclass: wide"))
 }
 
+// ADR-0032 (Plaud recording import into Pergamenum), plan
+// docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 9 -
+// R-05; ADR §D6. Added beside `preservesForeignKeysInsteadOfDroppingThem` rather than
+// replacing it, per the plan's own instruction: an ordinary foreign key must still be
+// reported, only a `pergamenum-`-prefixed one stops being one.
+//
+// `FrontmatterRules.validate` (`Frontmatter.swift:335`) does not yet special-case the
+// prefix, so this is red until Task 9's coder adds the four-line allowance. The Task 4
+// linter assertion (`Tests/TranscriptNoteTests.swift`, "The linter (D6/D7, Task 9)") turns
+// green at the same time - confirm it there, it is not duplicated here.
+@Test func aPergamenumPrefixedForeignKeyProducesNoFinding() {
+    let note = """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+      - topic-trascrizione
+    pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+    ---
+    corpo
+    """
+    let document = NoteDocument.parse(note)
+    #expect(document.frontmatter.foreignKeys.map(\.name) == ["pergamenum-plaud-id"])
+    #expect(!FrontmatterRules.validate(document).contains(.foreignKey("pergamenum-plaud-id")))
+    // Still preserved verbatim - the parser and the serializer are not touched, only the
+    // linter's opinion of the key (ADR §D6: "the change is four lines in one function").
+    #expect(document.serialized().contains(#"pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6""#))
+}
+
 @Test func reordersTagsOnSave() {
     let note = """
     ---
@@ -410,6 +439,92 @@ func rejectsVersionSuffixes(_ title: String) {
     // Same name outside the daily folder is an event note, not a daily note.
     #expect(NoteName.category(forFileName: "20260811.md", dailyFolder: "Calendar", path: "01 Progetti/20260811.md") == .note)
     #expect(NoteName.category(forFileName: "Titolo.md", dailyFolder: "Calendar", path: "Titolo.md") == .note)
+}
+
+// MARK: - Recording note titles (ADR-0032 §D5, plan Task 4, R-05)
+//
+// `ImportNaming.recordingNoteTitle(recordedAt:name:)` is additive (this file compiles
+// into `perg` and `pergamenum-mcp` too, Foundation-only). Its production body is a
+// tester-declared stub (see `ImportNaming.swift`) - every test below is red until the
+// coder implements the four rules the ADR names.
+
+@Test func derivesATitleFromAColonBearingHumanNameWithNoForbiddenCharacters() throws {
+    // Measured live on 2026-09-05 (ADR-0032 M1): a recording's `name` can be a long
+    // human title with a colon in it, neither of which `NoteName` accepts as-is.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-09-04T11:48:07"))
+    let name = "09-04 Riunione: Preparazione revisione trimestrale con cliente - Diagramma di Flusso Componenti"
+
+    let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: name)
+
+    #expect(title.hasPrefix("20260904_Registrazione_"))
+    #expect(NoteName.validate(title).isEmpty, "\(NoteName.validate(title))")
+}
+
+@Test func derivesATitleFromTheOldTimestampFormName() throws {
+    // Measured live (ADR-0032 M1): one recording still carries `name` as the raw
+    // timestamp the SPEC originally documented for all of them.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-09-04T11:44:51"))
+    let name = "2026-09-04 13:44:51"
+
+    let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: name)
+
+    #expect(title.hasPrefix("20260904_Registrazione_"))
+    #expect(NoteName.validate(title).isEmpty, "\(NoteName.validate(title))")
+}
+
+@Test func dropsALeadingDateLikeTokenBeforeSlugging() throws {
+    // ADR §D5 rule 1: six of eight measured names begin `09-04 ` or `2026-09-04 `, and
+    // leaving it in would slug the date twice. Stripping it means the title is the same
+    // whether or not the recording's own name repeats the day it was recorded on.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-09-04T11:48:07"))
+    let bare = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: "Sopralluogo linea 4")
+    let withShortToken = ImportNaming.recordingNoteTitle(
+        recordedAt: recordedAt, name: "09-04 Sopralluogo linea 4"
+    )
+    let withLongToken = ImportNaming.recordingNoteTitle(
+        recordedAt: recordedAt, name: "2026-09-04 Sopralluogo linea 4"
+    )
+
+    #expect(bare == withShortToken)
+    #expect(bare == withLongToken)
+    #expect(!bare.contains("09-04"))
+}
+
+@Test func truncatesTheSlugAtAWordBoundaryWithNoTrailingHyphen() throws {
+    // ADR §D5 rule 2: `NoteName.maximumLength` is 60 and a measured name reaches 79 (in
+    // fact the file this was measured against is a good deal longer once slugged), so the
+    // slug must be cut at a whole word, never mid-word, and never leave a trailing `-`.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-09-04T11:48:07"))
+    let name = "Argomento molto lungo che supera abbondantemente il limite di sessanta caratteri per il titolo della nota di registrazione di oggi"
+
+    let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: name)
+
+    #expect(title.count <= NoteName.maximumLength)
+    #expect(!title.hasSuffix("-"))
+
+    let prefix = "20260904_Registrazione_"
+    guard title.hasPrefix(prefix) else {
+        Issue.record("title \(title) does not start with the derived date prefix")
+        return
+    }
+    let slug = title.dropFirst(prefix.count)
+    let sourceWords = Set(ImportNaming.kebabCase(name, maximumWords: 999).split(separator: "-"))
+    for word in slug.split(separator: "-") {
+        #expect(sourceWords.contains(word), "\"\(word)\" is not a whole word from the source name")
+    }
+}
+
+@Test func usesTheRecordingsOwnLocalDateNotTodays() throws {
+    // ADR §D5 rule 4: a recording imported a week later is filed under the day it
+    // happened, not the day somebody pressed "Elabora". The expected prefix is computed
+    // from the same `CalendarDate(_:in:)` the production code has to use, rather than a
+    // hardcoded literal, so this test is not itself timezone-dependent.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-08-11T09:00:00"))
+    let localDate = CalendarDate(recordedAt, in: .current)
+    let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: "Nota di prova")
+    #expect(title.hasPrefix("\(localDate.compactForm)_Registrazione_"))
+    // And distinct from "today" (this suite is not run on 2026-08-11 itself).
+    #expect(localDate != .today)
 }
 
 // MARK: - Harness convention import

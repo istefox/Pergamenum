@@ -26,6 +26,10 @@ final class Navigation {
         /// list: a view is a question about the whole vault, and the note it is written
         /// in is where it lives rather than what it is about.
         case views
+        /// The Plaud recordings of ADR-0032 §D15. A pane like the nine above and not a
+        /// sheet reached from somewhere else: the list is a place a person comes back to
+        /// while a transcription is running, which is what a destination is for.
+        case recordings
 
         var id: String { rawValue }
 
@@ -40,6 +44,7 @@ final class Navigation {
             case .tags: "Tag"
             case .starred: "Preferite"
             case .views: "Viste"
+            case .recordings: "Registrazioni"
             }
         }
 
@@ -54,6 +59,7 @@ final class Navigation {
             case .tags: "tag"
             case .starred: "star"
             case .views: "tablecells"
+            case .recordings: "waveform"
             }
         }
 
@@ -79,6 +85,9 @@ final class Navigation {
             case .tags: .paneTags
             case .starred: .paneStarred
             case .views: .paneViews
+            // Ctrl+Cmd+0, appended at the end of the catalogue (ADR-0032, ADR-0005 §D8):
+            // the tenth pane takes the last free digit, and that exhausts them.
+            case .recordings: .paneRecordings
             }
         }
     }

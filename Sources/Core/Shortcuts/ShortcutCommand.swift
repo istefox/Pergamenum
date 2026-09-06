@@ -101,6 +101,20 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case newEvent
     case newReminder
 
+    // ADR-0032 (Plaud recording import into Pergamenum), plan
+    // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 8 -
+    // R-01, R-11, R-15; ADR §D15. Appended at the end, never inserted: the raw values are the
+    // keys of the overrides file (ADR-0005 §D8).
+    /// The tenth pane: jumps to "Registrazioni", the sidebar row this chain adds
+    /// (`Navigation.Pane.recordings`, wired in Task 8's coder step - not yet a case of that
+    /// enum, so nothing here resolves it to a pane yet).
+    case paneRecordings
+    /// Re-fetches `/recordings` for the current vault (R-01) - the toolbar's
+    /// `arrow.clockwise` button and this menu entry are wired to the same action (UX
+    /// blueprint). Enabled only while `navigation.pane == .recordings`
+    /// (`CommandActions+CanRun.swift`, Task 8's coder step).
+    case refreshRecordings
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -137,7 +151,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
-             .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward:
+             .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward,
+             .paneRecordings, .refreshRecordings:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -200,6 +215,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .nextDay: "Giorno successivo"
         case .newEvent: "Nuovo evento"
         case .newReminder: "Nuovo promemoria"
+        case .paneRecordings: "Vai a Registrazioni"
+        case .refreshRecordings: "Aggiorna registrazioni"
         }
     }
 
@@ -299,6 +316,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .nextDay: KeyBinding("right", .command)
         case .newEvent: KeyBinding("e", .command)
         case .newReminder: KeyBinding("e", [.command, .shift])
+        // Measured free against `com.apple.symbolichotkeys` (58 entries parsed, no match for
+        // keycode 29 with Cmd+Ctrl, ADR §D15): the digit after the nine already bound.
+        case .paneRecordings: KeyBinding("0", [.command, .control])
+        // Measured free both in this app (`revealInFinder` holds Cmd+Shift+R; nothing holds
+        // the unshifted form) and in the system map (ADR §D15).
+        case .refreshRecordings: KeyBinding("r", .command)
         }
     }
 }

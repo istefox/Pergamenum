@@ -61,8 +61,21 @@ extension CommandActions {
              .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
              .paneDiary, .paneTags, .paneViews, .paneStarred, .toggleInspector,
              .taskToday, .taskTomorrow,
-             .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay:
+             .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay,
+             // Every other "go to this pane" command is unconditionally available - the same
+             // convention applies here, with no vault-open guard any of the nine others carry
+             // either (ADR-0032 §D15).
+             .paneRecordings:
             true
+        // ADR-0032 (Plaud recording import into Pergamenum), plan
+        // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md,
+        // Task 8 - R-01. The blueprint's own condition, and the only one: Cmd+R re-fetches
+        // `/recordings` for the pane you are looking at, so away from it the command is
+        // disabled rather than silently doing work nobody can see. No vault guard beside it
+        // - `refresh()` reports «Nessun vault aperto» itself, on the banner, which says more
+        // than a greyed menu entry does.
+        case .refreshRecordings:
+            navigation.pane == .recordings
         }
     }
 

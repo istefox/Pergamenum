@@ -1,204 +1,228 @@
-# SPEC — Sparkle auto-update integration (PG-096)
+# SPEC — Plaud recording import into Pergamenum
 
-**Topic slug:** sparkle-auto-update-integration
+**Topic slug:** plaud-recording-import-into-pergamenum
 
 ## Objectives
 
-Pergamenum ships as a Developer ID, notarized, non-App-Store macOS app (`scripts/release.sh`).
-Today there is no in-app way for Stefano to learn a new build exists or to install it — he has to
-remember to check GitHub and manually `ditto` a new bundle into `/Applications`. This feature adds
-Sparkle (the standard macOS Developer-ID update framework) so the app can check for, download and
-install new signed/notarized builds, and extends `scripts/release.sh` to produce and publish
-everything Sparkle needs (a signed update archive plus an appcast feed entry) as part of the
-existing release flow.
+Consume the local `plaud-service` HTTP contract (already shipped, separate repo `Plaud`,
+`http://127.0.0.1:3777`, loopback-only, no auth — contract at
+`/Users/stefer/Developer/Plaud/docs/PERGAMENUM-API.md`) so that a Plaud voice recording can become
+a real note in the currently open vault: a transcript note with speaker labels, and a set of real
+task-lines built from the themes/tasks the service extracted — after the person reviews and
+accepts or rejects each proposed task individually.
 
-## Explicit exception to CLAUDE.md Principle 2 ("Fully offline")
-
-Principle 2 states: *"No network call in any feature. No server, no account, no telemetry."* An
-update check is inherently a network call (`GET` on the appcast URL, then on the update archive
-URL if the user chooses to install). This SPEC treats it as a **narrow, named exception**, not a
-reopening of the principle:
-
-- The exception covers **only** the update-check/download/install mechanism. It carries no vault
-  content, no note text, no user data of any kind — only the app's own version identifiers
-  (`CFBundleVersion`, `CFBundleShortVersionString`) and, implicitly, the requester's IP address as
-  an artifact of any HTTP request (unavoidable, not additional telemetry).
-- `SUSendsSystemProfile` (Sparkle's optional anonymous hardware/OS profiling) stays **off** — this
-  would be telemetry proper and Principle 2 forbids it outright, exception or not.
-- No feature of the app (vault, Workspace, tasks, calendar) gains network access as a result of
-  this chain. The exception is scoped to the updater target/module only.
-- The ADR produced from this SPEC records this exception formally, alongside the existing ADR-0007
-  network-boundary reasoning for the AI connector (which stays a *"never opens a socket"* boundary
-  for the vault itself — unaffected by this feature).
+Nothing on the Plaud service side is touched. This SPEC covers only the Pergamenum-side consumer:
+HTTP client, a new "Registrazioni" sidebar section, the review UI, and the vault-write mapping.
 
 ## Scope
 
-In scope:
-- Add Sparkle as an SPM dependency (`Tuist/Package.swift`), wired into the `Pergamenum` app target
-  only — never into `Sources/Core`, `perg`, or `pergamenum-mcp` (mirrors the existing EventKit
-  exclusion rationale: an update mechanism belongs to the interactive app, not to a headless CLI
-  invoked by something else).
-- A **manual-only** update check: no automatic/background/periodic checking.
-  `SUEnableAutomaticChecks` / `automaticallyChecksForUpdates` is `false`, and Sparkle's own
-  first-launch "may I check automatically?" consent dialog is suppressed as a result (there is
-  nothing to consent to).
-- One new UI entry point: **"Cerca Aggiornamenti…"** in the `Pergamenum` app menu, next to
-  "Informazioni su Pergamenum" — the standard macOS location for this command. No Settings/
-  Impostazioni surface.
-- Sparkle's own stock update UI (`SPUStandardUserDriver`, the native "A new version is available"
-  window, download progress, "Install and Relaunch") is used as-is. **This window is a system
-  framework surface, not part of Pergamenum's SwiftUI view tree** — it is out of scope for the
-  design-token binding rule ("no hardcoded colors in views") because it is not a view this app
-  authors.
-- EdDSA signing keypair generated once via Sparkle's own `generate_keys` tool, private key stored
-  in this Mac's login Keychain, public key embedded in `Info.plist` as `SUPublicEDKey`. The private
-  key is never written to disk in cleartext and never committed.
-- `scripts/release.sh` extended, end-to-end, to (after the existing notarize+staple steps):
-  1. Re-package the **stapled** bundle into a distributable zip (today's script staples the
-     bundle but only ever notarizes/ships the pre-staple zip — see Edge cases).
-  2. Sign that zip with Sparkle's `sign_update` tool (reads the private key from Keychain).
-  3. Publish a GitHub Release (via `gh release create`) on `istefox/Pergamenum` with the zip
-     attached and a written release-notes body.
-  4. Regenerate `appcast.xml` (via Sparkle's `generate_appcast` tool or an equivalent hand-built
-     step) with a new `<item>` entry: version, build number, download URL (the GitHub Release
-     asset), EdDSA signature, length, minimum system version, and a `sparkle:releaseNotesLink`
-     pointing at the GitHub Release page itself.
-  5. Push the updated `appcast.xml` to GitHub Pages on `istefox/Pergamenum` (confirmed: GitHub
-     Pro/Team plan on this account, so Pages works on a private repo).
-  6. All of the above runs automatically when Stefano runs `scripts/release.sh` himself — that
-     manual invocation **is** the HITL checkpoint (CLAUDE.md's "never push/deploy without asking"
-     is satisfied by the fact that running the release script is itself the deliberate,
-     ask-before action; nothing here fires unattended or from a Claude Code session on its own).
-- `SUFeedURL` in `Info.plist`/`Project.swift` pointed at the GitHub Pages `appcast.xml` URL.
-- Version comparison uses the existing `CFBundleVersion` scheme (commits behind `HEAD`, stamped by
-  `scripts/release.sh` via `TUIST_BUILD_NUMBER`) — Sparkle's default comparator already compares on
-  this field and it is already strictly monotonic across releases cut from `main`.
+**In scope:**
+- A new sidebar section, "Registrazioni", listing recordings from `GET /recordings?days=N` with
+  status badges (new/processing/ready/failed/imported), manual refresh only.
+- Starting processing (`POST /recordings/{id}/process`), polling `GET /jobs/{job_id}` every 3
+  seconds while a job is queued/running.
+- A review screen for a `ready` recording's proposal (`GET /proposals/{id}`): per-theme grouping,
+  per-task accept/reject checkboxes, an optional speaker-rename field per speaker label.
+- On confirm: write a transcript note into the vault (new frontmatter keys, see Data model) with
+  one H2/H3 section per theme holding the accepted tasks as real task-lines with `>due_hint`
+  dates; call `POST /proposals/{recording_id}/imported` with the accepted task ids.
+  Rejected tasks are never reported to the service (per contract).
+- Force re-run (`?force=1`) on an already-`ready`/`failed`/`imported` recording; on success,
+  update the existing transcript note in place rather than creating a second one, without
+  duplicating previously-accepted tasks.
+  **Task dedup rule across re-runs (needs an architecture decision — quote-based, not id-based):
+  the service does not guarantee a task's UUID is stable across two separate `process` runs of the
+  same recording (only "stable across reads of the same proposal" per contract), so dedup on
+  re-import must match on quote text, not on the task id. This is a real open question for Step 2,
+  not resolved here.**
+- Deleting a managed recording from the list: moves the transcript note (and its tasks, being in
+  the same file) to the macOS Trash, with a confirmation dialog — same convention as every other
+  delete in the app. No call to the Plaud service (no delete endpoint exists); the recording stays
+  known server-side.
+- A `days` setting in Impostazioni (default 14, matching the service's own default) that the
+  person can change to any value they type.
+- Vault-scoped: the section and its recording list reflect the currently open vault; switching
+  vault shows that vault's own state.
+- Explicit, narrow exception to CLAUDE.md Principle 2 (fully offline), documented in the ADR with
+  the same shape as ADR-0031 §D13 (Sparkle): loopback-only (`127.0.0.1:3777`), no data ever leaves
+  the machine, nothing beyond this feature gains network access as a result.
+- Service-down UX: `GET /health` failing (or unreachable) shows a status message plus the
+  `launchctl load ~/Library/LaunchAgents/it.stefer.plaud-service.plist` command as text to copy —
+  the app never executes it.
+- Failed job UX: readable error message (not the raw `extraction_invalid: ...` string) plus a
+  "Riprova" button that re-calls `process?force=1`.
+- Review-state persistence: accept/reject selections made mid-review survive an app restart
+  before the import is confirmed (local persistence outside the vault, exact location an
+  architecture decision — likely alongside other per-vault derived state,
+  `~/Library/Application Support/it.stefer.pergamenum/vaults/<id>/`, per ADR-0017's precedent).
 
-Out of scope (non-goals, v1):
-- Automatic or scheduled background update checks (explicitly rejected this round).
-- Binary delta updates (Sparkle can generate these from a folder of prior release archives; adds
-  ongoing artifact-retention complexity not justified for a personal, manually-checked app).
-- A CHANGELOG.md file or any new changelog-maintenance habit — release notes live in the GitHub
-  Release body only.
-- Any Settings/Impostazioni UI surface for updates.
-- Rollback, phased rollout, or update channels (beta/stable).
-- Any change to `perg` or `pergamenum-mcp` — Sparkle is app-target-only.
-- Any change to the AI connector's network boundary (ADR-0007) — the vault itself still never
-  opens a socket.
+**Out of scope (this SPEC):**
+- Anything on the `plaud-service`/`Plaud` repo side.
+- `perg` CLI / `pergamenum-mcp` exposure — this feature is app-only; no new
+  `Sources/Connector` surface.
+- Apple Reminders/EventKit integration for imported tasks — due date only, on the task-line
+  itself, no Reminder object created.
+- Workspace canvas cards for recordings (deferred; the transcript note stands alone).
+- Renaming speakers retroactively after import (only available during the pre-import review).
 
 ## Stack
 
-- Sparkle (`https://github.com/sparkle-project/Sparkle`), latest stable release, added via SPM in
-  `Tuist/Package.swift`, then `tuist install` / `tuist generate`.
-- `SPUStandardUpdaterController` + `SPUStandardUserDriver` (Sparkle's default, no custom UI driver).
-- macOS Keychain (via Sparkle's `generate_keys`/`sign_update` command-line tools, run manually once
-  and then from `scripts/release.sh` at release time).
-- GitHub Releases + GitHub Pages on `istefox/Pergamenum` (private repo, GitHub Pro/Team plan) for
-  appcast + binary hosting. `gh` CLI (already a project dependency for release/PR workflows).
+No new external dependency. `URLSession` for the HTTP client (loopback, JSON, no auth — no need
+for anything beyond Foundation). SwiftUI for the new sidebar section and review screen, following
+the app's existing sidebar-section/list/detail patterns. Local persistence for pending review
+state and per-vault import tracking through the existing `VaultState`/Application Support
+mechanism (ADR-0017), not a new storage technology.
 
-## Architecture
+## Architecture (decisions for Step 2 to formalize)
 
-- A thin `SparkleUpdateController` (or similarly named) type in the app target owns one
-  `SPUStandardUpdaterController` instance, created once at app launch, `startingUpdater: true`,
-  `updaterDelegate`/`userDriverDelegate: nil` (stock behavior — no custom delegate needed for a
-  manual-only, no-telemetry setup beyond what `Info.plist` keys already declare).
-- No `VaultSession`/`VaultController` involvement whatsoever — Sparkle knows nothing about vaults,
-  notes, or the connector. This keeps the "file over app" and "rebuildable index" principles
-  untouched: nothing about the update mechanism is persisted vault state.
-- The `Info.plist` keys (`SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks: false`,
-  `SUSendsSystemProfile: false`) are added via `Project.swift`'s existing `infoPlist` mechanism —
-  the same place `CFBundleShortVersionString`/`CFBundleVersion` are already wired.
-- `scripts/release.sh` grows a new stage after the existing "Applico il ticket" (staple) step,
-  described in Scope above.
+- New read-only HTTP client type under `Sources/Features/` (not `Sources/Core`, not
+  `Sources/Connector` — this feature is explicitly app-only, see Scope). Owned by a new
+  controller analogous to `WorkspaceController`/`VaultController`'s own shape.
+- The client polls `GET /health` on demand (when the section is opened or refreshed), never on a
+  background timer — same "manual only, no timer" posture as ADR-0031's updater.
+- Per-vault tracking of "which recordings has this vault seen, and what's their local status"
+  needs a small persisted structure (recording id → imported/deleted/note path), scoped under the
+  vault's own Application Support directory, not the index cache (this is Plaud-side state, not
+  vault-content-derived — it must not be lost on `clearCache()`, unlike `IndexCache`).
+- Frontmatter schema reopening: this feature adds prefixed keys to the closed 4-key note
+  frontmatter (`date`, `tags`, `related`, `aliases`), following the existing precedent of
+  `pergamenum-*` prefixed keys already used for `.canvas` node extra properties (ADR-0020). The
+  ADR must state this explicitly as a deliberate, scoped reopening of SPEC §4.3/§14's closed
+  schema — not a silent extension — and confirm the note-frontmatter YAML parser/writer accepts
+  and round-trips unknown-to-Obsidian keys without stripping them (Obsidian compatibility,
+  Principle 4).
 
 ## Data model
 
-None. No new persisted state anywhere in the app (no index field, no frontmatter key, no `.canvas`
-property). The only new artifact is `appcast.xml`, which lives outside the app entirely (on GitHub
-Pages), generated and published exclusively by `scripts/release.sh`.
+**New frontmatter keys (prefixed, additive to the closed 4-key schema):**
+- `pergamenum-plaud-id: <recording id>` — the Plaud recording id, for idempotency (re-run
+  detection) and to anchor re-imports back to the right note.
+- `pergamenum-plaud-recorded-at: <ISO 8601>` — the recording's own `recorded_at`.
+- `pergamenum-plaud-duration-ms: <integer>` — the recording's `duration_ms`.
 
-## API
+**Tags:** the transcript note also carries a `type-*` namespaced tag (exact value TBD at Step 2,
+e.g. `type-trascrizione`) alongside the frontmatter keys above — the two are not alternatives,
+they serve different purposes (tag = vault-wide taxonomy/filtering, frontmatter keys =
+machine-readable anchor for this feature's own logic).
 
-None internal — this feature exposes no `VaultAPI` capability, no CLI flag, no MCP tool. It is a
-GUI-app-only integration; consistent with the existing precedent that EventKit access is
-deliberately absent from both connectors.
+**Note body shape:**
+```markdown
+---
+date: 2026-09-04
+tags: [type-trascrizione]
+related: []
+aliases: []
+pergamenum-plaud-id: "8f2a1e40-..."
+pergamenum-plaud-recorded-at: "2026-09-04T11:44:51Z"
+pergamenum-plaud-duration-ms: 3120000
+---
 
-External surface, all one-directional (Pergamenum → appcast host, never the reverse):
-- `GET <appcast-url>/appcast.xml` — triggered only by the user choosing "Cerca Aggiornamenti…".
-- `GET <github-release-asset-url>` — triggered only if the user chooses to download/install an
-  offered update.
+[transcript text, speaker labels renamed if the person chose to at review time]
+
+## <Theme name>
+
+- [ ] <Task title> >2026-09-12 (urgenza 4/5, importanza 5/5 — "quote verbatim")
+- [ ] <Task title 2>
+```
+
+**Local (non-vault) state, exact shape TBD at Step 2:**
+- Per-vault recording tracking: recording id, local status, note path once created.
+- Pending review draft: recording id, per-task accept/reject state, speaker renames — cleared once
+  import is confirmed.
+
+## API (consumed only — contract already fixed, not designed here)
+
+```
+GET  /health
+GET  /recordings?days=N
+POST /recordings/{id}/process[?force=1]
+GET  /jobs/{job_id}
+GET  /proposals/{recording_id}
+POST /proposals/{recording_id}/imported   body: { "task_ids": [...] }
+```
+Full field shapes: `/Users/stefer/Developer/Plaud/docs/PERGAMENUM-API.md` (out of this repo,
+read-only reference — do not copy it into this repo, cite it from the ADR instead).
 
 ## UI flows
 
-1. Stefano opens the `Pergamenum` app menu → clicks "Cerca Aggiornamenti…".
-2. Sparkle's stock UI takes over: a small progress/status window appears while it fetches
-   `appcast.xml` and compares `CFBundleVersion`.
-3. **No update available:** Sparkle shows "You're up to date!" and the window dismisses.
-4. **Update available:** Sparkle shows its standard alert (version, release notes rendered from the
-   GitHub Release page linked via `sparkle:releaseNotesLink`) with "Install Update" / "Remind Me
-   Later" / "Skip This Version".
-5. On "Install Update": Sparkle downloads the signed zip, verifies the EdDSA signature against
-   `SUPublicEDKey`, verifies Gatekeeper/notarization on the unpacked bundle, then offers
-   "Install and Relaunch".
-6. Any network failure (offline, appcast unreachable, download interrupted) surfaces Sparkle's own
-   standard error alert — no custom error handling needed in Pergamenum's own code.
+1. **Sidebar → "Registrazioni".** List of recordings (current vault's `days` setting), each row:
+   name, recorded date, duration, status badge. A "Aggiorna" toolbar button re-fetches
+   `/recordings`. If `GET /health` fails: a banner replaces the list with the status message and
+   the copyable `launchctl load ...` command.
+2. **Row action, by status:**
+   - `new` → "Elabora" button, calls `process`, row becomes `processing`, polls `/jobs/{id}` every
+     3s.
+   - `processing` → progress indicator, step name (transcript/extract/cleanup) if available.
+   - `ready` → "Rivedi" opens the review screen.
+   - `failed` → readable error + "Riprova" (re-calls `process?force=1`).
+   - `imported` → "Apri nota" jumps to the existing transcript note; row also offers "Elimina"
+     (Trash + confirmation) and "Rielabora" (`force=1`, updates the note in place).
+3. **Review screen** (`GET /proposals/{id}`): recording header (name, date, duration,
+   `recording_kind`); per-speaker rename fields (optional, pre-filled with "Speaker N"); per-theme
+   sections, each listing its tasks with a checkbox (default: all checked), title, quote,
+   urgency/importance shown as plain text, `due_hint` shown as a date; a `no_action_items` warning
+   banner when `themes` is empty; a `warnings` array (e.g. `cleanup_ratio_low`) shown as a
+   dismissible notice, informational only. "Importa" button (disabled if nothing checked is
+   required? — no, zero tasks accepted with a transcript-only import is valid) writes the note,
+   calls `imported`, returns to the list with the row now `imported`.
+4. **Impostazioni** gains a "Giorni registrazioni Plaud" numeric field (default 14) feeding the
+   `days` query parameter.
 
 ## Edge cases
 
-- **Stapled-vs-notarized zip mismatch (pre-existing script behavior).** Today `scripts/release.sh`
-  notarizes `$OUTPUT/$BUILD.zip` (built from the bundle *before* stapling) and only staples the
-  standalone `.app` bundle afterward — the notarized zip on disk never receives the ticket. The
-  zip Sparkle publishes and signs **must** be re-created from the already-stapled bundle, or
-  Gatekeeper can refuse the unpacked app on a machine with no network access at first launch. This
-  is a real, pre-existing correctness gap the new release stage must close, not carry forward.
-- **Repo visibility.** `istefox/Pergamenum` is private; GitHub Pages for a private repo requires
-  GitHub Pro/Team — confirmed available on this account during this interview. If that plan ever
-  lapses, Pages serving stops silently (404) and update checks fail closed (Sparkle reports "no
-  appcast found", never a crash or a downgrade).
-- **Old builds with no `SUFeedURL`.** Any build shipped before this feature has no Sparkle
-  awareness at all and cannot self-update — Stefano installs the first Sparkle-enabled build
-  manually one last time, exactly as today.
-- **Downgrade attempts.** Sparkle's default comparator never offers a version with a lower/equal
-  `CFBundleVersion` than the running one — no explicit downgrade-prevention code needed.
-- **User declines/skips a version.** Sparkle persists "skip this version" in its own
-  `UserDefaults` keys; re-triggering "Cerca Aggiornamenti…" manually still always checks fresh
-  regardless of a prior skip (skip only suppresses a version from being offered again
-  automatically — moot here since checks are manual-only anyway, but Sparkle's own behavior, not
-  something this feature needs to build).
-- **App not signed/notarized correctly.** `scripts/release.sh` already fails loud
-  (`fail "..."`) before reaching the new Sparkle stage if hardened runtime, Developer ID signing,
-  or notarization/stapling verification fail — the new stage inherits that safety net for free by
-  running strictly after those checks.
+- `GET /recordings` returns `400 invalid_days` — should not happen if the setting is validated at
+  entry (positive integer ≤ 3650), but if it does, show a readable message and fall back to the
+  service default rather than crashing.
+- `503` (Plaud disconnected) on `/recordings` or `/process` — treated the same as a `/health`
+  failure banner.
+- `404` on `/jobs/{id}` or `/proposals/{id}` (unknown id, e.g. local state stale after a service
+  restart) — readable "non trovato" message, offer to refresh the list.
+- Import confirmation (`POST .../imported`) fails after the note was already written locally —
+  the note stays (file-over-app: local write already succeeded), but the recording stays `ready`
+  server-side; a retry of the confirm call must not re-write the note or duplicate tasks.
+- Recording name collides with an existing note title — same collision handling already used
+  elsewhere in the vault (numeric suffix).
+- Force re-run whose new proposal fails (`extraction_invalid`) — per contract, the previous
+  proposal stays readable and the recording state is `failed`; the existing transcript note (if
+  any) is left untouched, only the row shows the failure.
+- Zero themes/tasks in a ready proposal (`no_action_items`) — importing is still meaningful (the
+  transcript alone), no forced rejection of the import.
 
 ## Success criteria
 
-- [ ] R-01 — Sparkle is added as an SPM dependency in `Tuist/Package.swift`, linked only into the
-      `Pergamenum` app target (verified: `perg` and `pergamenum-mcp` targets build unaffected).
-- [ ] R-02 — The app menu has a "Cerca Aggiornamenti…" item next to "Informazioni su Pergamenum"
-      that triggers Sparkle's standard update-check UI.
-- [ ] R-03 — No automatic or scheduled update check ever fires; `SUEnableAutomaticChecks` is `false`
-      and no periodic timer/background task exists anywhere in the app for this feature.
-- [ ] R-04 — `SUSendsSystemProfile` is `false`; no telemetry beyond the unavoidable HTTP request
-      itself is ever sent as part of an update check.
-- [ ] R-05 — (no-test: verified by manual repo search and Keychain inspection, not something a unit test can assert)
-      The EdDSA signing keypair is generated via Sparkle's own `generate_keys` tool with the
-      private key stored in the login Keychain; no private key material appears in the repo, in
-      `scripts/release.sh`, or in any committed file (verified by a repo-wide search for key
-      material before commit).
-- [ ] R-06 — `scripts/release.sh`, run end-to-end, re-packages the **stapled** bundle (not the
-      pre-staple notarization zip) into the artifact that gets signed and published.
-- [ ] R-07 — `scripts/release.sh`, run end-to-end, publishes a GitHub Release with the signed zip
-      attached, regenerates `appcast.xml` with a correct `<item>` (version, build, URL, EdDSA
-      signature, length, minimum system version, release-notes link), and pushes it to GitHub
-      Pages on `istefox/Pergamenum`.
-- [ ] R-08 — `SUFeedURL` in the built app's `Info.plist` resolves to the published `appcast.xml`
-      URL and a manual "Cerca Aggiornamenti…" against a real published release successfully offers
-      the update, downloads it, verifies its EdDSA signature, and installs/relaunches
-      (no-test: end-to-end verified by hand against a real GitHub Pages appcast, not something a
-      unit test can assert).
-- [ ] R-09 — (no-test: verified by diff review confirming the changeset touches only the updater controller, `Info.plist`/`Project.swift` keys, and `scripts/release.sh` — not something a unit test can assert)
-      No feature outside the updater gains network access as a result of this chain; the
-      vault, Workspace, tasks and calendar code paths are unchanged.
-- [ ] R-10 — (no-test: a documentation obligation, not something a unit test can assert)
-      The ADR produced from this SPEC explicitly records the Principle 2 network exception,
-      its scope, and the reasoning above.
+- [ ] R-01 — A "Registrazioni" sidebar section lists recordings from the current vault's Plaud
+  service within the configured `days` window, with a manual "Aggiorna" action.
+- [ ] R-02 — `GET /health` failure shows a status banner with the copyable `launchctl load`
+  command; the app never executes it itself.
+- [ ] R-03 — Starting processing on a `new` recording enqueues the job and polls `/jobs/{id}`
+  every 3 seconds until it reaches `done` or `failed`.
+- [ ] R-04 — A `ready` recording opens a review screen showing every theme with its tasks,
+  per-task accept/reject checkboxes (default checked), and per-speaker optional rename fields.
+- [ ] R-05 — Confirming the review writes a transcript note into the currently open vault with
+  the `pergamenum-plaud-*` frontmatter keys, a `type-*` tag, the (possibly speaker-renamed)
+  transcript text, and one H2/H3 section per theme containing only the accepted tasks as real
+  task-lines with their `due_hint` as `>date` and urgency/importance/quote as inline text.
+- [ ] R-06 — Confirming the review calls `POST /proposals/{id}/imported` with exactly the accepted
+  task ids; rejected tasks are never sent.
+- [ ] R-07 — A `failed` job shows a readable error message (not the raw error string) and a
+  "Riprova" action that re-calls `process?force=1`.
+- [ ] R-08 — Force re-running an already-`imported`/`failed`/`ready` recording updates the
+  existing transcript note in place (matched via `pergamenum-plaud-id`) rather than creating a
+  second note, and does not duplicate previously-accepted tasks (matched by quote text).
+- [ ] R-09 — Deleting a managed recording from the list moves its transcript note to the macOS
+  Trash after an explicit confirmation dialog, and calls no delete endpoint on the service.
+- [ ] R-10 — Review selections (accept/reject, speaker renames) made before confirming survive an
+  app restart and are restored when the same proposal is reopened.
+- [ ] R-11 — Impostazioni exposes a numeric "giorni" field that changes the `days` window used by
+  the Registrazioni section for the current vault.
+- [ ] R-12 — Switching the open vault shows that vault's own recording list and import state, not
+  a shared global one.
+- [ ] R-13 — 404/503/400 responses from any endpoint surface a readable, non-crashing message in
+  the relevant part of the UI.
+- [ ] R-14 — The ADR documents the loopback-only network exception to CLAUDE.md Principle 2 with
+  the same explicit scoping shape as ADR-0031 §D13, and documents the frontmatter schema
+  reopening as a deliberate, scoped decision against SPEC §4.3/§14. (no-test: this is a
+  documentation obligation on the ADR itself, not a runtime behavior a test can assert)
+- [ ] R-15 — No new `Sources/Connector` surface is added; `perg` and `pergamenum-mcp` build
+  unaffected by this feature. (no-test: verified by running both connector build targets, not by
+  a unit test asserting an absence)

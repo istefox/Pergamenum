@@ -34,6 +34,16 @@ final class CommandActions {
     /// `RecentVaults.key` is internal. Defaults to the real system pasteboard; a test
     /// passes `.volatile()` so running the suite does not touch the user's own clipboard.
     let pasteboard: NSPasteboard
+    /// The Registrazioni pane's controller (ADR-0032), so «Aggiorna registrazioni» is one
+    /// command reached from the menu, from Cmd+R and from the pane's own toolbar button
+    /// rather than three copies of a refresh.
+    ///
+    /// Optional with a `nil` default, unlike the six above: this type is built with those
+    /// six in `Tests/CommandActionTests.swift` and `Tests/RowCommandTests.swift`, and a
+    /// required seventh parameter would turn a wiring change into an edit of two test files.
+    /// `canRun(.refreshRecordings)` never consults it - which pane is showing is the whole
+    /// condition (blueprint) - so a `nil` here only means the refresh does nothing.
+    let recordings: RecordingsController?
 
     init(
         navigation: Navigation,
@@ -42,7 +52,8 @@ final class CommandActions {
         calendar: EventKitStore,
         capturePanel: CapturePanel,
         history: NavigationHistory,
-        pasteboard: NSPasteboard = .general
+        pasteboard: NSPasteboard = .general,
+        recordings: RecordingsController? = nil
     ) {
         self.navigation = navigation
         self.vault = vault
@@ -51,6 +62,7 @@ final class CommandActions {
         self.capturePanel = capturePanel
         self.history = history
         self.pasteboard = pasteboard
+        self.recordings = recordings
     }
 
     // MARK: Running
@@ -222,10 +234,8 @@ final class CommandActions {
     private func runView(_ command: ShortcutCommand) {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
-             .paneTags, .paneViews, .paneStarred:
-            if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
-                navigation.pane = pane
-            }
+             .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings:
+            runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()
         case .runConformanceCheck:
@@ -254,6 +264,26 @@ final class CommandActions {
             walkHistory(command)
         default:
             assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
+        }
+    }
+
+    /// The ten "go to this pane" commands, and «Aggiorna registrazioni» beside them.
+    ///
+    /// Split off `runView` and sharing one arm with the panes for the reason `run(_:)`'s own
+    /// header records: an eleventh arm scored that switch past the complexity SwiftLint
+    /// reports, and this codebase restructures rather than writing its first
+    /// `swiftlint:disable`. The refresh is not a navigation and does not pretend to be one -
+    /// it never changes `navigation.pane`.
+    private func runNavigation(_ command: ShortcutCommand) {
+        guard command != .refreshRecordings else {
+            // Only ever reached while the pane is showing (`canRun`), so unlike «Verifica
+            // conformità» it does not bring its pane forward first: Cmd+R from anywhere else
+            // is disabled rather than being a navigation in disguise.
+            Task { await recordings?.refreshAndCheckHealth() }
+            return
+        }
+        if let pane = Navigation.Pane.allCases.first(where: { $0.shortcut == command }) {
+            navigation.pane = pane
         }
     }
 

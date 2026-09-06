@@ -245,6 +245,16 @@ struct RootView: View {
         case .tags: tagsPane
         case .views: viewsPane
         case .starred: starredPane
+        case .recordings: recordingsPane
+        }
+    }
+
+    @ViewBuilder
+    private var recordingsPane: some View {
+        if vault.root == nil {
+            needsVault("Le registrazioni Plaud diventano note di trascrizione: senza un vault non c'è dove scriverle.")
+        } else {
+            RecordingsPane()
         }
     }
 

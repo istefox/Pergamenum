@@ -519,6 +519,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
 - **ADR-0030** — Editor page typography: prose faces (`font.prose`/`font.proseTitle`, Avenir Next) and `spacing.readable` read through tokens by one `ProseTypography` helper, readable-width inset, prose font picker persisted in `personalizzato.json`; amends ADR-0027 §D1 and ADR-0028 §D3, reopens nothing of ADR-0018/0029 → `docs/adr/0030-editor-page-typography-noteplan.md`
 - **ADR-0031** — Sparkle auto-update integration: explicit narrow exception to Principle 2 (network) for the updater only, manual-only checks, EdDSA key in Keychain, appcast/binaries hosted on a dedicated public repo `istefox/pergamenum-updates` (amends the SPEC's original private-repo hosting, which live verification found broken), `scripts/release.sh` extended end-to-end → `docs/adr/0031-sparkle-auto-update-integration.md`
+- **ADR-0032** — Plaud recording import: loopback-only second exception to Principle 2, `pergamenum-*` frontmatter reopening for transcript notes, quote-fingerprint dedup over note+ledger, two-phase import with retry-only-step-2, app-only scope → `docs/adr/0032-plaud-recording-import-into-pergamenum.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -718,3 +719,43 @@ Key architectural decisions:
   own `generate_keys` tool; never written to disk in cleartext, never committed.
 
 Detail: `docs/adr/0031-sparkle-auto-update-integration.md`.
+
+## Decisions from the Plaud recording import chain (ADR-0032)
+
+Consumes the local `plaud-service` HTTP contract (loopback-only, 127.0.0.1:3777) to turn Plaud
+voice recordings into a transcript note plus reviewed tasks: `docs/adr/0032-plaud-recording-import-into-pergamenum.md`.
+App-only — `Sources/Connector`/`Sources/Core` and both command-line targets are untouched.
+
+Key architectural decisions:
+- **Second, narrower named exception to Principle 2 ("Fully offline")** — traffic never leaves
+  127.0.0.1:3777, provably distinct from ADR-0031's Sparkle exception, which reaches the real
+  internet. No feature outside this one gains network access, and neither `perg` nor
+  `pergamenum-mcp` knows the Plaud service exists.
+- **The closed note-frontmatter schema is reopened via `pergamenum-*` prefixed keys**
+  (`pergamenum-plaud-id`, `pergamenum-plaud-recorded-at`, `pergamenum-plaud-duration-ms`),
+  mirroring ADR-0020's `pergamenum-crop` precedent — a tag alone (`type-trascrizione`, itself
+  unwritable in `Resources/vocabolari.json`) could not carry structured recording metadata, so
+  the note settles on `type-note` + `topic-trascrizione` + `source-meeting`.
+- **Dedup across re-imports matches on quote-text fingerprint, never on task id** — the service
+  contract only guarantees a task's id stable within one proposal read, not across separate
+  `process` runs, so fingerprint matching runs over the union of the note's own task lines and a
+  local, append-only ledger (`plaud.json`), which lets a person's deliberate deletion of a task
+  from the note stay deleted rather than resurrecting on the next import.
+- **Two-phase import**: (1) write/update the note locally and record `pendingConfirmation` in the
+  ledger, (2) `POST` the accepted task ids to `/imported`. A failed step 2 leaves the note intact
+  (file over app) with a retry-only-step-2 recovery path — it never re-writes the note or
+  duplicates fingerprints.
+- **Local, per-vault, non-vault state lives under**
+  `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/` (ADR-0017 precedent) as
+  two JSON files, `plaud.json` (ledger/settings) and `plaud-drafts.json` (pending review state) —
+  not in `IndexCache` (not vault-derivable), not in `.pergamenum/` (machine-specific, not
+  vault-portable), not in `UserDefaults` (a per-vault growing list, not a preference).
+- **Sidebar gains one row, "Registrazioni" (`waveform`), last in the existing `.work`/LAVORO
+  group**, reachable review flow is a `.sheet`, and a new `ShortcutCommand.refreshRecordings` is
+  bound to Cmd+R (verified free against `com.apple.symbolichotkeys` before wiring).
+- **One protected interface declared** (`.claude/protected-interfaces`, ADR-0053):
+  `Sources/Core/Conventions/ImportNaming.swift:recordingNoteTitle` — re-import matches an
+  existing transcript note by the name this function derives, so a silent signature/behavior
+  change orphans every note already imported.
+
+Detail: `docs/adr/0032-plaud-recording-import-into-pergamenum.md`.
