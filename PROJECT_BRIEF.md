@@ -87,6 +87,26 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-05: **PR #169 (`feat/editor-page-typography-noteplan`, ADR-0030) confermato mergiato in
+  `main` (merge commit `1c254fa`, 41 commit, 67 file) — chiusura amministrativa della chain, nessun
+  codice toccato oggi.** Verificato dal vivo, non dedotto dall'handoff: `git log` su `main` mostra
+  il merge commit, `git merge-base --is-ancestor` conferma che il branch di feature è interamente
+  contenuto in `main`. Ripulito lo stato locale del repository, rimasto sporco di branch residui da
+  più sessioni parallele: cancellati `feat/editor-page-typography-noteplan`,
+  `test/fold-ordinal-staleness`, `worktree-agent-a368a375bee3fc0a7` e
+  `istefox/verify-branches-worktrees`, tutti e quattro confermati ancestor di `main` prima della
+  cancellazione (nessuna perdita di lavoro). Il worktree `Pergamenum_worktrees/release-main` citato
+  nell'ultimo handoff non esiste più: la cartella è vuota, presumibilmente rimosso da una sessione
+  parallela nel frattempo. Resta un solo worktree attivo, questo.
+  **Ancora aperto, non confermato in questa sessione:** `scripts/uitests.sh` (R-16) non è mai stato
+  eseguito con successo contro il merge finale — il gap TCC Automation-permission descritto
+  nell'handoff del 2026-09-05 non è stato verificato né risolto oggi. La verifica manuale R-08 di
+  ADR-0031 (vedi entry 2026-09-04 sotto) è tuttora priva di conferma scritta.
+  **Correzione a un punto della entry 2026-09-04 sotto, verificata dal vivo oggi:** il repository
+  `istefox/pergamenum-updates` **esiste** ora (creato 2026-09-04, pubblico, con `appcast.xml` e una
+  release pubblicata `v1.1-641`) — il gate «creare il repository» descritto come mancante è stato
+  chiuso lo stesso giorno in cui l'entry sotto lo elencava come aperto. Dettaglio in `TODO.md`
+  (`PG-096`, corretta oggi).
 - 2026-09-04: **ADR-0031 (aggiornamento automatico via Sparkle) implementato nel codice e nella
   pipeline; restano aperti i gate che non sono di un agente.** «Cerca Aggiornamenti…» è nel menu
   dell'app ed è l'unico modo di far partire un controllo: `SUEnableAutomaticChecks` è `false`, non
