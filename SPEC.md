@@ -1,228 +1,191 @@
-# SPEC — Plaud recording import into Pergamenum
+# SPEC — PG-099: Views/board renderer orphaned by ADR-0029 editor unification
 
-**Topic slug:** plaud-recording-import-into-pergamenum
+**Topic slug:** pg-099-views-board-renderer-orphaned-by
 
 ## Objectives
 
-Consume the local `plaud-service` HTTP contract (already shipped, separate repo `Plaud`,
-`http://127.0.0.1:3777`, loopback-only, no auth — contract at
-`/Users/stefer/Developer/Plaud/docs/PERGAMENUM-API.md`) so that a Plaud voice recording can become
-a real note in the currently open vault: a transcript note with speaker labels, and a set of real
-task-lines built from the themes/tasks the service extracted — after the person reviews and
-accepts or rejects each proposed task individually.
+Restore a live, interactive surface for `pergamenum-view` fenced blocks (ADR-0009: table,
+gallery, calendar, board renderers over `RenderedViewBlock.swift`) inside the note editor.
 
-Nothing on the Plaud service side is touched. This SPEC covers only the Pergamenum-side consumer:
-HTTP client, a new "Registrazioni" sidebar section, the review UI, and the vault-write mapping.
+ADR-0029 (2026-09-02/03) removed the Modifica/Lettura toggle and unified editing into one
+always-editable `NoteTextView`. `RenderedViewBlock`'s only remaining call site in the whole repo
+is inside `MarkdownBlocksView.swift`, itself explicitly retained as dead code for the main editor
+(ADR-0029 §D14). Its only live callers today are `TranscludedNoteView` (read-only `![[nota]]`
+preview) and `NoteExporter` (HTML export) — neither is the main editor. Net effect: today a
+`pergamenum-view` fence renders as raw fenced text in the live app; there is no way to see or drag
+a kanban card, or see a rendered table/gallery/calendar view, anywhere reachable from the main
+editor.
+
+This is a regression, not a never-built feature: PG-012 (closed 2026-08-20) shipped all four
+renderers inside the old Lettura mode; ADR-0029 removed Lettura two weeks later without re-wiring
+`RenderedViewBlock` into the new unified editor.
+
+Comparison against NotePlan (researched, ADR-0009's own reference point): NotePlan's own
+kanban/board view (Folder Cards) is *also* a separate, non-inline surface, not drawn inside a
+note's text flow. This SPEC does not treat "render inline" as required by that comparison — it is
+a design choice on its own merits, decided below.
 
 ## Scope
 
-**In scope:**
-- A new sidebar section, "Registrazioni", listing recordings from `GET /recordings?days=N` with
-  status badges (new/processing/ready/failed/imported), manual refresh only.
-- Starting processing (`POST /recordings/{id}/process`), polling `GET /jobs/{job_id}` every 3
-  seconds while a job is queued/running.
-- A review screen for a `ready` recording's proposal (`GET /proposals/{id}`): per-theme grouping,
-  per-task accept/reject checkboxes, an optional speaker-rename field per speaker label.
-- On confirm: write a transcript note into the vault (new frontmatter keys, see Data model) with
-  one H2/H3 section per theme holding the accepted tasks as real task-lines with `>due_hint`
-  dates; call `POST /proposals/{recording_id}/imported` with the accepted task ids.
-  Rejected tasks are never reported to the service (per contract).
-- Force re-run (`?force=1`) on an already-`ready`/`failed`/`imported` recording; on success,
-  update the existing transcript note in place rather than creating a second one, without
-  duplicating previously-accepted tasks.
-  **Task dedup rule across re-runs (needs an architecture decision — quote-based, not id-based):
-  the service does not guarantee a task's UUID is stable across two separate `process` runs of the
-  same recording (only "stable across reads of the same proposal" per contract), so dedup on
-  re-import must match on quote text, not on the task id. This is a real open question for Step 2,
-  not resolved here.**
-- Deleting a managed recording from the list: moves the transcript note (and its tasks, being in
-  the same file) to the macOS Trash, with a confirmation dialog — same convention as every other
-  delete in the app. No call to the Plaud service (no delete endpoint exists); the recording stays
-  known server-side.
-- A `days` setting in Impostazioni (default 14, matching the service's own default) that the
-  person can change to any value they type.
-- Vault-scoped: the section and its recording list reflect the currently open vault; switching
-  vault shows that vault's own state.
-- Explicit, narrow exception to CLAUDE.md Principle 2 (fully offline), documented in the ADR with
-  the same shape as ADR-0031 §D13 (Sparkle): loopback-only (`127.0.0.1:3777`), no data ever leaves
-  the machine, nothing beyond this feature gains network access as a result.
-- Service-down UX: `GET /health` failing (or unreachable) shows a status message plus the
-  `launchctl load ~/Library/LaunchAgents/it.stefer.plaud-service.plist` command as text to copy —
-  the app never executes it.
-- Failed job UX: readable error message (not the raw `extraction_invalid: ...` string) plus a
-  "Riprova" button that re-calls `process?force=1`.
-- Review-state persistence: accept/reject selections made mid-review survive an app restart
-  before the import is confirmed (local persistence outside the vault, exact location an
-  architecture decision — likely alongside other per-vault derived state,
-  `~/Library/Application Support/it.stefer.pergamenum/vaults/<id>/`, per ADR-0017's precedent).
+**In scope:** all four renderers — table, gallery, calendar, board — restored to a live surface
+inside the main note editor, in one pass. Board's drag-to-write mechanism (ADR-0009 §D5: dragging
+a card rewrites the note's `status-*` tag via `VaultSession.write`, journalled/undoable/vocabulary-
+checked, with existing rules for "no status" and "multiple statuses" cards) is carried forward
+unchanged — this SPEC does not reopen ADR-0009's write semantics, only where/how the result is
+displayed and interacted with.
 
-**Out of scope (this SPEC):**
-- Anything on the `plaud-service`/`Plaud` repo side.
-- `perg` CLI / `pergamenum-mcp` exposure — this feature is app-only; no new
-  `Sources/Connector` surface.
-- Apple Reminders/EventKit integration for imported tasks — due date only, on the task-line
-  itself, no Reminder object created.
-- Workspace canvas cards for recordings (deferred; the transcript note stands alone).
-- Renaming speakers retroactively after import (only available during the pre-import review).
+**Out of scope:**
+- Any change to `ViewsPane.swift`'s existing cataloguing behavior (name, renderer type, filter,
+  match count, "open note at block location"). It keeps working exactly as today.
+- Any change to `NoteExporter`'s HTML export rendering of a view block — already works via
+  `MarkdownBlocksView`, untouched by this SPEC.
+- Any change to `TranscludedNoteView`'s (`![[nota]]`) read-only rendering of a view block —
+  already works via `MarkdownBlocksView` today and is confirmed to keep working unchanged (see
+  Edge cases). This SPEC only restores the *main editor's* live surface.
+- Any change to ADR-0009's query grammar (`from`/`where`/`sort`/`render`/`columns`/`limit`) or to
+  which `StoredRecord`/`IndexSnapshot` fields a view can reference.
+- A dedicated visual "query editor" UI (dropdowns, form fields) for authoring/editing a view's
+  query. Editing stays text-based (see Architecture, caret behavior).
 
 ## Stack
 
-No new external dependency. `URLSession` for the HTTP client (loopback, JSON, no auth — no need
-for anything beyond Foundation). SwiftUI for the new sidebar section and review screen, following
-the app's existing sidebar-section/list/detail patterns. Local persistence for pending review
-state and per-vault import tracking through the existing `VaultState`/Application Support
-mechanism (ADR-0017), not a new storage technology.
+No new dependency. Swift 6, SwiftUI on macOS 26 SDK, TextKit 2 via `NSTextView`/
+`NSTextAttachmentViewProvider` — same stack ADR-0029's GFM table attachment already uses. No
+schema change, no index bump (`IndexCache.schemaVersion` stays 3), no new protected interface.
 
-## Architecture (decisions for Step 2 to formalize)
+## Architecture
 
-- New read-only HTTP client type under `Sources/Features/` (not `Sources/Core`, not
-  `Sources/Connector` — this feature is explicitly app-only, see Scope). Owned by a new
-  controller analogous to `WorkspaceController`/`VaultController`'s own shape.
-- The client polls `GET /health` on demand (when the section is opened or refreshed), never on a
-  background timer — same "manual only, no timer" posture as ADR-0031's updater.
-- Per-vault tracking of "which recordings has this vault seen, and what's their local status"
-  needs a small persisted structure (recording id → imported/deleted/note path), scoped under the
-  vault's own Application Support directory, not the index cache (this is Plaud-side state, not
-  vault-content-derived — it must not be lost on `clearCache()`, unlike `IndexCache`).
-- Frontmatter schema reopening: this feature adds prefixed keys to the closed 4-key note
-  frontmatter (`date`, `tags`, `related`, `aliases`), following the existing precedent of
-  `pergamenum-*` prefixed keys already used for `.canvas` node extra properties (ADR-0020). The
-  ADR must state this explicitly as a deliberate, scoped reopening of SPEC §4.3/§14's closed
-  schema — not a silent extension — and confirm the note-frontmatter YAML parser/writer accepts
-  and round-trips unknown-to-Obsidian keys without stripping them (Obsidian compatibility,
-  Principle 4).
+**Rendering site — inline attachment, not a separate panel.** A `pergamenum-view` fence becomes
+one `NSTextAttachment` anchored to its opening-fence paragraph, hosted via
+`NSTextAttachmentViewProvider` — the same mechanism ADR-0029 §D2 introduced for the GFM table
+grid (`YES` by default on `NSTextAttachment`, the "subclasses create their custom view hierarchy"
+hook). The delegate's enumeration hook refuses to lay out the fenced body lines underneath it,
+exactly as the table attachment already does for its body rows. This reuses an established,
+already-shipped pattern rather than introducing a second one (panel-based) alongside it.
+
+**Caret behavior — reveal raw source on caret entry, reusing ADR-0018's existing mechanism.**
+Unlike the GFM table (whose content *is* note prose, edited by typing into rendered cells), a
+`pergamenum-view` fence's body is a short declarative query
+(`from`/`where`/`sort`/`render`/`columns`/`limit`) over data that lives elsewhere in the vault —
+config, not prose. When the caret enters the fence, the rendered attachment is replaced by the raw
+fenced text for direct editing (same reveal-on-caret rule ADR-0018 already applies to headings,
+emphasis, blockquotes, etc.); moving the caret back out re-renders the attachment from the (now
+possibly changed) source. No new query-editing UI is introduced.
+
+**Sizing — fixed height with internal scroll.** The attachment reserves a bounded height; its
+board/gallery/calendar/table content scrolls internally within that height. The note's layout
+below the block does not shift as the rendered content's row/card count changes. (Contrast with
+ADR-0019's user-resizable image/PDF embed handle — deliberately not reused here: a view's height is
+about how much of a query result to show at once, not about a fixed asset's aspect ratio, and a
+persisted resize handle is unscoped for this pass.)
+
+**Live refresh — subscribes to the existing index, matching PG-012's original behavior.** The
+attachment observes `IndexSnapshot` updates the same way the old Lettura-mode renderer did. A
+change elsewhere in the vault that affects the query's result set (e.g. another note's `status-*`
+tag changing) is reflected in an already-open note's rendered view without requiring the note to
+be reopened or refocused.
+
+**Malformed query — fails closed to raw text.** If a fence's query cannot be parsed (bad key,
+unparseable `where`-clause, etc.), no attachment is created for that block; it renders as plain
+fenced text, identically to today's behavior for every fence this feature doesn't touch. No new
+inline error/warning UI.
+
+**Click/drag interaction — the attachment's rendered rows/cards claim their own clicks.** A plain
+click on a table row, gallery item, or calendar entry navigates to/opens the linked note; a plain
+drag on a board card performs ADR-0009's existing drag-to-write. No modifier key is required. This
+matches the GFM table attachment's existing precedent: its own `NSView` claims clicks inside its
+bounds, and clicking outside the attachment's rendered rows (e.g. between them, or elsewhere in the
+note) behaves as ordinary text-editing caret placement.
+
+**Transclusion and export are unaffected.** `TranscludedNoteView` and `NoteExporter` already
+render a `pergamenum-view` fence correctly via `MarkdownBlocksView` today (they were never broken
+by ADR-0029 — only the main editor was). This SPEC adds a second, independent live rendering path
+for the main editor; it does not modify `MarkdownBlocksView`, `TranscludedNoteView`, or
+`NoteExporter`.
 
 ## Data model
 
-**New frontmatter keys (prefixed, additive to the closed 4-key schema):**
-- `pergamenum-plaud-id: <recording id>` — the Plaud recording id, for idempotency (re-run
-  detection) and to anchor re-imports back to the right note.
-- `pergamenum-plaud-recorded-at: <ISO 8601>` — the recording's own `recorded_at`.
-- `pergamenum-plaud-duration-ms: <integer>` — the recording's `duration_ms`.
+No change. `RenderedViewBlock` continues to read from `IndexSnapshot`/`StoredRecord` exactly as
+today; the query grammar, the closed field list, and the board's write path (`status-*` tag via
+`VaultSession.write`) are all unchanged from ADR-0009.
 
-**Tags:** the transcript note also carries a `type-*` namespaced tag (exact value TBD at Step 2,
-e.g. `type-trascrizione`) alongside the frontmatter keys above — the two are not alternatives,
-they serve different purposes (tag = vault-wide taxonomy/filtering, frontmatter keys =
-machine-readable anchor for this feature's own logic).
+## API
 
-**Note body shape:**
-```markdown
----
-date: 2026-09-04
-tags: [type-trascrizione]
-related: []
-aliases: []
-pergamenum-plaud-id: "8f2a1e40-..."
-pergamenum-plaud-recorded-at: "2026-09-04T11:44:51Z"
-pergamenum-plaud-duration-ms: 3120000
----
-
-[transcript text, speaker labels renamed if the person chose to at review time]
-
-## <Theme name>
-
-- [ ] <Task title> >2026-09-12 (urgenza 4/5, importanza 5/5 — "quote verbatim")
-- [ ] <Task title 2>
-```
-
-**Local (non-vault) state, exact shape TBD at Step 2:**
-- Per-vault recording tracking: recording id, local status, note path once created.
-- Pending review draft: recording id, per-task accept/reject state, speaker renames — cleared once
-  import is confirmed.
-
-## API (consumed only — contract already fixed, not designed here)
-
-```
-GET  /health
-GET  /recordings?days=N
-POST /recordings/{id}/process[?force=1]
-GET  /jobs/{job_id}
-GET  /proposals/{recording_id}
-POST /proposals/{recording_id}/imported   body: { "task_ids": [...] }
-```
-Full field shapes: `/Users/stefer/Developer/Plaud/docs/PERGAMENUM-API.md` (out of this repo,
-read-only reference — do not copy it into this repo, cite it from the ADR instead).
+No `Sources/Connector`/`Sources/Core` change. This is an `Sources/Features/Editor` +
+`Sources/Features/Views` presentation-layer fix; `perg`/`pergamenum-mcp` are unaffected.
 
 ## UI flows
 
-1. **Sidebar → "Registrazioni".** List of recordings (current vault's `days` setting), each row:
-   name, recorded date, duration, status badge. A "Aggiorna" toolbar button re-fetches
-   `/recordings`. If `GET /health` fails: a banner replaces the list with the status message and
-   the copyable `launchctl load ...` command.
-2. **Row action, by status:**
-   - `new` → "Elabora" button, calls `process`, row becomes `processing`, polls `/jobs/{id}` every
-     3s.
-   - `processing` → progress indicator, step name (transcript/extract/cleanup) if available.
-   - `ready` → "Rivedi" opens the review screen.
-   - `failed` → readable error + "Riprova" (re-calls `process?force=1`).
-   - `imported` → "Apri nota" jumps to the existing transcript note; row also offers "Elimina"
-     (Trash + confirmation) and "Rielabora" (`force=1`, updates the note in place).
-3. **Review screen** (`GET /proposals/{id}`): recording header (name, date, duration,
-   `recording_kind`); per-speaker rename fields (optional, pre-filled with "Speaker N"); per-theme
-   sections, each listing its tasks with a checkbox (default: all checked), title, quote,
-   urgency/importance shown as plain text, `due_hint` shown as a date; a `no_action_items` warning
-   banner when `themes` is empty; a `warnings` array (e.g. `cleanup_ratio_low`) shown as a
-   dismissible notice, informational only. "Importa" button (disabled if nothing checked is
-   required? — no, zero tasks accepted with a transcript-only import is valid) writes the note,
-   calls `imported`, returns to the list with the row now `imported`.
-4. **Impostazioni** gains a "Giorni registrazioni Plaud" numeric field (default 14) feeding the
-   `days` query parameter.
+1. User types or already has a `pergamenum-view` fence in a note, cursor outside the fence →
+   the fence renders as a live table/gallery/calendar/board attachment, fixed-height,
+   internally scrollable, reflecting the current query result.
+2. User clicks a row/card in the rendered attachment → the linked note opens (table/gallery/
+   calendar), or (board) the drag interaction rewrites the dragged note's `status-*` tag per
+   ADR-0009 §D5's existing rules.
+3. User clicks into the fence's raw text (to edit `from`/`where`/`sort`/etc.) → the attachment is
+   replaced by the raw fenced text; user edits normally; moving the caret out re-renders the
+   attachment against the edited query.
+4. Vault data changes elsewhere while the note is open → the open attachment's rendered content
+   updates live, without requiring reopen/refocus.
+5. A fence with an invalid/unparseable query → renders as plain fenced text, no attachment, no
+   error UI.
+6. `Viste` sidebar (`ViewsPane.swift`) — unchanged: lists every view in the vault and opens the
+   note at that block's location, where the inline attachment above now renders live.
 
 ## Edge cases
 
-- `GET /recordings` returns `400 invalid_days` — should not happen if the setting is validated at
-  entry (positive integer ≤ 3650), but if it does, show a readable message and fall back to the
-  service default rather than crashing.
-- `503` (Plaud disconnected) on `/recordings` or `/process` — treated the same as a `/health`
-  failure banner.
-- `404` on `/jobs/{id}` or `/proposals/{id}` (unknown id, e.g. local state stale after a service
-  restart) — readable "non trovato" message, offer to refresh the list.
-- Import confirmation (`POST .../imported`) fails after the note was already written locally —
-  the note stays (file-over-app: local write already succeeded), but the recording stays `ready`
-  server-side; a retry of the confirm call must not re-write the note or duplicate tasks.
-- Recording name collides with an existing note title — same collision handling already used
-  elsewhere in the vault (numeric suffix).
-- Force re-run whose new proposal fails (`extraction_invalid`) — per contract, the previous
-  proposal stays readable and the recording state is `failed`; the existing transcript note (if
-  any) is left untouched, only the row shows the failure.
-- Zero themes/tasks in a ready proposal (`no_action_items`) — importing is still meaningful (the
-  transcript alone), no forced rejection of the import.
+- **Multiple `pergamenum-view` blocks in one note.** Each fence resolves to its own independent
+  attachment; no shared state between them.
+- **A fence inside a transcluded note (`![[nota]]`).** Keeps rendering read-only via
+  `TranscludedNoteView`/`MarkdownBlocksView`, unchanged by this feature.
+- **A fence inside an exported HTML note.** Keeps rendering via `NoteExporter`/
+  `MarkdownBlocksView`, unchanged by this feature.
+- **Board card with no status tag, or with multiple status tags.** Governed entirely by ADR-0009
+  §D5's existing rules; not reopened here.
+- **Empty query result (no matches).** `RenderedViewBlock`'s existing empty-state handling applies
+  unchanged inside the attachment.
+- **Caret briefly passing through the fence during selection/navigation (not a deliberate click
+  into it).** Follows the same reveal-on-caret semantics ADR-0018 already defines for every other
+  concealed construct — this feature introduces no new rule here, only a new construct governed by
+  the existing one.
 
 ## Success criteria
 
-- [ ] R-01 — A "Registrazioni" sidebar section lists recordings from the current vault's Plaud
-  service within the configured `days` window, with a manual "Aggiorna" action.
-- [ ] R-02 — `GET /health` failure shows a status banner with the copyable `launchctl load`
-  command; the app never executes it itself.
-- [ ] R-03 — Starting processing on a `new` recording enqueues the job and polls `/jobs/{id}`
-  every 3 seconds until it reaches `done` or `failed`.
-- [ ] R-04 — A `ready` recording opens a review screen showing every theme with its tasks,
-  per-task accept/reject checkboxes (default checked), and per-speaker optional rename fields.
-- [ ] R-05 — Confirming the review writes a transcript note into the currently open vault with
-  the `pergamenum-plaud-*` frontmatter keys, a `type-*` tag, the (possibly speaker-renamed)
-  transcript text, and one H2/H3 section per theme containing only the accepted tasks as real
-  task-lines with their `due_hint` as `>date` and urgency/importance/quote as inline text.
-- [ ] R-06 — Confirming the review calls `POST /proposals/{id}/imported` with exactly the accepted
-  task ids; rejected tasks are never sent.
-- [ ] R-07 — A `failed` job shows a readable error message (not the raw error string) and a
-  "Riprova" action that re-calls `process?force=1`.
-- [ ] R-08 — Force re-running an already-`imported`/`failed`/`ready` recording updates the
-  existing transcript note in place (matched via `pergamenum-plaud-id`) rather than creating a
-  second note, and does not duplicate previously-accepted tasks (matched by quote text).
-- [ ] R-09 — Deleting a managed recording from the list moves its transcript note to the macOS
-  Trash after an explicit confirmation dialog, and calls no delete endpoint on the service.
-- [ ] R-10 — Review selections (accept/reject, speaker renames) made before confirming survive an
-  app restart and are restored when the same proposal is reopened.
-- [ ] R-11 — Impostazioni exposes a numeric "giorni" field that changes the `days` window used by
-  the Registrazioni section for the current vault.
-- [ ] R-12 — Switching the open vault shows that vault's own recording list and import state, not
-  a shared global one.
-- [ ] R-13 — 404/503/400 responses from any endpoint surface a readable, non-crashing message in
-  the relevant part of the UI.
-- [ ] R-14 — The ADR documents the loopback-only network exception to CLAUDE.md Principle 2 with
-  the same explicit scoping shape as ADR-0031 §D13, and documents the frontmatter schema
-  reopening as a deliberate, scoped decision against SPEC §4.3/§14. (no-test: this is a
-  documentation obligation on the ADR itself, not a runtime behavior a test can assert)
-- [ ] R-15 — No new `Sources/Connector` surface is added; `perg` and `pergamenum-mcp` build
-  unaffected by this feature. (no-test: verified by running both connector build targets, not by
-  a unit test asserting an absence)
+- [ ] R-01 — A `pergamenum-view` fence with `render: table` renders as a live, interactive
+  inline attachment in the main note editor (not raw fenced text), reflecting the current query
+  result.
+- [ ] R-02 — A `pergamenum-view` fence with `render: gallery` renders as a live, interactive
+  inline attachment in the main note editor.
+- [ ] R-03 — A `pergamenum-view` fence with `render: calendar` renders as a live, interactive
+  inline attachment in the main note editor.
+- [ ] R-04 — A `pergamenum-view` fence with `render: board` renders as a live, interactive inline
+  attachment in the main note editor, and dragging a card between columns rewrites the dragged
+  note's `status-*` tag per ADR-0009 §D5's existing rules (write is journalled and undoable).
+- [ ] R-05 — Moving the caret into a rendered view's fence reveals its raw fenced source text for
+  editing; moving the caret out re-renders the attachment against the (possibly edited) query.
+- [ ] R-06 — The attachment reserves a fixed height and scrolls its rendered content internally;
+  the note's layout below the block does not shift as the result set's size changes.
+- [ ] R-07 — A change elsewhere in the vault that affects an open view's query result (e.g. a
+  `status-*` tag edited in another note) is reflected in the still-open note's rendered attachment
+  without requiring the note to be reopened or refocused.
+- [ ] R-08 — A `pergamenum-view` fence with an unparseable query renders as plain fenced text (no
+  attachment created, no error UI), matching today's behavior for any fence this feature doesn't
+  recognize.
+- [ ] R-09 — Clicking a row/card inside a rendered table, gallery, or calendar attachment
+  navigates to/opens the linked note with a plain click (no modifier key required).
+- [ ] R-10 — `TranscludedNoteView` (`![[nota]]` read-only preview) continues to render a
+  `pergamenum-view` fence exactly as it does today, unmodified by this feature.
+- [ ] R-11 — `NoteExporter`'s HTML export continues to render a `pergamenum-view` fence exactly
+  as it does today, unmodified by this feature.
+- [ ] R-12 — `ViewsPane.swift` ("Viste" sidebar: cataloguing, filter, match count, "open note at
+  block location") is unmodified and continues to work exactly as today.
+- [ ] R-13 — Unit test coverage exists for: attachment creation from a valid fence, fallback to
+  raw text on an unparseable fence, and live refresh on an `IndexSnapshot` update. (no-test:
+  n/a — this is itself the test-coverage requirement, not a documentation obligation)
+- [ ] R-14 — Stefano manually hand-checks each of the four renderers (table, gallery, calendar,
+  board) in a real vault, including the board's drag-to-write, before this feature is considered
+  done. (no-test: TextKit2 attachment layout/interaction is this repo's documented blind spot for
+  XCUITest — ADR-0019/0029 precedent and the working agreements' own firstRect-not-laid-out-yet
+  trap require a manual hand-check for attachment-based editor features)
+- [ ] R-15 — The full unit suite (`-only-testing:PergamenumTests`) passes green before this
+  feature is committed.
