@@ -16,3 +16,4 @@
 - [Dispatch brief missing in sibling worktree](dispatch-brief-missing-sibling-worktree.md) — ADR-0068 worktree isolation can put the brief in a different project_root than the tester's own cwd; never read across, reconstruct from the plan/ADR/SPEC already in-tree.
 - [PG-099 cross-task stub gap](pg-099-cross-task-stub-gap.md) — a dispatch claimed an earlier task's coder work had landed; the file was still a stub. Verify against source, not against the briefing.
 - [Memory index entries can outrun their files](memory-index-entries-can-outrun-their-files.md) — 6 MEMORY.md lines cite files never actually committed; `Read` before relying on any cited memory's content.
+- [SwiftUI @ViewBuilder Mirror reflection](swiftui-viewbuilder-mirror-reflection.md) — recursive `Mirror` walk extracts a concrete child view (or even Text/accessibilityIdentifier strings) from an opaque `some View` with no accessor to call instead.
