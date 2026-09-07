@@ -87,6 +87,53 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-07: **PG-099 (ADR-0033, viste live nell'editor) — Task 4-9 implementati, Task 10 (verifica
+  finale) in corso; Task 8 resta bloccato sul gate umano del 2026-09-06.** Batch 3-9 completati:
+  `ViewBlockAttachment`/`ViewBlockHostStore` chiave-per-ordinale (Task 4), attaccamento reale
+  dell'host nell'editor con fail-closed su fence non chiusa/non valida (Task 5), reveal-on-caret
+  sull'intero range della fence che rende irraggiungibile il caret-rescue di ADR-0033 §D15 per lo
+  stesso fixture — retarget del test concordato con l'utente, non un test disattivato (Task 6),
+  wiring di `viewQuerySource`/`onEditSource`/`onOpenNote` fino al vero punto di editing
+  (`EditorColumn+Text.swift`), R-09 confermato net-new (Task 7), quattro renderer (tabella, lista,
+  gallery, calendario) con click-per-aprire-nota opzionale dietro `onOpenNote` (Task 9's out-of-scope
+  fence: `MarkdownBlocksView.swift`, `TranscludedNoteView.swift`, `NoteExporter.swift`,
+  `ViewsPane.swift`, `ViewCatalogue.swift` — zero diff confermato su tutta la chain). Suite completa
+  verde: **2346 test, 78 suite, 8.4s** (`Test-Pergamenum-2026.09.07_12-43-46+0200.xcresult`). R-13
+  confermato per nome: creazione attachment da fence valida (`aClosedTableFenceSubstitutesTheAttachment`
+  e le tre gemelle per gallery/calendar/board), fallback a testo sorgente su fence non parsabile
+  (`aFenceWhoseBodyFailsToParseProducesNoAttachment`), refresh live su aggiornamento indice
+  (`bumpingGenerationChangesTheComposedTaskID` e le due gemelle in `ViewBlockQuerySourceTests.swift`).
+  `scripts/uitests.sh` (R-14/R-15's UI leg) rimandato: una sessione parallela aveva un run
+  `xcodebuild ... PergamenumUITests` già in corso sulla stessa DerivedData condivisa al momento del
+  tentativo — non eseguito per evitare la stessa race ADR-0159 già documentata, non per un problema
+  di questa chain. **Il Task 8 e il R-14 hand-check restano entrambi in attesa di Stefano**: il primo
+  sul verdetto manuale drag-and-drop SwiftUI-in-attachment del 2026-09-06, il secondo è named come
+  acceptance gate della chain e non può essere automatizzato (blind spot XCUITest documentato).
+- 2026-09-06: **PG-099 (ADR-0033, viste live nell'editor) — Task 3, la probe tracer-bullet di ADR-0033
+  §D16, risultato scritto agli atti come richiesto dal piano.** `Tests/ViewBlockAttachmentProbeTests.swift`
+  ha montato un `NSHostingView` reale dentro un `NSTextAttachmentViewProvider` dentro una
+  `CompletingTextView` reale, dentro una `NSWindow` reale, e ha misurato le tre probe:
+  - **Probe 1 (mount/draw/persistenza del `@State`) — PASSATA.** L'host disegna alla dimensione di
+    `attachmentBounds`, l'istanza dell'host sopravvive a un tasto premuto altrove nella nota.
+  - **Probe 2 (drag-and-drop) — METÀ STATICA PASSATA, METÀ DINAMICA NON ESEGUIBILE, non fallita.**
+    L'hit-test nella zona di trascinamento risolve correttamente sulla view ospitata, mai sulla
+    `CompletingTextView`. Il sollevamento/drop reale non è stato tentato: un `mouseDown` sintetico
+    inviato direttamente all'`NSHostingView` montato **si blocca indefinitamente** nell'ambiente
+    sandboxed dell'agente (confermato due volte, 180s di bound, nessun processo residuo) — non un
+    fallimento della feature, un limite dell'automazione qui.
+  - **Probe 3 (first responder) — METÀ PRE-CLICK PASSATA, METÀ POST-CLICK BLOCCATA dallo stesso
+    `mouseDown` che non ritorna.** La text view mantiene il first responder prima di ogni click
+    sull'host, come previsto; cosa succede dopo un click reale resta da verificare a mano.
+  **Conclusione per il gate:** nessuna delle tre probe è fallita nel senso previsto dal piano (un
+  verdetto negativo automatizzato); il blocco è che un click sintetico su contenuto SwiftUI dentro
+  l'attachment non è affatto automatizzabile in questo ambiente — un limite più stretto di quello
+  che ADR-0029 §D16 aveva già documentato per la sola dinamica del drag. Le due asserzioni bloccate
+  restano nella suite come `@Test(.disabled("..."))`, con la motivazione visibile, non cancellate.
+  **Serve una conferma a mano su una build reale** (stesso precedente di R-14/ADR-0029 §D16) prima
+  di considerare chiuso il rischio "drag-and-drop SwiftUI dentro un `NSHostingView` in un
+  `NSTextAttachmentViewProvider`" nominato in ADR-0033. Fino a quella conferma, il Task 8 (scrittura
+  della board dall'interno dell'attachment) resta bloccato: non è né il percorso pianificato né lo
+  switch al fallback nominato, è un gate ancora aperto in attesa di un umano.
 - 2026-09-05: **PR #169 (`feat/editor-page-typography-noteplan`, ADR-0030) confermato mergiato in
   `main` (merge commit `1c254fa`, 41 commit, 67 file) — chiusura amministrativa della chain, nessun
   codice toccato oggi.** Verificato dal vivo, non dedotto dall'handoff: `git log` su `main` mostra
