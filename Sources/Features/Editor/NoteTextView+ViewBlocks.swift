@@ -58,15 +58,28 @@ extension NoteTextView.Coordinator {
         }
 
         let text = textView.string as NSString
+        // Read once for the whole pass, and against the live selection rather than against a
+        // remembered one: this pass is what decides whether a block is drawn or left as source,
+        // so it has to ask the question at the moment it decides (ADR §D4).
+        let selection = textView.selectedRange()
         var found: [(opening: Int, ordinal: Int, source: String)] = []
         var lines: Set<Int> = []
         var openingOfLine: [Int: Int] = [:]
 
         for (ordinal, run) in runs.enumerated() {
+            // The third condition is the reveal (ADR §D4, R-05): the fence the selection is
+            // inside is registered not at all this pass - no marker, so the opening line keeps
+            // its backticks; no hidden lines, so the body and the closing fence come back into
+            // the layout; no host, so nothing is drawn over any of it. Per fence and never as
+            // one flag for the note: revealing one leaves every other one drawn, and the
+            // ordinal is consumed from `runs.enumerated()` above whatever this fence's answer
+            // is, so the fences below keep the ordinals - and therefore the hosts, and
+            // therefore the query results - they had before the caret arrived (ADR §D3).
             guard NSMaxRange(run) <= text.length,
                   let recognised = EditorDecorationDelegate.viewBlockRun(
                       in: text, atParagraphStart: run.location
-                  )
+                  ),
+                  !Self.selectionReveals(selection, fence: recognised.range)
             else { continue }
             let opening = run.location
             var start = 0, end = 0, contentsEnd = 0
