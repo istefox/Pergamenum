@@ -14,14 +14,24 @@ enum NoteRename {
     /// The section and the display text are preserved: `[[Vecchio#Metodo|come qui]]`
     /// becomes `[[Nuovo#Metodo|come qui]]`, because the fragment and the label are the
     /// reader's, not the target's.
-    static func rewritingLinks(in text: String, from oldTitle: String, to newTitle: String) -> String? {
+    /// `includeQuotedRelated` gates the frontmatter-only pass below. A Workspace board's
+    /// `.text` card has no `related:` field to preserve, so calling this for a card body
+    /// with the default `true` would rewrite an unrelated quoted bullet line
+    /// (`- "Capture"`) that only coincidentally folds to the old title - a silent
+    /// corruption this type was never meant to cause outside a note's own frontmatter.
+    static func rewritingLinks(
+        in text: String, from oldTitle: String, to newTitle: String, includeQuotedRelated: Bool = true
+    ) -> String? {
         let needle = fold(oldTitle)
         guard needle != fold(newTitle) else { return nil }
 
         // Collected first, then applied from the end backwards: replacing a range
         // invalidates every range after it.
         let matches = WikilinkParser.links(in: text).filter { fold($0.target) == needle }
-        guard !matches.isEmpty else { return rewritingQuotedRelated(in: text, from: oldTitle, to: newTitle) }
+        guard !matches.isEmpty else {
+            guard includeQuotedRelated else { return nil }
+            return rewritingQuotedRelated(in: text, from: oldTitle, to: newTitle)
+        }
 
         var result = text
         for link in matches.reversed() {
@@ -29,6 +39,7 @@ enum NoteRename {
             rewritten.target = newTitle
             result.replaceSubrange(link.range, with: rewritten.rendered)
         }
+        guard includeQuotedRelated else { return result }
         return rewritingQuotedRelated(in: result, from: oldTitle, to: newTitle) ?? result
     }
 
