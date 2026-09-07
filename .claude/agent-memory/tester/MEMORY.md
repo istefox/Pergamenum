@@ -15,3 +15,4 @@
 - [Dispatch brief can be stale cross-chain](dispatch-brief-stale-cross-chain.md) — a named `step5-brief-N.md` can be leftover from an unrelated chain reusing batch number N; cross-check against the inline task text and the manifest's `artifacts.plan`.
 - [Dispatch brief missing in sibling worktree](dispatch-brief-missing-sibling-worktree.md) — ADR-0068 worktree isolation can put the brief in a different project_root than the tester's own cwd; never read across, reconstruct from the plan/ADR/SPEC already in-tree.
 - [PG-099 cross-task stub gap](pg-099-cross-task-stub-gap.md) — a dispatch claimed an earlier task's coder work had landed; the file was still a stub. Verify against source, not against the briefing.
+- [Memory index entries can outrun their files](memory-index-entries-can-outrun-their-files.md) — 6 MEMORY.md lines cite files never actually committed; `Read` before relying on any cited memory's content.

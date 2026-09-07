@@ -14,6 +14,10 @@ struct ViewTableRenderer: View {
 
     let block: ViewBlock
     let result: ViewResult
+    /// A click target carrying the clicked row's own title (ADR-0033 §D9, R-09). `nil` means
+    /// no row is clickable - today's rendering, and what R-10/R-11 (transclusion, export) rely
+    /// on staying true without their own edit.
+    var onOpenNote: ((String) -> Void)?
 
     private var columns: [ViewField] { block.effectiveColumns }
 
@@ -60,6 +64,18 @@ struct ViewTableRenderer: View {
             .padding(.vertical, theme.spacing(.xs))
         }
     }
+
+    /// The action a click on `row`'s own title performs (R-09) - `nil` when nothing is
+    /// listening, which is a row with no click target at all.
+    ///
+    /// **Tester stub for Task 7 (ADR-0049).** Always `nil`, regardless of `onOpenNote`: the
+    /// pure seam `Tests/ViewBlockQuerySourceTests.swift` asserts against without a live
+    /// SwiftUI render. The coder both fills this in (`onOpenNote.map { callback in { callback(row.title) } }`)
+    /// and calls it from the row's own title cell in `body`/`group(_:)` above - a stub that
+    /// merely declares the property is not enough, since nothing in `body` reads it yet.
+    func openAction(for row: ViewResult.Row) -> (() -> Void)? {
+        nil
+    }
 }
 
 /// One cell. Tags are chips wherever they appear, because a tag in a table and a tag in the
@@ -104,6 +120,9 @@ struct ViewListRenderer: View {
 
     let block: ViewBlock
     let result: ViewResult
+    /// A click target carrying the clicked line's own title (ADR-0033 §D9, R-09). `nil` means
+    /// no line is clickable - today's rendering.
+    var onOpenNote: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
@@ -140,6 +159,12 @@ struct ViewListRenderer: View {
                 ViewValueText.text(row.values[field] ?? field.value(of: row.record), of: field)
             }
             .joined(separator: " · ")
+    }
+
+    /// `ViewTableRenderer.openAction(for:)`'s own twin, same reason, same tester-stub status
+    /// (Task 7, ADR-0049): always `nil` until the coder wires `line(_:)` above to call it.
+    func openAction(for row: ViewResult.Row) -> (() -> Void)? {
+        nil
     }
 }
 

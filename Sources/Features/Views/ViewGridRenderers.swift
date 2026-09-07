@@ -14,6 +14,9 @@ struct ViewGalleryRenderer: View {
     var notePath: String = ""
     var vaultRoot: URL?
     var thumbnails: ThumbnailStore?
+    /// A click target carrying the clicked card's own title (ADR-0033 §D9, R-09). `nil` means
+    /// no card is clickable - today's rendering.
+    var onOpenNote: ((String) -> Void)?
 
     /// Wide enough for a page to be legible, narrow enough for three across a reading column.
     private static let cellWidth: CGFloat = 145
@@ -26,6 +29,12 @@ struct ViewGalleryRenderer: View {
             }
         }
         .accessibilityIdentifier("view-gallery")
+    }
+
+    /// `ViewTableRenderer.openAction(for:)`'s own twin (Task 7, ADR-0049): a tester stub,
+    /// always `nil` until the coder wires `cell(_:)` below to call it.
+    func openAction(for row: ViewResult.Row) -> (() -> Void)? {
+        nil
     }
 
     private func cell(_ row: ViewResult.Row) -> some View {
@@ -141,6 +150,9 @@ struct ViewCalendarRenderer: View {
 
     let block: ViewBlock
     let result: ViewResult
+    /// A click target carrying the clicked entry's own title (ADR-0033 §D9, R-09). `nil` means
+    /// no entry is clickable - today's rendering.
+    var onOpenNote: ((String) -> Void)?
 
     private static let weekdays = ["lu", "ma", "me", "gi", "ve", "sa", "do"]
     private static let columns = Array(repeating: GridItem(.flexible(minimum: 60), spacing: 4), count: 7)
@@ -229,5 +241,11 @@ struct ViewCalendarRenderer: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.color(.backgroundPrimary))
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+    }
+
+    /// `ViewTableRenderer.openAction(for:)`'s own twin (Task 7, ADR-0049): a tester stub,
+    /// always `nil` until the coder wires `day(_:rows:)` above to call it.
+    func openAction(for row: ViewResult.Row) -> (() -> Void)? {
+        nil
     }
 }

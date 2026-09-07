@@ -53,6 +53,19 @@ struct NoteTextView: NSViewRepresentable {
     /// mode's `EmbeddedFileView` reads, so a picture is rendered once and shared between
     /// the two surfaces rather than duplicated.
     var thumbnails: ThumbnailStore?
+    /// Where a `pergamenum-view` fence's rows come from (ADR-0033 §D9, plan
+    /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 7). Nil where there is no
+    /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take,
+    /// and deliberately what `DiaryView`/`TodayView` and every existing call site still get
+    /// without change, since neither passes this property (ADR Consequences).
+    ///
+    /// **Tester stub for Task 7 (ADR-0049).** Declared so `Tests/ViewBlockQuerySourceTests.swift`
+    /// compiles against the shape the coder wires; not yet threaded to
+    /// `EditorColumn+Text.swift`'s `editing(_:)` or to `NoteTextView+ViewBlocks.swift`'s
+    /// `refreshViewBlockHosts`, which still calls `ViewBlockHostStore.rootView(source:theme:)`
+    /// with this property unread. That wiring, and the stale "unreferenced" comment at
+    /// `EditorColumn+Text.swift:194-198` it corrects, are the coder's own work.
+    var queries: ViewQuerySource?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
     var onDropFile: ((URL) -> String?)?
