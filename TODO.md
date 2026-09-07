@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=99 -->
+<!-- project-tasks: prefix=PG lastId=100 -->
 # PROJECT TASKS
 
-Updated: 2026-09-07 · Open: 5 (P1: 0) · In progress: 0
+Updated: 2026-09-07 · Open: 6 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -13,6 +13,8 @@ Updated: 2026-09-07 · Open: 5 (P1: 0) · In progress: 0
 ## Backlog / To Add
 
 - [ ] `PG-099` **P3** An open Workspace board's pending (debounced) autosave can silently clobber a rename/move's board-repoint write, losing the rewrite with no error shown — `Sources/Features/Workspace/WorkspaceController.swift` (`scheduleSave`/`save`, ~lines 553-585) <!-- src:session opened:2026-09-07 -->
+- [ ] `PG-100` **P4** No test covers a Workspace `.text` card whose body contains both a real `[[Wikilink]]` match and a separate, coincidentally fold-matching quoted bullet on note rename — `Tests/NoteFileOperationTests.swift` (compound case for `renamingDoesNotRewriteAnUnrelatedQuotedBulletInATextCard`, commit `9bb0b50`) <!-- src:session opened:2026-09-07 -->
+  - The `includeQuotedRelated: false` gate at both branches of `NoteRename.rewritingLinks` (`Sources/Core/Conventions/NoteRename.swift:31-34` and `:42-43`) was independently verified correct by a reviewer subagent reading the code directly, but no test exercises the compound scenario: a card with both a matching wikilink and an unrelated quoted bullet that happens to fold-match the old title in the same body. Low priority — logic is confirmed sound, this is coverage debt only.
   - Found manually hand-checking R-06/R-07 of the rename/move/trash silent-failure chain (`docs/manifests/2026-09-07-rename-move-trash-silent-failure-fix.manifest.yml`), which added `.text`-card wikilink rewriting to `NoteFileOperations.repointBoardsPlan`/`repointBoards`. That rewrite itself is correct — verified via `perg note rename` on the CLI (shares the exact same `VaultSession.renameNote` path) and via a from-scratch GUI repro where the board had no pending edits: both correctly rewrote `[[Capture]]` → `[[Capture rinominata]]` on disk.
   - Repro that fails: create/edit a Workspace board's text card (setting `hasUnsavedChanges = true` and scheduling `WorkspaceController.scheduleSave()`'s 1-second debounce, `autosaveDelay` at `WorkspaceController.swift:155`), then within that window trigger an unrelated note rename from the Note sidebar that repoints that same board. The rename's `VaultSession.renameNote` writes the correctly-rewritten `.canvas` file to disk immediately. Moments later the board's own pending debounced `save()` fires and unconditionally overwrites the file with the stale in-memory `document` (still holding the pre-rename wikilink) — `save()` (`WorkspaceController.swift:570-585`) has no way to know the file changed externally in the interim, and only guards on its own `hasUnsavedChanges`, not on the file's mtime/hash.
   - Pre-existing, not introduced by this chain: the same race would already clobber the `.file`-node (embed) repointing ADR-0026 added for board moves/renames, since `save()`'s blind overwrite applies regardless of which node kind changed. Discovered only because this chain's manual R-06/R-07 check happened to create the board moments before renaming.
