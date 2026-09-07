@@ -181,9 +181,14 @@ struct NoteFileOperations {
                     document.nodes[index].kind = .file(path: newPath, subpath: subpath)
                     changed = true
                 case .text(let body):
+                    // A card has no `related:` frontmatter to preserve, so this must not run
+                    // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
+                    // otherwise an unrelated quoted bullet line that happens to fold-match the
+                    // old title would be silently rewritten too.
                     guard let titleChange,
                           let updated = NoteRename.rewritingLinks(
-                              in: body, from: titleChange.old, to: titleChange.new
+                              in: body, from: titleChange.old, to: titleChange.new,
+                              includeQuotedRelated: false
                           )
                     else { continue }
                     document.nodes[index].kind = .text(updated)
@@ -323,9 +328,14 @@ struct NoteFileOperations {
                     document.nodes[index].kind = .file(path: newPath, subpath: subpath)
                     changed = true
                 case .text(let body):
+                    // A card has no `related:` frontmatter to preserve, so this must not run
+                    // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
+                    // otherwise an unrelated quoted bullet line that happens to fold-match the
+                    // old title would be silently rewritten too.
                     guard let titleChange,
                           let updated = NoteRename.rewritingLinks(
-                              in: body, from: titleChange.old, to: titleChange.new
+                              in: body, from: titleChange.old, to: titleChange.new,
+                              includeQuotedRelated: false
                           )
                     else { continue }
                     document.nodes[index].kind = .text(updated)

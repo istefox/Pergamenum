@@ -339,3 +339,27 @@ private let boardWithTextCard = """
     #expect(updated.contains("[[Nota]]"))
     #expect(updated.contains("02 Aree/Nota.md"))
 }
+
+private let boardWithUnrelatedQuotedBullet = """
+{"nodes":[{"id":"a","type":"file","file":"01 Progetti/Capture.md","x":0,"y":0,"width":260,"height":180},\
+{"id":"b","type":"text","text":"idee sparse:\\n- \\"Capture\\"\\n- altro punto","x":300,"y":0,"width":260,"height":180}],"edges":[]}
+"""
+
+@Test func renamingDoesNotRewriteAnUnrelatedQuotedBulletInATextCard() throws {
+    // A `.text` card has no `related:` frontmatter, so NoteRename's quoted-related
+    // fallback must not run for it - otherwise a plain bullet line that happens to
+    // fold-match the old title (`- "Capture"`) would be silently corrupted even
+    // though it names nothing and links to nothing.
+    let vault = try OpsVault()
+    try vault.write(header, to: "01 Progetti/Capture.md")
+    try vault.write(boardWithUnrelatedQuotedBullet, to: "Labs.canvas")
+
+    _ = try vault.operations.rename(
+        "01 Progetti/Capture.md", to: "Piano editoriale", knownPaths: ["01 Progetti/Capture.md"]
+    )
+
+    let updated = try vault.text(at: "Labs.canvas")
+    #expect(updated.contains("- \\\"Capture\\\""))
+    #expect(!updated.contains("Piano editoriale\\\"\\n- altro"))
+    #expect(updated.contains("01 Progetti/Piano editoriale.md"))
+}
