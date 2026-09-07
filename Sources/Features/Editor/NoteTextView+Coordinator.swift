@@ -192,6 +192,33 @@ extension NoteTextView {
             parent.onOutlineEntryChanged?(entry)
         }
 
+        /// The `pergamenum-view` fence (opening line through closing line, inclusive) whose
+        /// source range `selection` currently intersects, or `nil` when it sits outside every
+        /// fence in `text` (ADR-0033 §D4).
+        ///
+        /// Pure offset arithmetic against the note's own source - `text`/`selection` and not an
+        /// `NSTextView`, `MarkupReveal.paragraphs(in:selection:markedRange:currentMatch:)`'s own
+        /// shape (`NoteTextView+Reveal.swift`) - which is also why this construct's reveal
+        /// survives the caret moving from the opening fence line into the body it has just
+        /// revealed, unlike a paragraph-keyed reveal: the answer stays the same non-nil range for
+        /// every position inside the block, body lines included (Context finding 3).
+        ///
+        /// **Stubbed to always return `nil`** (plan
+        /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 6's own tester declaration,
+        /// ADR-0049: the tester declares the interface and writes the assertions against it
+        /// before the coder fills in the body). The coder implements the real predicate here and
+        /// wires it into `applyViewBlocks` (skip registering a revealed fence) and
+        /// `textViewDidChangeSelection` (re-run `applyStyling` when the answer changes, guarded
+        /// by a stored `NSRange?`, ADR §D5).
+        /// `nonisolated`, deliberately: pure text/range arithmetic touches no actor-isolated
+        /// state at all, and `ViewBlockRevealPredicate` (`Tests/ViewBlockCaretTests.swift`)
+        /// calls it from a plain, non-`@MainActor` test - the "no `NSTextView`" half of this
+        /// task's own tester brief also means no forced hop to the main actor to ask it a
+        /// question about a `String`.
+        nonisolated static func revealedViewBlock(in text: String, selection: NSRange) -> NSRange? {
+            nil
+        }
+
         /// Puts the cursor in the editor.
         ///
         /// Retried once on the next pass because a text view built during this same
