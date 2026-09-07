@@ -19,6 +19,10 @@ struct NoteRowMenu: View {
     let note: NoteRecord
     @Binding var renaming: NoteRecord?
     @Binding var deleting: NoteRecord?
+    /// `NoteListPane`'s own move-refused alert (ADR-0026 §D10) - this menu's "Sposta in" is the
+    /// same move `performMove`'s drag&drop already surfaces failures for, so it reports into the
+    /// identical alert rather than a second one with the same wording.
+    @Binding var moveRefused: String?
 
     var body: some View {
         Button("Apri") { vault.openNote(at: note.relativePath) }
@@ -28,10 +32,18 @@ struct NoteRowMenu: View {
         }
         Button("Rinomina…") { renaming = note }
         Menu("Sposta in") {
-            Button("(radice)") { vault.moveNote(at: note.relativePath, toFolder: "") }
+            Button("(radice)") {
+                if !vault.moveNote(at: note.relativePath, toFolder: "") {
+                    moveRefused = vault.problems.last
+                }
+            }
             ForEach(vault.folders, id: \.self) { folder in
-                Button(folder) { vault.moveNote(at: note.relativePath, toFolder: folder) }
-                    .disabled(folder == note.folder)
+                Button(folder) {
+                    if !vault.moveNote(at: note.relativePath, toFolder: folder) {
+                        moveRefused = vault.problems.last
+                    }
+                }
+                .disabled(folder == note.folder)
             }
         }
         rowCommand(.copyLink)

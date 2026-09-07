@@ -292,3 +292,50 @@ private let board = """
 
     #expect(try vault.text(at: "Labs.canvas") == before)
 }
+
+// MARK: - Boards' own text cards follow a rename too
+
+private let boardWithTextCard = """
+{"nodes":[{"id":"a","type":"file","file":"01 Progetti/Nota.md","x":0,"y":0,"width":260,"height":180},\
+{"id":"b","type":"text","text":"- [ ] vedi [[Nota]] per il dettaglio","x":300,"y":0,"width":260,"height":180}],"edges":[]}
+"""
+
+@Test func renamingRewritesWikilinksInsideATextCardOnEveryBoard() throws {
+    let vault = try OpsVault()
+    try vault.write(header, to: "01 Progetti/Nota.md")
+    try vault.write(boardWithTextCard, to: "Labs.canvas")
+
+    _ = try vault.operations.rename(
+        "01 Progetti/Nota.md", to: "Nota rinominata", knownPaths: ["01 Progetti/Nota.md"]
+    )
+
+    let updated = try vault.text(at: "Labs.canvas")
+    #expect(updated.contains("[[Nota rinominata]]"))
+    #expect(!updated.contains("[[Nota]]"))
+    #expect(updated.contains("01 Progetti/Nota rinominata.md"))
+}
+
+@Test func aTextCardWithNoMatchingWikilinkIsLeftByteIdentical() throws {
+    let vault = try OpsVault()
+    try vault.write(header, to: "Sola.md")
+    try vault.write(boardWithTextCard, to: "Labs.canvas")
+    let before = try vault.text(at: "Labs.canvas")
+
+    _ = try vault.operations.rename("Sola.md", to: "Sola rinominata", knownPaths: ["Sola.md"])
+
+    #expect(try vault.text(at: "Labs.canvas") == before)
+}
+
+@Test func movingDoesNotTouchATextCardsWikilink() throws {
+    let vault = try OpsVault()
+    try vault.write(header, to: "01 Progetti/Nota.md")
+    try vault.write(boardWithTextCard, to: "Labs.canvas")
+
+    _ = try vault.operations.move("01 Progetti/Nota.md", toFolder: "02 Aree")
+
+    let updated = try vault.text(at: "Labs.canvas")
+    // A move never changes the note's title, so the wikilink (which names by title,
+    // not by path - wikilink.md W-01) has nothing to rewrite.
+    #expect(updated.contains("[[Nota]]"))
+    #expect(updated.contains("02 Aree/Nota.md"))
+}

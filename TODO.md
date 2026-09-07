@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=98 -->
+<!-- project-tasks: prefix=PG lastId=99 -->
 # PROJECT TASKS
 
-Updated: 2026-09-06 · Open: 4 (P1: 0) · In progress: 0
+Updated: 2026-09-07 · Open: 5 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 ## Open Issues
@@ -11,6 +11,12 @@ Updated: 2026-09-06 · Open: 4 (P1: 0) · In progress: 0
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-099` **P3** An open Workspace board's pending (debounced) autosave can silently clobber a rename/move's board-repoint write, losing the rewrite with no error shown — `Sources/Features/Workspace/WorkspaceController.swift` (`scheduleSave`/`save`, ~lines 553-585) <!-- src:session opened:2026-09-07 -->
+  - Found manually hand-checking R-06/R-07 of the rename/move/trash silent-failure chain (`docs/manifests/2026-09-07-rename-move-trash-silent-failure-fix.manifest.yml`), which added `.text`-card wikilink rewriting to `NoteFileOperations.repointBoardsPlan`/`repointBoards`. That rewrite itself is correct — verified via `perg note rename` on the CLI (shares the exact same `VaultSession.renameNote` path) and via a from-scratch GUI repro where the board had no pending edits: both correctly rewrote `[[Capture]]` → `[[Capture rinominata]]` on disk.
+  - Repro that fails: create/edit a Workspace board's text card (setting `hasUnsavedChanges = true` and scheduling `WorkspaceController.scheduleSave()`'s 1-second debounce, `autosaveDelay` at `WorkspaceController.swift:155`), then within that window trigger an unrelated note rename from the Note sidebar that repoints that same board. The rename's `VaultSession.renameNote` writes the correctly-rewritten `.canvas` file to disk immediately. Moments later the board's own pending debounced `save()` fires and unconditionally overwrites the file with the stale in-memory `document` (still holding the pre-rename wikilink) — `save()` (`WorkspaceController.swift:570-585`) has no way to know the file changed externally in the interim, and only guards on its own `hasUnsavedChanges`, not on the file's mtime/hash.
+  - Pre-existing, not introduced by this chain: the same race would already clobber the `.file`-node (embed) repointing ADR-0026 added for board moves/renames, since `save()`'s blind overwrite applies regardless of which node kind changed. Discovered only because this chain's manual R-06/R-07 check happened to create the board moments before renaming.
+  - Deliberately left open per Stefano's explicit call (2026-09-07): out of scope for the rename/move/trash chain, which is otherwise complete and verified (R-01–R-07 all pass in the no-pending-edit case). A real fix likely means either flushing every open Workspace board's pending save before a rename/move/trash writes board-repoint changes, or having `save()` refuse/merge when the on-disk file no longer matches what was loaded — needs its own analysis before implementing either.
 
 - [ ] `PG-096` **P3** Sparkle integration for signed update delivery — code and pipeline shipped, only the manual update-flow hand-check (R-08) remains <!-- src:session opened:2026-09-04 updated:2026-09-05 -->
   - **Entry corrected 2026-09-05: the "not started" note below is stale, superseded the same day it was written.** ADR-0031 was designed and implemented after this entry was opened: `docs/adr/0031-sparkle-auto-update-integration.md` exists, `Tuist/Package.swift` carries the Sparkle 2.9.6 dependency, and PR #167 (`feat(app): add Sparkle auto-update integration (PG-096)`, commit `d4c65ad`) is merged into `main`. `istefox/pergamenum-updates` is live and public (verified via `gh api`, created 2026-09-04), holds `appcast.xml`, and already has one published release, `v1.1-641` (`Pergamenum-1.1-641.zip` asset, published 2026-09-04T21:46Z) — so `scripts/release.sh` has already been run for real, not just built.

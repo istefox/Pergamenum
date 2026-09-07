@@ -77,12 +77,24 @@ struct NoteListPane: View {
     @State var renamingFolder: String?
     /// The folder the delete confirmation is about (toolbar "Elimina" on a folder row).
     @State var deletingFolder: String?
+    /// Set when a folder rename was refused - the folder-verb twin of `renameRefused` above,
+    /// declared here since `NoteListPane+FolderVerbs.swift` (an extension) cannot add stored
+    /// properties.
+    @State var renameFolderRefused: String?
+    /// The folder-delete twin of `renameFolderRefused` above.
+    @State var trashFolderRefused: String?
     /// Set when a move was refused for a reason the drag itself cannot show - today only
     /// `VaultController.canOperate`'s unsaved-note guard (ADR-0026 §D10), which used to
     /// fail `performMove` silently: the drag lifted, the folder row lit, and nothing moved,
     /// with no way to tell a refusal from a slow drop. `vault.problems.last` is read right
     /// after the refusing call, mirroring `WorkspaceBrowser`'s own `moveConflict` alert.
-    @State private var moveRefused: String?
+    @State var moveRefused: String?
+    /// Set when a rename was refused (`canOperate`'s unsaved-note guard, most commonly) — the
+    /// rename sheet dismisses regardless (ADR-0026 §D10's "close + alert" shape, same as
+    /// `moveRefused` above), so this is the only trace of the refusal on screen.
+    @State private var renameRefused: String?
+    /// The trash confirmation's twin of `renameRefused` above.
+    @State private var trashRefused: String?
     /// Folders or flat list. A preference rather than view state: whichever one
     /// someone works in, they work in it every day.
     @AppStorage("noteListShowsFolders") private var showsFolders = true
@@ -111,6 +123,34 @@ struct NoteListPane: View {
             } message: { reason in
                 Text(reason)
                     .accessibilityIdentifier("sidebar-move-conflict")
+            }
+            .alert(
+                "Rinomina rifiutata",
+                isPresented: Binding(
+                    get: { renameRefused != nil },
+                    set: { if !$0 { renameRefused = nil } }
+                ),
+                presenting: renameRefused
+            ) { _ in
+                Button("OK", role: .cancel) { renameRefused = nil }
+                    .accessibilityIdentifier("sidebar-rename-refused-ok")
+            } message: { reason in
+                Text(reason)
+                    .accessibilityIdentifier("sidebar-rename-refused")
+            }
+            .alert(
+                "Eliminazione rifiutata",
+                isPresented: Binding(
+                    get: { trashRefused != nil },
+                    set: { if !$0 { trashRefused = nil } }
+                ),
+                presenting: trashRefused
+            ) { _ in
+                Button("OK", role: .cancel) { trashRefused = nil }
+                    .accessibilityIdentifier("sidebar-trash-refused-ok")
+            } message: { reason in
+                Text(reason)
+                    .accessibilityIdentifier("sidebar-trash-refused")
             }
     }
 
@@ -158,7 +198,9 @@ struct NoteListPane: View {
         }
         .sheet(item: $renaming) { note in
             RenameNoteSheet(note: note) { newTitle in
-                vault.renameNote(at: note.relativePath, to: newTitle)
+                if !vault.renameNote(at: note.relativePath, to: newTitle) {
+                    renameRefused = vault.problems.last
+                }
                 renaming = nil
             } onCancel: {
                 renaming = nil
@@ -170,7 +212,9 @@ struct NoteListPane: View {
             titleVisibility: .visible
         ) {
             Button("Sposta nel Cestino", role: .destructive) {
-                if let note = deleting { vault.trashNote(at: note.relativePath) }
+                if let note = deleting, !vault.trashNote(at: note.relativePath) {
+                    trashRefused = vault.problems.last
+                }
                 deleting = nil
             }
             Button("Annulla", role: .cancel) { deleting = nil }
@@ -264,7 +308,7 @@ struct NoteListPane: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting)
+            NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting, moveRefused: $moveRefused)
         }
         .accessibilityIdentifier("starred-note")
     }
@@ -279,6 +323,7 @@ struct NoteListPane: View {
                     expanded: $expanded,
                     renaming: $renaming,
                     deleting: $deleting,
+                    moveRefused: $moveRefused,
                     move: moveContext
                 )
             }
@@ -318,7 +363,7 @@ struct NoteListPane: View {
                 .draggable(beginDrag(of: note.relativePath, kind: .note, named: note.title))
                 .accessibilityIdentifier("note-row-\(note.relativePath)")
                 .contextMenu {
-                    NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting)
+                    NoteRowMenu(note: note, renaming: $renaming, deleting: $deleting, moveRefused: $moveRefused)
                 }
                 // `.tag` **last in the chain**, normalised to the Workspace pane's order
                 // (ADR-0026 §D11): a modifier applied after it drops it, and the failure is

@@ -118,7 +118,9 @@ struct NoteFileOperations {
             plan.noteChanges.append(FileChange(path: writePath, before: text, after: updated))
         }
 
-        let boards = repointBoardsPlan(from: relativePath, to: newPath)
+        let boards = repointBoardsPlan(
+            from: relativePath, to: newPath, titleChange: (old: oldTitle, new: newTitle)
+        )
         plan.boardChanges = boards.changes
         plan.failures.append(contentsOf: boards.failures)
         return plan
@@ -155,8 +157,13 @@ struct NoteFileOperations {
 
     /// What repointing every board's cards would change, read rather than written - `repointBoards`
     /// performs exactly this once a caller has decided to.
+    ///
+    /// `titleChange` is `nil` for a move (a wikilink names a note by title, not by path -
+    /// wikilink.md W-01 - so a move touches no card text) and `(oldTitle, newTitle)` for a
+    /// rename, so a board's own `.text`-kind card body is rewritten the same way `.md` file text
+    /// already is (`NoteRename.rewritingLinks`), not only its `.file`-kind embeds.
     private func repointBoardsPlan(
-        from oldPath: String, to newPath: String
+        from oldPath: String, to newPath: String, titleChange: (old: String, new: String)? = nil
     ) -> (changes: [FileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
         var changes: [FileChange] = []
@@ -169,10 +176,21 @@ struct NoteFileOperations {
 
             var changed = false
             for index in document.nodes.indices {
-                guard case .file(let path, let subpath) = document.nodes[index].kind, path == oldPath
-                else { continue }
-                document.nodes[index].kind = .file(path: newPath, subpath: subpath)
-                changed = true
+                switch document.nodes[index].kind {
+                case .file(let path, let subpath) where path == oldPath:
+                    document.nodes[index].kind = .file(path: newPath, subpath: subpath)
+                    changed = true
+                case .text(let body):
+                    guard let titleChange,
+                          let updated = NoteRename.rewritingLinks(
+                              in: body, from: titleChange.old, to: titleChange.new
+                          )
+                    else { continue }
+                    document.nodes[index].kind = .text(updated)
+                    changed = true
+                default:
+                    continue
+                }
             }
             guard changed else { continue }
 
@@ -247,7 +265,10 @@ struct NoteFileOperations {
             }
         }
 
-        repointBoards(from: relativePath, to: newPath, into: &outcome)
+        repointBoards(
+            from: relativePath, to: newPath, titleChange: (old: oldTitle, new: newTitle),
+            into: &outcome
+        )
         return outcome
     }
 
@@ -277,11 +298,17 @@ struct NoteFileOperations {
         return outcome
     }
 
-    /// Points every board card that referenced `oldPath` at `newPath`.
+    /// Points every board card that referenced `oldPath` at `newPath`, and rewrites `oldTitle`
+    /// wikilinks inside `.text`-kind card bodies when `titleChange` is given (see
+    /// `repointBoardsPlan`'s doc comment - the same `nil`-for-move/`(old,new)`-for-rename split).
     ///
     /// The document is decoded and re-encoded rather than patched as text, so a board
     /// written by Obsidian keeps the keys this app does not know about.
-    private func repointBoards(from oldPath: String, to newPath: String, into outcome: inout Outcome) {
+    private func repointBoards(
+        from oldPath: String, to newPath: String,
+        titleChange: (old: String, new: String)? = nil,
+        into outcome: inout Outcome
+    ) {
         guard oldPath != newPath else { return }
         for boardPath in boardPaths() {
             let url = store.url(for: boardPath)
@@ -291,10 +318,21 @@ struct NoteFileOperations {
 
             var changed = false
             for index in document.nodes.indices {
-                guard case .file(let path, let subpath) = document.nodes[index].kind, path == oldPath
-                else { continue }
-                document.nodes[index].kind = .file(path: newPath, subpath: subpath)
-                changed = true
+                switch document.nodes[index].kind {
+                case .file(let path, let subpath) where path == oldPath:
+                    document.nodes[index].kind = .file(path: newPath, subpath: subpath)
+                    changed = true
+                case .text(let body):
+                    guard let titleChange,
+                          let updated = NoteRename.rewritingLinks(
+                              in: body, from: titleChange.old, to: titleChange.new
+                          )
+                    else { continue }
+                    document.nodes[index].kind = .text(updated)
+                    changed = true
+                default:
+                    continue
+                }
             }
             guard changed else { continue }
 
