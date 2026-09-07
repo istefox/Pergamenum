@@ -25,16 +25,19 @@ struct ViewGalleryRenderer: View {
     var body: some View {
         LazyVGrid(columns: Self.columns, alignment: .leading, spacing: theme.spacing(.m)) {
             ForEach(result.rows, id: \.path) { row in
-                cell(row)
+                // The whole card and not the caption alone: a gallery item *is* the note it
+                // draws, thumbnail included, and a picture nobody can click is the picture
+                // people click first.
+                cell(row).opensNote(openAction(for: row))
             }
         }
         .accessibilityIdentifier("view-gallery")
     }
 
-    /// `ViewTableRenderer.openAction(for:)`'s own twin (Task 7, ADR-0049): a tester stub,
-    /// always `nil` until the coder wires `cell(_:)` below to call it.
+    /// `ViewTableRenderer.openAction(for:)`'s own twin, same reason and same seam (R-09).
     func openAction(for row: ViewResult.Row) -> (() -> Void)? {
-        nil
+        guard let onOpenNote else { return nil }
+        return { onOpenNote(row.title) }
     }
 
     private func cell(_ row: ViewResult.Row) -> some View {
@@ -186,7 +189,10 @@ struct ViewCalendarRenderer: View {
             if !undated.isEmpty {
                 Text("Senza \(field.label)").themedText(.caption, color: .textTertiary)
                 ForEach(undated, id: \.path) { row in
+                    // Clickable like the placed entries: a row listed here is one the field
+                    // had no value for, not one the query found less of (R-09).
                     Text(row.title).themedText(.caption, color: .accentPrimary).lineLimit(1)
+                        .opensNote(openAction(for: row))
                 }
             }
         }
@@ -233,6 +239,9 @@ struct ViewCalendarRenderer: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(theme.color(.surfaceCard))
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    // The whole chip, padding included - it is small enough already that only
+                    // the glyphs answering the click would be a target nobody hits (R-09).
+                    .opensNote(openAction(for: row))
             }
             Spacer(minLength: 0)
         }
@@ -243,9 +252,11 @@ struct ViewCalendarRenderer: View {
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
     }
 
-    /// `ViewTableRenderer.openAction(for:)`'s own twin (Task 7, ADR-0049): a tester stub,
-    /// always `nil` until the coder wires `day(_:rows:)` above to call it.
+    /// `ViewTableRenderer.openAction(for:)`'s own twin, same reason and same seam (R-09) -
+    /// read by both the placed entries and the undated ones, which are the same rows drawn
+    /// in two places.
     func openAction(for row: ViewResult.Row) -> (() -> Void)? {
-        nil
+        guard let onOpenNote else { return nil }
+        return { onOpenNote(row.title) }
     }
 }

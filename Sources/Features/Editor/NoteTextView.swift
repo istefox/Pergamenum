@@ -59,12 +59,13 @@ struct NoteTextView: NSViewRepresentable {
     /// and deliberately what `DiaryView`/`TodayView` and every existing call site still get
     /// without change, since neither passes this property (ADR Consequences).
     ///
-    /// **Tester stub for Task 7 (ADR-0049).** Declared so `Tests/ViewBlockQuerySourceTests.swift`
-    /// compiles against the shape the coder wires; not yet threaded to
-    /// `EditorColumn+Text.swift`'s `editing(_:)` or to `NoteTextView+ViewBlocks.swift`'s
-    /// `refreshViewBlockHosts`, which still calls `ViewBlockHostStore.rootView(source:theme:)`
-    /// with this property unread. That wiring, and the stale "unreferenced" comment at
-    /// `EditorColumn+Text.swift:194-198` it corrects, are the coder's own work.
+    /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
+    /// `ViewQuerySource`. **Still unread by `NoteTextView+ViewBlocks.swift`'s
+    /// `refreshViewBlockHosts`**, which builds each drawn fence's root view through
+    /// `ViewBlockHostStore.rootView(source:theme:)` - the fence's own source and the theme,
+    /// and nothing else, so the hosted `RenderedViewBlock` gets no `queries`, no `onOpenNote`
+    /// and no `onEditSource`. That one hop is what stands between this property and a fence
+    /// that runs its query in the editor (R-04, R-07, R-09).
     var queries: ViewQuerySource?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.

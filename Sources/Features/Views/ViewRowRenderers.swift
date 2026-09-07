@@ -58,7 +58,12 @@ struct ViewTableRenderer: View {
         ForEach(group.rows, id: \.path) { row in
             GridRow {
                 ForEach(columns, id: \.self) { field in
+                    // The first column is the note's own title, drawn in `.accentPrimary`
+                    // since PG-012 and clickable only from ADR-0033 on (R-09) - the other
+                    // columns carry values, not names, so a click there would open a note the
+                    // reader did not point at.
                     ViewCell(field: field, row: row, isFirst: field == columns.first)
+                        .opensNote(field == columns.first ? openAction(for: row) : nil)
                 }
             }
             .padding(.vertical, theme.spacing(.xs))
@@ -68,13 +73,13 @@ struct ViewTableRenderer: View {
     /// The action a click on `row`'s own title performs (R-09) - `nil` when nothing is
     /// listening, which is a row with no click target at all.
     ///
-    /// **Tester stub for Task 7 (ADR-0049).** Always `nil`, regardless of `onOpenNote`: the
-    /// pure seam `Tests/ViewBlockQuerySourceTests.swift` asserts against without a live
-    /// SwiftUI render. The coder both fills this in (`onOpenNote.map { callback in { callback(row.title) } }`)
-    /// and calls it from the row's own title cell in `body`/`group(_:)` above - a stub that
-    /// merely declares the property is not enough, since nothing in `body` reads it yet.
+    /// A function rather than a closure inlined at the call site, so what a click does can be
+    /// asserted without a live SwiftUI render (`Tests/ViewBlockQuerySourceTests.swift`): it is
+    /// a fact about the renderer, and reading it back out of a rendered `Button` would be an
+    /// assertion about SwiftUI instead.
     func openAction(for row: ViewResult.Row) -> (() -> Void)? {
-        nil
+        guard let onOpenNote else { return nil }
+        return { onOpenNote(row.title) }
     }
 }
 
@@ -144,7 +149,10 @@ struct ViewListRenderer: View {
     private func line(_ row: ViewResult.Row) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
             Image(systemName: "doc.text").themedText(.caption, color: .textTertiary)
+            // The title alone, not the whole line: the detail caption is other columns'
+            // values, and a click on those would be a click on something that is not a name.
             Text(row.title).themedText(.body, color: .accentPrimary).lineLimit(1)
+                .opensNote(openAction(for: row))
             Text(detail(row)).themedText(.caption, color: .textTertiary).lineLimit(1)
         }
     }
@@ -161,10 +169,35 @@ struct ViewListRenderer: View {
             .joined(separator: " · ")
     }
 
-    /// `ViewTableRenderer.openAction(for:)`'s own twin, same reason, same tester-stub status
-    /// (Task 7, ADR-0049): always `nil` until the coder wires `line(_:)` above to call it.
+    /// `ViewTableRenderer.openAction(for:)`'s own twin, same reason and same seam (R-09).
     func openAction(for row: ViewResult.Row) -> (() -> Void)? {
-        nil
+        guard let onOpenNote else { return nil }
+        return { onOpenNote(row.title) }
+    }
+}
+
+extension View {
+    /// Wraps a row's own title in the click target R-09 gives it, and leaves it untouched
+    /// when there is no action - which is every surface that passes no `onOpenNote`, and
+    /// therefore today's rendering for the transclusion and export paths (R-10, R-11).
+    ///
+    /// Declared once for all four renderers rather than four times: the four are one gesture
+    /// with four drawings, and a per-renderer copy is four places for the plain button style
+    /// or the hit area to drift. A `Button` and not an `onTapGesture`, because a target that
+    /// answers the keyboard and reports itself to accessibility is what a row that opens a
+    /// note is.
+    @ViewBuilder
+    func opensNote(_ action: (() -> Void)?) -> some View {
+        if let action {
+            Button(action: action) {
+                // The whole rectangle, so a card's gaps and a chip's padding are the target
+                // too - without it only the glyphs themselves answer the click.
+                contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            self
+        }
     }
 }
 

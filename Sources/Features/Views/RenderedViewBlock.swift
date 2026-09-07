@@ -27,20 +27,16 @@ struct RenderedViewBlock: View {
     /// test. The block then says so instead of drawing an empty result.
     var queries: ViewQuerySource?
     /// One more control in the header row, beside the refresh button: how the caret gets back
-    /// into a fence this attachment covers (ADR-0033 §D9/§D10). Both defaults to `nil`, and
-    /// `nil` means the control is not drawn - exactly today's rendering.
-    ///
-    /// **Tester stub for Task 7 (ADR-0049).** Declared, not wired into `body`/`header(...)`:
-    /// the coder adds the control and the caret-placement call it performs.
+    /// into a fence this attachment covers (ADR-0033 §D9/§D10). `nil` means the control is not
+    /// drawn - exactly today's rendering, and what a surface with no editor behind it gets.
     var onEditSource: (() -> Void)?
     /// Threaded to the four renderers as an optional click target carrying a row's own title
     /// (ADR-0033 §D9, R-09). `nil` means no renderer draws a click target - today's rendering,
-    /// and what keeps R-10/R-11 (transclusion, export) true by construction.
+    /// and what keeps R-10/R-11 (transclusion, export) true by construction rather than by
+    /// care: neither passes it, so neither gains an interaction.
     ///
-    /// **Tester stub for Task 7 (ADR-0049).** Declared, not threaded into `rows(_:_:)` below:
-    /// the coder passes it to `ViewTableRenderer`/`ViewListRenderer`/`ViewGalleryRenderer`/
-    /// `ViewCalendarRenderer` and wires it in the editor to the same `onFollowLink` door a
-    /// wikilink uses.
+    /// A title and not a path, because that is the string a `[[wikilink]]` carries and this
+    /// opens a note through the same door one does - two lookups of one name, never two rules.
     var onOpenNote: ((String) -> Void)?
 
     @State private var result: ViewResult?
@@ -107,6 +103,18 @@ struct RenderedViewBlock: View {
                 Text(count == 1 ? "1 nota" : "\(count) note").themedText(.caption, color: .textTertiary)
             }
             Spacer()
+            // Before the refresh rather than after it, so the control that has been there
+            // since PG-012 stays where the eye already looks for it. Drawn only where
+            // something is listening: a transclusion and an export have no caret to place
+            // (ADR §D9), and a door to nowhere is worse than no door.
+            if let onEditSource {
+                Button(action: onEditSource) {
+                    Image(systemName: "text.cursor").themedText(.caption, color: .textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Modifica la sorgente")
+                .accessibilityIdentifier("rendered-view-edit-source")
+            }
             Button { reloads += 1 } label: {
                 Image(systemName: "arrow.clockwise").themedText(.caption, color: .textTertiary)
             }
@@ -135,13 +143,14 @@ struct RenderedViewBlock: View {
     @ViewBuilder
     private func rows(_ block: ViewBlock, _ result: ViewResult) -> some View {
         switch block.render {
-        case .table: ViewTableRenderer(block: block, result: result)
-        case .list: ViewListRenderer(block: block, result: result)
+        case .table: ViewTableRenderer(block: block, result: result, onOpenNote: onOpenNote)
+        case .list: ViewListRenderer(block: block, result: result, onOpenNote: onOpenNote)
         case .gallery:
             ViewGalleryRenderer(
-                result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails
+                result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails,
+                onOpenNote: onOpenNote
             )
-        case .calendar: ViewCalendarRenderer(block: block, result: result)
+        case .calendar: ViewCalendarRenderer(block: block, result: result, onOpenNote: onOpenNote)
         // The one renderer that writes (§D5), and only when the grouping is a tag namespace:
         // it decides that for itself.
         case .board:

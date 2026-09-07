@@ -64,6 +64,10 @@ extension EditorColumnView {
             onFollowLink: follow(title:),
             onOpenEmbed: { name in preview(embed: name, in: note) },
             vaultRoot: vault.root, notePath: note.relativePath, thumbnails: vault.thumbnails,
+            // Where a drawn `pergamenum-view` fence's rows come from (ADR-0033 §D9). The same
+            // source `reading(_:)` used to hand `MarkdownReadingView`, so the editor and a
+            // transclusion of the same note cannot answer one query two ways.
+            queries: viewQuerySource,
             onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
             onPasteImage: { data in save(pastedImage: data, in: note) },
             insertion: pendingInsertion,
@@ -191,11 +195,16 @@ extension EditorColumnView {
     /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
     /// not when a key is pressed.
     ///
-    /// **Unreferenced since ADR-0029 §D13**, and left standing rather than deleted, for the
-    /// same reason `MarkdownReadingView` is: its only caller was `reading(_:)`, which handed
-    /// it to that view. It is the app's only `ViewQuerySource`, so whichever surface renders
-    /// an in-note `pergamenum-view` fence next will want exactly this - the Viste pane does
-    /// not, it calls `ViewEvaluator.evaluate` directly (`ViewsPane.swift:195`).
+    /// **Handed to `NoteTextView.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
+    /// stood unreferenced between ADR-0029 §D13, which removed `reading(_:)` - its only
+    /// caller, which handed it to `MarkdownReadingView` - and ADR-0033, which made the editor
+    /// itself the surface that draws an in-note `pergamenum-view` fence: exactly the "whichever
+    /// surface renders one next will want this" that §D13 left it standing for.
+    ///
+    /// Still the app's only `ViewQuerySource`. The Viste pane has none: it calls
+    /// `ViewEvaluator.evaluate` directly (`ViewsPane.swift:197`), and a note card on the canvas
+    /// passes no source at all, which is what makes its board a report rather than a surface
+    /// that invites a drag it could not write (§D5).
     var viewQuerySource: ViewQuerySource {
         ViewQuerySource(
             evaluate: { block in
