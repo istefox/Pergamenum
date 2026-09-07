@@ -12,3 +12,4 @@
 - [Plaud fixture escaping + Sendable fake](plaud-fixture-escaping-and-sendable-fake.md) — double backslashes when pasting a captured `\"`-bearing JSON fixture into a Swift `"""` literal; a `: Sendable` protocol's fake is an `actor` (see `ThumbnailStore`), not `@MainActor` + `@unchecked Sendable`.
 - [Per-vault store test seeding](pergamenum-per-vault-store-test-seeding.md) — seed a controller's ADR-0017-style JSON store directly via `session.state.directory`, bypassing the stubbed refresh(), to red-test something like delete meaningfully.
 - [#expect + allSatisfy(\.keyPath)](swift-testing-allsatisfy-keypath.md) — fails to compile ("call can throw"); hoist to a `let` first or use a closure literal instead.
+- [Dispatch brief can be stale cross-chain](dispatch-brief-stale-cross-chain.md) — a named `step5-brief-N.md` can be leftover from an unrelated chain reusing batch number N; cross-check against the inline task text and the manifest's `artifacts.plan`.
