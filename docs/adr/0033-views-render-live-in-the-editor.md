@@ -320,9 +320,14 @@ the same reason — a caret in an un-enumerated paragraph is an insertion point 
 drawn and nowhere to type. It runs after the storage's editing transaction closes, never inside it,
 which is where `refreshTableGrids` already puts its own.
 
-In practice D4 makes this nearly unreachable (a caret inside the fence keeps it revealed), and
-"nearly" is the reason it is written anyway: a programmatic selection — a find match, an outline
-jump, `onScrollApplied` — can put the caret in a body line without going through the reveal path.
+D4 makes this unreachable through `applyViewBlocks`, not nearly: a caret inside the fence's whole
+source range always reveals it (D4), and a revealed fence hides nothing, so there is no longer a
+hidden body line for this rescue to fire on. The premise that a programmatic selection — a find
+match, an outline jump, `onScrollApplied` — could bypass the reveal path does not hold on this
+platform: `setSelectedRange` and a direct `string =` assignment both post the selection-changed
+notification synchronously, measured directly, so every one of those paths runs through
+`textViewDidChangeSelection` before the caret lands. `viewBlockCaretRescue` stays as defensive code
+for `applyFolding`/`applyTables`' own shape, not because this pass is expected to reach it.
 
 **D16. Four probes. The second is a gate on R-04 in the sense ADR-0029 §D16 probe 2 was a gate on its
 D4, and it is answered before the board task is planned in detail rather than during it.**

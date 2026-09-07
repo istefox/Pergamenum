@@ -152,16 +152,20 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
 
 @MainActor
 @Suite struct ViewBlockCaretRescue {
-    /// ADR §D15: a caret programmatically placed inside the body line a fence is about to
-    /// hide is rescued to the opening fence line's own offset once the pass that hides it has
-    /// run.
-    @Test func aCaretInsideTheBodyLineIsRescuedToTheOpeningFenceOffset() {
+    /// ADR §D15 superseded by §D4 (Task 6): a caret inside a fence's body line is, by
+    /// construction, a caret inside the fence's whole source range - which §D4 always reveals.
+    /// A revealed fence hides nothing, so there is no longer a hidden line for this rescue to
+    /// fire on; the caret is left exactly where it was and the body line stays in the layout.
+    /// `viewBlockCaretRescue` itself is kept as defensive code for a path that cannot currently
+    /// be reached through `applyViewBlocks` - see `.claude/agent-memory/coder/topics/
+    /// pg-099-task6-reveal-supersedes-caret-rescue.md`.
+    @Test func aCaretInsideTheBodyLineIsLeftWhereItWasBecauseTheFenceIsRevealed() {
         let fixture = editor(ViewBlockCaretFixture.note, caret: ViewBlockCaretFixture.insideBodyLine)
         defer { fixture.window.orderOut(nil) }
 
         #expect(
-            fixture.textView.selectedRange() == NSRange(location: ViewBlockCaretFixture.openingFenceOffset, length: 0),
-            "il caret nella riga nascosta non è stato spostato sulla riga di apertura del fence"
+            fixture.textView.selectedRange() == NSRange(location: ViewBlockCaretFixture.insideBodyLine, length: 0),
+            "il caret nella riga del body, ora rivelata, non dovrebbe essere spostato altrove"
         )
     }
 
