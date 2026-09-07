@@ -17,14 +17,19 @@ extension EditorDecorationDelegate {
     /// length unmoved (`NSTextContentManager.h:120`), `tableParagraph(at:storage:)`'s own
     /// arithmetic and `embedParagraph`'s before it.
     ///
-    /// Nil whenever there is nothing to draw, which is also R-08's own answer (ADR §D7): the
-    /// hatch is closed (`hidesMarkup` off, §D12), no `.viewBlock` marker at this offset, no
-    /// host vended for it yet, the fence no longer closed at this offset (§D6), or its body
-    /// no longer parsing. The raw fenced source stays on screen in every one of those cases,
-    /// which is what every other branch of the substitution chain does when it has nothing to
-    /// draw (`embedParagraph` with no rendition, `tableParagraph` with a stale marker) - a
-    /// view block drawing an error card here would be the one construct in the editor that
-    /// substitutes something on failure.
+    /// Nil whenever there is nothing to draw at all: the hatch is closed (`hidesMarkup` off,
+    /// §D12), no `.viewBlock` marker at this offset, no host vended for it yet, or the fence
+    /// no longer closed at this offset (§D6). The raw fenced source stays on screen in every
+    /// one of those cases, matching every other branch of the substitution chain when it has
+    /// nothing to draw (`embedParagraph` with no rendition, `tableParagraph` with a stale
+    /// marker).
+    ///
+    /// **A closed fence whose body fails to parse still draws** (ADR §D7 follow-up, reversing
+    /// R-08's original "no attachment, no error UI"): the host vended for it carries the raw
+    /// source, and `RenderedViewBlock` re-parses that source itself and renders its own
+    /// `failed(_:)` error card - the same one already shown on the transclusion, export and
+    /// Viste-pane surfaces. This function does not distinguish the two cases; it only asks
+    /// whether the fence is still closed, and the host already knows which card to draw.
     ///
     /// **It does not honour `revealedParagraphs`**, for `tableParagraph`'s own reason and one
     /// of its own: a drawn block is not a delimiter that reveals under the caret, and this
@@ -38,15 +43,21 @@ extension EditorDecorationDelegate {
               marker.range.length > 0,
               NSMaxRange(marker.range) <= range.length,
               let host = viewBlockHosts[range.location]
-        else { return nil }
+        else {
+            return nil
+        }
 
         // The re-read, in this branch's own currency: not "is this range still spelled the
-        // same" but "do the live characters still spell a closed, parseable fence starting
-        // here" - the whole shape, because a view block's meaning spans several paragraphs
-        // (`stillSpells` answers `false` for `.viewBlock` precisely so this branch owns the
-        // question, exactly as it does for `.table`).
+        // same" but "is the fence still closed starting here" - the whole shape, because a
+        // view block's meaning spans several paragraphs (`stillSpells` answers `false` for
+        // `.viewBlock` precisely so this branch owns the question, exactly as it does for
+        // `.table`). A closed-but-unparseable fence still answers non-nil here (ADR §D7
+        // follow-up): the host already carries the raw source, and `RenderedViewBlock` draws
+        // its own error card from it - this guard only re-checks the fence is still closed.
         let text = storage.string as NSString
-        guard Self.viewBlockRun(in: text, atParagraphStart: range.location) != nil else { return nil }
+        guard Self.viewBlockRun(in: text, atParagraphStart: range.location) != nil else {
+            return nil
+        }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         let attachmentRange = NSRange(location: marker.range.location, length: 1)
@@ -78,12 +89,13 @@ extension EditorDecorationDelegate {
     /// nothing here may touch this object's state, and both sides already hold the text as an
     /// `NSString`.
     ///
-    /// Nil whenever there is nothing left to draw: the fence is not closed at this offset any
-    /// more (ADR §D6, C5 - `CodeFence.regions(in:)`'s own precondition, re-read here rather
-    /// than trusted from the last styling pass), or its body no longer parses through
-    /// `ViewBlock.parse` (ADR §D7, R-08's fallback to raw text). Both preconditions collapse
-    /// into one `nil` here, exactly the way a table's own structural failure and its
-    /// `GFMTable.parse` failure both collapse into `tableRun`'s one `nil`.
+    /// Nil whenever there is nothing left to draw at all: the fence is not closed at this
+    /// offset any more (ADR §D6, C5 - `CodeFence.regions(in:)`'s own precondition, re-read
+    /// here rather than trusted from the last styling pass). A **closed** fence always answers
+    /// non-nil, whether or not its body parses through `ViewBlock.parse` - `block` is nil when
+    /// it doesn't (ADR §D7 follow-up: the caller still gets a range to hide the body/closing
+    /// lines behind, and the host it vends renders `RenderedViewBlock`'s own error card from
+    /// the raw source, rather than the fence silently reverting to plain text).
     ///
     /// The walk stops at the first line that marks a fence, which is `CodeFence.regions`'
     /// own alternating grammar read one block at a time - so the two agree about where a
@@ -91,7 +103,7 @@ extension EditorDecorationDelegate {
     /// (`tableRun`'s own reason for walking rather than parsing from `offset` to the end).
     static func viewBlockRun(
         in text: NSString, atParagraphStart offset: Int
-    ) -> (block: ViewBlock, range: NSRange)? {
+    ) -> (block: ViewBlock?, range: NSRange)? {
         guard offset >= 0, offset < text.length else { return nil }
 
         // The opening line, which must start exactly here - a fence moved by an edit above
@@ -118,14 +130,16 @@ extension EditorDecorationDelegate {
             )
             let line = text.substring(with: NSRange(location: lineStart, length: lineContentsEnd - lineStart))
             if CodeFence.marks(line.trimmingCharacters(in: .whitespaces)) {
-                // Closed (ADR §D6) and parseable (ADR §D7) are two preconditions that come
-                // true together, and both collapse into this one `nil` - the caller draws a
-                // block or leaves the raw fenced source on screen, and never a third thing.
-                guard let block = try? ViewBlock.parse(body.joined(separator: "\n")) else { return nil }
+                // Closed (ADR §D6) is the only precondition this optional answers any more -
+                // a parse failure (ADR §D7 follow-up) still returns the range, with `block`
+                // nil, so the caller can still hide the body/closing lines and vend a host
+                // that draws the error card instead of leaving raw source on screen.
+                let range = NSRange(location: offset, length: lineContentsEnd - offset)
+                let block = try? ViewBlock.parse(body.joined(separator: "\n"))
+                return (block, range)
                 // Through the closing fence line's own last character, its trailing newline
                 // excluded - `tableRun`'s own convention, and what `applyViewBlocks` walks
                 // to collect the lines that leave the layout.
-                return (block, NSRange(location: offset, length: lineContentsEnd - offset))
             }
             body.append(line)
             guard lineEnd > cursor else { break }

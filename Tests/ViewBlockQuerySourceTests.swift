@@ -397,3 +397,40 @@ private enum Fixture {
         _ = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
     }
 }
+
+// MARK: - Producer and consumer joined end to end (bonus finding, PG-099 follow-up)
+
+/// `Tests/ViewBlockRenderingTests.swift`'s `ViewBlockAttachmentSubstitution` suite always
+/// hand-injects `NSView()` as the host and a marker built by hand - it never runs a real
+/// `applyStyling` pass and never puts a real `NSHostingView<AnyView>` through the attachment's
+/// own `as? NSHostingView<AnyView>` cast (`EditorDecorationDelegate+ViewBlockRendering.swift`).
+/// `ViewBlockQuerySourceTests`'s own suites above drive the real pass but only assert on
+/// `drawnViewBlocks`, never on the substituted paragraph. Neither half alone would have caught
+/// a regression at the seam between "the pass recognises and registers a fence" and "the
+/// delegate substitutes an attachment for what got registered" - which is exactly the seam this
+/// session's investigation crossed. This suite runs the real pipeline end to end and inspects
+/// the actual substituted paragraph the layout would draw.
+@MainActor
+@Suite struct ViewBlockEndToEndSubstitution {
+    @Test func aRealStylingPassOnAValidFenceSubstitutesARealHostedAttachment() {
+        let fixture = editor(Fixture.note)
+        defer { fixture.window.orderOut(nil) }
+
+        let host = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
+        #expect(host.rootView is AnyView, "il pass reale non ha prodotto un host reale")
+
+        let storage = fixture.textView.textContentStorage!
+        let range = (Fixture.note as NSString).paragraphRange(
+            for: NSRange(location: Fixture.openingFenceOffset, length: 0)
+        )
+        let paragraph = fixture.coordinator.decorations.textContentStorage(storage, textParagraphWith: range)
+        #expect(paragraph != nil, "il pass reale non sostituisce l'attachment")
+        guard let attachment = paragraph?.attributedString.attribute(.attachment, at: 0, effectiveRange: nil)
+                as? ViewBlockAttachment
+        else {
+            Issue.record("l'offset 0 non porta un ViewBlockAttachment dopo un pass reale")
+            return
+        }
+        #expect(attachment.hostView != nil, "il cast a NSHostingView<AnyView> fallisce su un host reale")
+    }
+}

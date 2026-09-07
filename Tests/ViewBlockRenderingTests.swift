@@ -281,33 +281,19 @@ private enum ViewBlockFixture {
             note: "prima\n```pergamenum-view\nrender: board\ngroup: tag(\"status-*\")\n```\ndopo\n"
         )
     }
-}
 
-// MARK: - Fallback to raw text on an unparseable fence body (ADR §D7, R-08; Task 5)
-
-@MainActor
-@Suite struct ViewBlockParseFallback {
-    /// R-13's second named case: a fence that is structurally closed and would be recognised
-    /// as a `.viewBlockRun` span (Task 1 does not read `render:` at all) but whose body fails
-    /// `ViewBlock.parse` - here, `render: board` with no `group:`. No marker, no attachment, no
-    /// hidden lines; the body stays in the layout and the raw fenced text is what is on screen
-    /// (ADR §D7 - R-08 and ADR-0009 §D1's error card genuinely conflict, and this is the
-    /// resolution).
-    ///
-    /// Already green with the stub, for the same reason
-    /// `withHidingMarkupOffViewBlockParagraphReturnsNil` above is: `viewBlockParagraph` returns
-    /// `nil` unconditionally regardless of what it is asked about. Must stay green once
-    /// Task 5's coder implements the real body - the assertion is about the *outcome*, not
-    /// about which of the two currently-stubbed reasons happens to produce it today.
-    @Test func aFenceWhoseBodyFailsToParseProducesNoAttachment() {
-        let note = "prima\n```pergamenum-view\nrender: board\n```\ndopo\n"
-        let offset = (note as NSString).range(of: "```pergamenum-view").location
-        let delegate = EditorDecorationDelegate()
-        delegate.apply(hiddenMarkers: [offset: [viewBlockOpeningFenceMarker()]], hidingMarkup: true)
-        delegate.apply(viewBlockHosts: [offset: NSView()])
-
-        #expect(substitutedParagraph(delegate, note: note, at: offset) == nil)
-        // Confirms this really is a D7 case and not an accidental one: `render: board` alone
+    /// ADR §D7 follow-up (reverses R-08's original "no attachment, no error UI"): a fence that
+    /// is structurally closed and would be recognised as a `.viewBlockRun` span, but whose body
+    /// fails `ViewBlock.parse` - here, `render: board` with no `group:` - still substitutes an
+    /// attachment. The host it carries renders the raw source, and `RenderedViewBlock` re-parses
+    /// that source itself and draws its own `failed(_:)` error card, the same one already shown
+    /// on the transclusion, export and Viste-pane surfaces - closing the asymmetry that let a
+    /// syntax mistake look like the whole feature was broken with no reason ever shown.
+    @Test func aClosedFenceWhoseBodyFailsToParseStillSubstitutesTheAttachment() {
+        assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(
+            note: "prima\n```pergamenum-view\nrender: board\n```\ndopo\n"
+        )
+        // Confirms this really is a §D7 case and not an accidental one: `render: board` alone
         // does fail to parse.
         #expect(throws: ViewBlockError.self) { try ViewBlock.parse("render: board") }
     }

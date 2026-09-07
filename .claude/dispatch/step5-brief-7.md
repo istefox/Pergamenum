@@ -1,80 +1,59 @@
-<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md tasks=7 lines=386-436 -->
-# Step 5 Batch Brief -- 2026-09-04-editor-page-typography-noteplan.md -- tasks 7-7
+<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=7 lines=299-325 -->
+# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 7-7
 
-## Task text (verbatim, plan lines 386-436)
+## Task text (verbatim, plan lines 299-325)
 
-### Task 7 — Impostazioni chooses the note's face, and the choice is a file in the vault (R-11, R-12)
+### Task 7 — wire `viewQuerySource`, live refresh, and click-to-open (R-07, R-09, R-13)
 
-- Budget: `Sources/DesignSystem/ThemeCustomization.swift`, `Sources/DesignSystem/ThemeEngine.swift`,
-  `Sources/Features/Settings/EditorSettings.swift`,
-  `Sources/Features/Settings/DesignSystemSettings.swift`,
-  `Tests/ThemeCustomizationTests.swift` (new) (~340 lines)
-
-**Tester** declares `Draft.fonts: [FontToken: TypographyValue]` (and `isEmpty` as
-`colors.isEmpty && fonts.isEmpty`), `ThemeEngine.setCustomFont(_:to:)` and
-`clearCustomFonts()`, then writes the red tests against a temporary directory:
-
-- `write` then `load` round-trips a `fonts` entry byte-for-byte: family, size, weight,
-  lineHeight — including a **named** family with a space in it (`Avenir Next`), which is the
-  case the `rawValue` round trip of Task 1 exists to protect;
-- a file written with the same draft twice is **byte-identical** (the sorted-keys/pretty
-  discipline `object(from:)`'s comment already states, extended to a second token type);
-- `load` on a file with **no `font` section** returns `fonts: [:]` and the colours unchanged
-  (R-12, "written by an older build");
-- `load` on a file with a `font` section and **no colours** returns the fonts and
-  `colors: [:]`;
-- `isEmpty` is false with fonts only, false with colours only, true with neither;
-- `clearCustomFonts()` on a draft with no colours left **removes the file**, matching what
-  `clearCustomColor` already does through `resetCustomization()` (R-12);
-- `setCustomFont` with **no vault open** sets `customizationProblem` and writes nothing — the
-  same guard `setCustomColor` has;
-- a written `font.prose` override actually reaches `ThemeEngine.current.nsFont(.prose)` after
-  `loadUserThemes`, which is the assertion that proves the whole path rather than the file
-  format.
-
-**Coder** fills `object(from:)`'s typography branch, `load`'s dictionary branch, the two
-`ThemeEngine` methods (mirroring `setCustomColor`/`clearCustomColor` including the
-write-then-select ordering its header explains), and builds the UI in `EditorSettings`:
-
-- a **«Carattere della nota»** group with a family `Picker` — `"Sistema"` plus
-  `NSFontManager.shared.availableFontFamilies` (187 on this machine; read **once**, stored, the
-  way `EditorSettings` already reads `NSSpellChecker.shared.availableLanguages`) — and a size
-  control over 12…24;
-- `accessibilityIdentifier`s (`settings-prose-font-family`, `settings-prose-font-size`,
-  `settings-prose-font-reset`), never a lookup by label — prose grows (CLAUDE.md);
-- choosing writes **both** `font.prose` and `font.proseTitle`, the title size following the body
-  at the fixed 24/16 ratio (ADR §D9), and the open editor re-styles live because
-  `ThemeEngine.current` changing is what `updateNSView` already watches;
-- **«Ripristina carattere»** removes both overrides and, with no colour override left, removes
-  the file;
-- rewrite `DesignSystemSettings`' footer sentence *«Tipografia, spaziature, raggi e ombre
-  restano definiti dal file del tema»*, which stops being true in this same commit.
-
----
-
-## Phase 4 — the record and the suite
+- **Tester** writes `Tests/ViewBlockQuerySourceTests.swift`. Declares `NoteTextView.queries` and the
+  two new optional inputs on `RenderedViewBlock` plus `onOpenNote` on the four renderers, all
+  defaulted `nil`. Assertions:
+  - **live refresh on an index update** (R-13's third named case, R-07): bumping
+    `ViewQuerySource.generation` changes the id `RenderedViewBlock`'s `.task(id:)` is keyed on, and the
+    store pushes an updated root view carrying it — asserted on the composed id string and on the
+    store's `update(_:forOrdinal:)` having been called, without needing a live SwiftUI render;
+  - **a keystroke that does not change the fence's source does not change that id** — the assertion
+    ADR-0009 §D7 turns into a test, and the one C6/ADR §D3 exist to make possible;
+  - a text edit **above** the fence leaves both the host identity and the id unchanged (the same
+    property from the store's side, asserted here from the pass's side);
+  - **R-09**: with `onOpenNote` non-nil, a table row, a list line, a gallery item and a calendar entry
+    each expose a click target carrying the row's title; with it `nil`, none of them do — which is
+    today's rendering and is what keeps R-10/R-11 true (four assertions plus four negatives);
+  - `NoteTextView` built with no `queries` (the `DiaryView`/`TodayView`/test default) renders the fence
+    as source and creates no host.
+- **Coder** adds `queries` to `NoteTextView`, passes `viewQuerySource` from
+  `EditorColumn+Text.swift:47`'s `editing(_:)`, **rewrites the now-false "unreferenced" comment at
+  `:194-198`**, threads `onOpenNote` through `RenderedViewBlock` into the four renderers as an
+  optional click target, wires `onEditSource` into the block header beside the existing refresh button
+  (ADR §D10), and wires `onOpenNote` in the editor to the same `onFollowLink` door a wikilink uses.
+- **`DiaryView.swift` and `TodayView.swift` are not edited.** They keep the `nil` default deliberately
+  (ADR Consequences). If a task looks like it needs to edit them, stop and report.
+- Budget: `Sources/Features/Editor/NoteTextView.swift`, `Sources/Features/Editor/EditorColumn+Text.swift`, `Sources/Features/Views/RenderedViewBlock.swift`, `Sources/Features/Views/ViewRowRenderers.swift`, `Sources/Features/Views/ViewGridRenderers.swift`, `Tests/ViewBlockQuerySourceTests.swift` (~340 lines)
 
 ## File map (from Budget: declarations, tasks 7-7)
 
-- (none declared -- no task in this range carries a parseable Budget:)
-
-No parseable Budget: for task(s): 7 (absent is not zero -- consult the task text above)
+- Sources/Features/Editor/EditorColumn+Text.swift
+- Sources/Features/Editor/NoteTextView.swift
+- Sources/Features/Views/RenderedViewBlock.swift
+- Sources/Features/Views/ViewGridRenderers.swift
+- Sources/Features/Views/ViewRowRenderers.swift
+- Tests/ViewBlockQuerySourceTests.swift
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 2 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 3 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 4 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 5 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 6 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 8 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
-- Task 9 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
+- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 2 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 3 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 4 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
 
-Full plan: /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-04-editor-page-typography-noteplan.md
+Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: /Users/stefer/Developer/Pergamenum/docs/adr/0030-editor-page-typography-noteplan.md -- R-11/R-12 settings write path and file format decisions
-- SPEC: /Users/stefer/Developer/Pergamenum/SPEC.md -- requirement IDs for this batch's tests
-- CLAUDE.md: /Users/stefer/Developer/Pergamenum/CLAUDE.md -- personalizzato.json write conventions
+- ADR: docs/adr/0033-views-render-live-in-the-editor.md -- host store live-refresh keying, R-07/R-09
+- SPEC: SPEC.md -- requirement IDs for this batch's tests

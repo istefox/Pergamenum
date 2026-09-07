@@ -47,10 +47,10 @@ extension NoteTextView.Coordinator {
     /// `apply(hiddenMarkers:)` call would be a second producer on one setter.
     ///
     /// The ordinal handed to `ViewBlockHostStore` counts every `.viewBlockRun` span the
-    /// styler emitted, including one whose body fails to parse and is drawn as raw source
-    /// (ADR §D7): a fence's ordinal must not depend on whether the fence *above* it happens
-    /// to parse this keystroke, or fixing a typo in the first block would re-run the second
-    /// block's query.
+    /// styler emitted, including one whose body fails to parse and draws `RenderedViewBlock`'s
+    /// own error card instead of a query result (ADR §D7 follow-up): a fence's ordinal must
+    /// not depend on whether the fence *above* it happens to parse this keystroke, or fixing a
+    /// typo in the first block would re-run the second block's query.
     func applyViewBlocks(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
         guard parent.hidesMarkup else {
             clearViewBlocks()

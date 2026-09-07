@@ -168,9 +168,11 @@ No `Sources/Connector`/`Sources/Core` change. This is an `Sources/Features/Edito
 - [ ] R-07 — A change elsewhere in the vault that affects an open view's query result (e.g. a
   `status-*` tag edited in another note) is reflected in the still-open note's rendered attachment
   without requiring the note to be reopened or refocused.
-- [ ] R-08 — A `pergamenum-view` fence with an unparseable query renders as plain fenced text (no
-  attachment created, no error UI), matching today's behavior for any fence this feature doesn't
-  recognize.
+- [ ] R-08 — A `pergamenum-view` fence that is closed but whose query does not parse renders the
+  same error card `RenderedViewBlock` already shows on the transclusion, export and Viste-pane
+  surfaces (the line, the reason, and the source as written), except while the caret sits inside
+  the fence, where it stays plain editable text exactly as an unclosed fence does (ADR-0033 §D7
+  follow-up, 2026-09-07 — reverses the original "no attachment, no error UI").
 - [ ] R-09 — Clicking a row/card inside a rendered table, gallery, or calendar attachment
   navigates to/opens the linked note with a plain click (no modifier key required).
 - [ ] R-10 — `TranscludedNoteView` (`![[nota]]` read-only preview) continues to render a

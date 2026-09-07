@@ -100,6 +100,16 @@ private enum ViewBlockCaretFixture {
     static let fenceRange = NSRange(location: openingFenceOffset, length: afterOffset - 1 - openingFenceOffset)
 }
 
+/// `ViewBlockCaretFixture`'s own note with an unparseable body ("render: board" with no
+/// required `group:`) substituted for "render: table" - same length (13 characters), so every
+/// offset above is reusable verbatim. ADR §D7 follow-up: proves the caret-inside exception
+/// (§D4/R-05) still suppresses the attachment for a fence whose query does not parse, exactly
+/// as it does for one that does - the reveal predicate is keyed purely on the fence's source
+/// range and does not know or care whether the body parses.
+private enum InvalidViewBlockCaretFixture {
+    static let note = "prima\n```pergamenum-view\nrender: board\n```\ndopo\n"
+}
+
 /// Two closed `pergamenum-view` fences in one note, `ViewBlockCaretFixture.note`'s own prefix
 /// repeated once more after an ordinary paragraph - `ViewBlockRevealIntegration`'s own fixture
 /// for the SPEC Edge cases claim under test: "no shared state between them."
@@ -306,6 +316,25 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         #expect(
             laidOut.contains(ViewBlockCaretFixture.bodyLineOffset),
             "la riga del corpo del fence rivelato non è nel layout"
+        )
+    }
+
+    /// ADR §D7 follow-up: the caret-inside exception is what keeps a person free to type an
+    /// invalid query without an error card popping up mid-edit - it must suppress the
+    /// attachment for an unparseable fence exactly as it does for a valid one, since the reveal
+    /// predicate (`revealedViewBlock`) is keyed only on the fence's source range and never
+    /// consults `ViewBlock.parse` at all.
+    @Test func aRevealedInvalidFenceAlsoProducesNoMarkerNoHiddenLinesAndNoHost() {
+        let fixture = editor(InvalidViewBlockCaretFixture.note, caret: ViewBlockCaretFixture.insideBodyLine)
+        defer { fixture.window.orderOut(nil) }
+
+        #expect(
+            fixture.coordinator.drawnViewBlocks[ViewBlockCaretFixture.openingFenceOffset] == nil,
+            "il fence non valido ma rivelato ha comunque un host/marcatore registrato"
+        )
+        #expect(
+            !fixture.coordinator.lastViewBlockLines.contains(ViewBlockCaretFixture.bodyLineOffset),
+            "la riga del corpo è ancora nell'insieme delle righe nascoste"
         )
     }
 

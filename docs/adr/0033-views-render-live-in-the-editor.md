@@ -214,6 +214,48 @@ stated rather than glossed:
   the thing people actually stumble on, the answer is a later decision with a measurement behind it,
   not a card grafted on now against an explicit success criterion.
 
+**D7 follow-up (2026-09-07) — reversed: a closed fence that does not parse now gets an attachment
+too, hosting `RenderedViewBlock`'s own `failed(_:)` error card, except while the caret sits inside
+the fence.**
+
+The measurement D7 asked for arrived: a live hand-check hit exactly this gap. A fence with an
+invalid query (`from: type-note` instead of `path(...)`; a bareword `where: type-note` instead of
+`tag("type-note")`) silently reverted to raw text with no indication anything was wrong, while the
+transclusion, export and Viste-pane surfaces showed the same failure with its line and reason. What
+looked like a full feature regression was a one-line syntax mistake, and the missing reason is what
+turned it into an hours-long investigation instead of a five-second fix.
+
+The two arguments D7 gave for silence do not survive scrutiny once measured against a real fence
+that is unambiguously a view (not a table, whose malformed form is ambiguous with prose):
+
+- "A view block drawing an error card would be the one construct in the editor that substitutes
+  something on failure" was already false when D7 was written: `missingEmbedImage`
+  (`EditorDecorationDelegate.swift`) draws a broken-embed glyph rather than raw syntax for a
+  missing file, by deliberate design.
+- The GFM-table precedent D7 leaned on is not actually analogous: prose containing pipe characters
+  is legitimate markdown, so `tableRun`'s silent fallback protects against false positives on
+  content that was never meant as a table. A ` ```pergamenum-view ` fence's language tag is an
+  unambiguous declaration of intent — there is no "maybe this wasn't meant to be a view" case to
+  protect against.
+
+`viewBlockRun(in:atParagraphStart:)` now returns non-nil, with `block` nil, for any closed fence
+regardless of whether `ViewBlock.parse` succeeds — closed and parseable stop being one collapsed
+question. `applyViewBlocks` is unchanged: it already only reads `.range`, walking the raw text to
+collect the hidden body/closing lines and vend a host, both independent of whether the block
+parsed. The host's root view is built from the raw source exactly as before
+(`ViewBlockHostStore.rootView(source:...)` → `RenderedViewBlock(source:...)`), which re-parses that
+source itself and draws `failed(_:)` when it fails — no new UI, no new plumbing, the card already
+existed on every other surface.
+
+The caret-inside exception (§D4/R-05) is untouched and does the work D7's silence used to: while
+typing inside the fence, `selectionReveals` still suppresses the attachment entirely (valid or
+invalid query alike), so nothing pops an error card mid-keystroke. An **unclosed** fence is also
+untouched — `viewBlockRun` still returns `nil` there, exactly per §D6/C5.
+
+SPEC.md's R-08 is amended to match. See `Tests/ViewBlockRenderingTests.swift`'s
+`aClosedFenceWhoseBodyFailsToParseStillSubstitutesTheAttachment` and
+`Tests/ViewBlockCaretTests.swift`'s `aRevealedInvalidFenceAlsoProducesNoMarkerNoHiddenLinesAndNoHost`.
+
 **D8. Fixed height, at the proposed line fragment's own width, with the `ScrollView` at the host site
 and never inside `RenderedViewBlock`.**
 
