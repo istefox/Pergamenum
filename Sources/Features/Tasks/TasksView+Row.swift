@@ -167,7 +167,10 @@ extension TasksView {
         Button("Assegna a un Workspace…") { assigningWorkspaceFor = task }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
-        Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }
+        Button("Vai alla nota di origine") {
+            vault.openNote(at: task.sourcePath)
+            navigation.pane = .notes
+        }
     }
 
     /// The date picker for "Aggiungi scadenza…" (SPEC §7.1 `!YYYY-MM-DD`).

@@ -51,6 +51,10 @@ struct NoteTreeRow: View {
     @Binding var expanded: Set<String>
     @Binding var renaming: NoteRecord?
     @Binding var deleting: NoteRecord?
+    /// `NoteListPane`'s move-refused alert - threaded down so a note row's context menu
+    /// (`NoteRowMenu`) can report into it, the same alert the folder rows' own «Sposta in»
+    /// already reaches through `move.perform` (ADR-0026 §D10).
+    @Binding var moveRefused: String?
     /// The move verb's half of the row, in one value (ADR-0026 §D9).
     let move: NoteMoveContext
 
@@ -135,6 +139,7 @@ struct NoteTreeRow: View {
                     expanded: $expanded,
                     renaming: $renaming,
                     deleting: $deleting,
+                    moveRefused: $moveRefused,
                     move: move
                 )
             }
@@ -229,7 +234,9 @@ struct NoteTreeRow: View {
         .accessibilityIdentifier("note-row-\(node.id)")
         .contextMenu {
             if let record = vault.index.allNotes.first(where: { $0.relativePath == node.id }) {
-                NoteRowMenu(note: record, renaming: $renaming, deleting: $deleting)
+                NoteRowMenu(
+                    note: record, renaming: $renaming, deleting: $deleting, moveRefused: $moveRefused
+                )
             }
         }
         // `.tag` **last in the chain**, normalised to the Workspace pane's order (ADR-0026

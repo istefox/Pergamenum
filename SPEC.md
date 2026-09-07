@@ -1,193 +1,161 @@
-# SPEC — PG-099: Views/board renderer orphaned by ADR-0029 editor unification
+# SPEC — Fix rename/move/trash silent-failure bug + Workspace board wikilink rewrite gap
 
-**Topic slug:** pg-099-views-board-renderer-orphaned-by
+**Topic slug:** rename-move-trash-silent-failure-fix
 
 ## Objectives
 
-Restore a live, interactive surface for `pergamenum-view` fenced blocks (ADR-0009: table,
-gallery, calendar, board renderers over `RenderedViewBlock.swift`) inside the note editor.
+Two related defects in Pergamenum's sidebar note/folder operations and Workspace board rename
+propagation, both found during investigation of a user-reported bug (renaming a note through the
+sidebar context menu silently did nothing):
 
-ADR-0029 (2026-09-02/03) removed the Modifica/Lettura toggle and unified editing into one
-always-editable `NoteTextView`. `RenderedViewBlock`'s only remaining call site in the whole repo
-is inside `MarkdownBlocksView.swift`, itself explicitly retained as dead code for the main editor
-(ADR-0029 §D14). Its only live callers today are `TranscludedNoteView` (read-only `![[nota]]`
-preview) and `NoteExporter` (HTML export) — neither is the main editor. Net effect: today a
-`pergamenum-view` fence renders as raw fenced text in the live app; there is no way to see or drag
-a kanban card, or see a rendered table/gallery/calendar view, anywhere reachable from the main
-editor.
-
-This is a regression, not a never-built feature: PG-012 (closed 2026-08-20) shipped all four
-renderers inside the old Lettura mode; ADR-0029 removed Lettura two weeks later without re-wiring
-`RenderedViewBlock` into the new unified editor.
-
-Comparison against NotePlan (researched, ADR-0009's own reference point): NotePlan's own
-kanban/board view (Folder Cards) is *also* a separate, non-inline surface, not drawn inside a
-note's text flow. This SPEC does not treat "render inline" as required by that comparison — it is
-a design choice on its own merits, decided below.
+1. Five call sites discard the `Bool`/`String?` result of a vault operation
+   (rename/move/trash note, rename/trash folder) and unconditionally close their sheet or dialog,
+   so a refused operation (most commonly: the note is open in the editor with unsaved changes)
+   looks like it succeeded. The refusal reason is already recorded into `vault.problems` but never
+   surfaced in that flow — only visible later in Settings diagnostics.
+2. A separate structural gap: when a note is renamed, `NoteFileOperations`'s board-repointing pass
+   rewrites `.file`-kind canvas nodes (embeds) but never inspects `.text`-kind canvas node bodies.
+   A Workspace board's own freehand text/To-Do card containing `[[OldTitle]]` is left with a stale,
+   unresolved wikilink after the rename, while the identical wikilink inside any ordinary `.md`
+   note is correctly rewritten.
 
 ## Scope
 
-**In scope:** all four renderers — table, gallery, calendar, board — restored to a live surface
-inside the main note editor, in one pass. Board's drag-to-write mechanism (ADR-0009 §D5: dragging
-a card rewrites the note's `status-*` tag via `VaultSession.write`, journalled/undoable/vocabulary-
-checked, with existing rules for "no status" and "multiple statuses" cards) is carried forward
-unchanged — this SPEC does not reopen ADR-0009's write semantics, only where/how the result is
-displayed and interacted with.
+In scope:
+- `NoteListPane.swift` — rename sheet confirm handler, trash confirmationDialog destructive button.
+- `NoteRowMenu.swift` — "Sposta in" submenu buttons (move note).
+- `NoteListPane+FolderVerbs.swift` — folder rename sheet confirm handler, folder trash
+  confirmationDialog destructive button.
+- `NoteFileOperations.swift` (`repointBoardsPlan`/`repointBoards`) — extend to rewrite
+  `[[OldTitle]]` wikilink occurrences inside `.text`-kind canvas node bodies, reusing
+  `NoteRename`'s existing wikilink-rewriting logic (`NoteRename.rewritingLinks` or the pure
+  string-rewrite it wraps).
+- `VaultController+Files.swift` / `VaultController+Folders.swift` — read-only: consult the
+  existing `@discardableResult` signatures and `vault.problems`/`recordProblem` mechanism; no
+  change to `canOperate`'s refusal policy itself.
 
-**Out of scope:**
-- Any change to `ViewsPane.swift`'s existing cataloguing behavior (name, renderer type, filter,
-  match count, "open note at block location"). It keeps working exactly as today.
-- Any change to `NoteExporter`'s HTML export rendering of a view block — already works via
-  `MarkdownBlocksView`, untouched by this SPEC.
-- Any change to `TranscludedNoteView`'s (`![[nota]]`) read-only rendering of a view block —
-  already works via `MarkdownBlocksView` today and is confirmed to keep working unchanged (see
-  Edge cases). This SPEC only restores the *main editor's* live surface.
-- Any change to ADR-0009's query grammar (`from`/`where`/`sort`/`render`/`columns`/`limit`) or to
-  which `StoredRecord`/`IndexSnapshot` fields a view can reference.
-- A dedicated visual "query editor" UI (dropdowns, form fields) for authoring/editing a view's
-  query. Editing stays text-based (see Architecture, caret behavior).
+Out of scope (explicit non-goals):
+- Note-rename-to-task-line propagation for ordinary `.md` files (wikilinks on task lines, frontmatter
+  `related`/quoted-related rewriting) — already verified correct in this codebase, untouched.
+- `canOperate(on:)` / `canOperateOnFolder(_:)` unsaved-changes refusal policy — this fix is about
+  surfacing an existing refusal to the user, never about removing or loosening it.
+- `WorkspaceView+FolderVerbs.swift` (board folder rename/delete) — already checks its return value
+  correctly (`guard let result = mutate() else { return }`); only lacks a proactive alert, and is
+  not part of this chain's delegated scope.
+- Any new `WriteJournal`/undo entry kind for folder operations (unrelated to this defect).
 
-## Stack
+## Current behavior (confirmed by investigation, no further discovery needed)
 
-No new dependency. Swift 6, SwiftUI on macOS 26 SDK, TextKit 2 via `NSTextView`/
-`NSTextAttachmentViewProvider` — same stack ADR-0029's GFM table attachment already uses. No
-schema change, no index bump (`IndexCache.schemaVersion` stays 3), no new protected interface.
+1. `NoteListPane.swift:161-162` — the rename sheet's `onConfirm` closure calls
+   `vault.renameNote(at:to:)` (which returns `@discardableResult -> Bool`,
+   `VaultController+Files.swift:32-48`) and discards the result, then unconditionally sets
+   `renaming = nil`. `canOperate(on:)` (`VaultController+Files.swift:18-23`) returns `false`
+   — before any file I/O — when the note being renamed is open in the editor with
+   `hasUnsavedChanges == true`, recording `Self.unsavedNoteRefusal` ("salva la nota prima di
+   rinominarla, spostarla o eliminarla") via `recordProblem`. That string is never read by this
+   call site.
+2. `NoteRowMenu.swift:31,33` — the "(radice)" button and the per-folder buttons inside the "Sposta
+   in" submenu call `vault.moveNote(at:toFolder:)` and discard the `Bool` return entirely — no
+   `if`/`guard`, no alert, no `problems` read.
+3. `NoteListPane.swift:173-174` — the delete `confirmationDialog`'s destructive button calls
+   `vault.trashNote(at:)` and discards the `Bool`, then unconditionally sets `deleting = nil`.
+4. `NoteListPane+FolderVerbs.swift:147-148` — the folder-delete `confirmationDialog`'s destructive
+   button calls `vault.trashFolder(at:)` and discards the `Bool`, then unconditionally sets
+   `deletingFolder = nil`.
+5. `NoteListPane+FolderVerbs.swift:188-189` — `renamingFolder = nil` is set **before**
+   `vault.renameFolder(at:to:)` is even called, so the `String?` result cannot be meaningfully
+   checked at that point regardless.
+6. `NoteFileOperations.swift`'s `repointBoardsPlan`/`repointBoards` (~lines 156-195) iterate a
+   board's `CanvasNode`s and rewrite only `.file(path:, subpath:)` entries whose `path` matches the
+   renamed note's old relative path. `.text`-kind nodes (the card body string) are never passed to
+   any wikilink rewriter, so `[[OldTitle]]` inside a board's own text/To-Do card content survives a
+   rename unchanged and becomes an unresolved link.
+
+## Existing patterns to reuse (already correct in this codebase)
+
+- `NoteListPane.swift`'s drag&drop `performMove` (~lines 528-556): checks
+  `VaultSession.MoveBatchOutcome.didMove`; on failure builds a `moveRefused` message from
+  `outcome.refusals + outcome.failures` and triggers `.alert("Spostamento rifiutato", ...)`
+  (~lines 101-114). This is the reference shape for "close + alert" on refusal.
+- `RecordingsController.swift:402-413`: checks `vault.trashNote`'s `Bool`, surfaces failure via
+  `rowErrors[recordingID] = "Nota non eliminata: \(path)"`, and — critically — does not proceed
+  with the dependent ledger-entry state change when the note operation failed.
+- `NoteRename.rewritingLinks` (`Sources/Core/Conventions/NoteRename.swift:23`): calls
+  `WikilinkParser.links(in: text)` on arbitrary text and returns the rewritten string plus any
+  failures — already text-shape-agnostic (works identically on prose, task lines, and frontmatter
+  text), so it is directly reusable on a `.text` canvas node's body string.
+
+## UI/UX decisions (from interview)
+
+- **R-01/R-02/R-03/R-04/R-05 (all five call sites): "close + alert" pattern.** On refusal, the
+  sheet/dialog still dismisses (unchanged from today), and a `.alert(...)` is then shown with the
+  operation-specific title (e.g. "Rinomina rifiutata", "Spostamento rifiutato" — reusing the
+  existing wording where a title already exists — "Eliminazione rifiutata" for trash) and
+  `vault.problems.last` as the message. This matches the existing `moveRefused` pattern exactly and
+  needs no new interaction shape (no inline-error UI, no keep-dialog-open state machine).
+- **Testing:** Definition of Done requires unit tests only, covering the refusal-detection/alert-
+  message-building logic (pure, testable) and the `.text`-node wikilink rewrite. Visual confirmation
+  that the alert actually renders on screen is a manual check, consistent with this project's
+  convention that the UI XCUITest suite runs by hand before a merge to `main`, not through
+  `.claude/test-cmd`.
 
 ## Architecture
 
-**Rendering site — inline attachment, not a separate panel.** A `pergamenum-view` fence becomes
-one `NSTextAttachment` anchored to its opening-fence paragraph, hosted via
-`NSTextAttachmentViewProvider` — the same mechanism ADR-0029 §D2 introduced for the GFM table
-grid (`YES` by default on `NSTextAttachment`, the "subclasses create their custom view hierarchy"
-hook). The delegate's enumeration hook refuses to lay out the fenced body lines underneath it,
-exactly as the table attachment already does for its body rows. This reuses an established,
-already-shipped pattern rather than introducing a second one (panel-based) alongside it.
-
-**Caret behavior — reveal raw source on caret entry, reusing ADR-0018's existing mechanism.**
-Unlike the GFM table (whose content *is* note prose, edited by typing into rendered cells), a
-`pergamenum-view` fence's body is a short declarative query
-(`from`/`where`/`sort`/`render`/`columns`/`limit`) over data that lives elsewhere in the vault —
-config, not prose. When the caret enters the fence, the rendered attachment is replaced by the raw
-fenced text for direct editing (same reveal-on-caret rule ADR-0018 already applies to headings,
-emphasis, blockquotes, etc.); moving the caret back out re-renders the attachment from the (now
-possibly changed) source. No new query-editing UI is introduced.
-
-**Sizing — fixed height with internal scroll.** The attachment reserves a bounded height; its
-board/gallery/calendar/table content scrolls internally within that height. The note's layout
-below the block does not shift as the rendered content's row/card count changes. (Contrast with
-ADR-0019's user-resizable image/PDF embed handle — deliberately not reused here: a view's height is
-about how much of a query result to show at once, not about a fixed asset's aspect ratio, and a
-persisted resize handle is unscoped for this pass.)
-
-**Live refresh — subscribes to the existing index, matching PG-012's original behavior.** The
-attachment observes `IndexSnapshot` updates the same way the old Lettura-mode renderer did. A
-change elsewhere in the vault that affects the query's result set (e.g. another note's `status-*`
-tag changing) is reflected in an already-open note's rendered view without requiring the note to
-be reopened or refocused.
-
-**Malformed query — fails closed to raw text.** If a fence's query cannot be parsed (bad key,
-unparseable `where`-clause, etc.), no attachment is created for that block; it renders as plain
-fenced text, identically to today's behavior for every fence this feature doesn't touch. No new
-inline error/warning UI.
-
-**Click/drag interaction — the attachment's rendered rows/cards claim their own clicks.** A plain
-click on a table row, gallery item, or calendar entry navigates to/opens the linked note; a plain
-drag on a board card performs ADR-0009's existing drag-to-write. No modifier key is required. This
-matches the GFM table attachment's existing precedent: its own `NSView` claims clicks inside its
-bounds, and clicking outside the attachment's rendered rows (e.g. between them, or elsewhere in the
-note) behaves as ordinary text-editing caret placement.
-
-**Transclusion and export are unaffected.** `TranscludedNoteView` and `NoteExporter` already
-render a `pergamenum-view` fence correctly via `MarkdownBlocksView` today (they were never broken
-by ADR-0029 — only the main editor was). This SPEC adds a second, independent live rendering path
-for the main editor; it does not modify `MarkdownBlocksView`, `TranscludedNoteView`, or
-`NoteExporter`.
-
-## Data model
-
-No change. `RenderedViewBlock` continues to read from `IndexSnapshot`/`StoredRecord` exactly as
-today; the query grammar, the closed field list, and the board's write path (`status-*` tag via
-`VaultSession.write`) are all unchanged from ADR-0009.
-
-## API
-
-No `Sources/Connector`/`Sources/Core` change. This is an `Sources/Features/Editor` +
-`Sources/Features/Views` presentation-layer fix; `perg`/`pergamenum-mcp` are unaffected.
-
-## UI flows
-
-1. User types or already has a `pergamenum-view` fence in a note, cursor outside the fence →
-   the fence renders as a live table/gallery/calendar/board attachment, fixed-height,
-   internally scrollable, reflecting the current query result.
-2. User clicks a row/card in the rendered attachment → the linked note opens (table/gallery/
-   calendar), or (board) the drag interaction rewrites the dragged note's `status-*` tag per
-   ADR-0009 §D5's existing rules.
-3. User clicks into the fence's raw text (to edit `from`/`where`/`sort`/etc.) → the attachment is
-   replaced by the raw fenced text; user edits normally; moving the caret out re-renders the
-   attachment against the edited query.
-4. Vault data changes elsewhere while the note is open → the open attachment's rendered content
-   updates live, without requiring reopen/refocus.
-5. A fence with an invalid/unparseable query → renders as plain fenced text, no attachment, no
-   error UI.
-6. `Viste` sidebar (`ViewsPane.swift`) — unchanged: lists every view in the vault and opens the
-   note at that block's location, where the inline attachment above now renders live.
+- Each of the five call sites gains an `if`/`guard` on the existing `@discardableResult` return
+  value (no signature changes to `VaultController+Files.swift`/`VaultController+Folders.swift`).
+- On failure, read `vault.problems.last` (already populated by `recordProblem` inside
+  `canOperate`/`canOperateOnFolder` or the session's `catch` blocks) into a new or existing
+  `@State` alert-message property, and present it via `.alert(...)`, following the exact shape of
+  the existing `moveRefused` alert in `NoteListPane.swift`.
+- For folder rename (`renameFolder(at:to:) -> String?`), "failure" is a `nil` return; call the
+  operation, branch on `nil` vs a concrete new path, and only then clear `renamingFolder`.
+- The board `.text`-node wikilink rewrite is added inside `NoteFileOperations`'s existing
+  board-repointing pass: for every `.text`-kind `CanvasNode` on every board scanned during a note
+  rename, run the same `NoteRename` wikilink-rewrite logic already applied to `.md` file content,
+  and write the rewritten body back into the node if it changed. This reuses `WikilinkParser`
+  identically to how it is already reused for prose and task lines — no new parser.
 
 ## Edge cases
 
-- **Multiple `pergamenum-view` blocks in one note.** Each fence resolves to its own independent
-  attachment; no shared state between them.
-- **A fence inside a transcluded note (`![[nota]]`).** Keeps rendering read-only via
-  `TranscludedNoteView`/`MarkdownBlocksView`, unchanged by this feature.
-- **A fence inside an exported HTML note.** Keeps rendering via `NoteExporter`/
-  `MarkdownBlocksView`, unchanged by this feature.
-- **Board card with no status tag, or with multiple status tags.** Governed entirely by ADR-0009
-  §D5's existing rules; not reopened here.
-- **Empty query result (no matches).** `RenderedViewBlock`'s existing empty-state handling applies
-  unchanged inside the attachment.
-- **Caret briefly passing through the fence during selection/navigation (not a deliberate click
-  into it).** Follows the same reveal-on-caret semantics ADR-0018 already defines for every other
-  concealed construct — this feature introduces no new rule here, only a new construct governed by
-  the existing one.
+- A note reference appearing more than once inside the same `.text` card body — all occurrences
+  rewritten in one pass, matching `NoteRename.rewritingLinks`'s existing whole-text behavior.
+- A `.text` card containing no wikilink at all — no-op, node left byte-identical (avoid spurious
+  diffs / journal noise).
+- Folder rename refusal: `renameFolder` returning `nil` for reasons other than the unsaved-changes
+  guard (e.g. name collision) must surface the corresponding `vault.problems.last` message, not a
+  generic one.
+- A rename that succeeds for the note itself but partially fails to rewrite some links (existing
+  `outcome.failures` from `session.renameNote`) is already handled today via
+  `recordProblem("link non aggiornato in \(failure)")` in `VaultController+Files.swift:36-38` —
+  unaffected by this change, not to be conflated with the "operation refused outright" case this
+  SPEC addresses.
 
 ## Success criteria
 
-- [ ] R-01 — A `pergamenum-view` fence with `render: table` renders as a live, interactive
-  inline attachment in the main note editor (not raw fenced text), reflecting the current query
-  result.
-- [ ] R-02 — A `pergamenum-view` fence with `render: gallery` renders as a live, interactive
-  inline attachment in the main note editor.
-- [ ] R-03 — A `pergamenum-view` fence with `render: calendar` renders as a live, interactive
-  inline attachment in the main note editor.
-- [ ] R-04 — A `pergamenum-view` fence with `render: board` renders as a live, interactive inline
-  attachment in the main note editor, and dragging a card between columns rewrites the dragged
-  note's `status-*` tag per ADR-0009 §D5's existing rules (write is journalled and undoable).
-- [ ] R-05 — Moving the caret into a rendered view's fence reveals its raw fenced source text for
-  editing; moving the caret out re-renders the attachment against the (possibly edited) query.
-- [ ] R-06 — The attachment reserves a fixed height and scrolls its rendered content internally;
-  the note's layout below the block does not shift as the result set's size changes.
-- [ ] R-07 — A change elsewhere in the vault that affects an open view's query result (e.g. a
-  `status-*` tag edited in another note) is reflected in the still-open note's rendered attachment
-  without requiring the note to be reopened or refocused.
-- [ ] R-08 — A `pergamenum-view` fence that is closed but whose query does not parse renders the
-  same error card `RenderedViewBlock` already shows on the transclusion, export and Viste-pane
-  surfaces (the line, the reason, and the source as written), except while the caret sits inside
-  the fence, where it stays plain editable text exactly as an unclosed fence does (ADR-0033 §D7
-  follow-up, 2026-09-07 — reverses the original "no attachment, no error UI").
-- [ ] R-09 — Clicking a row/card inside a rendered table, gallery, or calendar attachment
-  navigates to/opens the linked note with a plain click (no modifier key required).
-- [ ] R-10 — `TranscludedNoteView` (`![[nota]]` read-only preview) continues to render a
-  `pergamenum-view` fence exactly as it does today, unmodified by this feature.
-- [ ] R-11 — `NoteExporter`'s HTML export continues to render a `pergamenum-view` fence exactly
-  as it does today, unmodified by this feature.
-- [ ] R-12 — `ViewsPane.swift` ("Viste" sidebar: cataloguing, filter, match count, "open note at
-  block location") is unmodified and continues to work exactly as today.
-- [ ] R-13 — Unit test coverage exists for: attachment creation from a valid fence, fallback to
-  raw text on an unparseable fence, and live refresh on an `IndexSnapshot` update. (no-test:
-  n/a — this is itself the test-coverage requirement, not a documentation obligation)
-- [ ] R-14 — Stefano manually hand-checks each of the four renderers (table, gallery, calendar,
-  board) in a real vault, including the board's drag-to-write, before this feature is considered
-  done. (no-test: TextKit2 attachment layout/interaction is this repo's documented blind spot for
-  XCUITest — ADR-0019/0029 precedent and the working agreements' own firstRect-not-laid-out-yet
-  trap require a manual hand-check for attachment-based editor features)
-- [ ] R-15 — The full unit suite (`-only-testing:PergamenumTests`) passes green before this
-  feature is committed.
+- [ ] R-01 — Renaming a note that is open in the editor with unsaved changes, via the sidebar
+      context menu, shows an alert naming the refusal reason instead of silently closing the
+      rename sheet with no file change.
+- [ ] R-02 — Moving a note via the "Sposta in" submenu, when refused, shows an alert naming the
+      refusal reason instead of silently doing nothing.
+- [ ] R-03 — Trashing a note via the delete confirmation dialog, when refused, shows an alert
+      naming the refusal reason instead of silently doing nothing.
+- [ ] R-04 — Renaming a folder via the sidebar, when refused, shows an alert naming the refusal
+      reason instead of silently closing the rename sheet with no folder change.
+- [ ] R-05 — Trashing a folder via the delete confirmation dialog, when refused, shows an alert
+      naming the refusal reason instead of silently doing nothing.
+- [ ] R-06 — Renaming a note that is referenced by `[[OldTitle]]` inside a Workspace board's own
+      `.text`-kind card (freehand text or To-Do card body) rewrites that occurrence to
+      `[[NewTitle]]`, matching the existing rewrite already applied to `.md` files.
+- [ ] R-07 — A `.text` canvas node with no matching wikilink is left byte-identical after a note
+      rename (no spurious writes).
+- [ ] R-08 — `canOperate(on:)`/`canOperateOnFolder(_:)`'s unsaved-changes refusal policy is
+      unchanged in behavior — this fix only makes an existing refusal visible, it does not remove,
+      loosen, or bypass it. (no-test: policy-preservation is verified by code review of the diff
+      against `VaultController+Files.swift`/`VaultController+Folders.swift`, not by a new
+      automated test, since the requirement is the absence of a change)
+- [ ] R-09 — Unit tests cover: each of the five refusal-detection/alert-message-building paths, and
+      the `.text`-node wikilink rewrite (including the no-match no-op case from R-07).
+- [ ] R-10 — Note-rename-to-task-line propagation for ordinary `.md` files is unmodified by this
+      change. (no-test: this is a non-regression guarantee over existing, already-verified-correct
+      behavior; confirmed by the unit suite continuing to pass with no changes needed to existing
+      `NoteRename`/`TaskParser` tests, not by a new test asserting the absence of a change)

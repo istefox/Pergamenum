@@ -44,46 +44,40 @@ struct HistoryToolbar: ToolbarContent {
     }
 }
 
-/// The Sistema/Chiaro/Scuro toggle, appended as the trailing-most item of a pane's own
-/// `.primaryAction` group (ADR-0015-adjacent: same reasoning as `HistoryToolbar`, but this
-/// one cannot itself live in the single global attachment point `.windowHistory` uses -
-/// SwiftUI merges every `.primaryAction` contribution from an outer `.toolbar` call before
-/// the pane's own, regardless of which one is textually declared first in source, so a
-/// `ToolbarItem` placed there always lands to the pane group's *left*, never its right.
-/// Each pane calls this once, last, inside its own `ToolbarItemGroup(placement: .primaryAction)`
-/// - a plain view, not a nested `ToolbarContent`, since that group's own placement already
-/// covers it.
+/// The theme picker, appended as the trailing-most item of a pane's own `.primaryAction`
+/// group (ADR-0015-adjacent: same reasoning as `HistoryToolbar`, but this one cannot itself
+/// live in the single global attachment point `.windowHistory` uses - SwiftUI merges every
+/// `.primaryAction` contribution from an outer `.toolbar` call before the pane's own,
+/// regardless of which one is textually declared first in source, so a `ToolbarItem` placed
+/// there always lands to the pane group's *left*, never its right. Each pane calls this once,
+/// last, inside its own `ToolbarItemGroup(placement: .primaryAction)` - a plain view, not a
+/// nested `ToolbarContent`, since that group's own placement already covers it.
+///
+/// A real popup menu, not a cycling button: it lists Sistema/Chiaro/Scuro plus every
+/// vault-discovered theme by name, mirroring `ThemeCommands`' Vista > Tema submenu
+/// (`MenuCommands.swift`) and Settings' own theme list - a theme reachable from the menu bar
+/// and from Settings but not from the toolbar was the gap.
 @MainActor
 @ViewBuilder
 func themeToggleToolbarItem(_ engine: ThemeEngine) -> some View {
-    Button {
-        switch engine.selection {
-        case .followSystem: engine.selection = .light
-        case .light: engine.selection = .dark
-        case .dark, .named: engine.selection = .followSystem
+    Picker("Tema", selection: Binding(
+        get: { engine.selection },
+        set: { engine.selection = $0 }
+    )) {
+        Text("Sistema").tag(ThemeEngine.Selection.followSystem)
+        Text("Chiaro").tag(ThemeEngine.Selection.light)
+        Text("Scuro").tag(ThemeEngine.Selection.dark)
+        ForEach(engine.selectableThemes.filter { !$0.id.hasPrefix("pergamenum-") }) { theme in
+            Text(theme.name).tag(ThemeEngine.Selection.named(theme.id))
         }
-    } label: {
-        Label("Tema", systemImage: themeToggleIcon(for: engine.selection))
     }
-    .help("Tema: \(themeToggleLabel(for: engine.selection)). Clic per cambiare.")
+    .pickerStyle(.menu)
+    .help("Tema: cambia l'aspetto della finestra")
     .accessibilityIdentifier("theme-toggle-button")
-}
-
-private func themeToggleIcon(for selection: ThemeEngine.Selection) -> String {
-    switch selection {
-    case .followSystem, .named: "circle.lefthalf.filled"
-    case .light: "sun.max"
-    case .dark: "moon"
-    }
-}
-
-private func themeToggleLabel(for selection: ThemeEngine.Selection) -> String {
-    switch selection {
-    case .followSystem: "Segue il sistema"
-    case .light: "Chiaro"
-    case .dark: "Scuro"
-    case .named: "Personalizzato"
-    }
+    // The toolbar strips the Picker's own title from the AXPopUpButton's accessibility
+    // label, leaving only its current value ("Sistema") - confirmed empty in a captured
+    // accessibility snapshot. Set explicitly so `popUpButtons["Tema"]` can find it.
+    .accessibilityLabel("Tema")
 }
 
 extension View {

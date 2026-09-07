@@ -69,7 +69,7 @@ final class ComposerUITests: XCTestCase {
             "il composer è rimasto aperto dopo la creazione"
         )
         XCTAssertTrue(
-            app.staticTexts["Nota composta.md"].waitForExistence(timeout: 5),
+            app.staticTexts["Nota composta"].waitForExistence(timeout: 5),
             "la nota creata non è aperta nell'editor"
         )
         XCTAssertTrue(FileManager.default.fileExists(

@@ -144,12 +144,42 @@ extension NoteListPane {
                 titleVisibility: .visible
             ) {
                 Button("Sposta nel Cestino", role: .destructive) {
-                    if let path = deletingFolder { vault.trashFolder(at: path) }
+                    if let path = deletingFolder, !vault.trashFolder(at: path) {
+                        trashFolderRefused = vault.problems.last
+                    }
                     deletingFolder = nil
                 }
                 Button("Annulla", role: .cancel) { deletingFolder = nil }
             } message: {
                 Text(deletingFolderCounts)
+            }
+            .alert(
+                "Rinomina cartella rifiutata",
+                isPresented: Binding(
+                    get: { renameFolderRefused != nil },
+                    set: { if !$0 { renameFolderRefused = nil } }
+                ),
+                presenting: renameFolderRefused
+            ) { _ in
+                Button("OK", role: .cancel) { renameFolderRefused = nil }
+                    .accessibilityIdentifier("sidebar-folder-rename-refused-ok")
+            } message: { reason in
+                Text(reason)
+                    .accessibilityIdentifier("sidebar-folder-rename-refused")
+            }
+            .alert(
+                "Eliminazione cartella rifiutata",
+                isPresented: Binding(
+                    get: { trashFolderRefused != nil },
+                    set: { if !$0 { trashFolderRefused = nil } }
+                ),
+                presenting: trashFolderRefused
+            ) { _ in
+                Button("OK", role: .cancel) { trashFolderRefused = nil }
+                    .accessibilityIdentifier("sidebar-folder-trash-refused-ok")
+            } message: { reason in
+                Text(reason)
+                    .accessibilityIdentifier("sidebar-folder-trash-refused")
             }
     }
 
@@ -185,8 +215,10 @@ extension NoteListPane {
                     vault.nameIsAvailable(name.value, in: parent.value)
                 },
                 onConfirm: { newName in
+                    if vault.renameFolder(at: path, to: newName.value) == nil {
+                        renameFolderRefused = vault.problems.last
+                    }
                     renamingFolder = nil
-                    vault.renameFolder(at: path, to: newName.value)
                 },
                 onCancel: { renamingFolder = nil }
             )
