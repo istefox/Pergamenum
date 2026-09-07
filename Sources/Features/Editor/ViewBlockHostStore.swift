@@ -82,12 +82,24 @@ final class ViewBlockHostStore {
     /// `NoteExporter` for an export (R-10, R-11), and a scroll view inside the block would
     /// bound those two surfaces too - this host is the only site that knows it is
     /// height-bounded.
+    ///
+    /// Every input but `theme` is forwarded verbatim to the block, `onEditSource` and
+    /// `onOpenNote` included (ADR §D9's two optional inputs, §D10's door back to the source):
+    /// this function composes the wrapper and decides nothing about the block itself, so the
+    /// editor's caller is the one place that says what a drawn fence can reach.
+    ///
+    /// **All of them default**, which is what keeps R-10/R-11 true by construction rather than
+    /// by care: a caller that opts into nothing gets exactly `MarkdownBlocksView`'s own
+    /// rendering - no vault ("Nessun vault dietro questa vista"), no click target on a row, no
+    /// edit-source control in the header.
     static func rootView(
         source: String,
         notePath: String = "",
         vaultRoot: URL? = nil,
         thumbnails: ThumbnailStore? = nil,
         queries: ViewQuerySource? = nil,
+        onEditSource: (() -> Void)? = nil,
+        onOpenNote: ((String) -> Void)? = nil,
         theme: Theme
     ) -> AnyView {
         AnyView(
@@ -97,7 +109,9 @@ final class ViewBlockHostStore {
                     notePath: notePath,
                     vaultRoot: vaultRoot,
                     thumbnails: thumbnails,
-                    queries: queries
+                    queries: queries,
+                    onEditSource: onEditSource,
+                    onOpenNote: onOpenNote
                 )
             }
             .environment(\.theme, theme)

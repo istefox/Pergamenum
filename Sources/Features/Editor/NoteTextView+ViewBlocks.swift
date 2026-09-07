@@ -151,11 +151,46 @@ extension NoteTextView.Coordinator {
     /// A new root view rather than a new host (ADR §D3): SwiftUI diffs it against the old
     /// one, and `RenderedViewBlock`'s `.task(id:)` re-runs only when the source, the scan
     /// generation or an explicit refresh actually changed - never once per keystroke, which
-    /// is what ADR-0009 §D7 forbids.
+    /// is what ADR-0009 §D7 forbids. Rebuilding the root view every pass is what keeps the
+    /// closures below current: `parent` is a struct SwiftUI replaces on each update, so a
+    /// closure captured once at `makeNSView` time would go on calling an older column's
+    /// `onFollowLink` for as long as the note stays open.
+    ///
+    /// **This is the whole of the vault reaching a drawn fence** (ADR §D9, R-04/R-07/R-09).
+    /// `queries` is what turns "Nessun vault dietro questa vista" into rows, and it is passed
+    /// with `notePath`/`vaultRoot`/`thumbnails` because a `render: gallery` block resolves an
+    /// embedded file beside the note the same way an embed does. Nil-safe in every one of
+    /// them: `DiaryView`/`TodayView` pass no `queries` (ADR Consequences) and the block says
+    /// so instead of drawing an empty result.
+    ///
+    /// **`onOpenNote` is `parent.onFollowLink` and deliberately not a second door** (R-09): a
+    /// row carries a title, which is the string a `[[wikilink]]` carries, so a click here is
+    /// the click a wikilink already is - one lookup of one name, never two rules for it.
+    ///
+    /// **`onEditSource` sets the selection to the fence's own opening line** (ADR §D10),
+    /// which is the offset this loop iterates by. §D4's range test then answers `true` for
+    /// that fence, §D5's guard fires on the selection change, and the next pass draws the
+    /// source instead of the attachment - the same landing the arrow keys reach from the line
+    /// above, and the same one `viewBlockCaretRescue` below aims at. Weakly held, the reason
+    /// `TableGridStore.view(for:in:)`'s own `resignToTextView` closure is: the host outlives
+    /// nothing here, but a root view kept by the store must not be what keeps a text view
+    /// alive.
     func refreshViewBlockHosts(in textView: NSTextView, theme: Theme) {
-        for drawn in drawnViewBlocks.values {
+        for (opening, drawn) in drawnViewBlocks {
             viewBlockHosts.update(
-                ViewBlockHostStore.rootView(source: drawn.source, theme: theme),
+                ViewBlockHostStore.rootView(
+                    source: drawn.source,
+                    notePath: parent.notePath,
+                    vaultRoot: parent.vaultRoot,
+                    thumbnails: parent.thumbnails,
+                    queries: parent.queries,
+                    onEditSource: { [weak textView] in
+                        guard let textView, opening <= (textView.string as NSString).length else { return }
+                        textView.setSelectedRange(NSRange(location: opening, length: 0))
+                    },
+                    onOpenNote: parent.onFollowLink,
+                    theme: theme
+                ),
                 forOrdinal: drawn.ordinal
             )
         }
@@ -168,7 +203,8 @@ extension NoteTextView.Coordinator {
     /// `rescueCaret(in:from:)`'s and `tableCaretRescue`'s third twin (ADR §D15): a caret
     /// inside a body or closing-fence line that has just become hidden is an insertion point
     /// with nowhere to be drawn and nowhere to type. It goes to the opening fence line's own
-    /// offset, which is where the block is and where `onEditSource` will later put it too.
+    /// offset, which is where the block is and where `onEditSource` puts it too - the same
+    /// offset, reached by the two doors §D10 names.
     ///
     /// Nearly unreachable once reveal lands (a caret inside a fence keeps it revealed), and
     /// written anyway for the reason the ADR names: a programmatic selection - a find match,

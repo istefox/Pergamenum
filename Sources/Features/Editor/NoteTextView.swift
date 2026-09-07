@@ -60,12 +60,12 @@ struct NoteTextView: NSViewRepresentable {
     /// without change, since neither passes this property (ADR Consequences).
     ///
     /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
-    /// `ViewQuerySource`. **Still unread by `NoteTextView+ViewBlocks.swift`'s
-    /// `refreshViewBlockHosts`**, which builds each drawn fence's root view through
-    /// `ViewBlockHostStore.rootView(source:theme:)` - the fence's own source and the theme,
-    /// and nothing else, so the hosted `RenderedViewBlock` gets no `queries`, no `onOpenNote`
-    /// and no `onEditSource`. That one hop is what stands between this property and a fence
-    /// that runs its query in the editor (R-04, R-07, R-09).
+    /// `ViewQuerySource`, and read by `NoteTextView+ViewBlocks.swift`'s
+    /// `refreshViewBlockHosts`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
+    /// `onFollowLink` as the block's `onOpenNote` and a caret-placing `onEditSource` - into
+    /// `ViewBlockHostStore.rootView(...)` on every styling pass. That call is the whole of
+    /// what makes a drawn fence run its query in the editor (R-04, R-07, R-09); without it
+    /// the block draws its "Nessun vault dietro questa vista" branch.
     var queries: ViewQuerySource?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
