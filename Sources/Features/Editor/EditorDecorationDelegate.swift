@@ -105,6 +105,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// clearing this set must never clear a fold in progress, nor the reverse. The header
     /// row is never in here - it stays in the layout, carrying the `TableAttachment`.
     nonisolated(unsafe) private var tableRowOffsets: Set<Int> = []
+    /// Every view block's own body-line and closing-fence start offsets (ADR-0033 §D1; plan
+    /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 2) - the sixth input, on
+    /// the same terms as the fifth above and for the same reason: three separate sets, so
+    /// that clearing one can never clear another. The opening fence line is never in here -
+    /// it stays in the layout, carrying the `ViewBlockAttachment`. The closing fence line
+    /// always is, which is the one place the arithmetic differs from a table's (ADR
+    /// §Context C4: a table ends at its own last body row, a fence ends at a line of
+    /// backticks that would otherwise sit under the drawn block as stray text).
+    nonisolated(unsafe) private var viewBlockLineOffsets: Set<Int> = []
     /// Folded heading line offset to the number of lines it is hiding, which is what the
     /// badge says.
     nonisolated(unsafe) private var foldedHeadings: [Int: Int] = [:]
@@ -169,6 +178,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// table at once. Not `private`: `tableParagraph(at:storage:)` in
     /// `EditorDecorationDelegate+TableRendering.swift` reads it.
     nonisolated(unsafe) var tableViews: [Int: TableGridView] = [:]
+    /// The host already vended for each view block, by its opening fence paragraph's own
+    /// offset - the same finished-value hand-over `tableViews` above makes (ADR-0033 §D2:
+    /// *"the delegate carries a reference and calls nothing"*). Typed `NSView` rather than
+    /// `NSHostingView<AnyView>` because that is all this object needs to know about it: the
+    /// Coordinator owns `ViewBlockHostStore`, builds the SwiftUI root view and pushes it in,
+    /// and this object - which cannot be `@MainActor` - only hands the reference to the
+    /// attachment. Not `private`: `viewBlockParagraph(at:storage:)` in
+    /// `EditorDecorationDelegate+ViewBlockRendering.swift` reads it.
+    nonisolated(unsafe) var viewBlockHosts: [Int: NSView] = [:]
     /// Small enough to draw as nothing while still breaking the line the way a real
     /// character does - unlike a `\n` at this size, which is why folding uses a different
     /// mechanism: this hides a delimiter mid-paragraph, not a whole paragraph.
@@ -227,20 +245,26 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `apply(tableRows:)`'s own header already states, extended to a third input rather
     /// than restated as a special case of the second.
     ///
-    /// **Stub.** The tester's own declaration (Task 2): storage and the
-    /// `textContentManager(_:shouldEnumerate:options:)` widening that actually excludes
-    /// these offsets from a real layout pass are the coder's work.
+    /// Guarded on the set itself rather than unconditional, which the other two hidden-line
+    /// setters can afford not to be: `applyViewBlocks`'s own `hidesMarkup`-off branch calls
+    /// this on **every** keystroke (ADR §D12 - the escape hatch has to reach the enumeration
+    /// refusal, so it cannot skip the call the way `clearTables()` does), and an unguarded
+    /// setter would write one `notice` per keystroke for a note that has no view block in it
+    /// at all. The same shape, and the same reason, as `apply(hiddenMarkers:hidingMarkup:)`
+    /// below.
     func apply(viewBlockLines offsets: Set<Int>) {
-        // Task 2, coder.
+        guard offsets != viewBlockLineOffsets else { return }
+        viewBlockLineOffsets = offsets
+        Logger.folding.notice("blocchi vista: \(offsets.count, privacy: .public) righe nascoste")
     }
 
     /// Registers the host view already vended for each view block, by its opening fence's
     /// own paragraph offset - the same finished-value hand-over `apply(tableViews:)` makes.
     ///
-    /// **Stub.** The tester's own declaration (Task 2); wiring a real `NSView` through is
-    /// Task 4's own deliverable (`ViewBlockHostStore`).
+    /// Called from the Coordinator, which owns `ViewBlockHostStore` (ADR §D3); this object
+    /// never builds a view itself and never asks that store for one.
     func apply(viewBlockHosts hosts: [Int: NSView]) {
-        // Task 2, coder.
+        viewBlockHosts = hosts
     }
 
     /// Registers where the hidden markers are and whether they should be hidden at all.
@@ -270,18 +294,26 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
     // MARK: Hiding
 
-    /// Refuses to enumerate a folded line or a table's own delimiter/body row - the union
-    /// of two independently-set inputs (ADR-0029 §D5), never one merged into the other.
+    /// Refuses to enumerate a folded line, a table's own delimiter/body row, or a view
+    /// block's body/closing-fence line - the union of three independently-set inputs
+    /// (ADR-0029 §D5, ADR-0033 §D1), never one merged into another.
+    ///
+    /// Three sets consulted here rather than one filled from three places, because that is
+    /// what makes each setter's own empty set clear only its own lines: a fold and a drawn
+    /// block are two different reasons a paragraph is out of the layout, and a note can be
+    /// in both states at once.
     func textContentManager(
         _ textContentManager: NSTextContentManager,
         shouldEnumerate textElement: NSTextElement,
         options: NSTextContentManager.EnumerationOptions
     ) -> Bool {
-        guard !hiddenLineOffsets.isEmpty || !tableRowOffsets.isEmpty,
+        guard !hiddenLineOffsets.isEmpty || !tableRowOffsets.isEmpty || !viewBlockLineOffsets.isEmpty,
               let range = textElement.elementRange
         else { return true }
         let start = offset(of: range.location, in: textContentManager)
-        return !hiddenLineOffsets.contains(start) && !tableRowOffsets.contains(start)
+        return !hiddenLineOffsets.contains(start)
+            && !tableRowOffsets.contains(start)
+            && !viewBlockLineOffsets.contains(start)
     }
 
     // MARK: Marking
@@ -395,6 +427,17 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // is for a drawn embed (ADR-0018 §D5).
         if let table = tableParagraph(at: range, storage: storage) {
             return table
+        }
+
+        // The view-block branch, beside the table one and under the same length rule
+        // (ADR-0033 §D1): the opening fence line's own backticks are *substituted* for a
+        // `ViewBlockAttachment`, never inserted or removed. Like the table branch it does
+        // not honour `revealedParagraphs` - this construct's reveal is keyed on the fence's
+        // whole source range one layer up (§D4) - and like it, it must run before the
+        // generic path below, which would otherwise collapse the opening line's characters
+        // outright instead of drawing a block in their place.
+        if let viewBlock = viewBlockParagraph(at: range, storage: storage) {
+            return viewBlock
         }
 
         guard !revealedParagraphs.contains(range.location),
@@ -560,20 +603,6 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         tinted.unlockFocus()
         return tinted
     }()
-
-    /// The view-block branch of the substitution in
-    /// `textContentStorage(_:textParagraphWith:)` - **stubbed to return `nil`
-    /// unconditionally** (plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 2,
-    /// tester). Reading a `.viewBlock` marker back, re-validating it against a fresh fence
-    /// parse of the live characters, and drawing the real `ViewBlockAttachment` from
-    /// `viewBlockHosts[range.location]` is Task 5's own deliverable, not this one's - the
-    /// same shape `tableParagraph(at:storage:)`'s own header comment describes for its own
-    /// chain (`EditorDecorationDelegate+TableRendering.swift`). Not called from
-    /// `textContentStorage(_:textParagraphWith:)` yet either: wiring the call site into that
-    /// chain is also Task 5's.
-    func viewBlockParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
-        nil
-    }
 
     private static func stillSpells(_ kind: HiddenMarker.Kind, _ text: NSString, at range: NSRange) -> Bool {
         switch kind {

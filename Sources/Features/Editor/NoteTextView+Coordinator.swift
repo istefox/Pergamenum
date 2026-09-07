@@ -101,6 +101,28 @@ extension NoteTextView {
         /// Where the caret has to go once that transaction closes, when a row it was sitting
         /// in has just left the layout (`rescueCaret`'s table twin, §D5).
         var pendingTableCaret: Int?
+        /// The `NSHostingView` every view block on screen is drawn in, by the fence's own
+        /// ordinal within the note (ADR-0033 §D3) - owned here for the reason `tableGrids`
+        /// above is: `EditorDecorationDelegate` cannot be `@MainActor`, so it cannot build a
+        /// view and is handed finished ones through `decorations.apply(viewBlockHosts:)`.
+        ///
+        /// Keyed by ordinal and deliberately not by offset, which is where this store parts
+        /// company with `TableGridStore`: an offset key would rebuild the host on every
+        /// keystroke typed above the fence, and rebuilding it re-runs the query behind it
+        /// (ADR-0009 §D7: never per keystroke).
+        let viewBlockHosts = ViewBlockHostStore()
+        /// The body and closing-fence lines already taken out of the layout, so an unchanged
+        /// set does not re-invalidate it on every keystroke - the view-block pass's own
+        /// change check, `lastTableRows`' twin and not private for the same reason: the pass
+        /// that fills it, `applyViewBlocks`, lives in `NoteTextView+ViewBlocks.swift`.
+        var lastViewBlockLines: Set<Int> = []
+        /// Each view block on screen, by its opening fence's offset - filled by
+        /// `applyViewBlocks` inside the storage's editing transaction and read by
+        /// `refreshViewBlockHosts` once it has closed.
+        var drawnViewBlocks: [Int: DrawnViewBlock] = [:]
+        /// Where the caret has to go once that transaction closes, when a line it was sitting
+        /// in has just left the layout (`tableCaretRescue`'s twin, ADR-0033 §D15).
+        var pendingViewBlockCaret: Int?
         /// The observation that keeps the readable-width inset right as the pane is resized
         /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
         /// window resize - nothing in the SwiftUI graph changed - so without it a column
@@ -302,6 +324,12 @@ extension NoteTextView {
             /// a time, so `applyTables` is what splits it into the header's own marker and
             /// the rows that leave the layout.
             var tableRuns: [NSRange] = []
+            /// Every closed `pergamenum-view` fence's whole source run (ADR-0033 §D14),
+            /// collected here for the same reason `tableRuns` above is and split the same
+            /// way: a fence's run spans several paragraphs, so `hiddenKind(for:)` maps it to
+            /// no marker at all and `applyViewBlocks` is what turns it into the opening
+            /// line's own `.viewBlock` marker plus the lines that leave the layout.
+            var viewBlockRuns: [NSRange] = []
             storage.beginEditing()
             storage.setAttributes(
                 MarkdownAttributedText.base(theme: theme),
@@ -332,6 +360,7 @@ extension NoteTextView {
                 }
                 if case .embedRun = styled.span { embedRuns.append(nsRange) }
                 if case .tableRun = styled.span { tableRuns.append(nsRange) }
+                if case .viewBlockRun = styled.span { viewBlockRuns.append(nsRange) }
             }
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
@@ -366,6 +395,11 @@ extension NoteTextView {
             // `.editedAttributes` that re-triggers the content manager's enumeration, so
             // the table has to already be current when it does (ADR-0018 §D1).
             applyTables(to: textView, runs: tableRuns, markers: &hiddenMarkers)
+            // The view-block pass (ADR-0033 §D1), beside the table one and before
+            // `endEditing()` for the same reason: that call fires the document-wide
+            // `.editedAttributes` that re-triggers the content manager's enumeration, so
+            // which lines are out of the layout has to already be current when it does.
+            applyViewBlocks(to: textView, runs: viewBlockRuns, markers: &hiddenMarkers)
             decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
@@ -373,6 +407,9 @@ extension NoteTextView {
             // After the transaction, deliberately: a grid resizes itself and a caret rescue
             // moves the selection, and neither belongs inside an open editing session.
             refreshTableGrids(in: textView, theme: theme)
+            // Same rule, same reason (ADR-0033 §D15): a host lays SwiftUI out and the caret
+            // rescue moves the selection.
+            refreshViewBlockHosts(in: textView, theme: theme)
         }
 
         /// One span's hidden marker, its range relative to its own paragraph's start - the
