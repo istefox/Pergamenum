@@ -521,6 +521,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0031** — Sparkle auto-update integration: explicit narrow exception to Principle 2 (network) for the updater only, manual-only checks, EdDSA key in Keychain, appcast/binaries hosted on a dedicated public repo `istefox/pergamenum-updates` (amends the SPEC's original private-repo hosting, which live verification found broken), `scripts/release.sh` extended end-to-end → `docs/adr/0031-sparkle-auto-update-integration.md`
 - **ADR-0032** — Plaud recording import: loopback-only second exception to Principle 2, `pergamenum-*` frontmatter reopening for transcript notes, quote-fingerprint dedup over note+ledger, two-phase import with retry-only-step-2, app-only scope → `docs/adr/0032-plaud-recording-import-into-pergamenum.md`
 - **ADR-0033** — Views render live in the editor again: `pergamenum-view` fences become an `NSHostingView`-hosted attachment reusing the existing `RenderedViewBlock` renderers, host keyed by fence ordinal (not paragraph offset), reveal-on-caret keyed on the fence's whole source range; does not reopen ADR-0009 or ADR-0029 → `docs/adr/0033-views-render-live-in-the-editor.md`
+- **ADR-0034** — Visual query builder for `pergamenum-view` fences: one shared "Modifica query" affordance in `RenderedViewBlock`'s header (both live-render and error-card states), validity round-trips through `ViewBlock.parse` itself, flat AND-of-terms `where` with raw-text fallback for or/not/parens, commit reuses `commitTable`'s anchor-and-reload-guard shape; does not reopen ADR-0009 or ADR-0033 → `docs/adr/0034-pergamenum-view-query-builder.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -811,3 +812,55 @@ Key architectural decisions:
   through the same `ViewQuerySource.move` closure) if the probe is negative.
 
 Detail: `docs/adr/0033-views-render-live-in-the-editor.md`.
+
+## Decisions from the pergamenum-view-query-builder chain (ADR-0034)
+
+Visual builder for `pergamenum-view` fences, reachable from the fence itself in the main
+note editor: `docs/adr/0034-pergamenum-view-query-builder.md`. Does not reopen ADR-0009
+(grammar, closed field list, no-materialisation rule) or ADR-0033 (attachment mechanism,
+ordinal host key, closed-fence precondition) — it composes text those two already accept.
+
+Key architectural decisions:
+- **One affordance in the header both fence states already share** — `RenderedViewBlock`
+  gains a third optional `onEditQuery` input (ADR-0033 §D9's `nil`-default pattern), drawn
+  once in `header(renderer:count:)`, which both the `.failure` (error card) and `.success`
+  (live render) branches call — "present on both states" costs one `Button`, not two
+  implementations kept in step.
+- **Validity round-trips through the real `ViewBlock.parse` — no second, lenient grammar.**
+  The draft serialises to a fence body, that body is parsed, and the resulting
+  `Result<ViewBlock, ViewBlockError>` is the only thing "Fatto"'s enabled state, its inline
+  error text, and the live match count consult. The sheet cannot disagree with the note.
+- **`where` is a flat AND-of-terms model with a raw-text fallback**, decided by one pure
+  function (`ViewQueryFlattening.terms(of:)`) that returns `nil` for `or`/`not`/nesting —
+  the fallback is a validated text field for `where` alone; every other section still
+  loads structured, so a non-flat filter is never dropped or altered.
+- **The commit is `commitTable`'s anchor-and-reload-guard shape, not a new channel.** The
+  fence is re-read from the live characters at commit time via
+  `EditorDecorationDelegate.viewBlockRun` (both model and buffer, ranges and text
+  compared); a fence that moved on refuses the write rather than merging or guessing.
+  `replaceAtomically` is reached exactly once per commit — one `Cmd+Z` for the whole edit.
+- **The insert-view command writes a stub first, so "Fatto" has exactly one
+  implementation** — the sheet always edits a fence that already exists, removing the
+  create/rewrite fork before it exists. `Navigation`'s tuple becomes a struct
+  (`Navigation.Insertion`) to carry the new flag, with a defaulted parameter keeping all
+  prior call sites untouched.
+- **The SPEC's Italian date keywords (`oggi`, `inizio-settimana`) do not parse** —
+  `ViewDateBound` only accepts `today`/`today-N`/`week-start`. The date-bound control's
+  labels stay Italian; the text it writes is the parser's own spelling.
+- **No folder-tree component exists to reuse for Ambito** — the app's real folder picker
+  is a flat `Menu` over `vault.folders` (`NewNoteComposer`/`NoteRowMenu`'s "Sposta in"
+  shape), extracted once as `FolderPickerMenu`. Building a tree would be a third one,
+  meeting ADR-0024's `DisclosureGroup`/`List(selection:)` trap for no gain.
+- **`CompletingTextView`'s wikilink completion cannot be reused in a sheet row** (it is an
+  `NSPanel` positioned from `rangeForUserCompletion` inside an `NSTextView`) — the
+  `linksTo`/`linkedFrom` term gets a new, small searchable list copying
+  `RelatedLinkSheet`'s shape (`TextField` + `vault.index.search`), not extracted from it.
+- **`columns` is an ordered `[ViewField]`, and is omitted from the written fence only when
+  the selection exactly equals the renderer's `effectiveColumns`** — column order is what
+  a table draws, so a `Set` would risk silently reordering a hand-written block.
+- **No new capability in `Sources/Core`, `Sources/Connector`, `perg`, or
+  `pergamenum-mcp`** — the whole feature lives in `Sources/Features/Views/` (pure builder
+  logic) and `Sources/Features/Editor/` (anchor/commit wiring), neither in any
+  `sharedSources` glob, so the CLI/MCP boundary is structural rather than a rule to keep.
+
+Detail: `docs/adr/0034-pergamenum-view-query-builder.md`.
