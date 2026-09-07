@@ -6,6 +6,7 @@ struct TasksView: View {
     @Environment(VaultController.self) var vault
     @Environment(ShortcutStore.self) var shortcuts
     @Environment(ThemeEngine.self) private var themeEngine
+    @Environment(Navigation.self) var navigation
     @State var view: IndexSnapshot.TaskView = .today
     /// Every board's vault-relative path, for the Workspace segment on each row and the
     /// `.workspace` grouping. Fetched once per scan rather than per row: `CanvasStore.allBoards()`
@@ -132,7 +133,10 @@ struct TasksView: View {
             .disabled(selected == nil)
 
             Button {
-                if let task = selected { vault.openNote(at: task.sourcePath) }
+                if let task = selected {
+                    vault.openNote(at: task.sourcePath)
+                    navigation.pane = .notes
+                }
             } label: {
                 Label("Vai alla nota di origine", systemImage: "doc.text.magnifyingglass")
             }
