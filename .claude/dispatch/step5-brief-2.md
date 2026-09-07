@@ -1,113 +1,91 @@
-<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md tasks=3,4,5 lines=172-256 -->
-# Step 5 Batch Brief -- 2026-09-04-sparkle-auto-update-integration.md -- tasks 3-5
+<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=2,3 lines=151-212 -->
+# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 2-3
 
-## Task text (verbatim, plan lines 172-256)
+## Task text (verbatim, plan lines 151-212)
 
-### Task 3 — the updater controller: allocated in `init`, started from the window, absent under `-disableUpdater` (R-02, R-03)
+### Task 2 — the delegate gains a sixth hidden-line input and a `.viewBlock` marker kind (R-01, R-06)
 
-- Budget: `Sources/App/SparkleUpdateController.swift` (new),
-  `Sources/App/PergamenumApp.swift`, `Tests/SparkleUpdateControllerTests.swift` (new)
-  (~200 lines)
-- **Tester first.** Declaration + tests. The class:
-  `@MainActor @Observable final class SparkleUpdateController` holding an
-  `SPUStandardUpdaterController` built with `startingUpdater: false, updaterDelegate: nil,
-  userDriverDelegate: nil`, plus `private(set) var canCheckForUpdates = false`,
-  `private let isIsolated = UserDefaults.standard.bool(forKey: "disableUpdater")`,
-  `func start()`, `func checkForUpdates()`, and a stored `NSKeyValueObservation?`.
-- **Do not instantiate `SPUStandardUpdaterController` in a unit test.** `startUpdater` can put a
-  modal alert on screen; a modal alert in the unit suite is a hang, and the suite runs at the end
-  of every turn. The tests assert only what can be asserted without it: that `isIsolated` reads
-  the `disableUpdater` default (set it in a `UserDefaults` suite in the test and read it back
-  through the same key), and that `start()` is a no-op when isolated. If a test cannot be written
-  without constructing the Sparkle object, **do not write it** — R-02 and R-08's real coverage is
-  Task 4's UI test and Task 10's hand check. Say so in the test file's header comment rather than
-  leaving a gap nobody can see.
-- **Coder** fills the bodies:
-  - `start()` returns immediately when `isIsolated`; otherwise `controller.startUpdater()` and
-    installs the KVO observation:
-    `controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] u, _ in MainActor.assumeIsolated { self?.canCheckForUpdates = u.canCheckForUpdates } }`.
-    **Store the returned token** — KVO stops the instant it is discarded, silently.
-    `MainActor.assumeIsolated` and not a `Task { @MainActor in … }`: Sparkle posts this on the
-    main thread and a hop would make the menu item lag its own state (ADR §D5).
-  - `checkForUpdates()` → `controller.updater.checkForUpdates()`.
-  - `PergamenumApp`: `@State private var updater = SparkleUpdateController()` (a plain inline
-    default — nothing in `init` needs it, unlike `navigation`/`history`), and `updater.start()`
-    added to `armCapture()` (`:125-130`), which is where the hot key is registered and where the
-    file's own comment says NSApp-adjacent work belongs. **Not in `init()`** (ADR §D3).
-- Green: `.claude/test-cmd`. Then launch a Debug build by hand once
-  (`APP=$(ls -dt ~/Library/Developer/Xcode/DerivedData/Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1); open -n "$APP" --args -recentVaults '("/tmp/throwaway")'`)
-  and confirm no alert appears at launch. Use `-t` on the `ls`, or you get a stale build.
-
-### Task 4 — «Cerca Aggiornamenti…» in the Pergamenum menu, beside «Informazioni su Pergamenum» (R-02)
-
-- Budget: `Sources/App/MenuCommands.swift`, `Sources/App/PergamenumApp.swift`,
-  `UITests/UpdateMenuUITests.swift` (new) (~120 lines)
-- **Tester first.** `UITests/UpdateMenuUITests.swift`, XCTest (the UI bundle stays XCTest), which
-  launches with **both** `-disableCalendar YES` **and** `-disableUpdater YES`, opens the
-  `Pergamenum` app menu and asserts a menu item titled «Cerca Aggiornamenti…» exists.
-  **It never clicks it** — a click is a real network fetch and, under `-disableUpdater`, a
-  no-op that proves nothing. R-02's "triggers Sparkle's standard update-check UI" half is
-  verified by hand in Task 10; say so in the test's header.
-- This is the one place in the repo where finding a control by its title is correct rather than
-  forbidden: CLAUDE.md's rule is about *app-authored* controls, and a `CommandGroup` button has no
-  `accessibilityIdentifier` surface. The title is the contract here.
-- **Coder:** a new `struct UpdateCommands: Commands` in `Sources/App/MenuCommands.swift`
-  (the file that already holds `ViewCommands`, `EditCommands`, `HelpCommands`):
-
-  ```
-  CommandGroup(after: .appInfo) {
-      Button("Cerca Aggiornamenti…") { updater.checkForUpdates() }
-          .disabled(!updater.canCheckForUpdates)
-  }
-  ```
-
-  `after: .appInfo` is Sparkle's own documented placement and is the standard macOS location.
-  **No `import Sparkle` in this file** — it speaks to `SparkleUpdateController` only (ADR §D2).
-  **No `ShortcutCommand` case and no key binding**: ADR-0023 §D5's precedent — the catalogue is
-  the set of rebindable shortcuts, not all commands, and this one never had a key.
-- Register it in `PergamenumApp`'s `.commands` block (`:196-215`), after `HelpCommands`.
-- Green: `.claude/test-cmd` (unaffected) plus this one UI test run in isolation:
-  `scripts/uitests.sh PergamenumUITests/UpdateMenuUITests` — remember an argument **replaces**
-  the selection.
-
-### Task 5 — every UI-test file keeps the updater out of its launch (R-02, R-03)
-
-- Budget: all 18 files under `UITests/` (~40 lines)
-- Add `-disableUpdater YES` to every `XCUIApplication().launchArguments`, beside the
-  `-disableCalendar YES` that is already in all eighteen. **All of them, not only the ones that
-  would notice** — the same rule CLAUDE.md states for the calendar flag, bought the hard way.
-- No new test. This is the prophylactic against the failure mode ADR §D4 describes: an updater
-  that starts on every launch, before any appcast exists, putting an alert on screen and turning
-  a whole run into 60.2 s launch timeouts that look like defects and are not.
-- Green: `scripts/uitests.sh` with **no argument**, the full bundle, once. Read the per-test
-  seconds it prints beside any failure before believing it, and kill stale instances first
-  (`ps -Ao pid,command | grep Pergamenum.app/Contents/MacOS`) — the script does this itself, but
-  a red run with stale instances alive is not evidence.
+- **Tester** writes `Tests/ViewBlockRenderingTests.swift`, modelled line for line on
+  `Tests/TableRenderingTests.swift` (its `substitutedParagraph` and `laidOutOffsets` helpers are the
+  shape to copy, not to import). Declares, so the target builds: `HiddenMarker.Kind.viewBlock`, the
+  `stillSpells` arm returning `false`, `apply(viewBlockLines:)`, `apply(viewBlockHosts:)`, and
+  `viewBlockParagraph(at:storage:)` **stubbed to return `nil`**. Assertions:
+  - with `apply(viewBlockLines:)` given the body and closing-fence offsets, a real offscreen layout
+    pass lays out neither (R-01, R-06) — measured through `laidOutOffsets`, the way folding and tables
+    already are;
+  - **the closing fence line is in the set and is not laid out** (C4) — its own assertion, because
+    this is the one place the arithmetic differs from a table's;
+  - `apply(viewBlockLines:)` with an empty set clears **only** its own set: a fold registered through
+    `apply(hiddenLines:foldedHeadings:)` and a table registered through `apply(tableRows:)` both
+    survive it, and each of the other two clears only its own (ADR §D1, the delegate's own header
+    rule). Three assertions, one per pair;
+  - with `hidesMarkup` false, `viewBlockParagraph(at:storage:)` returns nil (ADR §D12) — **green with
+    the stub**, and stays green after Task 5;
+  - a `.viewBlock` marker whose recorded range no longer spells a fence draws nothing.
+- **Coder** implements `apply(viewBlockLines:)` and `apply(viewBlockHosts:)` on
+  `EditorDecorationDelegate`, and widens
+  `textContentManager(_:shouldEnumerate:options:)` (`:241-251`) to the union of the three sets. The
+  `viewBlockParagraph` body is **Task 5's**, not this one's.
+- Budget: `Sources/Features/Editor/EditorDecorationDelegate.swift`, `Tests/ViewBlockRenderingTests.swift` (~200 lines)
 
 ---
 
-## Phase 2 — the release path (no app file is touched again)
+## Phase 2 — the gate
 
-## File map (from Budget: declarations, tasks 3-5)
+### Task 3 — tracer-bullet probe: SwiftUI inside a text attachment (ADR §D16 probes 1–3) (R-01, R-04)
 
-- all 18 files under UITests/
+**This is a gate, not a checkpoint. Tasks 4 and 8 are not planned in detail until it has an answer,
+and a negative on probe 2 changes Task 8's shape rather than being worked around inside it.**
 
-No parseable Budget: for task(s): 3 4 (absent is not zero -- consult the task text above)
+- Build the smallest real thing: a `ViewBlockAttachment` whose provider's `loadView` assigns an
+  `NSHostingView` over a throwaway SwiftUI view holding a `@State` counter, a `Button`, and a
+  two-column `.draggable`/`.dropDestination` pair — inside a real `CompletingTextView` inside a real
+  `NSWindow`, reached from a fixed trigger word with no grammar behind it (the exact shape ADR-0029's
+  Step 4.5 probe used before `EditorDecorationDelegate+TableRendering.swift` replaced it).
+- **Probe 1 passes** when the host draws at the size `attachmentBounds` returned, the button responds
+  to a click, and the `@State` counter survives a keystroke typed elsewhere in the note (i.e. the host
+  instance was not rebuilt).
+- **Probe 2 passes** when a card lifts on drag, the destination column highlights, the drop fires with
+  the payload, and the text view does not treat the gesture as a text-selection drag.
+- **Probe 3 passes** when either the text view keeps first responder through a click on the host, or
+  the host takes it and `Esc` / a click in the note return it with a sane caret — never a state where
+  keystrokes go nowhere. `TableGridStore.resignToTextView` (`:36-39`) is the wiring to copy if the
+  host takes focus.
+- **Write the result down**, per probe, in `PROJECT_BRIEF.md` beside the phase — ADR-0010's standard.
+  A probe with no written result did not happen.
+- **On a probe-2 failure:** report and stop. Task 8 switches to ADR §D16's named fallback (a per-card
+  context menu on `ViewBoardRenderer`, offered only when `queries?.move != nil`, writing through the
+  identical `ViewQuerySource.move` closure). That is a plan revision at Gate 2, not a coder decision.
+- The probe scaffold is deleted in Task 4, exactly as ADR-0029's was — it is a slice of the production
+  path, not a parallel one.
+- Budget: not estimable — this is an investigative task whose footprint depends on what the first
+  probe answers.
+
+---
+
+## Phase 3 — the attachment
+
+## File map (from Budget: declarations, tasks 2-3)
+
+- Sources/Features/Editor/EditorDecorationDelegate.swift
+- Tests/ViewBlockRenderingTests.swift
+
+No parseable Budget: for task(s): 3 (absent is not zero -- consult the task text above)
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 2 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 9 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
-- Task 10 -- see /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
+- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 4 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
 
-Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/superpowers/plans/2026-09-04-sparkle-auto-update-integration.md
+Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/adr/0031-sparkle-auto-update-integration.md -- D3 (startingUpdater false, started from armCapture), D4 (-disableUpdater launch argument, all 18 UI-test files), D5 (@Observable + one NSKeyValueObservation, no Combine), D7 (no timer, no automaticallyChecksForUpdates write)
-- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/SPEC.md -- requirement IDs R-02, R-03 for this batch's tests
-- CLAUDE.md: /Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/CLAUDE.md -- working agreements on UI tests (-disableCalendar precedent, accessibilityIdentifier rule and its one exception here, uitests.sh argument semantics, stale instances)
+- ADR: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/adr/0033-views-render-live-in-the-editor.md -- delegate enumeration hook rules, table-copy shape (ADR §D1/§D2/§D4), and tracer-bullet gate scope (ADR §D16 probes 1-3)
+- SPEC: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/SPEC.md -- requirement IDs R-01, R-04, R-06 for this batch's tests

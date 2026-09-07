@@ -192,7 +192,12 @@ enum CardTextAttributes {
         // Workspace `.text` cards are explicitly out of scope for the concealment mechanism
         // itself (ADR §D17/CardTextView.swift stays untouched), but this table must still be
         // exhaustive, so each gets the same shelf `.embedRun` already occupies above.
-        case .strikethroughMarker, .blockquoteMarker, .horizontalRule, .tableRun: .textTertiary
+        //
+        // `.viewBlockRun` joins the same shelf for the identical reason (ADR-0033 §D1; plan
+        // `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1) - a colour only,
+        // never a kind mapping: `CardTextView.swift` stays untouched by this chain too.
+        case .strikethroughMarker, .blockquoteMarker, .horizontalRule, .tableRun, .viewBlockRun:
+            .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen

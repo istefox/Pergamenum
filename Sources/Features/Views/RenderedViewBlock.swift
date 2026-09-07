@@ -26,6 +26,18 @@ struct RenderedViewBlock: View {
     /// Nil where there is no vault behind the view - a note card on the canvas, a preview in a
     /// test. The block then says so instead of drawing an empty result.
     var queries: ViewQuerySource?
+    /// One more control in the header row, beside the refresh button: how the caret gets back
+    /// into a fence this attachment covers (ADR-0033 §D9/§D10). `nil` means the control is not
+    /// drawn - exactly today's rendering, and what a surface with no editor behind it gets.
+    var onEditSource: (() -> Void)?
+    /// Threaded to the four renderers as an optional click target carrying a row's own title
+    /// (ADR-0033 §D9, R-09). `nil` means no renderer draws a click target - today's rendering,
+    /// and what keeps R-10/R-11 (transclusion, export) true by construction rather than by
+    /// care: neither passes it, so neither gains an interaction.
+    ///
+    /// A title and not a path, because that is the string a `[[wikilink]]` carries and this
+    /// opens a note through the same door one does - two lookups of one name, never two rules.
+    var onOpenNote: ((String) -> Void)?
 
     @State private var result: ViewResult?
     /// Bumped by the refresh control. §D7 gives a view an explicit refresh; this is it.
@@ -58,7 +70,9 @@ struct RenderedViewBlock: View {
         .accessibilityIdentifier("rendered-view")
         // The id is what §D7 turns into a re-evaluation: the source itself, the scan
         // generation, and the refresh. Not a timer, and not every redraw.
-        .task(id: "\(source)|\(queries?.generation ?? -1)|\(reloads)") { evaluate() }
+        .task(id: Self.taskID(source: source, generation: queries?.generation ?? -1, reloads: reloads)) {
+            evaluate()
+        }
         // A block carrying a relative bound means a different set of notes tomorrow, with no
         // file having changed (ADR-0014 §D4). Bumping the same counter the refresh button
         // uses, because it is the same act.
@@ -67,6 +81,16 @@ struct RenderedViewBlock: View {
 
     private func evaluate() {
         result = (try? block.get()).flatMap { parsed in queries?.evaluate(parsed) }
+    }
+
+    /// The id `.task(id:)` is keyed on (§D7): the fence's own source, the vault's scan
+    /// generation, and the explicit-refresh counter. Extracted as a pure, static function -
+    /// value-preserving against the inline string it replaces - so a test can assert on the
+    /// composition without a live SwiftUI render (Task 7's own tester ask; R-07, R-13's third
+    /// named case: a generation bump must change this string, or the query never re-runs on a
+    /// vault rescan).
+    static func taskID(source: String, generation: Int, reloads: Int) -> String {
+        "\(source)|\(generation)|\(reloads)"
     }
 
     // MARK: L'intestazione
@@ -79,6 +103,18 @@ struct RenderedViewBlock: View {
                 Text(count == 1 ? "1 nota" : "\(count) note").themedText(.caption, color: .textTertiary)
             }
             Spacer()
+            // Before the refresh rather than after it, so the control that has been there
+            // since PG-012 stays where the eye already looks for it. Drawn only where
+            // something is listening: a transclusion and an export have no caret to place
+            // (ADR §D9), and a door to nowhere is worse than no door.
+            if let onEditSource {
+                Button(action: onEditSource) {
+                    Image(systemName: "text.cursor").themedText(.caption, color: .textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Modifica la sorgente")
+                .accessibilityIdentifier("rendered-view-edit-source")
+            }
             Button { reloads += 1 } label: {
                 Image(systemName: "arrow.clockwise").themedText(.caption, color: .textTertiary)
             }
@@ -107,13 +143,14 @@ struct RenderedViewBlock: View {
     @ViewBuilder
     private func rows(_ block: ViewBlock, _ result: ViewResult) -> some View {
         switch block.render {
-        case .table: ViewTableRenderer(block: block, result: result)
-        case .list: ViewListRenderer(block: block, result: result)
+        case .table: ViewTableRenderer(block: block, result: result, onOpenNote: onOpenNote)
+        case .list: ViewListRenderer(block: block, result: result, onOpenNote: onOpenNote)
         case .gallery:
             ViewGalleryRenderer(
-                result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails
+                result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails,
+                onOpenNote: onOpenNote
             )
-        case .calendar: ViewCalendarRenderer(block: block, result: result)
+        case .calendar: ViewCalendarRenderer(block: block, result: result, onOpenNote: onOpenNote)
         // The one renderer that writes (§D5), and only when the grouping is a tag namespace:
         // it decides that for itself.
         case .board:

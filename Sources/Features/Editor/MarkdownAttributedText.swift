@@ -174,6 +174,11 @@ enum MarkdownAttributedText {
         // is what turns it into a real grid attachment) - this entry exists only to keep
         // this table exhaustive, the same shelf as `.embedRun` above.
         case .tableRun: .textTertiary
+        // `.viewBlockRun`'s own shelf (ADR-0033 §D1; plan
+        // `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1): a colour only, to
+        // keep this table exhaustive, the same reason `.tableRun` needs one above - the
+        // real attachment that replaces these characters is a later task's.
+        case .viewBlockRun: .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen

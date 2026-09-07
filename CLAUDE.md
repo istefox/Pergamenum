@@ -520,6 +520,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0030** — Editor page typography: prose faces (`font.prose`/`font.proseTitle`, Avenir Next) and `spacing.readable` read through tokens by one `ProseTypography` helper, readable-width inset, prose font picker persisted in `personalizzato.json`; amends ADR-0027 §D1 and ADR-0028 §D3, reopens nothing of ADR-0018/0029 → `docs/adr/0030-editor-page-typography-noteplan.md`
 - **ADR-0031** — Sparkle auto-update integration: explicit narrow exception to Principle 2 (network) for the updater only, manual-only checks, EdDSA key in Keychain, appcast/binaries hosted on a dedicated public repo `istefox/pergamenum-updates` (amends the SPEC's original private-repo hosting, which live verification found broken), `scripts/release.sh` extended end-to-end → `docs/adr/0031-sparkle-auto-update-integration.md`
 - **ADR-0032** — Plaud recording import: loopback-only second exception to Principle 2, `pergamenum-*` frontmatter reopening for transcript notes, quote-fingerprint dedup over note+ledger, two-phase import with retry-only-step-2, app-only scope → `docs/adr/0032-plaud-recording-import-into-pergamenum.md`
+- **ADR-0033** — Views render live in the editor again: `pergamenum-view` fences become an `NSHostingView`-hosted attachment reusing the existing `RenderedViewBlock` renderers, host keyed by fence ordinal (not paragraph offset), reveal-on-caret keyed on the fence's whole source range; does not reopen ADR-0009 or ADR-0029 → `docs/adr/0033-views-render-live-in-the-editor.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -759,3 +760,54 @@ Key architectural decisions:
   change orphans every note already imported.
 
 Detail: `docs/adr/0032-plaud-recording-import-into-pergamenum.md`.
+
+## Decisions from the Views-render-live-in-the-editor chain (ADR-0033)
+
+Restores a live, interactive surface for `pergamenum-view` fences (table/gallery/calendar/board,
+ADR-0009) inside the main editor — orphaned when ADR-0029 removed the Lettura mode that used to
+host them: `docs/adr/0033-views-render-live-in-the-editor.md`. Does not reopen ADR-0009 (query
+grammar, closed field list, board write/undo semantics) or ADR-0029 (attachment mechanism,
+delegate ownership split); applies that mechanism to a sixth construct with three named
+divergences.
+
+Key architectural decisions:
+- **The attachment hosts the SwiftUI `RenderedViewBlock` that already exists, via `NSHostingView`**
+  — not a second AppKit reimplementation of the four renderers. The evaluator, the renderers, the
+  board's guarded write and the query source (`viewQuerySource`, left unreferenced by ADR-0029
+  §D13 for exactly this) were already written, tested and merged; nothing in the query layer is
+  built here.
+- **The host store is keyed by the fence's ordinal within the note, not by paragraph offset** —
+  diverges from `TableGridStore`'s shape on purpose: an offset key would rebuild the SwiftUI host
+  on every keystroke typed above the fence, re-running its `.task` and re-evaluating the query,
+  which ADR-0009 §D7 forbids.
+- **Reveal-on-caret is keyed on the fence's whole source range, not on ADR-0018's per-paragraph
+  `revealedParagraphs` set** — structurally required, not a style choice: the fence's body lines
+  are out of the layout, so the caret can only ever occupy the opening-fence paragraph; keying
+  reveal per-paragraph there creates a reveal/re-hide loop the instant the caret moves into the
+  now-revealed body.
+- **The closing fence line is added to the delegate's hidden-paragraph set alongside the body
+  lines** — a fence has no equivalent of the table's "ends at its last body row": a fence ends at a
+  line of backticks that would otherwise sit under the drawn attachment as stray text.
+- **R-09 (click a row to open its note) is net-new, not a restoration** — grepped zero hits for
+  `Link`/`Button`/`onTapGesture`/`openURL` in `ViewRowRenderers.swift`/`ViewGridRenderers.swift`;
+  Lettura never opened a note from a view row either. Costs a new optional input threaded through
+  the renderers rather than reusing existing behavior.
+- **R-08 (fail to plain fenced text on a malformed query) is resolved in the editor's favor over
+  ADR-0009 §D1's existing rule** ("a block that does not parse renders as an error naming the
+  line, never as an empty result") — the error reason text is a recorded, deliberate cost in the
+  editor surface only; the error card is kept unchanged on the transclusion, export and Viste-pane
+  surfaces.
+- **A closed-fence precondition gates attachment creation** — `CodeFence.regions(in:)` runs an
+  unclosed fence to end-of-text by design; without this guard, typing an opening
+  ` ```pergamenum-view ` fence would take the rest of the note out of the layout mid-keystroke.
+- **`TranscludedNoteView` and `NoteExporter` are untouched** — both already render a
+  `pergamenum-view` fence correctly via `MarkdownBlocksView` today; this chain adds a second,
+  independent live rendering path for the main editor only.
+- **Open risk, not yet resolved by this ADR alone:** whether SwiftUI drag-and-drop
+  (`@State`/`.task`/`.draggable`/`.dropDestination`) behaves correctly inside an
+  `NSTextAttachmentViewProvider`-hosted `NSHostingView` is unproven — ADR-0029 §D16 probe 2 only
+  answered this for a plain `NSView`. A tracer-bullet task in the plan gates this before the board
+  renderer's drag interaction is built out, with a named fallback (a per-card context menu writing
+  through the same `ViewQuerySource.move` closure) if the probe is negative.
+
+Detail: `docs/adr/0033-views-render-live-in-the-editor.md`.
