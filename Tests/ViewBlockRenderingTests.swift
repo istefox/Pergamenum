@@ -66,6 +66,13 @@ private func laidOutOffsets(text: String, viewBlockLines: Set<Int>) -> Set<Int> 
     return laidOutOffsets(of: delegate, text: text)
 }
 
+/// The opening fence line's own `.viewBlock` marker - `"```pergamenum-view"`, eighteen
+/// characters, relative to its own paragraph's start (Task 5, shared by every suite below
+/// that needs a marker registered without caring about its exact fixture text).
+private func viewBlockOpeningFenceMarker() -> HiddenMarker {
+    HiddenMarker(range: NSRange(location: 0, length: ("```pergamenum-view" as NSString).length), kind: .viewBlock)
+}
+
 /// A closed `pergamenum-view` fence, one body line, then an ordinary paragraph:
 /// `"prima\n```pergamenum-view\nrender: table\n```\ndopo\n"`.
 private enum ViewBlockFixture {
@@ -198,5 +205,214 @@ private enum ViewBlockFixture {
         let range = (text as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
 
         #expect(delegate.viewBlockParagraph(at: range, storage: storage) == nil)
+    }
+}
+
+// MARK: - Attachment creation from a valid, closed fence (ADR §D7's positive case; Task 5)
+
+/// R-13's first named case, one assertion per renderer keyword since the pass must not read
+/// `render:` to decide layout (R-01, R-02, R-03). Driven through `substitutedParagraph` above
+/// - the same full `textContentStorage(_:textParagraphWith:)` dispatcher
+/// `Tests/TableRenderingTests.swift`'s own
+/// `aRegisteredTableMarkerSubstitutesTheAttachmentAndKeepsTheLengthIdentical` uses - rather
+/// than calling `viewBlockParagraph(at:storage:)` directly, so the assertion also covers
+/// Task 5's own wiring of the call site into that chain, not only the method's body.
+///
+/// Red against the current stub for two independent, both expected, reasons:
+/// `viewBlockParagraph(at:storage:)` returns `nil` unconditionally (Task 2's own stub,
+/// this file's own header comment) and is not yet called from the dispatcher at all -
+/// either gap alone already keeps every assertion below red until Task 5's coder closes both.
+@MainActor
+@Suite struct ViewBlockAttachmentSubstitution {
+    private func openingFenceOffset(in note: String) -> Int {
+        (note as NSString).range(of: "```pergamenum-view").location
+    }
+
+    /// Registers the marker and the host a real styling pass would have vended by now, then
+    /// asserts the three things R-13's first named case names: an attachment at offset 0, the
+    /// rest of the line collapsed, and the paragraph's own length unchanged
+    /// (`NSTextContentManager.h:120`).
+    private func assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(note: String) {
+        let offset = openingFenceOffset(in: note)
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [offset: [viewBlockOpeningFenceMarker()]], hidingMarkup: true)
+        delegate.apply(viewBlockHosts: [offset: NSView()])
+
+        let expectedLength = (note as NSString).paragraphRange(for: NSRange(location: offset, length: 0)).length
+        let paragraph = substitutedParagraph(delegate, note: note, at: offset)
+
+        #expect(paragraph != nil, "il fence valido non produce un paragrafo sostituito")
+        guard let paragraph else { return }
+        let attributed = paragraph.attributedString
+        #expect(attributed.length == expectedLength, "la lunghezza del paragrafo è cambiata")
+        #expect(
+            attributed.attribute(.attachment, at: 0, effectiveRange: nil) is ViewBlockAttachment,
+            "l'offset 0 non porta un ViewBlockAttachment"
+        )
+        if attributed.length > 1 {
+            let restFont = attributed.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
+            #expect(restFont == EditorDecorationDelegate.collapsedFont, "il resto della riga non è collassato")
+        }
+    }
+
+    @Test func aClosedTableFenceSubstitutesTheAttachment() {
+        assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(
+            note: "prima\n```pergamenum-view\nrender: table\n```\ndopo\n"
+        )
+    }
+
+    @Test func aClosedGalleryFenceSubstitutesTheAttachment() {
+        assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(
+            note: "prima\n```pergamenum-view\nrender: gallery\n```\ndopo\n"
+        )
+    }
+
+    @Test func aClosedCalendarFenceSubstitutesTheAttachment() {
+        assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(
+            note: "prima\n```pergamenum-view\nrender: calendar\n```\ndopo\n"
+        )
+    }
+
+    /// `render: board` needs its own required `group:` key (§D1: "a board without `group` is
+    /// a parse error, not a board with one column") - the other three keywords parse on
+    /// `render:` alone, so only this fixture carries a second body line.
+    @Test func aClosedBoardFenceSubstitutesTheAttachment() {
+        assertSubstitutesAnAttachmentAtOffsetZeroAndKeepsTheParagraphLength(
+            note: "prima\n```pergamenum-view\nrender: board\ngroup: tag(\"status-*\")\n```\ndopo\n"
+        )
+    }
+}
+
+// MARK: - Fallback to raw text on an unparseable fence body (ADR §D7, R-08; Task 5)
+
+@MainActor
+@Suite struct ViewBlockParseFallback {
+    /// R-13's second named case: a fence that is structurally closed and would be recognised
+    /// as a `.viewBlockRun` span (Task 1 does not read `render:` at all) but whose body fails
+    /// `ViewBlock.parse` - here, `render: board` with no `group:`. No marker, no attachment, no
+    /// hidden lines; the body stays in the layout and the raw fenced text is what is on screen
+    /// (ADR §D7 - R-08 and ADR-0009 §D1's error card genuinely conflict, and this is the
+    /// resolution).
+    ///
+    /// Already green with the stub, for the same reason
+    /// `withHidingMarkupOffViewBlockParagraphReturnsNil` above is: `viewBlockParagraph` returns
+    /// `nil` unconditionally regardless of what it is asked about. Must stay green once
+    /// Task 5's coder implements the real body - the assertion is about the *outcome*, not
+    /// about which of the two currently-stubbed reasons happens to produce it today.
+    @Test func aFenceWhoseBodyFailsToParseProducesNoAttachment() {
+        let note = "prima\n```pergamenum-view\nrender: board\n```\ndopo\n"
+        let offset = (note as NSString).range(of: "```pergamenum-view").location
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [offset: [viewBlockOpeningFenceMarker()]], hidingMarkup: true)
+        delegate.apply(viewBlockHosts: [offset: NSView()])
+
+        #expect(substitutedParagraph(delegate, note: note, at: offset) == nil)
+        // Confirms this really is a D7 case and not an accidental one: `render: board` alone
+        // does fail to parse.
+        #expect(throws: ViewBlockError.self) { try ViewBlock.parse("render: board") }
+    }
+}
+
+// MARK: - An unclosed fence produces nothing at all (ADR §D6, C5; Task 5)
+
+@MainActor
+@Suite struct ViewBlockUnclosedFencePrecondition {
+    /// C5: `CodeFence.regions(in:)` runs an unclosed fence to the end of the text on purpose
+    /// (ADR §D6) - without this precondition, typing the opening backticks would take the rest
+    /// of the note out of the layout mid-keystroke. `viewBlockRun(in:atParagraphStart:)` is the
+    /// delegate's own re-read of that precondition, `tableRun`'s twin, and must refuse an
+    /// unclosed fence exactly as Task 1's `MarkdownStyler.viewBlockRuns` already does at the
+    /// span layer (`Tests/ViewBlockSpanTests.swift`) - the same precondition asserted one layer
+    /// down, at the delegate's own re-validation.
+    ///
+    /// Already green with the stub (`viewBlockRun` returns `nil` unconditionally) and must stay
+    /// green once Task 5's coder implements the real body.
+    @Test func anUnclosedFenceYieldsNoRecognisedViewBlockRun() {
+        let note = "prima\n```pergamenum-view\nrender: table"
+        let offset = (note as NSString).range(of: "```pergamenum-view").location
+
+        #expect(EditorDecorationDelegate.viewBlockRun(in: note as NSString, atParagraphStart: offset) == nil)
+    }
+
+    /// The same precondition reaching the substitution branch: an unclosed fence's opening
+    /// line, even with a marker mistakenly already registered for it, substitutes nothing -
+    /// source and layout both left alone (ADR §D6: "left entirely alone").
+    @Test func anUnclosedFencesOpeningLineSubstitutesNothingEvenWithAMarkerRegistered() {
+        let note = "prima\n```pergamenum-view\nrender: table"
+        let offset = (note as NSString).range(of: "```pergamenum-view").location
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [offset: [viewBlockOpeningFenceMarker()]], hidingMarkup: true)
+        delegate.apply(viewBlockHosts: [offset: NSView()])
+
+        #expect(substitutedParagraph(delegate, note: note, at: offset) == nil)
+    }
+}
+
+// MARK: - `hidesMarkup` false registers nothing and clears what a previous pass left (ADR §D12; Task 5)
+
+@MainActor
+@Suite struct ViewBlockHidesMarkupGuard {
+    /// D12, the `clearTables()` trap extended to the sixth input: with `hidesMarkup` off,
+    /// `applyViewBlocks` must register no new `.viewBlock` marker.
+    ///
+    /// Green with the stub already (`applyViewBlocks` does nothing at all, so `markers` is
+    /// untouched) and must stay green once Task 5's coder implements the real guard - the same
+    /// shape `ViewBlockLineIsolation`'s own tests above already establish for the delegate's
+    /// isolation, applied here to the Coordinator's own guard.
+    @Test func withHidesMarkupFalseThePassAddsNoViewBlockMarker() {
+        let note = "prima\n```pergamenum-view\nrender: table\n```\ndopo\n"
+        let view = NoteTextView(
+            text: .constant(note), theme: .emergency, noteTitles: [], tagSuggestions: [],
+            hidesMarkup: false, onFollowLink: { _ in }
+        )
+        let coordinator = view.makeCoordinator()
+        let textView = CompletingTextView(usingTextLayoutManager: true)
+        textView.string = note
+        var markers: [Int: [HiddenMarker]] = [:]
+
+        coordinator.applyViewBlocks(
+            to: textView, runs: [NSRange(location: 0, length: (note as NSString).length)], markers: &markers
+        )
+
+        #expect(markers.isEmpty, "con hidesMarkup=false è stato registrato un marcatore")
+    }
+
+    /// D12's other half: clearing what a previous, `hidesMarkup`-on pass left registered on
+    /// `EditorDecorationDelegate` - the enumeration refusal has to be reached too, or the body
+    /// lines would stay out of the layout with the backticks visible above them.
+    ///
+    /// **Cannot be meaningfully red or green yet, for a reason outside this task's own scope,
+    /// recorded rather than hidden.** `EditorDecorationDelegate.apply(viewBlockLines:)` is
+    /// still Task 2's own stub (`EditorDecorationDelegate.swift`'s `// Task 2, coder.`,
+    /// verified against the working tree at dispatch time - `apply(viewBlockHosts:)` likewise)
+    /// - it stores nothing at all, so there is no registered state for anything to clear, and
+    /// this assertion is trivially true regardless of whether `applyViewBlocks`/
+    /// `clearViewBlocks` do their job. Written against the target shape rather than skipped:
+    /// once Task 2's real storage and the `shouldEnumerate` widening land, this starts
+    /// exercising exactly what D12 requires, with no change needed here.
+    @Test func withHidesMarkupFalseThePassClearsLinesAPreviousPassHid() {
+        let note = "prima\n```pergamenum-view\nrender: table\n```\ndopo\n"
+        let hiddenLines: Set<Int> = [
+            (note as NSString).range(of: "render: table").location,
+            (note as NSString).range(of: "```\ndopo").location,
+        ]
+        let view = NoteTextView(
+            text: .constant(note), theme: .emergency, noteTitles: [], tagSuggestions: [],
+            hidesMarkup: false, onFollowLink: { _ in }
+        )
+        let coordinator = view.makeCoordinator()
+        coordinator.decorations.apply(viewBlockLines: hiddenLines)
+        let textView = CompletingTextView(usingTextLayoutManager: true)
+        textView.string = note
+        var markers: [Int: [HiddenMarker]] = [:]
+
+        coordinator.applyViewBlocks(
+            to: textView, runs: [NSRange(location: 0, length: (note as NSString).length)], markers: &markers
+        )
+
+        let laidOut = laidOutOffsets(of: coordinator.decorations, text: note)
+        for offset in hiddenLines {
+            #expect(laidOut.contains(offset), "con hidesMarkup=false la riga a \(offset) è ancora nascosta")
+        }
     }
 }

@@ -13,3 +13,5 @@
 - [Per-vault store test seeding](pergamenum-per-vault-store-test-seeding.md) — seed a controller's ADR-0017-style JSON store directly via `session.state.directory`, bypassing the stubbed refresh(), to red-test something like delete meaningfully.
 - [#expect + allSatisfy(\.keyPath)](swift-testing-allsatisfy-keypath.md) — fails to compile ("call can throw"); hoist to a `let` first or use a closure literal instead.
 - [Dispatch brief can be stale cross-chain](dispatch-brief-stale-cross-chain.md) — a named `step5-brief-N.md` can be leftover from an unrelated chain reusing batch number N; cross-check against the inline task text and the manifest's `artifacts.plan`.
+- [Dispatch brief missing in sibling worktree](dispatch-brief-missing-sibling-worktree.md) — ADR-0068 worktree isolation can put the brief in a different project_root than the tester's own cwd; never read across, reconstruct from the plan/ADR/SPEC already in-tree.
+- [PG-099 cross-task stub gap](pg-099-cross-task-stub-gap.md) — a dispatch claimed an earlier task's coder work had landed; the file was still a stub. Verify against source, not against the briefing.
