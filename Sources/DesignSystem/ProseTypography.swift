@@ -65,6 +65,16 @@ enum ProseTypography {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
+    /// The checkbox glyph's face (`☐`/`☑`/`⇄`/`☒`, `TaskGlyphRendering.glyph(for:)`): the prose
+    /// face, 7pt larger. The glyph otherwise inherits `font.prose` at its own size, which reads as
+    /// tiny — this is the one character `EditorDecorationDelegate+CheckboxRendering.swift` sizes
+    /// on its own rather than leaving to the surrounding run.
+    static func checkbox(_ theme: Theme) -> NSFont {
+        let base = prose(theme)
+        let size = base.pointSize + 7
+        return NSFont(descriptor: base.fontDescriptor, size: size) ?? base
+    }
+
     /// A paragraph style carrying `font.prose`'s line-height multiple (R-07), composed onto
     /// `basedOn` rather than replacing it — list markers, transclusion `reservedHeight` and card
     /// alignment all build their own style first, and this must not drop their indentation,

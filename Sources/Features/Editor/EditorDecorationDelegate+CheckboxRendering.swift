@@ -15,10 +15,17 @@ extension EditorDecorationDelegate {
     /// (`NSTextContentManager.h:120`).
     ///
     /// Nil - leaving the raw source on screen exactly as today - whenever there is nothing to
-    /// draw: no checkbox marker at this offset, the paragraph revealed because the caret is in
-    /// it, or the marker gone stale against the real characters since the last styling pass.
+    /// draw: no checkbox marker at this offset, or the marker gone stale against the real
+    /// characters since the last styling pass.
+    ///
+    /// **Deliberately does not honour `revealedParagraphs`** - unlike `listParagraph`'s and
+    /// `quoteParagraph`'s own markers, which stay revealed on purpose so their raw syntax can be
+    /// hand-edited (ADR-0028). A task's checkbox has its own click-to-toggle
+    /// (`NoteTextView+CheckboxClick.swift`, PG-101-adjacent chain), so there is no editing
+    /// workflow left that needs the caret sitting in the paragraph to expose `- [ ]` - and typing
+    /// the task's own text keeps the caret in that same paragraph the whole time, which used to
+    /// mean the glyph vanished back into raw markdown on every keystroke.
     func checkboxParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
-        guard !revealedParagraphs.contains(range.location) else { return nil }
         let markers = hiddenMarkers[range.location] ?? []
         guard let marker = markers.first(where: { $0.kind == .checkbox }),
               NSMaxRange(marker.range) <= range.length
@@ -33,10 +40,15 @@ extension EditorDecorationDelegate {
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         // The state character sits at offset 3 of the five-character marker (`- [x]`):
         // dash, space, opening bracket, state, closing bracket.
-        copy.replaceCharacters(
-            in: NSRange(location: marker.range.location + 3, length: 1),
-            with: String(TaskGlyphRendering.glyph(for: state))
-        )
+        let stateRange = NSRange(location: marker.range.location + 3, length: 1)
+        copy.replaceCharacters(in: stateRange, with: String(TaskGlyphRendering.glyph(for: state)))
+        // The glyph is the one character this branch sizes on its own (ADR-0030 §D2 extended):
+        // left untouched, it draws at whatever size the surrounding prose run has, which reads
+        // as tiny for `☐`/`☑`. Nil - an offscreen harness that never ran `applyStyling` - leaves
+        // it exactly as before this attribute existed.
+        if let checkboxFont {
+            copy.addAttribute(.font, value: checkboxFont, range: stateRange)
+        }
         copy.addAttribute(
             .font, value: Self.collapsedFont,
             range: NSRange(location: marker.range.location, length: 3)
@@ -49,8 +61,14 @@ extension EditorDecorationDelegate {
         // file would have collapsed them - `listParagraph`'s own reasoning, restated here:
         // this branch returns early, and a bold task line has to render both its checkbox
         // and its hidden `**` in the one paragraph the hook is allowed to hand back.
-        for other in Self.survivors(among: markers.filter { $0.kind != .checkbox }, of: range, in: text) {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+        //
+        // Gated on `revealedParagraphs`, unlike the checkbox glyph above: a bold task's `**`
+        // still reveals on caret exactly as before this change, since editing bold text is a
+        // workflow that still needs it. Only the checkbox itself is exempt.
+        if !revealedParagraphs.contains(range.location) {
+            for other in Self.survivors(among: markers.filter { $0.kind != .checkbox }, of: range, in: text) {
+                copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+            }
         }
         return NSTextParagraph(attributedString: copy)
     }

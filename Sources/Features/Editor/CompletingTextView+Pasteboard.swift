@@ -21,6 +21,10 @@ extension CompletingTextView {
         // because `.began` claims a 22-point corner square and declines everywhere else.
         if onEmbedResize?(.began(point)) == true { return }
         if onClickInMargin?(point) == true { return }
+        // Asked last, and still before `super`: a click that lands on a checkbox glyph must
+        // never reach the default caret placement, or `NoteTextView+Reveal`'s reveal-on-caret
+        // would expose the raw `- [ ]` the instant the caret entered that paragraph.
+        if onToggleCheckbox?(point) == true { return }
         super.mouseDown(with: event)
     }
 

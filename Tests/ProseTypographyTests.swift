@@ -86,6 +86,17 @@ import Testing
         #expect(ProseTypography.prose(theme).fontName == theme.nsFont(.prose).fontName)
     }
 
+    /// The checkbox glyph's face (`EditorDecorationDelegate+CheckboxRendering.swift`'s only
+    /// sized character): same family as prose, 7pt larger - too small at the prose run's own
+    /// size is exactly the defect this token exists to fix.
+    @Test func checkboxIsProseFamilySevenPointsLarger() throws {
+        let theme = try Self.theme()
+        let prose = ProseTypography.prose(theme)
+        let checkbox = ProseTypography.checkbox(theme)
+        #expect(checkbox.fontName == prose.fontName)
+        #expect(checkbox.pointSize == prose.pointSize + 7)
+    }
+
     @Test func proseBoldIsTheSameFamilysBoldFaceAndNeverMonospaced() throws {
         let theme = try Self.theme(proseFamily: Self.familyWithBoldAndItalic)
         let bold = ProseTypography.proseBold(theme)
