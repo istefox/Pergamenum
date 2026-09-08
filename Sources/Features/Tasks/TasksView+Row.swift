@@ -47,10 +47,10 @@ extension TasksView {
                     // Both shown together when both exist (R-06): a task past its deadline but
                     // rescheduled ahead of it used to lose one of the two markers silently.
                     if let due = task.due {
-                        Text("!\(due)").themedText(.mono, color: .taskOverdue)
+                        Text("!\(due.description)").themedText(.mono, color: .taskOverdue)
                     }
                     if let scheduled = task.scheduled {
-                        Text(">\(scheduled)").themedText(.mono, color: .taskScheduled)
+                        Text(">\(scheduled.description)").themedText(.mono, color: .taskScheduled)
                     }
                 }
             }
