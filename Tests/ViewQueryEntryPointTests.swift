@@ -235,3 +235,160 @@ struct ViewQueryEntryPointTests {
         }
     }
 }
+
+// MARK: - Task 9: insert-view at the caret (R-04)
+// Expectations come from the Task 9 brief. Production declarations and the five
+// compile-forced edits belong to the coder; no test-side contract shims are supplied.
+
+@MainActor
+private final class InsertionEditor {
+    var text: String
+    var appliedCount = 0
+    var requests: [ViewQueryEditRequest] = []
+    var pending: Navigation.Insertion?
+    var host: NSHostingView<NoteTextView>?
+
+    init(text: String) { self.text = text }
+
+    func view() -> NoteTextView {
+        var editor = NoteTextView(
+            text: Binding(get: { self.text }, set: { self.text = $0 }),
+            theme: .emergency, noteTitles: [], tagSuggestions: [],
+            onFollowLink: { _ in }
+        )
+        editor.insertion = pending
+        editor.onInsertionApplied = {
+            self.appliedCount += 1
+            self.pending = nil
+        }
+        editor.onEditQuery = { self.requests.append($0) }
+        return editor
+    }
+
+    func mount() throws -> CompletingTextView {
+        let hosting = NSHostingView(rootView: view())
+        host = hosting
+        hosting.frame = NSRect(x: 0, y: 0, width: 600, height: 800)
+        hosting.layoutSubtreeIfNeeded()
+        return try #require(Self.findEditor(in: hosting), "The real editor must be mounted")
+    }
+
+    func update() throws {
+        let hosting = try #require(host)
+        hosting.rootView = view()
+        hosting.needsLayout = true
+        hosting.layoutSubtreeIfNeeded()
+    }
+
+    // Break the hosting view's closures back to this fixture at the end of each test.
+    func unmount() { host = nil }
+
+    private static func findEditor(in view: NSView) -> CompletingTextView? {
+        if let editor = view as? CompletingTextView { return editor }
+        return view.subviews.lazy.compactMap { findEditor(in: $0) }.first
+    }
+}
+
+@MainActor
+@Suite(.serialized)
+struct ViewQueryInsertionTests {
+    @Test func legacyInsertionDefaultsToNoBuilderAndIsConsumedOnce() throws {
+        let navigation = Navigation()
+        #expect(navigation.consumeInsertion() == nil)
+        navigation.insert("[[]]", cursorBack: 2)
+        let insertion: Navigation.Insertion = try #require(navigation.consumeInsertion())
+        #expect(insertion.text == "[[]]")
+        #expect(insertion.cursorBack == 2)
+        #expect(!insertion.opensQueryBuilder, "R-04: existing callers retain their meaning")
+        #expect(navigation.consumeInsertion() == nil)
+    }
+
+    @Test func builderFlagIsConsumedAndDoesNotLeakIntoTheNextLegacyInsertion() throws {
+        let navigation = Navigation()
+        let stub = ViewQueryText.stub(atLineStart: true)
+        navigation.insert(stub.text, cursorBack: stub.cursorBack, opensQueryBuilder: true)
+        let insertion: Navigation.Insertion = try #require(navigation.consumeInsertion())
+        #expect(insertion.opensQueryBuilder)
+        #expect(insertion.text == stub.text)
+        #expect(insertion.cursorBack == stub.cursorBack)
+        #expect(navigation.consumeInsertion() == nil)
+
+        navigation.insert("ordinary")
+        let next: Navigation.Insertion = try #require(navigation.consumeInsertion())
+        #expect(!next.opensQueryBuilder)
+        #expect(next.cursorBack == 0)
+        #expect(next.text == "ordinary")
+    }
+
+    // Prefix/suffix pairs specify the caret without conflating Swift character
+    // counts with NSTextView's UTF-16 offsets. Empty and EOF are boundary cases.
+    @Test(arguments: [
+        ("", "", true),
+        ("", "After\n", true),
+        ("Before 🧭 e\u{301}\n", "After\n", true),
+        ("Before 🧭 e\u{301} ", "after\n", false),
+        ("End 🧭", "", false),
+        ("- Item 🧭 ", "continues\n", false),
+        ("| Name | Value |\n| --- | --- |\n| Cell 🧭 ", "| Other |\n", false),
+    ])
+    func insertedStubIsRecognizedAtTheArithmeticOpening(
+        prefix: String, suffix: String, atLineStart: Bool
+    ) throws {
+        let fixture = InsertionEditor(text: prefix + suffix)
+        defer { fixture.unmount() }
+        let textView = try fixture.mount()
+        let insertionStart = (prefix as NSString).length
+        textView.setSelectedRange(NSRange(location: insertionStart, length: 0))
+        let stub = ViewQueryText.stub(atLineStart: atLineStart)
+        let openingOffset = insertionStart + stub.openingOffset
+        #expect(stub.text.hasPrefix("\n") == !atLineStart)
+        #expect(openingOffset == insertionStart + (atLineStart ? 0 : 1))
+
+        let navigation = Navigation()
+        navigation.insert(stub.text, cursorBack: stub.cursorBack, opensQueryBuilder: true)
+        fixture.pending = try #require(navigation.consumeInsertion())
+        #expect(fixture.requests.isEmpty)
+        try fixture.update()
+
+        #expect(textView.string == prefix + stub.text + suffix, "R-04: insert at the actual caret")
+        #expect(fixture.text == textView.string)
+        let run = try #require(EditorDecorationDelegate.viewBlockRun(
+            in: textView.string as NSString, atParagraphStart: openingOffset
+        ), "R-04: the arithmetic offset must locate a closed fence in the real NSTextView")
+        let block = try #require(run.block, "R-04: the inserted fence must parse")
+        #expect(block.render == .table)
+        #expect(run.range.location == openingOffset)
+        #expect((textView.string as NSString).substring(with: run.range).hasSuffix("\n```"))
+        #expect(textView.selectedRange().location
+            == insertionStart + (stub.text as NSString).length - stub.cursorBack)
+
+        try #require(fixture.requests.count == 1, "R-04: the insertion itself opens the builder once")
+        #expect(try ViewBlock.parse(fixture.requests[0].source).render == .table)
+        #expect(fixture.appliedCount == 1)
+        #expect(fixture.pending == nil)
+        let insertedText = textView.string
+        // Real second representable update after onInsertionApplied cleared the request.
+        try fixture.update()
+        #expect(fixture.requests.count == 1)
+        #expect(fixture.appliedCount == 1)
+        #expect(textView.string == insertedText)
+    }
+
+    @Test func aLegacyFenceInsertionDoesNotOpenTheBuilder() throws {
+        let fixture = InsertionEditor(text: "Before\nAfter\n")
+        defer { fixture.unmount() }
+        let textView = try fixture.mount()
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        let navigation = Navigation()
+        let stub = ViewQueryText.stub(atLineStart: true)
+        navigation.insert(stub.text, cursorBack: stub.cursorBack)
+        fixture.pending = try #require(navigation.consumeInsertion())
+        try fixture.update()
+        #expect(textView.string == "Before\n" + stub.text + "After\n")
+        #expect(fixture.requests.isEmpty, "R-04 boundary: a fence alone does not request a builder")
+        #expect(fixture.appliedCount == 1)
+        try fixture.update()
+        #expect(fixture.requests.isEmpty)
+        #expect(fixture.appliedCount == 1)
+    }
+}
