@@ -6,16 +6,17 @@ import SwiftUI
 /// Each section is its own type reading and writing `ViewQueryDraft` directly, never a
 /// computed property on the sheet (`~/.claude/rules/swift.md`'s one-principal-type rule) —
 /// module-internal rather than `private`, since `ViewQueryBuilderSheet.swift` constructs
-/// them from a sibling file. This task's own scope stops at the shell: every section shows
-/// the draft's current rows with a way to remove one, over the app's design tokens — the
-/// row-editing controls and the five pickers (folder, tag, note title, field, date bound)
-/// are Task 6's (ADR §D11).
+/// them from a sibling file. Every section shows the draft's current rows with a way to
+/// remove one, over the app's design tokens. Ambito and Filtro (R-05/R-06) additionally gain
+/// an "add a row" composer wired to `ViewQueryTermRow.swift`'s pickers (ADR §D11) — Ordina,
+/// Raggruppa, Colonne and Limite keep Task 5's shell, out of this task's R-05/R-06 scope.
 
 // MARK: - Ambito (`from`)
 
 struct ViewQueryScopeSection: View {
     @Environment(\.theme) private var theme
     @Bindable var draft: ViewQueryDraft
+    @State private var newGlob = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
@@ -27,8 +28,23 @@ struct ViewQueryScopeSection: View {
                     row(folder) { draft.scope.remove(at: index) }
                 }
             }
+            // R-05: each row an Ambito row adds is exactly a `path` term
+            // (`ViewQueryTermRow.Value(kind: .path, …).term`), so the writer's own
+            // `or`-join (`ViewQueryText.body(of:)`) needs nothing new here.
+            HStack {
+                FolderPickerMenu(glob: $newGlob)
+                Button("Aggiungi", action: addFolder)
+                    .disabled(newGlob.isEmpty)
+            }
+            .accessibilityIdentifier("view-query-scope-add")
         }
         .accessibilityIdentifier("view-query-scope")
+    }
+
+    private func addFolder() {
+        guard !newGlob.isEmpty else { return }
+        draft.scope.append(newGlob)
+        newGlob = ""
     }
 
     private func row(_ text: String, remove: @escaping () -> Void) -> some View {
@@ -45,6 +61,7 @@ struct ViewQueryScopeSection: View {
 struct ViewQueryFilterSection: View {
     @Environment(\.theme) private var theme
     @Bindable var draft: ViewQueryDraft
+    @State private var newTerm = ViewQueryTermRow.Value(kind: .path)
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
@@ -59,19 +76,37 @@ struct ViewQueryFilterSection: View {
                 )
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("view-query-where-raw")
-            } else if draft.terms.isEmpty {
-                Text("nessun filtro").themedText(.body, color: .textSecondary)
             } else {
-                ForEach(Array(draft.terms.enumerated()), id: \.offset) { index, term in
-                    HStack {
-                        Text(ViewQueryText.text(of: term)).themedText(.mono, color: .textSecondary)
-                        Spacer()
-                        removeButton { draft.terms.remove(at: index) }
+                if draft.terms.isEmpty {
+                    Text("nessun filtro").themedText(.body, color: .textSecondary)
+                } else {
+                    ForEach(Array(draft.terms.enumerated()), id: \.offset) { index, term in
+                        HStack {
+                            Text(ViewQueryText.text(of: term)).themedText(.mono, color: .textSecondary)
+                            Spacer()
+                            removeButton { draft.terms.remove(at: index) }
+                        }
                     }
                 }
+                // R-06: the eight-kind composer (`ViewQueryTermRow.swift`) — a row is
+                // appended only once its own `.term` is non-nil (ADR §D7), the same
+                // "disabled until valid" convention `ViewQueryBuilderSheet`'s "Fatto"
+                // already uses, rather than ever writing an incomplete term into the draft.
+                HStack(alignment: .top) {
+                    ViewQueryTermRowView(value: $newTerm)
+                    Button("Aggiungi", action: addTerm)
+                        .disabled(newTerm.term == nil)
+                }
+                .accessibilityIdentifier("view-query-term-add")
             }
         }
         .accessibilityIdentifier("view-query-filter")
+    }
+
+    private func addTerm() {
+        guard let term = newTerm.term else { return }
+        draft.terms.append(term)
+        newTerm = ViewQueryTermRow.Value(kind: newTerm.kind)
     }
 }
 
