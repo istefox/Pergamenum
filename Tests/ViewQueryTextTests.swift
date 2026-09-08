@@ -356,7 +356,7 @@ private struct MatchCountCorpus: ViewCorpus {
 private func matchCountCorpus() -> MatchCountCorpus {
     MatchCountCorpus(records: (0..<10).map { index in
         var frontmatter = Frontmatter.empty
-        frontmatter.tags = ["note-\(index)", index < 4 ? "status-open" : "status-closed"]
+        frontmatter.tags = ["area-note-\(index)", index < 4 ? "status-open" : "status-closed"]
             .compactMap(Tag.init)
         return NoteRecord(
             relativePath: "Clienti/Note \(index).md",
@@ -411,7 +411,7 @@ func changedFilterChangesMatchCountKey() throws {
 // These tests deliberately do not supply a test-local implementation of that behavior.
 
 @Test("R-11: the count is the evaluator total, including zero matches",
-      arguments: [("note-*", 10), ("status-open", 4), ("note-0", 1), ("missing-*", 0)])
+      arguments: [("area-note-*", 10), ("status-open", 4), ("area-note-0", 1), ("missing-*", 0)])
 @MainActor
 func matchCountUsesEvaluatorTotal(tag: String, expected: Int) throws {
     let corpus = matchCountCorpus()
