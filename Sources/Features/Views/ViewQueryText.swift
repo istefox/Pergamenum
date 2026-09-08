@@ -127,7 +127,13 @@ enum ViewQueryText {
     /// Whether a term carries an argument yet — an empty-string row contributes nothing
     /// to `where` (ADR-0034 §D7) rather than writing `tag("")`, which would parse into a
     /// glob matching nothing and look like a deliberate filter.
-    private static func isComplete(_ term: ViewFilter) -> Bool {
+    ///
+    /// Not `private`: `ViewQueryBuilderSheet.validation(of:)` reuses this exact rule to
+    /// reject a draft that still holds an incomplete row even when the written body — the
+    /// row silently omitted — happens to parse (ADR-0034 §D7's own named exception). One
+    /// definition of "does this row have an argument", read by the writer and the validator
+    /// alike, rather than two that could drift.
+    static func isComplete(_ term: ViewFilter) -> Bool {
         switch term {
         case .path(let value), .tag(let value), .linksTo(let value), .linkedFrom(let value), .text(let value):
             !value.isEmpty
