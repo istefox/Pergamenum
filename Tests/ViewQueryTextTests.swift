@@ -219,3 +219,126 @@ func stubsAreClosedParseableViewFences(atLineStart: Bool) throws {
     #expect(run != nil)
     #expect(run?.block?.render == .table)
 }
+
+// MARK: - Task 6: R-05 / R-06 row-to-term contract
+
+// Proposed production API for the coder, since Task 6's row model is not declared yet:
+// ViewQueryTermRow.Value(kind:argument:field:comparison:) exposes a pure optional term.
+// Kind is CaseIterable; comparisonFields and hasFields are the actual picker choices.
+// No test-local row implementation: these assertions must exercise production conversion.
+
+@Test("R-06: the row offers exactly the eight term kinds")
+func termRowOffersExactlyEightKinds() {
+    let expected: [ViewQueryTermRow.Kind] = [
+        .path, .tag, .linksTo, .linkedFrom, .task, .has, .text, .comparison,
+    ]
+    #expect(ViewQueryTermRow.Kind.allCases.count == 8)
+    #expect(expected.allSatisfy { ViewQueryTermRow.Kind.allCases.contains($0) })
+}
+
+@Test("R-06: each row kind converts its own argument")
+func eachTermRowKindConvertsItsArgument() {
+    #expect(ViewQueryTermRow.Value(kind: .path, argument: "01 */Clienti").term
+        == .path("01 */Clienti"))
+    #expect(ViewQueryTermRow.Value(kind: .tag, argument: "status-*").term
+        == .tag("status-*"))
+    #expect(ViewQueryTermRow.Value(kind: .linksTo, argument: "Nota destinazione").term
+        == .linksTo("Nota destinazione"))
+    #expect(ViewQueryTermRow.Value(kind: .linkedFrom, argument: "Nota origine").term
+        == .linkedFrom("Nota origine"))
+    #expect(ViewQueryTermRow.Value(kind: .task, argument: "open").term == .task(.open))
+    #expect(ViewQueryTermRow.Value(kind: .has, argument: "tasks.open").term == .has(.tasksOpen))
+    #expect(ViewQueryTermRow.Value(kind: .text, argument: "frequenza propria").term
+        == .text("frequenza propria"))
+    #expect(ViewQueryTermRow.Value(
+        kind: .comparison, argument: "today-7", field: .modified, comparison: .atLeast
+    ).term == .comparison(.modified, .atLeast, .daysBeforeToday(7)))
+}
+
+@Test("R-06: task rows preserve the done choice")
+func doneTaskRowConvertsToDone() {
+    #expect(ViewQueryTermRow.Value(kind: .task, argument: "done").term == .task(.done))
+}
+
+@Test("R-06 / C7: comparison choices are only date and modified")
+func comparisonRowOffersOnlyDateFields() {
+    let fields = ViewQueryTermRow.comparisonFields
+    #expect(fields.count == 2)
+    #expect(fields.contains(.date))
+    #expect(fields.contains(.modified))
+}
+
+@Test("R-06 / C7: conversion refuses every non-date field", arguments: ViewField.allCases)
+func comparisonRowRefusesNonDateFields(field: ViewField) {
+    let row = ViewQueryTermRow.Value(
+        kind: .comparison, argument: "today", field: field, comparison: .atLeast
+    )
+    if field == .date || field == .modified {
+        #expect(row.term == .comparison(field, .atLeast, .today))
+    } else {
+        #expect(row.term == nil)
+    }
+}
+
+@Test("R-06: has choices contain all 18 fields and nothing else")
+func hasRowOffersEveryFieldExactlyOnce() {
+    let fields = ViewQueryTermRow.hasFields
+    #expect(fields.count == 18)
+    #expect(ViewField.allCases.count == 18)
+    for field in ViewField.allCases {
+        #expect(fields.filter { $0 == field }.count == 1)
+    }
+}
+
+@Test("R-06: has converts every field", arguments: ViewField.allCases)
+func hasRowConvertsEveryField(field: ViewField) {
+    #expect(ViewQueryTermRow.Value(kind: .has, argument: field.rawValue).term == .has(field))
+}
+
+@Test("R-06 / D7: every kind omits an empty argument", arguments: ViewQueryTermRow.Kind.allCases)
+func emptyTermRowConvertsToNothing(kind: ViewQueryTermRow.Kind) throws {
+    let row = ViewQueryTermRow.Value(
+        kind: kind, argument: "", field: .modified, comparison: .atLeast
+    )
+    #expect(row.term == nil)
+    let body = ViewQueryText.body(of: draft(terms: [row.term].compactMap { $0 }))
+    #expect(lines(in: body, beginningWith: "where").isEmpty)
+    #expect(try ViewBlock.parse(body).filter == .all)
+}
+
+@Test("R-06 / C1: date rows preserve symbolic bounds including zero days")
+func comparisonRowsPreserveDateBounds() {
+    let bounds: [(String, ViewDateBound)] = [
+        ("today", .today),
+        ("today-0", .daysBeforeToday(0)),
+        ("today-7", .daysBeforeToday(7)),
+        ("week-start", .weekStart),
+    ]
+    for field in [ViewField.date, .modified] {
+        for (argument, bound) in bounds {
+            #expect(ViewQueryTermRow.Value(
+                kind: .comparison, argument: argument, field: field, comparison: .atLeast
+            ).term == .comparison(field, .atLeast, bound))
+        }
+    }
+}
+
+@Test("R-05: Ambito path row values reach the from section joined with or")
+func scopeRowGlobsAreJoinedWithOr() throws {
+    let globs = ["01 */Clienti", "Archivio/2026?", "équipe/*"]
+    let rows = globs.map { ViewQueryTermRow.Value(kind: .path, argument: $0) }
+    let scope = try rows.map { row -> String in
+        let term = try #require(row.term)
+        guard case let .path(glob) = term else {
+            Issue.record("An Ambito row must produce a path term")
+            return ""
+        }
+        return glob
+    }
+    #expect(scope == globs)
+    let body = ViewQueryText.body(of: draft(scope: scope))
+    #expect(lines(in: body, beginningWith: "from") == [
+        "from: path(\"01 */Clienti\") or path(\"Archivio/2026?\") or path(\"équipe/*\")",
+    ])
+    #expect(try ViewBlock.parse(body).scope == globs)
+}
