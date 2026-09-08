@@ -70,7 +70,7 @@ extension EditorDecorationDelegate {
         // `ViewBlockHostStore` and casts through; anything else draws an empty attachment
         // rather than refusing to substitute, which keeps the length arithmetic above the
         // one thing this branch is actually responsible for.
-        attachment.hostView = host as? NSHostingView<AnyView>
+        attachment.hostView = host as? ViewBlockHostView
         copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
         copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
         if restRange.length > 0 {

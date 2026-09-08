@@ -8,8 +8,8 @@ import Testing
 /// every styling pass, keyed by the fence's **ordinal**, not its paragraph offset - the
 /// deliberate divergence from `TableGridStore` (ADR-0029 §D6) that keeps `RenderedViewBlock`'s
 /// query from re-running per keystroke typed above the fence (ADR-0009 §D7). `ViewBlockAttachment`
-/// reserves a fixed height at the proposed line fragment's own width, independent of content
-/// (R-06, §D8).
+/// reserves a height at the proposed line fragment's own width, adaptive to the host's measured
+/// content and capped at `maximumHeight` (R-06, ADR-0035 amending §D8).
 ///
 /// `ViewBlockHostStore` (`Sources/Features/Editor/ViewBlockHostStore.swift`) and
 /// `ViewBlockAttachment` (`Sources/Features/Editor/ViewBlockAttachment.swift`) are **TESTER
@@ -52,6 +52,25 @@ private func anyTextLocation() -> any NSTextLocation {
         let second = store.host(for: 0, in: textView)
 
         #expect(first === second, "lo stesso ordinale deve restituire la stessa istanza di host tra due chiamate")
+    }
+
+    /// A height written on the first call's returned instance must still be readable through
+    /// the second call's returned instance - not just the same object identity, but the same
+    /// `ViewBlockHeightBox`, since that box is what makes a measurement survive across styling
+    /// passes (ADR-0035).
+    @Test func measuredHeightPersistsAcrossRepeatedLookupsOfTheSameOrdinal() {
+        let store = ViewBlockHostStore()
+        let textView = makeTextView()
+
+        let first = store.host(for: 0, in: textView)
+        first.measuredHeight.height = 123
+
+        let second = store.host(for: 0, in: textView)
+
+        #expect(
+            second.measuredHeight.height == 123,
+            "l'altezza misurata deve sopravvivere a un lookup ripetuto dello stesso ordinale"
+        )
     }
 
     /// **Red against the stub, and the assertion C6 says must never be relaxed.** Asking for
@@ -120,58 +139,178 @@ private func anyTextLocation() -> any NSTextLocation {
 }
 
 @MainActor
+private func makeHost(measuredHeight height: CGFloat?) -> ViewBlockHostView {
+    let host = ViewBlockHostView(rootView: AnyView(EmptyView()))
+    host.measuredHeight.height = height
+    return host
+}
+
+@MainActor
 @Suite struct ViewBlockAttachmentBoundsTests {
-    /// **Already true against the stub** (`ViewBlockAttachmentViewProvider.attachmentBounds`
-    /// is written for real, not stubbed - see `ViewBlockAttachment.swift`'s header). R-06,
-    /// ADR §D8: the attachment reserves `proposedLineFragment.width` × the constant
-    /// `ViewBlockAttachment.height`, independent of the hosted content - a forty-card board
-    /// and an empty result set occupy the exact same rectangle, so the note's layout below the
-    /// block never moves as the result set's size changes. Asserted at two different proposed
-    /// widths and with two different stub "result sets" standing in for the hosted content.
-    @Test func attachmentBoundsIsTheProposedWidthByAConstantHeightIndependentOfContent() throws {
+    /// A host with no measurement yet (`measuredHeight.height == nil`) reserves
+    /// `unmeasuredHeight` - the placeholder chosen to avoid a visible collapse once the real,
+    /// usually smaller, measurement arrives (ADR-0035).
+    @Test func unmeasuredHostReservesThePlaceholderHeight() throws {
         let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = makeHost(measuredHeight: nil)
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
 
-        let emptyResultSet = NSHostingView(rootView: AnyView(EmptyView()))
-        let largeResultSet = NSHostingView(rootView: AnyView(Color.red.frame(width: 5_000, height: 5_000)))
-
-        let narrowAttachment = ViewBlockAttachment()
-        narrowAttachment.hostView = emptyResultSet
-        let narrowProvider = try #require(
-            narrowAttachment.viewProvider(for: nil, location: location, textContainer: nil)
-        )
-
-        let wideAttachment = ViewBlockAttachment()
-        wideAttachment.hostView = largeResultSet
-        let wideProvider = try #require(
-            wideAttachment.viewProvider(for: nil, location: location, textContainer: nil)
-        )
-
-        let narrowLineFragment = CGRect(x: 0, y: 0, width: 300, height: 1)
-        let wideLineFragment = CGRect(x: 0, y: 0, width: 700, height: 1)
-
-        let narrowEmptyBounds = narrowProvider.attachmentBounds(
+        let bounds = provider.attachmentBounds(
             for: [:], location: location, textContainer: nil,
-            proposedLineFragment: narrowLineFragment, position: .zero
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
         )
-        #expect(narrowEmptyBounds.size == CGSize(width: 300, height: ViewBlockAttachment.height))
 
-        let narrowLargeBounds = wideProvider.attachmentBounds(
-            for: [:], location: location, textContainer: nil,
-            proposedLineFragment: narrowLineFragment, position: .zero
-        )
         #expect(
-            narrowLargeBounds.size == narrowEmptyBounds.size,
-            "un result set enorme non deve cambiare le dimensioni riservate rispetto a uno vuoto, a parità di larghezza proposta"
+            bounds.size.height == ViewBlockAttachment.unmeasuredHeight,
+            "un host senza misura deve riservare l'altezza placeholder"
+        )
+    }
+
+    /// A measurement below the cap is reserved as-is - the whole point of the adaptive height
+    /// (ADR-0035): a fence with little content no longer reserves the old fixed 320pt.
+    @Test func hostMeasuredBelowTheCapReservesItsOwnHeight() throws {
+        let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = makeHost(measuredHeight: 90)
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
+
+        let bounds = provider.attachmentBounds(
+            for: [:], location: location, textContainer: nil,
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
         )
 
-        let wideEmptyBounds = narrowProvider.attachmentBounds(
+        #expect(bounds.size.height == 90, "una misura sotto il tetto deve essere riservata così com'è")
+    }
+
+    /// A measurement above the cap clamps to `maximumHeight` - R-06's original guarantee, now a
+    /// ceiling rather than the only height: a forty-card board still scrolls internally past the
+    /// cap instead of pushing the rest of the note down.
+    @Test func hostMeasuredAboveTheCapClampsToTheMaximum() throws {
+        let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = makeHost(measuredHeight: 5_000)
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
+
+        let bounds = provider.attachmentBounds(
             for: [:], location: location, textContainer: nil,
-            proposedLineFragment: wideLineFragment, position: .zero
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
         )
-        #expect(wideEmptyBounds.size == CGSize(width: 700, height: ViewBlockAttachment.height))
+
         #expect(
-            wideEmptyBounds.size.height == narrowEmptyBounds.size.height,
-            "l'altezza resta la costante di ViewBlockAttachment qualunque sia la larghezza proposta"
+            bounds.size.height == ViewBlockAttachment.maximumHeight,
+            "una misura enorme deve restare limitata al tetto massimo"
+        )
+    }
+
+    /// A measurement below the floor does not collapse the block's paragraph to nothing.
+    @Test func hostMeasuredBelowTheFloorClampsToTheMinimum() throws {
+        let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = makeHost(measuredHeight: 2)
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
+
+        let bounds = provider.attachmentBounds(
+            for: [:], location: location, textContainer: nil,
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
+        )
+
+        #expect(
+            bounds.size.height == ViewBlockAttachment.minimumHeight,
+            "una misura sotto il pavimento non deve azzerare l'altezza riservata"
+        )
+    }
+
+    /// The width still comes from `proposedLineFragment.width` regardless of the measured
+    /// height - width and height are independent, only the height became adaptive.
+    @Test func widthStillComesFromTheProposedLineFragmentIndependentOfHeight() throws {
+        let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = makeHost(measuredHeight: 90)
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
+
+        let narrowBounds = provider.attachmentBounds(
+            for: [:], location: location, textContainer: nil,
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
+        )
+        #expect(narrowBounds.size == CGSize(width: 300, height: 90))
+
+        let wideBounds = provider.attachmentBounds(
+            for: [:], location: location, textContainer: nil,
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 700, height: 1), position: .zero
+        )
+        #expect(wideBounds.size == CGSize(width: 700, height: 90))
+        #expect(
+            wideBounds.size.height == narrowBounds.size.height,
+            "l'altezza riservata non dipende dalla larghezza proposta"
+        )
+    }
+
+    /// A `nil` `hostView` (the failed-cast fallback in `EditorDecorationDelegate` - the cast
+    /// still draws an empty attachment rather than refusing the substitution) reserves the same
+    /// placeholder height as an unmeasured host.
+    @Test func nilHostViewReservesThePlaceholderHeight() throws {
+        let location = anyTextLocation()
+        let attachment = ViewBlockAttachment()
+        attachment.hostView = nil
+        let provider = try #require(attachment.viewProvider(for: nil, location: location, textContainer: nil))
+
+        let bounds = provider.attachmentBounds(
+            for: [:], location: location, textContainer: nil,
+            proposedLineFragment: CGRect(x: 0, y: 0, width: 300, height: 1), position: .zero
+        )
+
+        #expect(
+            bounds.size.height == ViewBlockAttachment.unmeasuredHeight,
+            "un hostView nil deve riservare l'altezza placeholder, come un host non ancora misurato"
+        )
+    }
+}
+
+/// `ViewBlockAttachment.storableHeight(measured:current:)` in isolation (ADR-0035): the pure
+/// function that decides whether a fresh measurement is worth storing and re-laying out for, and
+/// the one that makes a measure -> relayout -> remeasure cycle terminate rather than oscillate.
+@Suite struct ViewBlockHeightConvergenceTests {
+    /// A first measurement (`current: nil`) is always stored, clamped.
+    @Test func firstMeasurementIsAlwaysStoredClamped() {
+        let stored = ViewBlockAttachment.storableHeight(measured: 100, current: nil)
+        #expect(stored == 100, "la prima misura deve sempre essere memorizzata")
+    }
+
+    /// A new measurement within `heightEpsilon` of the already-stored clamped value changes
+    /// nothing worth a re-layout for.
+    @Test func aMeasurementWithinEpsilonOfCurrentIsNotStored() {
+        let stored = ViewBlockAttachment.storableHeight(measured: 100.3, current: 100)
+        #expect(stored == nil, "una misura entro l'epsilon non deve richiedere un nuovo relayout")
+    }
+
+    /// A new measurement beyond `heightEpsilon` returns the new clamped value.
+    @Test func aMeasurementBeyondEpsilonReturnsTheNewClampedValue() {
+        let stored = ViewBlockAttachment.storableHeight(measured: 105, current: 100)
+        #expect(stored == 105, "una misura oltre l'epsilon deve restituire il nuovo valore")
+    }
+
+    /// Anti-oscillation: two measurements both above the cap clamp to the same `maximumHeight`,
+    /// so the second one stores nothing and schedules no further relayout - this is what makes
+    /// the measure -> relayout -> remeasure cycle terminate for oversized content.
+    @Test func twoMeasurementsBothAboveTheCapConverge() {
+        let firstStored = ViewBlockAttachment.storableHeight(measured: 5_000, current: nil)
+        #expect(firstStored == ViewBlockAttachment.maximumHeight)
+
+        let secondStored = ViewBlockAttachment.storableHeight(measured: 5_003, current: firstStored)
+        #expect(
+            secondStored == nil,
+            "due misure entrambe oltre il tetto devono convergere senza richiedere un secondo relayout"
+        )
+    }
+
+    /// A raw measurement above the cap with no prior value returns exactly `maximumHeight`, not
+    /// the raw value - clamp happens before the value is ever stored.
+    @Test func aRawMeasurementAboveTheCapWithNoCurrentClampsBeforeStoring() {
+        let stored = ViewBlockAttachment.storableHeight(measured: 5_000, current: nil)
+        #expect(
+            stored == ViewBlockAttachment.maximumHeight,
+            "il clamp deve avvenire prima della memorizzazione, mai il valore grezzo"
         )
     }
 }

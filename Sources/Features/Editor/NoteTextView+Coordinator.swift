@@ -123,6 +123,10 @@ extension NoteTextView {
         /// Where the caret has to go once that transaction closes, when a line it was sitting
         /// in has just left the layout (`tableCaretRescue`'s twin, ADR-0033 §D15).
         var pendingViewBlockCaret: Int?
+        /// True between a measured view-block height being stored and the coalesced re-layout
+        /// running, so several fences reporting a height change within the same SwiftUI pass buy
+        /// one relayout, not one each.
+        var pendingViewBlockRelayout = false
         /// Which fence the selection was inside the last time it moved, or nil for none - the
         /// whole of ADR-0033 §D5's guard. A crossing into or out of a fence is the one
         /// selection change that has to re-run `applyStyling`, because that pass is the only
