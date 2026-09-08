@@ -1,21 +1,5 @@
 import Foundation
 
-/// What the query builder edits: the fields of a `pergamenum-view` fence, one row model
-/// per key, before they become text (ADR-0034 §D2).
-///
-/// A plain struct with the seven keys' worth of state and nothing else — Task 3 fills in
-/// how a draft is built from a parsed `ViewBlock` and what makes one valid to commit;
-/// this shard only needs the shape the writer below reads from.
-struct ViewQueryDraft {
-    var scope: [String] = []
-    var terms: [ViewFilter] = []
-    var sort: [ViewBlock.SortKey] = []
-    var group: ViewBlock.Grouping?
-    var render: ViewBlock.Renderer = .table
-    var columns: [ViewField] = []
-    var limit: String = ""
-}
-
 /// The query builder's writer: a `ViewQueryDraft` becomes the body of a `pergamenum-view`
 /// fence (ADR-0034 §D3), and a fresh stub for the insert-view command (R-04).
 ///
@@ -37,9 +21,15 @@ enum ViewQueryText {
             lines.append("from: \(joined)")
         }
 
-        let terms = draft.terms.filter(isComplete)
-        if !terms.isEmpty {
-            lines.append("where: \(terms.map(text(of:)).joined(separator: " and "))")
+        // A raw-text `where` (ADR-0034 §D5: `or`/`not`/a nesting no row model can show) is
+        // written back verbatim — the distinction lives in the seed, never guessed here.
+        if let rawWhere = draft.rawWhere {
+            lines.append("where: \(rawWhere)")
+        } else {
+            let terms = draft.terms.filter(isComplete)
+            if !terms.isEmpty {
+                lines.append("where: \(terms.map(text(of:)).joined(separator: " and "))")
+            }
         }
 
         if !draft.sort.isEmpty {
