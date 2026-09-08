@@ -342,3 +342,119 @@ func scopeRowGlobsAreJoinedWithOr() throws {
     ])
     #expect(try ViewBlock.parse(body).scope == globs)
 }
+
+// MARK: - Task 7: R-11 live match count
+
+private struct MatchCountCorpus: ViewCorpus {
+    var records: [NoteRecord]
+
+    func paths(forTitle title: String) -> [String] {
+        records.filter { $0.title.lowercased() == title.lowercased() }.map(\.relativePath)
+    }
+}
+
+private func matchCountCorpus() -> MatchCountCorpus {
+    MatchCountCorpus(records: (0..<10).map { index in
+        var frontmatter = Frontmatter.empty
+        frontmatter.tags = ["note-\(index)", index < 4 ? "status-open" : "status-closed"]
+            .compactMap(Tag.init)
+        return NoteRecord(
+            relativePath: "Clienti/Note \(index).md",
+            title: "Note \(index)",
+            frontmatter: frontmatter,
+            linkTargets: [],
+            embedTargets: [],
+            tasks: [],
+            modifiedAt: Date(timeIntervalSince1970: 0),
+            byteSize: 100,
+            contentHash: "fixture-\(index)"
+        )
+    })
+}
+
+@Test("R-11: re-picking the selected folder preserves the assembled debounce key")
+func repickingFolderPreservesMatchCountKey() {
+    let original = draft(scope: ["Clienti"], terms: [.tag("status-open")])
+    let repicked = draft(scope: ["Clienti"], terms: [.tag("status-open")])
+    repicked.scope[0] = "Clienti"
+
+    #expect(ViewQueryText.body(of: repicked) == ViewQueryText.body(of: original))
+}
+
+@Test("R-11: toggling a column off and back on restores the assembled debounce key")
+func restoringColumnRestoresMatchCountKey() {
+    let original = draft(columns: [.title, .tags])
+    let toggled = draft(columns: [.title, .tags])
+    let initialKey = ViewQueryText.body(of: original)
+
+    toggled.columns.removeLast()
+    #expect(ViewQueryText.body(of: toggled) != initialKey)
+    toggled.columns.append(.tags)
+    #expect(ViewQueryText.body(of: toggled) == initialKey)
+}
+
+@Test("R-11: a recorded draft change changes the assembled debounce key")
+func changedFilterChangesMatchCountKey() throws {
+    let original = draft(terms: [.tag("status-open")])
+    let changed = draft(terms: [.tag("status-closed")])
+    let originalBody = ViewQueryText.body(of: original)
+    let changedBody = ViewQueryText.body(of: changed)
+
+    #expect(originalBody != changedBody)
+    #expect(try ViewBlock.parse(originalBody).filter == .tag("status-open"))
+    #expect(try ViewBlock.parse(changedBody).filter == .tag("status-closed"))
+}
+
+// Proposed production seam for the coder; the sheet's debounced task must use it:
+// @MainActor static func matchCount(for block: ViewBlock, queries: ViewQuerySource?) -> Int?
+// It returns queries.evaluate(block).total when a vault exists, otherwise nil.
+// These tests deliberately do not supply a test-local implementation of that behavior.
+
+@Test("R-11: the count is the evaluator total, including zero matches",
+      arguments: [("note-*", 10), ("status-open", 4), ("note-0", 1), ("missing-*", 0)])
+@MainActor
+func matchCountUsesEvaluatorTotal(tag: String, expected: Int) throws {
+    let corpus = matchCountCorpus()
+    #expect(corpus.records.count == 10)
+    let body = ViewQueryText.body(of: draft(scope: ["Clienti"], terms: [.tag(tag)]))
+    let block = try ViewBlock.parse(body)
+    let today = try #require(CalendarDate(iso: "2026-09-08"))
+    let result = ViewEvaluator.evaluate(block, over: corpus, today: today)
+    #expect(result.total == expected)
+
+    var evaluatedBlocks: [ViewBlock] = []
+    let queries = ViewQuerySource(evaluate: { received in
+        evaluatedBlocks.append(received)
+        return ViewEvaluator.evaluate(received, over: corpus, today: today)
+    })
+    let count = ViewQueryBuilderSheet.matchCount(for: block, queries: queries)
+
+    #expect(count == Optional(expected))
+    #expect(evaluatedBlocks == [block])
+}
+
+@Test("R-11: the count includes matches beyond the displayed row limit",
+      arguments: [1, 4, 10, 11])
+@MainActor
+func matchCountIsNotLimitedRowCount(limit: Int) throws {
+    let corpus = matchCountCorpus()
+    let block = try ViewBlock.parse(ViewQueryText.body(of: draft(limit: String(limit))))
+    let today = try #require(CalendarDate(iso: "2026-09-08"))
+    let result = ViewEvaluator.evaluate(block, over: corpus, today: today)
+    #expect(result.rows.count == min(limit, 10))
+    #expect(result.total == 10)
+
+    let queries = ViewQuerySource(evaluate: { received in
+        ViewEvaluator.evaluate(received, over: corpus, today: today)
+    })
+    #expect(ViewQueryBuilderSheet.matchCount(for: block, queries: queries) == 10)
+}
+
+@Test("R-11: no vault means absent count even for a filter that would match nothing",
+      arguments: ["note-*", "missing-*"])
+@MainActor
+func noVaultHasNoMatchCount(tag: String) throws {
+    let block = try ViewBlock.parse(ViewQueryText.body(of: draft(terms: [.tag(tag)])))
+
+    #expect(ViewQueryBuilderSheet.matchCount(for: block, queries: nil) == nil)
+}
