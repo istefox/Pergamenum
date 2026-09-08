@@ -184,6 +184,7 @@ extension NoteTextView.Coordinator {
     /// (`ViewQueryCommitTests.swift`'s fixture uses the identical shape).
     func refreshViewBlockHosts(in textView: NSTextView, theme: Theme) {
         for (opening, drawn) in drawnViewBlocks {
+            let host = viewBlockHosts.host(for: drawn.ordinal, in: textView)
             viewBlockHosts.update(
                 ViewBlockHostStore.rootView(
                     source: drawn.source,
@@ -206,6 +207,10 @@ extension NoteTextView.Coordinator {
                             onEditQuery(request)
                         }
                     },
+                    onHeightChange: { [weak self, weak host, weak textView] height in
+                        guard let self, let host, let textView else { return }
+                        self.viewBlockHeightChanged(height, on: host, in: textView)
+                    },
                     theme: theme
                 ),
                 forOrdinal: drawn.ordinal
@@ -215,6 +220,35 @@ extension NoteTextView.Coordinator {
         pendingViewBlockCaret = nil
         textView.setSelectedRange(NSRange(location: offset, length: 0))
         textView.scrollRangeToVisible(NSRange(location: offset, length: 0))
+    }
+
+    /// Records a host's freshly measured content height, and asks for a re-layout only when the
+    /// rectangle TextKit would reserve for it actually changes (ADR-0035).
+    private func viewBlockHeightChanged(_ height: CGFloat, on host: ViewBlockHostView, in textView: NSTextView) {
+        guard let stored = ViewBlockAttachment.storableHeight(
+            measured: height, current: host.measuredHeight.height
+        ) else { return }
+        host.measuredHeight.height = stored
+        scheduleViewBlockRelayout(in: textView)
+    }
+
+    /// One re-layout per turn, however many fences reported a height change in it - and never on
+    /// the call stack that reported it: `onHeightChange` runs during SwiftUI's own layout of a
+    /// view TextKit is laying out, so invalidating `NSTextLayoutManager` synchronously here would
+    /// re-enter it. `Task { @MainActor }` leaves that stack; `invalidateLayout` is the same call
+    /// `applyFolding`/`applyTransclusion` already make in production, and `growToFitTheText`
+    /// afterwards is the existing, already-safe resize path (never sets a frame directly - see
+    /// its own doc comment on why that matters here).
+    private func scheduleViewBlockRelayout(in textView: NSTextView) {
+        guard !pendingViewBlockRelayout else { return }
+        pendingViewBlockRelayout = true
+        Task { @MainActor [weak self, weak textView] in
+            guard let self else { return }
+            self.pendingViewBlockRelayout = false
+            guard let textView, let manager = textView.textLayoutManager else { return }
+            manager.invalidateLayout(for: manager.documentRange)
+            self.growToFitTheText(textView)
+        }
     }
 
     /// `rescueCaret(in:from:)`'s and `tableCaretRescue`'s third twin (ADR §D15): a caret

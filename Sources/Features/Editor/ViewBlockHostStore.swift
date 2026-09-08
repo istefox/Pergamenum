@@ -23,7 +23,7 @@ final class ViewBlockHostStore {
     /// `hosts(for:in:)` below is the one call that knows the whole set of ordinals the note
     /// spells, so a host is dropped exactly once per styling pass rather than whenever a
     /// lookup happens to miss - `TableGridStore`'s own division of labour (ADR-0029 §D6).
-    private var hosts: [Int: NSHostingView<AnyView>] = [:]
+    private var hosts: [Int: ViewBlockHostView] = [:]
 
     /// The host for `ordinal`, built on first ask and handed back unchanged after that.
     ///
@@ -41,9 +41,9 @@ final class ViewBlockHostStore {
     /// `textView` is deliberately unread, unlike `TableGridStore.view(for:in:)`, which uses it
     /// to build a grid's resign-first-responder closure: a hosted SwiftUI view runs its own
     /// focus. The parameter is kept for symmetry with that store and with `hosts(for:in:)`.
-    func host(for ordinal: Int, in textView: NSTextView) -> NSHostingView<AnyView> {
+    func host(for ordinal: Int, in textView: NSTextView) -> ViewBlockHostView {
         if let existing = hosts[ordinal] { return existing }
-        let host = NSHostingView(rootView: AnyView(EmptyView()))
+        let host = ViewBlockHostView(rootView: AnyView(EmptyView()))
         hosts[ordinal] = host
         return host
     }
@@ -55,8 +55,8 @@ final class ViewBlockHostStore {
     /// reason: a styling pass is the one moment that knows the whole set, so a note whose
     /// fences are edited for an afternoon would otherwise accumulate a host per ordinal any
     /// fence ever reached, each holding a live SwiftUI view hierarchy over the index.
-    func hosts(for ordinals: [Int], in textView: NSTextView) -> [Int: NSHostingView<AnyView>] {
-        var kept: [Int: NSHostingView<AnyView>] = [:]
+    func hosts(for ordinals: [Int], in textView: NSTextView) -> [Int: ViewBlockHostView] {
+        var kept: [Int: ViewBlockHostView] = [:]
         for ordinal in ordinals {
             kept[ordinal] = host(for: ordinal, in: textView)
         }
@@ -67,6 +67,11 @@ final class ViewBlockHostStore {
     /// Pushes a new root view into the existing host rather than building one (ADR §D3): the
     /// point of keeping the same `NSHostingView` across passes is exactly that SwiftUI diffs
     /// the new `rootView` against the old one instead of the query restarting from scratch.
+    ///
+    /// Deliberately never touches `measuredHeight` here: this runs on every styling pass -
+    /// every keystroke - and resetting the box on each call would force a re-measure flash
+    /// (falling back to `unmeasuredHeight` until SwiftUI reports back) on every edit, not just
+    /// when the block's own content actually changes.
     func update(_ root: AnyView, forOrdinal ordinal: Int) {
         hosts[ordinal]?.rootView = root
     }
@@ -93,6 +98,15 @@ final class ViewBlockHostStore {
     /// by care: a caller that opts into nothing gets exactly `MarkdownBlocksView`'s own
     /// rendering - no vault ("Nessun vault dietro questa vista"), no click target on a row, no
     /// edit-source control in the header.
+    ///
+    /// **`onHeightChange` measures *inside* this `ScrollView`, not the attachment's own
+    /// reserved rectangle** (ADR-0035): a `ScrollView` proposes `nil` height to its content, so
+    /// `.onGeometryChange` below reads `RenderedViewBlock`'s true ideal height - never the
+    /// capped height `ViewBlockAttachment` ends up reserving for it. This is the load-bearing
+    /// invariant of the whole adaptive-height design; do not move the `ScrollView` or the
+    /// measurement relative to each other, or the measured height would just echo back
+    /// whatever the attachment already reserved and the block could never grow past its own
+    /// first measurement.
     static func rootView(
         source: String,
         notePath: String = "",
@@ -102,6 +116,7 @@ final class ViewBlockHostStore {
         onEditSource: (() -> Void)? = nil,
         onOpenNote: ((String) -> Void)? = nil,
         onEditQuery: (() -> Void)? = nil,
+        onHeightChange: ((CGFloat) -> Void)? = nil,
         theme: Theme
     ) -> AnyView {
         AnyView(
@@ -116,6 +131,11 @@ final class ViewBlockHostStore {
                     onEditQuery: onEditQuery,
                     onOpenNote: onOpenNote
                 )
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    // A zero width means TextKit has not assigned this host a frame yet; ignore.
+                    guard size.width > 0, size.height > 1 else { return }
+                    onHeightChange?(size.height)
+                }
             }
             .environment(\.theme, theme)
         )

@@ -277,6 +277,17 @@ Rejected: **reusing ADR-0019's user-resizable handle.** The SPEC already refuses
 holds: that handle persists a size into the note's own text as an Obsidian `|W` suffix, which has no
 spelling for a fence and would be a new syntax in a file format this project shares with another app.
 
+**Amendment (ADR-0035).** A fixed height meant a fence with a small result set (a one-row table, an
+empty board) reserved the same 320pt box as a forty-card one, leaving a visible empty area below
+sparse content — found during hand-check of the query-builder chain (ADR-0034) and judged worth
+fixing on its own. ADR-0035 replaces the constant with a height adaptive to the host's measured
+content, clamped between a 24pt floor and this section's original 320pt value, now a ceiling rather
+than the only height. The rejection of an *unbounded* intrinsic height above still holds in full —
+a forty-card board still scrolls internally past the cap rather than growing past it — and the
+`ScrollView`-at-the-host-site rule this section states is what ADR-0035's own measurement depends
+on (a `ScrollView` proposes `nil` height to its content, so the cap can never feed back into what's
+measured). See `docs/adr/0035-view-block-adaptive-height.md`.
+
 **D9. `RenderedViewBlock` gains exactly two optional inputs, both defaulted `nil`, and gains nothing
 else. R-10 and R-11 are then true by construction rather than by care.**
 
