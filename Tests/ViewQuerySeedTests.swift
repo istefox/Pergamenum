@@ -173,3 +173,127 @@ struct ViewQuerySeedTests {
         #expect(try ViewBlock.parse(ViewQueryText.body(of: draft)) == ViewBlock.parse(body))
     }
 }
+
+// Task 5 contract comes from the batch brief. Production declarations belong to
+// the coder; tests call the real validation entry point without a test-side stub.
+@MainActor
+@Suite("ViewQueryValidation: R-02, R-07 and R-12")
+struct ViewQueryValidation {
+    @Test("R-02: a complete draft validates to the writer's round-tripped block")
+    func completeDraftRoundTrips() throws {
+        let body = """
+        from: path("Clienti") or path("Archivio")
+        where: tag("client-*") and text("needle")
+        sort: modified desc, title
+        group: tag("status-*")
+        render: board
+        columns: [modified, title, tags]
+        limit: 20
+        """
+        let draft = ViewQueryDraft.seed(from: body)
+        let written = try ViewBlock.parse(ViewQueryText.body(of: draft))
+        let result = ViewQueryBuilderSheet.validation(of: draft)
+
+        #expect(try result.get() == written)
+        #expect(try result.get() == ViewBlock.parse(body))
+    }
+
+    @Test("R-12: a board without a group preserves assemble's own error")
+    func boardWithoutGroup() throws {
+        var draft = ViewQueryDraft.seed(from: "render: table")
+        draft.render = .board
+        let expected = try #require(#expect(throws: ViewBlockError.self) {
+            try ViewBlock.parse(ViewQueryText.body(of: draft))
+        })
+        let actual = try failure(of: draft)
+
+        #expect(actual.reason.contains("aggiungi «group»"))
+        #expect(actual.line == expected.line)
+        #expect(actual.reason == expected.reason)
+        #expect(actual.description == expected.description)
+    }
+
+    @Test("R-07, R-12: invalid raw where preserves the filter parser's line and reason",
+          arguments: ["(tag(\"client-*\")", "tag(\"client-*\") or", "task(cancelled)"])
+    func invalidRawWhere(raw: String) throws {
+        var draft = ViewQueryDraft.seed(from: "render: table")
+        draft.scope = ["Clienti"]
+        draft.rawWhere = raw
+        let bodyLines = ViewQueryText.body(of: draft).split(separator: "\n", omittingEmptySubsequences: false)
+        let whereIndex = try #require(bodyLines.firstIndex { $0.hasPrefix("where:") })
+        // A preceding from line catches validators that always pass line 1.
+        #expect(whereIndex > 0)
+        let expected = try #require(#expect(throws: ViewBlockError.self) {
+            try ViewFilter.parse(raw, line: whereIndex + 1)
+        })
+        let actual = try failure(of: draft)
+
+        #expect(actual.line == expected.line)
+        #expect(actual.reason == expected.reason)
+        #expect(actual.description == expected.description)
+    }
+
+    @Test("R-12, ADR D7: an incomplete row fails with a reason even beside complete rows",
+          arguments: [false, true])
+    func incompleteTerm(hasCompleteRow: Bool) throws {
+        var draft = ViewQueryDraft.seed(from: "render: table")
+        draft.terms = hasCompleteRow ? [.text("needle"), .tag("")] : [.tag("")]
+        // D7's explicit exception: the writer omits unfinished rows, so the body
+        // parses, but validation must prevent silently committing their omission.
+        _ = try ViewBlock.parse(ViewQueryText.body(of: draft))
+        let actual = try failure(of: draft)
+
+        #expect(actual.reason.contains { !$0.isWhitespace })
+        #expect(actual.description.contains(actual.reason))
+    }
+
+    @Test("R-12: validation and ViewBlock.parse agree for complete rows across a draft table")
+    func parserEquivalence() throws {
+        var drafts: [ViewQueryDraft] = []
+        for renderer in ViewBlock.Renderer.allCases {
+            var draft = ViewQueryDraft.seed(from: "render: table")
+            draft.render = renderer
+            drafts.append(draft)
+            draft.group = .tag("status-*")
+            draft.scope = ["Clienti", "Archivio"]
+            draft.terms = [.tag("client-*"), .text("needle")]
+            drafts.append(draft)
+        }
+        // Empty/whitespace, the positive boundary, invalid numbers and overflow:
+        // the parser supplies the expected outcome, never a second numeric checker.
+        for limit in ["", "   ", "-1", "0", "1", "20", String(Int.max), String(Int.max) + "0", "1.5", "no"] {
+            var draft = ViewQueryDraft.seed(from: "render: table")
+            draft.limit = limit
+            drafts.append(draft)
+        }
+        for raw in ["tag(\"client-*\") or text(\"needle\")", "(tag(\"a\") or tag(\"b\")) and text(\"x\")",
+                    "tag(\"a\") or", "(tag(\"a\")"] {
+            var draft = ViewQueryDraft.seed(from: "render: table")
+            draft.rawWhere = raw
+            drafts.append(draft)
+        }
+
+        for draft in drafts {
+            let body = ViewQueryText.body(of: draft)
+            let parsed = Result { try ViewBlock.parse(body) }
+            switch (parsed, ViewQueryBuilderSheet.validation(of: draft)) {
+            case let (.success(expected), .success(actual)):
+                #expect(actual == expected, "Body: \(body)")
+            case let (.failure(error), .failure(actual)):
+                let expected = try #require(error as? ViewBlockError)
+                #expect(actual.line == expected.line, "Body: \(body)")
+                #expect(actual.reason == expected.reason, "Body: \(body)")
+            case (.success, .failure):
+                Issue.record("Validation rejected a parser-accepted body: \(body)")
+            case (.failure, .success):
+                Issue.record("Validation accepted a parser-rejected body: \(body)")
+            }
+        }
+    }
+
+    private func failure(of draft: ViewQueryDraft) throws -> ViewBlockError {
+        try #require(#expect(throws: ViewBlockError.self) {
+            try ViewQueryBuilderSheet.validation(of: draft).get()
+        })
+    }
+}
