@@ -87,6 +87,25 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-08: **pergamenum-view-query-builder (ADR-0034, visual query builder for `pergamenum-view`
+  fences) — all 10 tasks implemented and merged onto `feat/pergamenum-view-query-builder`.** One
+  shared "Modifica query" affordance in `RenderedViewBlock`'s header, present on both the live-render
+  and error-card states (R-01); the sheet's seven sections seed from and validate through the real
+  `ViewBlock.parse`/`ViewFilter.parse`, never a second lenient grammar (R-02, R-06 through R-10); a
+  flat AND-of-terms `where` model with a raw-text fallback for `or`/`not`/nesting (R-07); commit
+  reuses the existing atomic anchor-and-reload-guard write path, one `Cmd+Z` per edit, refusing
+  rather than guessing when the fence moved under the sheet (R-13); "Inserisci ▸ Vista…" writes a
+  stub and opens the builder in one gesture, so "Fatto" always edits a fence that already exists
+  (R-04); a debounced (250ms) live match count (R-11). Full unit suite green: **2446 tests, 84+
+  suites, 0 failures** (one transient malloc-crash on retry in an unrelated pre-existing test,
+  `VaultTests.reportsViolationsOfTheOpenNote()`, confirmed non-reproducible on immediate rerun).
+  `scripts/uitests.sh` green: **106 tests, 0 failures.** R-17 confirmed by grep evidence: zero diff
+  under `Sources/Core/`, `Sources/Connector/`, `Sources/CLI/`, `Sources/MCPServer/`; both connectors
+  (`perg`, `pergamenum-mcp`) build clean; `interface-check.sh` reports 0 violations against 4
+  declared protected interfaces. R-16 confirmed structurally: a Workspace `.text` card never
+  produces a `.viewBlock` kind, and `MarkdownBlocksView`'s reading route (transclusion/export/Viste
+  pane) passes no `onEditQuery`. **R-14 — Stefano's manual hand-check, the acceptance gate for this
+  chain — is the one remaining step before commit.**
 - 2026-09-07: **PG-099 (ADR-0033, viste live nell'editor) — Task 4-9 implementati, Task 10 (verifica
   finale) in corso; Task 8 resta bloccato sul gate umano del 2026-09-06.** Batch 3-9 completati:
   `ViewBlockAttachment`/`ViewBlockHostStore` chiave-per-ordinale (Task 4), attaccamento reale

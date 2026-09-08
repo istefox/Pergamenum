@@ -6,12 +6,12 @@ mode: "greenfield"
 anonymize: false
 use_codex_review: false
 step5_codex_review_asked: false
-use_codex_tester: false
-step5_codex_tester_asked: false
+use_codex_tester: true
+step5_codex_tester_asked: true
 chain_path: "standard"
 created_at: "2026-09-07T19:05:02+00:00"
-last_updated_at: "2026-09-07T20:19:18+00:00"
-current_step: "step_4_session_boundary"
+last_updated_at: "2026-09-08T07:41:38+00:00"
+current_step: "step_5_implementation"
 status: "in_progress"
 
 # Gate 0 routing result (ADR-0017)
@@ -32,11 +32,11 @@ coder_model: "opus"
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: false
+hook_verified: true
 step5_mode: null
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
-recovery_baseline_sha: null
+recovery_baseline_sha: "aad7fcbebe233f532bc2b0fb593992b7f62f76ac"
 
 # Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
@@ -46,7 +46,7 @@ recovery_baseline_sha: null
 # it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
 # with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
 # sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
-worktree_baseref_verified: false
+worktree_baseref_verified: true
 worktree_merges: []
 
 # Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
@@ -120,9 +120,9 @@ hitl_gates:
     notes: null
   - gate: 4
     label: "implementation_mode"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-09-07T20:38:09+00:00"
+    notes: "Implement now (attended, this session)"
   - gate: 5
     label: "review_cycle_decision"
     status: "pending"
