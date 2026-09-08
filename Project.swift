@@ -41,7 +41,7 @@ let appConfigurations: [Configuration] = [
 
 // The version shown in Informazioni. Raised by hand when the app reaches a version
 // worth naming; the build number underneath it is what tells two builds apart.
-let marketingVersion = "1.1"
+let marketingVersion = "1.2"
 
 // The number of commits behind HEAD, handed in by `scripts/release.sh` as
 // TUIST_BUILD_NUMBER. Not a counter kept in this file: a counter has to be remembered,
