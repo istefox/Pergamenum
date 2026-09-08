@@ -1,1 +1,1 @@
-xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath "/Users/stefer/Developer/Pergamenum_worktrees/feat-pergamenum-view-query-builder/.build/DerivedData" -only-testing:PergamenumTests test
+xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath "/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/.build/DerivedData" -only-testing:PergamenumTests test

@@ -514,6 +514,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`
 - **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
 - **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`
+- **ADR-0037** — Reveal-on-caret narrows from paragraph to span for emphasis/strikethrough/link, behind a new off-by-default setting, reusing `MarkdownStyler`'s existing recursive parse → `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
@@ -899,3 +900,38 @@ Key architectural decisions:
   nothing and schedules no further relayout.
 
 Detail: `docs/adr/0035-view-block-adaptive-height.md`.
+
+## Decisions from the word-grained markdown reveal-on-caret chain (ADR-0037)
+
+Narrows reveal-on-caret (ADR-0018 §D2) from paragraph to span for emphasis, strikethrough and
+link constructs, behind a new off-by-default setting: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.
+Amends ADR-0018 §D2 for these three marker kinds only; amends ADR-0028 §D1 with a seventh shared
+delegate input. Does not reopen ADR-0029 §D17, ADR-0033 §D4, or ADR-0009.
+
+Key architectural decisions:
+- **The construct extents come out of `MarkdownStyler`'s existing recursive walk (PG-084), never
+  from a second parser** — `.bold`/`.italic`/`.strikethrough` already carry the whole run
+  including delimiters, nested runs included; only the CommonMark `[text](url)` form needs its
+  two `.linkSyntax` halves paired back into one extent.
+- **A new delegate input, `revealedSpans: [Int: [NSRange]]`, is never merged into
+  `revealedParagraphs`** — two producers on one setter is exactly what the delegate's existing
+  multi-input pattern forbids. With the new setting off, the generic substitution path collapses
+  to `paragraphIsRevealed ? [] : survivors`, byte-for-byte today's behavior.
+- **Which unit governs a marker is an exhaustive `switch` on `HiddenMarker.Kind.isInline`** — no
+  `default` case, so a future eleventh marker kind cannot be added without deciding which unit it
+  belongs to. Only `.emphasis`/`.strikethrough`/`.link` are span-grained; heading, embed, list,
+  checkbox, blockquote, rule, table and view-block stay paragraph-grained.
+- **A caret reveals only the innermost containing span (closed-interval, smallest length wins);
+  a non-empty selection reveals every span it intersects, innermost rule not applied** — the
+  asymmetry is deliberate: R-05 (nesting) speaks of the caret, R-04 (selection) of the range, and
+  a fully-covered paragraph short-circuits to one whole-paragraph span with no parse.
+- **The setting is pushed from `applyStyling`, never from `applyReveal`** — `applyReveal`
+  early-returns when the selection has not moved, so a toggle flip with a stationary caret would
+  never redraw under the old code path.
+- **The Workspace `.text` card gets less than the note editor, deliberately** — `CardTextView`'s
+  marker switch has no `.strikethroughMarker`/`.linkSyntax` case today (`default: nil`), so a
+  card's `~~text~~` and `[[wikilink]]` were already visible and stay visible; this chain does not
+  widen that switch, preserving ADR-0029 §D17's seam against a live `NSView` grid landing in a
+  culling-deallocated text view.
+
+Detail: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.
