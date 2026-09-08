@@ -28,6 +28,10 @@ struct ViewQueryBuilderSheet: View {
 
     @State private var draft: ViewQueryDraft
     @State private var refusedReason: String?
+    /// The live count behind the sheet (R-11, Task 7). Nil both before the first debounced
+    /// evaluation lands and where there is no vault at all - `matchCount(for:queries:)` draws
+    /// the same "absent, not zero" distinction `RenderedViewBlock` already does.
+    @State private var matchCount: Int?
 
     init(
         source: String,
@@ -44,6 +48,14 @@ struct ViewQueryBuilderSheet: View {
 
     private var validationResult: Result<ViewBlock, ViewBlockError> {
         Self.validation(of: draft)
+    }
+
+    /// The assembled fence body, and the `.task(id:)` debounce key (R-11, Task 7): a draft
+    /// change that does not change this string (re-picking the same folder, a column toggled
+    /// off and back on) restarts nothing, matching `RenderedViewBlock.taskID`'s own "never per
+    /// keystroke" rule (ADR-0009 §D7).
+    private var assembledBody: String {
+        ViewQueryText.body(of: draft)
     }
 
     private var isValid: Bool {
@@ -89,6 +101,14 @@ struct ViewQueryBuilderSheet: View {
                     .accessibilityIdentifier("view-query-reason")
             }
 
+            // R-11: absent, not zero, until the debounced evaluation lands or where there is
+            // no vault behind the sheet at all - never drawn as "0 note corrispondono".
+            if let matchCount {
+                Text(matchCount == 1 ? "1 nota corrisponde" : "\(matchCount) note corrispondono")
+                    .themedText(.caption, color: .textTertiary)
+                    .accessibilityIdentifier("view-query-match-count")
+            }
+
             HStack {
                 Spacer()
                 Button("Annulla") { cancel() }
@@ -104,6 +124,19 @@ struct ViewQueryBuilderSheet: View {
         .frame(width: 560)
         .background(theme.color(.surfaceCard))
         .accessibilityIdentifier("view-query-builder")
+        // R-11: `.task(id:)`'s own cancellation is the debounce (ADR §D8) - no Timer, no
+        // Combine, no DispatchQueue.asyncAfter. Restarted only when `assembledBody` itself
+        // changes, never on every keystroke of a draft edit that leaves it unchanged.
+        .task(id: assembledBody) {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            switch validationResult {
+            case .success(let block):
+                matchCount = Self.matchCount(for: block, queries: queries)
+            case .failure:
+                matchCount = nil
+            }
+        }
     }
 
     private func cancel() {
@@ -125,6 +158,15 @@ struct ViewQueryBuilderSheet: View {
 }
 
 extension ViewQueryBuilderSheet {
+    /// The live match count behind the sheet (R-11, Task 7): the evaluator's own total, run
+    /// against whatever vault `queries` closes over. Nil where there is no vault at all - a
+    /// preview, a test - never zero read as "no vault" (the same distinction
+    /// `RenderedViewBlock`'s `queries == nil` branch already draws, `RenderedViewBlock.swift:131`).
+    @MainActor
+    static func matchCount(for block: ViewBlock, queries: ViewQuerySource?) -> Int? {
+        queries?.evaluate(block).total
+    }
+
     /// Whether `draft` is a fence `ViewBlock.parse` would accept, and what it says when it
     /// is not — the single computation "Fatto", its inline reason and the live count (Task
     /// 7) all consult (ADR-0034 §D7). The draft is written out and handed to the real
