@@ -67,6 +67,16 @@ struct NoteTextView: NSViewRepresentable {
     /// what makes a drawn fence run its query in the editor (R-04, R-07, R-09); without it
     /// the block draws its "Nessun vault dietro questa vista" branch.
     var queries: ViewQuerySource?
+    /// Raised when "Modifica query" is tapped in a drawn `pergamenum-view` fence's header
+    /// (ADR-0034 §D1/§D2, R-01/R-02/R-03). Nil where there is no vault behind the editor - the
+    /// same permissive default `queries` takes - and then the control simply is not drawn
+    /// (`RenderedViewBlock.onEditQuery`'s own nil-means-no-control rule).
+    ///
+    /// Built per fence, per styling pass, by `NoteTextView+ViewBlocks.swift`'s
+    /// `refreshViewBlockHosts`, which is the one place that turns `ViewBlockHostStore.rootView`'s
+    /// plain `() -> Void` trigger into a `ViewQueryEditRequest` carrying the fence's current body
+    /// and a commit closure anchored on its opening offset.
+    var onEditQuery: ((ViewQueryEditRequest) -> Void)?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
     var onDropFile: ((URL) -> String?)?

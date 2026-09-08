@@ -30,6 +30,12 @@ struct RenderedViewBlock: View {
     /// into a fence this attachment covers (ADR-0033 §D9/§D10). `nil` means the control is not
     /// drawn - exactly today's rendering, and what a surface with no editor behind it gets.
     var onEditSource: (() -> Void)?
+    /// A third optional input, on the same terms as `onEditSource` (ADR-0034 §D1): opens the
+    /// visual query builder for this fence. Drawn once in `header(renderer:count:)`, present on
+    /// both the parse-failure and the live-render branches because both call that one function
+    /// (R-01/R-03). `nil` means the control is not drawn - `MarkdownBlocksView`, `NoteExporter`
+    /// and a Workspace `.text` card pass nothing and gain nothing.
+    var onEditQuery: (() -> Void)?
     /// Threaded to the four renderers as an optional click target carrying a row's own title
     /// (ADR-0033 §D9, R-09). `nil` means no renderer draws a click target - today's rendering,
     /// and what keeps R-10/R-11 (transclusion, export) true by construction rather than by
@@ -114,6 +120,17 @@ struct RenderedViewBlock: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Modifica la sorgente")
                 .accessibilityIdentifier("rendered-view-edit-source")
+            }
+            // ADR-0034 §D1: the same door on both fence states, since both branches of the
+            // block's `switch` call this one function. Drawn only where something is
+            // listening - a transclusion and an export have no sheet to raise.
+            if let onEditQuery {
+                Button(action: onEditQuery) {
+                    Image(systemName: "slider.horizontal.3").themedText(.caption, color: .textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Modifica query")
+                .accessibilityIdentifier("rendered-view-edit-query")
             }
             Button { reloads += 1 } label: {
                 Image(systemName: "arrow.clockwise").themedText(.caption, color: .textTertiary)

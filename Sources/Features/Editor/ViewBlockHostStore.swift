@@ -83,9 +83,10 @@ final class ViewBlockHostStore {
     /// bound those two surfaces too - this host is the only site that knows it is
     /// height-bounded.
     ///
-    /// Every input but `theme` is forwarded verbatim to the block, `onEditSource` and
-    /// `onOpenNote` included (ADR §D9's two optional inputs, §D10's door back to the source):
-    /// this function composes the wrapper and decides nothing about the block itself, so the
+    /// Every input but `theme` is forwarded verbatim to the block, `onEditSource`, `onOpenNote`
+    /// and `onEditQuery` included (ADR-0033 §D9's two optional inputs, §D10's door back to the
+    /// source, plus ADR-0034 §D1's third one, the visual query builder's own door): this
+    /// function composes the wrapper and decides nothing about the block itself, so the
     /// editor's caller is the one place that says what a drawn fence can reach.
     ///
     /// **All of them default**, which is what keeps R-10/R-11 true by construction rather than
@@ -100,6 +101,7 @@ final class ViewBlockHostStore {
         queries: ViewQuerySource? = nil,
         onEditSource: (() -> Void)? = nil,
         onOpenNote: ((String) -> Void)? = nil,
+        onEditQuery: (() -> Void)? = nil,
         theme: Theme
     ) -> AnyView {
         AnyView(
@@ -111,6 +113,7 @@ final class ViewBlockHostStore {
                     thumbnails: thumbnails,
                     queries: queries,
                     onEditSource: onEditSource,
+                    onEditQuery: onEditQuery,
                     onOpenNote: onOpenNote
                 )
             }
