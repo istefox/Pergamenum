@@ -175,6 +175,13 @@ extension NoteTextView.Coordinator {
     /// `TableGridStore.view(for:in:)`'s own `resignToTextView` closure is: the host outlives
     /// nothing here, but a root view kept by the store must not be what keeps a text view
     /// alive.
+    ///
+    /// **`onEditQuery` builds the `ViewQueryEditRequest` here, not inside `rootView`** (ADR-0034
+    /// §D2): this loop is where `opening` and `drawn.source` are known, and it is rebuilt every
+    /// pass for the same staleness reason the two closures above are - a click reads whatever
+    /// `drawn.source` this pass last recorded, never a value captured on an earlier one. The
+    /// commit closure carries `opening` and `[weak textView]`, `commitViewBlock`'s own currency
+    /// (`ViewQueryCommitTests.swift`'s fixture uses the identical shape).
     func refreshViewBlockHosts(in textView: NSTextView, theme: Theme) {
         for (opening, drawn) in drawnViewBlocks {
             viewBlockHosts.update(
@@ -189,6 +196,16 @@ extension NoteTextView.Coordinator {
                         textView.setSelectedRange(NSRange(location: opening, length: 0))
                     },
                     onOpenNote: parent.onFollowLink,
+                    onEditQuery: parent.onEditQuery.map { onEditQuery in
+                        { [weak textView] in
+                            let request = ViewQueryEditRequest(id: UUID(), source: drawn.source) {
+                                [weak textView] body in
+                                guard let textView else { return false }
+                                return self.commitViewBlock(body, at: opening, in: textView)
+                            }
+                            onEditQuery(request)
+                        }
+                    },
                     theme: theme
                 ),
                 forOrdinal: drawn.ordinal

@@ -67,6 +67,16 @@ struct NoteTextView: NSViewRepresentable {
     /// what makes a drawn fence run its query in the editor (R-04, R-07, R-09); without it
     /// the block draws its "Nessun vault dietro questa vista" branch.
     var queries: ViewQuerySource?
+    /// Raised when "Modifica query" is tapped in a drawn `pergamenum-view` fence's header
+    /// (ADR-0034 §D1/§D2, R-01/R-02/R-03). Nil where there is no vault behind the editor - the
+    /// same permissive default `queries` takes - and then the control simply is not drawn
+    /// (`RenderedViewBlock.onEditQuery`'s own nil-means-no-control rule).
+    ///
+    /// Built per fence, per styling pass, by `NoteTextView+ViewBlocks.swift`'s
+    /// `refreshViewBlockHosts`, which is the one place that turns `ViewBlockHostStore.rootView`'s
+    /// plain `() -> Void` trigger into a `ViewQueryEditRequest` carrying the fence's current body
+    /// and a commit closure anchored on its opening offset.
+    var onEditQuery: ((ViewQueryEditRequest) -> Void)?
     /// Where a dropped file should be copied to, returning its file name for the
     /// embed (SPEC §5). Nil disables dropping.
     var onDropFile: ((URL) -> String?)?
@@ -75,8 +85,10 @@ struct NoteTextView: NSViewRepresentable {
     /// without this it could not enter a note at all.
     var onPasteImage: ((Data) -> String?)?
     /// Text the Inserisci menu asked for, applied at the cursor and then reported as
-    /// applied so it is not inserted twice on the next view update (SPEC §10).
-    var insertion: (text: String, cursorBack: Int)?
+    /// applied so it is not inserted twice on the next view update (SPEC §10). Carries
+    /// `opensQueryBuilder` for the insert-view command (R-04, ADR-0034 §D10): true only
+    /// for the stub it writes, applied below alongside the ordinary insertion.
+    var insertion: Navigation.Insertion?
     var onInsertionApplied: () -> Void = {}
     /// Raised by the Modifica menu; opens the find bar (SPEC §10, M8). Answered with the
     /// selection there was at that moment, which is the search's scope - captured once, the
@@ -332,10 +344,39 @@ struct NoteTextView: NSViewRepresentable {
         if let insertion {
             // After the text sync above, so the insertion is not overwritten by the
             // model value that predates it.
-            textView.insertText(insertion.text, replacementRange: textView.selectedRange())
+            let insertionRange = textView.selectedRange()
+            textView.insertText(insertion.text, replacementRange: insertionRange)
             let cursor = textView.selectedRange().location - insertion.cursorBack
             textView.setSelectedRange(NSRange(location: max(0, cursor), length: 0))
             onInsertionApplied()
+
+            // R-04: "Inserisci ▸ Vista…" opens the query builder on the fence it just wrote,
+            // in the same gesture (ADR-0034 §D10). The opening offset is the stub's own
+            // convention (`ViewQueryText.stub`'s `head`/`openingOffset`): a leading `\n` -
+            // needed only when the caret was mid-line - moves the fence one character in,
+            // nothing else does. Read from the live characters rather than from
+            // `drawnViewBlocks`, which is gated on `hidesMarkup` (ADR-0033 §D12) and would
+            // stay empty for an editor with markup-hiding off.
+            if insertion.opensQueryBuilder, let onEditQuery {
+                let openingOffset = insertionRange.location + (insertion.text.hasPrefix("\n") ? 1 : 0)
+                let nsText = textView.string as NSString
+                if let recognised = EditorDecorationDelegate.viewBlockRun(
+                    in: nsText, atParagraphStart: openingOffset
+                ) {
+                    // The body alone, opening and closing fence lines split off -
+                    // `NoteTextView+ViewBlockEditing.swift`'s `viewBlockBody(in:range:)` own
+                    // convention, re-read here rather than shared since that helper is
+                    // `private` to its own file.
+                    let lines = nsText.substring(with: recognised.range).components(separatedBy: "\n")
+                    let source = lines.count >= 2 ? lines.dropFirst().dropLast().joined(separator: "\n") : ""
+                    let coordinator = context.coordinator
+                    let request = ViewQueryEditRequest(id: UUID(), source: source) { [weak textView] body in
+                        guard let textView else { return false }
+                        return coordinator.commitViewBlock(body, at: openingOffset, in: textView)
+                    }
+                    onEditQuery(request)
+                }
+            }
         }
 
         if focusRequest != context.coordinator.lastFocusRequest {

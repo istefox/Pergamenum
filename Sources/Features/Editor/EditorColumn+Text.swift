@@ -68,6 +68,10 @@ extension EditorColumnView {
             // source `reading(_:)` used to hand `MarkdownReadingView`, so the editor and a
             // transclusion of the same note cannot answer one query two ways.
             queries: viewQuerySource,
+            // "Modifica query" in a drawn fence's header (ADR-0034 §D1/§D2) opens the visual
+            // builder for it. Kept as this column's own state, not a second one, so two
+            // columns get two independent builders (ADR-0012 §D4's rule applied here too).
+            onEditQuery: { request in editingViewQuery = request },
             onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
             onPasteImage: { data in save(pastedImage: data, in: note) },
             insertion: pendingInsertion,

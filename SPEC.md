@@ -1,161 +1,240 @@
-# SPEC — Fix rename/move/trash silent-failure bug + Workspace board wikilink rewrite gap
+# SPEC — Pergamenum view query builder
 
-**Topic slug:** rename-move-trash-silent-failure-fix
+**Topic slug:** pergamenum-view-query-builder
 
-## Objectives
+## Objective
 
-Two related defects in Pergamenum's sidebar note/folder operations and Workspace board rename
-propagation, both found during investigation of a user-reported bug (renaming a note through the
-sidebar context menu silently did nothing):
-
-1. Five call sites discard the `Bool`/`String?` result of a vault operation
-   (rename/move/trash note, rename/trash folder) and unconditionally close their sheet or dialog,
-   so a refused operation (most commonly: the note is open in the editor with unsaved changes)
-   looks like it succeeded. The refusal reason is already recorded into `vault.problems` but never
-   surfaced in that flow — only visible later in Settings diagnostics.
-2. A separate structural gap: when a note is renamed, `NoteFileOperations`'s board-repointing pass
-   rewrites `.file`-kind canvas nodes (embeds) but never inspects `.text`-kind canvas node bodies.
-   A Workspace board's own freehand text/To-Do card containing `[[OldTitle]]` is left with a stale,
-   unresolved wikilink after the rename, while the identical wikilink inside any ordinary `.md`
-   note is correctly rewritten.
+A `pergamenum-view` fence (ADR-0009) is hand-written YAML-shaped text: seven keys, a
+closed field list, a small boolean `where` grammar. ADR-0033 restored live, interactive
+rendering for a closed fence in the main note editor, plus an error card naming the line
+when the fence fails to parse — but composing or editing the fence body is still typing
+raw text against a grammar with no on-screen reference. This feature adds a visual query
+builder, reachable from the fence itself, that assembles a `pergamenum-view` block
+through structured controls instead of hand-typed syntax, for both a broken fence
+(fix-it) and a working one (edit).
 
 ## Scope
 
-In scope:
-- `NoteListPane.swift` — rename sheet confirm handler, trash confirmationDialog destructive button.
-- `NoteRowMenu.swift` — "Sposta in" submenu buttons (move note).
-- `NoteListPane+FolderVerbs.swift` — folder rename sheet confirm handler, folder trash
-  confirmationDialog destructive button.
-- `NoteFileOperations.swift` (`repointBoardsPlan`/`repointBoards`) — extend to rewrite
-  `[[OldTitle]]` wikilink occurrences inside `.text`-kind canvas node bodies, reusing
-  `NoteRename`'s existing wikilink-rewriting logic (`NoteRename.rewritingLinks` or the pure
-  string-rewrite it wraps).
-- `VaultController+Files.swift` / `VaultController+Folders.swift` — read-only: consult the
-  existing `@discardableResult` signatures and `vault.problems`/`recordProblem` mechanism; no
-  change to `canOperate`'s refusal policy itself.
+**In scope:**
+- A SwiftUI sheet presenting all seven `ViewBlock` keys (`from`, `where`, `sort`, `group`,
+  `render`, `columns`, `limit`) as structured controls, for a fence in the main note
+  editor.
+- One entry-point button, present on both states of the fence's rendered chrome: the live
+  attachment (ADR-0033/PG-099, a closed and valid fence) and the error card (a closed
+  fence that fails `ViewBlock.parse`).
+- A new "insert view" command (toolbar/context-menu/`CommandActions`, ADR-0023 pattern)
+  that inserts a minimal valid stub (` ```pergamenum-view` / `render: table` / ` ``` `) at
+  the caret and opens the builder on it immediately.
+- Live validation and a live match count against the vault (debounced, via
+  `ViewEvaluator`) as the draft changes.
+- A single atomic rewrite of the fence's source range on "Fatto" (one undo step), no write
+  to the note before that.
 
-Out of scope (explicit non-goals):
-- Note-rename-to-task-line propagation for ordinary `.md` files (wikilinks on task lines, frontmatter
-  `related`/quoted-related rewriting) — already verified correct in this codebase, untouched.
-- `canOperate(on:)` / `canOperateOnFolder(_:)` unsaved-changes refusal policy — this fix is about
-  surfacing an existing refusal to the user, never about removing or loosening it.
-- `WorkspaceView+FolderVerbs.swift` (board folder rename/delete) — already checks its return value
-  correctly (`guard let result = mutate() else { return }`); only lacks a proactive alert, and is
-  not part of this chain's delegated scope.
-- Any new `WriteJournal`/undo entry kind for folder operations (unrelated to this defect).
+**Out of scope:**
+- Workspace `.text` cards (ADR-0029's card exclusion is not reopened).
+- `perg`/`pergamenum-mcp` — no CLI/MCP scaffold command. `Sources/Core`/`Sources/Connector`
+  gain no new capability; this is UI over the existing `ViewBlock`/`ViewFilter`/
+  `ViewEvaluator` machinery.
+- A visual editor for the full `where` boolean tree (`or`, `not`, parentheses, arbitrary
+  nesting) — see the `where` grammar section below.
+- Saved/named views, view templates, or any persistence beyond the fence's own text
+  (unchanged from ADR-0009: "no view is ever saved or cached").
+- Non-board renderers gaining drag/write behavior — the builder only composes the block;
+  ADR-0009's board-is-the-only-writable-renderer rule is untouched.
 
-## Current behavior (confirmed by investigation, no further discovery needed)
+## Stack
 
-1. `NoteListPane.swift:161-162` — the rename sheet's `onConfirm` closure calls
-   `vault.renameNote(at:to:)` (which returns `@discardableResult -> Bool`,
-   `VaultController+Files.swift:32-48`) and discards the result, then unconditionally sets
-   `renaming = nil`. `canOperate(on:)` (`VaultController+Files.swift:18-23`) returns `false`
-   — before any file I/O — when the note being renamed is open in the editor with
-   `hasUnsavedChanges == true`, recording `Self.unsavedNoteRefusal` ("salva la nota prima di
-   rinominarla, spostarla o eliminarla") via `recordProblem`. That string is never read by this
-   call site.
-2. `NoteRowMenu.swift:31,33` — the "(radice)" button and the per-folder buttons inside the "Sposta
-   in" submenu call `vault.moveNote(at:toFolder:)` and discard the `Bool` return entirely — no
-   `if`/`guard`, no alert, no `problems` read.
-3. `NoteListPane.swift:173-174` — the delete `confirmationDialog`'s destructive button calls
-   `vault.trashNote(at:)` and discards the `Bool`, then unconditionally sets `deleting = nil`.
-4. `NoteListPane+FolderVerbs.swift:147-148` — the folder-delete `confirmationDialog`'s destructive
-   button calls `vault.trashFolder(at:)` and discards the `Bool`, then unconditionally sets
-   `deletingFolder = nil`.
-5. `NoteListPane+FolderVerbs.swift:188-189` — `renamingFolder = nil` is set **before**
-   `vault.renameFolder(at:to:)` is even called, so the `String?` result cannot be meaningfully
-   checked at that point regardless.
-6. `NoteFileOperations.swift`'s `repointBoardsPlan`/`repointBoards` (~lines 156-195) iterate a
-   board's `CanvasNode`s and rewrite only `.file(path:, subpath:)` entries whose `path` matches the
-   renamed note's old relative path. `.text`-kind nodes (the card body string) are never passed to
-   any wikilink rewriter, so `[[OldTitle]]` inside a board's own text/To-Do card content survives a
-   rename unchanged and becomes an unresolved link.
-
-## Existing patterns to reuse (already correct in this codebase)
-
-- `NoteListPane.swift`'s drag&drop `performMove` (~lines 528-556): checks
-  `VaultSession.MoveBatchOutcome.didMove`; on failure builds a `moveRefused` message from
-  `outcome.refusals + outcome.failures` and triggers `.alert("Spostamento rifiutato", ...)`
-  (~lines 101-114). This is the reference shape for "close + alert" on refusal.
-- `RecordingsController.swift:402-413`: checks `vault.trashNote`'s `Bool`, surfaces failure via
-  `rowErrors[recordingID] = "Nota non eliminata: \(path)"`, and — critically — does not proceed
-  with the dependent ledger-entry state change when the note operation failed.
-- `NoteRename.rewritingLinks` (`Sources/Core/Conventions/NoteRename.swift:23`): calls
-  `WikilinkParser.links(in: text)` on arbitrary text and returns the rewritten string plus any
-  failures — already text-shape-agnostic (works identically on prose, task lines, and frontmatter
-  text), so it is directly reusable on a `.text` canvas node's body string.
-
-## UI/UX decisions (from interview)
-
-- **R-01/R-02/R-03/R-04/R-05 (all five call sites): "close + alert" pattern.** On refusal, the
-  sheet/dialog still dismisses (unchanged from today), and a `.alert(...)` is then shown with the
-  operation-specific title (e.g. "Rinomina rifiutata", "Spostamento rifiutato" — reusing the
-  existing wording where a title already exists — "Eliminazione rifiutata" for trash) and
-  `vault.problems.last` as the message. This matches the existing `moveRefused` pattern exactly and
-  needs no new interaction shape (no inline-error UI, no keep-dialog-open state machine).
-- **Testing:** Definition of Done requires unit tests only, covering the refusal-detection/alert-
-  message-building logic (pure, testable) and the `.text`-node wikilink rewrite. Visual confirmation
-  that the alert actually renders on screen is a manual check, consistent with this project's
-  convention that the UI XCUITest suite runs by hand before a merge to `main`, not through
-  `.claude/test-cmd`.
+Swift 6, SwiftUI (the sheet and its controls), AppKit bridge for the one-time atomic text
+rewrite (same `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` path
+ADR-0019 and ADR-0029 already use). No new dependency.
 
 ## Architecture
 
-- Each of the five call sites gains an `if`/`guard` on the existing `@discardableResult` return
-  value (no signature changes to `VaultController+Files.swift`/`VaultController+Folders.swift`).
-- On failure, read `vault.problems.last` (already populated by `recordProblem` inside
-  `canOperate`/`canOperateOnFolder` or the session's `catch` blocks) into a new or existing
-  `@State` alert-message property, and present it via `.alert(...)`, following the exact shape of
-  the existing `moveRefused` alert in `NoteListPane.swift`.
-- For folder rename (`renameFolder(at:to:) -> String?`), "failure" is a `nil` return; call the
-  operation, branch on `nil` vs a concrete new path, and only then clear `renamingFolder`.
-- The board `.text`-node wikilink rewrite is added inside `NoteFileOperations`'s existing
-  board-repointing pass: for every `.text`-kind `CanvasNode` on every board scanned during a note
-  rename, run the same `NoteRename` wikilink-rewrite logic already applied to `.md` file content,
-  and write the rewritten body back into the node if it changed. This reuses `WikilinkParser`
-  identically to how it is already reused for prose and task lines — no new parser.
+### Entry points
+
+1. **Edit an existing fence.** `ViewBlockAttachment`'s hosted chrome (the live render) and
+   the error card (`RenderedViewBlock`'s `failed(_:)` state, per PG-099) both gain a
+   "Modifica query" affordance. Clicking it reads the fence's current source text (parsed
+   into a `ViewBlock` when it parses; the raw text plus the `ViewBlockError` when it does
+   not) and opens the sheet seeded from it.
+2. **Insert a new fence.** A new editor command inserts the minimal stub at the caret,
+   then opens the sheet on the just-inserted (parseable) block — one gesture from an
+   empty note to a configured view.
+
+### The sheet
+
+A draft-local `@State`/`@Observable` model, independent of the note's text until
+committed. Sections, in the order `ViewBlock`'s keys are declared:
+
+- **Ambito (`from`)** — repeatable rows, each a folder picked from the vault's existing
+  folder-tree component (the same tree the Note/Workspace sidebars already draw), each row
+  becoming a `path()` term; rows combine with `or`. Empty means the whole vault, matching
+  the fence's own default.
+- **Filtro (`where`)** — repeatable term rows, joined by `and` only (flat model — no
+  visual `or`/`not`/parentheses; see the dedicated section below). Each row picks one of
+  the 8 term kinds and gets a kind-specific argument control:
+  - `path` — the same folder-tree picker as Ambito.
+  - `tag` — the existing tag browser/picker (SPEC §4.4 namespaces), with glob support for
+    a pattern like `status-*`.
+  - `linksTo` / `linkedFrom` — a searchable picker over vault note titles.
+  - `task` — a segmented `open`/`done` control.
+  - `has` — a picker over the 18 closed `ViewField` cases.
+  - `text` — a plain text field.
+  - date comparison (only on `date` or `modified`) — a field picker restricted to those
+    two, a comparison-symbol picker (`>`, `>=`, `<`, `<=`, `=`), and a bound control
+    supporting all three `ViewDateBound` forms: a calendar date, `oggi`/`oggi-N`, and
+    `inizio-settimana`.
+- **Ordina (`sort`)** — repeatable field + ascending/descending rows, field restricted to
+  the closed `ViewField` list.
+- **Raggruppa (`group`)** — visible and enabled only when `render` is `board` (per the
+  "Other sections" decision below); a tag-namespace-or-field picker, required before
+  "Fatto" enables when `render == .board` (mirrors `ViewBlock.assemble`'s own rule that a
+  board with no group is a parse error).
+- **Rendering (`render`)** — a 5-way segmented picker (table/board/gallery/calendar/list).
+- **Colonne (`columns`)** — a multi-select checklist over the 18 closed fields, showing
+  the renderer's `effectiveColumns` as the pre-checked default.
+- **Limite (`limit`)** — an optional positive-integer field/stepper.
+
+Live match count: on every draft change (debounced), re-run `ViewEvaluator` against the
+assembled (or best-effort partial) block and display "N note corrispondono" — catches a
+filter matching zero notes before it is committed, without rendering a full result table
+inside the sheet.
+
+"Fatto" is disabled, with an inline one-line reason next to it, whenever the current draft
+would not assemble — the same two checks `ViewBlock.assemble` already makes (board
+renderer with no group; a `where` that does not parse) computed live in the sheet, so an
+invalid draft can never reach the note text. "Annulla" always closes immediately with no
+confirmation — the draft never touched the note text, so there is nothing to discard from
+the file's point of view.
+
+### `where` grammar — flat model and raw-text fallback
+
+The visual builder only ever constructs a flat conjunction: `term and term and term ...`.
+This is the shape ADR-0009's own examples and the vault's real views overwhelmingly need,
+and a full nested `and`/`or`/`not`/parentheses tree editor is a materially larger UI
+(recursive rows, drag-to-regroup or equivalent) for a case that is rare in practice.
+
+- **New fence / a fence whose existing `where` is already flat AND-of-terms (or has no
+  `where` at all):** the Filtro section shows term rows as above.
+- **An existing fence whose `where` uses `or`, `not`, or parentheses:** the rest of the
+  sheet (Ambito, Ordina, Raggruppa, Rendering, Colonne, Limite) still loads into their
+  normal structured controls. Only Filtro falls back to a raw, pre-filled text field for
+  the `where` value, still validated live against `ViewFilter.parse` (same inline-error
+  and disabled-Fatto behavior as everywhere else in the sheet). The rest of the block is
+  never silently dropped.
+
+### Write-back
+
+On "Fatto", assemble the draft into `pergamenum-view` fence body text: `render` and, for
+each other key, the section's value — **except `columns`**, which is omitted from the
+written text whenever the current selection still equals the renderer's own
+`effectiveColumns` (keeps a block that never left its defaults exactly as minimal as a
+hand-written one would be, and stays correct if a renderer's default set changes later).
+The assembled text replaces the fence's source range in one atomic
+`shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` rewrite — one `Cmd+Z`
+undoes the whole edit, matching ADR-0019's drag-resize and ADR-0029's table-cell-commit
+precedent. The sheet then closes; the editor's existing fence machinery (parse, attach,
+render or error-card) picks up the new text exactly as it would a hand-typed edit.
+
+## Data model
+
+No new persisted state. The draft lives only in the sheet's local view state for the
+duration of one edit; nothing is saved, cached, or written until "Fatto", and the written
+form is ordinary fence text in the note — unchanged from ADR-0009's "no view is ever saved
+or cached" rule.
+
+## UI flows
+
+1. **Fix a broken fence.** Person types (or pastes) a `pergamenum-view` fence that fails
+   to parse. The error card shows the line and reason (PG-099) plus "Modifica query". They
+   click it; the sheet opens seeded with whatever of the raw text could be recovered field
+   by field, or empty where it could not; they fix the problem through structured
+   controls; "Fatto" enables once the draft assembles; click closes the sheet and rewrites
+   the fence, which now renders live.
+2. **Edit a working view.** Person clicks "Modifica query" on a live board/table/etc.
+   render; the sheet opens fully seeded from the parsed `ViewBlock`; they change a field
+   (e.g. add a sort key); live match count updates; "Fatto" commits the one rewrite.
+3. **Insert a new view from scratch.** Person triggers the insert-view command; a minimal
+   stub lands at the caret and the sheet opens on it immediately, defaulted to
+   `render: table` with an empty scope (whole vault) and no filter; they build up Ambito/
+   Filtro/Ordina/Colonne; "Fatto" writes the full block.
+4. **Non-flat existing filter.** Person opens the builder on a fence whose `where` already
+   uses `or`; every other section loads structured; Filtro shows the original `where` text
+   in a validated raw field; they may edit that text directly or leave it untouched while
+   changing other sections; "Fatto" still does one atomic rewrite of the whole fence.
 
 ## Edge cases
 
-- A note reference appearing more than once inside the same `.text` card body — all occurrences
-  rewritten in one pass, matching `NoteRename.rewritingLinks`'s existing whole-text behavior.
-- A `.text` card containing no wikilink at all — no-op, node left byte-identical (avoid spurious
-  diffs / journal noise).
-- Folder rename refusal: `renameFolder` returning `nil` for reasons other than the unsaved-changes
-  guard (e.g. name collision) must surface the corresponding `vault.problems.last` message, not a
-  generic one.
-- A rename that succeeds for the note itself but partially fails to rewrite some links (existing
-  `outcome.failures` from `session.renameNote`) is already handled today via
-  `recordProblem("link non aggiornato in \(failure)")` in `VaultController+Files.swift:36-38` —
-  unaffected by this change, not to be conflated with the "operation refused outright" case this
-  SPEC addresses.
+- **Board renderer with no group selected:** "Fatto" stays disabled with the inline reason
+  stating a board needs a group, mirroring `ViewBlock.assemble`'s own error text.
+- **Raw-text `where` fallback fails to parse after a hand-edit:** "Fatto" stays disabled
+  with the `ViewFilter.parse` error's own line/reason shown inline; the rest of the sheet
+  remains usable.
+- **Fence deleted or its source range changes out from under the sheet** (e.g. another
+  edit lands while the sheet is open): the atomic rewrite targets the fence's source range
+  at commit time, not at open time; if that range no longer exists or no longer identifies
+  the same fence, "Fatto" reports the write could not be applied rather than rewriting the
+  wrong text or silently failing.
+- **Insert-view command with the caret inside another construct** (e.g. inside an existing
+  fence, a table, a list item): follows the same placement rule the app's other
+  caret-insert commands already use; no new placement logic invented for this feature.
+- **Vault has zero notes matching the current draft:** live match count shows "0 note
+  corrispondono" — not an error, a legitimate transient state while composing.
+- **`limit` left blank:** omitted from the written block, matching the field's own
+  optionality.
+- **Ambito (`from`) left with zero rows:** omitted from the written block (whole-vault
+  scope), matching the fence's own default.
 
 ## Success criteria
 
-- [ ] R-01 — Renaming a note that is open in the editor with unsaved changes, via the sidebar
-      context menu, shows an alert naming the refusal reason instead of silently closing the
-      rename sheet with no file change.
-- [ ] R-02 — Moving a note via the "Sposta in" submenu, when refused, shows an alert naming the
-      refusal reason instead of silently doing nothing.
-- [ ] R-03 — Trashing a note via the delete confirmation dialog, when refused, shows an alert
-      naming the refusal reason instead of silently doing nothing.
-- [ ] R-04 — Renaming a folder via the sidebar, when refused, shows an alert naming the refusal
-      reason instead of silently closing the rename sheet with no folder change.
-- [ ] R-05 — Trashing a folder via the delete confirmation dialog, when refused, shows an alert
-      naming the refusal reason instead of silently doing nothing.
-- [ ] R-06 — Renaming a note that is referenced by `[[OldTitle]]` inside a Workspace board's own
-      `.text`-kind card (freehand text or To-Do card body) rewrites that occurrence to
-      `[[NewTitle]]`, matching the existing rewrite already applied to `.md` files.
-- [ ] R-07 — A `.text` canvas node with no matching wikilink is left byte-identical after a note
-      rename (no spurious writes).
-- [ ] R-08 — `canOperate(on:)`/`canOperateOnFolder(_:)`'s unsaved-changes refusal policy is
-      unchanged in behavior — this fix only makes an existing refusal visible, it does not remove,
-      loosen, or bypass it. (no-test: policy-preservation is verified by code review of the diff
-      against `VaultController+Files.swift`/`VaultController+Folders.swift`, not by a new
-      automated test, since the requirement is the absence of a change)
-- [ ] R-09 — Unit tests cover: each of the five refusal-detection/alert-message-building paths, and
-      the `.text`-node wikilink rewrite (including the no-match no-op case from R-07).
-- [ ] R-10 — Note-rename-to-task-line propagation for ordinary `.md` files is unmodified by this
-      change. (no-test: this is a non-regression guarantee over existing, already-verified-correct
-      behavior; confirmed by the unit suite continuing to pass with no changes needed to existing
-      `NoteRename`/`TaskParser` tests, not by a new test asserting the absence of a change)
+- [ ] R-01 — A "Modifica query" affordance is present and functional on both the live
+      view attachment (ADR-0033) and the error card (PG-099) for a `pergamenum-view`
+      fence in the main note editor.
+- [ ] R-02 — Clicking "Modifica query" on a parseable fence opens a sheet fully seeded
+      from the fence's current `ViewBlock` (all seven keys reflected in their structured
+      controls).
+- [ ] R-03 — Clicking "Modifica query" on a fence that fails `ViewBlock.parse` opens the
+      same sheet, seeded field-by-field from whatever of the raw text is recoverable.
+- [ ] R-04 — A new insert-view editor command inserts a minimal valid stub at the caret
+      and opens the builder on it in the same gesture.
+- [ ] R-05 — The Ambito (`from`) section presents repeatable rows backed by the vault's
+      existing folder-tree picker, each row producing one `path()` term, rows combined
+      with `or`.
+- [ ] R-06 — The Filtro (`where`) section presents repeatable term rows joined by `and`
+      only, one row per one of the 8 term kinds, each with a kind-specific input control
+      (folder picker for `path`, tag picker for `tag`, note-title picker for
+      `linksTo`/`linkedFrom`, open/done toggle for `task`, field picker for `has`, text
+      field for `text`, comparison-symbol + date-bound control for a date/modified
+      comparison).
+- [ ] R-07 — Opening the builder on an existing fence whose `where` is not expressible as
+      flat AND-of-terms (contains `or`, `not`, or parentheses) still loads every other
+      section structured, and falls back to a validated raw-text field for `where` alone,
+      without dropping or altering any other key.
+- [ ] R-08 — The Raggruppa (`group`) section is shown/enabled only when Rendering
+      (`render`) is `board`.
+- [ ] R-09 — The Colonne (`columns`) section is a multi-select checklist over the 18
+      closed `ViewField` cases, pre-checked to the current renderer's
+      `effectiveColumns` when the fence declares none.
+- [ ] R-10 — The Ordina (`sort`) section presents repeatable field + ascending/descending
+      rows restricted to the closed `ViewField` list.
+- [ ] R-11 — A live match count against the vault (via `ViewEvaluator`) updates as the
+      draft changes, debounced rather than on every keystroke.
+- [ ] R-12 — "Fatto" is disabled, with an inline reason shown, whenever the current draft
+      would fail `ViewBlock.assemble` (board with no group; an unparseable `where`,
+      including the raw-text fallback case).
+- [ ] R-13 — "Fatto" performs exactly one atomic rewrite of the fence's source range
+      (`shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing`), producing one
+      undo step regardless of how many fields changed in the sheet.
+- [ ] R-14 — "Annulla" closes the sheet immediately with no confirmation prompt and no
+      write to the note text.
+- [ ] R-15 — The written fence omits the `columns:` key whenever the final selection
+      equals the renderer's `effectiveColumns`, and omits `from`/`limit` when left empty,
+      matching a hand-written minimal block.
+- [ ] R-16 — The builder does not attach to or open from Workspace `.text` cards; only the
+      main note editor gains this feature (no-test: ADR-0029's existing card exclusion is
+      the mechanism that already prevents this, verified by absence rather than a new
+      assertion).
+- [ ] R-17 — No new capability is added to `Sources/Core`, `Sources/Connector`, `perg`, or
+      `pergamenum-mcp`; the feature is UI-only over the existing `ViewBlock`/`ViewFilter`/
+      `ViewEvaluator` machinery (no-test: a boundary verified by code review and the
+      existing `sharedSources` build-break mechanism, not by a dedicated test).

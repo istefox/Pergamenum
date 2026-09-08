@@ -27,7 +27,7 @@ struct EditorColumnView: View {
 
     /// Held here rather than read straight from `Navigation`, because the insertion has to be
     /// consumed once: read directly it would be re-applied on every view update.
-    @State var pendingInsertion: (text: String, cursorBack: Int)?
+    @State var pendingInsertion: Navigation.Insertion?
     /// Bumped after a note is created, so the editor that replaces the composer opens with the
     /// cursor already in it.
     @State var focusRequest = 0
@@ -50,6 +50,11 @@ struct EditorColumnView: View {
     @State var pendingReplacementsIsMove = false
     /// The tab whose close button was pressed while it had unsaved changes.
     @State var closing: NoteTab?
+    /// The fence a "Modifica query" click asked to edit (ADR-0034 §D2), and the sheet it
+    /// presents. Cleared on a successful commit and on cancel; a plain automatic dismissal
+    /// (swipe, Esc) drives the same binding through `.sheet(item:)` and needs no separate
+    /// handling.
+    @State var editingViewQuery: ViewQueryEditRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +82,22 @@ struct EditorColumnView: View {
         .onTapGesture { vault.focusColumn(columnIndex) }
         .quickLook(urls: previewURLs, isPresented: $isPreviewingEmbed)
         .modifier(UnsavedTabDialog(closing: $closing, column: self))
+        // ADR-0034 §D2: the sheet is handed `viewQuerySource`, the same source the drawn fence
+        // itself renders through, so the count in the sheet and the count in the header cannot
+        // disagree. `onCommit` clears the request only on a successful write - a refused
+        // commit (the fence moved on under the sheet) leaves it open to report so.
+        .sheet(item: $editingViewQuery) { request in
+            ViewQueryBuilderSheet(
+                source: request.source,
+                queries: viewQuerySource,
+                onCommit: { body in
+                    let committed = request.commit(body)
+                    if committed { editingViewQuery = nil }
+                    return committed
+                },
+                onCancel: { editingViewQuery = nil }
+            )
+        }
         // The menu's requests are answered by the focused column only. Without this both
         // columns would consume the same insertion and the same jump, and the one that lost
         // the race would apply it to the wrong note.
