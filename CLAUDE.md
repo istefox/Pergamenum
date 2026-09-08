@@ -522,6 +522,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0032** — Plaud recording import: loopback-only second exception to Principle 2, `pergamenum-*` frontmatter reopening for transcript notes, quote-fingerprint dedup over note+ledger, two-phase import with retry-only-step-2, app-only scope → `docs/adr/0032-plaud-recording-import-into-pergamenum.md`
 - **ADR-0033** — Views render live in the editor again: `pergamenum-view` fences become an `NSHostingView`-hosted attachment reusing the existing `RenderedViewBlock` renderers, host keyed by fence ordinal (not paragraph offset), reveal-on-caret keyed on the fence's whole source range; does not reopen ADR-0009 or ADR-0029 → `docs/adr/0033-views-render-live-in-the-editor.md`
 - **ADR-0034** — Visual query builder for `pergamenum-view` fences: one shared "Modifica query" affordance in `RenderedViewBlock`'s header (both live-render and error-card states), validity round-trips through `ViewBlock.parse` itself, flat AND-of-terms `where` with raw-text fallback for or/not/parens, commit reuses `commitTable`'s anchor-and-reload-guard shape; does not reopen ADR-0009 or ADR-0033 → `docs/adr/0034-pergamenum-view-query-builder.md`
+- **ADR-0035** — View-block attachment height becomes content-adaptive, capped at the original 320pt (amends ADR-0033 §D8/R-06): measurement crosses the SwiftUI/TextKit isolation boundary via a lock-guarded box on the host, deferred `Task { @MainActor }` relayout to avoid re-entering TextKit, clamp-before-compare for convergence → `docs/adr/0035-view-block-adaptive-height.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -864,3 +865,37 @@ Key architectural decisions:
   `sharedSources` glob, so the CLI/MCP boundary is structural rather than a rule to keep.
 
 Detail: `docs/adr/0034-pergamenum-view-query-builder.md`.
+
+## Decisions from the view-block adaptive-height chain (ADR-0035)
+
+Replaces `ViewBlockAttachment`'s fixed 320pt height with one adaptive to content, capped at the
+same 320pt: `docs/adr/0035-view-block-adaptive-height.md`. Amends ADR-0033 §D8/R-06 — a small
+result set no longer reserves a mostly-empty box; a large one still scrolls internally past the
+cap exactly as before.
+
+Key architectural decisions:
+- **The measurement crosses from SwiftUI's `@MainActor` layout into TextKit's `nonisolated`
+  `attachmentBounds` through a lock-guarded box (`ViewBlockHeightBox`) on a new host subclass
+  (`ViewBlockHostView`)**, not a shared `@MainActor` property — `attachmentBounds` cannot read one.
+  The box lives on the host, which survives across styling passes (ADR-0033 §D3's ordinal key),
+  not on the attachment, which is rebuilt fresh every pass.
+- **The measurement point is inside the existing `ScrollView`, never inside `RenderedViewBlock`
+  itself** — a vertical `ScrollView` proposes `nil` height to its content, so the attachment's
+  capped reserved height can never feed back into what gets measured. Moving either one relative
+  to the other breaks the whole design.
+- **A height-change callback never invalidates TextKit synchronously** — it runs on SwiftUI's own
+  layout stack, and doing so would re-enter `NSTextLayoutManager`. It defers one `Task { @MainActor
+  }` hop, coalesced per Coordinator turn, then calls the same `invalidateLayout` +
+  `growToFitTheText` path `applyFolding`/`applyTransclusion` already use in production —
+  `growToFitTheText` never sets a frame directly, which is the one operation this codebase has a
+  documented regression from.
+- **Before any measurement, the attachment reserves 120pt, not the 320pt cap** — TextKit 2 lays out
+  lazily, so a 320pt default would make every fence visibly collapse to its real height the first
+  time it scrolls into view. 120pt approximates the "header, no result yet" placeholder height, so
+  the visible motion is normally just results filling in.
+- **`storableHeight(measured:current:)` clamps before it compares** — the only thing that makes a
+  measure → relayout → remeasure cycle terminate for content taller than the cap: two
+  above-the-cap measurements (5000pt, then 5003pt) both clamp to 320pt, so the second stores
+  nothing and schedules no further relayout.
+
+Detail: `docs/adr/0035-view-block-adaptive-height.md`.
