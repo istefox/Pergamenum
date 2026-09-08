@@ -189,6 +189,7 @@ struct InsertCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .insertRelated))
                 .disabled(!actions.canRun(.insertRelated))
             Button("Tabella") { navigation.insert(EditorCommand.table) }
+            Button("Vista…") { insertView() }
             Button("Immagine o file…") { insertFile() }
                 .disabled(vault.openNote == nil)
             Button("Link email da Mail") { insertMailLink() }
@@ -210,6 +211,14 @@ struct InsertCommands: Commands {
         let names = urls.compactMap { vault.importFileIntoVault($0, near: note.relativePath) }
         guard !names.isEmpty else { return }
         navigation.insert(names.map(EditorEdits.embed(forFileNamed:)).joined(separator: "\n") + "\n")
+    }
+
+    /// Writes a closed, parseable `pergamenum-view` stub at the cursor and opens the query
+    /// builder on it in the same gesture (R-04, ADR-0034 §D10) - the sheet always edits a
+    /// fence that already exists, rather than sometimes writing one.
+    private func insertView() {
+        let stub = ViewQueryText.stub(atLineStart: true)
+        navigation.insert(stub.text, cursorBack: stub.cursorBack, opensQueryBuilder: true)
     }
 
     /// Reads the message selected in Mail and inserts its `message://` link (SPEC §10).

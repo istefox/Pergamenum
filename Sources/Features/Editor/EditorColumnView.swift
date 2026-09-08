@@ -27,7 +27,7 @@ struct EditorColumnView: View {
 
     /// Held here rather than read straight from `Navigation`, because the insertion has to be
     /// consumed once: read directly it would be re-applied on every view update.
-    @State var pendingInsertion: (text: String, cursorBack: Int)?
+    @State var pendingInsertion: Navigation.Insertion?
     /// Bumped after a note is created, so the editor that replaces the composer opens with the
     /// cursor already in it.
     @State var focusRequest = 0

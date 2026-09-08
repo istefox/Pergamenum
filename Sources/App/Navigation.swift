@@ -138,29 +138,34 @@ final class Navigation {
     /// inspector untouched. Mirrors `isWorkspaceTreeCollapsed`.
     var isNoteTreeCollapsed = false
 
-    /// Text the Inserisci menu has asked the editor to put at the cursor.
-    ///
+    /// Text the Inserisci menu, or the insert-view command (R-04, ADR-0034 §D10), has asked
+    /// the editor to put at the cursor.
+    struct Insertion: Equatable, Sendable {
+        var text: String
+        /// How far to move the cursor back after inserting, so it lands inside the
+        /// brackets of `[[]]` rather than after them.
+        var cursorBack: Int
+        /// Whether the editor should open the query builder on the fence this insertion
+        /// just wrote, in the same gesture (ADR-0034 §D10). `false` for every ordinary
+        /// insertion - only the insert-view command's stub sets it, through `insert`'s
+        /// own defaulted parameter, so none of the other ten call sites change meaning.
+        var opensQueryBuilder = false
+    }
+
     /// A request rather than a call: the menu has no reference to the `NSTextView`,
     /// and giving it one would mean the menu stops working the moment the editor is
     /// rebuilt. The editor consumes this and clears it.
-    private(set) var pendingInsertion: String?
-    /// How far to move the cursor back after inserting, so it lands inside the
-    /// brackets of `[[]]` rather than after them.
-    private(set) var pendingCursorOffset = 0
+    private(set) var pendingInsertion: Insertion?
 
-    func insert(_ text: String, cursorBack offset: Int = 0) {
-        pendingInsertion = text
-        pendingCursorOffset = offset
+    func insert(_ text: String, cursorBack offset: Int = 0, opensQueryBuilder: Bool = false) {
+        pendingInsertion = Insertion(text: text, cursorBack: offset, opensQueryBuilder: opensQueryBuilder)
         pane = .notes
     }
 
-    func consumeInsertion() -> (text: String, cursorBack: Int)? {
-        guard let text = pendingInsertion else { return nil }
-        defer {
-            pendingInsertion = nil
-            pendingCursorOffset = 0
-        }
-        return (text, pendingCursorOffset)
+    func consumeInsertion() -> Insertion? {
+        guard let insertion = pendingInsertion else { return nil }
+        defer { pendingInsertion = nil }
+        return insertion
     }
 
     /// The Aiuto entries of SPEC §10, and the Diario pane's own.
