@@ -523,6 +523,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0033** — Views render live in the editor again: `pergamenum-view` fences become an `NSHostingView`-hosted attachment reusing the existing `RenderedViewBlock` renderers, host keyed by fence ordinal (not paragraph offset), reveal-on-caret keyed on the fence's whole source range; does not reopen ADR-0009 or ADR-0029 → `docs/adr/0033-views-render-live-in-the-editor.md`
 - **ADR-0034** — Visual query builder for `pergamenum-view` fences: one shared "Modifica query" affordance in `RenderedViewBlock`'s header (both live-render and error-card states), validity round-trips through `ViewBlock.parse` itself, flat AND-of-terms `where` with raw-text fallback for or/not/parens, commit reuses `commitTable`'s anchor-and-reload-guard shape; does not reopen ADR-0009 or ADR-0033 → `docs/adr/0034-pergamenum-view-query-builder.md`
 - **ADR-0035** — View-block attachment height becomes content-adaptive, capped at the original 320pt (amends ADR-0033 §D8/R-06): measurement crosses the SwiftUI/TextKit isolation boundary via a lock-guarded box on the host, deferred `Task { @MainActor }` relayout to avoid re-entering TextKit, clamp-before-compare for convergence → `docs/adr/0035-view-block-adaptive-height.md`
+- **ADR-0036** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0036-task-note-board-link-and-navigation.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -899,3 +900,46 @@ Key architectural decisions:
   nothing and schedules no further relayout.
 
 Detail: `docs/adr/0035-view-block-adaptive-height.md`.
+
+## Decisions from the task-note-board-link-and-navigation chain (ADR-0036)
+
+Fixes a task's confused, partly-broken relation to its note and to a board:
+`docs/adr/0036-task-note-board-link-and-navigation.md`. Reopens SPEC §7.2's note-linking
+requirement (removed, deliberately) and R-05 of ADR-0021 (board navigation, added).
+
+Key architectural decisions:
+- **`TaskCommand` (`Sources/Features/Tasks/TaskCommand.swift`) mirrors `CardCommand` and
+  `CalendarDayCommand`** — three cases (`.linkBoard`, `.goToNote`, `.goToBoard`), the last
+  offered only when `task.workspacePath != nil` — so the row's context menu, the Attività
+  toolbar, the Task menu and the "Task collegati" panel row read one catalogue instead of
+  four hand-kept lists that had already drifted (one missing the pane switch that makes
+  navigation visible, one missing a board destination entirely).
+- **"Collega nota o board…" loses its note half rather than gaining a working board half** —
+  a task's note is already the file `TaskComposer`'s `DestinationPicker` wrote it into at
+  capture time, so there was never a second note to link later. The command becomes
+  "Collega una board…", the one relation that is actually optional and separate.
+- **`CommandActions+TaskCommands.swift`'s `run(_:on:)`/`canRun(_:on:)` is the one place all
+  three actions live**, mirroring `CommandActions.run(_:on:)` for the note-row context menu
+  (ADR-0023 cluster 2) — `.goToNote` performs `vault.openNote(at:)` and
+  `navigation.pane = .notes` together, which is the whole fix for the breadcrumb's old
+  defect (a navigation that changed state nobody was watching). `.goToBoard` reuses
+  `WorkspaceBoardResolver` and `vault.routeState.pendingCanvas`, the same mechanism the
+  row's board chip already used correctly.
+- **The board picker's `.sheet(item:)` moves to `RootView`, off a new
+  `navigation.taskPickingBoard: TaskItem?`** — it used to live inside `TasksView`, reachable
+  from the Task menu only through a flag-plus-`onChange` round trip
+  (`vault.isLinkingSelectedTask`, removed). Hosted at `RootView` it works from every surface,
+  including the "Task collegati" panel, which lives inside the Workspace pane where
+  `TasksView` does not exist.
+- **`VaultSession.TaskChange.link` and `TaskParser+Writes.line(for:addingLinkTo:)` are kept,
+  not removed** — pure, tested vault-layer capability for writing a wikilink into a task
+  line. No UI calls it after this chain, which is a deliberate choice, not an oversight: a
+  wikilink typed by hand into a task line, to a note or to a `.canvas`, stays valid and
+  navigable.
+- **`open(link:)`'s `.canvas` branch is fixed to actually navigate**, through
+  `WorkspaceBoardResolver`, instead of a `return` that contradicted its own comment.
+- **`QuickSwitcher.Mode.pick` is left in place though now unreferenced** — its one caller was
+  the removed note-linking handler; removing the case itself touches a file outside this
+  chain's scope and is named as a follow-up rather than folded in here.
+
+Detail: `docs/adr/0036-task-note-board-link-and-navigation.md`.

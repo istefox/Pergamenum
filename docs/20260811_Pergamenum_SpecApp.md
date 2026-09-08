@@ -326,10 +326,10 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 ### 7.2 Collegamento task ↔ note e canvas (requisito)
 
 - Un task può contenere uno o più wikilink a **note .md** e a **file .canvas**. Il wikilink nel testo del task è il meccanismo di collegamento: nessuna sintassi aggiuntiva.
-- **Dal task alla nota/canvas**: nelle viste task ogni wikilink è cliccabile e apre la destinazione (editor o canvas). Menu contestuale: "Apri nota collegata" / "Apri canvas collegato".
+- **Dal task alla nota/canvas**: nelle viste task ogni wikilink è cliccabile e apre la destinazione (editor o canvas).
 - **Dalla nota/canvas ai task**: pannello "Task collegati" nella nota e nel canvas, che elenca tutti i task del vault il cui testo linka quella nota/canvas, con stato e date, completabili sul posto (la modifica scrive nel file di origine del task).
-- **Collegamento assistito**: dalla vista task, comando "Collega nota/canvas…" apre il quick switcher e inserisce il wikilink nel testo del task. Dall'editor, un task su una riga qualsiasi si collega trascinandovi sopra una nota dalla sidebar.
 - Questi collegamenti sono citazioni inline ai fini di wikilink.md (W-03): non impegnano `related`, non richiedono motivo né simmetria. Contano nell'indice backlink dell'app (la nota mostra il task tra i suoi backlink).
+- *Emendato 2026-09-08 (ADR-0036).* Il "collegamento assistito" a una nota è rimosso: la nota di un task è già quella scelta al momento della cattura (il composer decide in quale file la riga viene scritta), quindi non esiste una seconda nota da "collegare" in un secondo momento. Resta, unico, il collegamento assistito a una **board**: comando "Collega una board…", che scrive `^[[<board>.canvas]]` (§7.2 resta valido per il modello - un task può ancora contenere qualunque wikilink scritto a mano, verso note o canvas, e resta navigabile in entrambe le direzioni). Il menu contestuale del task espone "Vai alla nota di origine" (sempre) e "Vai alla board collegata" (solo con una board assegnata) al posto delle due voci "Apri nota collegata" / "Apri canvas collegato" di cui sopra, che descrivevano una capacità mai implementata sui wikilink liberi.
 
 ### 7.3 Comportamenti
 
@@ -412,7 +412,7 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Conformità (linter §4.7) · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
 
-**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega nota/canvas… (§7.2) · Annulla task · Vai alla nota di origine
+**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0036) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
 **Calendario**: Vai a oggi · Giorno precedente/successivo (Cmd+←/→) · Vai a data… · Nuovo evento (Cmd+E) · Nuovo promemoria (Cmd+Shift+E) · Pubblica time block come evento · Aggiorna da EventKit
 

@@ -140,6 +140,13 @@ struct RootView: View {
             .sheet(isPresented: Bindable(navigation).isShowingDiaryHelp) {
                 HelpSheet(topic: .diary) { navigation.isShowingDiaryHelp = false }
             }
+            // `TaskCommand.linkBoard`'s picker (ADR-0036 §D3), hosted here rather than by
+            // `TasksView` so it opens from every surface that offers the command — the
+            // "Task collegati" panel included, which lives inside the Workspace pane where
+            // `TasksView` does not exist.
+            .sheet(item: Bindable(navigation).taskPickingBoard) { task in
+                WorkspacePicker(task: task) { navigation.taskPickingBoard = nil }
+            }
     }
 
     private var content: some View {

@@ -105,7 +105,9 @@ final class SectionToolbarsUITests: XCTestCase {
 
         // The four actions on a task are there and refuse to act on nothing: with no
         // row selected they would otherwise be four buttons that silently do nothing.
-        for label in ["Completa o riapri", "Pianifica oggi", "Collega nota o board", "Vai alla nota di origine"] {
+        // «Vai alla board collegata» is the fifth and is omitted rather than disabled with
+        // no task selected (ADR-0036 §D1), so it is not asserted here.
+        for label in ["Completa o riapri", "Pianifica oggi", "Collega una board…", "Vai alla nota di origine"] {
             XCTAssertFalse(button(label).isEnabled, "«\(label)» è attivo senza un task selezionato")
         }
 

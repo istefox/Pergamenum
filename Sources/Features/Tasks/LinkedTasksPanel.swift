@@ -53,6 +53,7 @@ struct LinkedTasksPanel: View {
 struct TaskPanelRow: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(CommandActions.self) private var actions
 
     let task: TaskItem
     /// Distinguishes the sections a row can appear in, so a UI test names the one it
@@ -73,7 +74,7 @@ struct TaskPanelRow: View {
                     .themedText(.caption, color: task.state == .done ? .taskDone : .textPrimary)
                     .lineLimit(2)
                 Button {
-                    vault.openNote(at: task.sourcePath)
+                    actions.run(.goToNote, on: task)
                 } label: {
                     Text(NoteName.title(fromFileName: (task.sourcePath as NSString).lastPathComponent))
                         .themedText(.caption, color: .textTertiary)
@@ -97,7 +98,9 @@ struct TaskPanelRow: View {
             Button("Pianifica oggi") { vault.apply(.schedule(.today), to: task) }
             Button("Domani") { vault.apply(.schedule(CalendarDate.today.adding(days: 1)), to: task) }
             Divider()
-            Button("Vai alla nota di origine") { vault.openNote(at: task.sourcePath) }
+            ForEach(TaskCommand.available(for: task), id: \.self) { command in
+                Button(command.title) { actions.run(command, on: task) }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(task.state == .done ? "Completato" : "Da fare"): \(task.text)")
