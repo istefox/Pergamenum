@@ -1,1 +1,1 @@
-xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath "/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/feature-task-note-board-link-navigation/.build/DerivedData" -only-testing:PergamenumTests test
+xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -derivedDataPath "/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-open-steaks-hear-bjs2e/.build/DerivedData" -only-testing:PergamenumTests test

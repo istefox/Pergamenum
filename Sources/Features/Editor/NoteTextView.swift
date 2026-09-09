@@ -297,6 +297,14 @@ struct NoteTextView: NSViewRepresentable {
                 || coordinator.unfold(at: point, in: textView)
                 || coordinator.selectEmbed(at: point, in: textView)
         }
+        // A click on a task line's checkbox glyph (PG-101-adjacent, checkbox size + click
+        // chain): asked in `mouseDown` after the margin claimants above and before `super`,
+        // so it never places the caret and never triggers `NoteTextView+Reveal`'s
+        // reveal-on-caret for that paragraph.
+        textView.onToggleCheckbox = { [weak textView] point in
+            guard let textView else { return false }
+            return coordinator.toggleCheckbox(at: point, in: textView)
+        }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
