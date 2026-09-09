@@ -687,11 +687,14 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
         #expect((string?.attribute(.font, at: 3, effectiveRange: nil) as? NSFont) != EditorDecorationDelegate.collapsedFont)
     }
 
-    /// R-03's checkbox counterpart: the caret's own paragraph shows the raw `- [ ]` source,
-    /// not the glyph.
-    @Test func theHookReturnsNilForARevealedCheckboxParagraph() {
-        #expect(displayedParagraph(Self.open, markers: [Self.openMarker], revealed: [0]) == nil)
-        #expect(displayedParagraph(Self.done, markers: [Self.doneMarker], revealed: [0]) == nil)
+    /// Deliberately not R-03's checkbox counterpart: unlike a list item or a blockquote, the
+    /// checkbox glyph keeps drawing even when the caret sits in its own paragraph - typing the
+    /// task's own text would otherwise make the glyph flicker back to raw `- [ ]` on every
+    /// keystroke. The click-to-toggle (`NoteTextView+CheckboxClick.swift`) is what removed the
+    /// need to ever hand-edit the marker with the caret sitting inside it.
+    @Test func theHookStillDrawsTheGlyphForARevealedCheckboxParagraph() {
+        #expect(displayedParagraph(Self.open, markers: [Self.openMarker], revealed: [0]) != nil)
+        #expect(displayedParagraph(Self.done, markers: [Self.doneMarker], revealed: [0]) != nil)
     }
 
     /// ADR-0028 §D10's switch governs this marker kind too: off means off, whatever the reveal

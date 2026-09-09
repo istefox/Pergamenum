@@ -490,6 +490,9 @@ extension NoteTextView {
             // this app's captions use. Pushed here and not in `applyFolding`, which returns
             // early for a note with nothing folded, i.e. for most notes.
             decorations.badgeFont = ProseTypography.mono(theme, size: theme.nsFont(.caption).pointSize)
+            // The checkbox glyph's face, 7pt over prose (`ProseTypography.checkbox(_:)`) - the
+            // one character `checkboxParagraph(at:storage:)` sizes on its own.
+            decorations.checkboxFont = ProseTypography.checkbox(theme)
             // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
             // guard, since `applyFolding`'s early return does not cover it, and its own
             // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own

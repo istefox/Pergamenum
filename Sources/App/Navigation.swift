@@ -173,6 +173,14 @@ final class Navigation {
     var isShowingConventionsHelp = false
     var isShowingDiaryHelp = false
 
+    /// The task `TaskCommand.linkBoard` opened `WorkspacePicker` for (ADR-0036 §D3).
+    ///
+    /// Held here rather than in `TasksView` (as `assigningWorkspaceFor` used to be): the
+    /// command is reachable from the "Task collegati" panel too, which lives inside the
+    /// Workspace pane where `TasksView` does not exist. `RootView` hosts the sheet, the one
+    /// place every surface shares.
+    var taskPickingBoard: TaskItem?
+
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false

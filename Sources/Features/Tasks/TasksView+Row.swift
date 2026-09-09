@@ -47,10 +47,10 @@ extension TasksView {
                     // Both shown together when both exist (R-06): a task past its deadline but
                     // rescheduled ahead of it used to lose one of the two markers silently.
                     if let due = task.due {
-                        Text("!\(due)").themedText(.mono, color: .taskOverdue)
+                        Text("!\(due.description)").themedText(.mono, color: .taskOverdue)
                     }
                     if let scheduled = task.scheduled {
-                        Text(">\(scheduled)").themedText(.mono, color: .taskScheduled)
+                        Text(">\(scheduled.description)").themedText(.mono, color: .taskScheduled)
                     }
                 }
             }
@@ -80,7 +80,7 @@ extension TasksView {
     func details(_ task: TaskItem) -> some View {
         HStack(spacing: theme.spacing(.xs)) {
             Button {
-                vault.openNote(at: task.sourcePath)
+                actions.run(.goToNote, on: task)
             } label: {
                 Text("↗ \(TaskArrangement.noteTitle(of: task))")
                     .themedText(.caption, color: .textTertiary)
@@ -125,7 +125,7 @@ extension TasksView {
             .buttonStyle(.plain)
         case .ambiguous:
             Button {
-                assigningWorkspaceFor = task
+                actions.run(.linkBoard, on: task)
             } label: {
                 Text("▦ \(WorkspaceBoardResolver.fileName(of: task.workspacePath ?? ""))")
                     .themedText(.caption, color: .textTertiary)
@@ -163,14 +163,11 @@ extension TasksView {
         Button("Togli la data") { vault.apply(.schedule(nil), to: task) }
         Button("Aggiungi scadenza…") { addingDueFor = task }
         Divider()
-        Button("Collega nota o board…") { linking = task }
-        Button("Assegna a un Workspace…") { assigningWorkspaceFor = task }
+        ForEach(TaskCommand.available(for: task), id: \.self) { command in
+            Button(command.title) { actions.run(command, on: task) }
+        }
         Divider()
         Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
-        Button("Vai alla nota di origine") {
-            vault.openNote(at: task.sourcePath)
-            navigation.pane = .notes
-        }
     }
 
     /// The date picker for "Aggiungi scadenza…" (SPEC §7.1 `!YYYY-MM-DD`).
@@ -201,7 +198,15 @@ extension TasksView {
 
     func open(link target: String) {
         // A link ending in .canvas points at a board; anything else is a note.
-        if target.lowercased().hasSuffix(".canvas") { return }
+        if target.lowercased().hasSuffix(".canvas") {
+            switch WorkspaceBoardResolver.resolve(target, in: boards) {
+            case .unique(let path):
+                vault.routeState.pendingCanvas = (path.value, nil)
+            case .ambiguous, .notFound:
+                vault.recordProblem("board non trovata: \(target)")
+            }
+            return
+        }
         if let path = vault.index.resolve(title: target).first {
             vault.openNote(at: path)
         }

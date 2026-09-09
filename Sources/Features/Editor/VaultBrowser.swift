@@ -124,11 +124,12 @@ struct VaultBrowser: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: vault.saveOpenNote) {
-                Label("Salva", systemImage: "text.badge.checkmark")
-            }
-            .help("Salva la nota")
-            .disabled(vault.openNote?.hasUnsavedChanges != true)
+            // The Salva button used to live here, mirroring `NoteTabBar`'s own save state.
+            // Removed (2026-09-09): the tab bar already carries the per-tab Salva/Salvato
+            // control, so a second one here was a duplicate reading the same
+            // `hasUnsavedChanges`, not a second capability. Cmd+S and File > Salva
+            // (`VaultCommands.swift`) are untouched — the toolbar was the discoverable
+            // copy, never the only implementation (ADR-0023).
 
             // «Modalità lettura» was here (ADR-0029 §D13): one editor now, always editable
             // and always styled, so there is no mode for a toolbar to toggle.

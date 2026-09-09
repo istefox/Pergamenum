@@ -76,6 +76,16 @@ final class CompletingTextView: NSTextView {
     /// carries a link attribute and `clickedOnLink` never fires for it.
     var onClickInMargin: ((CGPoint) -> Bool)?
 
+    /// A click on a task line's checkbox glyph, offered before the caret ever moves; returns
+    /// true when the point landed on the glyph's own drawn rect and the state was toggled. Set
+    /// by `NoteTextView.wire(_:to:)` to `Coordinator.toggleCheckbox(at:in:)`, the same closure
+    /// shape `onClickInMargin` already has and for the same reason: asked before `super`, so
+    /// the click never places the caret in the paragraph and never triggers
+    /// `NoteTextView+Reveal`'s reveal-on-caret for it (the trap `claimsFoldBadge`/
+    /// `claimsCheckbox` in `Sources/Features/Workspace/FormattingTextView.swift` were written
+    /// against, on the Workspace card surface).
+    var onToggleCheckbox: ((CGPoint) -> Bool)?
+
     /// Claims a keyboard command before the ordinary editing behaviour gets it, while the
     /// completion panel is closed - the panel's own keys in `doCommand(by:)` below still
     /// win when it is open, since choosing a suggestion outranks crossing an embed the

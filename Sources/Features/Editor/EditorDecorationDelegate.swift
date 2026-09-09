@@ -156,6 +156,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// in place of the literal 10pt system face the fragment drew before this task - pushed in
     /// the same way `proseFont` above is, never resolved by the fragment itself.
     nonisolated(unsafe) var badgeFont: NSFont = .systemFont(ofSize: 10, weight: .regular)
+    /// The checkbox glyph's own face (ADR-0030 §D1/§D5), pushed in from
+    /// `ProseTypography.checkbox(_:)` beside `proseFont`/`badgeFont` above. Nil - the default -
+    /// leaves `checkboxParagraph(at:storage:)` drawing the glyph at the surrounding run's own
+    /// size, exactly as before this property existed; an offscreen harness that never calls
+    /// `applyStyling` gets that, not a crash.
+    nonisolated(unsafe) var checkboxFont: NSFont?
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.

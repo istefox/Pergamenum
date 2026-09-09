@@ -7,20 +7,15 @@ struct TasksView: View {
     @Environment(ShortcutStore.self) var shortcuts
     @Environment(ThemeEngine.self) private var themeEngine
     @Environment(Navigation.self) var navigation
+    @Environment(CommandActions.self) var actions
     @State var view: IndexSnapshot.TaskView = .today
     /// Every board's vault-relative path, for the Workspace segment on each row and the
     /// `.workspace` grouping. Fetched once per scan rather than per row: `CanvasStore.allBoards()`
     /// is an uncached full filesystem walk (`WorkspacePicker` makes the same choice for itself).
     @State var boards: [String] = []
     @State var selectedTaskID: String?
-    /// The task waiting for a note to link to (SPEC §7.2, "collegamento assistito").
-    @State var linking: TaskItem?
     /// The task waiting for a due date (SPEC §7.1 `!YYYY-MM-DD`, context menu "Aggiungi scadenza").
     @State var addingDueFor: TaskItem?
-    /// The task waiting for a Workspace (ADR-0021 D9, R-03). Separate from `linking`: a
-    /// task carries any number of wikilinks and exactly one `^[[…]].canvas` marker, so the
-    /// two are two gestures rather than one picker with a mode.
-    @State var assigningWorkspaceFor: TaskItem?
     /// The "Progetti" groups the user folded shut (ADR-0021 D6), by `TaskGroup.id`.
     ///
     /// Collapsed rather than expanded ids, so a project opens showing its sub-tasks: the
@@ -45,31 +40,11 @@ struct TasksView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { toolbar }
-        .sheet(item: $linking) { task in
-            QuickSwitcher(mode: .pick) { choice in
-                // Only `.note` reaches here: `.pick` offers nothing else, because a heading
-                // or a note that has still to be written is not something a task can link to.
-                guard case .note(let path) = choice else { return }
-                // The wikilink is the link (SPEC §7.2): no extra syntax, and it is
-                // written into the task's own line in its own note.
-                let title = NoteName.title(fromFileName: (path as NSString).lastPathComponent)
-                vault.apply(.link(title), to: task)
-                linking = nil
-            }
-        }
         .sheet(item: $addingDueFor) { task in
             dueDateSheet(for: task)
         }
-        .sheet(item: $assigningWorkspaceFor) { task in
-            WorkspacePicker(task: task) { assigningWorkspaceFor = nil }
-        }
         .task(id: vault.scanGeneration) {
             boards = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
-        }
-        .onChange(of: vault.isLinkingSelectedTask) { _, requested in
-            guard requested, let task = vault.selectedTask else { return }
-            linking = task
-            vault.isLinkingSelectedTask = false
         }
         // A captured task belongs to a view that may not be the one showing, and a
         // capture that appears nowhere reads as a capture that failed. So the pane
@@ -120,28 +95,30 @@ struct TasksView: View {
             .help("Pianifica il task selezionato per oggi")
             .disabled(selected == nil)
 
-            Button { linking = selected } label: {
-                Label("Collega nota o board", systemImage: "link")
+            Button {
+                if let task = selected { actions.run(.linkBoard, on: task) }
+            } label: {
+                Label(TaskCommand.linkBoard.title, systemImage: TaskCommand.linkBoard.symbol)
             }
-            .help("Collega il task a una nota o a una board")
-            .disabled(selected == nil)
-
-            Button { assigningWorkspaceFor = selected } label: {
-                Label("Assegna a un Workspace", systemImage: "rectangle.3.group")
-            }
-            .help("Assegna il task a un Workspace")
+            .help("Collega il task a una board")
             .disabled(selected == nil)
 
             Button {
-                if let task = selected {
-                    vault.openNote(at: task.sourcePath)
-                    navigation.pane = .notes
-                }
+                if let task = selected { actions.run(.goToNote, on: task) }
             } label: {
-                Label("Vai alla nota di origine", systemImage: "doc.text.magnifyingglass")
+                Label(TaskCommand.goToNote.title, systemImage: TaskCommand.goToNote.symbol)
             }
             .help("Apre la nota in cui il task è scritto")
             .disabled(selected == nil)
+
+            if let task = selected, task.workspacePath != nil {
+                Button {
+                    actions.run(.goToBoard, on: task)
+                } label: {
+                    Label(TaskCommand.goToBoard.title, systemImage: TaskCommand.goToBoard.symbol)
+                }
+                .help("Apre la board a cui il task è assegnato")
+            }
 
             themeToggleToolbarItem(themeEngine)
         }

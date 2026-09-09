@@ -256,9 +256,6 @@ final class VaultController {
     // The behaviour is in VaultController+Tasks.swift; only the state an extension
     // cannot declare lives here.
 
-    /// Set by the Task menu; the Attività view opens the quick switcher (SPEC §7.2).
-    var isLinkingSelectedTask = false
-
     /// The task the task views and the Task menu act on.
     ///
     /// Held here so the menu commands of SPEC §7.3 (Cmd+0/1/2/3) work wherever the

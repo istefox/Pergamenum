@@ -297,7 +297,7 @@ final class RecordingsController {
     ) async {
         guard !isIsolated else { return isolate() }
         reloadLedger()
-        guard let session = vault.session, let store else {
+        guard let session = vault.session, store != nil else {
             rowErrors[recordingID] = Self.noVaultMessage
             return
         }
