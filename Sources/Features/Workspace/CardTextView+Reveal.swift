@@ -22,28 +22,42 @@ extension CardTextView.Coordinator {
     /// every arrow key, the same restraint `NoteTextView+Reveal.swift:66-88` keeps.
     @discardableResult
     func applyReveal(to textView: NSTextView) -> Set<Int> {
+        // `hasMarkedText()` first, rather than trusting `markedRange()` to answer `NSNotFound`
+        // when there is no composition: measured on a text view with no input context attached
+        // - which is a card in a preview, a card in a test, and a card whose view is not in a
+        // window yet - it answers `{length, 0}` instead, and `MarkupReveal` would read that as
+        // the document's last paragraph and reveal it beside the caret's own.
+        let selection = textView.selectedRange()
+        let markedRange = textView.hasMarkedText()
+            ? textView.markedRange()
+            : NSRange(location: NSNotFound, length: 0)
         let revealed: Set<Int> = textView.isEditable
             ? MarkupReveal.paragraphs(
                 in: textView.string,
-                selection: textView.selectedRange(),
-                // `hasMarkedText()` first, rather than trusting `markedRange()` to answer
-                // `NSNotFound` when there is no composition: measured on a text view with no
-                // input context attached - which is a card in a preview, a card in a test, and
-                // a card whose view is not in a window yet - it answers `{length, 0}` instead,
-                // and `MarkupReveal` would read that as the document's last paragraph and
-                // reveal it beside the caret's own.
-                markedRange: textView.hasMarkedText()
-                    ? textView.markedRange()
-                    : NSRange(location: NSNotFound, length: 0),
+                selection: selection,
+                markedRange: markedRange,
                 // Nil, and not a card-side equivalent: ADR-0018 §D2's fourth trigger is the
                 // find bar's current match, and a card has no find bar to have one.
                 currentMatch: nil
             )
             : []
-        guard revealed != lastRevealed else { return revealed }
+        // ADR-0037 §D8: narrowed to span only while the card is being written into, exactly
+        // the gate `revealed` above already applies - a card at rest reveals nothing regardless
+        // of the setting (R-04 of ADR-0028 is not weakened by this addition).
+        let revealedSpans: [Int: [NSRange]] = (textView.isEditable && parent.revealsInlineSpans)
+            ? MarkupReveal.inlineSpans(
+                in: textView.string, selection: selection, markedRange: markedRange, currentMatch: nil
+              )
+            : [:]
+        // Both must be unchanged to skip work (ADR-0037 §D6) - a caret held still while only
+        // the setting flips must still redraw, which a guard on `lastRevealed` alone would miss.
+        guard revealed != lastRevealed || revealedSpans != lastRevealedSpans else { return revealed }
         lastRevealed = revealed
+        lastRevealedSpans = revealedSpans
 
-        let changed = decorations.apply(revealedParagraphs: revealed)
+        let changedParagraphs = decorations.apply(revealedParagraphs: revealed)
+        let changedSpans = decorations.apply(revealedSpans: revealedSpans)
+        let changed = changedParagraphs.union(changedSpans)
         guard !changed.isEmpty, let storage = textView.textStorage else { return revealed }
         let text = storage.string as NSString
         storage.beginEditing()

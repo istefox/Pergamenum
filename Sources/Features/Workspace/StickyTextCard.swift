@@ -60,6 +60,8 @@ struct StickyTextCard: View {
             // preferences here the same way, and a `@Environment(VaultController.self)` read at
             // this level would crash a card built in a preview or a test.
             hidesMarkup: workspace.hidesMarkup,
+            // ADR-0037 §D8: the same route `hidesMarkup` above already takes.
+            revealsInlineSpans: workspace.revealsInlineSpans,
             // Which of this card's headings are folded (ADR-0028 §D8), off the controller by node
             // id and along the same route as the setting above. Transient by construction: the
             // table is cleared in `attach`/`detach`, so a reopened board starts unfolded and

@@ -51,14 +51,15 @@ private struct Card {
 
 @MainActor
 private func makeCard(
-    _ text: String, hidesMarkup: Bool = true, editable: Bool = false
+    _ text: String, hidesMarkup: Bool = true, editable: Bool = false, revealsInlineSpans: Bool = false
 ) throws -> Card {
     let view = CardTextView(
         text: .constant(text),
         theme: .emergency,
         style: CardTextStyle(color: nil, alignment: nil),
         isEditable: editable,
-        hidesMarkup: hidesMarkup
+        hidesMarkup: hidesMarkup,
+        revealsInlineSpans: revealsInlineSpans
     )
     let coordinator = view.makeCoordinator()
     let scrollView = FormattingTextView.scrollableTextView()
@@ -277,5 +278,84 @@ private func makeCard(
             "la tabella dei paragrafi rivelati è svuotata"
         )
         #expect(card.displayed(paragraphAt: Self.headingParagraph) == nil, "niente da disegnare dopo lo smontaggio")
+    }
+}
+
+// ADR-0037 §D8, plan `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 6 (R-09).
+//
+// The card's half of the word-grained narrowing: whether the flag changes what a caret inside
+// one of two bold runs reveals, that a card at rest still reveals nothing regardless of the
+// flag (R-04 is not weakened), that `releaseDecorations()` empties the new span table with the
+// others, and - F1, asserted rather than assumed - that strikethrough and wikilinks still have
+// no marker at all in a card, so the flag changes nothing for them.
+//
+// Reads the span table back through `coordinator.lastRevealedSpans`, the same indirection
+// `Tests/MarkupHidingTests.swift`'s `MarkupCoordinatorInlineSpans` suite uses for the note
+// editor: `EditorDecorationDelegate.revealedSpans` has no test accessor, and that file is out
+// of this task's budget, but `lastRevealedSpans` is assigned the very value handed to
+// `decorations.apply(revealedSpans:)` right before that call, in `CardTextView+Reveal.swift`,
+// so the two can never disagree.
+@MainActor
+@Suite struct CardConcealmentInlineSpans {
+    /// Two bold runs in one paragraph, mirroring `MarkupCoordinatorInlineSpans`'s own fixture
+    /// so the two suites can be read side by side.
+    private static let note = "inizio **uno** e **due** fine\n"
+    /// Inside "uno", well within the first run's whole construct `[7, 14)`.
+    private static let insideFirstRun = 10
+    private static let firstBoldSpan = NSRange(location: 7, length: 7)
+
+    /// R-01, adapted to the card harness: with the flag on and the card editable, a caret in
+    /// the first of two bold runs reveals exactly that run's span - which is what licenses the
+    /// other run's markers staying collapsed, since `EditorDecorationDelegate.collapsing`
+    /// (already tested in `MarkupHidingTests.swift`) folds every span this table does not name.
+    @Test func aCaretInOneBoldRunRevealsOnlyThatRunsSpan() throws {
+        let card = try makeCard(Self.note, editable: true, revealsInlineSpans: true)
+        card.textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+
+        card.coordinator.applyReveal(to: card.textView)
+
+        #expect(card.coordinator.lastRevealedSpans.count == 1)
+        #expect(card.coordinator.lastRevealedSpans[0] == [Self.firstBoldSpan])
+    }
+
+    /// R-04 is not weakened by this addition: a card nobody is writing into reveals nothing,
+    /// whether the setting is on or off, because `isEditable` gates both tables the same way.
+    @Test func aCardAtRestRevealsNoSpansEvenWithTheFlagOn() throws {
+        let card = try makeCard(Self.note, editable: false, revealsInlineSpans: true)
+        card.textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+
+        let revealed = card.coordinator.applyReveal(to: card.textView)
+
+        #expect(revealed.isEmpty)
+        #expect(card.coordinator.lastRevealedSpans.isEmpty)
+    }
+
+    /// `releaseDecorations()` clears the span table with the rest (ADR-0037 §D8) - a stale
+    /// offset surviving its text is the same defect whether it names a marker or a span.
+    @Test func releaseDecorationsEmptiesTheSpanTableToo() throws {
+        let card = try makeCard(Self.note, editable: true, revealsInlineSpans: true)
+        card.coordinator.lastRevealedSpans = [0: [Self.firstBoldSpan]]
+        _ = card.coordinator.decorations.apply(revealedSpans: [0: [Self.firstBoldSpan]])
+
+        card.coordinator.releaseDecorations()
+
+        #expect(card.coordinator.lastRevealedSpans.isEmpty)
+        #expect(
+            card.coordinator.decorations.apply(revealedSpans: [:]).isEmpty,
+            "la tabella degli span rivelati è già vuota"
+        )
+    }
+
+    /// F1, asserted rather than assumed: `CardTextView`'s `hiddenKind` switch maps
+    /// `.headingMarker`/`.emphasisMarker`/`.embedRun`/`.listMarker`/`.taskMarker` and nothing
+    /// else, so a card's `~~barrato~~` and `[[Nota]]` produce no `.strikethrough`/`.link`
+    /// marker at all - the setting changes nothing for either construct in a card, because
+    /// there was never anything concealed there to narrow.
+    @Test func strikethroughAndWikilinksProduceNoMarkerInACard() throws {
+        let card = try makeCard("~~barrato~~\n[[Nota]]", editable: true, revealsInlineSpans: true)
+        let kinds = card.coordinator.hiddenMarkers.values.flatMap { $0.map(\.kind) }
+
+        #expect(!kinds.contains(.strikethrough))
+        #expect(!kinds.contains(.link))
     }
 }
