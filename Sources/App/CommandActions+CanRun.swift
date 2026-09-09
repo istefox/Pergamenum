@@ -71,6 +71,13 @@ extension CommandActions {
              // needs-vault/no-Full-Disk-Access state once inside it.
              .panePratiche:
             true
+        // Plan Task 8 (R-20, R-21): a tester-declared stub arm, added only so the
+        // exhaustive switch keeps compiling with the two new cases (ADR-0155 §D1) -
+        // `vault.root != nil` mirrors `.newNote`/`.newBoard` above (creating a pratica
+        // needs somewhere to write it), which the coder may refine once
+        // `NuovaPraticaWizard`/`MailSeedPicker` exist.
+        case .newPratica, .addToPraticaFromMail:
+            vault.root != nil
         // ADR-0032 (Plaud recording import into Pergamenum), plan
         // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md,
         // Task 8 - R-01. The blueprint's own condition, and the only one: Cmd+R re-fetches

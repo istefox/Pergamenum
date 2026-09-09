@@ -450,16 +450,26 @@ extension PraticheController {
     /// `nonisolated` and taking a `URL` rather than a `VaultController`: it touches no
     /// observable state, so it can move off the main actor the day a pratica gets big
     /// enough to need it.
-    nonisolated static func readTimeline(praticaPath: String, vaultRoot: URL) -> TimelineRead {
+    ///
+    /// `notInStore` (plan Task 7/8's "R-16/R-26 gap left by batch 4", ADR follow-up
+    /// "Task 5/6 implementation notes"): the `Message-ID`s
+    /// `PraticaLedger.PraticaState.notInStore` records for this pratica, defaulted to
+    /// `[]` so every existing call site keeps compiling unchanged. The tester declares
+    /// the parameter; `readMessages` below is the RED stub - it still hardcodes
+    /// `isInMail: true` and ignores it, so a test that seeds this set and expects
+    /// `isInMail == false` fails on the assertion until the coder reads it for real.
+    nonisolated static func readTimeline(
+        praticaPath: String, vaultRoot: URL, notInStore: Set<String> = []
+    ) -> TimelineRead {
         let folder = vaultRoot.appending(path: praticaPath, directoryHint: .isDirectory)
         var read = TimelineRead(entries: [], details: [:])
-        readMessages(in: folder, praticaPath: praticaPath, into: &read)
+        readMessages(in: folder, praticaPath: praticaPath, notInStore: notInStore, into: &read)
         readManualEntries(in: folder, praticaPath: praticaPath, into: &read)
         return read
     }
 
     private nonisolated static func readMessages(
-        in folder: URL, praticaPath: String, into read: inout TimelineRead
+        in folder: URL, praticaPath: String, notInStore: Set<String>, into read: inout TimelineRead
     ) {
         let messages = folder.appending(path: messagesDirectoryName, directoryHint: .isDirectory)
         let attachments = folder.appending(path: attachmentsDirectoryName, directoryHint: .isDirectory)
@@ -486,10 +496,13 @@ extension PraticheController {
                 hasAttachments: !document.frontmatter.attachments.isEmpty
                     || !document.frontmatter.storeReferences.isEmpty,
                 messageID: document.frontmatter.messageID,
-                // No ledger field records «non più in Mail» today (`PraticaLedger.
-                // PraticaState` has `pending`, not a not-in-store list), so every row
-                // reads as still in Mail. `PraticaTimelineModel.subjectLink` already
-                // implements the other half of R-26 and needs only that field to exist.
+                // RED stub (ADR-0155 §D1): `notInStore` now exists
+                // (`PraticaLedger.PraticaState.notInStore`) but is ignored here on
+                // purpose, so `PraticaControllerReadTimelineNotInStoreTests` fails on
+                // its assertion rather than passing by coincidence. The coder reads
+                // `document.frontmatter.messageID` against `notInStore` for real -
+                // `PraticaTimelineModel.subjectLink(messageID:isInMail:)` already
+                // implements the other half of R-26 and needs only a correct value here.
                 isInMail: true
             ))
             read.details[id] = PraticaRowDetail(

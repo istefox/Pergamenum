@@ -28,10 +28,52 @@ struct PraticaLedger: Equatable, Sendable, Codable {
         /// The bridge triples this pratica has ever imported - what
         /// `memberMessageIDs(forConversation:praticaPath:)` reads for R-14.
         var entries: [Entry]
+        /// `Message-ID`s the ledger has recorded as deleted from Mail after import
+        /// (R-16/R-26): the batch-4/5 gap this field closes - `PraticaTimelineModel.
+        /// subjectLink(messageID:isInMail:)` already draws «non più in Mail» for
+        /// `isInMail == false`, and the coder's `PraticaSyncEngine`/
+        /// `PraticheController.readTimeline` wire this list into that `isInMail`
+        /// (plan Task 7/8's "R-16/R-26 gap left by batch 4", ADR follow-up "Task 5/6
+        /// implementation notes"). Never a locator miss (§D4) - only an outcome the
+        /// sync itself records.
+        var notInStore: [String]
 
         static let empty = PraticaState(
-            lastSyncAt: nil, lastOpenedAt: nil, importedMessageIDs: [], pending: [], entries: []
+            lastSyncAt: nil, lastOpenedAt: nil, importedMessageIDs: [], pending: [], entries: [],
+            notInStore: []
         )
+
+        // Manual `Codable` rather than the synthesised one: `notInStore` is a field
+        // added after this struct's first shipped shape, and a ledger written by an
+        // earlier build of this branch (no key for it at all) must still decode
+        // instead of silently resetting the whole ledger to `.empty`
+        // (`PraticaLedger.load(from:)`'s own fallback would otherwise discard every
+        // other field too, costing a full re-sync for a one-field addition).
+        private enum CodingKeys: String, CodingKey {
+            case lastSyncAt, lastOpenedAt, importedMessageIDs, pending, entries, notInStore
+        }
+
+        init(
+            lastSyncAt: Date?, lastOpenedAt: Date?, importedMessageIDs: [String], pending: [String],
+            entries: [Entry], notInStore: [String]
+        ) {
+            self.lastSyncAt = lastSyncAt
+            self.lastOpenedAt = lastOpenedAt
+            self.importedMessageIDs = importedMessageIDs
+            self.pending = pending
+            self.entries = entries
+            self.notInStore = notInStore
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            lastSyncAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncAt)
+            lastOpenedAt = try container.decodeIfPresent(Date.self, forKey: .lastOpenedAt)
+            importedMessageIDs = try container.decodeIfPresent([String].self, forKey: .importedMessageIDs) ?? []
+            pending = try container.decodeIfPresent([String].self, forKey: .pending) ?? []
+            entries = try container.decodeIfPresent([Entry].self, forKey: .entries) ?? []
+            notInStore = try container.decodeIfPresent([String].self, forKey: .notInStore) ?? []
+        }
     }
 
     var byPraticaPath: [String: PraticaState]

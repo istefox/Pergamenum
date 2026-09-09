@@ -61,6 +61,19 @@ outcome.
 
 See also [[swift-testing-only-testing-gap]].
 
+## Follow-up: widening an existing function's signature is also a valid tester-declared boundary
+
+Closing a gap left by an earlier batch (e.g. a new `PraticaLedger.PraticaState` field the
+coder still needs to *read*) doesn't always need a brand-new type. Adding a defaulted
+parameter to an existing function (`PraticheController.readTimeline(praticaPath:vaultRoot:
+notInStore: Set<String> = [])`) is the same "wrong-but-safe stub body" move as a new type,
+just applied to a signature instead: every existing call site keeps compiling unchanged
+(the default absorbs them), the new test can pass the real argument, and the body still
+ignores it (hardcoded `isInMail: true`) so the assertion is genuinely red. Before doing
+this, grep every call site of the function being widened (`grep -rn "functionName("
+Sources/ Tests/`) to confirm the default truly preserves every one of them — this is what
+makes it safe rather than a silent behavior change.
+
 ## Follow-up: adding an enum case ripples past its own file's exhaustive switches
 
 Adding one case to a widely-consumed enum (`Navigation.Pane`, `ShortcutCommand`) doesn't
