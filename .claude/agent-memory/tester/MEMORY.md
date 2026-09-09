@@ -17,3 +17,4 @@
 - [PG-099 cross-task stub gap](pg-099-cross-task-stub-gap.md) — a dispatch claimed an earlier task's coder work had landed; the file was still a stub. Verify against source, not against the briefing.
 - [Memory index entries can outrun their files](memory-index-entries-can-outrun-their-files.md) — 6 MEMORY.md lines cite files never actually committed; `Read` before relying on any cited memory's content.
 - [SwiftUI @ViewBuilder Mirror reflection](swiftui-viewbuilder-mirror-reflection.md) — recursive `Mirror` walk extracts a concrete child view (or even Text/accessibilityIdentifier strings) from an opaque `some View` with no accessor to call instead.
+- [Worktree path translation for brief paths](worktree-path-translation-brief-paths.md) — Read crosses worktrees silently, Edit/Write refuse; translate brief paths to your own cwd before editing.

@@ -33,6 +33,24 @@ enum MarkupReveal {
         return result
     }
 
+    /// Note-wide table of revealed inline-span ranges (emphasis/strikethrough/link,
+    /// ADR-0037 §D4), keyed by paragraph-start offset, values paragraph-relative — the
+    /// same key space `hiddenMarkers` already uses (ADR-0037 §D6).
+    ///
+    /// **Stub for Task 2 of `2026-09-08-word-grained-markdown-reveal-on-caret-in`.**
+    /// Returns `[:]` unconditionally; the tester owns this signature, the coder fills the
+    /// body (walk each trigger's touched paragraphs; a paragraph entirely covered by a
+    /// non-empty trigger emits one whole-paragraph span with no parse, ADR-0037 §D5;
+    /// otherwise call `InlineSpanReveal.revealed` on that paragraph's substring).
+    static func inlineSpans(
+        in text: String,
+        selection: NSRange,
+        markedRange: NSRange,
+        currentMatch: NSRange?
+    ) -> [Int: [NSRange]] {
+        [:]
+    }
+
     /// Every paragraph-start offset `range` touches, walking forward so a selection
     /// spanning several paragraphs reveals all of them and not only the one the caret
     /// happens to land in.
