@@ -1,478 +1,139 @@
 {
-  "step5_mode": "workflow",
-  "tasks_completed": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10
-  ],
+  "step5_mode": "agent_batch",
+  "manifest": "docs/manifests/2026-09-08-word-grained-markdown-reveal-on-caret-in.manifest.yml",
+  "tasks_completed": [1, 2, 3, 4, 5, 6, 7],
   "tasks_failed": [],
-  "files_modified": [
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/CLAUDE.md",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/PROJECT_BRIEF.md",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Project.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Sources/App/MenuCommands.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Sources/App/PergamenumApp.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Sources/App/SparkleUpdateController.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Sources/App/UpdaterConfiguration.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tests/ReleasePipelineTests.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tests/SharedSourcesPurityTests.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tests/SparkleUpdateControllerTests.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tests/UpdaterConfigurationTests.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tuist/Package.resolved",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/Tuist/Package.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/CompletionPanelUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/ComposerUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/DayViewUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/DesignAndReadingUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/DiaryUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/EditorCompletionUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/HistoryNavigationUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/NoteImageUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/NoteTreeAndShortcutsUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/SectionToolbarsUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/SidebarMoveUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/TaskTimeUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/TimeBlockUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/TimelineHoursUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/UpdateMenuUITests.swift",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/WorkspaceBoardUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/WorkspaceFocusUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/WorkspaceIntegrationUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/UITests/WorkspaceOpenStateUITests.swift",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/20260811_Pergamenum_SpecApp.md",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/docs/adr/0031-sparkle-auto-update-integration.md",
-      "operation": "edit"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/scripts/appcast.py",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/scripts/fetch-sparkle-tools.sh",
-      "operation": "create"
-    },
-    {
-      "path": "/Users/stefer/Developer/Pergamenum_worktrees/feat-add-sparkle/scripts/release.sh",
-      "operation": "edit"
-    }
-  ],
-  "test_result": "green",
-  "test_output_tail": "◇ Test aMoveAndARemovalSurviveTheRoundTrip() started.\n✔ Test aMoveAndARemovalSurviveTheRoundTrip() passed after 0.001 seconds.\n◇ Test theKindIsStoredUnderItsOwnName() started.\n✔ Test theKindIsStoredUnderItsOwnName() passed after 0.001 seconds.\n◇ Test entriesOfOneGestureComeBackInTheOrderTheyHappened() started.\n✔ Test entriesOfOneGestureComeBackInTheOrderTheyHappened() passed after 0.001 seconds.\n◇ Test aWriteThatStandsAloneBelongsToNoGesture() started.\n✔ Test aWriteThatStandsAloneBelongsToNoGesture() passed after 0.001 seconds.\n✔ Test run with 2101 tests in 44 suites passed after 6.836 seconds.\n2026-09-04 13:55:20.945 xcodebuild[4058:1647975] [MT] IDETestOperationsObserverDebug: 13.259 elapsed -- Testing started completed.\n2026-09-04 13:55:20.945 xcodebuild[4058:1647975] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start\n2026-09-04 13:55:20.945 xcodebuild[4058:1647975] [MT] IDETestOperationsObserverDebug: 13.259 sec, +13.259 sec -- end\n\nTest session results, code coverage, and logs:\n\t/Users/stefer/Developer/Pergamenum/.build/DerivedData/Logs/Test/Test-Pergamenum-2026.09.04_13-54-28-+0200.xcresult\n\n** TEST SUCCEEDED **\n\nTesting started\nUNIT-4 rc=0\n",
-  "harness_deltas": "PASS=2101 FAIL=0 (2101 tests / 44 suites, .claude/test-cmd run by the orchestrator after the last merge-back; baseline count at 68e1d4c not measured on this branch)",
-  "checkpoint_reviews": [],
-  "weakening_findings": [],
-  "suspect_findings": [
-    {
-      "file": "scripts/appcast.py",
-      "detector": "swallowed-error",
-      "line": 73
-    },
-    {
-      "file": "scripts/appcast.py",
-      "detector": "swallowed-error",
-      "line": 77
-    },
-    {
-      "file": "scripts/appcast.py",
-      "detector": "swallowed-error",
-      "line": 91
-    },
-    {
-      "file": "scripts/appcast.py",
-      "detector": "swallowed-error",
-      "line": 262
-    },
-    {
-      "file": "scripts/appcast.py",
-      "detector": "swallowed-error",
-      "line": 272
-    }
-  ],
-  "weakening_scan": "ran",
-  "requirement_coverage": {
-    "ids_declared": 10,
-    "uncovered": [],
-    "unscoped": [],
-    "status": "pass",
-    "note": "First run: rc=1 with 6 UNSCOPED (R-01, R-05, R-06, R-07, R-09, R-10). With Stefano's ack at the Step 5 exit, three form-only edits were applied and the gate re-run to rc=0: R-01 cited in Tests/SharedSourcesPurityTests.swift's header comment; the plan's Task 7 names Tests/ReleasePipelineTests.swift (tester-authored, R-06/R-07); the (no-test: …) clauses of R-05/R-09/R-10 moved onto the checklist item's first line, where spec-coverage.sh reads them. R-08's clause was left on its continuation line on purpose: the id IS cited by Tests/UpdaterConfigurationTests.swift, so a parsed waiver would report STALE-WAIVER (rc=3)."
-  },
-  "tests_written_by": [
-    {
-      "task": 1,
-      "agent": "tester"
-    },
-    {
-      "task": 2,
-      "agent": "tester"
-    },
-    {
-      "task": 3,
-      "agent": "tester"
-    },
-    {
-      "task": 4,
-      "agent": "tester"
-    },
-    {
-      "task": 5,
-      "agent": "tester"
-    },
-    {
-      "task": 6,
-      "agent": "tester"
-    },
-    {
-      "task": 7,
-      "agent": "tester"
-    },
-    {
-      "task": 8,
-      "agent": "tester"
-    }
-  ],
-  "budget_findings": [
-    {
-      "task": "6",
-      "note": "MALFORMED Budget: declaration (`(new)` before the size) — not measurable by diff-budget-check.sh"
-    },
-    {
-      "task": "8",
-      "note": "MALFORMED Budget: declaration (`(new)` before the size) — not measurable by diff-budget-check.sh"
-    }
-  ],
-  "plan_deviations": [
-    {
-      "task": "?",
-      "constraint": "plan_deviation",
-      "action": "altered",
-      "reason": "Added Sources/Index/IndexSnapshot+Search.swift to Project.swift sharedSources"
-    },
-    {
-      "task": "?",
-      "constraint": "plan_deviation",
-      "action": "altered",
-      "reason": "SparkleUpdateController.init(defaults:) injectable, isIsolated non-private, controller as @ObservationIgnored lazy var"
-    },
-    {
-      "task": "?",
-      "constraint": "test_fix",
-      "action": "altered",
-      "reason": "UpdateMenuUITests looks the About item up by accessibility identifier orderFrontStandardAboutPanel: (fallback English title)"
-    },
-    {
-      "task": "?",
-      "constraint": "defect_found_by_orchestrator",
-      "action": "altered",
-      "reason": "Unit-suite host runs armCapture() -> updater.start() -> Sparkle startUpdater -> NSAlert runModal on main thread -> suite hangs (sample: SPUStandardUpdaterController.m:99 -> -[NSAlert runModal])"
-    },
-    {
-      "task": "7",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "release.sh `version=` line (:181) not physically moved above the new $DIST stage; the DIST stage sits after it, so the ordering constraint is met without moving a line"
-    },
-    {
-      "task": "8",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "appcast.py --self-test carries a fifth case: a feed carrying <!DOCTYPE is rejected before parsing (enforces the plan's own defusedxml refusal)"
-    },
-    {
-      "task": "6",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "fetch-sparkle-tools.sh extracts bin/ with `cp -pR` because Sparkle's bin/ is not flat (old_dsa_scripts/ subdirectory)"
-    },
-    {
-      "task": "8",
-      "constraint": "hook-suggestion-refused",
-      "action": "altered",
-      "reason": "PostToolUse security hook suggested defusedxml; refused per plan (stdlib ElementTree + <!DOCTYPE rejection, no Python dependency file in this repo)"
-    },
-    {
-      "task": "7",
-      "constraint": "environment-fact",
-      "action": "altered",
-      "reason": "Sparkle EdDSA private key already exists in the login Keychain (svce=https://sparkle-project.org, acct=ed25519): Task 9 must read the existing public key (`generate_keys -p`), never regenerate"
-    },
-    {
-      "task": "9",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "EdDSA keypair not generated: the pair already existed in the login Keychain; the public key was read with `generate_keys -p` (never regenerated, never exported)"
-    },
-    {
-      "task": "9",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "sign_update isolated rehearsal not performed: the binary raises a SecurityAgent Keychain prompt no agent can answer (one attempt, timeout 60 s); output format verified from the pinned Sparkle 2.9.6 source (sign_update/main.swift:287) and the parser exercised on a literal line"
-    },
-    {
-      "task": "9",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "--feed-url read from the built Info.plist (SUFeedURL) instead of a second literal in release.sh, the same rule the plan states for --min-system"
-    },
-    {
-      "task": "9",
-      "constraint": "plan-deviation",
-      "action": "altered",
-      "reason": "R-05 repo-wide grep is not empty: two non-code hits (the plan quoting its own regex; the batch-3 memory shard naming the Keychain item attributes desc=private key). Scoped to Sources/scripts/Project.swift/Tuist/docs/adr/Tests/UITests it is empty. No key material anywhere"
-    }
-  ],
-  "task_metrics": [
-    {
-      "task": "1-2",
-      "deleted_lines": 321,
-      "test_count_delta": 2
-    },
-    {
-      "task": "3-5",
-      "deleted_lines": 321,
-      "test_count_delta": 4
-    },
-    {
-      "task": "6-8",
-      "deleted_lines": 321,
-      "test_count_delta": 5
-    },
-    {
-      "task": "9-10",
-      "deleted_lines": 331,
-      "test_count_delta": 5
-    }
-  ],
-  "batch_sizing": {
-    "mode": "budget",
-    "computed": [
-      "1-3",
-      "4-6",
-      "7-9",
-      "10"
-    ],
-    "dispatched": [
-      "1-2",
-      "3-5",
-      "6-8",
-      "9-10"
-    ],
-    "reason": "Task 3's `import Sparkle` needs Task 2's dependency merged first; plan phases 1/2/3 kept intact"
+  "task_8_partial": {
+    "done": ["full unit suite green (2507 tests, 94 suites, 8.6s)", "verified only Task-3/Task-6-named test helper signatures were extended in existing tests, no assertion weakened", "CLAUDE.md verified already accurate (written at Gate 3)", "PROJECT_BRIEF.md Status entry added"],
+    "deferred_by_operator": ["scripts/uitests.sh (auth prompt canceled unattended, will run with operator present, after commit)", "R-11 hand check (Debug build + throwaway vault visual caret walk-through, after commit)"]
   },
   "worktree_merges": [
     {
       "stage": "batch-1-tester",
       "agent_type": "tester",
-      "branch": "worktree-wf_48f85923-9e9-1",
-      "base_sha": "68e1d4c1482bbd58167a124272a7b41c4a6c9743",
-      "merge_result": "fast-forward 5b5a81f"
+      "branch": "worktree-agent-a6385459e214424d6",
+      "base_sha": "533172d959e518417ab20c40f471f471aed8524d",
+      "merge_result": "fast-forward 40e6205"
     },
     {
       "stage": "batch-1-coder",
       "agent_type": "coder",
-      "branch": "worktree-wf_28965773-84f-1",
-      "base_sha": "5b5a81f915b07f4090308527ba92d7e6f788f875",
-      "merge_result": "fast-forward 29e00fe"
+      "branch": "worktree-agent-batch1-coder",
+      "base_sha": "40e6205",
+      "merge_result": "fast-forward 342a59e"
     },
     {
       "stage": "batch-2-tester",
       "agent_type": "tester",
-      "branch": "worktree-wf_347fe8b9-838-1",
-      "base_sha": "29e00fe5c86f8289a7e96458cf548d810bedb06c",
-      "merge_result": "fast-forward 52f8e95"
+      "branch": "worktree-agent-batch2-tester",
+      "base_sha": "342a59e",
+      "merge_result": "fast-forward 6489498"
     },
     {
       "stage": "batch-2-coder",
       "agent_type": "coder",
-      "branch": "worktree-wf_882996ee-b42-1",
-      "base_sha": "52f8e950e818a5f065a04d0b46902a212ce67a2c",
-      "merge_result": "fast-forward d74749c"
-    },
-    {
-      "stage": "batch-2-tester-fix",
-      "agent_type": "tester",
-      "branch": "worktree-wf_0f498b24-fdf-1",
-      "base_sha": "d74749c45e1c8c6bc10df315aebf1c5e88c8c65d",
-      "merge_result": "fast-forward c447993"
-    },
-    {
-      "stage": "batch-2-tester-fix2",
-      "agent_type": "tester",
-      "branch": "worktree-wf_a6a9c2b8-4af-1",
-      "base_sha": "c447993afa70e46db5c3b72a9d876b7254afb688",
-      "merge_result": "fast-forward ce4994d"
-    },
-    {
-      "stage": "batch-2-coder-fix",
-      "agent_type": "coder",
-      "branch": "worktree-wf_25b0ab7c-a9b-1",
-      "base_sha": "ce4994d2b6fba0e7ef012e283d5a9f5faea52d5a",
-      "merge_result": "fast-forward a01eb8e"
+      "branch": "worktree-agent-batch2-coder",
+      "base_sha": "6489498",
+      "merge_result": "fast-forward e0a21c9"
     },
     {
       "stage": "batch-3-tester",
       "agent_type": "tester",
-      "branch": "worktree-wf_9d1472d6-67e-1",
-      "base_sha": "a01eb8eb23f641209f3a40950c58b8b7204d2ba1",
-      "merge_result": "fast-forward 2583232"
+      "branch": "worktree-agent-a87d000f962387da3",
+      "base_sha": "e0a21c9",
+      "merge_result": "fast-forward 8cf5239"
     },
     {
       "stage": "batch-3-coder",
       "agent_type": "coder",
-      "branch": "worktree-wf_c4a6139f-47d-1",
-      "base_sha": "258323210c728b01bb329bf77bfafbae0405bdeb",
-      "merge_result": "fast-forward 127ee50"
+      "branch": "worktree-agent-aa85ff9d442e2feba",
+      "base_sha": "8cf5239",
+      "merge_result": "fast-forward 25493a4"
     },
     {
-      "stage": "batch-4-coder",
-      "agent_type": "coder",
-      "branch": "worktree-wf_77349ef2-162-1",
-      "base_sha": "127ee509c8914aef20cb9de9217ce91b648f0c29",
-      "merge_result": "fast-forward 19211b8"
+      "stage": "batch-4-tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-af6edcd3be8de95fb",
+      "base_sha": "25493a4",
+      "merge_result": "fast-forward 998ae52",
+      "note": "no coder dispatch — task had no meaningful red/stub split (stored property + SwiftUI Toggle), tester wrote complete implementation"
+    },
+    {
+      "stage": "batch-5-tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-a2a683168ae244916",
+      "base_sha": "998ae52",
+      "merge_result": "fast-forward 34dfa63",
+      "note": "no coder dispatch — tester judged the applyReveal logic low-risk enough to write correct directly, no red/stub state"
+    },
+    {
+      "stage": "batch-6-tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-af82038093c4fd542",
+      "base_sha": "34dfa63",
+      "merge_result": "fast-forward 78cef09",
+      "note": "no coder dispatch — mirrors Task 5's pattern one level down (card instead of note), tester wrote correct directly"
+    },
+    {
+      "stage": "batch-7-tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-a15f075c5cfd87cdd",
+      "base_sha": "78cef09",
+      "merge_result": "fast-forward 44fc082",
+      "note": "no coder dispatch — task rule is 'no production code unless a fence fails'; all 5 assertion groups passed cleanly, no fence violation"
     }
   ],
-  "errors": [],
-  "accessibility_i18n_findings": [
+  "checkpoint_reviews": [],
+  "weakening_findings": [],
+  "suspect_findings": [],
+  "budget_findings": [
     {
-      "item": "labels",
-      "status": "pass",
-      "note": "UpdateCommands' only interactive element is Button(\"Cerca Aggiornamenti…\") rendered as an NSMenuItem: its title is its accessible label, disabled state mirrored via .disabled(!canCheckForUpdates)."
+      "stage": "batch-5",
+      "type": "SCOPE",
+      "files": ["DiaryView.swift", "EditorColumn+Text.swift", "NoteTextView+Coordinator.swift", "NoteTextView.swift", "TodayView.swift"],
+      "verdict": "false-positive",
+      "reason": "diff-budget-check.sh matches exact path strings; plan Task 5's Budget line lists these five files by bare basename (no directory prefix), while the actual diff paths are directory-qualified. Manually confirmed all five are exactly the files Task 5's Budget declares, no real out-of-scope file. Reporter only, no gate."
     },
     {
-      "item": "contrast",
-      "status": "not-applicable",
-      "note": "No colour or view authored in the diff; the menu item is a system NSMenuItem and Sparkle's stock SPUStandardUserDriver UI is a system framework window, out of the token rule's scope (ADR-0031)."
+      "stage": "batch-6",
+      "type": "SCOPE",
+      "files": ["CardTextView+Reveal.swift", "CardTextView.swift", "StickyTextCard.swift", "WorkspaceController.swift", "WorkspaceView.swift"],
+      "verdict": "false-positive",
+      "reason": "Same bare-basename mismatch as batch-5's finding. Manually confirmed all five are exactly the files Task 6's Budget declares. Reporter only, no gate."
     },
     {
-      "item": "dynamic-type-or-scaling",
-      "status": "not-applicable",
-      "note": "No font or fixed size set anywhere in the diff; the menu item inherits the system menu font."
-    },
-    {
-      "item": "keyboard-or-assistive-tech-reachability",
-      "status": "pass",
-      "note": "Reachable through the Pergamenum menu by keyboard menu navigation and VoiceOver; no .keyboardShortcut by design (ADR-0023 §D5 rebindable catalogue), disabled state exposed to AX via .disabled."
-    },
-    {
-      "item": "i18n-unicode-multibyte",
-      "status": "pass",
-      "note": "Title carries a real U+2026 ellipsis in a Swift String; launch-argument strings in NoteImageUITests are ASCII flags only, no byte-length assumption anywhere in the three files."
-    },
-    {
-      "item": "i18n-no-english-centric-examples",
-      "status": "pass",
-      "note": "UI string is Italian per the project's UI-language rule; the UI-test change adds only -disableUpdater YES. Which language Sparkle's own alert shows is not asserted here: it belongs to the R-08 hand check."
-    },
-    {
-      "item": "i18n-no-locale-formatting-assumed",
-      "status": "not-applicable",
-      "note": "No date, number or currency formatted in the three files; the appcast pubDate lives in scripts/appcast.py (RFC 822, fixed by the RSS spec), outside this UI diff."
+      "stage": "batch-7",
+      "type": "BUDGET",
+      "files": ["Tests/InlineSpanRevealFenceTests.swift"],
+      "actual_lines": 445,
+      "declared_lines": 180,
+      "verdict": "accepted-overshoot",
+      "reason": "Test-only file (no production code, per Task 7's own rule) covering 5 distinct assertion groups (invariant, R-06, R-07, R-09/F1, out-of-scope fence), each needing its own fixtures. Reporter only, no gate."
     }
-  ]
+  ],
+  "plan_deviations": [
+    {
+      "stage": "end-of-task-7-fullcorpus-gate",
+      "type": "requirement-coverage",
+      "finding": "R-08 UNSCOPED by spec-coverage.sh --tests-root Tests",
+      "verdict": "expected-gap",
+      "reason": "R-08 is the settings Toggle offered in Impostazioni (Task 4). It's a SwiftUI Toggle with no unit-test precedent in EditorSettings.swift for testing individual Toggles; verified only by full-suite build success at Task 4. Expected to be exercised by scripts/uitests.sh and the R-11 hand check in Task 8."
+    },
+    {
+      "stage": "batch-8",
+      "type": "deferred",
+      "finding": "scripts/uitests.sh failed to launch: LocalAuthentication prompt canceled (nobody present to approve), not a code defect.",
+      "verdict": "deferred-by-operator",
+      "reason": "Operator (Stefano) chose to run scripts/uitests.sh after committing, in his own terminal presence, rather than retry unattended. TODO before merge to main: run scripts/uitests.sh once, all green, per CLAUDE.md's rule."
+    },
+    {
+      "stage": "batch-8",
+      "type": "deferred",
+      "finding": "R-11 hand check (ADR-0018 §D6 probe, Debug build + throwaway vault + visual caret walk-through in note editor and Workspace card) not yet performed.",
+      "verdict": "deferred-by-operator",
+      "reason": "Operator chose to perform the R-11 hand check after committing, alongside the UI suite. TODO before merge to main: run the hand check per Task 8's step 3, write the result into PROJECT_BRIEF.md beside the milestone."
+    }
+  ],
+  "task_metrics": [],
+  "errors": []
 }

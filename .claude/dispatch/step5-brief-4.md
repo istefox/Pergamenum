@@ -1,60 +1,50 @@
-<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=5 lines=240-268 -->
-# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 5-5
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md tasks=4 lines=238-260 -->
+# Step 5 Batch Brief -- 2026-09-08-word-grained-markdown-reveal-on-caret-in.md -- tasks 4-4
 
-## Task text (verbatim, plan lines 240-268)
+## Task text (verbatim, plan lines 238-260)
 
-### Task 5 — the Coordinator's `applyViewBlocks` pass, and the caret rescue (R-01, R-02, R-03, R-08, R-13)
+### Task 4 — the setting, stored and offered (R-07, R-08)
 
-- **Tester** extends `Tests/ViewBlockRenderingTests.swift` and adds
-  `Tests/ViewBlockCaretTests.swift`. Declares `Coordinator.applyViewBlocks(to:runs:markers:&)`,
-  `Coordinator.clearViewBlocks()`, `EditorDecorationDelegate.viewBlockRun(in:atParagraphStart:)`
-  (`static`, `NSString`, UTF-16 — the `tableRun(in:atParagraphStart:)` shape, usable from both a
-  non-actor drawing pass and a `@MainActor` one), all stubbed. Assertions:
-  - **attachment creation from a valid fence** (R-13's first named case): after a styling pass, the
-    opening fence paragraph's substituted copy carries a `ViewBlockAttachment` at offset 0 and
-    `collapsedFont` over the rest, and the paragraph's **length is unchanged** (R-01, R-02, R-03 —
-    one assertion per renderer keyword, since the pass must not read `render:`);
-  - **fallback to raw text on an unparseable fence** (R-13's second named case): a fence whose body
-    fails `ViewBlock.parse` produces **no marker, no attachment and no hidden lines** — the paragraph
-    is returned `nil` and the body stays in the layout (R-08, ADR §D7);
-  - an unclosed fence produces nothing at all (C5);
-  - with `hidesMarkup` false the pass registers nothing **and clears what it registered before**
-    (ADR §D12 — the `clearTables()` trap, which reaches the enumeration refusal too);
-  - `Tests/ViewBlockCaretTests.swift`: a caret placed programmatically inside a body line that the
-    pass then hides is moved to the opening fence line's offset, after the storage transaction
-    closes, never inside it (ADR §D15, `tableCaretRescue`'s twin).
-- **Coder** writes `Sources/Features/Editor/NoteTextView+ViewBlocks.swift` (the `applyTables` shape:
-  `markers` `inout`, its own guard, its own change check on the hidden-line set, its own
-  `apply(viewBlockLines:)`/`apply(viewBlockHosts:)` calls, called from `applyStyling` **before**
-  `storage.endEditing()`) and
-  `Sources/Features/Editor/EditorDecorationDelegate+ViewBlockRendering.swift` (the substitution branch
-  and the static re-read). The host refresh and the caret rescue run **after** the transaction closes,
-  beside `refreshTableGrids`.
-- Budget: `Sources/Features/Editor/NoteTextView+ViewBlocks.swift`, `Sources/Features/Editor/EditorDecorationDelegate+ViewBlockRendering.swift`, `Sources/Features/Editor/NoteTextView+Coordinator.swift`, `Tests/ViewBlockRenderingTests.swift`, `Tests/ViewBlockCaretTests.swift` (~420 lines)
+- `Sources/Vault/VaultSettings.swift`: `revealsInlineSpans: Bool` with a doc comment naming
+  ADR-0037 and saying why it is off by default; `false` in `.default`; `revealsInlineSpans: Bool = false`
+  in the memberwise initialiser; `decodeIfPresent(…) ?? fallback.revealsInlineSpans` in
+  `init(from:)`. Nothing else in that file changes.
+- `Sources/Features/Settings/EditorSettings.swift`: a `Toggle` immediately after the
+  `hidesMarkup` toggle and its caption, reading and writing through
+  `vault.updateSettings { $0.revealsInlineSpans = … }`, `.accessibilityIdentifier("settings-reveals-inline-spans")`,
+  `.disabled(!vault.settings.hidesMarkup)` (ADR §D7 — with markup shown the hook is a no-op), and
+  an explanatory `Text(...).themedText(.caption, color: .textTertiary)` in Italian saying that
+  grassetto, corsivo, barrato and collegamenti show their syntax only where the cursor is, and
+  that titoli, elenchi, citazioni e tabelle are unchanged.
 
-## File map (from Budget: declarations, tasks 5-5)
+**Tester** extends `Tests/VaultTests.swift` copying `readableWidthDefaultsToTrueAndAnOlderSettingsFileStillReadsTrue`
+(`:680-692`) exactly: default is `false`; a `settings.json` written before the key exists still
+decodes `false`; `{"dailyFolder":"Calendar","revealsInlineSpans":true}` decodes `true`; and a
+round trip through `JSONEncoder`/`JSONDecoder` preserves it. Red first.
 
-- Sources/Features/Editor/EditorDecorationDelegate+ViewBlockRendering.swift
-- Sources/Features/Editor/NoteTextView+Coordinator.swift
-- Sources/Features/Editor/NoteTextView+ViewBlocks.swift
-- Tests/ViewBlockCaretTests.swift
-- Tests/ViewBlockRenderingTests.swift
+**Coder** adds the property and the toggle.
+
+- Budget: `Sources/Vault/VaultSettings.swift`, `Sources/Features/Settings/EditorSettings.swift`, `Tests/VaultTests.swift` (~90 lines)
+
+## File map (from Budget: declarations, tasks 4-4)
+
+- Sources/Features/Settings/EditorSettings.swift
+- Sources/Vault/VaultSettings.swift
+- Tests/VaultTests.swift
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 2 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 3 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 4 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 1 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 2 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 3 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
-Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: docs/adr/0033-views-render-live-in-the-editor.md -- attachment creation gate, fallback-to-source rule, closed-fence precondition (ADR §D6/§D7)
-- SPEC: SPEC.md -- requirement IDs for this batch's tests
+- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md -- the one setting (ADR §D7)
+- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/SPEC.md -- requirement IDs for this task's tests
