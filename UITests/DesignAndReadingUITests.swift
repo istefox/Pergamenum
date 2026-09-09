@@ -9,6 +9,7 @@ import XCTest
 final class DesignAndReadingUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
+    private var mailStoreRoot: URL!
     private var app: XCUIApplication!
 
     private var themesDirectory: URL {
@@ -29,8 +30,12 @@ final class DesignAndReadingUITests: XCTestCase {
         stateBase = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
+        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
+                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-disablePlaud", "YES",
                                "-disableUpdater", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
@@ -41,6 +46,7 @@ final class DesignAndReadingUITests: XCTestCase {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
         try? FileManager.default.removeItem(at: stateBase)
+        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: The sidebar carries the app's work, not its reference material

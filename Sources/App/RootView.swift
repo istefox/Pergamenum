@@ -246,6 +246,10 @@ struct RootView: View {
         case .views: viewsPane
         case .starred: starredPane
         case .recordings: recordingsPane
+        // Tester-declared boundary (ADR-0155 §D1): `PratichePane` is Task 6/7's coder
+        // body, not built by this batch's tests. `EmptyView()` keeps this exhaustive
+        // switch compiling rather than a real placeholder screen.
+        case .pratiche: EmptyView()
         }
     }
 

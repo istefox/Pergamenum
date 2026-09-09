@@ -115,6 +115,14 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// (`CommandActions+CanRun.swift`, Task 8's coder step).
     case refreshRecordings
 
+    // ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 6 -
+    // R-33; ADR §D8. Appended at the end, never inserted (ADR-0005 §D8: raw values are
+    // the overrides-file keys). The case is a declaration this batch owns; Task 8 still
+    // does the `com.apple.symbolichotkeys` measurement before the binding below ships -
+    // it may change `defaultBinding` below, never remove or move this case.
+    /// The eleventh pane: jumps to "Pratiche" (`Navigation.Pane.pratiche`).
+    case panePratiche
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -152,7 +160,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward,
-             .paneRecordings, .refreshRecordings:
+             .paneRecordings, .refreshRecordings, .panePratiche:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -217,6 +225,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newReminder: "Nuovo promemoria"
         case .paneRecordings: "Vai a Registrazioni"
         case .refreshRecordings: "Aggiorna registrazioni"
+        case .panePratiche: "Vai a Pratiche"
         }
     }
 
@@ -322,6 +331,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // Measured free both in this app (`revealInFinder` holds Cmd+Shift+R; nothing holds
         // the unshifted form) and in the system map (ADR §D15).
         case .refreshRecordings: KeyBinding("r", .command)
+        // Ctrl+Cmd+P: the digits are exhausted (Ctrl+Cmd+0 is `.paneRecordings`),
+        // so the eleventh pane takes the next free letter on the same modifier pair
+        // (plan Task 6; Task 8 still measures it against `com.apple.symbolichotkeys`
+        // before this ships, ADR §D8).
+        case .panePratiche: KeyBinding("p", [.command, .control])
         }
     }
 }

@@ -60,3 +60,15 @@ red/green split explicitly rather than assuming "all pass" or "all fail" is the 
 outcome.
 
 See also [[swift-testing-only-testing-gap]].
+
+## Follow-up: adding an enum case ripples past its own file's exhaustive switches
+
+Adding one case to a widely-consumed enum (`Navigation.Pane`, `ShortcutCommand`) doesn't
+stop at that enum's own declared switches. Grep every `switch` over the enum type (or over
+`.allCases`) repo-wide before declaring done — an exhaustive switch **with no `default`**
+elsewhere in the app (found: `CommandActions+CanRun.swift`'s `canRun(_:)`, `RootView.swift`'s
+`detail` switch) breaks the build, while one **with `default: assertionFailure(...)`**
+(`CommandActions.swift`'s `runFile`/`runView`/etc.) only breaks at runtime the first time
+that case is actually invoked — still worth filling in in the same edit, not left as a
+future crash, per ADR-0155 §D1 (leave the target building AND behaving safely, not just
+compiling).

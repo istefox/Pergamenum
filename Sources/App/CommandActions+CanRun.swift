@@ -65,7 +65,11 @@ extension CommandActions {
              // Every other "go to this pane" command is unconditionally available - the same
              // convention applies here, with no vault-open guard any of the nine others carry
              // either (ADR-0032 §D15).
-             .paneRecordings:
+             .paneRecordings,
+             // Same convention (ADR-0036 §D8): the pane itself is always reachable, and
+             // `PratichePane`'s own body (Task 6/7's coder step) is what shows a
+             // needs-vault/no-Full-Disk-Access state once inside it.
+             .panePratiche:
             true
         // ADR-0032 (Plaud recording import into Pergamenum), plan
         // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md,

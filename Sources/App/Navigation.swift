@@ -30,6 +30,14 @@ final class Navigation {
         /// sheet reached from somewhere else: the list is a place a person comes back to
         /// while a transcription is running, which is what a destination is for.
         case recordings
+        /// The pratiche of ADR-0036 §D-pane. Own list column (the pratiche tree, like
+        /// Note owns `NoteListPane`), timeline and inspector - `PratichePane`, still the
+        /// coder's body (Task 6/7). Appended, not inserted: `Navigation.Pane` is not
+        /// itself an overrides-file key (`ShortcutCommand.rawValue` is), but the sidebar
+        /// row order it drives is a placement fact this batch owns (plan Task 6, R-33),
+        /// not Task 8's - Task 8 only measures `panePratiche`'s key against
+        /// `com.apple.symbolichotkeys`.
+        case pratiche
 
         var id: String { rawValue }
 
@@ -45,6 +53,7 @@ final class Navigation {
             case .starred: "Preferite"
             case .views: "Viste"
             case .recordings: "Registrazioni"
+            case .pratiche: "Pratiche"
             }
         }
 
@@ -60,6 +69,11 @@ final class Navigation {
             case .starred: "star"
             case .views: "tablecells"
             case .recordings: "waveform"
+            // Neither DESIGN.md nor UX-BLUEPRINT.md names an exact SF Symbol for the
+            // sidebar row itself (both only draw/describe toolbar-button symbols inside
+            // the pane - "plus", "arrow.clockwise", "sidebar.trailing"), so this is the
+            // coordinator's own named fallback rather than a guess.
+            case .pratiche: "folder.badge.person.crop"
             }
         }
 
@@ -88,6 +102,10 @@ final class Navigation {
             // Ctrl+Cmd+0, appended at the end of the catalogue (ADR-0032, ADR-0005 §D8):
             // the tenth pane takes the last free digit, and that exhausts them.
             case .recordings: .paneRecordings
+            // Ctrl+Cmd+P, appended at the end of the catalogue (ADR-0036 §D8): the digits
+            // are exhausted (`recordings` took the last one), so the eleventh pane takes
+            // the next free letter on the same modifier pair instead.
+            case .pratiche: .panePratiche
             }
         }
     }

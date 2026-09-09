@@ -234,7 +234,8 @@ final class CommandActions {
     private func runView(_ command: ShortcutCommand) {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
-             .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings:
+             .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings,
+             .panePratiche:
             runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()
