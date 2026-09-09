@@ -492,29 +492,31 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return viewBlock
         }
 
-        // TODO(coder, ADR-0037 §D3, plan `2026-09-08-word-grained-markdown-reveal-on-caret-in`
-        // Task 3): this guard and the `survivors`/tooltip logic below it are meant to be
-        // rewritten to call `Self.collapsing(among:paragraphIsRevealed:revealedSpans:)` -
-        // passing `revealsInlineSpans ? revealedSpans[range.location] : nil` - and feed
-        // `linkTooltips` the *collapsed* set rather than `survivors`, keeping
-        // `guard !collapsing.isEmpty else { return nil }`. Left as today's paragraph-only
-        // guard for now (tester half of Task 3), so every existing test in this file stays
-        // green unedited; `collapsing` is pinned as a standalone pure function meanwhile by
-        // the new suite in `Tests/MarkupHidingTests.swift`.
-        guard !revealedParagraphs.contains(range.location),
-              let markers = hiddenMarkers[range.location], !markers.isEmpty
-        else { return nil }
+        // The generic path, D3's per-marker filter: a paragraph's own reveal state no
+        // longer bails this out wholesale - `collapsing` decides marker by marker, so an
+        // inline construct (emphasis/strikethrough/link) can stay collapsed inside a
+        // revealed paragraph while a block marker (heading/rule) is still governed by the
+        // paragraph alone (ADR-0037 §D2/§D3).
+        guard let markers = hiddenMarkers[range.location], !markers.isEmpty else { return nil }
 
-        let survivors = Self.survivors(among: markers, of: range, in: storage.string as NSString)
-        guard !survivors.isEmpty else { return nil }
+        let text = storage.string as NSString
+        let survivors = Self.survivors(among: markers, of: range, in: text)
+        let collapsing = Self.collapsing(
+            among: survivors,
+            paragraphIsRevealed: revealedParagraphs.contains(range.location),
+            revealedSpans: revealsInlineSpans ? revealedSpans[range.location] : nil
+        )
+        guard !collapsing.isEmpty else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        for marker in survivors {
+        for marker in collapsing {
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
         }
         // Over the whole run and not only over the brackets: what is left on screen once
-        // they are collapsed is the label, and the label is what a person hovers (R-04).
-        for tooltip in Self.linkTooltips(among: survivors, of: range, in: storage.string as NSString) {
+        // they are collapsed is the label, and the label is what a person hovers (R-04). Fed
+        // the *collapsed* set, not `survivors`: a revealed link shows its own brackets and
+        // does not need a hover telling it where it goes (ADR-0037 §D3).
+        for tooltip in Self.linkTooltips(among: collapsing, of: range, in: text) {
             copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
         return NSTextParagraph(attributedString: copy)
@@ -558,19 +560,23 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     ///   contained in one of `revealedSpans`) or (`!kind.isInline` and
     ///   `paragraphIsRevealed`).
     ///
-    /// STUB (ADR-0037 chain, Task 3, tester half): always returns `[]`, which is the
-    /// paragraph-off answer for an unrevealed paragraph but wrong for every other input -
-    /// deliberately, so the new suite above is red until the coder half fills this in per
-    /// ADR-0037 §D3. `survivors`, `paragraphIsRevealed` and `revealedSpans` are unused here
-    /// on purpose; the coder replaces the body, not the signature.
-    ///
     /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
     static func collapsing(
         among survivors: [HiddenMarker],
         paragraphIsRevealed: Bool,
         revealedSpans: [NSRange]?
     ) -> [HiddenMarker] {
-        []
+        guard let revealedSpans else {
+            return paragraphIsRevealed ? [] : survivors
+        }
+        return survivors.filter { marker in
+            let revealed = marker.kind.isInline
+                ? revealedSpans.contains {
+                    $0.location <= marker.range.location && NSMaxRange(marker.range) <= NSMaxRange($0)
+                }
+                : paragraphIsRevealed
+            return !revealed
+        }
     }
 
     /// The embed's own branch of the substitution above: swaps the run's first character
