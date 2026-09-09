@@ -71,17 +71,33 @@ struct NoteTabBar: View {
                 // as the accessibility label of the `Label`, which is also what the UI tests
                 // click on.
                 if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
+                    // Filled with the accent, same language `BoardToolbar` uses for its
+                    // selected tool (`BoardChrome.swift`): a solid chip reads as "there is
+                    // an action here" rather than a bare glyph easy to lose in the strip.
                     Button { focus { vault.saveOpenNote() } } label: {
                         Label("Salva", systemImage: "arrow.down.doc")
                             .labelStyle(.iconOnly)
+                            .foregroundStyle(theme.color(.onAccent))
+                            .padding(.horizontal, theme.spacing(.xs))
+                            .padding(.vertical, 3)
+                            .background(theme.color(.accentPrimary))
+                            .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(theme.color(.textSecondary))
                     .help("Salva la nota")
                 } else {
+                    // Same pill shape as the unsaved chip, an outline rather than a fill:
+                    // the state is confirmed without competing for attention the way the
+                    // filled accent above deliberately does.
                     Label("Salvato", systemImage: "checkmark.circle")
                         .labelStyle(.iconOnly)
                         .themedText(.caption, color: .textSecondary)
+                        .padding(.horizontal, theme.spacing(.xs))
+                        .padding(.vertical, 3)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+                                .stroke(theme.color(.borderSubtle))
+                        )
                         .help("Salvato")
                 }
             }
