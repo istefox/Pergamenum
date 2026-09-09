@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=103 -->
+<!-- project-tasks: prefix=PG lastId=104 -->
 # PROJECT TASKS
 
-Updated: 2026-09-08 · Open: 9 (P1: 0) · In progress: 0
+Updated: 2026-09-09 · Open: 9 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -138,10 +138,15 @@ ViewBlockError` cast in `VaultViews.swift`, unused `store` binding in
 investigation or a manual check before touching code, not a reflexive silence-the-warning
 edit — kept here as their own tracked items rather than folded into Backlog.
 
-- [ ] `PG-101` **P2** `dropOnRoot`'s `Bool` refuse/accept signal is silently discarded by SwiftUI's `dropDestination` overload resolution, in both sidebar trees — `Sources/Features/Editor/NoteListPane.swift:333,377`, `Sources/Features/Workspace/WorkspaceBrowser+Rows.swift:59,90` <!-- src:session opened:2026-09-08 -->
+- [x] `PG-101` **P2** `dropOnRoot`'s `Bool` refuse/accept signal is silently discarded by SwiftUI's `dropDestination` overload resolution, in both sidebar trees — `Sources/Features/Editor/NoteListPane.swift:333,377`, `Sources/Features/Workspace/WorkspaceBrowser+Rows.swift:59,90` <!-- src:session opened:2026-09-08 closed:2026-09-09 runs:1 -->
   - Found triaging Xcode's "Result of call to 'dropOnRoot' is unused" warnings (4 occurrences, 2 per file). `dropOnRoot` returns `Bool` and its own doc comment says explicitly it owes `.dropDestination`'s `action` a `false` for a refused drop (ADR-0026). The current macOS SDK exposes two overloads of `dropDestination(for:action:)` — one `(_:CGPoint) -> Bool` (`@_disfavoredOverload`), one `(_:DropSession) -> Void` — and because both call sites write the closure's second parameter as untyped `_`, Swift resolves to the non-disfavored `Void` overload, discarding the `Bool` outright.
   - **Real regression candidate, not cosmetic**: if this analysis is right, a drop that ADR-0026 documents as refused (e.g. a cyclic move) may currently always animate as accepted, with no error shown. Needs a manual drag-and-drop hand-check (drop a folder into its own descendant, or another refusal case) before/after the fix to confirm current behavior is actually broken and that the fix restores it.
-  - Proposed fix (not yet applied): pin the `Bool`/`CGPoint` overload with an explicit typed closure signature, `{ (drops: [VaultItemDrag], location: CGPoint) -> Bool in dropOnRoot(drops) }`, at all 4 call sites.
+  - Fixed by commit `63e87bf` (`fix(sidebar): make dropDestination refusal signal reach the drop action (PG-101)`), giving each of the 4 closures an explicit `(VaultItemDrag], CGPoint) -> Bool` signature. Merged to `main` as `706d28b` via PR #182. A regression-review pass on that same PR found a fourth site with the identical bug shape, `Sources/Features/Workspace/WorkspaceView.swift:375-377` (a URL-import drop, not a sidebar tree), not covered by this fix — tracked separately as `PG-104`.
+
+- [ ] `PG-104` **P2** File-import drop closure has the same overload-resolution bug PG-101 fixed elsewhere — `Sources/Features/Workspace/WorkspaceView.swift:375-377` <!-- src:review opened:2026-09-09 -->
+  - `.dropDestination(for: URL.self) { urls, location in propose(import: urls, at: ...) }` is a single-expression trailing closure calling `propose(import:at:) -> Bool` (`WorkspaceView.swift:471-474`), the same shape PG-101 fixed at 4 other sites: Swift can silently resolve it to the `Void`-returning `dropDestination` overload instead of the `Bool` one, discarding the drop-refusal result. Not touched by PG-101's fix (`63e87bf`), which only covered the note/workspace sidebar tree sites.
+  - Found by a reviewer subagent during PR #182's pre-merge regression check (2026-09-09), verified independently by Stefano's own read of the PG-101 fix pattern before merging.
+  - Proposed fix: same shape as PG-101 — give the closure an explicit `(urls: [URL], location: CGPoint) -> Bool` signature.
 
 - [ ] `PG-102` **P3** `TableAttachment.swift`'s TextKit2 `attachmentBounds` callback reads a `@MainActor`-isolated `NSView` property from a nonisolated context — `Sources/Features/Editor/TableAttachment.swift:74` <!-- src:session opened:2026-09-08 -->
   - Found triaging Xcode's "Main actor-isolated property 'intrinsicContentSize' can not be referenced from a nonisolated context" warning. `attachmentBounds(for:location:textContainer:proposedLineFragment:position:)` overrides an AppKit `NSTextAttachmentViewProvider` method that is not `@MainActor` in the SDK (TextKit2 can genuinely call it off-main during background layout), yet reads `gridView.intrinsicContentSize` where `gridView: TableGridView?` is `@MainActor`-isolated via `NSView`.
@@ -154,9 +159,9 @@ edit — kept here as their own tracked items rather than folded into Backlog.
 
 ## Blocked / Decisions Needed
 
-- [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:3 -->
+- [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:4 -->
   - Approved 2026-08-20 with M12's slicing, knowing the SPEC rejects rollover by name. ADR-0013 §D1 carries the argument and the three narrowings that keep it an amendment rather than a reversal; §7.3 is amended in place. The number is 13, not the 12 the roadmap predicted: 10, 11 and 12 went to transclusion, templates and tabs.
-- [x] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 closed:2026-09-03 runs:3 -->
+- [x] `PG-018` **P3** Direct editing in the NotePlan sense, hiding the syntax while typing: SPEC §14 excludes it from v1, reopening needs an ADR — `docs/20260817_TextKit2_live_editing.md` <!-- src:session opened:2026-08-17 closed:2026-09-03 runs:4 -->
   - The study measured what it would cost. The mechanism exists and preserves the file; the expensive part is caret navigation over hidden characters, which folding did *not* need.
   - **Partially delivered 2026-08-22/2026-09-01 (ADR-0018, ADR-0028) — this entry is not closed by that.** Concealment shipped for exactly three constructs (heading `#`, emphasis `*`/`_`, image/PDF embeds drawn inline) plus list-marker substitution, deliberately scoped as "three named constructs, not the rule" (ADR-0018's own words) — the app still has a separate, non-editable Lettura mode (`MarkdownReadingView`/`MarkdownBlocksView`) toggled per-tab, not the single always-WYSIWYG editor this entry originally asked about.
   - **Full scope reaffirmed by Stefano 2026-09-02**, in the same session as `PG-015`'s SPEC closure: one editor, no Modifica/Lettura toggle, everything `MarkdownBlocksView` renders today (tables included) moves into the editable `NoteTextView`. Reopens three standing decisions, not one: **SPEC §14** itself ("source mode con stile è sufficiente"), **ADR-0005 §D2** (the Diario reading pane's premise that it sits beside an *unchanged* source editor), and **ADR-0018**'s explicit three-construct boundary.
@@ -193,6 +198,8 @@ Step 7 commit.
 ## Steps — workspace-folder-board-separation (derived from 2026-08-26-workspace-folder-board-separation.manifest.yml)
 
 ## Steps — editor-page-typography-noteplan (derived from 2026-09-04-editor-page-typography-noteplan.manifest.yml)
+
+## Steps — ambiguous (candidates: pg-099-views-board-renderer-orphaned-by, pergamenum-view-query-builder) — nothing derived
 
 ## Project Map
 
