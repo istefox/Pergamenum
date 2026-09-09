@@ -513,9 +513,16 @@ enum MarkdownStyler {
             let openingLength = link.isEmbed ? 3 : 2
             let targetStart = text.index(lower, offsetBy: openingLength)
             if let targetEnd = text.index(targetStart, offsetBy: link.target.count, limitedBy: upper) {
+                // The range/length above is `link.target`'s literal source length, always - the
+                // payload carried for a note link is `resolvedTitle`, so a target styled bold
+                // in-place (`[[**Nota**]]`) still resolves to the note actually titled "Nota"
+                // rather than to a literal "**Nota**" nothing matches (issue #188 follow-up).
+                // An embed's target is a file name, never emphasis-wrapped in practice, and
+                // `NoteRename`'s `range: link.range` rewrite already depends on `target` staying
+                // the literal bracket interior elsewhere, so only this payload changes.
                 result.append(StyledRange(
                     range: targetStart..<targetEnd,
-                    span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.target)
+                    span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.resolvedTitle)
                 ))
             }
         }
