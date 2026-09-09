@@ -12,12 +12,10 @@ import Foundation
 /// `perg` and `pergamenum-mcp` compile this file even though neither ever calls it
 /// (ADR §D19's own boundary: compiling is not calling).
 ///
-/// TESTER NOTE (ADR-0155 §D1): this is the declared boundary, not the implementation.
-/// `workItems` is a deliberate stub - it does not yet apply §D15's mailbox
-/// preference, does not honor `onDisk`, and does not sort - so that
-/// `Tests/PraticaSyncTests.swift`'s red assertions fail on real, missing behaviour
-/// rather than on a missing symbol. The coder fills this in; the signature is the
-/// contract.
+/// Pure and synchronous on purpose: the ordering, the §D15 duplicate resolution and the
+/// "never twice" rule are the parts of the sync a test can pin down without a store, a
+/// vault or an actor - `Tests/PraticaSyncTests.swift`'s `PraticaSyncPlanTests` builds
+/// rows by hand and calls this directly.
 enum PraticaSyncPlan {
     /// One message this sync will attempt to write this run, in the order the engine
     /// processes them (newest first, SPEC "Sync algorithm": "what changed lands
@@ -48,10 +46,73 @@ enum PraticaSyncPlan {
         onDisk: Set<String>,
         settings: PraticheSettings
     ) -> [WorkItem] {
-        // STUB: the coder implements the §D15 mailbox-preference dedup, the `onDisk`
-        // exclusion and the newest-first sort. Returning the input unfiltered and
-        // unsorted keeps every caller compiling while leaving every one of this
-        // batch's red assertions red.
-        candidates.map(WorkItem.init)
+        // Never re-imported, whatever the candidate list says: what a person removed by
+        // hand (`excluded`) and what this pratica already wrote (`onDisk`). Both are
+        // checked here as well as in `MembershipRule`, because this function is what
+        // the engine actually walks and a candidate list assembled any other way must
+        // meet the same two rules.
+        let refused = Set(dossier.excluded).union(onDisk)
+
+        var preferred: [String: MailMessageRow] = [:]
+        var order: [String] = []
+        for row in candidates {
+            if let messageID = row.messageID, refused.contains(messageID) { continue }
+            // A row the store could not give an RFC id for is still one message: keyed
+            // on its ROWID, it cannot collide with another row's key.
+            let key = row.messageID ?? "rowid:\(row.rowID)"
+            guard let rival = preferred[key] else {
+                preferred[key] = row
+                order.append(key)
+                continue
+            }
+            if prefers(row, over: rival) { preferred[key] = row }
+        }
+
+        return order
+            .compactMap { preferred[$0] }
+            .sorted { left, right in
+                let leftDate = date(of: left)
+                let rightDate = date(of: right)
+                if leftDate != rightDate { return leftDate > rightDate }
+                // The ROWID breaks the tie so two messages sent in the same second land
+                // in an order that is a function of the input rather than of the sort's
+                // own stability.
+                return left.rowID < right.rowID
+            }
+            .map(WorkItem.init)
+    }
+
+    /// §D15: the copy that survives is the one whose mailbox is neither Trash nor Junk,
+    /// and among the rest the lowest ROWID.
+    private static func prefers(_ candidate: MailMessageRow, over rival: MailMessageRow) -> Bool {
+        let candidateSidelined = isSidelined(candidate.mailbox)
+        let rivalSidelined = isSidelined(rival.mailbox)
+        if candidateSidelined != rivalSidelined { return rivalSidelined }
+        return candidate.rowID < rival.rowID
+    }
+
+    /// Mail's own Trash and Junk, in the spellings the mailbox url carries on an IMAP,
+    /// an Exchange and a local account. Matched on a whole path component, never as a
+    /// substring: a mailbox legitimately named «Trashware» is not the Trash.
+    private static let sidelinedMailboxNames: Set<String> = [
+        "trash", "cestino", "deleted messages", "deleted items",
+        "junk", "junk e-mail", "spam", "posta indesiderata", "bulk mail",
+    ]
+
+    private static func isSidelined(_ mailbox: MailboxRef) -> Bool {
+        let components: [String]
+        if let parsed = URL(string: mailbox.url) {
+            components = parsed.pathComponents.filter { $0 != "/" }
+        } else {
+            components = mailbox.url.split(separator: "/").map(String.init)
+        }
+        return components.contains { sidelinedMailboxNames.contains($0.lowercased()) }
+    }
+
+    /// The header `Date` is what governs ordering (SPEC "Message file frontmatter"), and
+    /// `date_sent` is the index's own copy of it; `date_received` is the fallback for a
+    /// message whose sender sent no readable `Date`.
+    private static func date(of row: MailMessageRow) -> Date {
+        row.dateSent ?? row.dateReceived ?? .distantPast
     }
 }

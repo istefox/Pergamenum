@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
@@ -7,7 +8,8 @@ import Foundation
 // App-only: `Sources/Features/Pratiche/**` is not in `sharedSources` (Project.swift),
 // so `perg`/`pergamenum-mcp` never compile this file and never learn the Mail store
 // exists any more than they already do through `Sources/Core/Email/**` (ADR §D19).
-// Free, therefore, to hold a `VaultSession` write hop and `@MainActor` isolation.
+// Free, therefore, to hold a `VaultSession` write hop and `@MainActor` isolation, and
+// to reach for `CryptoKit` for R-10's SHA-256.
 
 /// Runs one pratica's sync (SPEC "Sync algorithm"): reads the published index copy
 /// and the live `.emlx` tree, decodes each candidate message, writes it atomically,
@@ -15,15 +17,6 @@ import Foundation
 /// this actor (ADR §D14); only the finished note text crosses to `@MainActor`, once
 /// per message, through the `write` closure this actor was handed at `init` - the
 /// same hop `VaultSession.write` already is everywhere else in this app.
-///
-/// TESTER NOTE (ADR-0155 §D1): every method below is a declared boundary with a
-/// stub body. None of it opens a connection, reads an `.emlx`, computes a SHA-256, or
-/// writes a byte - `sync(_:)` always answers "nothing done", `cancel()` only flips a
-/// flag nothing reads yet, and `progressStream()` yields nothing. This keeps
-/// `Tests/PraticaSyncTests.swift`'s red assertions red for the right reason (missing
-/// behaviour) rather than for the wrong one (a missing symbol, or a crash). The coder
-/// fills in every body; the signatures, the request/outcome shapes and the actor
-/// isolation are the contract this batch is fixing.
 actor PraticaSyncEngine {
     /// One `sync(_:)` call's request (SPEC "Sync algorithm").
     struct SyncRequest: Sendable {
@@ -47,9 +40,14 @@ actor PraticaSyncEngine {
     /// What one `sync(_:)` call did, for the caller that records it in the ledger and
     /// updates the tray.
     struct SyncOutcome: Equatable, Sendable {
-        /// Vault-relative paths of every file this run actually finished writing
-        /// (`.md`, `.eml`, and `allegati/*` alike), in the order they were written -
-        /// R-11: only ever files that are complete, never a partial one.
+        /// Vault-relative path of every message **note** this run finished writing, in
+        /// the order they were written - R-11: only ever files that are complete,
+        /// never a partial one.
+        ///
+        /// One entry per message, not one per file: an `.eml` sidecar (R-09) and a
+        /// copied attachment (R-10) are parts of the message this list already names,
+        /// and counting them would make "how much did this run import" depend on the
+        /// retention setting and on how many files the sender happened to attach.
         var writtenFiles: [String]
         /// `Message-ID`s successfully imported this run - what the caller appends to
         /// `PraticaLedger.PraticaState.importedMessageIDs`.
@@ -101,16 +99,58 @@ actor PraticaSyncEngine {
     private let vaultRoot: URL
     private let write: @Sendable @MainActor (_ text: String, _ relativePath: String) throws -> Void
     private var cancelled = false
-    private var progressContinuation: AsyncStream<Progress>.Continuation?
+    private var progressChannel: (
+        stream: AsyncStream<Progress>,
+        continuation: AsyncStream<Progress>.Continuation
+    )?
+    /// Opened on the first `sync(_:)` and kept: the connection is an `OpaquePointer`
+    /// and never leaves this actor (ADR §D14).
+    private var reader: MailStoreReader?
 
     /// Runs the sync algorithm end to end for one pratica. Cancellation (`cancel()`)
     /// is checked once per message boundary, never mid-message, which is what makes
     /// "everything written is complete" true regardless of when it is called
     /// (R-11).
     func sync(_ request: SyncRequest) async throws -> SyncOutcome {
-        // STUB: does not open `mailStoreURL`, does not call `PraticaSyncPlan
-        // .workItems`, does not read a single `.emlx`, and never calls `write`.
-        .empty
+        cancelled = false
+        defer { finishProgress() }
+
+        let reader = try openedReader()
+        let items = PraticaSyncPlan.workItems(
+            dossier: request.dossier,
+            candidates: request.candidates,
+            onDisk: request.onDisk,
+            settings: request.settings
+        )
+        var folder = folderContext(of: request)
+        var outcome = SyncOutcome.empty
+
+        for (offset, item) in items.enumerated() {
+            // Decoding happens first and writes nothing: it is the window during which
+            // a `cancel()` sent from outside gets queued on this actor.
+            let prepared = prepare(item.row, request: request, reader: reader, folder: folder)
+            // ADR §D14: cancellation is observed at the write boundary, never
+            // mid-message. The yields are what let a queued `cancel()` actually run -
+            // an actor only services another job while the job it is running is
+            // suspended, and everything above this line is synchronous.
+            await Task.yield()
+            await Task.yield()
+            if cancelled {
+                outcome.cancelled = true
+                break
+            }
+            if let prepared {
+                try await commit(prepared, request: request, folder: &folder, outcome: &outcome)
+            }
+            emit(Progress(completed: offset + 1, total: items.count))
+        }
+
+        guard !cancelled else { return outcome }
+
+        // SPEC "Sync algorithm", the two passes after the loop.
+        try await regeneratePending(request: request, reader: reader, folder: &folder, outcome: &outcome)
+        outcome.noLongerInMail = noLongerInMail(request: request, reader: reader)
+        return outcome
     }
 
     /// Cooperative: takes effect at the next message boundary inside `sync(_:)`, not
@@ -120,12 +160,533 @@ actor PraticaSyncEngine {
     }
 
     /// One `Progress` per finished message, terminated when the in-flight `sync(_:)`
-    /// call returns (or immediately, when none is running) - a test drains this to
-    /// call `cancel()` at a precise message boundary rather than racing a sleep
-    /// against the actor.
+    /// call returns - a test drains this to call `cancel()` at a precise message
+    /// boundary rather than racing a sleep against the actor.
+    ///
+    /// Buffered from the moment the channel exists rather than from the moment
+    /// somebody iterates it: a caller that starts `sync(_:)` in one task and
+    /// subscribes from another would otherwise lose whichever events landed in
+    /// between, which is exactly the boundary a cancellation is aimed at. A stream
+    /// asked for while no sync is running stays open until the next one ends.
     func progressStream() -> AsyncStream<Progress> {
-        // STUB: finishes immediately - no `sync(_:)` call ever reports through this
-        // yet.
-        AsyncStream { continuation in continuation.finish() }
+        channel().stream
+    }
+
+    // MARK: - Progress channel
+
+    private func channel() -> (
+        stream: AsyncStream<Progress>,
+        continuation: AsyncStream<Progress>.Continuation
+    ) {
+        if let progressChannel { return progressChannel }
+        let created = AsyncStream<Progress>.makeStream(of: Progress.self, bufferingPolicy: .unbounded)
+        progressChannel = created
+        return created
+    }
+
+    private func emit(_ progress: Progress) {
+        channel().continuation.yield(progress)
+    }
+
+    private func finishProgress() {
+        progressChannel?.continuation.finish()
+        progressChannel = nil
+    }
+
+    // MARK: - The store
+
+    private func openedReader() throws -> MailStoreReader {
+        if let reader { return reader }
+        let opened = try MailStoreReader(storeURL: mailStoreURL)
+        reader = opened
+        return opened
+    }
+
+    /// R-16: an already-imported message that this run's candidate set no longer
+    /// carries, and that the index cannot resolve either, is gone from Mail. Its files
+    /// are never touched - only the link goes.
+    ///
+    /// The index is asked first (`message_global_data.message_id_header`, ADR §D3)
+    /// precisely so that a caller which hands over a candidate list with the imported
+    /// messages already subtracted does not turn every message it ever imported into
+    /// «non più in Mail».
+    private func noLongerInMail(request: SyncRequest, reader: MailStoreReader) -> [String] {
+        let surfaced = Set(request.candidates.compactMap(\.messageID))
+        return request.onDisk.subtracting(surfaced).sorted().filter { messageID in
+            if case .found = reader.row(forMessageID: messageID) { return false }
+            return true
+        }
+    }
+
+    // MARK: - What is already in the folder
+
+    /// One message file already on disk, and what it says about itself - R-08's
+    /// collision rule and §D6's "never rewrite" both need the recorded `Message-ID`,
+    /// not just the name.
+    private struct ExistingMessage {
+        var fileName: String
+        var document: MessageDocument
+    }
+
+    /// Everything the folder already holds that a decision this run makes depends on.
+    private struct FolderContext {
+        var messagesByID: [String: ExistingMessage] = [:]
+        /// Every `.md` name in `email/` with the `Message-ID` it carries (empty when
+        /// the file is not a message file) - `PraticaNaming.uniqueMessageFileName`'s
+        /// own input.
+        var takenNoteNames: [(fileName: String, messageID: String)] = []
+        var attachmentNameByDigest: [String: String] = [:]
+        var takenAttachmentNames: Set<String> = []
+    }
+
+    private func folderContext(of request: SyncRequest) -> FolderContext {
+        var context = FolderContext()
+
+        let emailDirectory = directory("email", of: request)
+        for name in Self.fileNames(in: emailDirectory) where name.hasSuffix(".md") {
+            let url = emailDirectory.appending(path: name, directoryHint: .notDirectory)
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let document = MessageDocument.parse(text)
+            context.takenNoteNames.append((name, document?.frontmatter.messageID ?? ""))
+            guard let document else { continue }
+            context.messagesByID[document.frontmatter.messageID] = ExistingMessage(
+                fileName: name, document: document
+            )
+        }
+
+        let allegatiDirectory = directory("allegati", of: request)
+        for name in Self.fileNames(in: allegatiDirectory) {
+            context.takenAttachmentNames.insert(name)
+            let url = allegatiDirectory.appending(path: name, directoryHint: .notDirectory)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            // First name wins, in the sorted order above: two identical files already
+            // in the folder are a state this app did not create, and linking to the
+            // same one of them every run beats linking to whichever the file system
+            // listed first today.
+            let digest = Self.digest(of: data)
+            if context.attachmentNameByDigest[digest] == nil {
+                context.attachmentNameByDigest[digest] = name
+            }
+        }
+        return context
+    }
+
+    // MARK: - One message, decoded
+
+    private struct PreparedAttachment {
+        var fileName: String
+        var bytes: Data
+        var digest: String
+    }
+
+    private struct PreparedMessage {
+        var messageID: String
+        var fileName: String
+        var noteText: String
+        var document: MessageDocument
+        /// The RFC 822 bytes to keep beside the note (R-09), `nil` when retention is
+        /// off and always `nil` for a `pending` message (§D18).
+        var originalBytes: Data?
+        var attachments: [PreparedAttachment]
+        var attachmentNameByDigest: [String: String]
+        var takenAttachmentNames: Set<String>
+        /// R-15: this file exists and says `body: pending`, and the body has arrived.
+        var isRegeneration: Bool
+    }
+
+    /// Reads and decodes one message. Writes nothing, and answers `nil` for every
+    /// reason this run must leave the message alone: no `.emlx` to read, no
+    /// `Message-ID` to key it by, or a file already on disk that §D6 forbids
+    /// rewriting.
+    private func prepare(
+        _ row: MailMessageRow,
+        request: SyncRequest,
+        reader: MailStoreReader,
+        folder: FolderContext
+    ) -> PreparedMessage? {
+        guard let emlxURL = locate(row, reader: reader),
+              let container = try? EMLXReader.read(contentsOf: emlxURL)
+        else { return nil }
+
+        let headers = EmailHeaderParser.parse(Self.headerText(of: container.rfc822))
+        // The row's own id first: it is what `onDisk`, the ledger and
+        // `PraticaSyncPlan`'s dedup all key on. The header is the fallback for a row
+        // read straight out of the index, which carries none (ADR §D3).
+        guard let messageID = row.messageID ?? headers.messageID.map({ "<\($0)>" })
+        else { return nil }
+
+        let isPending = container.bodyState == .pending
+        let existing = folder.messagesByID[messageID]
+        if let existing {
+            // §D6: a file already on disk is rewritten for exactly one reason - it was
+            // written `pending` and the body has since arrived (R-15).
+            guard existing.document.frontmatter.body == .pending, !isPending else { return nil }
+        }
+
+        let date = headers.date ?? row.dateSent ?? row.dateReceived ?? .distantPast
+        let calendarDate = CalendarDate(date)
+        let subject = headers.subject ?? row.subject ?? ""
+        let ownAddresses = Set(request.settings.ownAddresses)
+        let carbonCopies = Self.addresses(of: "cc", in: headers)
+        let direction = MessageDocument.direction(from: headers.from, ownAddresses: ownAddresses)
+        let counterpart = MessageDocument.counterpart(
+            direction: direction, from: headers.from, to: headers.to, cc: carbonCopies,
+            ownAddresses: ownAddresses
+        )
+
+        var attachmentNameByDigest = folder.attachmentNameByDigest
+        var takenAttachmentNames = folder.takenAttachmentNames
+        var writes: [PreparedAttachment] = []
+        var links: [String] = []
+        var storeReferences: [MessageDocument.StoreReference] = []
+        var newText: String
+        var quotedHistory: String?
+        var signature: String?
+
+        if isPending {
+            // R-15: a placeholder, never an empty body - a file with nothing in it
+            // reads as a message that said nothing.
+            newText = Self.pendingPlaceholder
+        } else {
+            let parts = MIMEDecoder.decode(container.rfc822)
+            var body = Self.bodyText(of: parts)
+            for (ordinal, part) in parts.enumerated() {
+                switch part.kind {
+                case .attachment(let filename):
+                    let name = filename ?? Self.unnamedAttachment
+                    let bytes = part.decodedData ?? Data()
+                    if bytes.count > Self.thresholdBytes(request.settings) {
+                        // R-10: recorded where it really lives, never copied.
+                        storeReferences.append(MessageDocument.StoreReference(
+                            name: name,
+                            size: bytes.count,
+                            storePath: Self.storePath(
+                                of: name, at: emlxURL, rowID: row.rowID, part: ordinal + 1
+                            )
+                        ))
+                        continue
+                    }
+                    let placed = Self.place(
+                        bytes, named: name, date: calendarDate,
+                        nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
+                    )
+                    if let write = placed.write { writes.append(write) }
+                    links.append(placed.fileName)
+
+                case .inlineImage(let contentID):
+                    let bytes = part.decodedData ?? Data()
+                    guard bytes.count >= Self.inlineImageMinimumBytes else {
+                        // R-10: a signature logo is not an attachment. The reference
+                        // goes with it, or the body keeps a `cid:` pointing nowhere.
+                        body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
+                        continue
+                    }
+                    let placed = Self.place(
+                        bytes, named: part.filename ?? "\(contentID).png", date: calendarDate,
+                        nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
+                    )
+                    if let write = placed.write { writes.append(write) }
+                    // Embedded rather than listed: an inline image belongs where the
+                    // sender put it (SPEC "Edge cases").
+                    body = body.replacingOccurrences(
+                        of: "cid:\(contentID)", with: "![[\(placed.fileName)]]"
+                    )
+
+                case .textPlain, .textHTML:
+                    continue
+                }
+            }
+            let split = QuoteSplitter.split(body)
+            newText = split.newText
+            quotedHistory = split.quotedHistory
+            signature = split.signature
+        }
+
+        let fileName: String
+        if let existing {
+            // R-15's regeneration is in place: the same file, so a link to it from
+            // anywhere else in the vault survives the body's arrival.
+            fileName = existing.fileName
+        } else {
+            fileName = PraticaNaming.uniqueMessageFileName(
+                date: calendarDate,
+                time: Self.time(of: date),
+                counterpart: counterpart?.displayText ?? Self.unknownCounterpart,
+                subject: subject,
+                messageID: messageID,
+                existing: folder.takenNoteNames
+            )
+        }
+        let baseName = (fileName as NSString).deletingPathExtension
+        // §D18: a pending message has no complete RFC 822 bytes to keep, so it gets no
+        // `.eml` and no `pergamenum-mail-original`, whatever retention says.
+        let keepsOriginal = request.settings.keepOriginalEML && !isPending
+
+        let document = MessageDocument(
+            frontmatter: MessageDocument.MailFrontmatter(
+                schemaVersion: Self.frontmatterSchemaVersion,
+                messageID: messageID,
+                conversationID: row.conversationID,
+                direction: direction,
+                date: date,
+                received: row.dateReceived,
+                from: headers.from.map(Self.headerForm) ?? row.sender ?? "",
+                to: headers.to.map(Self.headerForm),
+                cc: carbonCopies.map(Self.headerForm),
+                subject: subject,
+                attachments: links.map { "[[\($0)]]" },
+                storeReferences: storeReferences,
+                body: isPending ? .pending : .complete,
+                original: keepsOriginal ? "\(baseName).eml" : nil
+            ),
+            newText: newText,
+            quotedHistory: quotedHistory,
+            signature: signature
+        )
+
+        return PreparedMessage(
+            messageID: messageID,
+            fileName: fileName,
+            noteText: MessageDocument.render(document, tags: Self.tags(for: request)),
+            document: document,
+            originalBytes: keepsOriginal ? container.rfc822 : nil,
+            attachments: writes,
+            attachmentNameByDigest: attachmentNameByDigest,
+            takenAttachmentNames: takenAttachmentNames,
+            isRegeneration: existing != nil
+        )
+    }
+
+    /// ADR §D4: only `.notInStore` means «non più in Mail», and a drifted rule is not
+    /// that - both are skipped here, and R-16's caption is decided by
+    /// `noLongerInMail(request:reader:)` against the index instead.
+    private func locate(_ row: MailMessageRow, reader: MailStoreReader) -> URL? {
+        switch EMLXLocator.locate(predictedURL: reader.emlxPath(forRow: row)) {
+        case let .found(url), let .foundPartial(url):
+            return url
+        case .notInStore, .ruleFailed:
+            return nil
+        }
+    }
+
+    // MARK: - Writing
+
+    private func commit(
+        _ prepared: PreparedMessage,
+        request: SyncRequest,
+        folder: inout FolderContext,
+        outcome: inout SyncOutcome
+    ) async throws {
+        // Sidecars first, note last: a note is what says "this message is imported", so
+        // it must never be the thing that exists while what it points at does not.
+        let allegatiDirectory = directory("allegati", of: request)
+        for attachment in prepared.attachments {
+            try Self.writeAtomically(
+                attachment.bytes,
+                to: allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
+            )
+        }
+        if let originalBytes = prepared.originalBytes {
+            let baseName = (prepared.fileName as NSString).deletingPathExtension
+            try Self.writeAtomically(
+                originalBytes,
+                to: directory("email", of: request)
+                    .appending(path: "\(baseName).eml", directoryHint: .notDirectory)
+            )
+        }
+
+        let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
+        try await write(prepared.noteText, notePath)
+
+        folder.attachmentNameByDigest = prepared.attachmentNameByDigest
+        folder.takenAttachmentNames = prepared.takenAttachmentNames
+        if !prepared.isRegeneration {
+            folder.takenNoteNames.append((prepared.fileName, prepared.messageID))
+            outcome.importedMessageIDs.append(prepared.messageID)
+        } else {
+            outcome.regeneratedPendingFiles.append(notePath)
+        }
+        folder.messagesByID[prepared.messageID] = ExistingMessage(
+            fileName: prepared.fileName, document: prepared.document
+        )
+        outcome.writtenFiles.append(notePath)
+    }
+
+    /// SPEC "Sync algorithm": «re-check `pending` files from earlier runs». A message
+    /// whose id the ledger already lists is not a work item (`PraticaSyncPlan` skips
+    /// it), so the one file §D6 allows a sync to rewrite would otherwise stay pending
+    /// forever.
+    private func regeneratePending(
+        request: SyncRequest,
+        reader: MailStoreReader,
+        folder: inout FolderContext,
+        outcome: inout SyncOutcome
+    ) async throws {
+        for row in request.candidates {
+            guard let messageID = row.messageID, request.onDisk.contains(messageID) else { continue }
+            guard folder.messagesByID[messageID]?.document.frontmatter.body == .pending else { continue }
+            guard let prepared = prepare(row, request: request, reader: reader, folder: folder)
+            else { continue }
+            await Task.yield()
+            if cancelled {
+                outcome.cancelled = true
+                return
+            }
+            try await commit(prepared, request: request, folder: &folder, outcome: &outcome)
+        }
+    }
+
+    /// R-11's «write temp, rename»: `.atomic` is Foundation's own implementation of it
+    /// - the bytes land in a temporary sibling and are renamed over the target in one
+    /// operation, so an interrupted run leaves either the previous file or the new one
+    /// and never half of either.
+    private static func writeAtomically(_ data: Data, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    // MARK: - Attachment placement (R-10)
+
+    private static func place(
+        _ bytes: Data,
+        named name: String,
+        date: CalendarDate,
+        nameByDigest: inout [String: String],
+        taken: inout Set<String>
+    ) -> (fileName: String, write: PreparedAttachment?) {
+        let digest = Self.digest(of: bytes)
+        // Same content already in this pratica: linked, never copied a second time
+        // (SPEC "Attachment file name").
+        if let existing = nameByDigest[digest] { return (existing, nil) }
+
+        let fileName = uniqueAttachmentName(
+            PraticaNaming.attachmentFileName(date: date, name: name), taken: taken
+        )
+        nameByDigest[digest] = fileName
+        taken.insert(fileName)
+        return (fileName, PreparedAttachment(fileName: fileName, bytes: bytes, digest: digest))
+    }
+
+    /// Same name, different content: `-2`, `-3`, … before the extension (SPEC
+    /// "Attachment file name"). Reached only after the SHA-256 check above, so a
+    /// second copy of the same bytes never gets here.
+    private static func uniqueAttachmentName(_ base: String, taken: Set<String>) -> String {
+        guard taken.contains(base) else { return base }
+        let stem = (base as NSString).deletingPathExtension
+        let suffix = (base as NSString).pathExtension
+        var counter = 2
+        while true {
+            let candidate = suffix.isEmpty ? "\(stem)-\(counter)" : "\(stem)-\(counter).\(suffix)"
+            if !taken.contains(candidate) { return candidate }
+            counter += 1
+        }
+    }
+
+    /// Where an over-threshold attachment actually lives, for the chip that opens it
+    /// «if still there» (SPEC "Edge cases"): Mail's own extracted copy when it exists,
+    /// and otherwise the `.emlx` container that really holds those bytes. Never a path
+    /// this app has not looked at.
+    private static func storePath(of name: String, at emlxURL: URL, rowID: Int, part: Int) -> String {
+        let extracted = EMLXReader
+            .attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: "\(part)")
+            .appending(path: name, directoryHint: .notDirectory)
+        let path = extracted.path(percentEncoded: false)
+        return FileManager.default.fileExists(atPath: path) ? path : emlxURL.path(percentEncoded: false)
+    }
+
+    private static func digest(of data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: - Reading the message
+
+    /// `EmailHeaderParser` stops at the first blank line, but it splits on `.newlines`,
+    /// where a bare `\r\n` yields an empty component - the same normalisation
+    /// `MIMEDecoder` does before calling it, and without which every CRLF message
+    /// parses as having no headers at all.
+    private static func headerText(of rfc822: Data) -> String {
+        let end = EMLXReader.headerBodySeparator(in: rfc822) ?? rfc822.endIndex
+        return String(decoding: rfc822[rfc822.startIndex..<end], as: UTF8.self)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+    }
+
+    /// SPEC "Sync algorithm": «text/plain preferred, else HTML→markdown».
+    private static func bodyText(of parts: [MIMEPart]) -> String {
+        let plain = parts.first { $0.kind == .textPlain }?.decodedText ?? ""
+        if !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return normalised(plain)
+        }
+        guard let html = parts.first(where: { $0.kind == .textHTML })?.decodedText else {
+            return normalised(plain)
+        }
+        return normalised(HTMLTextReducer.reduce(html))
+    }
+
+    /// A note in this vault has Unix line endings; a message off the wire has CRLF.
+    private static func normalised(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .newlines)
+    }
+
+    private static func addresses(of name: String, in headers: EmailHeaders) -> [EmailAddress] {
+        guard let raw = headers.all.first(where: { $0.name.lowercased() == name })?.value
+        else { return [] }
+        return EmailHeaderParser.parseAddressList(raw)
+    }
+
+    /// `Mario Rossi <m.rossi@rossi-spa.it>`, the form the SPEC's own frontmatter
+    /// example carries.
+    private static func headerForm(_ address: EmailAddress) -> String {
+        guard let name = address.name, !name.isEmpty else { return address.address }
+        return "\(name) <\(address.address)>"
+    }
+
+    private static func time(of date: Date) -> TaskTime {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return TaskTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+    }
+
+    /// ADR §D11's tag set for a message file, corrected against the real linter:
+    /// `type-email`, the pratica's own `client-<slug>` when the folder layout gives
+    /// one, and `source-email`.
+    private static func tags(for request: SyncRequest) -> [Tag] {
+        [
+            Tag("type-email"),
+            PraticaNaming.clientTag(
+                forPraticaAt: request.praticaFolder, root: request.settings.rootFolder
+            ),
+            Tag("source-email"),
+        ].compactMap { $0 }
+    }
+
+    // MARK: - Paths and constants
+
+    private func directory(_ name: String, of request: SyncRequest) -> URL {
+        vaultRoot
+            .appending(path: request.praticaFolder, directoryHint: .isDirectory)
+            .appending(path: name, directoryHint: .isDirectory)
+    }
+
+    private static func fileNames(in directory: URL) -> [String] {
+        let names = try? FileManager.default.contentsOfDirectory(
+            atPath: directory.path(percentEncoded: false)
+        )
+        // Sorted, so every decision derived from what is already on disk is a function
+        // of the folder's contents rather than of the file system's listing order.
+        return (names ?? []).sorted()
+    }
+
+    private static let frontmatterSchemaVersion = 1
+    private static let unknownCounterpart = "Sconosciuto"
+    private static let unnamedAttachment = "allegato"
+    /// SPEC "Edge cases": under 50 KB an inline image is a signature or a logo.
+    private static let inlineImageMinimumBytes = 50 * 1024
+    private static let pendingPlaceholder =
+        "*Il corpo di questo messaggio non è ancora stato scaricato da Mail.*"
+
+    private static func thresholdBytes(_ settings: PraticheSettings) -> Int {
+        settings.attachmentThresholdMB * 1024 * 1024
     }
 }

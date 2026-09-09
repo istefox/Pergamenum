@@ -23,10 +23,9 @@ struct MessageDocument: Equatable, Sendable {
     /// is what stands in its place, so the message file still names it, its size and
     /// where it actually lives inside Mail's own store.
     ///
-    /// Added by this batch's tester per the coordinator's follow-up, closing the gap
-    /// the original Task 4 report flagged rather than guessed at: `render(_:)`/
-    /// `parse(_:)` do not read or write this yet - that wiring is the coder's, not
-    /// this declaration's.
+    /// Written and read back as `pergamenum-mail-store-references` (see
+    /// `flowMap(_:)`), so the chip that offers «apri dallo store» has a path to open
+    /// and a size to explain why there is no local copy.
     struct StoreReference: Equatable, Sendable {
         var name: String
         var size: Int
@@ -52,9 +51,9 @@ struct MessageDocument: Equatable, Sendable {
         /// `PraticaNaming.messageFileName`'s job for the file name slug, this key is
         /// the subject as the message actually carried it).
         ///
-        /// Added by Task 4's tester (plan "Batch 2 results"): Task 3 shipped
-        /// `MessageDocument` without it. `render(_:)`/`parse(_:)` do not read or write
-        /// this field yet - that wiring is the coder's, not this declaration's.
+        /// Added after Task 3, which shipped `MessageDocument` without it: the file
+        /// name only carries a slug of the subject, capped at 40 characters and
+        /// stripped of its reply prefixes, so it is not a place the real one survives.
         var subject: String
         /// Wikilinks, e.g. `"[[20260610_offerta-2024-118.pdf]]"`.
         var attachments: [String]
@@ -112,29 +111,56 @@ struct MessageDocument: Equatable, Sendable {
     /// `FrontmatterSerializer` already applies to `related`/`aliases`: a key present
     /// with no value is a key the next reader has to decide the meaning of.
     private static func foreignKeys(of mail: MailFrontmatter) -> [Frontmatter.ForeignKey] {
-        var keys: [(String, String)] = [
-            ("pergamenum-mail", "\(mail.schemaVersion)"),
-            ("pergamenum-mail-message-id", quoted(mail.messageID)),
-        ]
+        var keys: [Frontmatter.ForeignKey] = []
+        // Built as `ForeignKey`s rather than as `(name, value)` pairs because one key -
+        // `pergamenum-mail-store-references` - is a block list and carries several
+        // lines; every other key is a scalar and goes through `add`.
+        func add(_ name: String, _ value: String) {
+            keys.append(Frontmatter.ForeignKey(name: name, lines: ["\(name): \(value)"]))
+        }
+
+        add("pergamenum-mail", "\(mail.schemaVersion)")
+        add("pergamenum-mail-message-id", quoted(mail.messageID))
         if let conversationID = mail.conversationID {
-            keys.append(("pergamenum-mail-conversation-id", "\(conversationID)"))
+            add("pergamenum-mail-conversation-id", "\(conversationID)")
         }
-        keys.append(("pergamenum-mail-direction", mail.direction.rawValue))
-        keys.append(("pergamenum-mail-date", isoString(mail.date)))
+        add("pergamenum-mail-direction", mail.direction.rawValue)
+        add("pergamenum-mail-date", isoString(mail.date))
         if let received = mail.received {
-            keys.append(("pergamenum-mail-received", isoString(received)))
+            add("pergamenum-mail-received", isoString(received))
         }
-        keys.append(("pergamenum-mail-from", quoted(mail.from)))
-        if !mail.to.isEmpty { keys.append(("pergamenum-mail-to", inlineList(mail.to))) }
-        if !mail.cc.isEmpty { keys.append(("pergamenum-mail-cc", inlineList(mail.cc))) }
+        add("pergamenum-mail-from", quoted(mail.from))
+        if !mail.to.isEmpty { add("pergamenum-mail-to", inlineList(mail.to)) }
+        if !mail.cc.isEmpty { add("pergamenum-mail-cc", inlineList(mail.cc)) }
+        // Written even when empty, unlike the lists above: the SPEC's own example
+        // always carries it, and a message really sent with no subject is a fact about
+        // that message rather than a key with nothing to say.
+        add("pergamenum-mail-subject", quoted(mail.subject))
         if !mail.attachments.isEmpty {
-            keys.append(("pergamenum-mail-attachments", inlineList(mail.attachments)))
+            add("pergamenum-mail-attachments", inlineList(mail.attachments))
         }
-        keys.append(("pergamenum-mail-body", mail.body.rawValue))
+        if !mail.storeReferences.isEmpty {
+            keys.append(Frontmatter.ForeignKey(
+                name: storeReferencesKey,
+                lines: ["\(storeReferencesKey):"] + mail.storeReferences.map(flowMap)
+            ))
+        }
+        add("pergamenum-mail-body", mail.body.rawValue)
         if let original = mail.original {
-            keys.append(("pergamenum-mail-original", quoted(original)))
+            add("pergamenum-mail-original", quoted(original))
         }
-        return keys.map { Frontmatter.ForeignKey(name: $0.0, lines: ["\($0.0): \($0.1)"]) }
+        return keys
+    }
+
+    static let storeReferencesKey = "pergamenum-mail-store-references"
+
+    /// `  - { name: "big.zip", size: 157286400, storePath: "/…/big.zip" }` - a YAML flow
+    /// map per over-threshold attachment (SPEC "Edge cases"). One line each, so
+    /// `FrontmatterParser`'s continuation rule (an indented or dashed line belongs to
+    /// the key above it) carries the whole block back as one `ForeignKey`.
+    private static func flowMap(_ reference: StoreReference) -> String {
+        "  - { name: \(quoted(reference.name)), size: \(reference.size), "
+            + "storePath: \(quoted(reference.storePath)) }"
     }
 
     /// A header value is somebody else's text: a `"` or a line break in it would close
@@ -196,10 +222,12 @@ struct MessageDocument: Equatable, Sendable {
                 from: scalar("pergamenum-mail-from", lines).map(unquoted) ?? "",
                 to: list("pergamenum-mail-to", lines),
                 cc: list("pergamenum-mail-cc", lines),
-                // STUB: `pergamenum-mail-subject` is not read back yet (coder's job,
-                // this batch's tester amendment only declares the field).
-                subject: "",
+                // A message file written before this key existed reads back with an
+                // empty subject rather than failing to parse: the file is still a
+                // message, and its `Message-ID` is what every caller matches on.
+                subject: scalar("pergamenum-mail-subject", lines).map(unquoted) ?? "",
                 attachments: list("pergamenum-mail-attachments", lines),
+                storeReferences: storeReferences(in: lines),
                 body: scalar("pergamenum-mail-body", lines)
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
                 original: scalar("pergamenum-mail-original", lines).map(unquoted)
@@ -228,6 +256,71 @@ struct MessageDocument: Equatable, Sendable {
         guard !inner.isEmpty else { return [] }
         return inner.split(separator: ",")
             .map { unquoted(String($0).trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// Reads the `pergamenum-mail-store-references` block back: the key line, then one
+    /// `- { … }` flow map per line until the block ends. A malformed entry is skipped
+    /// rather than guessed at - an attachment this app cannot describe is better absent
+    /// from the list than present with an invented size.
+    private static func storeReferences(in lines: [String]) -> [StoreReference] {
+        guard let start = lines.firstIndex(where: {
+            !$0.hasPrefix(" ") && !$0.hasPrefix("\t")
+                && $0.trimmingCharacters(in: .whitespaces).hasPrefix("\(storeReferencesKey):")
+        }) else { return [] }
+
+        var references: [StoreReference] = []
+        for line in lines[lines.index(after: start)...] {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("-") else { break }
+            guard let open = trimmed.firstIndex(of: "{"), let close = trimmed.lastIndex(of: "}"),
+                  open < close
+            else { continue }
+
+            var fields: [String: String] = [:]
+            for field in splitOutsideQuotes(String(trimmed[trimmed.index(after: open)..<close]), on: ",") {
+                guard let colon = field.firstIndex(of: ":") else { continue }
+                let name = String(field[field.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+                fields[name] = unquoted(
+                    String(field[field.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                )
+            }
+            guard let name = fields["name"], let storePath = fields["storePath"],
+                  let size = fields["size"].flatMap(Int.init)
+            else { continue }
+            references.append(StoreReference(name: name, size: size, storePath: storePath))
+        }
+        return references
+    }
+
+    /// A store path is somebody's file name and may hold the separator: splitting a flow
+    /// map on every comma would cut `"/Volumi/A, B/x.zip"` in half.
+    private static func splitOutsideQuotes(_ text: String, on separator: Character) -> [String] {
+        var pieces: [String] = []
+        var current = ""
+        var insideQuotes = false
+        var escaped = false
+        for character in text {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            switch character {
+            case "\\" where insideQuotes:
+                current.append(character)
+                escaped = true
+            case "\"":
+                insideQuotes.toggle()
+                current.append(character)
+            case separator where !insideQuotes:
+                pieces.append(current)
+                current = ""
+            default:
+                current.append(character)
+            }
+        }
+        pieces.append(current)
+        return pieces
     }
 
     private static func unquoted(_ value: String) -> String {
