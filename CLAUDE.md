@@ -928,10 +928,11 @@ Key architectural decisions:
 - **The setting is pushed from `applyStyling`, never from `applyReveal`** — `applyReveal`
   early-returns when the selection has not moved, so a toggle flip with a stationary caret would
   never redraw under the old code path.
-- **The Workspace `.text` card gets less than the note editor, deliberately** — `CardTextView`'s
-  marker switch has no `.strikethroughMarker`/`.linkSyntax` case today (`default: nil`), so a
-  card's `~~text~~` and `[[wikilink]]` were already visible and stay visible; this chain does not
-  widen that switch, preserving ADR-0029 §D17's seam against a live `NSView` grid landing in a
-  culling-deallocated text view.
+- **The Workspace `.text` card conceals strikethrough and link/wikilink syntax identically to the
+  note editor** — amended 2026-09-09 (R-11 hand check): `CardTextView`'s marker switch now maps
+  `.strikethroughMarker`/`.linkSyntax` too, reusing `NoteTextView.Coordinator.linkDelimiters(in:of:)`
+  for the link case. ADR-0029 §D17's actual seam (a live `NSView` grid never landing in a
+  culling-deallocated card view) is untouched — neither construct involves an `NSView`, only the
+  same character substitution `.emphasis` already used in a card.
 
 Detail: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.

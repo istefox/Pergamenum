@@ -62,7 +62,7 @@ plan.
 
 | # | SPEC premise | Source | Where |
 |---|---|---|---|
-| F1 | "Applies identically to the note editor and to Workspace `.text` cards" | **The card conceals five marker kinds, not eight.** `CardTextView`'s own switch maps `.headingMarker`, `.emphasisMarker`, `.embedRun`, `.listMarker`, `.taskMarker` and ends `default: nil` — `.strikethroughMarker` and `.linkSyntax` produce **no marker at all** in a card, so a card's `~~` and `[[ ]]` are visible today and stay visible. R-09 is about the *mechanism* being one, not about the construct set | `CardTextView.swift:288-296`; ADR-0029 §D17 |
+| F1 | "Applies identically to the note editor and to Workspace `.text` cards" | **At plan time, the card concealed five marker kinds, not eight.** `CardTextView`'s own switch mapped `.headingMarker`, `.emphasisMarker`, `.embedRun`, `.listMarker`, `.taskMarker` and ended `default: nil` — `.strikethroughMarker` and `.linkSyntax` produced **no marker at all** in a card, so a card's `~~` and `[[ ]]` were visible and stayed visible. R-09 was about the *mechanism* being one, not about the construct set. **Superseded by D8's 2026-09-09 amendment: the switch now maps all seven kinds, matching the note editor.** | `CardTextView.swift:302-311`; §D8 below |
 | F2 | "a per-paragraph scan that locates emphasis/link spans" | Three of the four constructs need no scan of their own — the run span already exists (C1). **The CommonMark `[testo](url)` form is the exception**: `markdownLinkSpans` emits `[` and `](url)` as two separate `.linkSyntax` ranges and never a whole-construct one, so its extent has to be reconstructed by pairing | `MarkdownStyler.swift:621-653` |
 | F3 | (unstated) the caret can reach a collapsed span | **True, and only because ADR-0018 §D5's delimiter skip was never built for emphasis.** `NoteTextView+EmbedCaret.swift` claims `moveLeft:`/`moveRight:` for a drawn *embed* run only; a collapsed `**` is walked into character by character, exactly as the 2026-08-17 study measured. Had the skip shipped, this feature would need it removed | `NoteTextView+EmbedCaret.swift:25-28`; grep for `moveLeft` returns three files, none about emphasis |
 | F4 | (unstated) `revealedParagraphs` has one reader | **Six.** The list, checkbox and blockquote branches each guard on it and return `nil`; the `.rule` fragment branch reads it at layout time; the generic substitution path bails on it; `MarkupReveal` produces it. Only the generic path changes | `EditorDecorationDelegate.swift:346`, `:443`; `+ListRendering.swift:26`; `+CheckboxRendering.swift:21`; `+QuoteRendering.swift:24` |
@@ -237,13 +237,34 @@ the shared delegate. The same route `hidesMarkup` takes, and for the same stated
 `@Environment(VaultController.self)` read inside a card crashes a card built in a preview or a
 test (ADR-0028 §D10).
 
-What a card gets out of it is bold and italic (F1). Strikethrough and links have no marker in a
-card, so they neither conceal nor reveal there, and **this chain does not widen the card's switch
-to give them one** — that switch is ADR-0029 §D17's seam, and the constructs behind it include a
-live `NSView` grid in a text view that is deallocated on culling-rect crossings.
-
 `releaseDecorations()` clears the new table with the others: a span offset surviving its text is
 the same stale-offset defect as a marker surviving it.
+
+**Amendment, 2026-09-09 (R-11 hand check).** At plan time, D8 stopped here: a card got bold and
+italic only (F1), because `CardTextView`'s marker switch is ADR-0029 §D17's seam against a live
+`NSView` table grid ever landing in a card whose text view is deallocated on culling-rect
+crossings, and this chain did not widen it.
+
+During the R-11 hand check, seeing the card leave `[[wikilink]]`, `[testo](url)` and `~~barrato~~`
+uncollapsed while the note editor concealed all three was judged wrong on sight, and the decision
+is reversed by explicit instruction: **the card now conceals strikethrough and link/wikilink
+syntax identically to the note editor.** `CardTextView.Coordinator.applyStyling` widens its switch
+to the same seven `HiddenMarker.Kind` cases `NoteTextView.Coordinator.hiddenKind(for:)` maps
+(`+strikethrough`, `+link`), and reuses `NoteTextView.Coordinator.linkDelimiters(in:of:)` unchanged
+for the `.link` case — a link's whole run is never one marker, only its bracket/paren delimiters
+are, exactly as the note editor already does.
+
+This does not reopen ADR-0029 §D17's actual seam: that seam exists to keep a table's live
+`NSView` grid out of a culling-deallocated card view, and `.strikethrough`/`.link` involve no
+`NSView` at all, only the same length-preserving character substitution `.emphasis` already uses
+in a card. The risk the seam protects against is untouched; only its `default: nil` catch-all,
+which had been drawn wider than that risk required, is narrowed back to the two kinds it was
+actually protecting (`.table`, and any future construct needing a live view provider).
+
+The reveal-on-caret half needed no change: `CardTextView+Reveal.swift`'s `applyReveal` already
+called `MarkupReveal.inlineSpans` unconditionally, which computes spans for every inline
+`HiddenMarker.Kind` generically — it was only ever starved of `.link`/`.strikethrough` markers to
+compute spans *from*, not written to exclude them.
 
 ## Alternatives considered
 
@@ -337,9 +358,10 @@ change. A four-line setter with its own guard is cheaper to read and impossible 
   wrong with the file; it looks like a dead keypress. ADR-0018 §D5's delimiter skip was never
   built for emphasis (F3) and this ADR does not build it either — it would defeat the reveal it
   is meant to serve.
-- **A card gets less than the note editor**, and the SPEC's "identically" is narrowed to the
-  mechanism (F1, D8). Someone reading R-09 without the ADR will expect card wikilinks to reveal,
-  and they will not, because they were never concealed.
+- **A card got less than the note editor at plan time** (F1, D8) — reversed 2026-09-09: the card
+  now conceals and reveals strikethrough and link/wikilink syntax identically to the note editor,
+  so the SPEC's original "identically" claim now holds for the construct set as well as the
+  mechanism.
 - **A phantom span inside a code fence is possible** (D4). Harmless by construction, but it is a
   real difference between what `InlineSpanReveal` sees and what the note's own styling pass sees,
   and a future reader who assumes the two agree will be wrong.

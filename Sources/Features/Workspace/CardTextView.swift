@@ -305,6 +305,13 @@ struct CardTextView: NSViewRepresentable {
                 case .embedRun: .embed
                 case .listMarker: .list
                 case .taskMarker: .checkbox
+                // ADR-0037 amendment to §D8: the card now conceals strikethrough and
+                // link/wikilink syntax identically to the note editor, at the user's explicit
+                // request (2026-09-09 hand check). `.link`'s whole run is never one marker -
+                // see the `linkDelimiters` split below, the same reason the note editor splits
+                // it.
+                case .strikethroughMarker: .strikethrough
+                case .linkSyntax: .link
                 default: nil
                 }
                 guard let kind else { continue }
@@ -313,14 +320,19 @@ struct CardTextView: NSViewRepresentable {
                 let paragraphStart = nsText.paragraphRange(
                     for: NSRange(location: nsRange.location, length: 0)
                 ).location
-                markers[paragraphStart, default: []].append(
-                    // The note editor's own mapping, called rather than copied: a `.list` marker's
-                    // range starts at its paragraph and not at its marker character, so that the
-                    // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
-                    // asymmetry is exactly how the two surfaces would start drawing nested items
-                    // differently.
-                    NoteTextView.Coordinator.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
-                )
+                let spans = kind == .link
+                    ? NoteTextView.Coordinator.linkDelimiters(in: nsRange, of: nsText)
+                    : [nsRange]
+                for span in spans {
+                    markers[paragraphStart, default: []].append(
+                        // The note editor's own mapping, called rather than copied: a `.list` marker's
+                        // range starts at its paragraph and not at its marker character, so that the
+                        // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
+                        // asymmetry is exactly how the two surfaces would start drawing nested items
+                        // differently.
+                        NoteTextView.Coordinator.hiddenMarker(kind, at: span, paragraphStart: paragraphStart)
+                    )
+                }
             }
             hiddenMarkers = markers
             // The badge a folded heading draws over itself, from the two tokens the note editor's

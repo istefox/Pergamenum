@@ -110,6 +110,30 @@ Binding order, each yielding a usable app (SPEC §13):
   sposta e il caret che sembra non muoversi attraversando un delimitatore collassato) restano i
   due passi manuali prima del commit**, per scelta esplicita di Stefano (eseguiti insieme, dopo il
   commit, con lui presente al Mac).
+- 2026-09-09: **R-11 hand check eseguito (ADR-0037) — due bug reali trovati e corretti, scope
+  ampliato per la card Workspace.** (1) Con `revealsInlineSpans` ON, il caret dentro un paragrafo
+  ma fuori da ogni span rivelava l'intero paragrafo invece di niente — `revealedSpans[offset]`
+  restituiva `nil` sia per "nessuno span in quel paragrafo" sia per "setting spento", indistinguibili
+  in `collapsing(...)`; fix: `revealedSpans[offset] ?? []` in `EditorDecorationDelegate.swift`. (2)
+  Con il caret in uno span esterno ma fuori da uno span interno annidato (es. `**grassetto con
+  *corsivo* dentro**`, caret su "con"), si rivelavano anche i delimitatori interni per contenimento
+  geometrico lasco; fix: match esatto sui bordi (`location`/`NSMaxRange` uguali), non contenimento.
+  Entrambi coperti da nuovo test di regressione, suite verde dopo ogni fix. **Scelta esplicita di
+  Stefano durante l'hand check: la card Workspace ora conceala/rivela barrato e link/wikilink
+  identicamente all'editor nota** (inversione di ADR-0037 §D8 originale/F1, non un'estensione di
+  scope implicita — `CardTextView`'s switch allargato a 7 kind, riusando
+  `NoteTextView.Coordinator.linkDelimiters` per `.link`; il seam ADR-0029 §D17 contro l'`NSView`
+  live delle tabelle resta intatto, nessuno dei due nuovi costrutti coinvolge un `NSView`). ADR-0037
+  §D8/F1 e la sezione CLAUDE.md aggiornate di conseguenza. Nuovi test in
+  `Tests/CardConcealmentTests.swift` (marker link/barrato, split dei delimitatori wikilink vs
+  CommonMark, reveal-on-caret dentro un wikilink) e fence F1 aggiornata a "7 kind" in
+  `Tests/InlineSpanRevealFenceTests.swift`. Suite completa verde: **2512 test, 94 suite.**
+  **Problema pre-esistente, fuori scope, tracciato separatamente**: click su wikilink/link non
+  apre mai nulla (né click singolo né Cmd+click) — solo `.toolTip` è applicato, mai l'attributo
+  `.link` di AppKit, conseguenza strutturale di ADR-0029 (editor sempre editabile). Riprodotto
+  identico anche con `revealsInlineSpans` OFF, quindi non è una regressione di questa chain.
+  Issue: https://github.com/istefox/Pergamenum/issues/188. **`scripts/uitests.sh` resta l'ultimo
+  passo manuale prima del merge**, da eseguire con Stefano presente al Mac.
 - 2026-09-08: **pergamenum-view-query-builder (ADR-0034, visual query builder for `pergamenum-view`
   fences) — all 10 tasks implemented and merged onto `feat/pergamenum-view-query-builder`.** One
   shared "Modifica query" affordance in `RenderedViewBlock`'s header, present on both the live-render

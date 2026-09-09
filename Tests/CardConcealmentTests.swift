@@ -346,16 +346,60 @@ private func makeCard(
         )
     }
 
-    /// F1, asserted rather than assumed: `CardTextView`'s `hiddenKind` switch maps
-    /// `.headingMarker`/`.emphasisMarker`/`.embedRun`/`.listMarker`/`.taskMarker` and nothing
-    /// else, so a card's `~~barrato~~` and `[[Nota]]` produce no `.strikethrough`/`.link`
-    /// marker at all - the setting changes nothing for either construct in a card, because
-    /// there was never anything concealed there to narrow.
-    @Test func strikethroughAndWikilinksProduceNoMarkerInACard() throws {
+    /// ADR-0037 §D8 amendment (2026-09-09 hand check, R-11): the card now conceals strikethrough
+    /// and wikilink/link syntax identically to the note editor, reversing F1 above - a card's
+    /// `~~barrato~~` and `[[Nota]]` now fill the same `.strikethrough`/`.link` marker table
+    /// `NoteTextView+Coordinator.hiddenKind(for:)` fills, not `nil`.
+    @Test func strikethroughAndWikilinksProduceTheSameMarkersAsTheNoteEditor() throws {
         let card = try makeCard("~~barrato~~\n[[Nota]]", editable: true, revealsInlineSpans: true)
         let kinds = card.coordinator.hiddenMarkers.values.flatMap { $0.map(\.kind) }
 
-        #expect(!kinds.contains(.strikethrough))
-        #expect(!kinds.contains(.link))
+        #expect(kinds.contains(.strikethrough))
+        #expect(kinds.contains(.link))
+    }
+
+    /// A wikilink's whole run is never one marker: only its `[[`/`]]` bracket delimiters are
+    /// concealed, matching `NoteTextView.Coordinator.linkDelimiters(in:of:)` - a card that hid
+    /// the whole `[[Nota]]` run would leave a blank line where a reference was.
+    @Test func aWikilinksBracketsAreConcealedAndItsTitleIsNot() throws {
+        let card = try makeCard("[[Nota]]", editable: true)
+        let markers = card.coordinator.hiddenMarkers[0]
+
+        #expect(markers == [
+            HiddenMarker(range: NSRange(location: 0, length: 2), kind: .link),
+            HiddenMarker(range: NSRange(location: 6, length: 2), kind: .link)
+        ])
+    }
+
+    /// A CommonMark link's brackets/parens are concealed, its visible text is not - the second
+    /// shape `linkDelimiters` has to split correctly, distinct from the wikilink shape above.
+    /// `MarkdownStyler` already emits the `[` and `](url)` halves as two separate `.linkSyntax`
+    /// spans (`NoteTextView+Coordinator.swift:576`), so each passes through `linkDelimiters`
+    /// untouched rather than being split further.
+    @Test func aCommonMarkLinksDelimitersAreConcealedAndItsTextIsNot() throws {
+        let text = "[testo](https://esempio.it)"
+        let card = try makeCard(text, editable: true)
+        let markers = card.coordinator.hiddenMarkers[0]
+
+        #expect(markers?.contains(HiddenMarker(range: NSRange(location: 0, length: 1), kind: .link)) == true)
+        #expect(
+            markers?.contains(
+                HiddenMarker(
+                    range: NSRange(location: 6, length: text.utf16.count - 6),
+                    kind: .link
+                )
+            ) == true
+        )
+    }
+
+    /// R-04 for the new constructs: a caret inside a wikilink's span reveals exactly that
+    /// construct, the same as bold/italic already do above.
+    @Test func aCaretInsideAWikilinkRevealsItsSpan() throws {
+        let card = try makeCard("[[Nota]]", editable: true, revealsInlineSpans: true)
+        card.textView.setSelectedRange(NSRange(location: 3, length: 0))
+
+        card.coordinator.applyReveal(to: card.textView)
+
+        #expect(card.coordinator.lastRevealedSpans[0] == [NSRange(location: 0, length: 8)])
     }
 }

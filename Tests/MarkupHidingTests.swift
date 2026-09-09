@@ -1146,6 +1146,39 @@ private final class NotificationCounter: @unchecked Sendable {
         }
     }
 
+    // MARK: Regression (R-11 hand check) - a paragraph absent from the span table is not
+    // the same as the setting being off
+
+    /// Found by the R-11 hand check, not by a fixture: the caret's own paragraph is
+    /// revealed (so `paragraphIsRevealed` is `true`), but no span was revealed inside it
+    /// because the caret sits outside every construct. `MarkupReveal.inlineSpans` never
+    /// writes a key for a paragraph with nothing to reveal, so the span table looked
+    /// exactly like "the setting is off" to a bare dictionary lookup at the call site -
+    /// `revealedSpans[range.location]` returning `nil` either way. `spans: [:]` here is
+    /// deliberately not `spans: [0: []]`: it is the *absent-key* case that reproduced the
+    /// bug, not an explicit empty span list (`everyInlineMarkerCollapsesAgainOnceTheCaretLeavesEverySpan`
+    /// above already covers that one, passing `revealedSpans: []` straight into `collapsing`).
+    @Test func aParagraphAbsentFromTheSpanTableStillCollapsesItsInlineMarkersDespiteBeingRevealed() {
+        let note = "**uno**\n"
+        let displayed = displayedParagraph(
+            note,
+            markers: [Self.firstBoldOpen, Self.firstBoldClose],
+            revealed: [0],
+            spans: [:],
+            revealsInlineSpans: true
+        )
+
+        #expect(displayed != nil)
+        #expect(
+            displayed?.attributedString.attribute(.font, at: Self.firstBoldOpen.range.location, effectiveRange: nil)
+                as? NSFont == EditorDecorationDelegate.collapsedFont
+        )
+        #expect(
+            displayed?.attributedString.attribute(.font, at: Self.firstBoldClose.range.location, effectiveRange: nil)
+                as? NSFont == EditorDecorationDelegate.collapsedFont
+        )
+    }
+
     // MARK: R-05 - nested spans, innermost revealed, only the outer collapses
 
     @Test func onlyTheOuterRunsMarkersCollapseWhenTheInnerSpanIsRevealed() {
@@ -1158,6 +1191,35 @@ private final class NotificationCounter: @unchecked Sendable {
         #expect(collapsing.contains(Self.outerClose))
         #expect(!collapsing.contains(Self.innerOpen))
         #expect(!collapsing.contains(Self.innerClose))
+    }
+
+    // MARK: Regression (R-11 hand check) - the reverse nesting direction: only the outer
+    // span revealed, the inner delimiters must stay hidden rather than reveal by loose
+    // geometric containment
+
+    /// Found by the hand check, not by a fixture: an inner run's tiny delimiter range is
+    /// geometrically inside its outer run's wider range by construction (nesting), so a
+    /// "does `revealedSpans` contain this marker's range" test answers yes for the inner
+    /// delimiters even when only the *outer* span is revealed - the caret sitting in
+    /// "bold con dentro" but outside "corsivo" wrongly showed every asterisk, single and
+    /// double alike. `onlyTheOuterRunsMarkersCollapseWhenTheInnerSpanIsRevealed` above
+    /// never caught this: it only revealed the *inner* span, and an outer marker's range
+    /// is never inside the inner span either way, so that direction had no chance to
+    /// exercise the bug.
+    @Test func onlyTheInnerRunsMarkersStayCollapsedWhenOnlyTheOuterSpanIsRevealed() {
+        let markers = [Self.outerOpen, Self.outerClose, Self.innerOpen, Self.innerClose]
+        let outerSpan = NSRange(
+            location: Self.outerOpen.range.location,
+            length: NSMaxRange(Self.outerClose.range) - Self.outerOpen.range.location
+        )
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: [outerSpan]
+        )
+
+        #expect(!collapsing.contains(Self.outerOpen))
+        #expect(!collapsing.contains(Self.outerClose))
+        #expect(collapsing.contains(Self.innerOpen))
+        #expect(collapsing.contains(Self.innerClose))
     }
 
     // MARK: R-06 - which unit governs a marker is a property of its kind, not a rule someone

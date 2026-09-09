@@ -504,7 +504,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let collapsing = Self.collapsing(
             among: survivors,
             paragraphIsRevealed: revealedParagraphs.contains(range.location),
-            revealedSpans: revealsInlineSpans ? revealedSpans[range.location] : nil
+            // A missing key means "no span was revealed in this paragraph", never "the
+            // setting is off" - the latter is exactly what `revealsInlineSpans` already
+            // tests. Handing the dictionary's own `nil` through unchanged made a caret
+            // sitting in the paragraph but outside every span read as the setting-off
+            // case in `collapsing`, which falls back to `paragraphIsRevealed` and reveals
+            // every inline marker in the paragraph regardless of the caret's span.
+            revealedSpans: revealsInlineSpans ? (revealedSpans[range.location] ?? []) : nil
         )
         guard !collapsing.isEmpty else { return nil }
 
@@ -556,9 +562,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// - `revealedSpans == nil` means the setting is off: `paragraphIsRevealed ? [] :
     ///   survivors` - byte-for-byte the paragraph-only rule this hook has followed since
     ///   ADR-0018, so R-07 holds with no further work once this is wired in.
-    /// - Otherwise, a marker is collapsed unless (`kind.isInline` and its range is
-    ///   contained in one of `revealedSpans`) or (`!kind.isInline` and
+    /// - Otherwise, a marker is collapsed unless (`kind.isInline` and it is one of the
+    ///   delimiters of one of `revealedSpans`) or (`!kind.isInline` and
     ///   `paragraphIsRevealed`).
+    ///
+    /// A marker counts as one of a span's delimiters when it sits at that span's
+    /// opening or closing edge - never by loose containment (`span.location <=
+    /// marker.location && NSMaxRange(marker) <= NSMaxRange(span)`), which nesting
+    /// breaks: an inner run's tiny range is geometrically inside its outer run's wider
+    /// range by construction (R-05's whole premise), so containment alone would reveal
+    /// the inner delimiters too whenever only the outer span is the one actually
+    /// revealed (found by the R-11 hand check, not by a fixture - the two existing
+    /// nesting tests only exercised the inner-revealed direction, where an outer
+    /// marker's range is never inside the inner span either way and the bug had no
+    /// chance to show).
     ///
     /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
     static func collapsing(
@@ -572,7 +589,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return survivors.filter { marker in
             let revealed = marker.kind.isInline
                 ? revealedSpans.contains {
-                    $0.location <= marker.range.location && NSMaxRange(marker.range) <= NSMaxRange($0)
+                    $0.location == marker.range.location || NSMaxRange($0) == NSMaxRange(marker.range)
                 }
                 : paragraphIsRevealed
             return !revealed

@@ -374,10 +374,12 @@ private func substitutedParagraph(
     }
 }
 
-// MARK: - 4. R-09's boundary (F1): CardTextView's hiddenKind switch still maps exactly five kinds
+// MARK: - 4. ADR-0037 §D8 amendment (2026-09-09 hand check): CardTextView's hiddenKind switch
+// now maps seven kinds, not five - F1's original boundary is reversed by explicit instruction,
+// this fence now guards the widened boundary instead of the narrower one.
 
-@Suite struct CardTextViewHiddenKindSwitchStillMapsExactlyFiveKinds {
-    @Test func theSwitchMapsExactlyFiveNonNilKinds() throws {
+@Suite struct CardTextViewHiddenKindSwitchMapsExactlySevenKinds {
+    @Test func theSwitchMapsExactlySevenNonNilKinds() throws {
         let repoRoot = try resolvedRepoRoot()
         let url = repoRoot.appendingPathComponent("Sources/Features/Workspace/CardTextView.swift")
         let contents = try String(contentsOf: url, encoding: .utf8)
@@ -399,8 +401,8 @@ private func substitutedParagraph(
             .filter { $0.hasPrefix("case .") }
 
         #expect(
-            mappedCases.count == 5,
-            "CardTextView's hiddenKind switch maps \(mappedCases.count) kinds, expected exactly 5 (R-09/F1): \(mappedCases) - a widened switch would let a card start concealing a construct ADR-0029 §D17 deliberately keeps visible"
+            mappedCases.count == 7,
+            "CardTextView's hiddenKind switch maps \(mappedCases.count) kinds, expected exactly 7 (ADR-0037 §D8 amendment, 2026-09-09): \(mappedCases) - strikethrough and link/wikilink syntax now conceal in the card identically to the note editor, by explicit instruction reversing F1's original boundary"
         )
     }
 }
