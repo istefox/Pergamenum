@@ -14,25 +14,8 @@ import Testing
 // ever runs. `MailStoreFixture` (`Tests/MailStoreFixture.swift`) builds every fixture;
 // no test here touches `~/Library/Mail`.
 
-@Suite struct MailStoreReaderTests {
+@Suite(.serialized) struct MailStoreReaderTests {
     // MARK: - R-19: MailStoreLocation
-
-    /// A throwaway `UserDefaults` suite per test - never `.standard` - so one test's
-    /// `-mailStoreRoot` override cannot leak into another (`RecordingsControllerTests`
-    /// precedent, `Tests/RecordingsControllerTests.swift`).
-    ///
-    /// `MailStoreLocation.resolve()`'s eventual implementation reads
-    /// `UserDefaults.standard` (mirroring `VaultState.processDefaultBase()`'s own
-    /// `-stateBase` read) - this helper documents the key the coder must read, it does
-    /// not exercise it, since the stub ignores overrides entirely today.
-    private static func isolatedDefaults(mailStoreRoot: String? = nil) -> UserDefaults {
-        let suiteName = "MailStoreReaderTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        if let mailStoreRoot {
-            defaults.set(mailStoreRoot, forKey: MailStoreLocation.overrideKey)
-        }
-        return defaults
-    }
 
     @Test func resolveNeverPointsAtTheRealMailLibraryUnderTest() {
         // Real behaviour (ADR §D7): under xctest, with no override, `resolve()`
@@ -56,15 +39,26 @@ import Testing
 
     @Test func resolveHonoursTheMailStoreRootOverride() {
         // R-19: `-mailStoreRoot <path>` must redirect the reader to a fixture store.
-        // The stub ignores `UserDefaults` entirely, so this fails until the coder
-        // reads the override the way `VaultState.processDefaultBase()` reads
-        // `-stateBase`.
+        // `MailStoreLocation.resolve()` reads `UserDefaults.standard` directly
+        // (mirroring `VaultState.processDefaultBase()`'s own `-stateBase` read), and
+        // a custom `UserDefaults(suiteName:)` is not in `.standard`'s search list -
+        // `resolve()` would never see a key set anywhere else. Writing to `.standard`
+        // is therefore required, not a shortcut; the suite is `.serialized` (Swift
+        // Testing runs tests in parallel by default) so this write cannot race the
+        // two sibling `resolve()` tests above, and the key is removed in `defer` so
+        // it cannot leak into either of them on a later run.
         let overridePath = "/tmp/pergamenum-mailstore-reader-tests-override"
-        let defaults = Self.isolatedDefaults(mailStoreRoot: overridePath)
-        defer { defaults.removeObject(forKey: MailStoreLocation.overrideKey) }
+        UserDefaults.standard.set(overridePath, forKey: MailStoreLocation.overrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
 
+        // `resolve()` builds its result as `URL(filePath:directoryHint: .isDirectory)`
+        // (see its own implementation), which appends a trailing slash to the path -
+        // comparing the raw string against `overridePath` would fail on that slash
+        // alone, so the expectation is built the identical way rather than loosened
+        // to a prefix check.
         let resolved = MailStoreLocation.resolve()
-        #expect(resolved.path(percentEncoded: false) == overridePath)
+        let expected = URL(filePath: overridePath, directoryHint: .isDirectory)
+        #expect(resolved == expected)
     }
 
     // MARK: - R-02: MailStoreCopy
@@ -231,9 +225,13 @@ import Testing
     @Test func emlxPathForRowMatchesWhatPROBE2WillMeasure() throws {
         let fixture = try MailStoreFixture.build(mailboxes: [Self.inboxMailbox], messages: [Self.firstMessage])
 
-        // R-03: "the .emlx path for a row (mailbox url + ROWID)". The exact fan-out
-        // rule is PROBE 2 / Task 2's `EMLXLocator` to measure and implement; this
-        // pins today's fixture-only placeholder layout as the provisional contract.
+        // R-03: "the .emlx path for a row (mailbox url + ROWID)". PROBE 2's measured
+        // rule (`MailStoreReader.emlxPath(forRow:)`'s own doc comment):
+        // `<root>/<account = url host>/<url path component>.mbox/Data/<fan>/Messages/<ROWID>.emlx`,
+        // with no store-uuid level when the fixture writes none - the reader's own
+        // fallback for that case. `Self.inboxMailbox.url` is `ews://account/INBOX`
+        // and ROWID 1's fan-out is empty (below 1000), so the fixture's mailbox
+        // directory is `account/INBOX.mbox`, not the old percent-underscore guess.
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let mailboxRow = MailboxRef(rowID: Self.inboxMailbox.rowID, url: Self.inboxMailbox.url)
         let row = MailMessageRow(
@@ -249,10 +247,10 @@ import Testing
             deleted: false,
             messageID: nil
         )
-        let expectedDirectoryName = "\(Self.inboxMailbox.url.replacingOccurrences(of: "/", with: "_")).mbox"
         let expectedURL = fixture.root
-            .appending(path: expectedDirectoryName, directoryHint: .isDirectory)
-            .appending(path: "Data/0/1/Messages", directoryHint: .isDirectory)
+            .appending(path: "account", directoryHint: .isDirectory)
+            .appending(path: "INBOX.mbox", directoryHint: .isDirectory)
+            .appending(path: "Data/Messages", directoryHint: .isDirectory)
             .appending(path: "\(Self.firstMessage.rowID).emlx", directoryHint: .notDirectory)
 
         let emlxURL = reader.emlxPath(forRow: row)

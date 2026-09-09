@@ -102,16 +102,29 @@ enum MailStoreFixture {
         return url
     }
 
-    /// A placeholder fan-out: PROBE 2 (Task 1's second probe) measures Mail's real
-    /// rule, and Task 2's `EMLXLocator` implements it. This one exists only so the
-    /// fixture has *some* `.emlx` file on disk for `MailStoreReader.emlxPath` tests
-    /// to name a provisional expectation against.
+    /// PROBE 2's measured rule (ADR §D4,
+    /// `MailStoreReader.emlxPath(forRow:)`'s own doc comment): the account directory
+    /// is the mailbox url's host, each path component becomes a nested `.mbox`
+    /// directory, then `Data/<fan>/Messages/<ROWID>.emlx` - `<fan>` is `ROWID / 1000`
+    /// written one digit per directory in reverse, empty below 1000. Deliberately
+    /// writes **no** store-uuid level: `MailStoreReader.storeDirectory(in:)` falls
+    /// back to the `.mbox` itself when it finds none, and that fallback is the layout
+    /// this fixture exercises.
     private static func writeEMLX(_ message: Message, mailboxes: [Mailbox], root: URL) throws {
         guard let mailbox = mailboxes.first(where: { $0.rowID == message.mailboxRowID }) else { return }
-        let mailboxDirectoryName = "\(mailbox.url.replacingOccurrences(of: "/", with: "_")).mbox"
-        let messagesDirectory = root
-            .appending(path: mailboxDirectoryName, directoryHint: .isDirectory)
-            .appending(path: "Data/0/1/Messages", directoryHint: .isDirectory)
+        guard let parsedURL = URL(string: mailbox.url),
+              let account = parsedURL.host(percentEncoded: false)
+        else { return }
+
+        var directory = root.appending(path: account, directoryHint: .isDirectory)
+        for component in parsedURL.pathComponents where component != "/" {
+            directory = directory.appending(path: "\(component).mbox", directoryHint: .isDirectory)
+        }
+        directory = directory.appending(path: "Data", directoryHint: .isDirectory)
+        for digit in fanOut(forRowID: message.rowID) {
+            directory = directory.appending(path: digit, directoryHint: .isDirectory)
+        }
+        let messagesDirectory = directory.appending(path: "Messages", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: messagesDirectory, withIntermediateDirectories: true)
         let emlxURL = messagesDirectory.appending(path: "\(message.rowID).emlx", directoryHint: .notDirectory)
 
@@ -119,6 +132,15 @@ enum MailStoreFixture {
         var fileData = Data("\(bodyData.count)\n".utf8)
         fileData.append(bodyData)
         try fileData.write(to: emlxURL)
+    }
+
+    /// `146053` → `["6", "4", "1"]`; `8900` → `["8"]`; `169` → `[]` - the same rule
+    /// `MailStoreReader.fanOut(forRowID:)` implements, kept here so the fixture never
+    /// depends on production code for its own layout.
+    private static func fanOut(forRowID rowID: Int) -> [String] {
+        let quotient = rowID / 1000
+        guard quotient > 0 else { return [] }
+        return String(quotient).reversed().map(String.init)
     }
 
     // MARK: - The SQL script
@@ -148,6 +170,10 @@ enum MailStoreFixture {
                 )
             }
 
+            // `date_sent`/`date_received` are whole seconds of Unix epoch time in the
+            // real Envelope Index (PROBE 1, measured range 2007-11-21 … 2026-09-09 on
+            // the published copy), never Mac absolute time - see
+            // `MailStoreReader.date(_:)`'s own doc comment for the same measurement.
             statements.append("""
             INSERT INTO messages (
                 ROWID, message_id, global_message_id, sender, subject,
@@ -155,8 +181,8 @@ enum MailStoreFixture {
             ) VALUES (
                 \(message.rowID), \(indexMessageIDHash(for: message.rowID)), \(message.rowID),
                 \(senderRowID), \(subjectRowID),
-                \(Int(message.dateSent.timeIntervalSinceReferenceDate)),
-                \(Int(message.dateReceived.timeIntervalSinceReferenceDate)),
+                \(Int(message.dateSent.timeIntervalSince1970)),
+                \(Int(message.dateReceived.timeIntervalSince1970)),
                 \(message.mailboxRowID), \(message.deleted ? 1 : 0), \(message.conversationID)
             );
             """)
