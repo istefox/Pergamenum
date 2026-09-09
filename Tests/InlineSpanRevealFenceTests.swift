@@ -13,12 +13,6 @@ import Testing
 // MARK: - Shared process/repo-root helpers (ReleasePipelineTests.swift's own shape, duplicated
 // rather than exposed, since that file's helpers are `private` to its own type)
 
-private struct ProcessResult {
-    let exitCode: Int32
-    let stdout: String
-    let stderr: String
-}
-
 private enum RepoRootResolutionError: Error, CustomStringConvertible {
     case notFound(candidate: String)
     var description: String {
@@ -36,32 +30,6 @@ private func resolvedRepoRoot() throws -> URL {
         throw RepoRootResolutionError.notFound(candidate: candidate.path)
     }
     return candidate
-}
-
-private func run(
-    executable: String, arguments: [String], currentDirectory: URL, timeout: TimeInterval = 60
-) throws -> ProcessResult {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: executable)
-    process.arguments = arguments
-    process.currentDirectoryURL = currentDirectory
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
-    try process.run()
-
-    let finished = DispatchSemaphore(value: 0)
-    DispatchQueue.global(qos: .utility).async {
-        process.waitUntilExit()
-        finished.signal()
-    }
-    _ = finished.wait(timeout: .now() + timeout)
-    if process.isRunning { process.terminate() }
-
-    let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    return ProcessResult(exitCode: process.terminationStatus, stdout: stdout, stderr: stderr)
 }
 
 // MARK: - 1. The invariant (constraint 3): every `inlineSpans` key is a `paragraphs` member
@@ -407,41 +375,15 @@ private func substitutedParagraph(
     }
 }
 
-// MARK: - 5. Out-of-scope diff fence: nothing in this list may have changed since the chain began
-
-@Suite struct OutOfScopeDiffFence {
-    /// The plan's own commit, recorded as `recovery_baseline_sha` for this chain - "before Task 1
-    /// began".
-    private static let baseSHA = "533172d959e518417ab20c40f471f471aed8524d"
-
-    private static let fencedPaths: [String] = [
-        "Sources/Features/Editor/MarkdownStyler.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+CheckboxRendering.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+LinkRendering.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+ListRendering.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+QuoteRendering.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+TableRendering.swift",
-        "Sources/Features/Editor/EditorDecorationDelegate+ViewBlockRendering.swift",
-        "Sources/Features/Editor/NoteTextView+EmbedCaret.swift",
-        "Sources/Features/Editor/MarkdownBlocksView.swift",
-        "Sources/App/NoteExporter.swift",
-        "Sources/Core",
-        "Sources/Connector",
-        "Sources/CLI",
-        "Sources/MCPServer",
-    ]
-
-    @Test func noOutOfScopeFileOrDirectoryHasChangedSinceTheChainBegan() throws {
-        let repoRoot = try resolvedRepoRoot()
-        let result = try run(
-            executable: "/usr/bin/env",
-            arguments: ["git", "diff", "--stat", Self.baseSHA, "HEAD", "--"] + Self.fencedPaths,
-            currentDirectory: repoRoot
-        )
-        #expect(result.exitCode == 0, "git diff --stat failed: \(result.stderr)")
-        #expect(
-            result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            "FENCE VIOLATION: the following are out of scope for ADR-0037 and must not appear here, but do since \(Self.baseSHA):\n\(result.stdout)"
-        )
-    }
-}
+// MARK: - 5. Out-of-scope diff fence: removed 2026-09-09.
+//
+// This suite compared `git diff --stat <plan-commit> HEAD` against a fixed list of files, to
+// verify - once, during Task 7 - that ADR-0037's own implementation had not touched anything
+// outside its stated scope. That check ran clean and is recorded in PROJECT_BRIEF.md.
+//
+// It could not survive as a standing regression test: the base SHA is frozen in the past, so
+// once this chain merged into `main`, ANY later legitimate commit to one of the fenced shared
+// files (e.g. ADR-0036's checkbox-click feature touching
+// `EditorDecorationDelegate+CheckboxRendering.swift`) trips it forever, with no way to clear it
+// short of deleting the suite. A point-in-time scope check has no business becoming a permanent
+// build gate keyed to a commit that predates every future contributor's work.
