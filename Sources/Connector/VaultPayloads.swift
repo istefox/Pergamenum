@@ -242,6 +242,65 @@ extension VaultAPI {
     }
 }
 
+// MARK: - Pratiche (ADR-0036, read-only)
+
+extension VaultAPI {
+    /// `pratiche` → `[{ path, title, client, status, counterparts, lastActivity,
+    /// messageCount, trayCount }]` (SPEC "Connectors").
+    ///
+    /// Protected interface (`.claude/protected-interfaces`, added 2026-09-09 at Gate
+    /// 2): the JSON shape `perg pratiche --json` and the MCP `pratiche` tool hand an
+    /// external caller. Every field named here, in the SPEC's own order:
+    ///
+    /// - `path` - the pratica folder, vault-relative (what `pratica(_:_:)` takes back).
+    /// - `title` - the folder's own name, matching `PraticheController.listItems`'s
+    ///   own "the folder's last path component" rule.
+    /// - `client` - the folder's parent under `PraticheSettings.rootFolder`, or the
+    ///   same "senza cliente" placeholder a pratica sitting straight in the root reads
+    ///   as in the app (`PraticheController.unnamedClient`, not shared into this
+    ///   target - the connector body restates the rule rather than importing it).
+    /// - `status` - the bare `status-*` tag value, `"active"` when the pratica
+    ///   carries none (a pratica with no status is an open one, not an invisible one).
+    /// - `counterparts` - `Dossier.counterparts`, straight through.
+    /// - `lastActivity` - ISO 8601, the latest `modifiedAt` of `pratica.md` and every
+    ///   `email/*.md` under the folder.
+    /// - `messageCount` - how many `email/*.md` files the folder holds.
+    /// - `trayCount` - `PraticaLedger.PraticaState.trayCount` for this pratica's path,
+    ///   `0` when the ledger has never synced it. Read from the ledger and nothing
+    ///   else: R-36 forbids a connector from opening the Mail store or triggering a
+    ///   sync, so this is deliberately the *last synced* count, not a live one.
+    struct PraticaSummary: Encodable {
+        let path: String
+        let title: String
+        let client: String
+        let status: String
+        let counterparts: [String]
+        let lastActivity: String
+        let messageCount: Int
+        let trayCount: Int
+    }
+
+    /// `pratica <title|path>` → the timeline as ordered entries (SPEC "Connectors").
+    struct PraticaTimelinePayload: Encodable {
+        let path: String
+        let title: String
+        let entries: [Entry]
+
+        /// `{ kind: message|note|call, date, direction, from, subject, attachments,
+        /// body }`, in the SPEC's own field order. `direction`/`from` are `nil` for a
+        /// manual entry (`.note`/`.call`), which carries neither.
+        struct Entry: Encodable {
+            let kind: String
+            let date: String
+            let direction: String?
+            let from: String?
+            let subject: String
+            let attachments: [String]
+            let body: String
+        }
+    }
+}
+
 // MARK: - Le viste (ADR-0009)
 
 extension VaultAPI {

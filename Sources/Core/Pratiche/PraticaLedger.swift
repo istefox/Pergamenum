@@ -38,24 +38,35 @@ struct PraticaLedger: Equatable, Sendable, Codable {
         /// sync itself records.
         var notInStore: [String]
 
+        /// The tray's own count at the last sync (SPEC "Connectors": `pratiche` →
+        /// `{ … trayCount }`), Task 9's own gap: `PraticheController.trayCounts` only
+        /// ever lived in memory (batch 4/5), and `VaultAPI.pratiche(_:)` must answer
+        /// with nothing on disk it did not open the Mail store to get (R-36 - "what
+        /// they read is what is on disk"). Persisted here so a re-launched `perg`/
+        /// `pergamenum-mcp`, which never runs a sync itself, can still report the
+        /// count the last in-app sync found - possibly stale, never wrong about
+        /// having *not* re-checked. Defaulted 0 so a ledger with no persisted tray
+        /// history reads as "nothing pending" rather than failing to decode.
+        var trayCount: Int
+
         static let empty = PraticaState(
             lastSyncAt: nil, lastOpenedAt: nil, importedMessageIDs: [], pending: [], entries: [],
-            notInStore: []
+            notInStore: [], trayCount: 0
         )
 
-        // Manual `Codable` rather than the synthesised one: `notInStore` is a field
-        // added after this struct's first shipped shape, and a ledger written by an
-        // earlier build of this branch (no key for it at all) must still decode
-        // instead of silently resetting the whole ledger to `.empty`
+        // Manual `Codable` rather than the synthesised one: `notInStore`/`trayCount`
+        // are fields added after this struct's first shipped shape, and a ledger
+        // written by an earlier build of this branch (no key for either at all) must
+        // still decode instead of silently resetting the whole ledger to `.empty`
         // (`PraticaLedger.load(from:)`'s own fallback would otherwise discard every
         // other field too, costing a full re-sync for a one-field addition).
         private enum CodingKeys: String, CodingKey {
-            case lastSyncAt, lastOpenedAt, importedMessageIDs, pending, entries, notInStore
+            case lastSyncAt, lastOpenedAt, importedMessageIDs, pending, entries, notInStore, trayCount
         }
 
         init(
             lastSyncAt: Date?, lastOpenedAt: Date?, importedMessageIDs: [String], pending: [String],
-            entries: [Entry], notInStore: [String]
+            entries: [Entry], notInStore: [String], trayCount: Int
         ) {
             self.lastSyncAt = lastSyncAt
             self.lastOpenedAt = lastOpenedAt
@@ -63,6 +74,7 @@ struct PraticaLedger: Equatable, Sendable, Codable {
             self.pending = pending
             self.entries = entries
             self.notInStore = notInStore
+            self.trayCount = trayCount
         }
 
         init(from decoder: Decoder) throws {
@@ -73,6 +85,7 @@ struct PraticaLedger: Equatable, Sendable, Codable {
             pending = try container.decodeIfPresent([String].self, forKey: .pending) ?? []
             entries = try container.decodeIfPresent([Entry].self, forKey: .entries) ?? []
             notInStore = try container.decodeIfPresent([String].self, forKey: .notInStore) ?? []
+            trayCount = try container.decodeIfPresent(Int.self, forKey: .trayCount) ?? 0
         }
     }
 

@@ -51,6 +51,29 @@ struct MailStoreReader {
         mailRoot = Self.mailRoot(forStoreAt: storeURL)
     }
 
+    // MARK: - R-35: own-address pre-fill (Task 9)
+
+    /// Distinct sender addresses of every message sent from a "Sent"/"Posta inviata"
+    /// mailbox (SPEC "Sent detection and counterpart": Settings › Pratiche › «I miei
+    /// indirizzi» "is a list, pre-filled from the index (`addresses` rows that appear
+    /// as `sender` in Sent/Posta inviata mailboxes, deduplicated)"). This is the one
+    /// read in this feature that genuinely needs the Mail store - it powers the
+    /// Settings tab's pre-fill, never `VaultAPI` (R-36 forbids a connector from
+    /// opening the store at all).
+    ///
+    /// Lower-cased and sorted: `MessageDocument.direction`'s own address comparison
+    /// is already case-insensitive (`isOwn(_:_:)`), so a pre-filled list that still
+    /// disagreed on case with a hand-typed address would be a second, silent notion
+    /// of "the same address".
+    ///
+    /// RED stub (tester-declared boundary, ADR-0155 §D1): the coder writes the real
+    /// `mb.url LIKE '%Sent%' OR mb.url LIKE '%Posta Inviata%'` join here - always
+    /// empty for now, which is wrong-but-compiling rather than a query the fixture in
+    /// `Tests/MailStoreReaderTests.swift` could accidentally already satisfy.
+    func sentSenderAddresses() -> [String] {
+        []
+    }
+
     // MARK: - R-03, the five queries
 
     /// Every non-deleted message whose `conversation_id` matches (R-03) - Mail's own
