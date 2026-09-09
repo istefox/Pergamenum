@@ -21,6 +21,7 @@ import Testing
                 from: "Mario Rossi <m.rossi@rossi-spa.it>",
                 to: ["Stefano Ferri <stefano@stefer.it>"],
                 cc: [],
+                subject: "Richiesta offerta staffe antivibranti",
                 attachments: ["[[20260610_offerta-2024-118.pdf]]"],
                 body: .complete,
                 original: "20260610_1406_Rossi_richiesta-offerta.eml"
@@ -57,6 +58,54 @@ import Testing
         #expect(parsed.frontmatter.messageID == original.frontmatter.messageID)
         #expect(parsed.frontmatter.direction == original.frontmatter.direction)
         #expect(parsed.newText == original.newText)
+    }
+
+    // MARK: - Task 4 amendment: `pergamenum-mail-subject` (plan "Batch 2 results")
+
+    @Test func rendersThePergamenumMailSubjectKey() {
+        let text = MessageDocument.render(Self.sampleDocument(), tags: [Tag("type-note")!])
+        #expect(text.contains("pergamenum-mail-subject: \"Richiesta offerta staffe antivibranti\""))
+    }
+
+    @Test func roundTripsTheSubjectThroughParse() throws {
+        let original = Self.sampleDocument()
+        let text = MessageDocument.render(original, tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.subject == original.frontmatter.subject)
+    }
+
+    // MARK: - Coordinator follow-up: `pergamenum-mail-store-references` (over-threshold attachments)
+
+    @Test func rendersThePergamenumMailStoreReferencesKey() {
+        var document = Self.sampleDocument()
+        document.frontmatter.storeReferences = [
+            MessageDocument.StoreReference(
+                name: "big.zip", size: 157_286_400,
+                storePath: "/Users/stefano/Labs/Attachments/2026/big.zip"
+            )
+        ]
+        let text = MessageDocument.render(document, tags: [Tag("type-note")!])
+        #expect(text.contains("pergamenum-mail-store-references:"))
+        #expect(text.contains(
+            "  - { name: \"big.zip\", size: 157286400, storePath: \"/Users/stefano/Labs/Attachments/2026/big.zip\" }"
+        ))
+    }
+
+    @Test func roundTripsStoreReferencesThroughParse() throws {
+        var original = Self.sampleDocument()
+        original.frontmatter.storeReferences = [
+            MessageDocument.StoreReference(
+                name: "big.zip", size: 157_286_400,
+                storePath: "/Users/stefano/Labs/Attachments/2026/big.zip"
+            ),
+            MessageDocument.StoreReference(
+                name: "huge.mov", size: 998_877_665,
+                storePath: "/Users/stefano/Labs/Attachments/2026/huge.mov"
+            )
+        ]
+        let text = MessageDocument.render(original, tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.storeReferences == original.frontmatter.storeReferences)
     }
 
     // MARK: - R-12: direction and counterpart

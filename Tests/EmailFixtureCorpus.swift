@@ -216,4 +216,75 @@ enum EmailFixtureCorpus {
         + "Mario Rossi\n"
         + "Ufficio acquisti\n"
         + "Rossi S.p.A."
+
+    // MARK: - Task 4 (R-09, R-10): one controllable attachment or inline image
+    //
+    // `mixedMultipartMessageRFC822` above fixes its own filenames/content/sizes;
+    // these two let a sync test control exactly one attachment's or one inline
+    // image's name, bytes and size, which is what R-10's naming, SHA-256 linking,
+    // collision and threshold rules need to exercise independently of each other.
+
+    /// One `multipart/mixed` message carrying a single ordinary attachment part.
+    static func singleAttachmentMessageRFC822(
+        messageID: String,
+        subject: String = "Con allegato",
+        attachmentFilename: String,
+        attachmentBytes: Data,
+        boundary: String = "----=_Pergamenum_Attachment_Boundary"
+    ) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: \(subject)\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/mixed; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, in allegato.\r
+        --\(boundary)\r
+        Content-Type: application/octet-stream\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="\(attachmentFilename)"\r
+        \r
+        \(attachmentBytes.base64EncodedString())\r
+        --\(boundary)--\r
+        """
+    }
+
+    /// One `multipart/related` message carrying a single inline image, referenced
+    /// from the plain-text body by `cid:<contentID>` (R-10's inline-image rule).
+    static func singleInlineImageMessageRFC822(
+        messageID: String,
+        subject: String = "Con immagine inline",
+        contentID: String,
+        imageBytes: Data,
+        boundary: String = "----=_Pergamenum_Inline_Boundary"
+    ) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: \(subject)\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/related; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, vedi immagine cid:\(contentID)\r
+        --\(boundary)\r
+        Content-Type: image/png\r
+        Content-Transfer-Encoding: base64\r
+        Content-ID: <\(contentID)>\r
+        Content-Disposition: inline; filename="inline.png"\r
+        \r
+        \(imageBytes.base64EncodedString())\r
+        --\(boundary)--\r
+        """
+    }
 }

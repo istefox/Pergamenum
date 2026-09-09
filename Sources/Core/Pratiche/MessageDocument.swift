@@ -18,6 +18,21 @@ struct MessageDocument: Equatable, Sendable {
         case pending
     }
 
+    /// One over-threshold attachment's record (SPEC "Edge cases"): an attachment past
+    /// `PraticheSettings.attachmentThresholdMB` is never copied into `allegati/` - this
+    /// is what stands in its place, so the message file still names it, its size and
+    /// where it actually lives inside Mail's own store.
+    ///
+    /// Added by this batch's tester per the coordinator's follow-up, closing the gap
+    /// the original Task 4 report flagged rather than guessed at: `render(_:)`/
+    /// `parse(_:)` do not read or write this yet - that wiring is the coder's, not
+    /// this declaration's.
+    struct StoreReference: Equatable, Sendable {
+        var name: String
+        var size: Int
+        var storePath: String
+    }
+
     struct MailFrontmatter: Equatable, Sendable {
         /// `pergamenum-mail` - the schema version of the keys below.
         var schemaVersion: Int
@@ -32,8 +47,24 @@ struct MessageDocument: Equatable, Sendable {
         var from: String
         var to: [String]
         var cc: [String]
+        /// `pergamenum-mail-subject` (SPEC "Message file frontmatter") - the header
+        /// `Subject`, undecorated (no `Re:`/`Fwd:` stripping: that trimming is
+        /// `PraticaNaming.messageFileName`'s job for the file name slug, this key is
+        /// the subject as the message actually carried it).
+        ///
+        /// Added by Task 4's tester (plan "Batch 2 results"): Task 3 shipped
+        /// `MessageDocument` without it. `render(_:)`/`parse(_:)` do not read or write
+        /// this field yet - that wiring is the coder's, not this declaration's.
+        var subject: String
         /// Wikilinks, e.g. `"[[20260610_offerta-2024-118.pdf]]"`.
         var attachments: [String]
+        /// `pergamenum-mail-store-references` (SPEC "Edge cases") - a block list of flow
+        /// maps, one per over-threshold attachment, e.g.
+        /// `  - { name: "big.zip", size: 157286400, storePath: "/…/Attachments/…/big.zip" }`.
+        /// Defaulted empty and omitted from the rendered file when empty, the same rule
+        /// `attachments`/`to`/`cc` already follow, so every existing call site of this
+        /// memberwise initializer keeps compiling unchanged.
+        var storeReferences: [StoreReference] = []
         var body: BodyState
         /// `pergamenum-mail-original` - absent when retention is off (R-09).
         var original: String?
@@ -165,6 +196,9 @@ struct MessageDocument: Equatable, Sendable {
                 from: scalar("pergamenum-mail-from", lines).map(unquoted) ?? "",
                 to: list("pergamenum-mail-to", lines),
                 cc: list("pergamenum-mail-cc", lines),
+                // STUB: `pergamenum-mail-subject` is not read back yet (coder's job,
+                // this batch's tester amendment only declares the field).
+                subject: "",
                 attachments: list("pergamenum-mail-attachments", lines),
                 body: scalar("pergamenum-mail-body", lines)
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
