@@ -87,6 +87,29 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-09: **word-grained-markdown-reveal-on-caret-in (ADR-0037) — tutti gli 8 task
+  implementati e mersati su `feat/word-grained-markdown-reveal-on-caret-in`.** Reveal-on-caret
+  ristretto da paragrafo a span per grassetto/corsivo/barrato/link, dietro il nuovo setting
+  `revealsInlineSpans` (default off): `InlineSpanReveal` deriva gli estremi dei costrutti dal
+  parse ricorsivo già esistente di `MarkdownStyler`, senza un secondo parser (Task 1);
+  `MarkupReveal.inlineSpans` costruisce la tabella note-wide chiave-per-paragrafo (Task 2);
+  `EditorDecorationDelegate` filtra per marker via `HiddenMarker.Kind.isInline` (switch esaustivo,
+  nessun `default`) e `collapsing(...)` (Task 3); il setting è persistito in `VaultSettings` e
+  offerto in Impostazioni, disabilitato quando `hidesMarkup` è spento (Task 4); wiring completo
+  nell'editor nota (Diario e Oggi inclusi) e nella card Workspace, quest'ultima deliberatamente
+  invariata per barrato/wikilink (`hiddenKind` non allargato, ADR §D8) (Task 5-6); fence
+  out-of-scope e invariante "ogni chiave di `inlineSpans` è anche paragrafo rivelato" verificati
+  su un corpus, zero diff su `MarkdownStyler.swift`, le sei `EditorDecorationDelegate+*Rendering`,
+  `NoteTextView+EmbedCaret.swift`, `MarkdownBlocksView.swift`, `NoteExporter.swift` e tutto
+  `Sources/Core`/`Sources/Connector`/`Sources/CLI`/`Sources/MCPServer` (Task 7). Suite completa
+  verde: **2507 test, 94 suite, 8.6s.** CLAUDE.md già aggiornato a Gate 3 (sezione ADR-0037 +
+  indice), confermato accurato rispetto all'implementazione reale. **`scripts/uitests.sh` e
+  l'hand-check R-11 (ADR-0018 §D6 — cammino del caret dentro `**grassetto**`, `[[Nota]]`,
+  `[[Nota reale|testo mostrato]]`, `[testo](https://esempio.it)`, grassetto-con-corsivo-annidato,
+  in editor nota e in card Workspace, con occhio ai due costi noti: il punto di a-capo che si
+  sposta e il caret che sembra non muoversi attraversando un delimitatore collassato) restano i
+  due passi manuali prima del commit**, per scelta esplicita di Stefano (eseguiti insieme, dopo il
+  commit, con lui presente al Mac).
 - 2026-09-08: **pergamenum-view-query-builder (ADR-0034, visual query builder for `pergamenum-view`
   fences) — all 10 tasks implemented and merged onto `feat/pergamenum-view-query-builder`.** One
   shared "Modifica query" affordance in `RenderedViewBlock`'s header, present on both the live-render
