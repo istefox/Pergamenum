@@ -1,56 +1,74 @@
-<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=4 lines=213-239 -->
-# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 4-4
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md tasks=3 lines=190-237 -->
+# Step 5 Batch Brief -- 2026-09-08-word-grained-markdown-reveal-on-caret-in.md -- tasks 3-3
 
-## Task text (verbatim, plan lines 213-239)
+## Task text (verbatim, plan lines 190-237)
 
-### Task 4 — `ViewBlockAttachment` and `ViewBlockHostStore`, keyed by ordinal (R-01, R-02, R-03, R-06)
+### Task 3 — the per-marker filter, and the two new inputs (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
 
-- **Tester** writes `Tests/ViewBlockHostStoreTests.swift` and declares `ViewBlockHostStore`
-  (`@MainActor`, `host(for ordinal: Int, in textView: NSTextView) -> NSHostingView<…>`,
-  `hosts(for ordinals: [Int], in:) -> [Int: NSHostingView<…>]`, `update(_ root:, forOrdinal:)`) and
-  `ViewBlockAttachment` with its `height` constant, all stubbed. Assertions:
-  - **the same host instance comes back for the same ordinal across calls** (ADR §D3) — the property
-    that keeps the query from re-running, asserted by identity (`===`), not by equality;
-  - **the host survives a changed paragraph offset** — ask for ordinal 0, then ask again after the
-    note gained a line above the fence, and get the same instance. This is the assertion that
-    distinguishes this store from `TableGridStore` and it is the one that must never be relaxed
-    (C6, ADR §D3);
-  - **`hosts(for:in:)` prunes**: an ordinal absent from the array is dropped, and a note that loses a
-    fence does not accumulate a host;
-  - **two identical fences in one note get two distinct hosts** (ADR §D3's rejection of a source-text
-    key) — an `NSView` has one superview;
-  - `attachmentBounds(…)` returns `proposedLineFragment.width` × the constant height, **independent of
-    the content** (R-06, ADR §D8) — asserted at two different proposed widths and with two different
-    stub result sets.
-- **Coder** implements both, plus the provider (`tracksTextAttachmentViewBounds = true`,
-  `loadView` assigning the host **it was given**), copying `TableAttachment.swift` for shape and
-  diverging only where D3 and D8 say to. The root view is
-  `ScrollView { RenderedViewBlock(…) }.environment(\.theme, theme)` — **the `ScrollView` lives here,
-  never inside `RenderedViewBlock`** (ADR §D8, and R-10/R-11 depend on it).
-- Deletes the Task 3 probe scaffold.
-- Budget: `Sources/Features/Editor/ViewBlockAttachment.swift`, `Sources/Features/Editor/ViewBlockHostStore.swift`, `Tests/ViewBlockHostStoreTests.swift` (~260 lines)
+In `Sources/Features/Editor/EditorDecorationDelegate.swift`:
 
-## File map (from Budget: declarations, tasks 4-4)
+- `HiddenMarker.Kind.isInline` — a computed `Bool`, `switch` with **no `default`**, `true` for
+  `.emphasis`/`.strikethrough`/`.link` and `false` for the other eight (ADR §D2).
+- `nonisolated(unsafe) private var revealedSpans: [Int: [NSRange]] = [:]` and
+  `func apply(revealedSpans:) -> Set<Int>` returning the symmetric difference of the **keys**, the
+  shape `apply(revealedParagraphs:)` has, so the caller invalidates two paragraphs and not a
+  document. No logging (this runs on every arrow key).
+- `nonisolated(unsafe) var revealsInlineSpans = false` and a guarded
+  `func apply(revealsInlineSpans:)`. **`apply(hiddenMarkers:hidingMarkup:)` is not touched.**
+- `static func collapsing(among:paragraphIsRevealed:revealedSpans:) -> [HiddenMarker]` — ADR §D3's
+  table, `nil` spans meaning the setting is off.
+- The hook's last guard rewritten to call it, and `linkTooltips` fed the **collapsed** set rather
+  than the survivors. `guard !collapsing.isEmpty else { return nil }` keeps the empty case
+  returning `nil` exactly as today.
 
-- Sources/Features/Editor/ViewBlockAttachment.swift
-- Sources/Features/Editor/ViewBlockHostStore.swift
-- Tests/ViewBlockHostStoreTests.swift
+**Tester** extends `Tests/MarkupHidingTests.swift` with a new `@Suite` (the existing
+`displayedParagraph`/`substitutedParagraph` helpers gain a defaulted `spans:`/`revealsInlineSpans:`
+parameter rather than being replaced) and writes the declarations. Red first. At minimum:
+
+- setting **off** + revealed paragraph → hook returns `nil` (R-07, and
+  `theHookReturnsNilForARevealedParagraph` stays green **unedited**);
+- setting **on** + revealed paragraph + one bold span revealed + a second bold span in the same
+  paragraph → exactly the second span's two markers carry `collapsedFont`, the first's do not
+  (R-01);
+- the same for a `.link` marker pair (R-02);
+- caret moved out (empty span table, paragraph still revealed) → every inline marker collapsed
+  again (R-03);
+- nested: outer + inner markers present, inner span revealed → outer's two collapsed, inner's two
+  not (R-05);
+- **R-06 by kind**: a paragraph carrying a `.heading` marker and a bold run, revealed, setting on
+  → the heading marker is **not** collapsed (paragraph rule) while the bold markers are; a `.rule`
+  marker is likewise governed by the paragraph;
+- `isInline` answers `false` for all eight block kinds (a compile-checked exhaustive switch plus
+  one assertion per kind);
+- `apply(revealedSpans:)` returns the changed keys and `[:]` twice returns nothing.
+
+**Coder** fills the bodies. **The list, checkbox, blockquote, table, view-block and embed branches
+are not edited** (F4, F7) — if one looks like it needs to be, stop and report.
+
+- Budget: `Sources/Features/Editor/EditorDecorationDelegate.swift`, `Tests/MarkupHidingTests.swift` (~260 lines)
+
+---
+
+## Phase 3 — the setting and the two surfaces
+
+## File map (from Budget: declarations, tasks 3-3)
+
+- Sources/Features/Editor/EditorDecorationDelegate.swift
+- Tests/MarkupHidingTests.swift
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 2 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 3 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 1 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 2 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 4 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
-Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: docs/adr/0033-views-render-live-in-the-editor.md -- attachment mechanism, delegate ownership split, host store keying rule (ADR §D3)
-- SPEC: SPEC.md -- requirement IDs for this batch's tests
+- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md -- construct/span semantics + delegate filter (ADR §D2-D5)
+- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/SPEC.md -- requirement IDs for this task's tests

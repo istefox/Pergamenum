@@ -481,6 +481,8 @@ struct WorkspaceView: View {
         // take (ADR-0028 §D10): one switch for both surfaces, re-run on every settings change by
         // the `onChange(of: vault.settings)` this method is already wired to.
         workspace.hidesMarkup = vault.settings.hidesMarkup
+        // ADR-0037 §D8: the same route, one property wider.
+        workspace.revealsInlineSpans = vault.settings.revealsInlineSpans
     }
 
     private var grid: some View {

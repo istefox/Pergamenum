@@ -79,11 +79,15 @@ private func displayedParagraph(
     markers: [HiddenMarker],
     at location: Int = 0,
     hidesMarkup: Bool = true,
-    revealed: Set<Int> = []
+    revealed: Set<Int> = [],
+    spans: [Int: [NSRange]] = [:],
+    revealsInlineSpans: Bool = false
 ) -> NSTextParagraph? {
     let delegate = EditorDecorationDelegate()
     delegate.apply(hiddenMarkers: [location: markers], hidingMarkup: hidesMarkup)
     _ = delegate.apply(revealedParagraphs: revealed)
+    _ = delegate.apply(revealedSpans: spans)
+    delegate.apply(revealsInlineSpans: revealsInlineSpans)
     return substitutedParagraph(delegate, note: note, at: location)
 }
 
@@ -1043,4 +1047,340 @@ private func fragments(
 private final class NotificationCounter: @unchecked Sendable {
     private(set) var count = 0
     func increment() { count += 1 }
+}
+
+// MARK: - The per-marker filter and the two new delegate inputs (ADR-0037 §D2/§D3; plan
+// `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3)
+//
+// `EditorDecorationDelegate.collapsing(among:paragraphIsRevealed:revealedSpans:)` is
+// exercised directly, as a pure static function, rather than through a full layout pass -
+// the same reason the ADR itself gives for making it one: it is testable without a text
+// view. The hook's own last guard is not yet wired to call it (tester half of Task 3; the
+// coder half rewires it per the TODO left beside that guard), so
+// `theHookReturnsNilForARevealedParagraph` above stays green **unedited**, and R-07 is
+// pinned again below through the public `displayedParagraph` helper, extended with the two
+// new, defaulted `spans:`/`revealsInlineSpans:` parameters rather than replaced.
+@MainActor
+@Suite struct MarkupHidingInlineSpans {
+    // "**uno** e **due**\n" - two whole bold runs in one paragraph (R-01).
+    private static let firstBoldOpen = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .emphasis)
+    private static let firstBoldClose = HiddenMarker(range: NSRange(location: 5, length: 2), kind: .emphasis)
+    private static let secondBoldOpen = HiddenMarker(range: NSRange(location: 10, length: 2), kind: .emphasis)
+    private static let secondBoldClose = HiddenMarker(range: NSRange(location: 15, length: 2), kind: .emphasis)
+    /// The first run's own whole construct, "**uno**".
+    private static let firstBoldSpan = NSRange(location: 0, length: 7)
+
+    // "[[Uno]] e [[Due]]\n" - two whole wikilink runs in one paragraph (R-02).
+    private static let firstLinkOpen = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .link)
+    private static let firstLinkClose = HiddenMarker(range: NSRange(location: 5, length: 2), kind: .link)
+    private static let secondLinkOpen = HiddenMarker(range: NSRange(location: 10, length: 2), kind: .link)
+    private static let secondLinkClose = HiddenMarker(range: NSRange(location: 15, length: 2), kind: .link)
+    private static let firstLinkSpan = NSRange(location: 0, length: 7)
+
+    // "**out *in* out**\n" - a bold run nesting an italic one, PG-084's recursive case (R-05).
+    private static let outerOpen = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .emphasis)
+    private static let outerClose = HiddenMarker(range: NSRange(location: 14, length: 2), kind: .emphasis)
+    private static let innerOpen = HiddenMarker(range: NSRange(location: 6, length: 1), kind: .emphasis)
+    private static let innerClose = HiddenMarker(range: NSRange(location: 9, length: 1), kind: .emphasis)
+    private static let innerSpan = NSRange(location: 6, length: 4)
+
+    // "# Titolo **enfasi** qui\n" - the SPEC's coexistence fixture (same offsets as
+    // `MarkupHidingEmphasis.aParagraphWithAHeadingAndAnEmphasisMarkerCollapsesBothInOneSubstitution`
+    // above): a heading marker (paragraph-grained) beside a bold pair (span-grained) in the
+    // same paragraph (R-06).
+    private static let headingAndBoldNote = "# Titolo **enfasi** qui\n"
+    private static let headingMarker = HiddenMarker(range: NSRange(location: 0, length: 2), kind: .heading)
+    private static let boldOpen = HiddenMarker(range: NSRange(location: 9, length: 2), kind: .emphasis)
+    private static let boldClose = HiddenMarker(range: NSRange(location: 17, length: 2), kind: .emphasis)
+
+    private static let ruleMarker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .rule)
+
+    // MARK: R-07 - the setting off leaves the hook untouched
+
+    @Test func theHookReturnsNilWhenTheSettingIsOffEvenWithSpansSupplied() {
+        let displayed = displayedParagraph(
+            Self.headingAndBoldNote,
+            markers: [Self.headingMarker, Self.boldOpen, Self.boldClose],
+            revealed: [0],
+            spans: [0: [Self.firstBoldSpan]],
+            revealsInlineSpans: false
+        )
+        #expect(displayed == nil)
+    }
+
+    // MARK: R-01 - two bold runs in one paragraph, only the untouched one collapses
+
+    @Test func onlyTheSecondBoldRunsMarkersCollapseWhenTheFirstIsRevealed() {
+        let markers = [Self.firstBoldOpen, Self.firstBoldClose, Self.secondBoldOpen, Self.secondBoldClose]
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: [Self.firstBoldSpan]
+        )
+
+        #expect(collapsing.contains(Self.secondBoldOpen))
+        #expect(collapsing.contains(Self.secondBoldClose))
+        #expect(!collapsing.contains(Self.firstBoldOpen))
+        #expect(!collapsing.contains(Self.firstBoldClose))
+    }
+
+    // MARK: R-02 - the same rule for a link marker pair
+
+    @Test func onlyTheSecondLinksMarkersCollapseWhenTheFirstIsRevealed() {
+        let markers = [Self.firstLinkOpen, Self.firstLinkClose, Self.secondLinkOpen, Self.secondLinkClose]
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: [Self.firstLinkSpan]
+        )
+
+        #expect(collapsing.contains(Self.secondLinkOpen))
+        #expect(collapsing.contains(Self.secondLinkClose))
+        #expect(!collapsing.contains(Self.firstLinkOpen))
+        #expect(!collapsing.contains(Self.firstLinkClose))
+    }
+
+    // MARK: R-03 - the caret moves out, an empty (but present) span list collapses everything again
+
+    @Test func everyInlineMarkerCollapsesAgainOnceTheCaretLeavesEverySpan() {
+        let markers = [Self.firstBoldOpen, Self.firstBoldClose, Self.secondBoldOpen, Self.secondBoldClose]
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: []
+        )
+
+        for marker in markers {
+            #expect(collapsing.contains(marker))
+        }
+    }
+
+    // MARK: Regression (R-11 hand check) - a paragraph absent from the span table is not
+    // the same as the setting being off
+
+    /// Found by the R-11 hand check, not by a fixture: the caret's own paragraph is
+    /// revealed (so `paragraphIsRevealed` is `true`), but no span was revealed inside it
+    /// because the caret sits outside every construct. `MarkupReveal.inlineSpans` never
+    /// writes a key for a paragraph with nothing to reveal, so the span table looked
+    /// exactly like "the setting is off" to a bare dictionary lookup at the call site -
+    /// `revealedSpans[range.location]` returning `nil` either way. `spans: [:]` here is
+    /// deliberately not `spans: [0: []]`: it is the *absent-key* case that reproduced the
+    /// bug, not an explicit empty span list (`everyInlineMarkerCollapsesAgainOnceTheCaretLeavesEverySpan`
+    /// above already covers that one, passing `revealedSpans: []` straight into `collapsing`).
+    @Test func aParagraphAbsentFromTheSpanTableStillCollapsesItsInlineMarkersDespiteBeingRevealed() {
+        let note = "**uno**\n"
+        let displayed = displayedParagraph(
+            note,
+            markers: [Self.firstBoldOpen, Self.firstBoldClose],
+            revealed: [0],
+            spans: [:],
+            revealsInlineSpans: true
+        )
+
+        #expect(displayed != nil)
+        #expect(
+            displayed?.attributedString.attribute(.font, at: Self.firstBoldOpen.range.location, effectiveRange: nil)
+                as? NSFont == EditorDecorationDelegate.collapsedFont
+        )
+        #expect(
+            displayed?.attributedString.attribute(.font, at: Self.firstBoldClose.range.location, effectiveRange: nil)
+                as? NSFont == EditorDecorationDelegate.collapsedFont
+        )
+    }
+
+    // MARK: R-05 - nested spans, innermost revealed, only the outer collapses
+
+    @Test func onlyTheOuterRunsMarkersCollapseWhenTheInnerSpanIsRevealed() {
+        let markers = [Self.outerOpen, Self.outerClose, Self.innerOpen, Self.innerClose]
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: [Self.innerSpan]
+        )
+
+        #expect(collapsing.contains(Self.outerOpen))
+        #expect(collapsing.contains(Self.outerClose))
+        #expect(!collapsing.contains(Self.innerOpen))
+        #expect(!collapsing.contains(Self.innerClose))
+    }
+
+    // MARK: Regression (R-11 hand check) - the reverse nesting direction: only the outer
+    // span revealed, the inner delimiters must stay hidden rather than reveal by loose
+    // geometric containment
+
+    /// Found by the hand check, not by a fixture: an inner run's tiny delimiter range is
+    /// geometrically inside its outer run's wider range by construction (nesting), so a
+    /// "does `revealedSpans` contain this marker's range" test answers yes for the inner
+    /// delimiters even when only the *outer* span is revealed - the caret sitting in
+    /// "bold con dentro" but outside "corsivo" wrongly showed every asterisk, single and
+    /// double alike. `onlyTheOuterRunsMarkersCollapseWhenTheInnerSpanIsRevealed` above
+    /// never caught this: it only revealed the *inner* span, and an outer marker's range
+    /// is never inside the inner span either way, so that direction had no chance to
+    /// exercise the bug.
+    @Test func onlyTheInnerRunsMarkersStayCollapsedWhenOnlyTheOuterSpanIsRevealed() {
+        let markers = [Self.outerOpen, Self.outerClose, Self.innerOpen, Self.innerClose]
+        let outerSpan = NSRange(
+            location: Self.outerOpen.range.location,
+            length: NSMaxRange(Self.outerClose.range) - Self.outerOpen.range.location
+        )
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: [outerSpan]
+        )
+
+        #expect(!collapsing.contains(Self.outerOpen))
+        #expect(!collapsing.contains(Self.outerClose))
+        #expect(collapsing.contains(Self.innerOpen))
+        #expect(collapsing.contains(Self.innerClose))
+    }
+
+    // MARK: R-06 - which unit governs a marker is a property of its kind, not a rule someone
+    // has to remember to opt into
+
+    @Test func aHeadingMarkerStaysGovernedByTheParagraphWhileABoldPairIsSpanGrained() {
+        let markers = [Self.headingMarker, Self.boldOpen, Self.boldClose]
+        let collapsing = EditorDecorationDelegate.collapsing(
+            among: markers, paragraphIsRevealed: true, revealedSpans: []
+        )
+
+        // Paragraph-grained: revealed, so it stays out of the collapsing set.
+        #expect(!collapsing.contains(Self.headingMarker))
+        // Span-grained: no span touches either delimiter, so both collapse.
+        #expect(collapsing.contains(Self.boldOpen))
+        #expect(collapsing.contains(Self.boldClose))
+    }
+
+    @Test func aRuleMarkerStaysGovernedByTheParagraphRegardlessOfTheSpanTable() {
+        let collapsedWhenNotRevealed = EditorDecorationDelegate.collapsing(
+            among: [Self.ruleMarker], paragraphIsRevealed: false, revealedSpans: []
+        )
+        let shownWhenRevealed = EditorDecorationDelegate.collapsing(
+            among: [Self.ruleMarker], paragraphIsRevealed: true, revealedSpans: []
+        )
+
+        #expect(collapsedWhenNotRevealed.contains(Self.ruleMarker))
+        #expect(shownWhenRevealed.isEmpty)
+    }
+
+    // MARK: isInline - exhaustive by kind (a compile-checked exhaustive switch: no `default`
+    // case can have slipped in, or this file would not build)
+
+    @Test func isInlineIsTrueOnlyForEmphasisStrikethroughAndLink() {
+        #expect(HiddenMarker.Kind.emphasis.isInline)
+        #expect(HiddenMarker.Kind.strikethrough.isInline)
+        #expect(HiddenMarker.Kind.link.isInline)
+    }
+
+    @Test func isInlineIsFalseForEveryBlockKind() {
+        #expect(!HiddenMarker.Kind.heading.isInline)
+        #expect(!HiddenMarker.Kind.embed.isInline)
+        #expect(!HiddenMarker.Kind.list.isInline)
+        #expect(!HiddenMarker.Kind.checkbox.isInline)
+        #expect(!HiddenMarker.Kind.blockquote.isInline)
+        #expect(!HiddenMarker.Kind.rule.isInline)
+        #expect(!HiddenMarker.Kind.table.isInline)
+        #expect(!HiddenMarker.Kind.viewBlock.isInline)
+    }
+
+    // MARK: apply(revealedSpans:) - returns what changed, like apply(revealedParagraphs:)
+
+    @Test func applyRevealedSpansReturnsTheChangedKeysAndSettlesToEmptyOnASecondClear() {
+        let delegate = EditorDecorationDelegate()
+
+        let firstChange = delegate.apply(
+            revealedSpans: [3: [NSRange(location: 0, length: 2)], 5: [NSRange(location: 1, length: 1)]]
+        )
+        #expect(firstChange == Set([3, 5]))
+
+        let cleared = delegate.apply(revealedSpans: [:])
+        #expect(cleared == Set([3, 5]))
+
+        let clearedAgain = delegate.apply(revealedSpans: [:])
+        #expect(clearedAgain.isEmpty)
+    }
+}
+
+// MARK: - The note editor's own wiring (ADR-0037 §D6/§D7; plan
+// `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 5)
+//
+// Drives a real `NoteTextView.Coordinator` + `NSTextView`, the shape `MarkupCoordinator`
+// above already uses. `EditorDecorationDelegate.revealedSpans` has no test accessor - that
+// file is out of this task's budget (ADR-0049) - so "the span table names exactly one
+// paragraph key with exactly one range" is read back through `coordinator.lastRevealedSpans`
+// instead: it is assigned the very value handed to `decorations.apply(revealedSpans:)` right
+// before that call, in `NoteTextView+Reveal.swift`, so the two can never disagree.
+@MainActor
+@Suite struct MarkupCoordinatorInlineSpans {
+    /// Two bold runs, neither touching the note's very first character - unlike
+    /// `MarkupHidingInlineSpans`'s "**uno** e **due**\n" fixture, whose first run starts at
+    /// offset 0 and would already be (adjacency-)revealed by the harness's own baseline
+    /// caret placement (ADR §D5's closed interval), leaving a test that moves the caret
+    /// *into* that run unable to observe a real transition.
+    private static let note = "inizio **uno** e **due** fine\n"
+    /// Inside "uno", well within the first run's whole construct `[7, 14)`.
+    private static let insideFirstRun = 10
+    /// "e" between the two runs: 15 > `NSMaxRange(firstBoldSpan)` (14) and 15 < the second
+    /// run's own start (17).
+    private static let outsideBothRuns = 15
+    private static let firstBoldSpan = NSRange(location: 7, length: 7)
+
+    private static func editor(revealsInlineSpans: Bool) -> (NSTextView, NoteTextView.Coordinator) {
+        let view = NoteTextView(
+            text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
+            hidesMarkup: true, revealsInlineSpans: revealsInlineSpans, onFollowLink: { _ in }
+        )
+        let coordinator = view.makeCoordinator()
+        let textView = NSTextView(usingTextLayoutManager: true)
+        textView.delegate = coordinator
+        textView.textContentStorage?.delegate = coordinator.decorations
+        textView.string = Self.note
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        return (textView, coordinator)
+    }
+
+    @Test func aCaretInsideOneBoldRunNamesExactlyThatParagraphAndSpan() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+
+        #expect(coordinator.lastRevealedSpans.count == 1)
+        #expect(coordinator.lastRevealedSpans[0] == [Self.firstBoldSpan])
+    }
+
+    @Test func movingTheCaretOutOfBothRunsEmptiesTheTable() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        #expect(!coordinator.lastRevealedSpans.isEmpty)
+
+        textView.setSelectedRange(NSRange(location: Self.outsideBothRuns, length: 0))
+        #expect(coordinator.lastRevealedSpans.isEmpty)
+    }
+
+    @Test func flippingTheSettingOffWithTheCaretStillInsideARunEmptiesTheTable() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        #expect(!coordinator.lastRevealedSpans.isEmpty)
+
+        // The caret never moves - only the setting does, so nothing but the flag flip can
+        // be what empties the table.
+        coordinator.parent.revealsInlineSpans = false
+        coordinator.applyReveal(to: textView)
+        #expect(coordinator.lastRevealedSpans.isEmpty)
+    }
+
+    @Test func callingApplyRevealTwiceWithoutASelectionChangeInvalidatesNothingTheSecondTime() throws {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        let storage = try #require(textView.textStorage)
+
+        // Same mechanism as `MarkupCoordinator`'s own test above: the notification is what
+        // `storage.edited(…)` plus `endEditing()` fires, the observable half of "did this
+        // actually touch the layout".
+        let counter = NotificationCounter()
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil
+        ) { _ in counter.increment() }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // A genuine change first - moving into the first run touches the span table, unlike
+        // `MarkupCoordinator`'s heading-only fixture.
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        let afterTheChange = counter.count
+        #expect(afterTheChange > 0)
+
+        // The same selection again, with the setting also unchanged: both `lastRevealed`
+        // and `lastRevealedSpans` must already match, so this call is a no-op.
+        coordinator.applyReveal(to: textView)
+        #expect(counter.count == afterTheChange)
+    }
 }

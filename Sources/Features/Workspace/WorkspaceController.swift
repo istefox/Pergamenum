@@ -459,6 +459,13 @@ final class WorkspaceController {
     /// gets a switch of its own. `true` to match `VaultSettings.default`, for the window that
     /// draws a board before the settings have been applied to it.
     var hidesMarkup = true
+    /// Whether a `.text` card narrows reveal-on-caret from paragraph to span for emphasis
+    /// (ADR-0037 §D8) - the vault's `revealsInlineSpans`, carried down the same route
+    /// `hidesMarkup` above already travels rather than a switch of the card's own. `false` to
+    /// match `VaultSettings.default`, for the window that draws a board before the settings
+    /// have been applied to it. A card's own switch has no `.strikethrough`/`.link` case
+    /// (ADR-0029 §D17), so this only ever narrows bold/italic reveal there.
+    var revealsInlineSpans = false
     /// Which headings each `.text` card has folded right now, by node id (ADR-0028 §D8).
     ///
     /// The entry ordinals are `NoteOutline.entries(in:)`'s over that node's own text, exactly

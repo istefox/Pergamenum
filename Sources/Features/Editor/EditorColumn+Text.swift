@@ -58,6 +58,7 @@ extension EditorColumnView {
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
+            revealsInlineSpans: vault.settings.revealsInlineSpans,
             readableWidth: vault.settings.readableWidth,
             editorCommands: slashCommands,
             onRunCommand: commandActions.run,

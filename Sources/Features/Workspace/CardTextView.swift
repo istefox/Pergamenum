@@ -31,6 +31,14 @@ struct CardTextView: NSViewRepresentable {
     /// inside the card - a card built in a preview or a test has no such environment and would
     /// crash on it.
     let hidesMarkup: Bool
+    /// Whether reveal-on-caret narrows from paragraph to span for this card's bold/italic runs
+    /// (ADR-0037 §D8), travelling the same route `hidesMarkup` above already does:
+    /// `WorkspaceView.applyBoardSettings()` → `WorkspaceController.revealsInlineSpans` →
+    /// `StickyTextCard`. A defaulted `var`, not a `let`: the six preview/test construction
+    /// sites that predate this property must keep compiling unmodified. A card's `hiddenKind`
+    /// switch has no `.strikethrough`/`.link` case (ADR-0029 §D17, not widened by this chain),
+    /// so this setting only ever narrows the card's bold/italic reveal.
+    var revealsInlineSpans: Bool = false
     /// Which of this card's headings are folded (ADR-0028 §D8), as ordinals into
     /// `NoteOutline.entries(in:)` over this card's own text - the numbers `NoteTab.foldedEntries`
     /// holds for a note, down the route `hidesMarkup` above already travels. Defaulted like the
@@ -181,6 +189,11 @@ struct CardTextView: NSViewRepresentable {
         /// reason: `applyReveal` runs on every arrow key. Not private for that type's other
         /// reason too - its mutator lives in `CardTextView+Reveal.swift`.
         var lastRevealed: Set<Int> = []
+        /// The revealed-span table already handed to `decorations`, beside `lastRevealed` for
+        /// the same reason (ADR-0037 §D6): both must be unchanged for `applyReveal` to skip
+        /// work, or a caret held still while only the setting flips would never redraw. Its
+        /// mutator lives in `CardTextView+Reveal.swift`.
+        var lastRevealedSpans: [Int: [NSRange]] = [:]
         /// The fold layout already handed to the delegate, so an unchanged one re-reads nothing -
         /// `NoteTextView.Coordinator.lastFoldLayout`'s restraint, mattering more here because
         /// `applyFolding` runs in every SwiftUI update of every card. Not private, like
@@ -292,6 +305,13 @@ struct CardTextView: NSViewRepresentable {
                 case .embedRun: .embed
                 case .listMarker: .list
                 case .taskMarker: .checkbox
+                // ADR-0037 amendment to §D8: the card now conceals strikethrough and
+                // link/wikilink syntax identically to the note editor, at the user's explicit
+                // request (2026-09-09 hand check). `.link`'s whole run is never one marker -
+                // see the `linkDelimiters` split below, the same reason the note editor splits
+                // it.
+                case .strikethroughMarker: .strikethrough
+                case .linkSyntax: .link
                 default: nil
                 }
                 guard let kind else { continue }
@@ -300,14 +320,19 @@ struct CardTextView: NSViewRepresentable {
                 let paragraphStart = nsText.paragraphRange(
                     for: NSRange(location: nsRange.location, length: 0)
                 ).location
-                markers[paragraphStart, default: []].append(
-                    // The note editor's own mapping, called rather than copied: a `.list` marker's
-                    // range starts at its paragraph and not at its marker character, so that the
-                    // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
-                    // asymmetry is exactly how the two surfaces would start drawing nested items
-                    // differently.
-                    NoteTextView.Coordinator.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
-                )
+                let spans = kind == .link
+                    ? NoteTextView.Coordinator.linkDelimiters(in: nsRange, of: nsText)
+                    : [nsRange]
+                for span in spans {
+                    markers[paragraphStart, default: []].append(
+                        // The note editor's own mapping, called rather than copied: a `.list` marker's
+                        // range starts at its paragraph and not at its marker character, so that the
+                        // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
+                        // asymmetry is exactly how the two surfaces would start drawing nested items
+                        // differently.
+                        NoteTextView.Coordinator.hiddenMarker(kind, at: span, paragraphStart: paragraphStart)
+                    )
+                }
             }
             hiddenMarkers = markers
             // The badge a folded heading draws over itself, from the two tokens the note editor's
@@ -322,6 +347,12 @@ struct CardTextView: NSViewRepresentable {
             // the table rather than switching the walk off, so turning it back on redraws without
             // a styling pass of its own (ADR-0028 §D10).
             decorations.apply(hiddenMarkers: markers, hidingMarkup: parent.hidesMarkup)
+            // Pushed here rather than only from `applyReveal` (ADR-0037 §D7/F6, the same
+            // placement `NoteTextView+Coordinator.applyStyling` uses): that pass early-returns
+            // when the computed reveal already matches what it last applied, so a toggle flip
+            // with a stationary caret would otherwise never reach the delegate. `applyStyling`
+            // runs unconditionally on every `updateNSView`.
+            decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
         }
 
@@ -338,9 +369,12 @@ struct CardTextView: NSViewRepresentable {
         func releaseDecorations() {
             hiddenMarkers = [:]
             lastRevealed = []
+            lastRevealedSpans = [:]
             lastFoldLayout = NoteFolding.Layout()
             decorations.apply(hiddenMarkers: [:], hidingMarkup: false)
+            decorations.apply(revealsInlineSpans: false)
             _ = decorations.apply(revealedParagraphs: [])
+            _ = decorations.apply(revealedSpans: [:])
             decorations.apply(hiddenLines: [], foldedHeadings: [:])
         }
 

@@ -100,6 +100,18 @@ struct EditorSettings: View {
                  + "quando non si vedono.")
                 .themedText(.caption, color: .textTertiary)
 
+            Toggle("Rivela solo la parola sotto il cursore", isOn: Binding(
+                get: { vault.settings.revealsInlineSpans },
+                set: { value in vault.updateSettings { $0.revealsInlineSpans = value } }
+            ))
+            .accessibilityIdentifier("settings-reveals-inline-spans")
+            .disabled(!vault.settings.hidesMarkup)
+
+            Text("Grassetto, corsivo, barrato e collegamenti mostrano la loro sintassi "
+                 + "solo dove si trova il cursore, invece che in tutto il paragrafo. "
+                 + "Titoli, elenchi, citazioni e tabelle non cambiano.")
+                .themedText(.caption, color: .textTertiary)
+
             Toggle("Larghezza di lettura", isOn: Binding(
                 get: { vault.settings.readableWidth },
                 set: { value in vault.updateSettings { $0.readableWidth = value } }

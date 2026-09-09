@@ -1,91 +1,61 @@
-<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=2,3 lines=151-212 -->
-# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 2-3
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md tasks=2 lines=155-189 -->
+# Step 5 Batch Brief -- 2026-09-08-word-grained-markdown-reveal-on-caret-in.md -- tasks 2-2
 
-## Task text (verbatim, plan lines 151-212)
+## Task text (verbatim, plan lines 155-189)
 
-### Task 2 — the delegate gains a sixth hidden-line input and a `.viewBlock` marker kind (R-01, R-06)
+### Task 2 — `MarkupReveal.inlineSpans`: the note-wide table, keyed by paragraph (R-01, R-02, R-04, R-10)
 
-- **Tester** writes `Tests/ViewBlockRenderingTests.swift`, modelled line for line on
-  `Tests/TableRenderingTests.swift` (its `substitutedParagraph` and `laidOutOffsets` helpers are the
-  shape to copy, not to import). Declares, so the target builds: `HiddenMarker.Kind.viewBlock`, the
-  `stillSpells` arm returning `false`, `apply(viewBlockLines:)`, `apply(viewBlockHosts:)`, and
-  `viewBlockParagraph(at:storage:)` **stubbed to return `nil`**. Assertions:
-  - with `apply(viewBlockLines:)` given the body and closing-fence offsets, a real offscreen layout
-    pass lays out neither (R-01, R-06) — measured through `laidOutOffsets`, the way folding and tables
-    already are;
-  - **the closing fence line is in the set and is not laid out** (C4) — its own assertion, because
-    this is the one place the arithmetic differs from a table's;
-  - `apply(viewBlockLines:)` with an empty set clears **only** its own set: a fold registered through
-    `apply(hiddenLines:foldedHeadings:)` and a table registered through `apply(tableRows:)` both
-    survive it, and each of the other two clears only its own (ADR §D1, the delegate's own header
-    rule). Three assertions, one per pair;
-  - with `hidesMarkup` false, `viewBlockParagraph(at:storage:)` returns nil (ADR §D12) — **green with
-    the stub**, and stays green after Task 5;
-  - a `.viewBlock` marker whose recorded range no longer spells a fence draws nothing.
-- **Coder** implements `apply(viewBlockLines:)` and `apply(viewBlockHosts:)` on
-  `EditorDecorationDelegate`, and widens
-  `textContentManager(_:shouldEnumerate:options:)` (`:241-251`) to the union of the three sets. The
-  `viewBlockParagraph` body is **Task 5's**, not this one's.
-- Budget: `Sources/Features/Editor/EditorDecorationDelegate.swift`, `Tests/ViewBlockRenderingTests.swift` (~200 lines)
+In `Sources/Features/Editor/NoteTextView+Reveal.swift`, beside the untouched
+`MarkupReveal.paragraphs`:
 
----
+```swift
+static func inlineSpans(
+    in text: String, selection: NSRange, markedRange: NSRange, currentMatch: NSRange?
+) -> [Int: [NSRange]]
+```
 
-## Phase 2 — the gate
+Same three triggers, same `NSNotFound` guard on `markedRange`, same out-of-bounds tolerance as
+`add(_:of:to:)`. For each trigger range, walk the paragraphs it touches; for a paragraph
+**entirely covered** by a non-empty trigger range, emit one span `NSRange(0, paragraph.length)`
+and do not parse (ADR §D5); otherwise call `InlineSpanReveal.revealed` on that paragraph's
+substring with the trigger range translated into paragraph-relative coordinates. Values are
+paragraph-relative, keyed by paragraph-start offset — `hiddenMarkers`' key space.
 
-### Task 3 — tracer-bullet probe: SwiftUI inside a text attachment (ADR §D16 probes 1–3) (R-01, R-04)
+**Tester** extends `Tests/MarkupRevealTests.swift` with a second suite and writes the signature
+returning `[:]`. Red first. At minimum: a caret in the second paragraph keying only that
+paragraph; a selection spanning two paragraphs keying both; a fully-covered middle paragraph
+yielding exactly one whole-paragraph span with no parse-dependent content; the find-bar match as a
+trigger (R-04's mechanism serving ADR-0018 §D2's fourth trigger); an IME `markedRange` as a
+trigger; `NSNotFound` and past-the-end ranges yielding `[:]` and not crashing; and **the
+invariant**: for a set of inputs, every key of `inlineSpans` is a member of `paragraphs` for the
+same inputs (constraint 3 above — asserted again structurally in Task 7).
 
-**This is a gate, not a checkpoint. Tasks 4 and 8 are not planned in detail until it has an answer,
-and a negative on probe 2 changes Task 8's shape rather than being worked around inside it.**
+**Coder** fills the body.
 
-- Build the smallest real thing: a `ViewBlockAttachment` whose provider's `loadView` assigns an
-  `NSHostingView` over a throwaway SwiftUI view holding a `@State` counter, a `Button`, and a
-  two-column `.draggable`/`.dropDestination` pair — inside a real `CompletingTextView` inside a real
-  `NSWindow`, reached from a fixed trigger word with no grammar behind it (the exact shape ADR-0029's
-  Step 4.5 probe used before `EditorDecorationDelegate+TableRendering.swift` replaced it).
-- **Probe 1 passes** when the host draws at the size `attachmentBounds` returned, the button responds
-  to a click, and the `@State` counter survives a keystroke typed elsewhere in the note (i.e. the host
-  instance was not rebuilt).
-- **Probe 2 passes** when a card lifts on drag, the destination column highlights, the drop fires with
-  the payload, and the text view does not treat the gesture as a text-selection drag.
-- **Probe 3 passes** when either the text view keeps first responder through a click on the host, or
-  the host takes it and `Esc` / a click in the note return it with a sane caret — never a state where
-  keystrokes go nowhere. `TableGridStore.resignToTextView` (`:36-39`) is the wiring to copy if the
-  host takes focus.
-- **Write the result down**, per probe, in `PROJECT_BRIEF.md` beside the phase — ADR-0010's standard.
-  A probe with no written result did not happen.
-- **On a probe-2 failure:** report and stop. Task 8 switches to ADR §D16's named fallback (a per-card
-  context menu on `ViewBoardRenderer`, offered only when `queries?.move != nil`, writing through the
-  identical `ViewQuerySource.move` closure). That is a plan revision at Gate 2, not a coder decision.
-- The probe scaffold is deleted in Task 4, exactly as ADR-0029's was — it is a slice of the production
-  path, not a parallel one.
-- Budget: not estimable — this is an investigative task whose footprint depends on what the first
-  probe answers.
+- Budget: `Sources/Features/Editor/NoteTextView+Reveal.swift`, `Tests/MarkupRevealTests.swift` (~200 lines)
 
 ---
 
-## Phase 3 — the attachment
+## Phase 2 — the delegate
 
-## File map (from Budget: declarations, tasks 2-3)
+## File map (from Budget: declarations, tasks 2-2)
 
-- Sources/Features/Editor/EditorDecorationDelegate.swift
-- Tests/ViewBlockRenderingTests.swift
-
-No parseable Budget: for task(s): 3 (absent is not zero -- consult the task text above)
+- Sources/Features/Editor/NoteTextView+Reveal.swift
+- Tests/MarkupRevealTests.swift
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 4 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 1 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 3 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 4 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
-Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/adr/0033-views-render-live-in-the-editor.md -- delegate enumeration hook rules, table-copy shape (ADR §D1/§D2/§D4), and tracer-bullet gate scope (ADR §D16 probes 1-3)
-- SPEC: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/SPEC.md -- requirement IDs R-01, R-04, R-06 for this batch's tests
+- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md -- trigger/paragraph semantics for the note-wide table (ADR §D5)
+- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/SPEC.md -- requirement IDs R-01,R-02,R-04,R-10 for this task's tests

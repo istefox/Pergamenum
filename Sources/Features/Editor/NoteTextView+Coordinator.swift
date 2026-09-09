@@ -57,6 +57,11 @@ extension NoteTextView {
         /// reason as `lastRenditions`: the mutator, `applyReveal`, lives in
         /// `NoteTextView+Reveal`.
         var lastRevealed: Set<Int> = []
+        /// The revealed inline spans (emphasis/strikethrough/link, ADR-0037 §D6) already
+        /// applied, for the same reason as `lastRevealed` above and kept beside it rather
+        /// than folded into it: the two are computed by two different `MarkupReveal`
+        /// functions and compared independently in `applyReveal`'s early-return guard.
+        var lastRevealedSpans: [Int: [NSRange]] = [:]
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
@@ -503,6 +508,11 @@ extension NoteTextView {
             // which lines are out of the layout has to already be current when it does.
             applyViewBlocks(to: textView, runs: viewBlockRuns, markers: &hiddenMarkers)
             decorations.apply(hiddenMarkers: hiddenMarkers, hidingMarkup: parent.hidesMarkup)
+            // Pushed here rather than only from `applyReveal` (ADR-0037 §D7/F6): that pass
+            // early-returns when the computed reveal equals what it last applied, so a
+            // toggle flip with a stationary caret would otherwise never reach the delegate.
+            // `applyStyling` runs unconditionally on every `updateNSView`.
+            decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
             unspellableRanges = MarkdownStyler.merged(unspellable)
             self.embedRuns = embedRuns

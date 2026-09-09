@@ -95,6 +95,14 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// width is the thing this chain exists to fix, so the improved behaviour is what a
     /// vault gets until someone turns it off in Impostazioni.
     var readableWidth: Bool
+    /// Whether emphasis, strikethrough and link markers reveal at the word they belong
+    /// to, rather than the whole paragraph, while the caret is inside them (ADR-0037 §D7).
+    /// **Off by default**: this narrows a rule ADR-0018 §D2 already shipped and settled,
+    /// and a ruling that has to be reverted in code if the reveal does not convince is a
+    /// ruling nobody tests honestly - the same reasoning `hidesMarkup` was given. It is
+    /// also meaningless while `hidesMarkup` itself is off, since nothing is hidden to
+    /// narrow the reveal of.
+    var revealsInlineSpans: Bool
     /// Whether the day surfaces the unfinished tasks of the days before it (ADR-0013 §D1).
     ///
     /// **Off by default, and it shows rather than moves.** SPEC §7.3 rejects rollover outright
@@ -145,6 +153,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         spellCheck: .off,
         hidesMarkup: true,
         readableWidth: true,
+        revealsInlineSpans: false,
         rollover: false,
         rolloverDays: VaultSettings.defaultRolloverDays,
         patronSaint: nil
@@ -193,6 +202,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         hidesMarkup = try container.decodeIfPresent(Bool.self, forKey: .hidesMarkup) ?? fallback.hidesMarkup
         readableWidth = try container.decodeIfPresent(Bool.self, forKey: .readableWidth)
             ?? fallback.readableWidth
+        revealsInlineSpans = try container.decodeIfPresent(Bool.self, forKey: .revealsInlineSpans)
+            ?? fallback.revealsInlineSpans
         rollover = try container.decodeIfPresent(Bool.self, forKey: .rollover) ?? fallback.rollover
         // Clamped like `blockMinutes`, and for the same reason: this file is meant to be edited
         // by hand, and a 0 there would make the setting look on and show nothing.
@@ -223,6 +234,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         spellCheck: SpellCheck = .off,
         hidesMarkup: Bool = true,
         readableWidth: Bool = true,
+        revealsInlineSpans: Bool = false,
         rollover: Bool = false,
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
         patronSaint: PatronSaint? = nil,
@@ -240,6 +252,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.spellCheck = spellCheck
         self.hidesMarkup = hidesMarkup
         self.readableWidth = readableWidth
+        self.revealsInlineSpans = revealsInlineSpans
         self.rollover = rollover
         self.rolloverDays = rolloverDays
         self.patronSaint = patronSaint
