@@ -37,18 +37,39 @@ enum MarkupReveal {
     /// ADR-0037 §D4), keyed by paragraph-start offset, values paragraph-relative — the
     /// same key space `hiddenMarkers` already uses (ADR-0037 §D6).
     ///
-    /// **Stub for Task 2 of `2026-09-08-word-grained-markdown-reveal-on-caret-in`.**
-    /// Returns `[:]` unconditionally; the tester owns this signature, the coder fills the
-    /// body (walk each trigger's touched paragraphs; a paragraph entirely covered by a
-    /// non-empty trigger emits one whole-paragraph span with no parse, ADR-0037 §D5;
-    /// otherwise call `InlineSpanReveal.revealed` on that paragraph's substring).
+    /// Reads ADR-0018 §D2's same triggers as `paragraphs` above, through the same private
+    /// walk, with the same `NSNotFound` guard on `markedRange` and the same tolerance for a
+    /// stale range. That shared walk is what makes ADR-0037 §D6's invariant hold by
+    /// construction rather than by care: every key here is also a member of `paragraphs`'
+    /// answer for the same inputs, so the delegate's list, checkbox and blockquote branches
+    /// - which already return `nil` for a revealed paragraph - can never be handed one that
+    /// has spans, and need no edit.
+    ///
+    /// A paragraph a non-empty trigger covers **entirely** contributes one whole-paragraph
+    /// span and is never parsed (ADR-0037 §D5): that is what bounds a Cmd+A to arithmetic
+    /// over the paragraphs instead of a parse of the note. Every other touched paragraph is
+    /// handed to `InlineSpanReveal.revealed` with the trigger clipped to it and translated
+    /// into its own coordinates. A paragraph with nothing revealed contributes no key.
     static func inlineSpans(
         in text: String,
         selection: NSRange,
         markedRange: NSRange,
         currentMatch: NSRange?
     ) -> [Int: [NSRange]] {
-        [:]
+        let string = text as NSString
+        var result: [Int: [NSRange]] = [:]
+        // Paragraphs some trigger already covered whole: their single span subsumes anything
+        // a later trigger could reveal inside them, so they are never appended to afterwards.
+        var covered: Set<Int> = []
+        addSpans(selection, of: string, to: &result, covering: &covered)
+        // `NSNotFound` is what a text view with no active composition reports.
+        if markedRange.location != NSNotFound {
+            addSpans(markedRange, of: string, to: &result, covering: &covered)
+        }
+        if let currentMatch {
+            addSpans(currentMatch, of: string, to: &result, covering: &covered)
+        }
+        return result
     }
 
     /// Every paragraph-start offset `range` touches, walking forward so a selection
@@ -69,6 +90,57 @@ enum MarkupReveal {
             let paragraph = string.paragraphRange(for: NSRange(location: offset, length: 0))
             result.insert(paragraph.location)
             offset = NSMaxRange(paragraph)
+        } while offset < NSMaxRange(clamped)
+    }
+
+    /// `add(_:of:to:)`'s walk, collecting each touched paragraph's revealed spans instead
+    /// of its bare offset: same `NSNotFound` and out-of-bounds guard, same clamp, same
+    /// forward walk. Deliberately the same shape rather than a second traversal - the two
+    /// answers have to agree on which paragraphs exist at all (ADR-0037 §D6's invariant).
+    private static func addSpans(
+        _ range: NSRange,
+        of string: NSString,
+        to result: inout [Int: [NSRange]],
+        covering covered: inout Set<Int>
+    ) {
+        guard range.location != NSNotFound, range.location <= string.length else { return }
+        let clamped = NSRange(
+            location: range.location,
+            length: min(max(range.length, 0), string.length - range.location)
+        )
+        var offset = clamped.location
+        repeat {
+            let paragraph = string.paragraphRange(for: NSRange(location: offset, length: 0))
+            offset = NSMaxRange(paragraph)
+            // Clipped to this paragraph, never translated whole: a trigger spanning two
+            // paragraphs runs past the end of each one taken alone, and
+            // `InlineSpanReveal.revealed` answers `[]` to a range out of its bounds.
+            let start = max(clamped.location, paragraph.location)
+            let end = min(NSMaxRange(clamped), NSMaxRange(paragraph))
+            let local = NSRange(location: start - paragraph.location, length: max(end - start, 0))
+            // Entirely covered by a non-empty trigger: one whole-paragraph span, no parse
+            // (ADR-0037 §D5). Equal lengths imply a zero local location, the range being
+            // inside the paragraph by construction.
+            if paragraph.length > 0, local.length == paragraph.length {
+                covered.insert(paragraph.location)
+                result[paragraph.location] = [NSRange(location: 0, length: paragraph.length)]
+                continue
+            }
+            guard !covered.contains(paragraph.location) else { continue }
+            let spans = InlineSpanReveal.revealed(
+                inParagraph: string.substring(with: paragraph), touchedBy: local
+            )
+            guard !spans.isEmpty else { continue }
+            // Two triggers can land in one paragraph (a caret and the find bar's match, say):
+            // their spans are unioned, kept sorted with the outer of two runs starting
+            // together first - the order `InlineSpanReveal.constructs` itself returns.
+            var merged = result[paragraph.location] ?? []
+            for span in spans where !merged.contains(span) {
+                merged.append(span)
+            }
+            result[paragraph.location] = merged.sorted {
+                $0.location == $1.location ? $0.length > $1.length : $0.location < $1.location
+            }
         } while offset < NSMaxRange(clamped)
     }
 }
