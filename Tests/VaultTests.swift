@@ -690,3 +690,25 @@ private func makeRecord(
     let turnedOff = Data(#"{"dailyFolder":"Calendar","readableWidth":false}"#.utf8)
     #expect(try JSONDecoder().decode(VaultSettings.self, from: turnedOff).readableWidth == false)
 }
+
+// MARK: - revealsInlineSpans (ADR-0037, 2026-09-08-word-grained-markdown-reveal-on-caret-in)
+
+@Test func revealsInlineSpansDefaultsToFalseAndAnOlderSettingsFileStillReadsFalse() throws {
+    #expect(VaultSettings.default.revealsInlineSpans == false)
+
+    let older = Data(#"{"dailyFolder":"Calendar","blockMinutes":45}"#.utf8)
+    let settings = try JSONDecoder().decode(VaultSettings.self, from: older)
+    #expect(settings.revealsInlineSpans == false)
+
+    let turnedOn = Data(#"{"dailyFolder":"Calendar","revealsInlineSpans":true}"#.utf8)
+    #expect(try JSONDecoder().decode(VaultSettings.self, from: turnedOn).revealsInlineSpans)
+}
+
+@Test func revealsInlineSpansSurvivesAnEncodeDecodeRoundTrip() throws {
+    var settings = VaultSettings.default
+    settings.revealsInlineSpans = true
+
+    let encoded = try JSONEncoder().encode(settings)
+    let decoded = try JSONDecoder().decode(VaultSettings.self, from: encoded)
+    #expect(decoded.revealsInlineSpans)
+}
