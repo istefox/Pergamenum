@@ -141,6 +141,49 @@ _none_
   - Also in scope when this proceeds: removing the per-tab `isReadingMode` toggle (`NoteTabBar.swift:70`, `VaultBrowser.swift:132`), whatever becomes of `MarkdownReadingView`/`MarkdownBlocksView` once nothing switches to them, and the UI tests that click the mode control (same family `PG-031` already touched once for an icon change).
   - Scoped by Stefano to go through the `concept-to-code` chain (interview → ADR superseding ADR-0005 §D2 and ADR-0018, amending SPEC §14 → plan), not as a direct code change.
 
+## PROGETTI — pratiche (derived from 2026-09-09-pratiche.manifest.yml)
+
+ADR-0036 (`docs/adr/0036-pratiche.md`): a «pratica» is a vault folder that fills itself from a
+published copy of Apple Mail's Envelope Index (system `SQLite3`, db+wal copied, WAL recovered,
+`quick_check`, own indexes, atomic rename), one markdown file per message plus `allegati/`,
+membership via `pergamenum-dossier-*` keys, two-lane timeline, `pratica.md` edited only in the
+inspector, no network, connectors read-only. Plan:
+`docs/superpowers/plans/2026-09-09-pratiche.md`, 10 tasks, R-01…R-41. Branch `feat/pratiche`,
+planning artifacts committed as `8fb5c6b`; chain paused at `ready_for_implementation`
+(resume: `/skill concept-to-code resume docs/manifests/2026-09-09-pratiche.manifest.yml`).
+
+- [ ] 1. Two probes on the real Mail store (index `message_id` column form, `.emlx` digit-fan
+      rule — Stefano present, schema/paths only), code-built fixture store, `MailStoreReader` (R-02, R-03, R-19)
+- [ ] 2. `.emlx` reader, MIME decode, HTML→light markdown, quote split, one `message://` builder
+      measured against Mail (R-04–R-07)
+- [ ] 3. Dossier line codec, `PraticaNaming`, message document, membership rule, ledger (R-01, R-08, R-12–R-14, R-37)
+- [ ] 4. Sync: atomic writes, attachments (100 MB threshold), `.eml` retention, pending bodies,
+      deletions never delete files (R-09–R-11, R-15, R-16)
+- [ ] 5. `PraticaSyncEngine` actor, triggers (pane open, window key, FSEvents debounce), Full Disk
+      Access probe per trigger, connector purity test (R-17–R-19, R-38)
+- [ ] 6. Pane (list · timeline · inspector), two lanes, `surface.received/sent/entry` tokens in both
+      themes, sidebar row before Registrazioni (R-23–R-27, R-32, R-33, R-39; screens 1a, 1b, 1c, 1g)
+- [ ] 7. Commands (Escludi, Sposta in, Aggiungi anche a, Chiudi/Riapri), «Da smistare» tray,
+      Nota/Telefonata entries via inspector caret, daily-note line (R-28–R-31, R-34)
+- [ ] 8. «Nuova pratica…» wizard (Cmd+Opt+P), Mail seed via AppleScript, «Aggiungi a pratica da
+      Mail…» picker (Cmd+Shift+P), drop tracer bullet (R-20–R-22; screens 1d, 1e)
+- [ ] 9. Settings › Pratiche eleventh tab (fits 700×560, re-measure toolbar collapse), `perg
+      pratiche`/`pratica` + MCP reads (R-35, R-36; screen 1f)
+- [ ] 10. Accessibility identifiers, SPEC §14 amendment note, `-mailStoreRoot` in all 19 UI-test
+      files, regeneration diff sheet, full `scripts/uitests.sh` before merge (R-18, R-33, R-39, R-40, R-41)
+
+Deferred, recorded per R-41 (each needs its own chain, none blocks this one):
+- [ ] ChatGPT inside Pergamenum (Stefano, 2026-09-09: "vorrei portare chatgpt dentro a pergamenum")
+      — replaces the rejected «Esporta per ChatGPT» file export; no network in any feature, so the
+      shape is undecided
+- [ ] «Apri come board»: a pratica rendered as a `.canvas` in the Workspace
+- [ ] URL-scheme entry point `pergamenum://pratica/add?message=…`
+- [ ] Connector write access to pratiche (`perg`/`pergamenum-mcp` stay read-only in ADR-0036 §D19)
+
+Open risks named by the ADR: torn index copy while Mail writes (`quick_check` + one retry, then
+«Mail sta scrivendo»); 84k of 129k `.emlx` are `.partial` so first imports show many pending rows;
+shortcuts Ctrl+Cmd+P / Cmd+Opt+P / Cmd+Shift+P still to be measured against `com.apple.symbolichotkeys`.
+
 ## Steps — workspace-tasks-notes-integration (derived from 2026-08-24-workspace-tasks-notes-integration.manifest.yml)
 
 ADR-0021, three caret markers on a task line (`^[[<canvas>]]`, `^id(N)`, `^parent(N)`), no new
