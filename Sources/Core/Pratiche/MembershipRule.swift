@@ -45,9 +45,71 @@ enum MembershipRule {
         store: MembershipStoreSnapshot,
         onDisk: Set<String>
     ) -> Candidates {
-        // Coder-owned. Stubbed empty so every positive membership assertion in
-        // `Tests/MembershipRuleTests.swift` is red until the real set-algebra lands.
-        Candidates(messages: [], autoFollowedConversations: [])
+        var collected: [MailMessageRow] = []
+        var autoFollowed: [Int] = []
+
+        // 1. every non-deleted message of a followed conversation.
+        for conversation in dossier.conversations {
+            collected.append(contentsOf: (store.conversations[conversation] ?? []).filter { !$0.deleted })
+        }
+        // 2. plus every message added by hand, wherever it lives.
+        for messageID in dossier.included {
+            if let row = store.messagesByID[messageID], !row.deleted { collected.append(row) }
+        }
+        // 3. plus a keyword match on a counterpart's message - which also follows that
+        //    conversation from now on, so the rest of the thread arrives by rule 1 next
+        //    sync instead of depending on every subject repeating the keyword.
+        if !dossier.keywords.isEmpty {
+            let counterparts = Set(dossier.counterparts.map { $0.lowercased() })
+            let keywords = dossier.keywords.map { $0.lowercased() }
+            for row in everyMessage(in: store) where !row.deleted {
+                guard let sender = row.sender?.lowercased(), counterparts.contains(sender) else { continue }
+                let subject = (row.subject ?? "").lowercased()
+                guard keywords.contains(where: { !$0.isEmpty && subject.contains($0) }) else { continue }
+                collected.append(row)
+                if let conversation = row.conversationID,
+                   !dossier.conversations.contains(conversation),
+                   !autoFollowed.contains(conversation) {
+                    autoFollowed.append(conversation)
+                }
+            }
+        }
+
+        // 4. minus what was removed by hand, 5. minus what is already on disk.
+        let excluded = Set(dossier.excluded).union(onDisk)
+        let kept = deduplicated(collected).filter { row in
+            guard let messageID = row.messageID else { return true }
+            return !excluded.contains(messageID)
+        }
+        // Newest first: the sync writes in this order, so what changed lands first
+        // (SPEC "Sync algorithm").
+        return Candidates(
+            messages: kept.sorted { date(of: $0) > date(of: $1) },
+            autoFollowedConversations: autoFollowed
+        )
+    }
+
+    private static func everyMessage(in store: MembershipStoreSnapshot) -> [MailMessageRow] {
+        deduplicated(store.conversations.values.flatMap { $0 } + store.messagesByID.values)
+    }
+
+    /// One message reaches a pratica through several routes at once (a followed
+    /// conversation *and* a keyword), and Sent/Archive hold the same `Message-ID`
+    /// twice (ADR §D15). Deduplicated on the RFC id where there is one, on the index
+    /// ROWID otherwise, keeping the first occurrence.
+    private static func deduplicated(_ rows: [MailMessageRow]) -> [MailMessageRow] {
+        var seen: Set<String> = []
+        var unique: [MailMessageRow] = []
+        for row in rows {
+            let key = row.messageID ?? "rowid:\(row.rowID)"
+            guard seen.insert(key).inserted else { continue }
+            unique.append(row)
+        }
+        return unique
+    }
+
+    private static func date(of row: MailMessageRow) -> Date {
+        row.dateSent ?? row.dateReceived ?? .distantPast
     }
 
     struct TrayEntry: Equatable, Sendable {
@@ -65,8 +127,32 @@ enum MembershipRule {
         window: ClosedRange<Date>,
         claimedByOtherPratiche: Set<Int>
     ) -> [TrayEntry] {
-        // Coder-owned.
-        []
+        let counterparts = Set(dossier.counterparts.map { $0.lowercased() })
+        let followed = Set(dossier.conversations)
+        let ignored = Set(dossier.ignored)
+
+        var entries: [TrayEntry] = []
+        for (conversationID, messages) in store.conversations {
+            guard !followed.contains(conversationID),
+                  !ignored.contains(conversationID),
+                  !claimedByOtherPratiche.contains(conversationID)
+            else { continue }
+            let live = messages.filter { !$0.deleted }
+            let touchesCounterpart = live.contains { row in
+                guard let sender = row.sender?.lowercased() else { return false }
+                return counterparts.contains(sender) && window.contains(date(of: row))
+            }
+            guard touchesCounterpart else { continue }
+            entries.append(TrayEntry(conversationID: conversationID, messages: live))
+        }
+        // Newest conversation first, and the id as a tiebreak so the tray's order is a
+        // function of its contents rather than of a dictionary's iteration.
+        return entries.sorted { left, right in
+            let leftDate = left.messages.map(date).max() ?? .distantPast
+            let rightDate = right.messages.map(date).max() ?? .distantPast
+            if leftDate != rightDate { return leftDate > rightDate }
+            return left.conversationID < right.conversationID
+        }
     }
 
     enum ConversationRecovery: Equatable, Sendable {
@@ -83,7 +169,13 @@ enum MembershipRule {
         knownMemberMessageIDs: [String],
         store: MembershipStoreSnapshot
     ) -> ConversationRecovery {
-        // Coder-owned.
-        .unrecoverable
+        for messageID in knownMemberMessageIDs {
+            guard let conversationID = store.messagesByID[messageID]?.conversationID else { continue }
+            return .recovered(conversationID)
+        }
+        // Every member the ledger knows about is gone from the store: reported, so the
+        // tray can draw «non più ricostruibile» (R-14). Silently dropping the
+        // conversation would make a pratica quietly stop receiving mail.
+        return .unrecoverable
     }
 }

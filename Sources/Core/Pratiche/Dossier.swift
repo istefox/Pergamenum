@@ -42,8 +42,20 @@ struct Dossier: Equatable, Sendable {
     /// Parses the seven keys out of a note's foreign keys. `nil` when
     /// `pergamenum-dossier` is absent - the folder is then not a pratica (R-01).
     static func parse(_ foreignKeys: [Frontmatter.ForeignKey]) -> Dossier? {
-        // Coder-owned.
-        nil
+        // Flattened rather than looked up key by key: `FrontmatterParser` groups a key
+        // with its continuation lines, but a `pratica.md` a person hand-edited may have
+        // them apart, and reading the whole block costs nothing.
+        let lines = foreignKeys.flatMap(\.lines)
+        guard let schemaVersion = DossierYAML.scalarInt(key: keyRoot, lines: lines) else { return nil }
+        return Dossier(
+            schemaVersion: schemaVersion,
+            counterparts: DossierYAML.stringList(key: counterpartsKey, lines: lines),
+            conversations: DossierYAML.inlineIntList(key: conversationsKey, lines: lines),
+            keywords: DossierYAML.stringList(key: keywordsKey, lines: lines),
+            included: DossierYAML.stringList(key: includedKey, lines: lines),
+            excluded: DossierYAML.stringList(key: excludedKey, lines: lines),
+            ignored: DossierYAML.inlineIntList(key: ignoredKey, lines: lines)
+        )
     }
 
     /// Renders the seven keys as `Frontmatter.ForeignKey` lines, in the SPEC's own
@@ -54,10 +66,31 @@ struct Dossier: Equatable, Sendable {
     /// silently unmakes every pratica already on disk, since a folder is recognised
     /// as a pratica by this key set.
     static func render(_ dossier: Dossier) -> [Frontmatter.ForeignKey] {
-        // Coder-owned. Stubbed empty, which also keeps `merging(_:into:)`'s identity
-        // stub self-consistent (nothing to remove, nothing to insert) until both are
-        // implemented together.
-        []
+        // Counterparts are addresses and need no quoting; a keyword, a message id and
+        // anything else a person types can carry a `:` or a `#`, which unquoted would
+        // change the line's YAML meaning.
+        let rendered: [(String, [String])] = [
+            (keyRoot, DossierYAML.renderScalarInt(key: keyRoot, value: dossier.schemaVersion)),
+            (counterpartsKey, DossierYAML.renderStringList(
+                key: counterpartsKey, values: dossier.counterparts, quoted: false
+            )),
+            (conversationsKey, DossierYAML.renderInlineIntList(
+                key: conversationsKey, values: dossier.conversations
+            )),
+            (keywordsKey, DossierYAML.renderStringList(
+                key: keywordsKey, values: dossier.keywords, quoted: true
+            )),
+            (includedKey, DossierYAML.renderStringList(
+                key: includedKey, values: dossier.included, quoted: true
+            )),
+            (excludedKey, DossierYAML.renderStringList(
+                key: excludedKey, values: dossier.excluded, quoted: true
+            )),
+            (ignoredKey, DossierYAML.renderInlineIntList(key: ignoredKey, values: dossier.ignored)),
+        ]
+        return rendered
+            .filter { !$0.1.isEmpty }
+            .map { Frontmatter.ForeignKey(name: $0.0, lines: $0.1) }
     }
 
     /// Replaces this dossier's own key lines inside `foreignKeys`, **in place** -
@@ -65,9 +98,28 @@ struct Dossier: Equatable, Sendable {
     /// position and byte-for-byte unchanged (ADR §D12, C4). A dossier with no prior
     /// representation in `foreignKeys` has its keys appended at the end.
     static func merging(_ dossier: Dossier, into foreignKeys: [Frontmatter.ForeignKey]) -> [Frontmatter.ForeignKey] {
-        // Coder-owned. Stubbed as the identity: leaves `foreignKeys` untouched, which
-        // is correct only when `dossier`'s keys are already absent from it and empty
-        // (the render stub's own output) - every other case is red until implemented.
-        foreignKeys
+        var pending: [String: Frontmatter.ForeignKey] = [:]
+        for key in render(dossier) { pending[key.name] = key }
+
+        var merged: [Frontmatter.ForeignKey] = []
+        let owned = Set(ownedKeys)
+        for existing in foreignKeys {
+            guard owned.contains(existing.name) else {
+                // Somebody else's key: kept where it is, byte for byte (C4).
+                merged.append(existing)
+                continue
+            }
+            // An owned key whose list is now empty disappears rather than staying
+            // behind with stale values `render` deliberately omits.
+            if let replacement = pending.removeValue(forKey: existing.name) {
+                merged.append(replacement)
+            }
+        }
+        // Anything this dossier gained since the file was written goes at the end, in
+        // the SPEC's own key order, never interleaved among keys it does not own.
+        for name in ownedKeys {
+            if let addition = pending.removeValue(forKey: name) { merged.append(addition) }
+        }
+        return merged
     }
 }

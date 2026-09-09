@@ -30,9 +30,50 @@ enum PraticaNaming {
         counterpart: String,
         subject: String
     ) -> String {
-        // Coder-owned. Stubbed to the empty string so every shape assertion in
-        // `Tests/PraticaNamingTests.swift` is red until it exists.
-        ""
+        let party = ImportNaming.canonicalCounterparty(counterpart)
+        let clock = String(format: "%02d%02d", time.hour, time.minute)
+        let stem = "\(date.compactForm)_\(clock)_\(party)"
+        let slug = truncated(ImportNaming.kebabCase(strippingReplyPrefixes(subject)), toFit: slugLimit)
+        return slug.isEmpty ? "\(stem).md" : "\(stem)_\(slug).md"
+    }
+
+    /// R-08's «max 40 characters» for the subject slug.
+    static let slugLimit = 40
+
+    /// `Re:`/`R:`/`Fwd:`/`I:`/`AW:`, repeatedly and in any case: a thread five replies
+    /// deep arrives as `R: I: Re: Richiesta offerta`, and every one of those tokens
+    /// would otherwise become a word of the slug.
+    private static func strippingReplyPrefixes(_ subject: String) -> String {
+        let prefixes = ["re", "r", "fwd", "i", "aw"]
+        var text = subject.trimmingCharacters(in: .whitespaces)
+        var changed = true
+        while changed {
+            changed = false
+            guard let colon = text.firstIndex(of: ":") else { break }
+            let head = String(text[text.startIndex..<colon]).trimmingCharacters(in: .whitespaces).lowercased()
+            guard prefixes.contains(head) else { break }
+            text = String(text[text.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            changed = true
+        }
+        return text
+    }
+
+    /// Whole words only, the same rule `ImportNaming.recordingNoteTitle` already
+    /// applies: a name cut mid-word reads as a typo, and a name ending in the hyphen
+    /// that joined one reads as damage.
+    private static func truncated(_ slug: String, toFit budget: Int) -> String {
+        guard budget > 0 else { return "" }
+        guard slug.count > budget else { return slug }
+
+        var kept: [Substring] = []
+        var length = 0
+        for word in slug.split(separator: "-") {
+            let addition = kept.isEmpty ? word.count : word.count + 1
+            guard length + addition <= budget else { break }
+            kept.append(word)
+            length += addition
+        }
+        return kept.joined(separator: "-")
     }
 
     /// R-08's collision rule: a file that already carries the name `messageFileName`
@@ -47,14 +88,35 @@ enum PraticaNaming {
         messageID: String,
         existing: [(fileName: String, messageID: String)]
     ) -> String {
-        // Coder-owned.
-        messageFileName(date: date, time: time, counterpart: counterpart, subject: subject)
+        let base = messageFileName(date: date, time: time, counterpart: counterpart, subject: subject)
+        let taken = Dictionary(existing.map { ($0.fileName, $0.messageID) }) { first, _ in first }
+
+        // The same `Message-ID` at the same name is a re-sync of one message, not two
+        // messages colliding: it keeps its file, or every sync would grow a `-2`.
+        func owner(of name: String) -> String? { taken[name] }
+        if owner(of: base) == nil || owner(of: base) == messageID { return base }
+
+        let stem = (base as NSString).deletingPathExtension
+        var suffix = 2
+        while true {
+            let candidate = "\(stem)-\(suffix).md"
+            if owner(of: candidate) == nil || owner(of: candidate) == messageID { return candidate }
+            suffix += 1
+        }
     }
 
     /// `YYYYMMDD_<original-name-sanitised>` (SPEC "Attachment file name").
+    ///
+    /// The name keeps its capitals, its spaces and its extension: this is the file a
+    /// person will look for in Finder, and slugging it would make it unrecognisable.
+    /// Only what a file name cannot legally hold is replaced.
     static func attachmentFileName(date: CalendarDate, name: String) -> String {
-        // Coder-owned.
-        ""
+        let bare = (name as NSString).lastPathComponent
+        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.controlCharacters)
+        let cleaned = String(String.UnicodeScalarView(
+            bare.unicodeScalars.map { illegal.contains($0) ? "-" : $0 }
+        )).trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? "\(date.compactForm)_allegato" : "\(date.compactForm)_\(cleaned)"
     }
 
     /// R-01: the client is the pratica folder's own parent directory, relative to the
@@ -62,8 +124,17 @@ enum PraticaNaming {
     /// `"01 Progetti"` has client `"Rossi"`. `nil` when `relativePath` is not under
     /// `root` at all, or has no parent folder below it.
     static func client(forPraticaAt relativePath: String, root: String) -> String? {
-        // Coder-owned.
-        nil
+        let path = components(of: relativePath)
+        let root = components(of: root)
+        guard path.count >= root.count + 2 else { return nil }
+        guard Array(path.prefix(root.count)) == root else { return nil }
+        // `<root>/<Cliente>/<pratica>`: the client is the folder between the two, so a
+        // pratica sitting directly in the root has none rather than a guessed one.
+        return path[root.count]
+    }
+
+    private static func components(of path: String) -> [String] {
+        path.split(separator: "/").map(String.init)
     }
 
     /// The `client-<slug>` tag ADR §D11 puts in `pratica.md`'s frontmatter, derived

@@ -35,8 +35,85 @@ enum EMLXLocator {
         predictedURL: URL?,
         fileManager: FileManager = .default
     ) -> LocateResult {
-        // Coder-owned. Stubbed to the state that requires no filesystem read, so a
-        // test asserting `.found`/`.foundPartial` is red until the real check lands.
-        .notInStore
+        // No predicted path at all means the mailbox url never became a directory:
+        // nothing was looked at, so this is the drifted-rule diagnostic and never
+        // R-16's «non più in Mail».
+        guard let predictedURL else { return .ruleFailed(candidatesTried: []) }
+
+        var tried: [String] = []
+        let partialURL = partial(of: predictedURL)
+        for candidate in [predictedURL, partialURL] {
+            let path = candidate.path(percentEncoded: false)
+            tried.append(path)
+            guard fileManager.fileExists(atPath: path) else { continue }
+            return candidate == predictedURL ? .found(candidate) : .foundPartial(candidate)
+        }
+
+        // The fan-out rule may have drifted (ADR §D4): enumerate this mailbox's
+        // `Data/**/Messages/` directories once, looking for the same file name
+        // anywhere under it. Bounded, so a store with a pathological tree cannot turn
+        // one miss into a full-disk walk.
+        guard let dataDirectory = ancestor(named: "Data", of: predictedURL) else {
+            return .ruleFailed(candidatesTried: tried)
+        }
+        let wanted = Set([predictedURL.lastPathComponent, partialURL.lastPathComponent])
+        switch enumerate(under: dataDirectory, matching: wanted, fileManager: fileManager) {
+        case .some(let hit):
+            return hit.lastPathComponent == predictedURL.lastPathComponent
+                ? .found(hit)
+                : .foundPartial(hit)
+        case .none:
+            // The enumeration ran to completion over a real directory and neither form
+            // is there: the message is genuinely gone, which is the one state R-16's
+            // caption is allowed to describe.
+            return fileManager.fileExists(atPath: dataDirectory.path(percentEncoded: false))
+                ? .notInStore
+                : .ruleFailed(candidatesTried: tried + [dataDirectory.path(percentEncoded: false)])
+        }
+    }
+
+    /// `<ROWID>.emlx` → `<ROWID>.partial.emlx`, Mail's headers-only form (ADR §D4
+    /// follow-up: 723 of them in one mailbox of the probed store).
+    static func partial(of emlxURL: URL) -> URL {
+        emlxURL
+            .deletingLastPathComponent()
+            .appending(
+                path: "\(emlxURL.deletingPathExtension().lastPathComponent).partial.emlx",
+                directoryHint: .notDirectory
+            )
+    }
+
+    private static func ancestor(named name: String, of url: URL) -> URL? {
+        var current = url.deletingLastPathComponent()
+        while current.lastPathComponent != "", current.path(percentEncoded: false) != "/" {
+            if current.lastPathComponent == name { return current }
+            current = current.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    /// How many directory entries the fallback walk may visit before it gives up.
+    /// A mailbox's `Data/` tree is a few thousand entries; a walk that has not found
+    /// the file by then is walking something that is not a mail store.
+    private static let enumerationBudget = 20_000
+
+    private static func enumerate(
+        under directory: URL,
+        matching names: Set<String>,
+        fileManager: FileManager
+    ) -> URL? {
+        guard let walk = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return nil }
+
+        var visited = 0
+        for case let url as URL in walk {
+            visited += 1
+            if visited > enumerationBudget { return nil }
+            if names.contains(url.lastPathComponent) { return url }
+        }
+        return nil
     }
 }

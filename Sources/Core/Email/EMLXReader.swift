@@ -40,20 +40,66 @@ enum EMLXReader {
     /// directly on synthetic bytes built by `Tests/EmailFixtureCorpus.swift`, the same
     /// rule `Tests/MailStoreFixture.swift` follows for the index (ADR §D7).
     static func read(contentsOf url: URL) throws -> EMLXDocument {
-        // Coder-owned: `Data(contentsOf:)` then `parse(_:)`. Stubbed to throw, never to
-        // fabricate a document, so a caller cannot mistake "not implemented yet" for
-        // "the file said so".
-        throw ReadError.fileNotFound
+        guard let data = try? Data(contentsOf: url) else { throw ReadError.fileNotFound }
+        return try parse(data)
     }
 
     /// Parses already-loaded `.emlx` bytes: strips the leading byte-count line,
     /// returns the RFC 822 bytes it names and the trailing plist, and reports whether
     /// the RFC 822 part has a body or only headers (R-04).
     static func parse(_ data: Data) throws -> EMLXDocument {
-        // Coder-owned (ADR §D4 follow-up: the container is `"<N>\n" + N bytes of RFC
-        // 822 + trailing plist`). Stubbed to throw so every positive assertion in
-        // `Tests/EMLXReaderTests.swift` starts red.
-        throw ReadError.malformed(reason: "EMLXReader.parse is not implemented yet")
+        guard let newline = data.firstIndex(of: 0x0A) else {
+            throw ReadError.malformed(reason: "nessuna riga di conteggio byte")
+        }
+        let countText = String(decoding: data[data.startIndex..<newline], as: UTF8.self)
+            .trimmingCharacters(in: .whitespaces)
+        guard let count = Int(countText), count >= 0 else {
+            throw ReadError.malformed(reason: "riga di conteggio byte non numerica: «\(countText)»")
+        }
+        let start = data.index(after: newline)
+        guard let end = data.index(start, offsetBy: count, limitedBy: data.endIndex) else {
+            throw ReadError.malformed(
+                reason: "il file promette \(count) byte RFC 822 e ne contiene \(data.distance(from: start, to: data.endIndex))"
+            )
+        }
+        let rfc822 = Data(data[start..<end])
+        return EMLXDocument(
+            rfc822: rfc822,
+            plistData: Data(data[end..<data.endIndex]),
+            bodyState: bodyState(ofRFC822: rfc822)
+        )
+    }
+
+    /// «Body not downloaded» is decided on the RFC 822 bytes alone: Exchange writes the
+    /// headers and stops, so the blank line that ends them is either absent or followed
+    /// by nothing (SPEC "The `.emlx` container and «body not downloaded»").
+    ///
+    /// Deliberately not read from the trailing plist: its keys are undocumented, and a
+    /// flag this app guessed wrong would silently mark a real message as pending and
+    /// keep rewriting it on every sync (ADR §D6 allows exactly that one rewrite).
+    private static func bodyState(ofRFC822 rfc822: Data) -> EMLXDocument.BodyState {
+        guard let body = headerBodySeparator(in: rfc822) else { return .pending }
+        let text = String(decoding: rfc822[body...], as: UTF8.self)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .pending : .complete
+    }
+
+    /// The index of the first body byte, i.e. just past the `CRLF CRLF` (or `LF LF`)
+    /// that ends the header block. `nil` when the bytes never reach one.
+    static func headerBodySeparator(in rfc822: Data) -> Data.Index? {
+        let bytes = Array(rfc822)
+        var offset = 0
+        while offset < bytes.count {
+            if offset + 3 < bytes.count,
+               bytes[offset] == 0x0D, bytes[offset + 1] == 0x0A,
+               bytes[offset + 2] == 0x0D, bytes[offset + 3] == 0x0A {
+                return rfc822.index(rfc822.startIndex, offsetBy: offset + 4)
+            }
+            if offset + 1 < bytes.count, bytes[offset] == 0x0A, bytes[offset + 1] == 0x0A {
+                return rfc822.index(rfc822.startIndex, offsetBy: offset + 2)
+            }
+            offset += 1
+        }
+        return nil
     }
 
     /// The sibling `Attachments/<ROWID>/<part>/` directory Mail writes extracted
@@ -66,8 +112,14 @@ enum EMLXReader {
     /// output, ADR §D4); the sibling directory replaces `Messages` with `Attachments`
     /// at the same `Data/<fan>/` level and appends the ROWID and the part number.
     static func attachmentsDirectory(forMessageAt emlxURL: URL, rowID: Int, part: String) -> URL {
-        // Deliberately wrong (returns the input unchanged) so the location test is red
-        // until the coder implements the sibling-directory computation.
+        // `.../Data/<fan>/Messages/<ROWID>.emlx` → `.../Data/<fan>/Attachments/<ROWID>/<part>`.
+        // Two levels up rather than a string substitution of "Messages": a mailbox
+        // named `Messages.mbox` appears in the same path and would be rewritten too.
         emlxURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "Attachments", directoryHint: .isDirectory)
+            .appending(path: "\(rowID)", directoryHint: .isDirectory)
+            .appending(path: part, directoryHint: .notDirectory)
     }
 }

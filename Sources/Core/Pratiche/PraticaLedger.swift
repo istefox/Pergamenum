@@ -42,19 +42,34 @@ struct PraticaLedger: Equatable, Sendable, Codable {
     /// Missing or unreadable → `.empty`: a fresh ledger costs one full re-sync,
     /// nothing else.
     static func load(from url: URL) -> PraticaLedger {
-        // Coder-owned.
-        .empty
+        guard let data = try? Data(contentsOf: url) else { return .empty }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode(PraticaLedger.self, from: data)) ?? .empty
     }
 
     func save(to url: URL) throws {
-        // Coder-owned.
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        // Sorted and pretty-printed on purpose: this file is meant to be readable by
+        // the person whose mail it describes, and a stable key order keeps a diff of it
+        // meaningful.
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        // Atomic: a ledger torn by a crash mid-write costs a full re-sync, and the
+        // whole point of the file is that it survives one.
+        try encoder.encode(self).write(to: url, options: .atomic)
     }
 
     /// R-14: every member `Message-ID` this ledger ever recorded for
     /// `conversationID` under `praticaPath`, in no particular order - what
     /// `MembershipRule.recoverConversationID` resolves against the store snapshot.
     func memberMessageIDs(forConversation conversationID: Int, praticaPath: String) -> [String] {
-        // Coder-owned.
-        []
+        guard let state = byPraticaPath[praticaPath] else { return [] }
+        return state.entries
+            .filter { $0.conversationID == conversationID }
+            .map(\.messageID)
     }
 }
