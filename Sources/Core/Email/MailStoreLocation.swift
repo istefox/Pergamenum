@@ -8,12 +8,6 @@ import Foundation
 // purpose - the same mechanism that keeps the unit and UI suites off the real vault
 // state directory keeps them off `~/Library/Mail` too, even on a host whose terminal
 // already has Full Disk Access (this Mac's does).
-//
-// Tester-declared boundary (ADR-0155): the fallback order below is fixed by the ADR,
-// but the body is an intentionally wrong stub - a fixed path that is neither the real
-// Mail store nor a temporary directory - so every test in
-// `Tests/MailStoreReaderTests.swift` that exercises this stays red until the coder
-// wires it up for real.
 enum MailStoreLocation {
     /// The key `-mailStoreRoot <path>` is read under, matching `VaultState`'s own
     /// `-stateBase` and `RecentVaults`' `-recentVaults` launch-argument convention.
@@ -21,10 +15,28 @@ enum MailStoreLocation {
 
     /// Resolves, in order: the `-mailStoreRoot` launch argument (R-19), a per-process
     /// temporary fixture root under xctest, and only then `~/Library/Mail/V10`.
-    ///
-    /// Stub: always the same placeholder, ignoring both the override and
-    /// `VaultState.isRunningUnderTest` - coder fills this in per ADR-0036 §D7.
     static func resolve() -> URL {
-        URL(filePath: "/private/var/pergamenum-mailstore-location-unimplemented", directoryHint: .isDirectory)
+        // Read from the argument domain the way `VaultState.processDefaultBase()`
+        // reads `-stateBase`: `XCTestConfigurationFilePath` is set for the *host*
+        // XCTest process and not for the app a UI test launches, so the launch
+        // argument is the only thing that reaches the app itself.
+        if let override = UserDefaults.standard.string(forKey: overrideKey) {
+            return URL(filePath: override, directoryHint: .isDirectory)
+        }
+        if VaultState.isRunningUnderTest {
+            // Never `~/Library/Mail`: a unit test that reached the real store would
+            // be a test about somebody's correspondence, the rule `-disableCalendar`
+            // already exists for.
+            try? FileManager.default.createDirectory(at: testProcessRoot, withIntermediateDirectories: true)
+            return testProcessRoot
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Mail/V10", directoryHint: .isDirectory)
     }
+
+    /// One directory per test process, not per call - `VaultState.testProcessBase`'s
+    /// own reason: a second `resolve()` handing back a fresh temporary directory
+    /// would lose whatever the first one's fixture wrote there.
+    private static let testProcessRoot: URL = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-test-mailstore-\(UUID().uuidString)", directoryHint: .isDirectory)
 }
