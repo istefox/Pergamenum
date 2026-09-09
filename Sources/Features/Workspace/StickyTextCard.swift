@@ -11,6 +11,10 @@ import SwiftUI
 /// undoes one edit rather than one character.
 struct StickyTextCard: View {
     @Environment(\.theme) private var theme
+    // Reused for navigation only (issue #188, R-06): `CommandActions.open(link:)` is the one
+    // place a wikilink target resolves to a note-open or a board-open, already reachable this
+    // way from `EditorColumnView`/`TasksView` (ADR-0036).
+    @Environment(CommandActions.self) private var commandActions
     let node: CanvasNode
     let workspace: WorkspaceController
 
@@ -89,7 +93,11 @@ struct StickyTextCard: View {
             // deliberately so: the card's own click-hit-test does the same "this card only"
             // narrowing `onToggleFold` above needs a guard for, but `toggleTask` itself reads
             // whichever of the two states (`editingTextDraft` / the node's stored text) applies.
-            onToggleTask: { lineIndex in workspace.toggleTask(atLineIndex: lineIndex, forNodeID: node.id) }
+            onToggleTask: { lineIndex in workspace.toggleTask(atLineIndex: lineIndex, forNodeID: node.id) },
+            // Cmd+click / "Apri collegamento" on a wikilink or CommonMark link (issue #188,
+            // R-06) - unguarded on `isEditing` like `onToggleTask` above, for the same reason:
+            // the click can only arrive from this card's own text view.
+            onFollowLink: { title in commandActions.open(link: title) }
         )
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's

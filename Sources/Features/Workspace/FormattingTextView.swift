@@ -148,7 +148,89 @@ final class FormattingTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         if claimsFoldBadge(at: point) { return }
         if claimsCheckbox(at: point) { return }
+        // Cmd+click on a link/wikilink navigates instead of placing the caret (issue #188,
+        // R-06) - the card's half of `CompletingTextView.mouseDown(with:)`'s own addition, for
+        // the identical reason: this view runs TextKit 2 with the same shared content-storage
+        // delegate (`EditorDecorationDelegate`, ADR-0028 §D1), so AppKit's automatic
+        // "clickedOnLink" gesture is equally unreachable here.
+        if event.modifierFlags.contains(.command), followLinkIfPresent(at: point) { return }
         super.mouseDown(with: event)
+    }
+
+    /// The card's half of `CompletingTextView.rightMouseDown(with:)`'s own addition (issue
+    /// #188) - identical reason, including the selection-restore step: `menu(for:)`'s own
+    /// `super.menu(for: event)` call selects the link's whole range as an internal AppKit
+    /// side effect while building the standard "Open Link"/"Copy Link" items, which
+    /// reveal-on-caret reacts to. See that method's own comment for the full mechanism.
+    override func rightMouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let storage = textStorage else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              storage.attribute(.link, at: index, effectiveRange: nil) is URL
+        else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let originalSelection = selectedRange()
+        guard let menu = menu(for: event) else { return }
+        setSelectedRange(originalSelection)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    /// The card's own copy of `CompletingTextView.followLinkIfPresent(at:)` - not extracted,
+    /// for the reason every other shared piece of behaviour between these two views (this
+    /// file's header) already gives: `CompletingTextView+Pasteboard.swift` is outside this
+    /// chain's edits (ADR-0027 §D9), and the two views share `EditorDecorationDelegate`/
+    /// `MarkdownAttributedText.clickTarget(for:)` already, which is where the real logic lives.
+    @discardableResult
+    func followLinkIfPresent(at point: CGPoint) -> Bool {
+        guard let storage = textStorage else { return false }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return false }
+        return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
+    }
+
+    /// «Apri collegamento» (R-07), the card's half of `CompletingTextView.menu(for:)`'s own
+    /// addition - no `menu(for:)` override existed on this view before this feature.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let base = super.menu(for: event)
+        guard let storage = textStorage else { return base }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return base }
+        let menu = base ?? NSMenu()
+        let item = NSMenuItem(
+            title: "Apri collegamento", action: #selector(openLinkFromMenu(_:)), keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = PendingLinkClick(url: url, characterIndex: index)
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    /// «Apri collegamento» navigates without Cmd held, by design (R-07) - so it calls
+    /// `LinkNavigatingDelegate.performLinkNavigation(_:)` directly rather than
+    /// `NSTextViewDelegate.textView(_:clickedOnLink:at:)`, which the Coordinator gates on Cmd
+    /// actually being down (issue #188's plain-click regression fix).
+    @objc private func openLinkFromMenu(_ sender: NSMenuItem) {
+        guard let pending = sender.representedObject as? PendingLinkClick else { return }
+        (delegate as? LinkNavigatingDelegate)?.performLinkNavigation(pending.url)
+    }
+
+    /// What "Apri collegamento" needs to replay the click it was offered from - the card's
+    /// own copy of `CompletingTextView+Pasteboard.swift`'s private `PendingLinkClick`.
+    private struct PendingLinkClick {
+        let url: URL
+        let characterIndex: Int
     }
 
     /// Whether a folded heading's badge is under `point`, and toggling its section when one is.

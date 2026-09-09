@@ -65,6 +65,15 @@ struct CardTextView: NSViewRepresentable {
     /// does not know which node id, or which of the two write paths (at rest / while editing),
     /// the toggle has to go through.
     var onToggleTask: (Int) -> Void = { _ in }
+    /// A wikilink or CommonMark link was Cmd+clicked (or "Apri collegamento" chosen), naming
+    /// the resolved title/href to navigate to (issue #188, R-06) - reported rather than acted
+    /// on for the same reason the closures above are: this view knows nothing about the
+    /// board or the vault, only that something out there asked to be told.
+    var onFollowLink: (String) -> Void = { _ in }
+    /// The embed half of the same click (`![[foto.png]]`'s target), naming the file. No card
+    /// surface previews an embed today, so the default is a no-op rather than a required
+    /// wiring - out of this feature's scope (SPEC scope is wikilinks/CommonMark links).
+    var onOpenEmbed: (String) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -159,7 +168,7 @@ struct CardTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, LinkNavigatingDelegate {
         var parent: CardTextView
         /// The card's own undo stack (ADR-0027 §D2), never the window's.
         ///
@@ -266,6 +275,38 @@ struct CardTextView: NSViewRepresentable {
 
         func textDidEndEditing(_ notification: Notification) {
             parent.onEndEditing()
+        }
+
+        /// Self-defending, like `NoteTextView.Coordinator`'s twin (issue #188's plain-click
+        /// regression fix): AppKit can invoke this delegate method on its own, on a plain click,
+        /// bypassing its own documented Cmd requirement under this app's custom TextKit 2
+        /// substitution - so the live modifier state is checked here rather than trusted from
+        /// the caller. "Apri collegamento" bypasses this gate on purpose, through
+        /// `performLinkNavigation(_:)` directly (see `LinkNavigatingDelegate`).
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard NSEvent.modifierFlags.contains(.command) else { return false }
+            return performLinkNavigation(link)
+        }
+
+        /// Same decode as `NoteTextView+Coordinator`'s own `performLinkNavigation` (issue #188,
+        /// R-06) - through `MarkdownAttributedText.clickTarget(for:)` rather than a second copy
+        /// of the URL parsing, so the two surfaces can never disagree about what a clicked URL
+        /// means.
+        @discardableResult
+        func performLinkNavigation(_ link: Any) -> Bool {
+            guard let url = link as? URL,
+                  let target = MarkdownAttributedText.clickTarget(for: url)
+            else { return false }
+
+            switch target {
+            case .external(let url):
+                NSWorkspace.shared.open(url)
+            case .embed(let name):
+                parent.onOpenEmbed(name)
+            case .note(let title):
+                parent.onFollowLink(title)
+            }
+            return true
         }
 
         /// The two states, and the single property that separates them (ADR-0027 §D3).

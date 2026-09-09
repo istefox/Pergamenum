@@ -7,6 +7,14 @@ import AppKit
 /// the view it hangs off - and because the two together put the file past the length the
 /// linter allows, which is the linter being right.
 extension CompletingTextView {
+    /// What "Apri collegamento" (R-07) needs to replay the click it was offered from -
+    /// the same shape `NoteTextView+EmbedCaret.swift`'s `PendingEmbedDeletion` carries for
+    /// "Elimina", one field short since there is only ever one text view here.
+    private struct PendingLinkClick {
+        let url: URL
+        let characterIndex: Int
+    }
+
     /// A click on a drawn decoration is not a click in the text.
     ///
     /// Handled before `super`, which would otherwise move the caret to the nearest
@@ -25,7 +33,66 @@ extension CompletingTextView {
         // never reach the default caret placement, or `NoteTextView+Reveal`'s reveal-on-caret
         // would expose the raw `- [ ]` the instant the caret entered that paragraph.
         if onToggleCheckbox?(point) == true { return }
+        // Cmd+click on a link/wikilink navigates instead of placing the caret (issue #188).
+        // AppKit's own automatic "clickedOnLink" `mouseDown` convenience never fires here:
+        // `NoteTextView` runs TextKit 2 with a content-storage delegate that substitutes a
+        // fresh `NSTextParagraph` per paragraph on every layout pass, and that convenience
+        // does not reliably re-derive `.link` through the substitution. So this is detected
+        // explicitly, at mouse-down (never mouse-up: Cmd released mid-click reads as a plain
+        // click, matching what `NSEvent.modifierFlags` is sampled for everywhere else in this
+        // file), and the event is consumed either way once Cmd is held over a link - a
+        // Cmd+click on a link is a distinct gesture, never a caret placement.
+        if event.modifierFlags.contains(.command), followLinkIfPresent(at: point) { return }
         super.mouseDown(with: event)
+    }
+
+    /// A right-click on a link shows "Apri collegamento" without leaving the link's
+    /// paragraph un-concealed (issue #188). Skipping `super.rightMouseDown(with:)` for the
+    /// on-link case rules out its own default caret-move, but that alone was NOT enough
+    /// (confirmed on-screen, 2026-09-09, second round): `menu(for:)` below still calls
+    /// `super.menu(for: event)` to get AppKit's standard "Open Link"/"Copy Link" items for a
+    /// URL, and building THAT menu is itself what selects the link's whole range as an
+    /// internal side effect - the screenshot showed the link actually highlighted, a real
+    /// selection, not merely a moved caret. `textViewDidChangeSelection` → `applyReveal`
+    /// (`NoteTextView+Reveal.swift`) then un-conceals its paragraph (ADR-0018 §D2) before
+    /// "Apri collegamento" is ever chosen. Restoring the selection captured *before* the menu
+    /// is built - synchronously, before `NSMenu.popUpContextMenu` yields to the run loop and
+    /// anything is drawn - undoes whichever of AppKit's own selection side effects caused it,
+    /// without needing to name the exact one. A right-click anywhere else falls straight
+    /// through to `super`, unchanged - this is deliberately scoped to links only, matching
+    /// R-07/R-08.
+    override func rightMouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let storage = textStorage else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              storage.attribute(.link, at: index, effectiveRange: nil) is URL
+        else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let originalSelection = selectedRange()
+        guard let menu = menu(for: event) else { return }
+        setSelectedRange(originalSelection)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    /// Resolves the character under `point` the same TextKit-2-safe way `linkTitle(_:at:)`
+    /// below already does, reads `.link` off the real `textStorage` there, and - if one is
+    /// present - invokes the delegate method AppKit's own gesture was supposed to call.
+    /// Shared between the Cmd+click handling above and the "Apri collegamento" context-menu
+    /// item below, so the two can never resolve a click point two different ways.
+    @discardableResult
+    func followLinkIfPresent(at point: CGPoint) -> Bool {
+        guard let storage = textStorage else { return false }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return false }
+        return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
     }
 
     /// The middle and the end of the one drag this editor has (ADR-0019 §D6).
@@ -70,7 +137,37 @@ extension CompletingTextView {
     /// - arrives here on its own.
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
-        return onEmbedMenu?(point) ?? super.menu(for: event)
+        let base = onEmbedMenu?(point) ?? super.menu(for: event)
+        // "Apri collegamento" (R-07): the non-modifier alternative to Cmd+click, prepended
+        // only when the right-click itself landed on a link/wikilink range - everywhere else
+        // this falls straight through to the menu above, unchanged.
+        guard let storage = textStorage else { return base }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return base }
+        let menu = base ?? NSMenu()
+        let item = NSMenuItem(
+            title: "Apri collegamento", action: #selector(openLinkFromMenu(_:)), keyEquivalent: ""
+        )
+        // Held weakly by the menu item (AppKit convention); `self` outlives the menu.
+        item.target = self
+        item.representedObject = PendingLinkClick(url: url, characterIndex: index)
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    /// «Apri collegamento» navigates without Cmd held, by design (R-07) - so it calls
+    /// `LinkNavigatingDelegate.performLinkNavigation(_:)` directly rather than
+    /// `NSTextViewDelegate.textView(_:clickedOnLink:at:)`, which both Coordinators gate on
+    /// Cmd actually being down (issue #188's plain-click regression fix). Not
+    /// `followLinkIfPresent(at:)` either: the menu already resolved the click point once, in
+    /// `menu(for:)`, and resolving it a second time from a stored `NSPoint` would drift if
+    /// the view scrolled between right-click and menu selection.
+    @objc private func openLinkFromMenu(_ sender: NSMenuItem) {
+        guard let pending = sender.representedObject as? PendingLinkClick else { return }
+        (delegate as? LinkNavigatingDelegate)?.performLinkNavigation(pending.url)
     }
 
     /// Pasting a URL over a selection writes a markdown link (SPEC §5); pasting a
