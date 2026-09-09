@@ -18,16 +18,25 @@ struct PraticaTimelineView: View {
     @Environment(PraticheController.self) private var pratiche
     @Environment(VaultController.self) private var vault
 
-    /// Task 7's «Nota»/«Telefonata» (`PraticaEntry.insert(kind:at:in:)`). Absent here,
-    /// so the two buttons carry their identifiers and are disabled rather than
-    /// pretending to write a heading nothing has implemented yet.
-    var onAddNote: (() -> Void)?
-    var onAddCall: (() -> Void)?
+    /// The pane's one command runner, shared with the list column and the top bar so
+    /// the row menus here cannot offer a different catalogue (ADR-0023 §D1).
+    let actions: PraticaCommandActions
+    /// «Nota»/«Telefonata» at the end of the timeline (R-28), through
+    /// `PraticaEntryComposer` - this view knows the verbs, never the write.
+    let onAddNote: () -> Void
+    let onAddCall: () -> Void
     /// Opens `pratica.md` where a manual entry can actually be edited (ADR §D13).
     var onOpenNote: (() -> Void)?
+    /// «Inserisci qui» (R-28): the two rows the new entry goes between, and which of
+    /// the two kinds it is. The midpoint arithmetic is `PraticaEntry.midpoint`'s.
+    var onInsertBetween: ((PraticaTimelineEntry, PraticaTimelineEntry, PraticaEntry.Kind) -> Void)?
 
     @State private var previewURLs: [URL] = []
     @State private var isPreviewing = false
+    /// Which row has key focus, and whether the list holds it at all: Backspace maps to
+    /// «Escludi» **only** while the timeline is focused (the plan's own rule), or the
+    /// key would delete a message while somebody types in the filter field.
+    @FocusState private var isListFocused: Bool
 
     private var entries: [PraticaTimelineEntry] { pratiche.filteredTimeline }
 
@@ -48,7 +57,7 @@ struct PraticaTimelineView: View {
     }
 
     private var list: some View {
-        List {
+        List(selection: selection) {
             ForEach(sections, id: \.day) { section in
                 Section {
                     ForEach(section.entries) { entry in
@@ -65,6 +74,36 @@ struct PraticaTimelineView: View {
         // Ascending order plus a bottom anchor is "opens on the newest" with no
         // scroll-to-id dance and no `ScrollViewReader` (SPEC "Timeline model").
         .defaultScrollAnchor(.bottom)
+        .focused($isListFocused)
+        // Backspace is «Escludi», and only here: the plan pins the key to the timeline
+        // having key focus, so the same key still deletes characters in the filter
+        // field and rows in every other list of the app.
+        .onKeyPress(.delete) {
+            guard isListFocused, excludeSelectedRow() else { return .ignored }
+            return .handled
+        }
+    }
+
+    /// The focused row (R-31's subject). A `Binding` over the controller rather than a
+    /// `@State` here: the row commands act on it from three surfaces, and a second copy
+    /// of "which row" is a second thing to keep in step.
+    private var selection: Binding<String?> {
+        Binding(
+            get: { pratiche.selectedEntryID },
+            set: { pratiche.selectedEntryID = $0 }
+        )
+    }
+
+    /// «Escludi» on whatever row holds focus, or `false` when that row is a manual
+    /// entry - a `## …` heading in `pratica.md` is not a message and has no files to
+    /// trash (the command is absent from its menu for the same reason).
+    private func excludeSelectedRow() -> Bool {
+        guard let id = pratiche.selectedEntryID,
+              let entry = entries.first(where: { $0.id == id }),
+              entry.kind == .message
+        else { return false }
+        actions.exclude(entry, detail: pratiche.details[entry.id])
+        return true
     }
 
     @ViewBuilder
@@ -78,7 +117,8 @@ struct PraticaTimelineView: View {
                     isExpanded: pratiche.expansion.isExpanded(entry.id),
                     onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
                     onQuickLook: preview(_:),
-                    vaultRoot: vault.root
+                    vaultRoot: vault.root,
+                    actions: rowActions
                 )
             } else {
                 PraticaEntryRow(
@@ -97,6 +137,55 @@ struct PraticaTimelineView: View {
         .containerRelativeFrame(.horizontal, alignment: alignment(of: lane)) { width, _ in
             lane == .entry ? width : width * 0.7
         }
+        .contextMenu { menu(for: entry) }
+        .tag(entry.id)
+    }
+
+    /// The row's context menu: the message catalogue for a message, and «Inserisci
+    /// qui» under both - a manual entry has no `MessageCommand` at all (no files, no
+    /// `Message-ID`), which the catalogue says by not being asked for one.
+    @ViewBuilder
+    private func menu(for entry: PraticaTimelineEntry) -> some View {
+        if entry.kind == .message {
+            MessageMenuItems.menu(
+                for: entry, detail: pratiche.details[entry.id], actions: rowActions
+            )
+            Divider()
+        }
+        insertHere(after: entry)
+    }
+
+    /// R-28's «Inserisci qui», as a submenu of the row above the gap rather than as a
+    /// hover-revealed gap row (screen 1a draws the gap; the menu is the same command on
+    /// a surface that survives a `List` culling its rows). Absent on the last row: a
+    /// midpoint needs two neighbours, and «at the end» is what the counts bar's own
+    /// «Nota»/«Telefonata» already mean.
+    @ViewBuilder
+    private func insertHere(after entry: PraticaTimelineEntry) -> some View {
+        if let onInsertBetween, let next = following(entry) {
+            Menu("Inserisci qui") {
+                ForEach(PraticaEntry.Kind.allCases, id: \.self) { kind in
+                    Button(kind.label) { onInsertBetween(entry, next, kind) }
+                        .accessibilityIdentifier("pratiche-insert-here-\(kind.rawValue)")
+                }
+            }
+            .accessibilityIdentifier("pratiche-insert-here")
+        }
+    }
+
+    private func following(_ entry: PraticaTimelineEntry) -> PraticaTimelineEntry? {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }),
+              entries.indices.contains(index + 1)
+        else { return nil }
+        return entries[index + 1]
+    }
+
+    /// The shared runner with this view's own Quick Look host attached, so «Anteprima
+    /// allegato» opens the panel a chip click opens rather than a second one.
+    private var rowActions: PraticaCommandActions {
+        var actions = self.actions
+        actions.onQuickLook = preview(_:)
+        return actions
     }
 
     private func alignment(of lane: PraticaLane) -> Alignment {
@@ -125,20 +214,16 @@ struct PraticaTimelineView: View {
     /// beside it (UX-BLUEPRINT §6).
     private var countsBar: some View {
         HStack(spacing: theme.spacing(.s)) {
-            Button {
-                onAddNote?()
-            } label: {
+            Button(action: onAddNote) {
                 Label("Nota", systemImage: "square.and.pencil")
             }
-            .disabled(onAddNote == nil)
+            .disabled(pratiche.selection == nil)
             .accessibilityIdentifier("pratiche-add-note")
 
-            Button {
-                onAddCall?()
-            } label: {
+            Button(action: onAddCall) {
                 Label("Telefonata", systemImage: "phone")
             }
-            .disabled(onAddCall == nil)
+            .disabled(pratiche.selection == nil)
             .accessibilityIdentifier("pratiche-add-call")
 
             Spacer()

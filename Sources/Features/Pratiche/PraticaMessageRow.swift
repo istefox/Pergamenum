@@ -25,6 +25,10 @@ struct PraticaMessageRow: View {
     let onToggle: (_ expandsAll: Bool) -> Void
     let onQuickLook: (URL) -> Void
     var vaultRoot: URL?
+    /// The pane's own command runner. Optional so a preview can build this row without
+    /// a `VaultController`; `nil` draws the footer's «Apri in Mail» alone, which is
+    /// what a row outside the pane can honestly offer.
+    var actions: PraticaCommandActions?
 
     /// Per row and per window, like the row's own expansion (R-24): a quoted history
     /// opened once is not a preference, and nothing about it belongs on disk.
@@ -180,13 +184,27 @@ struct PraticaMessageRow: View {
         }
     }
 
-    /// «Apri in Mail» only, for now. «Escludi», «Sposta in ▸» and «Aggiungi anche a ▸»
-    /// are one `MessageCommand` catalogue declared once and rendered twice (ADR-0023),
-    /// which the plan gives to Task 7 - a second, hand-written copy of those verbs here
-    /// is exactly the divergence that catalogue exists to prevent.
+    /// «Apri in Mail · Escludi · Sposta in ▸ · Aggiungi anche a ▸» (DESIGN.md's message
+    /// row anatomy), built by iterating the catalogue - the *same* iteration the row's
+    /// context menu makes, which is the whole of ADR-0023 §D1: a command is named once
+    /// and rendered twice, never written out twice.
+    ///
+    /// `MessageMenuItems.item` draws an argument-carrying command as a submenu on both
+    /// surfaces, so «Sposta in ▸» offers the same destinations here and in the menu.
     @ViewBuilder
     private var footer: some View {
-        if let url = link.url {
+        if let actions {
+            HStack(spacing: theme.spacing(.s)) {
+                ForEach(actions.commands(for: detail), id: \.self) { command in
+                    MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
+                        .buttonStyle(.plain)
+                        .themedText(.caption, color: .accentPrimary)
+                }
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pratiche-message-footer-\(Self.hash(of: entry))")
+        } else if let url = link.url {
             Button("Apri in Mail") { NSWorkspace.shared.open(url) }
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)

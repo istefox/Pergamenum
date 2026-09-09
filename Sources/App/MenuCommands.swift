@@ -193,6 +193,12 @@ struct InsertCommands: Commands {
             Button("Immagine o file…") { insertFile() }
                 .disabled(vault.openNote == nil)
             Button("Link email da Mail") { insertMailLink() }
+            // Beside the entry that puts a `message://` link in a note, because both
+            // start from the same thing - the message selected in Mail - and differ
+            // only in where it lands (R-21).
+            Button("Aggiungi a pratica da Mail…") { actions.run(.addToPraticaFromMail) }
+                .keyboardShortcut(shortcuts.shortcut(for: .addToPraticaFromMail))
+                .disabled(!actions.canRun(.addToPraticaFromMail))
             Divider()
             Button("Apri nel Workspace") { vault.openCurrentNoteInWorkspace() }
                 .disabled(vault.openNote == nil)

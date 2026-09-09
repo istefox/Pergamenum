@@ -20,9 +20,11 @@ enum AddToPraticaOrdering {
     /// across runs (`PraticheSidebarGrouping.byRecency`'s own tie-break, applied here
     /// independently).
     ///
-    /// RED stub: returns `pratiche` unchanged - a test whose input is not already
-    /// sorted this way fails on the assertion.
     static func recentFirst(_ pratiche: [PraticaListItem]) -> [PraticaListItem] {
-        pratiche
+        pratiche.sorted { left, right in
+            left.lastActivity == right.lastActivity
+                ? left.id < right.id
+                : left.lastActivity > right.lastActivity
+        }
     }
 }

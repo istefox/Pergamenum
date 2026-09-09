@@ -61,9 +61,15 @@ enum MessageCommand: String, CaseIterable, Sendable {
     /// The commands a message row offers - `.previewAttachment` only when the message
     /// actually carries one.
     ///
-    /// RED stub: always `[]`.
+    /// Declaration order is the order both surfaces draw, the same rule
+    /// `PraticaCommand.available(isActive:)` follows.
     static func available(hasAttachments: Bool) -> [MessageCommand] {
-        []
+        allCases.filter { command in
+            switch command {
+            case .previewAttachment: hasAttachments
+            case .openInMail, .exclude, .moveTo, .alsoAddTo, .regenerate: true
+            }
+        }
     }
 
     /// The one stable AX identifier for this command's control, shared by the row

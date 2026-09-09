@@ -13,6 +13,9 @@ struct PraticaTopBar: View {
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
 
+    /// The pane's one command runner (ADR-0023 §D1), so the status pill is a third
+    /// rendering of `PraticaCommand.close`/`.reopen` rather than a hand-written swap.
+    let actions: PraticaCommandActions
     /// Focus for Cmd+F, owned by the pane so `Esc` can hand it back (UX-BLUEPRINT
     /// "Keyboard shortcuts"). Task 7 wires the two shortcuts to it.
     var filterFocus: FocusState<Bool>.Binding?
@@ -48,21 +51,42 @@ struct PraticaTopBar: View {
         return segments
     }
 
-    /// Reads the pratica's `status-*` (R-33/R-34's own vocabulary). Changing it is
-    /// «Chiudi»/«Riapri», one entry of Task 7's `PraticaCommand` catalogue - declared
-    /// once and rendered on three surfaces (ADR-0023), so this pill shows the state
-    /// and does not grow a fourth, hand-written copy of the verb.
+    /// Reads the pratica's `status-*` (R-33/R-34's own vocabulary), and is the
+    /// affordance for changing it (DESIGN.md: "Status pill in the breadcrumb bar shows
+    /// the pratica's `status-*` and is the affordance for changing it").
+    ///
+    /// The verbs come from `PraticaCommand.available(isActive:)`, filtered to the two
+    /// that change a status - never a hand-written «Chiudi»/«Riapri» pair, which is
+    /// exactly the divergence the catalogue exists to prevent (ADR-0023 §D1).
     @ViewBuilder
     private var statusPill: some View {
         if let pratica = pratiche.selectedPratica {
-            Text(Self.statusTitle(pratica.status))
-                .themedText(.caption, color: .textSecondary)
-                .padding(.horizontal, theme.spacing(.s))
-                .padding(.vertical, 2)
-                .background(theme.color(.backgroundTertiary))
-                .clipShape(Capsule())
-                .accessibilityIdentifier("pratiche-status-pill")
+            Menu {
+                ForEach(statusCommands(for: pratica), id: \.self) { command in
+                    Button(command.title) { actions.run(command, on: pratica) }
+                        .accessibilityIdentifier(command.identifier)
+                }
+            } label: {
+                Text(Self.statusTitle(pratica.status))
+                    .themedText(.caption, color: .textSecondary)
+                    .padding(.horizontal, theme.spacing(.s))
+                    .padding(.vertical, 2)
+                    .background(theme.color(.backgroundTertiary))
+                    .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(Self.statusTitle(pratica.status))
+            .accessibilityIdentifier("pratiche-status-pill")
         }
+    }
+
+    /// The status half of the catalogue, in the catalogue's own order. Asked of
+    /// `available(isActive:)` rather than derived here, so the pill offers «Riapri» on
+    /// exactly the pratiche the row menu does.
+    private func statusCommands(for pratica: PraticaListItem) -> [PraticaCommand] {
+        actions.commands(for: pratica).filter { $0 == .close || $0 == .reopen }
     }
 
     static func statusTitle(_ status: String) -> String {

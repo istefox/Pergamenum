@@ -17,14 +17,24 @@ struct PratichePane: View {
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
 
+    /// The window's own, handed to `PraticaCommandActions` so «Escludi» and «Sposta
+    /// in…» register on the stack `NSTextView` already uses (ADR-0026 §D5) rather than
+    /// on a second, pane-private one.
+    @Environment(\.undoManager) private var undoManager
+
     @FocusState private var isFilterFocused: Bool
     /// `pratica.md` as the inspector shows it, re-read when the chosen pratica changes
     /// rather than on every draw.
     @State private var inspectorBody = ""
+    /// «Rinomina…»'s typed name, held by the pane and not by the row: the row is culled
+    /// by its `List` the moment it scrolls out of view, taking a half-typed name with it.
+    @State private var typedName = ""
+    /// R-22's tracer bullet, as it last answered - shown, never acted on.
+    @State private var dropReport: MailDropReport?
 
     var body: some View {
         VStack(spacing: 0) {
-            PraticaTopBar(filterFocus: $isFilterFocused)
+            PraticaTopBar(actions: actions, filterFocus: $isFilterFocused)
             // R-18: the banner appears the moment a trigger's own probe comes back
             // `.notGranted`, and goes away on the first trigger that finds the access
             // granted - no restart, no launch check (ADR §D10).
@@ -44,7 +54,7 @@ struct PratichePane: View {
             }
             HSplitView {
                 if !navigation.isNotesFocused {
-                    PraticheListColumn()
+                    PraticheListColumn(actions: actions, onNewPratica: newPratica)
                         .frame(minWidth: 190, idealWidth: 260, maxWidth: 320)
                 }
                 content
@@ -67,6 +77,116 @@ struct PratichePane: View {
             await pratiche.syncAll(in: vault, kind: .vaultOpen)
         }
         .task(id: pratiche.selection) { loadInspector() }
+        .alert(
+            "Eliminare «\(pratiche.deletionRequest?.title ?? "")»?",
+            isPresented: deletionAlert,
+            presenting: pratiche.deletionRequest
+        ) { pratica in
+            Button("Elimina", role: .destructive) { actions.confirmDeletion(of: pratica) }
+                .accessibilityIdentifier("pratiche-delete-confirm")
+            Button("Annulla", role: .cancel) { pratiche.deletionRequest = nil }
+        } message: { _ in
+            // R-34: the folder goes to the Trash, never to `removeItem` - so the
+            // sentence promises exactly what the code does.
+            Text("La cartella, i messaggi e gli allegati vanno nel Cestino.")
+        }
+        // A sheet and not an alert: R-34's «Elimina pratica» is the only alert in the
+        // whole feature (UX-BLUEPRINT), and a name to type is not a yes/no question.
+        .sheet(item: renameRequest) { pratica in
+            renameSheet(pratica)
+        }
+        .sheet(item: regenerationRequest) { request in
+            regenerationSheet(request)
+        }
+    }
+
+    /// The one `PraticaCommandActions` every surface of this pane shares, so the list
+    /// column's context menu, the timeline's row menus and the top bar's status pill
+    /// all run the same bodies (ADR-0023 §D1).
+    private var actions: PraticaCommandActions {
+        PraticaCommandActions(
+            pratiche: pratiche, vault: vault, navigation: navigation, undoManager: undoManager
+        )
+    }
+
+    private var composer: PraticaEntryComposer {
+        PraticaEntryComposer(pratiche: pratiche, vault: vault, navigation: navigation)
+    }
+
+    private func newPratica() {
+        navigation.isShowingNuovaPratica = true
+    }
+
+    private var deletionAlert: Binding<Bool> {
+        Binding(
+            get: { pratiche.deletionRequest != nil },
+            set: { if !$0 { pratiche.deletionRequest = nil } }
+        )
+    }
+
+    private var renameRequest: Binding<PraticaListItem?> {
+        Binding(
+            get: { pratiche.renameRequest },
+            set: { pratiche.renameRequest = $0 }
+        )
+    }
+
+    private var regenerationRequest: Binding<PraticaRegenerationRequest?> {
+        Binding(
+            get: { pratiche.regenerationRequest },
+            set: { pratiche.regenerationRequest = $0 }
+        )
+    }
+
+    private func renameSheet(_ pratica: PraticaListItem) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Rinomina la pratica").themedText(.title)
+            TextField("Nome", text: $typedName)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { actions.confirmRename(of: pratica, to: typedName) }
+                .accessibilityIdentifier("pratiche-rename-field")
+            HStack {
+                Spacer()
+                Button("Annulla") { pratiche.renameRequest = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Rinomina") { actions.confirmRename(of: pratica, to: typedName) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(typedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("pratiche-rename-confirm")
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 420)
+        .onAppear { typedName = pratica.title }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pratiche-rename")
+    }
+
+    /// «Rigenera…» (§D6's second exception): the current files go to the Trash and the
+    /// message is imported again from Mail's own bytes. Asked for first, because a
+    /// message file may hold edits made by hand.
+    private func regenerationSheet(_ request: PraticaRegenerationRequest) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Rigenerare «\(request.subject)»?").themedText(.title)
+            Text("""
+            Il file del messaggio va nel Cestino e viene riscritto da Mail. \
+            Le modifiche fatte a mano in «\(request.notePath)» vanno perse.
+            """)
+            .themedText(.caption, color: .textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Annulla") { pratiche.regenerationRequest = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Rigenera") { actions.confirmRegeneration(request) }
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("pratiche-regenerate-confirm")
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 440)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pratiche-regenerate")
     }
 
     @ViewBuilder
@@ -74,22 +194,51 @@ struct PratichePane: View {
         if pratiche.selection == nil {
             emptyState
         } else {
-            PraticaTimelineView(onOpenNote: openPraticaNote)
+            VStack(spacing: 0) {
+                // Above the timeline and under the banner, which is where DESIGN.md's
+                // screen 1a puts it and where the Full Disk Access banner's own
+                // "never below the tray" rule expects it.
+                PraticaTrayStrip(
+                    proposals: pratiche.selectedTray,
+                    onFollow: { actions.follow($0) },
+                    onIgnore: { actions.ignore($0) }
+                )
+                if let dropReport {
+                    Text("\(dropReport.summary) Per ora usa «Aggiungi a pratica da Mail…» (Cmd+Shift+P).")
+                        .themedText(.caption, color: .textTertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, theme.spacing(.m))
+                        .accessibilityIdentifier("pratiche-drop-report")
+                }
+                PraticaTimelineView(
+                    actions: actions,
+                    onAddNote: { composer.append(.note) },
+                    onAddCall: { composer.append(.call) },
+                    onOpenNote: openPraticaNote,
+                    onInsertBetween: { first, second, kind in
+                        composer.insertBetween(first, and: second, kind: kind)
+                    }
+                )
+                // R-22, the tracer bullet: what a drag from Mail actually offers is
+                // recorded and shown, never imported (the probe is the deliverable).
+                .mailDropReceiver { dropReport = $0 }
+            }
         }
     }
 
-    /// Screen 1g: text plus the two buttons, no illustration. Both verbs belong to
-    /// Task 8 (the wizard) and Task 7 (the Mail picker); they carry their identifiers
-    /// and stay disabled rather than opening a sheet nothing has built.
+    /// Screen 1g: text plus the two buttons, no illustration. Both are a second
+    /// rendering of a command declared once - `ShortcutCommand.newPratica` and
+    /// `.addToPraticaFromMail`, reached here through the same `Navigation` flags the
+    /// menu bar and the two keys set (ADR-0023 §D1).
     private var emptyState: some View {
         VStack(spacing: theme.spacing(.m)) {
             Text("Scegli una pratica o creane una nuova").themedText(.title)
             HStack(spacing: theme.spacing(.s)) {
-                Button("Nuova pratica…") {}
-                    .disabled(true)
+                Button("Nuova pratica…", action: newPratica)
+                    .disabled(vault.root == nil)
                     .accessibilityIdentifier("pratiche-empty-new")
-                Button("Aggiungi da Mail…") {}
-                    .disabled(true)
+                Button("Aggiungi da Mail…") { navigation.isShowingAddToPratica = true }
+                    .disabled(vault.root == nil)
                     .accessibilityIdentifier("pratiche-empty-add-from-mail")
             }
         }

@@ -18,21 +18,25 @@ enum DailyNoteMirror {
         var counterpart: String
     }
 
-    /// `- [[<pratica>]] — <Kind> · <Controparte>` (R-29).
-    ///
-    /// RED stub: always the empty string.
+    /// `- [[<pratica>]] — <Kind> · <Controparte>` (R-29). An em dash between the link
+    /// and the kind, a middle dot between the kind and the counterpart - the same two
+    /// separators the entry's own heading uses.
     static func line(for entry: Entry) -> String {
-        ""
+        "- [[\(entry.praticaTitle)]] — \(entry.kind.label) · \(entry.counterpart)"
     }
 
     /// Appends `line(for:)` to `existingText`, or `nil` when «Scrivi nel diario» is off
-    /// (R-29, `PraticheSettings.mirrorsToDailyNote`) - `nil` is what tells the coder's
+    /// (R-29, `PraticheSettings.mirrorsToDailyNote`) - `nil` is what tells the caller's
     /// write path to skip `VaultSession.write` entirely rather than writing an
     /// unchanged file.
     ///
-    /// RED stub: always returns `existingText` unchanged, regardless of `isEnabled` -
-    /// both the append and the gating assertions fail until the coder implements it.
+    /// Exactly one line, at the end: the daily note belongs to the day, not to this
+    /// feature, so nothing here looks for a section to file the line under or reorders
+    /// what somebody else wrote.
     static func appending(_ entry: Entry, to existingText: String, isEnabled: Bool) -> String? {
-        existingText
+        guard isEnabled else { return nil }
+        var text = existingText
+        if !text.isEmpty, !text.hasSuffix("\n") { text += "\n" }
+        return text + line(for: entry) + "\n"
     }
 }

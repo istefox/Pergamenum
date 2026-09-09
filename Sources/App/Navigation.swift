@@ -133,6 +133,16 @@ final class Navigation {
     /// the pane's own toolbar toggle (`pratiche-inspector-toggle`) reaches it today.
     var isShowingPraticaInspector = false
 
+    /// «Nuova pratica…» (R-20) and «Aggiungi a pratica da Mail…» (R-21), each reached
+    /// from a menu entry, a key and a button in the pane - three surfaces, one flag
+    /// apiece, which is ADR-0023 §D1 applied to a command that opens a sheet.
+    ///
+    /// Here rather than as `@State` in `PratichePane`: the menu bar has no reference to
+    /// a pane's private state, and the empty-state buttons of screen 1g are drawn by a
+    /// pane that the Note pane's own focus mode can hide.
+    var isShowingNuovaPratica = false
+    var isShowingAddToPratica = false
+
     /// Whether the Workspace shows its tray - unplaced items, linked tasks, and the
     /// board dashboard of ADR-0021 §D7.
     ///

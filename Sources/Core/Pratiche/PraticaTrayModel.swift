@@ -30,12 +30,32 @@ enum PraticaTrayModel {
     /// every live message in it) to the four fields the strip draws - no second store
     /// read, `TrayEntry.messages` already carries everything this needs.
     ///
-    /// RED stub: always `[]` - every assertion pinning a real subject, counterpart,
-    /// date range or count fails until the coder reduces `entry.messages` for real
-    /// (e.g. the most recent message's subject/sender, `min...max` of
-    /// `dateSent ?? dateReceived` across the entry, `messages.count`).
+    /// The most recent message names the proposal - a thread is known by its latest
+    /// subject («Re: Preventivo»), not by the one it opened with, and its sender is the
+    /// address a person recognises the conversation by.
+    ///
+    /// A conversation whose messages carry no date at all is still offered, dated
+    /// `.distantPast`: dropping it would hide a proposal rather than explain it.
     static func proposals(from entries: [MembershipRule.TrayEntry]) -> [PraticaTrayProposal] {
-        []
+        entries.compactMap { entry in
+            let dates = entry.messages.map(date(of:))
+            guard let earliest = dates.min(), let latest = dates.max(),
+                  let newest = entry.messages.max(by: { date(of: $0) < date(of: $1) })
+            else { return nil }
+            return PraticaTrayProposal(
+                conversationID: entry.conversationID,
+                subject: newest.subject ?? "",
+                counterpart: newest.sender ?? "",
+                dateRange: earliest...latest,
+                messageCount: entry.messages.count
+            )
+        }
+    }
+
+    /// `MembershipRule`'s own date rule, which is `private` there: the sent date, the
+    /// received date, and only then nothing at all.
+    private static func date(of row: MailMessageRow) -> Date {
+        row.dateSent ?? row.dateReceived ?? .distantPast
     }
 
     /// R-30: "the strip is hidden when empty" - real logic, not a stub, since it is
@@ -47,19 +67,28 @@ enum PraticaTrayModel {
     /// «Ignora»: dismisses `conversationID` from this pratica's tray only
     /// (`pergamenum-dossier-ignored`), touching no other key.
     ///
-    /// RED stub: returns `dossier` unchanged - a test expecting the id to land in
-    /// `ignored` fails on the assertion; a test comparing every other rendered key via
-    /// `Dossier.render` still passes, since the stub genuinely changes nothing.
+    /// One key changes and no other: «Ignora» is this pratica dismissing a proposal,
+    /// never a statement about the conversation itself, so nothing is added to
+    /// `conversations`, `excluded` or anything else - a second pratica following the
+    /// same counterpart still gets to offer it.
     static func ignoring(conversationID: Int, in dossier: Dossier) -> Dossier {
-        dossier
+        var updated = dossier
+        if !updated.ignored.contains(conversationID) { updated.ignored.append(conversationID) }
+        return updated
     }
 
     /// «Aggiungi»: follows `conversationID` from now on
     /// (`pergamenum-dossier-conversations`, the same field `WizardState.makeDossier()`
     /// and `MembershipRule.candidates`'s rule 1 already read/write).
     ///
-    /// RED stub: returns `dossier` unchanged.
+    /// Appended rather than inserted or sorted: `conversations` is a list a person can
+    /// read in their own `pratica.md`, and the order it grew in is the order they
+    /// followed things in.
     static func following(conversationID: Int, in dossier: Dossier) -> Dossier {
-        dossier
+        var updated = dossier
+        if !updated.conversations.contains(conversationID) {
+            updated.conversations.append(conversationID)
+        }
+        return updated
     }
 }

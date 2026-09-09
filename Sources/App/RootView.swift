@@ -187,6 +187,22 @@ struct RootView: View {
         )) {
             TaskComposer { vault.taskDraft = nil }
         }
+        // At window level and not inside `PratichePane`, for the reason the two above
+        // are: «Aggiungi a pratica da Mail…» is Cmd+Shift+P from anywhere, and a sheet
+        // presented by that pane would do nothing at all from the other five
+        // (ADR-0036 R-20/R-21).
+        .sheet(isPresented: Bindable(navigation).isShowingNuovaPratica) {
+            NuovaPraticaWizard { navigation.isShowingNuovaPratica = false }
+        }
+        .sheet(isPresented: Bindable(navigation).isShowingAddToPratica) {
+            AddToPraticaSheet(
+                onClose: { navigation.isShowingAddToPratica = false },
+                onNewPratica: {
+                    navigation.pane = .pratiche
+                    navigation.isShowingNuovaPratica = true
+                }
+            )
+        }
         // Wide enough for the Note pane's own three columns beside this sidebar:
         // below this the outer sidebar gets squeezed into an unreadable strip.
         .frame(minWidth: 1180, minHeight: 700)

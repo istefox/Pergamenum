@@ -47,9 +47,19 @@ enum PraticaEntry {
     /// `PraticheController.entryHeadingFormatter` already reads back. A file format,
     /// not a presentation, so it cannot follow the person's locale (that formatter's
     /// own comment).
+    ///
+    /// The time zone is pinned to GMT for the same reason the locale is pinned, and
+    /// `Tests/PraticaEntryTests.swift` requires it: a heading written at `14:06Z` reads
+    /// back `14:06` on any Mac, in any zone, which is what makes the file portable and
+    /// the round trip through `PraticheController.entryHeadingFormatter` (pinned the
+    /// same way, for the same reason) an identity. `DateEntry` and `PlaudTimestamp`
+    /// already pin `secondsFromGMT: 0` on their own file-format formatters. The
+    /// timeline still *draws* the row in the reader's own zone
+    /// (`PraticaRowFormat.time`), as it does for a message's own header date.
     static let headingFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter
     }()
@@ -57,11 +67,9 @@ enum PraticaEntry {
     /// R-28: the midpoint between two neighbouring entries' timestamps, for
     /// «Inserisci qui». Pure arithmetic over the two dates the caller (which rows are
     /// the neighbours) hands it.
-    ///
-    /// RED stub: always returns `first`, unchanged - a test pinning the actual
-    /// midpoint fails on the assertion rather than by crashing.
     static func midpoint(between first: Date, and second: Date) -> Date {
-        first
+        Date(timeIntervalSinceReferenceDate:
+            (first.timeIntervalSinceReferenceDate + second.timeIntervalSinceReferenceDate) / 2)
     }
 
     /// Inserts a `## yyyy-MM-dd HH:mm <Kind> · <Controparte>` heading with one blank
@@ -69,11 +77,26 @@ enum PraticaEntry {
     /// timeline's own ascending order is a read-time property (ADR §D5), not something
     /// this insert has to preserve by placement.
     ///
-    /// RED stub: returns `source` completely unchanged, with a zero-length cursor at
-    /// its very end - wrong for every case, never a crash.
+    /// The returned `cursorRange` is the empty body line under the heading, never the
+    /// heading itself: the caller resolves it into
+    /// `Navigation.jumpToLine(range:ordinal:)`, and a caret on the heading would put
+    /// the first thing typed inside the entry's own title.
     static func insert(
         kind: Kind, at timestamp: Date, counterpart: String, in source: String
     ) -> Insertion {
-        Insertion(text: source, cursorRange: NSRange(location: (source as NSString).length, length: 0))
+        let heading = "## \(headingFormatter.string(from: timestamp)) \(kind.label) · \(counterpart)"
+
+        // One blank line between whatever the note already says and the new heading,
+        // and never two: `pratica.md` is a file a person also reads in Obsidian.
+        var text = source
+        if !text.isEmpty {
+            if !text.hasSuffix("\n") { text += "\n" }
+            if !text.hasSuffix("\n\n") { text += "\n" }
+        }
+        let headingEnd = (text as NSString).length + (heading as NSString).length
+        text += heading + "\n\n"
+        // Just past the heading's own newline, which is the start of the empty body
+        // line - a zero-length range, because nothing is selected, only placed.
+        return Insertion(text: text, cursorRange: NSRange(location: headingEnd + 1, length: 0))
     }
 }

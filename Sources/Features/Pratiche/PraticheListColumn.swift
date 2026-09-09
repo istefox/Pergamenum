@@ -17,9 +17,12 @@ struct PraticheListColumn: View {
     @Environment(PraticheController.self) private var pratiche
     @Environment(VaultController.self) private var vault
 
-    /// Task 8's wizard (`PraticaWizard`). Absent here, so «Nuova pratica…» carries its
-    /// identifier and is disabled rather than opening nothing.
-    var onNewPratica: (() -> Void)?
+    /// The pane's one command runner, so every row's context menu draws the catalogue
+    /// rather than a hand-written copy of it (ADR-0023 §D1).
+    let actions: PraticaCommandActions
+    /// «Nuova pratica…» - the same command the File menu and Cmd+Opt+P reach, handed
+    /// in by the pane so this column owns no second creation path.
+    let onNewPratica: () -> Void
 
     @State private var filter = ""
     @State private var collapsedClients: Set<String> = []
@@ -61,13 +64,11 @@ struct PraticheListColumn: View {
 
     private var toolbarRow: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            Button {
-                onNewPratica?()
-            } label: {
+            Button(action: onNewPratica) {
                 Image(systemName: "plus")
             }
             .buttonStyle(.borderless)
-            .disabled(onNewPratica == nil)
+            .disabled(vault.root == nil)
             .help("Nuova pratica…")
             .accessibilityLabel("Nuova pratica…")
             .accessibilityIdentifier("pratiche-new")
@@ -168,6 +169,10 @@ struct PraticheListColumn: View {
             Spacer(minLength: 0)
         }
         .padding(.leading, CGFloat(depth) * theme.spacing(.s))
+        // On the row's own body and never on a container of it (ADR-0023 §D2): a menu
+        // placed higher up reaches every descendant row and would offer this pratica's
+        // «Elimina» from the client heading above it.
+        .contextMenu { PraticaMenuItems.menu(for: pratica, actions: actions) }
         .accessibilityIdentifier("pratiche-row-\(pratica.id)")
         .badge(pratica.messagesSinceLastOpen)
         .tag(pratica.id)

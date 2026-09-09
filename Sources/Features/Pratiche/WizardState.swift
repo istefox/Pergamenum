@@ -56,6 +56,12 @@ struct WizardState: Equatable, Sendable {
     /// a person is never blocked mid-creation by a wrong default.
     var rootFolder: String = ""
     var seed: Seed = .later
+    /// Step 2's counterpart chips (screen 1d, «tutto @rossi-spa.it» included), lowercase
+    /// addresses. Additive to the tester's declaration and defaulted to empty, so every
+    /// test that builds a `WizardState()` is untouched: without it `makeDossier()` could
+    /// only ever write followed conversations, and the membership rule's counterpart and
+    /// keyword arms (R-13 items 3, and the whole tray) would find nothing to work with.
+    var counterparts: [String] = []
     var proposals: [Proposal] = []
     var selectedProposalIDs: Set<String> = []
     /// Step 3's free-text «Parole chiave» field, comma/newline separated - see
@@ -110,12 +116,22 @@ struct WizardState: Equatable, Sendable {
     /// step-2/3 fetch is expected to list the seed's own conversation first and
     /// pre-select it, so it needs no special case here).
     ///
-    /// RED stub: always the empty dossier at schema version `0` - every assertion
-    /// pinning a real conversation id, keyword or schema version fails until the coder
-    /// implements this for real.
+    /// Ordered by `proposals`, never by `selectedProposalIDs`, which is a `Set` and has
+    /// no order: the list a person reads back in `pratica.md` is the list the sheet
+    /// showed them.
     func makeDossier() -> Dossier {
         Dossier(
-            schemaVersion: 0, counterparts: [], conversations: [], keywords: [],
+            // §D12's `pergamenum-dossier`, `1` today. A literal for the same reason
+            // `Tests/DossierTests.swift` writes one: the number is the file format, and
+            // the day it changes is the day something has to migrate deliberately.
+            schemaVersion: 1,
+            counterparts: counterparts
+                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                .filter { !$0.isEmpty },
+            conversations: proposals
+                .filter { selectedProposalIDs.contains($0.id) }
+                .compactMap { Int($0.id) },
+            keywords: keywordList,
             included: [], excluded: [], ignored: []
         )
     }

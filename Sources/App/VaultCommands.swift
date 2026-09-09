@@ -28,6 +28,11 @@ struct VaultCommands: Commands {
             Button("Nuova board") { actions.run(.newBoard) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newBoard))
                 .disabled(!actions.canRun(.newBoard))
+            // Beside «Nuova board» and not in a menu of its own: a pratica is a folder
+            // this app creates, the same kind of thing as the two above it (R-20).
+            Button("Nuova pratica…") { actions.run(.newPratica) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newPratica))
+                .disabled(!actions.canRun(.newPratica))
             Button("Oggi") { actions.run(.dailyNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
                 .disabled(!actions.canRun(.dailyNote))

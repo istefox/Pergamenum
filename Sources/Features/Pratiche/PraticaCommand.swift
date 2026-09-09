@@ -62,10 +62,17 @@ enum PraticaCommand: String, CaseIterable, Sendable {
     /// `status-active`/`status-waiting` (`isActive == true`) or
     /// `status-archived`/`status-final` (R-34, `PraticheSidebarGrouping.isClosed`).
     ///
-    /// RED stub: always `[]` - every applicability assertion below fails until the
-    /// coder fills this in for real.
+    /// Declaration order is menu order, so the row's context menu and the pane's own
+    /// «Pratica» surface list the same commands in the same sequence without either of
+    /// them holding a list.
     static func available(isActive: Bool) -> [PraticaCommand] {
-        []
+        allCases.filter { command in
+            switch command {
+            case .close: isActive
+            case .reopen: !isActive
+            case .open, .rename, .refresh, .revealInFinder, .delete: true
+            }
+        }
     }
 
     /// The one stable AX identifier for this command's control, shared by the toolbar

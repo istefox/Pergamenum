@@ -116,9 +116,60 @@ final class PraticheController {
     private(set) var ledger: PraticaLedger = .empty
 
     /// How many tray proposals each pratica has, which is the dot on its row (R-33).
-    /// Task 7 owns the tray itself (`PraticaTrayStrip`) and fills this; empty here
-    /// means no dot, never a wrong one.
+    /// Derived from `trayProposals` by `updateTray(_:for:in:)`; empty here means no
+    /// dot, never a wrong one.
     var trayCounts: [String: Int] = [:]
+
+    /// R-30's «Da smistare» proposals, per pratica, as the last sync of that pratica
+    /// found them. Held per pratica rather than for the selection alone so the dot on
+    /// a row that is not open stays right (R-33).
+    private(set) var trayProposals: [String: [PraticaTrayModel.PraticaTrayProposal]] = [:]
+
+    /// The timeline row with key focus - what Backspace («Escludi») and the row
+    /// commands act on. Per window like `expansion`, never persisted.
+    var selectedEntryID: String?
+
+    /// The three requests a command raises that need a surface of their own: a name to
+    /// type, a destructive confirmation, and a regeneration to agree to. Held here
+    /// rather than as `@State` in a row, which is culled by the `List` the moment it
+    /// scrolls out of view - taking the half-typed name with it.
+    var renameRequest: PraticaListItem?
+    /// R-34's «Elimina pratica», the one alert in the whole feature.
+    var deletionRequest: PraticaListItem?
+    var regenerationRequest: PraticaRegenerationRequest?
+
+    /// R-30: the strip a person collapsed stays collapsed until they open it again,
+    /// for this window only.
+    var isTrayCollapsed = false
+
+    /// The chosen pratica's own proposals (R-30).
+    var selectedTray: [PraticaTrayModel.PraticaTrayProposal] {
+        guard let selection else { return [] }
+        return trayProposals[selection] ?? []
+    }
+
+    /// What a finished sync found waiting for this pratica (R-30). Also refreshes the
+    /// list, since the dot on a row is one of these counts.
+    func updateTray(
+        _ proposals: [PraticaTrayModel.PraticaTrayProposal],
+        for praticaPath: String,
+        in vault: VaultController
+    ) {
+        trayProposals[praticaPath] = proposals
+        trayCounts[praticaPath] = proposals.count
+        pratiche = Self.listItems(
+            in: vault, ledger: ledger, trayCounts: trayCounts,
+            rootFolder: vault.settings.pratiche.rootFolder
+        )
+    }
+
+    /// «Aggiungi» and «Ignora» both take the row off the strip at once: the write that
+    /// makes it stay away has already happened, and a row that lingers until the next
+    /// sync reads as a button that did nothing.
+    func dismissTrayProposal(_ conversationID: Int, for praticaPath: String, in vault: VaultController) {
+        let remaining = (trayProposals[praticaPath] ?? []).filter { $0.conversationID != conversationID }
+        updateTray(remaining, for: praticaPath, in: vault)
+    }
 
     /// `pratica.md`, `email/`, `allegati/` - the three names the sync engine already
     /// writes to (`PraticaSyncEngine`), spelled once on this side too.
@@ -219,7 +270,13 @@ final class PraticheController {
             details = [:]
             return
         }
-        let read = Self.readTimeline(praticaPath: selection, vaultRoot: root)
+        let read = Self.readTimeline(
+            praticaPath: selection,
+            vaultRoot: root,
+            // R-26: which messages have left Mail is ledger state, not something the
+            // folder on disk can say - a message deleted from Mail keeps its file.
+            notInStore: Set(ledger.byPraticaPath[selection]?.notInStore ?? [])
+        )
         timeline = PraticaTimelineModel.ordered(read.entries)
         details = read.details
     }
@@ -316,7 +373,57 @@ final class PraticheController {
         var imported = Set(state.importedMessageIDs)
         imported.formUnion(outcome.importedMessageIDs)
         state.importedMessageIDs = imported.sorted()
+        // R-16: what this run found gone from Mail joins what earlier runs found, and
+        // what it imported again leaves the list - a message that came back (a mailbox
+        // put back, an archive re-indexed) gets its link back with it.
+        var gone = Set(state.notInStore)
+        gone.formUnion(outcome.noLongerInMail)
+        gone.subtract(outcome.importedMessageIDs)
+        state.notInStore = gone.sorted()
         ledger.byPraticaPath[praticaPath] = state
+        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        }
+    }
+
+    /// «Rinomina» (R-34) moves the folder, and the ledger is keyed by the folder's
+    /// path: without this the renamed pratica reads as one nobody has ever synced,
+    /// and the next sync re-imports every message it already has on disk.
+    ///
+    /// The tray counts travel too, or the dot on the row goes out for no reason a
+    /// person could name (R-33).
+    func moveLedgerState(from oldPath: String, to newPath: String, in vault: VaultController) {
+        guard oldPath != newPath else { return }
+        if let state = ledger.byPraticaPath.removeValue(forKey: oldPath) {
+            ledger.byPraticaPath[newPath] = state
+        }
+        if let proposals = trayProposals.removeValue(forKey: oldPath) {
+            trayProposals[newPath] = proposals
+        }
+        if let count = trayCounts.removeValue(forKey: oldPath) {
+            trayCounts[newPath] = count
+        }
+        if selection == oldPath { selection = newPath }
+        guard let session = vault.session else { return }
+        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        }
+    }
+
+    /// «Rigenera…» (R-31): the message's files have just gone to the Trash, so the
+    /// ledger has to forget it too - a sync skips what `importedMessageIDs` names, and
+    /// a regeneration that only deleted the file would leave a hole nothing refills.
+    ///
+    /// The bridge triple goes with it: it is re-derived from the index on the next
+    /// import, and a stale ROWID is worse than none (§D3).
+    func forgetImportedMessage(_ messageID: String, of praticaPath: String, in vault: VaultController) {
+        guard var state = ledger.byPraticaPath[praticaPath] else { return }
+        state.importedMessageIDs.removeAll { $0 == messageID }
+        state.pending.removeAll { $0 == messageID }
+        state.notInStore.removeAll { $0 == messageID }
+        state.entries.removeAll { $0.messageID == messageID }
+        ledger.byPraticaPath[praticaPath] = state
+        guard let session = vault.session else { return }
         do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
@@ -496,14 +603,12 @@ extension PraticheController {
                 hasAttachments: !document.frontmatter.attachments.isEmpty
                     || !document.frontmatter.storeReferences.isEmpty,
                 messageID: document.frontmatter.messageID,
-                // RED stub (ADR-0155 §D1): `notInStore` now exists
-                // (`PraticaLedger.PraticaState.notInStore`) but is ignored here on
-                // purpose, so `PraticaControllerReadTimelineNotInStoreTests` fails on
-                // its assertion rather than passing by coincidence. The coder reads
-                // `document.frontmatter.messageID` against `notInStore` for real -
-                // `PraticaTimelineModel.subjectLink(messageID:isInMail:)` already
-                // implements the other half of R-26 and needs only a correct value here.
-                isInMail: true
+                // R-16/R-26: the ledger's own outcome, never a locator miss (§D4). A
+                // message the sync found gone from the store loses its link and gains
+                // «non più in Mail» through
+                // `PraticaTimelineModel.subjectLink(messageID:isInMail:)`; its files
+                // are untouched, which is the whole of R-16.
+                isInMail: !notInStore.contains(document.frontmatter.messageID)
             ))
             read.details[id] = PraticaRowDetail(
                 notePath: id,
@@ -618,21 +723,32 @@ extension PraticheController {
         return Dossier.parse(NoteDocument.parse(text).frontmatter.foreignKeys)
     }
 
-    /// `en_US_POSIX` and a fixed pattern: the heading is a file format, not a
+    /// `en_US_POSIX`, GMT and a fixed pattern: the heading is a file format, not a
     /// presentation, and a person whose Mac is set to another locale still has to be
     /// able to read their own pratica in Obsidian.
+    ///
+    /// The time zone matches `PraticaEntry.headingFormatter`'s, and has to: that is the
+    /// formatter that *writes* the heading this one reads back, and a zone difference
+    /// between them would shift every manual entry by the machine's own offset
+    /// (`Tests/PraticaEntryTests.swift` pins the pattern and the locale of the pair).
     private nonisolated static let entryHeadingFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter
     }()
 
     /// The timestamp the row's accessibility identifier carries
     /// (`pratiche-entry-<timestamp>`, UX-BLUEPRINT's checklist).
+    ///
+    /// GMT beside the two heading formatters above, and for the same reason: the id is
+    /// derived from a heading's own digits, so a zone difference would give one entry
+    /// two identifiers depending on where the Mac is standing.
     nonisolated static let entryIDFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyyMMddHHmm"
         return formatter
     }()
@@ -687,6 +803,12 @@ final class PraticaLiveSync {
     private struct Prepared: Sendable {
         var indexURL: URL
         var snapshot: MembershipStoreSnapshot
+        /// R-30: every conversation touching one of this pratica's counterparts inside
+        /// the proposal window, followed or not - a **second** snapshot on purpose, and
+        /// never folded into `snapshot`: `MembershipRule.candidates`'s keyword arm reads
+        /// every message of the snapshot it is given, so an unfollowed conversation
+        /// added there would start importing itself.
+        var trayConversations: [Int: [MailMessageRow]]
     }
 
     /// What `prepare(...)` answers. Not a `Result`: the failure side is the Italian
@@ -709,6 +831,15 @@ final class PraticaLiveSync {
         let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
         let onDisk = Set(state.importedMessageIDs)
         let mailRoot = MailStoreLocation.resolve()
+        // R-30/SPEC "Membership rule": the window the tray proposes inside, and the
+        // conversations somebody else's pratica already follows - read here, on the
+        // main actor, because both come from state this object is not allowed to touch
+        // from the detached task below.
+        let now = Date()
+        let window = now.addingTimeInterval(-Double(settings.proposalWindowDays) * 86_400)...now
+        let claimed = Self.conversationsClaimedByOtherPratiche(
+            than: praticaPath, among: controller.pratiche, vaultRoot: root
+        )
 
         controller.beginSync(praticaPath)
         defer { controller.endSync() }
@@ -716,7 +847,7 @@ final class PraticaLiveSync {
         let outcome = await Task.detached(priority: .utility) {
             Self.prepare(
                 mailRoot: mailRoot, stateDirectory: stateDirectory,
-                dossier: dossier, ledgerEntries: state.entries
+                dossier: dossier, ledgerEntries: state.entries, proposalWindow: window
             )
         }.value
 
@@ -755,13 +886,46 @@ final class PraticaLiveSync {
         } catch {
             controller.report("Sincronizzazione non riuscita: \(error.localizedDescription)")
         }
+
+        // After the import and not before it: a conversation this run has just started
+        // following is no longer a proposal, and the tray would otherwise offer back
+        // what the person just accepted.
+        let followed = PraticheController.dossier(at: praticaPath, vaultRoot: root) ?? dossier
+        let tray = MembershipRule.trayCandidates(
+            dossier: followed,
+            store: MembershipStoreSnapshot(
+                conversations: prepared.trayConversations, messagesByID: [:]
+            ),
+            window: window,
+            claimedByOtherPratiche: claimed
+        )
+        controller.updateTray(
+            PraticaTrayModel.proposals(from: tray), for: praticaPath, in: vault
+        )
+    }
+
+    /// R-13's `claimedByOtherPratiche`: every conversation any *other* pratica already
+    /// follows, read from the files rather than from the index, for the same reason
+    /// `PraticheController.dossier(at:vaultRoot:)` does - a sync acts on the dossier as
+    /// it is now, not as the last scan saw it.
+    private static func conversationsClaimedByOtherPratiche(
+        than praticaPath: String, among pratiche: [PraticaListItem], vaultRoot: URL
+    ) -> Set<Int> {
+        var claimed: Set<Int> = []
+        for pratica in pratiche where pratica.id != praticaPath {
+            guard let dossier = PraticheController.dossier(at: pratica.id, vaultRoot: vaultRoot)
+            else { continue }
+            claimed.formUnion(dossier.conversations)
+        }
+        return claimed
     }
 
     /// The whole Mail-touching half, off the main actor. A named failure rather than an
     /// optional: «Mail sta scrivendo» and «nessun archivio di Mail» are different
     /// sentences and only one of them is worth a second attempt (ADR §D2).
     private nonisolated static func prepare(
-        mailRoot: URL, stateDirectory: URL, dossier: Dossier, ledgerEntries: [PraticaLedger.Entry]
+        mailRoot: URL, stateDirectory: URL, dossier: Dossier, ledgerEntries: [PraticaLedger.Entry],
+        proposalWindow: ClosedRange<Date>
     ) -> Preparation {
         let generation: URL
         switch MailStoreCopy.publish(from: mailRoot, into: stateDirectory) {
@@ -791,9 +955,21 @@ final class PraticaLiveSync {
             }
         }
 
+        // R-30: the counterpart query the tray is made of
+        // (`MailStoreReader.conversations(counterpart:within:)`, written for exactly
+        // this), asked once per counterpart and folded into one map - two counterparts
+        // in one conversation are one proposal, not two.
+        var trayConversations: [Int: [MailMessageRow]] = [:]
+        for address in dossier.counterparts {
+            for conversation in reader.conversations(counterpart: address, within: proposalWindow) {
+                trayConversations[conversation.conversationID] = conversation.messages
+            }
+        }
+
         return .ready(Prepared(
             indexURL: indexURL,
-            snapshot: MembershipStoreSnapshot(conversations: conversations, messagesByID: messagesByID)
+            snapshot: MembershipStoreSnapshot(conversations: conversations, messagesByID: messagesByID),
+            trayConversations: trayConversations
         ))
     }
 }
