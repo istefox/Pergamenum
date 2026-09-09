@@ -157,16 +157,32 @@ extension NoteTextView.Coordinator {
         let currentMatch = parent.currentMatch.flatMap { index in
             parent.matches.indices.contains(index) ? parent.matches[index] : nil
         }
+        let selection = textView.selectedRange()
+        let markedRange = textView.markedRange()
         let revealed = MarkupReveal.paragraphs(
-            in: textView.string,
-            selection: textView.selectedRange(),
-            markedRange: textView.markedRange(),
-            currentMatch: currentMatch
+            in: textView.string, selection: selection, markedRange: markedRange, currentMatch: currentMatch
         )
-        guard revealed != lastRevealed else { return }
+        // Off means `[:]`, byte-for-byte `MarkupHiding`'s R-07 rule at this layer too
+        // (ADR-0037 §D6): a text view with the setting off never asks `MarkupReveal` to
+        // parse a single paragraph.
+        let revealedSpans = parent.revealsInlineSpans
+            ? MarkupReveal.inlineSpans(
+                in: textView.string, selection: selection, markedRange: markedRange, currentMatch: currentMatch
+              )
+            : [:]
+        // Both must be unchanged to skip work (ADR-0037 §D6) - a caret held still while
+        // only the setting flips must still redraw, which a guard on `lastRevealed` alone
+        // would miss.
+        guard revealed != lastRevealed || revealedSpans != lastRevealedSpans else { return }
         lastRevealed = revealed
+        lastRevealedSpans = revealedSpans
 
-        let changed = decorations.apply(revealedParagraphs: revealed)
+        // Each `apply` call answers with only the keys that changed against what the
+        // delegate already held, so unioning the two is exactly "every paragraph either
+        // trigger touched" and never the whole document.
+        let changedParagraphs = decorations.apply(revealedParagraphs: revealed)
+        let changedSpans = decorations.apply(revealedSpans: revealedSpans)
+        let changed = changedParagraphs.union(changedSpans)
         guard !changed.isEmpty, let storage = textView.textStorage else { return }
         let text = storage.string as NSString
         storage.beginEditing()

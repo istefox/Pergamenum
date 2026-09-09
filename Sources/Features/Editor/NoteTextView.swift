@@ -22,6 +22,12 @@ struct NoteTextView: NSViewRepresentable {
     /// `spellCheck`'s default: a text view with no vault behind it behaves exactly as
     /// before, and the vault's own default is what a real note editor reads through.
     var hidesMarkup = false
+    /// Whether emphasis/strikethrough/link markers are revealed span by span rather than
+    /// paragraph by paragraph (ADR-0037 §D2). **`false` here, `true` in `VaultSettings`,
+    /// deliberately** - the same contrast `hidesMarkup` above documents: a text view with
+    /// no vault behind it behaves exactly as before, and the vault's own default is what a
+    /// real note editor reads through.
+    var revealsInlineSpans = false
     /// Whether the text column is capped to a readable width and centred, rather than
     /// filling the whole pane (ADR-0030 §D6). **`false` here, `true` in `VaultSettings`,
     /// deliberately** - the same contrast `hidesMarkup` above documents: a text view with

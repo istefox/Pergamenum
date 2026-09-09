@@ -92,6 +92,7 @@ struct DiaryView: View {
             tagSuggestions: vault.tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
+            revealsInlineSpans: vault.settings.revealsInlineSpans,
             readableWidth: vault.settings.readableWidth,
             onFollowLink: follow,
             vaultRoot: vault.root,

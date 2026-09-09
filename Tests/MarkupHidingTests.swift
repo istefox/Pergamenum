@@ -1225,3 +1225,97 @@ private final class NotificationCounter: @unchecked Sendable {
         #expect(clearedAgain.isEmpty)
     }
 }
+
+// MARK: - The note editor's own wiring (ADR-0037 §D6/§D7; plan
+// `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 5)
+//
+// Drives a real `NoteTextView.Coordinator` + `NSTextView`, the shape `MarkupCoordinator`
+// above already uses. `EditorDecorationDelegate.revealedSpans` has no test accessor - that
+// file is out of this task's budget (ADR-0049) - so "the span table names exactly one
+// paragraph key with exactly one range" is read back through `coordinator.lastRevealedSpans`
+// instead: it is assigned the very value handed to `decorations.apply(revealedSpans:)` right
+// before that call, in `NoteTextView+Reveal.swift`, so the two can never disagree.
+@MainActor
+@Suite struct MarkupCoordinatorInlineSpans {
+    /// Two bold runs, neither touching the note's very first character - unlike
+    /// `MarkupHidingInlineSpans`'s "**uno** e **due**\n" fixture, whose first run starts at
+    /// offset 0 and would already be (adjacency-)revealed by the harness's own baseline
+    /// caret placement (ADR §D5's closed interval), leaving a test that moves the caret
+    /// *into* that run unable to observe a real transition.
+    private static let note = "inizio **uno** e **due** fine\n"
+    /// Inside "uno", well within the first run's whole construct `[7, 14)`.
+    private static let insideFirstRun = 10
+    /// "e" between the two runs: 15 > `NSMaxRange(firstBoldSpan)` (14) and 15 < the second
+    /// run's own start (17).
+    private static let outsideBothRuns = 15
+    private static let firstBoldSpan = NSRange(location: 7, length: 7)
+
+    private static func editor(revealsInlineSpans: Bool) -> (NSTextView, NoteTextView.Coordinator) {
+        let view = NoteTextView(
+            text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
+            hidesMarkup: true, revealsInlineSpans: revealsInlineSpans, onFollowLink: { _ in }
+        )
+        let coordinator = view.makeCoordinator()
+        let textView = NSTextView(usingTextLayoutManager: true)
+        textView.delegate = coordinator
+        textView.textContentStorage?.delegate = coordinator.decorations
+        textView.string = Self.note
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        return (textView, coordinator)
+    }
+
+    @Test func aCaretInsideOneBoldRunNamesExactlyThatParagraphAndSpan() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+
+        #expect(coordinator.lastRevealedSpans.count == 1)
+        #expect(coordinator.lastRevealedSpans[0] == [Self.firstBoldSpan])
+    }
+
+    @Test func movingTheCaretOutOfBothRunsEmptiesTheTable() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        #expect(!coordinator.lastRevealedSpans.isEmpty)
+
+        textView.setSelectedRange(NSRange(location: Self.outsideBothRuns, length: 0))
+        #expect(coordinator.lastRevealedSpans.isEmpty)
+    }
+
+    @Test func flippingTheSettingOffWithTheCaretStillInsideARunEmptiesTheTable() {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        #expect(!coordinator.lastRevealedSpans.isEmpty)
+
+        // The caret never moves - only the setting does, so nothing but the flag flip can
+        // be what empties the table.
+        coordinator.parent.revealsInlineSpans = false
+        coordinator.applyReveal(to: textView)
+        #expect(coordinator.lastRevealedSpans.isEmpty)
+    }
+
+    @Test func callingApplyRevealTwiceWithoutASelectionChangeInvalidatesNothingTheSecondTime() throws {
+        let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
+        let storage = try #require(textView.textStorage)
+
+        // Same mechanism as `MarkupCoordinator`'s own test above: the notification is what
+        // `storage.edited(…)` plus `endEditing()` fires, the observable half of "did this
+        // actually touch the layout".
+        let counter = NotificationCounter()
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil
+        ) { _ in counter.increment() }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // A genuine change first - moving into the first run touches the span table, unlike
+        // `MarkupCoordinator`'s heading-only fixture.
+        textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
+        let afterTheChange = counter.count
+        #expect(afterTheChange > 0)
+
+        // The same selection again, with the setting also unchanged: both `lastRevealed`
+        // and `lastRevealedSpans` must already match, so this call is a no-op.
+        coordinator.applyReveal(to: textView)
+        #expect(counter.count == afterTheChange)
+    }
+}
