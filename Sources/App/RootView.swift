@@ -246,10 +246,16 @@ struct RootView: View {
         case .views: viewsPane
         case .starred: starredPane
         case .recordings: recordingsPane
-        // Tester-declared boundary (ADR-0155 §D1): `PratichePane` is Task 6/7's coder
-        // body, not built by this batch's tests. `EmptyView()` keeps this exhaustive
-        // switch compiling rather than a real placeholder screen.
-        case .pratiche: EmptyView()
+        case .pratiche: pratichePane
+        }
+    }
+
+    @ViewBuilder
+    private var pratichePane: some View {
+        if vault.root == nil {
+            needsVault("Una pratica è una cartella del vault che si riempie da Mail: senza un vault non c'è dove tenerla.")
+        } else {
+            PratichePane()
         }
     }
 

@@ -120,6 +120,19 @@ final class Navigation {
     /// holds three of the app's answers had no key and no menu entry.
     var isShowingInspector = true
 
+    /// Whether the Pratiche pane shows its inspector - `pratica.md`, which is the one
+    /// place that file is edited (ADR-0036 §D13).
+    ///
+    /// A flag of its own rather than a second reader of `isShowingInspector`: the two
+    /// panels hold different things, and a person who keeps the note pane's backlinks
+    /// open has not asked to see a pratica's note beside every timeline. Closed by
+    /// default, unlike the Note pane's, because the timeline is the pane's subject and
+    /// the note is the thing you go and open (UX-BLUEPRINT "Navigation structure").
+    ///
+    /// Task 7 makes «Mostra/Nascondi nota della pratica» pane-aware in the Vista menu;
+    /// the pane's own toolbar toggle (`pratiche-inspector-toggle`) reaches it today.
+    var isShowingPraticaInspector = false
+
     /// Whether the Workspace shows its tray - unplaced items, linked tasks, and the
     /// board dashboard of ADR-0021 §D7.
     ///

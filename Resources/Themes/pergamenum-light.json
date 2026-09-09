@@ -15,7 +15,10 @@
     "surface": {
       "card": { "$value": "#FFFFFF" },
       "raised": { "$value": "#FFFFFF" },
-      "sunken": { "$value": "#F2EFE9" }
+      "sunken": { "$value": "#F2EFE9" },
+      "received": { "$value": "#F1EFEA" },
+      "sent": { "$value": "#E7EEF6" },
+      "entry": { "$value": "#FBF2D9" }
     },
     "border": {
       "subtle": { "$value": "#E5E0D8" },

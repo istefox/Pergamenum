@@ -69,10 +69,16 @@ enum PraticaTimelineModel {
     /// primary date could not be parsed (`MessageDocument.parse` defaults an
     /// unparseable `pergamenum-mail-date` to `.distantPast`).
     ///
-    /// Stubbed to the primary date alone, ignoring the fallback - wrong whenever
-    /// `frontmatter.date == .distantPast` and `frontmatter.received` is not `nil`.
+    /// `.distantPast` is the exact value `MessageDocument.parse` leaves behind for a
+    /// `pergamenum-mail-date` it could not read, so it is the signal - not a heuristic
+    /// on the age of the message. A message with no readable date and no received date
+    /// keeps `.distantPast` and sorts to the top of the timeline, where a person can
+    /// see that something is wrong with it.
     static func sortDate(of frontmatter: MessageDocument.MailFrontmatter) -> Date {
-        frontmatter.date
+        guard frontmatter.date == .distantPast, let received = frontmatter.received else {
+            return frontmatter.date
+        }
+        return received
     }
 
     /// Interleaves messages and manual entries by `date`, ascending (R-23): the
@@ -80,9 +86,13 @@ enum PraticaTimelineModel {
     /// the newest, matching SPEC "Timeline model"'s "the view scrolls to the bottom
     /// (newest) on open".
     ///
-    /// Stubbed as a pass-through - wrong whenever the input is not already sorted.
+    /// The id breaks a tie, so two messages carrying the same header second (an
+    /// Exchange conversation sent to several mailboxes at once produces them) keep one
+    /// stable order across reloads instead of swapping places under the reader.
     static func ordered(_ entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry] {
-        entries
+        entries.sorted { left, right in
+            left.date == right.date ? left.id < right.id : left.date < right.date
+        }
     }
 
     // MARK: - R-32: filters
@@ -92,9 +102,43 @@ enum PraticaTimelineModel {
     /// only by the text filter"). Sender and «Solo con allegati» apply to messages
     /// only and never remove a `.note`/`.call` row.
     ///
-    /// Stubbed as a pass-through - wrong whenever any of the three filters is active.
-    static func filtered(_ entries: [PraticaTimelineEntry], by filter: PraticaTimelineFilter) -> [PraticaTimelineEntry] {
-        entries
+    /// The asymmetry is R-32's own: «Solo con allegati» and the sender menu are
+    /// questions about the correspondence, and a phone call has neither a sender
+    /// address nor an attachment - narrowing them away would empty the timeline of the
+    /// very entries a person wrote by hand. The text field is a question about the
+    /// whole pratica, so it does reach them.
+    static func filtered(
+        _ entries: [PraticaTimelineEntry], by filter: PraticaTimelineFilter
+    ) -> [PraticaTimelineEntry] {
+        entries.filter { entry in
+            matchesText(entry, filter.text)
+                && matchesSender(entry, filter.sender)
+                && matchesAttachments(entry, onlyWithAttachments: filter.attachmentsOnly)
+        }
+    }
+
+    private static func matchesText(_ entry: PraticaTimelineEntry, _ text: String) -> Bool {
+        let needle = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return true }
+        return [entry.subject, entry.senderDisplayName, entry.bodyPreview].contains {
+            $0.localizedCaseInsensitiveContains(needle)
+        }
+    }
+
+    /// A substring match rather than an equality one: the menu offers addresses, and
+    /// what a row carries is the display name Mail put on the header
+    /// (`"Mario Rossi <m.rossi@rossi-spa.it>"` as often as the bare address).
+    private static func matchesSender(_ entry: PraticaTimelineEntry, _ sender: String?) -> Bool {
+        guard let sender, !sender.isEmpty else { return true }
+        guard entry.kind == .message else { return true }
+        return entry.senderDisplayName.localizedCaseInsensitiveContains(sender)
+    }
+
+    private static func matchesAttachments(
+        _ entry: PraticaTimelineEntry, onlyWithAttachments: Bool
+    ) -> Bool {
+        guard onlyWithAttachments, entry.kind == .message else { return true }
+        return entry.hasAttachments
     }
 
     // MARK: - R-25, R-39: lane and direction
@@ -102,9 +146,9 @@ enum PraticaTimelineModel {
     /// A message's lane follows its direction; a manual entry is always `.entry`
     /// (SPEC "Timeline model" Lane paragraph).
     ///
-    /// Stubbed to always answer `.entry` - wrong for every `.message` entry.
     static func lane(for entry: PraticaTimelineEntry) -> PraticaLane {
-        .entry
+        guard entry.kind == .message else { return .entry }
+        return entry.direction == .sent ? .sent : .received
     }
 
     /// Direction is carried by more than colour (R-25: "always redundant"): a glyph,
@@ -112,22 +156,35 @@ enum PraticaTimelineModel {
     /// alone - `laneColorToken(_:)` is what the coder still reads through a token,
     /// this is the accessible-redundancy half.
     ///
-    /// Stubbed to the empty string - wrong for every lane.
+    /// The two arrows are the blueprint's own («direction glyph `arrow.down.left` /
+    /// `arrow.up.right` beside the time for colour-blind users»); the third is the
+    /// pencil the manual-entry row already carries, so the lane and the row agree.
     static func laneGlyph(_ lane: PraticaLane) -> String {
-        ""
+        switch lane {
+        case .received: "arrow.down.left"
+        case .sent: "arrow.up.right"
+        case .entry: "square.and.pencil"
+        }
     }
 
-    /// Stubbed to the empty string - wrong for every lane.
+    /// The word beside the glyph, and the first word of a row's composed
+    /// accessibility label («Ricevuta, 10 giugno 14:06, Mario Rossi, …»).
     static func laneLabel(_ lane: PraticaLane) -> String {
-        ""
+        switch lane {
+        case .received: "Ricevuta"
+        case .sent: "Inviata"
+        case .entry: "Voce"
+        }
     }
 
     /// The three tokens declared in `Sources/DesignSystem/TokenKeys.swift`
     /// (`.surfaceReceived`/`.surfaceSent`/`.surfaceEntry`, R-39).
-    ///
-    /// Stubbed to `.surfaceReceived` for every lane - wrong for `.sent`/`.entry`.
     static func laneColorToken(_ lane: PraticaLane) -> ColorToken {
-        .surfaceReceived
+        switch lane {
+        case .received: .surfaceReceived
+        case .sent: .surfaceSent
+        case .entry: .surfaceEntry
+        }
     }
 
     // MARK: - R-26: subject link
@@ -136,10 +193,21 @@ enum PraticaTimelineModel {
     /// a `message://` URL when the message is still in Mail, or `nil` plus a caption
     /// when the ledger marked it «non più in Mail» (R-16).
     ///
-    /// Stubbed to `(nil, nil)` regardless of input - wrong for both branches.
+    /// Through `MailURL.forMessageID` and never through a second encoding of the same
+    /// id (ADR §D9, C5): `EmailHeaders.mailURL` and `MailLink.url(forMessageID:)` both
+    /// delegate to it, and a third spelling here is exactly the drift that measurement
+    /// closed.
+    ///
+    /// «non più in Mail» is shown for `isInMail == false` alone - a caption is what the
+    /// ledger's `.notInStore` earns, never a failure to locate the `.emlx` (R-16).
     static func subjectLink(messageID: String?, isInMail: Bool) -> (url: URL?, caption: String?) {
-        (nil, nil)
+        guard isInMail else { return (nil, notInMailCaption) }
+        return (MailURL.forMessageID(messageID), nil)
     }
+
+    /// Named once so the row and `Tests/PraticaTimelineTests.swift` read the same
+    /// string rather than two copies that can drift apart.
+    static let notInMailCaption = "non più in Mail"
 
     // MARK: - R-24: expansion (chevron / Opt+click expand-collapse-all)
 
@@ -159,16 +227,31 @@ enum PraticaTimelineModel {
         }
 
         /// The chevron's own click: toggles exactly one row.
-        ///
-        /// Stubbed as a no-op - wrong for every id.
         mutating func toggle(_ id: String) {
+            if expandedIDs.contains(id) {
+                expandedIDs.remove(id)
+            } else {
+                expandedIDs.insert(id)
+            }
         }
 
         /// Opt+click on any chevron (R-24): expands every id when at least one of
         /// `ids` is collapsed, else collapses all of them.
         ///
-        /// Stubbed as a no-op - wrong for every non-empty `ids`.
+        /// "At least one collapsed means expand" rather than "the majority wins": with
+        /// one row of forty left closed, the gesture a person expects is the one that
+        /// opens it, not the one that closes the other thirty-nine.
+        ///
+        /// Only the ids handed in are touched. The set can hold rows of a pratica that
+        /// is no longer on screen - collapsing those too would silently undo the state
+        /// of a timeline the person is coming back to.
         mutating func toggleAll(_ ids: [String]) {
+            guard !ids.isEmpty else { return }
+            if ids.allSatisfy({ expandedIDs.contains($0) }) {
+                expandedIDs.subtract(ids)
+            } else {
+                expandedIDs.formUnion(ids)
+            }
         }
     }
 }

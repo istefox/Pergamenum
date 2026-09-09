@@ -54,10 +54,35 @@ enum PraticheSidebarGrouping {
     /// `status-final` pratiche are returned flat, under the caller's own «Chiuse»
     /// section, in the same recency order.
     ///
-    /// Stubbed to `(open: [], closed: pratiche)` - wrong whenever `pratiche` contains
-    /// anything that is not closed.
+    /// A client's own recency is the recency of its most recent pratica, not an
+    /// average and not the alphabet: the group a person worked in this morning is the
+    /// one that should be under the pointer when the pane opens.
+    ///
+    /// The title breaks a tie on both axes, so two pratiche touched in the same second
+    /// (a sync writing several files) keep one stable order between reloads instead of
+    /// swapping rows under the reader.
     static func grouped(_ pratiche: [PraticaListItem]) -> (open: [PraticaClientGroup], closed: [PraticaListItem]) {
-        (open: [], closed: pratiche)
+        let closed = pratiche.filter { isClosed(status: $0.status) }.sorted(by: byRecency)
+        let open = pratiche.filter { !isClosed(status: $0.status) }
+
+        var byClient: [String: [PraticaListItem]] = [:]
+        for pratica in open { byClient[pratica.client, default: []].append(pratica) }
+
+        let groups = byClient
+            .map { PraticaClientGroup(client: $0.key, pratiche: $0.value.sorted(by: byRecency)) }
+            .sorted { left, right in
+                let leftMost = left.pratiche.first?.lastActivity ?? .distantPast
+                let rightMost = right.pratiche.first?.lastActivity ?? .distantPast
+                return leftMost == rightMost ? left.client < right.client : leftMost > rightMost
+            }
+
+        return (open: groups, closed: closed)
+    }
+
+    private static func byRecency(_ left: PraticaListItem, _ right: PraticaListItem) -> Bool {
+        left.lastActivity == right.lastActivity
+            ? left.title < right.title
+            : left.lastActivity > right.lastActivity
     }
 
     /// Whether `status` is one of the two «Chiuse» statuses (R-33, R-34's own

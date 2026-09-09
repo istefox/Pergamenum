@@ -1,3 +1,5 @@
+import AppKit
+import Darwin
 import Foundation
 
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
@@ -19,18 +21,32 @@ enum FullDiskAccessProbe {
         case notGranted
     }
 
-    /// Tester-declared boundary (ADR-0155 §D1): the coder implements the real
-    /// `open(2)`/`errno` check. The path to probe is a parameter, never resolved to
-    /// `~/Library/Mail` inside this function, so a test can point it at a fixture
-    /// file it made unreadable (`chmod 000`) and never touch the real store - the
-    /// same boundary `MailStoreLocation` already draws for R-19.
+    /// The path to probe is a parameter, never resolved to `~/Library/Mail` inside
+    /// this function, so a test can point it at a fixture file it made unreadable
+    /// (`chmod 000`) and never touch the real store - the same boundary
+    /// `MailStoreLocation` already draws for R-19.
     ///
-    /// Stubbed to always answer `.granted` - a wrong-but-safe default rather than
-    /// `fatalError`, so a test that calls this exercises a real (failing) assertion
-    /// instead of crashing the whole xctest process (the `Theme.emergency`
-    /// force-unwrap lesson, applied here to a probe instead of a token lookup).
+    /// `open(2)` and nothing else: TCC denies a read of `~/Library/Mail` silently and
+    /// never prompts, so the attempt *is* the answer. `EPERM` is what a TCC denial
+    /// returns and `EACCES` is what plain POSIX permissions return (the `chmod 000`
+    /// fixture in `Tests/PraticheControllerTests.swift`); both mean "not granted",
+    /// and they are the only two errnos that do.
+    ///
+    /// **Every other failure, `ENOENT` first among them, answers `.granted`** (plan
+    /// "Risks": "a probe that mistakes «Mail not installed» for «not granted»"). A
+    /// missing store is «Nessun archivio di Mail trovato», a different sentence on a
+    /// different surface; showing the Full Disk Access banner for it would send a
+    /// person into System Settings to grant an access that was never the problem.
     static func state(probing path: URL) -> State {
-        .granted
+        let descriptor = Darwin.open(path.path(percentEncoded: false), O_RDONLY)
+        guard descriptor < 0 else {
+            Darwin.close(descriptor)
+            return .granted
+        }
+        // Read immediately: any call in between - including a `URL` accessor - can
+        // overwrite `errno` with its own result.
+        let failure = errno
+        return failure == EPERM || failure == EACCES ? .notGranted : .granted
     }
 
     /// Production call sites' convenience: probes the real Envelope Index under
@@ -44,8 +60,20 @@ enum FullDiskAccessProbe {
     }
 
     /// Deep link to Privacy & Security › Full Disk Access (SPEC "Full Disk Access").
-    /// Coder's body - `NSWorkspace.open` has no fixture-safe fake, so no unit test
-    /// calls this.
+    /// `NSWorkspace.open` has no fixture-safe fake, so no unit test calls this; the
+    /// banner's button is what reaches it (screen 1c).
+    ///
+    /// `if let` rather than a force-unwrapped literal: a constant `URL` string still
+    /// goes through a failable initialiser, and this repo takes no `!` in production.
+    /// A URL that stopped resolving on a future macOS opens nothing, which is the
+    /// behaviour a banner can survive - a crash is not.
     static func openSystemSettings() {
+        guard let url = URL(string: settingsPaneURLString) else { return }
+        NSWorkspace.shared.open(url)
     }
+
+    /// The Settings pane deep link, named once so the banner's help text and this call
+    /// cannot drift apart.
+    static let settingsPaneURLString =
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"
 }

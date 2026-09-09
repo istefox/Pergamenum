@@ -36,6 +36,22 @@ struct PraticaWatcher: Equatable, Sendable {
     private(set) var lastWindowKeySyncAt: Date?
     private(set) var pendingFSEventsFireAt: Date?
 
+    /// The last `Eligibility` this watcher was told, and the whole of how R-17's
+    /// closed-pratica rule reaches the FSEvents path.
+    ///
+    /// Neither `registerFSEventsPulse(now:)` nor `isFSEventsFireDue(now:)` takes an
+    /// `Eligibility` - a pulse is a fact about `~/Library/Mail`, not about one
+    /// pratica's status - so the status has to be remembered from the triggers that do
+    /// carry it. `PraticheController.trigger(_:kind:eligibility:now:)` passes one on
+    /// every `.vaultOpen`/`.windowKey`/`.manualRefresh`, and the controller's vault-open
+    /// pass reaches **every** pratica, closed ones included, so a watcher has been told
+    /// its pratica's status before any pulse can be observed in the running app.
+    ///
+    /// `.automatic` until told otherwise: a watcher exists for a pratica the app is
+    /// watching, and defaulting the other way would silence the ordinary case for a
+    /// caller that reached the FSEvents path first.
+    private var lastKnownEligibility: Eligibility = .automatic
+
     init(lastWindowKeySyncAt: Date? = nil, pendingFSEventsFireAt: Date? = nil) {
         self.lastWindowKeySyncAt = lastWindowKeySyncAt
         self.pendingFSEventsFireAt = pendingFSEventsFireAt
@@ -44,20 +60,31 @@ struct PraticaWatcher: Equatable, Sendable {
     /// `.vaultOpen` and `.manualRefresh` fire immediately, subject only to
     /// `eligibility` - `.manualRefresh` ignores it altogether (R-17).
     ///
-    /// Tester-declared boundary (ADR-0155 §D1), stubbed to the wrong-but-safe
-    /// default `true` regardless of input, which is what keeps every red test below
-    /// red rather than crashing: the coder's body is the actual eligibility switch.
+    /// Non-`mutating` by the tester's signature, so this one records nothing: the
+    /// eligibility a later FSEvents pulse reads comes from `decideWindowKeyTrigger`
+    /// and from `PraticheController`'s own vault-open pass over every pratica.
     func decideImmediateTrigger(_ trigger: Trigger, eligibility: Eligibility, now: Date) -> Bool {
-        true
+        // «Aggiorna ora» is the one escape hatch a closed pratica has (R-17): it
+        // answers `true` whatever the status says.
+        guard trigger != .manualRefresh else { return true }
+        return eligibility == .automatic
     }
 
     /// The window-key trigger: an eligible pratica syncs once, then is throttled for
     /// `windowKeyThrottle` seconds (R-17) - `mutating` because a real sync updates
     /// `lastWindowKeySyncAt` so the next call within the window answers `false`.
     ///
-    /// Stubbed the same wrong-but-safe way as `decideImmediateTrigger`.
+    /// Only a call that actually fires moves the mark. Recording a throttled call too
+    /// would slide the window forward on every window activation, and a person moving
+    /// between apps would never reach a sync at all.
     mutating func decideWindowKeyTrigger(eligibility: Eligibility, now: Date) -> Bool {
-        true
+        lastKnownEligibility = eligibility
+        guard eligibility == .automatic else { return false }
+        if let last = lastWindowKeySyncAt, now.timeIntervalSince(last) < Self.windowKeyThrottle {
+            return false
+        }
+        lastWindowKeySyncAt = now
+        return true
     }
 
     /// Records an FSEvents pulse: the fire time is `now + fsEventsDebounce`, and a
@@ -65,17 +92,21 @@ struct PraticaWatcher: Equatable, Sendable {
     /// (debounce, not throttle) - so a burst of writes to `~/Library/Mail` collapses
     /// into one sync.
     ///
-    /// Stubbed as a no-op: `pendingFSEventsFireAt` never actually moves, which is
-    /// what keeps `isFSEventsFireDue` red below (nothing is ever scheduled).
     mutating func registerFSEventsPulse(now: Date) {
+        pendingFSEventsFireAt = now.addingTimeInterval(Self.fsEventsDebounce)
     }
 
     /// Whether a previously registered FSEvents pulse's debounce window has elapsed
     /// as of `now` - the caller polls this instead of sleeping for real.
     ///
-    /// Stubbed to `false` always, the wrong-but-safe complement of
-    /// `registerFSEventsPulse`'s no-op above.
+    /// The eligibility gate sits here and not in `registerFSEventsPulse` on purpose:
+    /// a pulse recorded before the pratica's status was known must still refuse to
+    /// fire once it is known (R-17), while the pulse itself stays a true fact about
+    /// the mail store either way.
     func isFSEventsFireDue(now: Date) -> Bool {
-        false
+        guard lastKnownEligibility == .automatic, let fireAt = pendingFSEventsFireAt else {
+            return false
+        }
+        return now >= fireAt
     }
 }

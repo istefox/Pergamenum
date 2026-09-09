@@ -81,7 +81,13 @@ enum SidebarItem: Hashable, Identifiable, Sendable {
                 // «Registrazioni» last (ADR-0032 §D15): the blueprint asks for the new row
                 // at the end of the sidebar, and LAVORO is the group it belongs to - an
                 // import is work done on the vault, not a place inside it.
-                [.pane(.tasks), .pane(.conformance), .pane(.recordings)]
+                //
+                // «Pratiche» immediately before it (ADR-0036, R-33, UX-BLUEPRINT
+                // "Navigation structure"): a pratica is a place inside the vault you come
+                // back to, so it sits above the import row rather than after it. The app
+                // sidebar stays flat - the pratiche tree lives in the pane's own list
+                // column, as the notes do.
+                [.pane(.tasks), .pane(.conformance), .pane(.pratiche), .pane(.recordings)]
             }
         }
     }
