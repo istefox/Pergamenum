@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=100 -->
+<!-- project-tasks: prefix=PG lastId=103 -->
 # PROJECT TASKS
 
-Updated: 2026-09-07 · Open: 6 (P1: 0) · In progress: 0
+Updated: 2026-09-08 · Open: 9 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -126,6 +126,31 @@ _none_
   - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
   - **Closed 2026-09-02.** New **§16 Cattura** (ADR-0008) and **§17 Viste** (ADR-0009), each verified against the live implementation before writing (`Sources/Features/Capture/`, `Sources/Connector/VaultCapture.swift`, `Sources/Core/Query/*.swift`) rather than transcribed from the ADR alone. **§5** amended for ADR-0018/0028's partial WYSIWYG concealment (three constructs only: heading `#`, emphasis `*`/`_`, image/PDF embeds — the boundary is explicit, not a general rule) and for the still-current Modifica/Lettura two-mode split, plus PG-019/PG-093's outline drag-to-move/nest. **§12** amended for M10's completed search operators (ADR-0012 §D8: `-term`, `regex:`, `linked:`, `orphan:`, `modified:`, `is:starred`, deliberately no `created:`) and the extended Quick Open/unlinked-mentions (§D9). ADR-0017 §D5's filed debt cleared in the same pass: §4.1's disk-layout tree, §6.5's PDF thumbnail cache path and §12's index path all corrected from `.pergamenum/cache.db`/`.pergamenum/thumbnails/` to the real post-ADR-0017 location under Application Support.
   - Not touched, out of this entry's stated scope: §14's stale `tag.md 1.4` reference (now 1.5 after `PG-030`) and the missing top-level `## 7.` header (structural, `### 7.1`-`### 7.4` sit directly under `## 6.` with no parent) — both pre-existing, neither newly introduced by this closure.
+
+## Roadmap Xcode
+
+Triaged 2026-09-08 from 19 warnings Xcode's issue navigator surfaced on a rebuild (no
+errors, build succeeds). 7 were mechanical one-line fixes, applied directly the same day
+(`nonisolated(unsafe)`/redundant `await` in `CalendarService.swift`, tautological `as
+ViewBlockError` cast in `VaultViews.swift`, unused `store` binding in
+`RecordingsController.swift`, two `CalendarDate` `Text` interpolations in
+`TasksView+Row.swift`, dangling `AccentColor` build setting). The three below need real
+investigation or a manual check before touching code, not a reflexive silence-the-warning
+edit — kept here as their own tracked items rather than folded into Backlog.
+
+- [ ] `PG-101` **P2** `dropOnRoot`'s `Bool` refuse/accept signal is silently discarded by SwiftUI's `dropDestination` overload resolution, in both sidebar trees — `Sources/Features/Editor/NoteListPane.swift:333,377`, `Sources/Features/Workspace/WorkspaceBrowser+Rows.swift:59,90` <!-- src:session opened:2026-09-08 -->
+  - Found triaging Xcode's "Result of call to 'dropOnRoot' is unused" warnings (4 occurrences, 2 per file). `dropOnRoot` returns `Bool` and its own doc comment says explicitly it owes `.dropDestination`'s `action` a `false` for a refused drop (ADR-0026). The current macOS SDK exposes two overloads of `dropDestination(for:action:)` — one `(_:CGPoint) -> Bool` (`@_disfavoredOverload`), one `(_:DropSession) -> Void` — and because both call sites write the closure's second parameter as untyped `_`, Swift resolves to the non-disfavored `Void` overload, discarding the `Bool` outright.
+  - **Real regression candidate, not cosmetic**: if this analysis is right, a drop that ADR-0026 documents as refused (e.g. a cyclic move) may currently always animate as accepted, with no error shown. Needs a manual drag-and-drop hand-check (drop a folder into its own descendant, or another refusal case) before/after the fix to confirm current behavior is actually broken and that the fix restores it.
+  - Proposed fix (not yet applied): pin the `Bool`/`CGPoint` overload with an explicit typed closure signature, `{ (drops: [VaultItemDrag], location: CGPoint) -> Bool in dropOnRoot(drops) }`, at all 4 call sites.
+
+- [ ] `PG-102` **P3** `TableAttachment.swift`'s TextKit2 `attachmentBounds` callback reads a `@MainActor`-isolated `NSView` property from a nonisolated context — `Sources/Features/Editor/TableAttachment.swift:74` <!-- src:session opened:2026-09-08 -->
+  - Found triaging Xcode's "Main actor-isolated property 'intrinsicContentSize' can not be referenced from a nonisolated context" warning. `attachmentBounds(for:location:textContainer:proposedLineFragment:position:)` overrides an AppKit `NSTextAttachmentViewProvider` method that is not `@MainActor` in the SDK (TextKit2 can genuinely call it off-main during background layout), yet reads `gridView.intrinsicContentSize` where `gridView: TableGridView?` is `@MainActor`-isolated via `NSView`.
+  - `nonisolated(unsafe)` on `gridView` would compile but is a real correctness risk if TextKit2 does call this off-main, since `TableGridView` mutates AppKit view state unsafe to touch off-main.
+  - Proposed fix: cache the grid's measured size as a plain `Sendable` `CGSize`, updated on the main actor whenever row/column count or cell content changes, and read that cached value from `attachmentBounds` instead of the live view property.
+
+- [ ] `PG-103` **P3** Three `QuickLookPresenter.swift` AppKit informal-category overrides are nonisolated but touch `@MainActor` state, uncovered by the file's own `@preconcurrency` — `Sources/Features/QuickLook/QuickLookPresenter.swift:51-63` <!-- src:session opened:2026-09-08 -->
+  - Found triaging 5 Xcode "Main actor-isolated property 'X' can not be referenced/mutated from a nonisolated context" warnings (`urls` ×1, `dataSource` ×2, `delegate` ×2). `QuickLookHostView`'s `@preconcurrency` conformance to `QLPreviewPanelDataSource`/`QLPreviewPanelDelegate` covers the three formal protocol witnesses, but not `acceptsPreviewPanelControl(_:)`, `beginPreviewPanelControl(_:)`, `endPreviewPanelControl(_:)` — three overrides from AppKit's un-audited *informal* responder-chain category, `nonisolated` by default, that read/write `urls` and `panel.dataSource`/`.delegate`.
+  - Proposed fix: mark the three overrides `@MainActor` explicitly (legitimate here — they're `@objc`-dynamic and AppKit only calls them synchronously on the main thread as part of the responder chain's reaction to the spacebar keyDown), with a one-line comment noting they're the same "protocol predates Swift concurrency" situation as the existing `@preconcurrency`, just reached through the informal category.
 
 ## Blocked / Decisions Needed
 

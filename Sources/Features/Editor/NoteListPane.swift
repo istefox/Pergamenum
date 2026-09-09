@@ -330,7 +330,9 @@ struct NoteListPane: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("note-tree")
-        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+        .dropDestination(for: VaultItemDrag.self) { (drops: [VaultItemDrag], _: CGPoint) -> Bool in
+            dropOnRoot(drops)
+        }
         .contextMenu {
             Button("Espandi tutto") { expanded = Self.allFolders(in: tree) }
             Button("Comprimi tutto") { expanded = [] }
@@ -374,7 +376,9 @@ struct NoteListPane: View {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("note-flat-list")
-        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+        .dropDestination(for: VaultItemDrag.self) { (drops: [VaultItemDrag], _: CGPoint) -> Bool in
+            dropOnRoot(drops)
+        }
     }
 
     private var filteredNotes: [NoteRecord] {

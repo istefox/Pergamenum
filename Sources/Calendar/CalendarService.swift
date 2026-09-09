@@ -170,7 +170,11 @@ final class EventKitStore: CalendarStore {
     private(set) var changeCount = 0
 
     /// Cancelled from `deinit`, which cannot touch main-actor state, so the handles are
-    /// held outside the isolation.
+    /// held outside the isolation. `(unsafe)` is required, not just `nonisolated`: this
+    /// class is `@Observable`, and `@ObservationTracked`'s macro expansion rejects plain
+    /// `nonisolated` on a mutable stored property. Safe in practice regardless - the
+    /// array is only ever written in `init` and read in `deinit`, both single-threaded
+    /// entry points.
     private nonisolated(unsafe) var observations: [Task<Void, Never>] = []
 
     init() {
@@ -194,7 +198,7 @@ final class EventKitStore: CalendarStore {
         Task { [weak self] in
             for await _ in NotificationCenter.default.notifications(named: name) {
                 guard let self else { return }
-                await self.externalChange(alwaysCounts: alwaysCounts)
+                self.externalChange(alwaysCounts: alwaysCounts)
             }
         }
     }

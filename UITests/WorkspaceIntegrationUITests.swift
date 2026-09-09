@@ -95,14 +95,10 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         selectTaskRow(containing: parentText)
         addSubtask(text: childTwoText, dueInDays: 10)
 
-        // MARK: 3. Assign the board and two notes to the project task.
+        // MARK: 3. Assign the board to the project task.
 
         selectTaskRow(containing: parentText)
         assignWorkspace()
-        selectTaskRow(containing: parentText)
-        linkNote(search: noteASearch)
-        selectTaskRow(containing: parentText)
-        linkNote(search: noteBSearch)
 
         // MARK: 4. "Progetti": the group expands with its progress indicator.
 
@@ -341,10 +337,11 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         )
     }
 
-    // MARK: 3. Assigning the Workspace and linking two notes
+    // MARK: 3. Assigning the Workspace (ADR-0036: the note-linking counterpart is gone -
+    // a task's note is the file it was captured into, never a second, separate link).
 
     private func assignWorkspace() {
-        toolbarButton("Assegna a un Workspace").click()
+        toolbarButton("Collega una board…").click()
         let list = app.descendants(matching: .any).matching(identifier: "workspace-picker-list").firstMatch
         XCTAssertTrue(list.waitForExistence(timeout: 8), "il picker del Workspace non si è aperto")
 
@@ -353,14 +350,6 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         row.click()
 
         XCTAssertTrue(list.waitForNonExistence(timeout: 8), "il picker del Workspace non si è chiuso dopo l'assegnazione")
-    }
-
-    private func linkNote(search title: String) {
-        toolbarButton("Collega nota o board").click()
-        let field = app.textFields["quick-switcher-field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 8), "il quick switcher per collegare una nota non si è aperto")
-        field.typeText(title + "\r")
-        XCTAssertTrue(field.waitForNonExistence(timeout: 8), "il quick switcher è rimasto aperto dopo la scelta")
     }
 
     // MARK: Editor hand-off (review-triage-fix cycle 1)

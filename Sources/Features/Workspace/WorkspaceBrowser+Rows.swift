@@ -56,7 +56,9 @@ extension WorkspaceBrowser {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-tree")
-        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+        .dropDestination(for: VaultItemDrag.self) { (drops: [VaultItemDrag], _: CGPoint) -> Bool in
+            dropOnRoot(drops)
+        }
         // No `.onTapGesture` here any more: deselecting by clicking the blank area below
         // the last row is `List(selection:)`'s own behaviour under ADR-0024 §D7/R-07, and
         // the gesture that used to stand in for it was written when this list had no
@@ -87,7 +89,9 @@ extension WorkspaceBrowser {
         }
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("workspace-flat-list")
-        .dropDestination(for: VaultItemDrag.self) { drops, _ in dropOnRoot(drops) }
+        .dropDestination(for: VaultItemDrag.self) { (drops: [VaultItemDrag], _: CGPoint) -> Bool in
+            dropOnRoot(drops)
+        }
     }
 
     /// R-05's destination, on both lists: the tree's own empty area means the vault root,

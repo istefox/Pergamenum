@@ -304,12 +304,18 @@ struct TaskCommands: Commands {
                 .disabled(vault.selectedTask == nil)
 
             Divider()
-            Button("Collega nota o board…") { vault.isLinkingSelectedTask = true }
-                .disabled(vault.selectedTask == nil)
-            Button("Vai alla nota di origine") {
-                if let task = vault.selectedTask { vault.openNote(at: task.sourcePath) }
+            if let task = vault.selectedTask {
+                ForEach(TaskCommand.available(for: task), id: \.self) { command in
+                    Button(command.title) { actions.run(command, on: task) }
+                }
+            } else {
+                // Disabled rather than omitted, matching every other Task menu entry
+                // above: a command that vanishes with nothing selected teaches nobody
+                // that it exists.
+                ForEach([TaskCommand.linkBoard, .goToNote], id: \.self) { command in
+                    Button(command.title) {}.disabled(true)
+                }
             }
-            .disabled(vault.selectedTask == nil)
         }
     }
 }
