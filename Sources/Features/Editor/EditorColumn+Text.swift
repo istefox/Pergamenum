@@ -55,6 +55,7 @@ extension EditorColumnView {
             ),
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
+            boardTitles: vault.root.map { CanvasStore(root: $0).allBoards() } ?? [],
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,

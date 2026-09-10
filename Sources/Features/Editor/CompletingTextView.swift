@@ -11,6 +11,10 @@ import SwiftUI
 /// the keys in exchange, in `doCommand(by:)`, and the panel places itself.
 final class CompletingTextView: NSTextView {
     var noteTitles: [String] = []
+    /// Workspace boards offered alongside notes after `[[` (`CardWikilinkCompletion`'s own
+    /// candidate ranking, shared with the Workspace `.text` card's `[[` popup rather than
+    /// forked - a board's file, never a folder, is what a wikilink can ever target).
+    var boardTitles: [String] = []
     var tagSuggestions: [String] = []
     /// The slash menu's catalogue, already filtered to what can run right now (M8).
     /// Set from the SwiftUI layer, because whether a command can run is a fact about the
@@ -213,7 +217,16 @@ final class CompletingTextView: NSTextView {
         case .emoji(let prefix):
             query = String(prefix.dropFirst())
             items = EmojiCatalogue.matching(query).map { .emoji(glyph: $0.glyph, name: $0.name) }
-        case .wikilink(let prefix), .section(_, let prefix), .tag(let prefix):
+        case .wikilink(let prefix):
+            query = prefix
+            // A board's `insertText` (`CardWikilinkCompletion`) is always a bare `.canvas`
+            // filename and a note title never carries an extension, so the two are
+            // distinguishable per-row for free - no change needed to `CompletionItem` or
+            // `WikilinkCandidate` to carry a per-row icon.
+            items = (completions(
+                forPartialWordRange: rangeForUserCompletion, indexOfSelectedItem: nil
+            ) ?? []).map { .text($0, symbol: $0.hasSuffix(".canvas") ? "square.grid.2x2" : "doc.text") }
+        case .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
             items = (completions(
@@ -337,17 +350,13 @@ final class CompletingTextView: NSTextView {
 
         switch context {
         case .wikilink(let prefix):
-            // Broken into steps: as one chained expression the type checker gives up.
-            var scored: [(title: String, score: Int)] = []
-            for title in noteTitles {
-                guard let score = FuzzyMatch.score(query: prefix, candidate: title) else { continue }
-                scored.append((title, score))
-            }
-            scored.sort { left, right in
-                left.score == right.score ? left.title.count < right.title.count : left.score > right.score
-            }
-            let matches = scored.prefix(12).map(\.title)
-            return matches.isEmpty ? nil : Array(matches)
+            // The same ranking the Workspace `.text` card's own `[[` popup uses
+            // (`CardWikilinkCompletion.swift`) - notes and boards fuzzy-scored together, a
+            // board's bare filename as the insertable text.
+            let matches = CardWikilinkCompletion.candidates(
+                matching: prefix, notes: noteTitles, boards: boardTitles, limit: 12
+            ).map(\.insertText)
+            return matches.isEmpty ? nil : matches
         case .section(let note, let prefix):
             return sections(of: note, matching: prefix)
         case .tag(let prefix):
