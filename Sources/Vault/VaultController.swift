@@ -51,6 +51,14 @@ final class VaultController {
     /// person is looking at", which is exactly what it still returns. The type changed shape
     /// underneath; its published surface did not.
     var openNote: OpenNote? { focusedTab?.note }
+    /// The Workspace board currently open, by vault-relative path - nil with none open.
+    ///
+    /// The one value `WindowPlace.destination` (ADR-0015 §D1 amendment) needs to give the
+    /// Workspace a `Destination.workspaceBoard` anchor, the same way `openNote` already gives
+    /// the Note pane one - pushed up from `WorkspaceView`'s own `.onChange(of: workspace.
+    /// board)` rather than read from `WorkspaceController` directly, which lives as `@State`
+    /// inside that view and stays unreachable from here.
+    var openBoardPath: String?
     /// The note being created, while it is still only a name being typed.
     ///
     /// Held here rather than in the browser because the New Note command is in the menu

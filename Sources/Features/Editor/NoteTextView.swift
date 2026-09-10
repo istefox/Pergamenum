@@ -11,6 +11,11 @@ struct NoteTextView: NSViewRepresentable {
     let theme: Theme
     /// Titles offered when completing after `[[`.
     let noteTitles: [String]
+    /// Workspace boards offered alongside notes when completing after `[[`, by vault-relative
+    /// path (`CanvasStore.allBoards()`) - defaults empty so a text view built without a vault
+    /// behind it behaves exactly as before (the `spellCheck`/`hidesMarkup` contrast above
+    /// documents the same convention).
+    var boardTitles: [String] = []
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
     /// Whether misspellings are underlined, and in which language (M8, SPEC §12). Off by
@@ -318,6 +323,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.undoManager = textView.window?.undoManager
         textView.noteTitles = noteTitles
+        textView.boardTitles = boardTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
         // Re-applied on every update rather than only at build time: turning the checker on

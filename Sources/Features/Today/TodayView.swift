@@ -196,6 +196,7 @@ struct TodayView: View {
                 ),
                 theme: theme,
                 noteTitles: vault.index.allNotes.map(\.title),
+                boardTitles: vault.root.map { CanvasStore(root: $0).allBoards() } ?? [],
                 tagSuggestions: [],
                 spellCheck: vault.settings.spellCheck,
                 hidesMarkup: vault.settings.hidesMarkup,

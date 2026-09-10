@@ -466,6 +466,14 @@ final class WorkspaceController {
     /// have been applied to it. A card's own switch has no `.strikethrough`/`.link` case
     /// (ADR-0029 §D17), so this only ever narrows bold/italic reveal there.
     var revealsInlineSpans = false
+    /// The vault's note titles and boards, offered as `[[` completion candidates on a `.text`
+    /// card - carried here by `WorkspaceView.applyBoardSettings()` beside `hidesMarkup` above,
+    /// the same route rather than a switch of the card's own. Refreshes on board-open and on
+    /// `vault.settings` change, not on every vault mutation - a note created in another pane
+    /// while this board stays open will not appear until the board's settings next reapply,
+    /// the same accepted staleness `hidesMarkup` itself already has.
+    var wikilinkNoteTitles: [String] = []
+    var wikilinkBoardTitles: [String] = []
     /// Which headings each `.text` card has folded right now, by node id (ADR-0028 §D8).
     ///
     /// The entry ordinals are `NoteOutline.entries(in:)`'s over that node's own text, exactly
@@ -539,6 +547,12 @@ final class WorkspaceController {
     /// properties because it holds a reference to a live `NSTextView`, which is not something
     /// this file should know about (see `CardTextSelection`).
     let cardTextSelection = CardTextSelection()
+    /// The `.text` card's `[[` completion popup - trigger, candidates and highlighted index -
+    /// published by that card's own text view and read by the board's popup overlay. A
+    /// separate holder from `cardTextSelection` above rather than three more properties on it,
+    /// for the same reason that one is a separate object at all: it holds a reference to a
+    /// live `NSTextView`.
+    let wikilinkCompletionState = CardWikilinkCompletionState()
 
     /// The `.link` card's title being written into (PG-073), transient like `editingTextNodeID`
     /// above and for the same reason: the document is mutated once, at `endTitleEdit(commit:)`.

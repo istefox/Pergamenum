@@ -26,8 +26,9 @@ import SwiftUI
 /// - Every colour comes from a theme token (`Theme.color(_:)` / `Theme.rawColor(_:)`), never a
 ///   hardcoded `NSColor` - this table *is* a view choosing a colour, so the design-system rule
 ///   ("no hardcoded colour in a view") holds here exactly as it does in `MarkdownAttributedText`.
-/// - `.linkTarget` / `.embedTarget` are styled (e.g. a distinct colour, optionally underlined)
-///   but must **never** carry `.link` as a key and must never be clickable: a canvas card's text
+/// - `.linkTarget` / `.embedTarget` are styled (a distinct colour, matching the note editor's own
+///   `MarkdownAttributedText.clickable(_:url:)`, never underlined) but must **never** carry
+///   `.link` as a key and must never be clickable: a canvas card's text
 ///   view has no note open to route a click to, so there is no navigation surface to offer
 ///   (ADR §D1). Unlike `MarkdownAttributedText.attributes(for:theme:links:)`, this table takes
 ///   no `links:` toggle at all - there is nothing to switch, because a card's links are never
@@ -151,23 +152,21 @@ enum CardTextAttributes {
             // there is now a navigation surface to route a click to, through the same URL
             // construction `MarkdownAttributedText` uses - never `MarkdownAttributedText.
             // attributes(for:theme:)` itself, which this file's header still forbids calling.
+            // No `.underlineStyle`, matching the note editor's own `clickable(_:url:)` - the
+            // underline predates this file's own click-navigation (#188) and was never
+            // brought in line with it (Stefano, 2026-09-10 hand check).
             if let url = MarkdownAttributedText.targetURL(for: target) {
                 [
                     .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                    .underlineStyle: NSUnderlineStyle.single.rawValue,
                     .link: url,
                     .cursor: NSCursor.pointingHand,
                 ]
             } else {
-                [
-                    .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                    .underlineStyle: NSUnderlineStyle.single.rawValue,
-                ]
+                [.foregroundColor: NSColor(theme.color(.accentPrimary))]
             }
         case .embedTarget(let target):
             [
                 .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .link: Transclusion.isNoteReference(target)
                     ? MarkdownAttributedText.noteURL(for: target)
                     : MarkdownAttributedText.embedURL(for: target),
