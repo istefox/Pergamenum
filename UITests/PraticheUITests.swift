@@ -18,6 +18,14 @@ import XCTest
 // rather than asserted against a control that cannot exist - see this dispatch's own
 // report for the MISSING list the coder still owes.
 final class PraticheUITests: XCTestCase {
+    /// One conformant pratica, seeded on disk before `launch()`, so the list column
+    /// has a row and the timeline/inspector/add-note/add-call surfaces - all gated on
+    /// `pratiche.selection != nil` (`PratichePane.swift`'s `content`) - have something
+    /// to open. `01 Progetti` is `PraticheSettings.defaultRootFolder`; `Acme` is the
+    /// client folder `PraticheController.clientName(ofPraticaFolder:rootFolder:)` reads
+    /// off the folder's parent.
+    private static let praticaFolder = "01 Progetti/Acme/Offerta 118"
+
     private var vault: URL!
     private var stateBase: URL!
     private var mailStoreRoot: URL!
@@ -27,6 +35,7 @@ final class PraticheUITests: XCTestCase {
         continueAfterFailure = false
         vault = URL(filePath: NSTemporaryDirectory()).appending(path: "PraticheUITest-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try seedFixturePratica()
 
         app = XCUIApplication()
         stateBase = URL(filePath: NSTemporaryDirectory())
@@ -70,6 +79,61 @@ final class PraticheUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// Writes `pratica.md` with a valid `pergamenum-dossier` and the tag set
+    /// `Dossier`/`PraticheController.listItems` require (`type-note`, `topic-pratica`,
+    /// `client-acme`, `status-active`, `source-email` - matched against
+    /// `Tests/PraticheConnectorTests.swift`'s own fixture, not invented here), plus
+    /// empty `email/`/`allegati/` directories (`PraticheController.messagesDirectoryName`/
+    /// `.attachmentsDirectoryName`) - `readMessages` reads them with `try?` and copes
+    /// with either missing entirely, but a real pratica folder always has both.
+    private func seedFixturePratica() throws {
+        let folder = vault.appending(path: Self.praticaFolder, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: folder.appending(path: "email", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: folder.appending(path: "allegati", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
+        let praticaNote = """
+        ---
+        date: 2026-09-01
+        tags:
+          - type-note
+          - topic-pratica
+          - client-acme
+          - status-active
+          - source-email
+        pergamenum-dossier: 1
+        pergamenum-dossier-counterparts:
+          - m.rossi@acme.it
+        pergamenum-dossier-conversations: [112409]
+        ---
+
+        Appunti pratica.
+        """
+        try praticaNote.write(
+            to: folder.appending(path: "pratica.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+    }
+
+    /// Clicks the fixture pratica's row (`pratiche-row-<folder path>`,
+    /// `PraticheListColumn.praticaRow`'s own `pratica.id`, which is the folder path -
+    /// `PraticheController.listItems`) and waits for the timeline that only exists once
+    /// `pratiche.selection != nil` (`PratichePane.content`).
+    private func selectFirstPratica() {
+        let row = element("pratiche-row-\(Self.praticaFolder)")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "la riga della pratica fixture non è nella lista")
+        row.click()
+        XCTAssertTrue(
+            element("pratiche-timeline").waitForExistence(timeout: 5),
+            "la timeline non si è aperta dopo la selezione della pratica"
+        )
+    }
+
     // MARK: - R-18: the pane itself, the list, and the Full Disk Access banner
 
     func testThePaneCarriesItsListAndPrimaryActions() throws {
@@ -79,12 +143,25 @@ final class PraticheUITests: XCTestCase {
         XCTAssertTrue(element("pratiche-refresh").waitForExistence(timeout: 5), "manca «Aggiorna»")
     }
 
-    /// R-18: "Full Disk Access is probed per trigger" - the banner and its settings
-    /// button carry their own stable identifiers so a future test can assert on the
-    /// denied state without reading any Italian copy.
-    func testTheFullDiskAccessBannerAndItsSettingsButtonAreAddressable() throws {
-        XCTAssertTrue(element("pratiche-fda-banner").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-fda-open-settings").waitForExistence(timeout: 5))
+    /// R-18: "Full Disk Access is probed per trigger, never at launch" - and the probe
+    /// (`FullDiskAccessProbe.state()`) is a real `open(2)` against
+    /// `<mailStoreRoot>/MailData/Envelope Index`. This suite's own `mailStoreRoot`
+    /// fixture (`setUpWithError`) is a readable, empty temporary directory: the file
+    /// does not exist there, `open(2)` fails `ENOENT`, and `FullDiskAccessProbe.state`
+    /// reads that as `.granted` ("every other failure ... answers `.granted`" -
+    /// `FullDiskAccessProbe.swift`'s own comment), never `.notGranted`. So
+    /// `pratiche-fda-banner` (`PratichePane.body`, shown only when
+    /// `pratiche.fullDiskAccessState == .notGranted`) is correctly absent here - this
+    /// is the readable-fixture path, not the denied path. `pratiche-fda-open-settings`
+    /// (`FullDiskAccessBanner.swift`) lives inside the same banner and so is absent
+    /// too; it is not asserted separately because it has nothing to be found on. The
+    /// `.notGranted`/EPERM path stays covered where it can be built without touching
+    /// `~/Library/Mail`: `Tests/PraticheControllerTests.swift`'s
+    /// `fullDiskAccessBannerClearsOnTheNextTriggerWithNoRestart` and
+    /// `FullDiskAccessProbeTests.stateReadsEPERMAsNotGranted` (a `chmod 000` fixture
+    /// file).
+    func testTheFullDiskAccessBannerIsAbsentWithAReadableMailStoreFixture() throws {
+        XCTAssertFalse(element("pratiche-fda-banner").waitForExistence(timeout: 2))
     }
 
     func testTheFilterRowCarriesTheSenderMenuAndAttachmentsToggle() throws {
@@ -95,18 +172,28 @@ final class PraticheUITests: XCTestCase {
 
     // MARK: - R-33: the tray
 
-    func testTheTrayIsAddressable() throws {
-        XCTAssertTrue(element("pratiche-tray").waitForExistence(timeout: 5))
+    /// R-30: "the strip is hidden when empty" - `PraticaTrayStrip.body` only draws
+    /// (and only then carries `pratiche-tray`) when `!PraticaTrayModel.isHidden(_:)`.
+    /// The fixture pratica has no dossier-followed conversation and this suite's
+    /// `mailStoreRoot` has no Envelope Index at all, so a sync run finds no tray
+    /// candidates and `pratiche.selectedTray` is empty - the strip must stay absent.
+    /// Faking a proposal to make it present would test a shape this pratica cannot
+    /// produce; the correct assertion is its absence.
+    func testTheTrayIsAbsentWithNoProposals() throws {
+        selectFirstPratica()
+        XCTAssertFalse(element("pratiche-tray").waitForExistence(timeout: 2))
     }
 
     // MARK: - R-39: the timeline and its inspector toggle
 
     func testTheTimelineAndInspectorToggleAreAddressable() throws {
+        selectFirstPratica()
         XCTAssertTrue(element("pratiche-timeline").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-inspector-toggle").waitForExistence(timeout: 5))
     }
 
     func testTheAddNoteAndAddCallEntryPointsAreAddressable() throws {
+        selectFirstPratica()
         XCTAssertTrue(element("pratiche-add-note").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-add-call").waitForExistence(timeout: 5))
     }
