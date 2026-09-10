@@ -259,6 +259,14 @@ final class PraticheUITests: XCTestCase {
             FileManager.default.contentsOfDirectory(atPath: emailDirectory.path(percentEncoded: false)).first,
             "la sincronizzazione non ha scritto la nota del messaggio"
         )
+        let noteFile = emailDirectory.appending(path: notePathBefore, directoryHint: .notDirectory)
+
+        // A freshly-synced note is byte-identical to what «Rigenera» would write, so the
+        // plan has no diff and the sheet renders its no-op "Chiudi" branch instead of
+        // "Annulla"/"Rigenera" (`PratichePane.regenerationReadySheet`). A hand-edit here is
+        // what makes the plan's `diff` non-nil, landing on the branch this test exercises.
+        let originalNote = try String(contentsOf: noteFile, encoding: .utf8)
+        try (originalNote + "\nModifica manuale di prova.\n").write(to: noteFile, atomically: true, encoding: .utf8)
 
         messageRow.rightClick()
         let regenerate = element("pratiche-message-command-regenerate")
@@ -272,11 +280,7 @@ final class PraticheUITests: XCTestCase {
         cancel.click()
 
         XCTAssertFalse(element("pratiche-regenerate").waitForExistence(timeout: 2), "il foglio è rimasto aperto dopo «Annulla»")
-        XCTAssertTrue(
-            FileManager.default.fileExists(
-                atPath: emailDirectory.appending(path: notePathBefore, directoryHint: .notDirectory).path(percentEncoded: false)
-            ),
-            "«Annulla» non deve toccare il file della nota"
-        )
+        let noteAfter = try String(contentsOf: noteFile, encoding: .utf8)
+        XCTAssertEqual(noteAfter, originalNote + "\nModifica manuale di prova.\n", "«Annulla» non deve toccare il file della nota")
     }
 }

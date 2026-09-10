@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=109 -->
+<!-- project-tasks: prefix=PG lastId=110 -->
 # PROJECT TASKS
 
-Updated: 2026-09-10 · Open: 11 (P1: 0) · In progress: 0
+Updated: 2026-09-10 · Open: 12 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -12,6 +12,25 @@ _none_
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-110` **P3** `ReleasePipelineTests.appcastSelfTestExitsZeroWithOutput` fails reliably when run as part of the full `PergamenumTests` suite via `xcodebuild test`, but passes every time run in isolation — `Tests/ReleasePipelineTests.swift:24` <!-- src:session opened:2026-09-10 -->
+  - Found on 2026-09-10 while confirming the pratiche PG-105-108 follow-up commit's tests: `.claude/test-cmd`'s full run failed with exactly this one test red (2682 tests, 1 failure), unrelated to anything touched by that commit (no Sparkle/appcast/release-pipeline file was in the diff). Reproduced 3 times in a row inside the full suite, on two separate turns.
+  - Confirmed passing standalone three independent ways: `python3 scripts/appcast.py --self-test` direct (10/10 checks, exit 0); `xcodebuild ... -only-testing:"PergamenumTests/ReleasePipelineTests" test` (the whole 6-test suite, 0.272s, all green, `appcastSelfTestExitsZeroWithOutput()` itself at 0.139s). This is the confirmed reproduction of the flake being suite-context-specific, not a defect in the test or the script.
+  - Tooling note for next time: Swift Testing's `-only-testing:` filter only resolves at the **suite** level here (`PergamenumTests/<SuiteName>`) — appending `/<testFuncName>` silently matches nothing and reports "Executed 0 tests, 0 failures" (looks like a pass, is actually a no-op). Filtering to the suite is still ~85x faster than the full suite (12s vs the full run's several minutes) and is precise enough to isolate this flake.
+  - Not yet root-caused. Candidate causes, none confirmed: the test shells out to `python3 scripts/appcast.py --self-test` via `Process`, and something about running inside `xcodebuild test`'s full-suite process tree (sandboxing, a different `PATH`/`python3` resolution, concurrent test execution touching the same `/tmp` appcast-selftest file another parallel test/run left behind) could make the subprocess behave differently than in a small/isolated run. Needs the actual failing stderr/exit code captured from inside a full-suite run — nothing gathered so far explains *why* it fails there, only that it reliably does.
+  - Not fixed and not disabled, per this repo's own rule against weakening a test to make a suite pass — left red and documented instead.
+
+`scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
+pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
+(PG-105's UI coverage, added by the PG-105-108 follow-up plan). Root cause was a bug in the test
+itself, not in production code: it synced a message from the fixture and immediately triggered
+«Rigenera» without ever editing the note, so `PratichePane.regenerationReadySheet` correctly found
+no diff and rendered its no-op "Chiudi" branch instead of "Annulla"/"Rigenera" — the test then
+waited 5s for an "Annulla" button that structurally wasn't there in that state. Fixed by having the
+test hand-edit the synced note before invoking «Rigenera» (so a real diff exists) and by tightening
+the final assertion to compare exact file content, not just existence. Verified only via
+`build-for-testing` (never run by the agent, per the standing UI-suite rule) — **not yet
+re-verified by a real `scripts/uitests.sh` hand-run, and not yet committed.**
 
 - [x] `PG-105` **P2** Rigenera trashes existing message files before a replacement is available, with no ADR-0036 D6 diff shown before confirmation — `Sources/Features/Pratiche/PraticaCommandActions.swift:~262` <!-- src:session opened:2026-09-10 closed:2026-09-10 runs:1 -->
   - Raised by RTF's Codex review (astra, xhigh) every cycle since cycle 1 of the Pratiche RTF review, deferred each time as architectural. Fix needed the replacement message prepared and its `UnifiedDiff` shown for confirmation BEFORE any existing file is touched, then an atomic replace only after approval.
