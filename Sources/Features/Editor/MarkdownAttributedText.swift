@@ -104,7 +104,7 @@ enum MarkdownAttributedText {
                 .foregroundColor: NSColor(theme.color(colorToken(for: span))),
             ]
         case .linkTarget(let target):
-            clickable(theme.color(.accentPrimary), url: links ? noteURL(for: target) : nil)
+            clickable(theme.color(.accentPrimary), url: links ? targetURL(for: target) : nil)
         case .embedTarget(let target):
             // Where the click goes depends on what the target is, by the same rule the
             // reading view uses (ADR-0010 §D2): a note opens, a file is previewed. Sending
@@ -203,6 +203,47 @@ enum MarkdownAttributedText {
         url(host: embedHost, item: URLQueryItem(name: "name", value: target))
     }
 
+    /// A `.linkTarget` span's own URL, for both a wikilink target and a CommonMark link's raw
+    /// href (issue #188 / R-03, R-04) - the one place that decides which of the two a bare
+    /// string is. A wikilink target is never a URL and never ends in `.md`, so this is
+    /// behavior-preserving for every existing wikilink/`^[[board.canvas]]` marker.
+    static func targetURL(for target: String) -> URL? {
+        if let scheme = URL(string: target)?.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return URL(string: target)
+        }
+        var title = target
+        if title.lowercased().hasSuffix(".md") { title.removeLast(3) }
+        return noteURL(for: title)
+    }
+
+    /// What a clicked `.link` URL means, decoded once so `NoteTextView+Coordinator` and
+    /// `CardTextView`'s Coordinator (R-06) don't each parse the scheme by hand.
+    enum LinkClickTarget: Equatable {
+        /// A note in this vault, by title - also what a `^[[board.canvas]]` marker's own
+        /// target decodes to; resolving `.canvas` into a board navigation is
+        /// `CommandActions.open(link:)`'s job (ADR-0036 reuse), not this decoder's.
+        case note(title: String)
+        /// `![[foto.png]]`'s target: a file to preview, not a note to open.
+        case embed(name: String)
+        /// A CommonMark link whose href is a real `http`/`https` URL.
+        case external(URL)
+    }
+
+    static func clickTarget(for url: URL) -> LinkClickTarget? {
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return .external(url)
+        }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if components.host == embedHost,
+           let name = components.queryItems?.first(where: { $0.name == "name" })?.value {
+            return .embed(name: name)
+        }
+        guard components.host == "note",
+              let title = components.queryItems?.first(where: { $0.name == "title" })?.value
+        else { return nil }
+        return .note(title: title)
+    }
+
     private static func url(host: String, item: URLQueryItem) -> URL {
         var components = URLComponents()
         components.scheme = AppInfo.urlScheme
@@ -210,4 +251,17 @@ enum MarkdownAttributedText {
         components.queryItems = [item]
         return components.url ?? URL(string: "\(AppInfo.urlScheme)://\(host)")!
     }
+}
+
+/// A text view delegate that can navigate a resolved link URL directly, without going
+/// through `NSTextViewDelegate.textView(_:clickedOnLink:at:)` - both
+/// `NoteTextView.Coordinator` and `CardTextView`'s Coordinator gate that delegate method on
+/// `NSEvent.modifierFlags` actually holding Cmd at the moment it runs, since AppKit can
+/// invoke it on its own, unreliably, on a plain click too (issue #188, confirmed on-screen
+/// 2026-09-09). "Apri collegamento" (R-07) must navigate without Cmd held, so it calls this
+/// method directly instead, bypassing that gate on purpose.
+@MainActor
+protocol LinkNavigatingDelegate: NSTextViewDelegate {
+    @discardableResult
+    func performLinkNavigation(_ link: Any) -> Bool
 }

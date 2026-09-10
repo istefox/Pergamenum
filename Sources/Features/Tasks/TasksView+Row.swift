@@ -196,19 +196,9 @@ extension TasksView {
         .frame(width: 320)
     }
 
+    /// Delegates to `CommandActions.open(link:)` (issue #188), the one place this
+    /// resolution now lives - reached from the note editor and the Workspace card too.
     func open(link target: String) {
-        // A link ending in .canvas points at a board; anything else is a note.
-        if target.lowercased().hasSuffix(".canvas") {
-            switch WorkspaceBoardResolver.resolve(target, in: boards) {
-            case .unique(let path):
-                vault.routeState.pendingCanvas = (path.value, nil)
-            case .ambiguous, .notFound:
-                vault.recordProblem("board non trovata: \(target)")
-            }
-            return
-        }
-        if let path = vault.index.resolve(title: target).first {
-            vault.openNote(at: path)
-        }
+        actions.open(link: target)
     }
 }

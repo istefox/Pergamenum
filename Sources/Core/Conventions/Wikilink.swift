@@ -22,6 +22,26 @@ struct Wikilink: Equatable, Hashable, Sendable {
         isEmbed || target.contains(".")
     }
 
+    /// `target`, with one matching pair of markdown emphasis delimiters wrapping it stripped -
+    /// the note title `[[**Nota**]]` actually names, once a person selects a wikilink's visible
+    /// text and presses Bold. `target` itself stays the literal bracket interior on purpose:
+    /// `NoteRename.rewritingLinks` rebuilds the source range from `rendered`, which is built from
+    /// `target`, so stripping there would silently drop the emphasis on the next rename. Anything
+    /// that resolves a wikilink to an actual note (navigation, backlinks, the index) wants this
+    /// property instead of `target`. Longest markers first (`**`/`~~` before `*`), since a lone
+    /// leading/trailing `*` of a `**` pair must not be peeled off on its own, which would leave a
+    /// stray asterisk in the resolved title instead of removing the whole pair.
+    var resolvedTitle: String {
+        for marker in ["**", "~~", "*"] {
+            guard target.count > marker.count * 2,
+                  target.hasPrefix(marker), target.hasSuffix(marker)
+            else { continue }
+            let inner = target.dropFirst(marker.count).dropLast(marker.count)
+            if !inner.isEmpty { return String(inner) }
+        }
+        return target
+    }
+
     var rendered: String {
         var text = target
         if let section { text += "#\(section)" }

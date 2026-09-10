@@ -332,13 +332,24 @@ struct NoteTextView: NSViewRepresentable {
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
         if textView.string != text {
+            // This view is one persistent instance per editor column (never rebuilt per
+            // note), so a genuine note switch and the same note's content changing
+            // externally (undo, sync) both land here. Carrying the old raw offset forward
+            // is right for the second case but wrong for the first: with no per-note caret
+            // bookmark anywhere in this app, a switched-to note's caret at whatever numeric
+            // offset the previous note happened to leave behind can - and did (issue #188)
+            // - land inside a paragraph whose markup reveal-on-caret (ADR-0018 §D2) then
+            // never gets a reason to re-hide. `notePath` is the one signal available to
+            // tell the two cases apart.
+            let isNoteSwitch = context.coordinator.lastNotePath != notePath
             let selection = textView.selectedRange()
             textView.string = text
             textView.setSelectedRange(NSRange(
-                location: min(selection.location, (text as NSString).length),
+                location: isNoteSwitch ? 0 : min(selection.location, (text as NSString).length),
                 length: 0
             ))
         }
+        context.coordinator.lastNotePath = notePath
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyEmbeds(to: textView)
         context.coordinator.applyTransclusions(to: textView, theme: theme)

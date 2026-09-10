@@ -9,7 +9,7 @@ import SwiftUI
 /// two `NSViewRepresentable` methods; everything that happens *afterwards* is here.
 extension NoteTextView {
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, LinkNavigatingDelegate {
         var parent: NoteTextView
         weak var textView: NSTextView?
         /// The window's `undoManager` as of the last update, captured here because
@@ -62,6 +62,11 @@ extension NoteTextView {
         /// than folded into it: the two are computed by two different `MarkupReveal`
         /// functions and compared independently in `applyReveal`'s early-return guard.
         var lastRevealedSpans: [Int: [NSRange]] = [:]
+        /// The note path `updateNSView` last saw, so it can tell a genuine note switch
+        /// apart from the same note's content changing externally (issue #188 fix 2): this
+        /// view is one persistent instance per editor column, never rebuilt per note, so
+        /// there is no other signal available for "this is a different note now."
+        var lastNotePath: String?
         /// The index entry the caret was last reported to be in. Kept so the callback
         /// fires when it *changes*, not on every arrow key.
         private var lastOutlineEntry: Int??
@@ -389,20 +394,40 @@ extension NoteTextView {
             completing.refreshCompletion(theme: parent.theme)
         }
 
+        // AppKit's own automatic "clickedOnLink" gesture is unreliable under this view's
+        // custom TextKit 2 content-storage substitution (issue #188's original root cause) -
+        // not simply dormant, it turns out, but liable to fire on a PLAIN click too once a
+        // click has already made the view first responder, bypassing the Cmd requirement an
+        // editable `NSTextView` is supposed to enforce (confirmed on-screen, 2026-09-09,
+        // after the initial fix landed). Rather than chase that quirk inside AppKit, this
+        // delegate method - which AppKit can invoke on its own, unpredictably - refuses to
+        // navigate unless Cmd is actually down *at the moment it runs*, checked live off
+        // `NSEvent.modifierFlags` rather than trusted from whichever caller invoked it. Only
+        // this method's own explicit call site in `followLinkIfPresent(at:)` (mouseDown,
+        // already Cmd-gated before calling in) can ever satisfy this a second time; "Apri
+        // collegamento" (R-07) deliberately does NOT go through this method at all, since it
+        // is the one gesture that must navigate without Cmd.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard NSEvent.modifierFlags.contains(.command) else { return false }
+            return performLinkNavigation(link)
+        }
+
+        /// The actual link-target routing, shared by the Cmd-gated delegate method above and
+        /// "Apri collegamento"'s menu action, which calls this directly to bypass that gate.
+        @discardableResult
+        func performLinkNavigation(_ link: Any) -> Bool {
             guard let url = link as? URL,
-                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                  let target = MarkdownAttributedText.clickTarget(for: url)
             else { return false }
 
-            if components.host == MarkdownAttributedText.embedHost,
-               let name = components.queryItems?.first(where: { $0.name == "name" })?.value {
+            switch target {
+            case .external(let url):
+                NSWorkspace.shared.open(url)
+            case .embed(let name):
                 parent.onOpenEmbed?(name)
-                return true
+            case .note(let title):
+                parent.onFollowLink(title)
             }
-            guard let title = components.queryItems?
-                .first(where: { $0.name == "title" })?.value
-            else { return false }
-            parent.onFollowLink(title)
             return true
         }
 

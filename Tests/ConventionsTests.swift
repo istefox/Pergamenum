@@ -357,6 +357,24 @@ Il corpo della nota.
     }
 }
 
+/// Issue #188 follow-up: `resolvedTitle` strips one wrapping pair of emphasis markers for
+/// consumers that resolve a wikilink to an actual note (click navigation, backlinks, the
+/// index) - but `target`/`rendered` stay the literal bracket interior, since
+/// `NoteRename.rewritingLinks` rebuilds the source range from `rendered` on every rename, and
+/// stripping there would silently drop a person's bold markers the next time the note is
+/// renamed.
+@Test func resolvedTitleStripsWrappingEmphasisWithoutChangingTargetOrRendered() {
+    let link = WikilinkParser.links(in: "[[**Prova**]]").first!
+    #expect(link.target == "**Prova**")
+    #expect(link.resolvedTitle == "Prova")
+    #expect(link.rendered == "[[**Prova**]]")
+}
+
+@Test func resolvedTitleLeavesAnOrdinaryTargetUnchanged() {
+    let link = WikilinkParser.links(in: "[[Nota]]").first!
+    #expect(link.resolvedTitle == "Nota")
+}
+
 // MARK: - Related section
 
 @Test func readsStructuralLinksWithTheirReasons() {

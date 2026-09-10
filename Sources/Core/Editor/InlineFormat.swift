@@ -99,7 +99,7 @@ enum InlineFormat: String, CaseIterable, Sendable {
             let closing = NSRange(location: NSMaxRange(clamped) - marker.length, length: marker.length)
             if haystack.substring(with: opening) == marker as String,
                haystack.substring(with: closing) == marker as String,
-               !isLongerMarker(format, in: haystack, opening: opening, closing: closing) {
+               !isLongerMarker(format, in: haystack, opening: opening, closing: closing, inward: true) {
                 return clamped
             }
         }
@@ -110,7 +110,7 @@ enum InlineFormat: String, CaseIterable, Sendable {
         guard before.location >= 0, NSMaxRange(after) <= haystack.length,
               haystack.substring(with: before) == marker as String,
               haystack.substring(with: after) == marker as String,
-              !isLongerMarker(format, in: haystack, opening: before, closing: after)
+              !isLongerMarker(format, in: haystack, opening: before, closing: after, inward: false)
         else { return nil }
         return NSRange(location: before.location, length: clamped.length + marker.length * 2)
     }
@@ -120,19 +120,33 @@ enum InlineFormat: String, CaseIterable, Sendable {
     /// The trap this exists for: `**parola**` is bold, and asking whether it is *italic* finds
     /// a `*` on each side and says yes. A bold word that reports itself italic lights the wrong
     /// button and, worse, un-wraps by removing one asterisk of two and leaving `*parola*`.
+    ///
+    /// `inward` distinguishes the two shapes `wrapping(_:in:over:)` calls this from: with
+    /// `**parola**` selected whole (inward), the second `*` of a longer marker sits further
+    /// *into* the selection than `opening`/`closing` already found - `**` opening is markers
+    /// `[0,1)` and `[0,2)` both start at the same point. With `parola` selected inside
+    /// `**parola**` (outward), it sits further *outside* the selection - `**` before `parola`
+    /// is markers `[-2,-1)` and `[-2,0)` both end at the same point. Checking the same direction
+    /// for both shapes finds nothing for whichever shape it's wrong for, exactly the bug this
+    /// parameter exists to close: the inward case used the outward formula and never matched.
     private static func isLongerMarker(
-        _ format: Self, in haystack: NSString, opening: NSRange, closing: NSRange
+        _ format: Self, in haystack: NSString, opening: NSRange, closing: NSRange, inward: Bool
     ) -> Bool {
         allCases.contains { longer in
             let candidate = longer.marker as NSString
             guard candidate.length > (format.marker as NSString).length,
                   candidate.hasSuffix(format.marker)
             else { return false }
-            // The longer marker would start earlier and end later than this one.
             let extra = candidate.length - (format.marker as NSString).length
-            let wider = NSRange(location: opening.location - extra, length: candidate.length)
-            let widerClosing = NSRange(location: closing.location, length: candidate.length)
-            guard wider.location >= 0, NSMaxRange(widerClosing) <= haystack.length else { return false }
+            let wider = inward
+                ? NSRange(location: opening.location, length: candidate.length)
+                : NSRange(location: opening.location - extra, length: candidate.length)
+            let widerClosing = inward
+                ? NSRange(location: closing.location - extra, length: candidate.length)
+                : NSRange(location: closing.location, length: candidate.length)
+            guard wider.location >= 0, NSMaxRange(wider) <= haystack.length,
+                  widerClosing.location >= 0, NSMaxRange(widerClosing) <= haystack.length
+            else { return false }
             return haystack.substring(with: wider) == candidate as String
                 && haystack.substring(with: widerClosing) == candidate as String
         }

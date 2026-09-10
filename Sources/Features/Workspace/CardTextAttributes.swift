@@ -145,14 +145,33 @@ enum CardTextAttributes {
                 .font: ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize),
                 .backgroundColor: NSColor(theme.color(.surfaceSunken)),
             ]
-        case .linkTarget, .embedTarget:
-            // Styled, never clickable: a canvas card's text view has no note open to route a click
-            // to (ADR-0027 §D1), so the colour and the underline say "this names something" and
-            // there is deliberately no `.link` key and no `.cursor` to promise a navigation that
-            // does not exist.
+        case .linkTarget(let target):
+            // Reopens ADR-0027 §D1 for this feature only (issue #188, R-06): the card gained
+            // its own Cmd+click handling (`FormattingTextView.mouseDown`/`menu(for:)`), so
+            // there is now a navigation surface to route a click to, through the same URL
+            // construction `MarkdownAttributedText` uses - never `MarkdownAttributedText.
+            // attributes(for:theme:)` itself, which this file's header still forbids calling.
+            if let url = MarkdownAttributedText.targetURL(for: target) {
+                [
+                    .foregroundColor: NSColor(theme.color(.accentPrimary)),
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .link: url,
+                    .cursor: NSCursor.pointingHand,
+                ]
+            } else {
+                [
+                    .foregroundColor: NSColor(theme.color(.accentPrimary)),
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                ]
+            }
+        case .embedTarget(let target):
             [
                 .foregroundColor: NSColor(theme.color(.accentPrimary)),
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .link: Transclusion.isNoteReference(target)
+                    ? MarkdownAttributedText.noteURL(for: target)
+                    : MarkdownAttributedText.embedURL(for: target),
+                .cursor: NSCursor.pointingHand,
             ]
         case .embedRun:
             // Nothing, for the reason the note editor's table returns nothing: the span covers a

@@ -255,4 +255,74 @@ import Testing
         }
         #expect(offenders.isEmpty, "unexpected font families in the composed note: \(offenders)")
     }
+
+    // MARK: - Link resolution (issue #188, R-01…R-04, R-14)
+    //
+    // Pure resolution from a clicked link/wikilink target to its navigation target, independent
+    // of any AppKit click simulation - `targetURL(for:)` builds the `.link` attribute's URL at
+    // styling time, `clickTarget(for:)` decodes it back at click time, and every case here
+    // round-trips one through the other.
+
+    @Test func targetURLForAWikilinkTitleEncodesItAsANoteReference() throws {
+        let url = try #require(MarkdownAttributedText.targetURL(for: "Nota collegata"))
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota collegata"))
+    }
+
+    @Test func targetURLForACanvasMarkerEncodesTheWholeTargetIncludingTheExtension() throws {
+        // `^[[board.canvas]]` styles through the same `.linkTarget` span as an ordinary
+        // wikilink - deciding that a `.canvas` suffix means a board is `CommandActions.
+        // open(link:)`'s job (ADR-0036 reuse), not this decoder's, so it round-trips as a
+        // plain `.note` target here.
+        let url = try #require(MarkdownAttributedText.targetURL(for: "Progetti/board.canvas"))
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Progetti/board.canvas"))
+    }
+
+    @Test func targetURLForAVaultRelativeMarkdownLinkStripsTheExtensionBeforeEncoding() throws {
+        let url = try #require(MarkdownAttributedText.targetURL(for: "Nota.md"))
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota"))
+    }
+
+    @Test func targetURLForAnExternalHTTPSHrefIsTheURLItself() throws {
+        let url = try #require(MarkdownAttributedText.targetURL(for: "https://example.com/page"))
+        #expect(url.absoluteString == "https://example.com/page")
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .external(url))
+    }
+
+    @Test func targetURLForAnExternalHTTPHrefIsTheURLItself() throws {
+        let url = try #require(MarkdownAttributedText.targetURL(for: "http://example.com"))
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .external(url))
+    }
+
+    @Test func clickTargetDecodesAnEmbedURLAsTheEmbedCase() {
+        let url = MarkdownAttributedText.embedURL(for: "foto.png")
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .embed(name: "foto.png"))
+    }
+
+    @Test func clickTargetReturnsNilForAURLItDoesNotRecognize() {
+        // Neither `http(s)` nor this app's own `pergamenum://` scheme with a `note`/`embed`
+        // host: nothing to navigate to, and the click should fall through untouched.
+        let url = URL(string: "file:///Users/x/y.txt")!
+        #expect(MarkdownAttributedText.clickTarget(for: url) == nil)
+    }
+
+    // MARK: - CommonMark links get a real clickable target (issue #188)
+
+    @Test func aCommonMarkLinkLabelCarriesLinkAndCursorForAnExternalURL() {
+        let theme = Theme.emergency
+        let attributed = MarkdownAttributedText.attributed("[apri](https://example.com)", theme: theme)
+        let labelRange = ("[apri](https://example.com)" as NSString).range(of: "apri")
+        let link = attributed.attribute(.link, at: labelRange.location, effectiveRange: nil) as? URL
+        #expect(link?.absoluteString == "https://example.com")
+        #expect(attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) != nil)
+    }
+
+    @Test func aCommonMarkLinkLabelCarriesLinkAndCursorForAVaultRelativeNote() throws {
+        let theme = Theme.emergency
+        let attributed = MarkdownAttributedText.attributed("[vedi](Nota.md)", theme: theme)
+        let labelRange = ("[vedi](Nota.md)" as NSString).range(of: "vedi")
+        let link = try #require(
+            attributed.attribute(.link, at: labelRange.location, effectiveRange: nil) as? URL
+        )
+        #expect(MarkdownAttributedText.clickTarget(for: link) == .note(title: "Nota"))
+    }
 }
