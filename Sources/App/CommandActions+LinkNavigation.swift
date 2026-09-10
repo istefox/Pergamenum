@@ -23,6 +23,11 @@ extension CommandActions {
         }
         if let path = vault.index.resolve(title: target).first {
             vault.openNote(at: path)
+            // A click from outside the Note pane (a Workspace card's wikilink) must switch to
+            // it too, or the note opens "underneath" a pane that still shows the Workspace -
+            // the board-link branch above gets this for free from `RootView`'s own
+            // `pendingCanvas` observer; a note has no such observer to lean on.
+            navigation.pane = .notes
         }
     }
 }
