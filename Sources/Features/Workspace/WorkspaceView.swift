@@ -371,7 +371,7 @@ struct WorkspaceView: View {
             }
             .clipped()
             .gesture(pinchGesture)
-            .onModifierKeysChanged(mask: [.shift, .option]) { _, held in modifiers = held }
+            .onModifierKeysChanged(mask: [.shift, .option, .command]) { _, held in modifiers = held }
             .dropDestination(for: URL.self) { urls, location in
                 propose(import: urls, at: canvasPoint(from: location, in: geometry.size))
             }

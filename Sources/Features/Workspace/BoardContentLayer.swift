@@ -57,7 +57,7 @@ struct BoardContentLayer: View {
             // A group answers the pointer on its frame only; everything else answers
             // over its whole rectangle.
             .contentShape(hitShape(for: node))
-            .selectionGestures(enabled: !isEditingText) {
+            .selectionGestures(enabled: !isEditingText && !modifiers.contains(.command)) {
                 cardActions.open(node)
             } onSelect: {
                 workspace.select(nodeID: node.id, adding: modifiers.contains(.shift))
