@@ -157,10 +157,33 @@ final class PraticheController {
     ) {
         trayProposals[praticaPath] = proposals
         trayCounts[praticaPath] = proposals.count
+        persistTrayCount(proposals.count, for: praticaPath, in: vault)
         pratiche = Self.listItems(
             in: vault, ledger: ledger, trayCounts: trayCounts,
             rootFolder: vault.settings.pratiche.rootFolder
         )
+    }
+
+    /// Writes the tray's own count into the ledger (`PraticaLedger.PraticaState.
+    /// trayCount`, Task 9's widening).
+    ///
+    /// `trayCounts` alone lives for as long as this window does, and R-36 forbids
+    /// `VaultAPI.pratiche(_:)` from opening the Mail store to recount: without this
+    /// line a re-launched `perg`/`pergamenum-mcp` could only ever answer `0`, which
+    /// reads as «niente da smistare» rather than as «nessuno ha ancora guardato».
+    ///
+    /// Skipped when nothing changed, so a sync that finds the same proposals again
+    /// does not rewrite the file - and, for a pratica with no tray and no ledger entry
+    /// yet, does not create one to say zero.
+    private func persistTrayCount(_ count: Int, for praticaPath: String, in vault: VaultController) {
+        guard let session = vault.session else { return }
+        var state = ledger.byPraticaPath[praticaPath] ?? .empty
+        guard state.trayCount != count else { return }
+        state.trayCount = count
+        ledger.byPraticaPath[praticaPath] = state
+        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        }
     }
 
     /// «Aggiungi» and «Ignora» both take the row off the strip at once: the write that
@@ -179,9 +202,11 @@ final class PraticheController {
     nonisolated static let praticaFileName = "pratica.md"
     nonisolated static let messagesDirectoryName = "email"
     nonisolated static let attachmentsDirectoryName = "allegati"
-    /// SPEC "Per-vault state": `…/vaults/<id>/pratiche/ledger.json`.
-    nonisolated static let stateDirectoryName = "pratiche"
-    nonisolated static let ledgerFileName = "ledger.json"
+    /// SPEC "Per-vault state": `…/vaults/<id>/pratiche/ledger.json`. Read from
+    /// `PraticaLedger` rather than spelled again here: `VaultAPI.pratiche(_:)` resolves
+    /// the same file from `Sources/Connector`, which cannot see this type at all.
+    nonisolated static let stateDirectoryName = PraticaLedger.stateDirectoryName
+    nonisolated static let ledgerFileName = PraticaLedger.fileName
 
     @ObservationIgnored private var mailStoreEvents: MailStoreEventStream?
     @ObservationIgnored private var windowKeyObserver: (any NSObjectProtocol)?
@@ -491,9 +516,17 @@ extension PraticheController {
         rootFolder: String
     ) -> [PraticaListItem] {
         let notes = vault.index.allNotes
-        let dossierNotes = notes.filter {
-            $0.relativePath.hasSuffix("/\(praticaFileName)")
-                && Dossier.parse($0.frontmatter.foreignKeys) != nil
+        // The index names the candidates, the file decides. Reading the dossier off
+        // `frontmatter.foreignKeys` looks equivalent and is not: the cache keeps no
+        // `pergamenum-*` key, so every record a scan reused from it - all of them, from
+        // the second scan of a vault onward - would answer "not a pratica" and empty
+        // this list (`Dossier.parse(praticaFileAt:)`'s own note). Only the handful of
+        // paths ending in `pratica.md` are opened, never the whole index.
+        let root = vault.root
+        let dossierNotes = notes.filter { note in
+            guard note.relativePath.hasSuffix("/\(praticaFileName)"), let root else { return false }
+            let url = root.appending(path: note.relativePath, directoryHint: .notDirectory)
+            return Dossier.parse(praticaFileAt: url) != nil
         }
         let folders = Set(dossierNotes.map { folderPath(ofPraticaNote: $0.relativePath) })
 
@@ -549,7 +582,9 @@ extension PraticheController {
         return parent == rootFolder ? unnamedClient : parent
     }
 
-    static let unnamedClient = "Senza cliente"
+    /// From `PraticaNaming`, which `Sources/Connector` can see and this file cannot be
+    /// seen from: `VaultAPI.pratiche(_:)` says the same words for the same folder.
+    static let unnamedClient = PraticaNaming.unnamedClient
 
     /// Reads one pratica's folder into timeline rows: every `email/*.md` through
     /// `MessageDocument.parse`, plus `pratica.md`'s own manual-entry headings.
@@ -716,11 +751,9 @@ extension PraticheController {
     /// The dossier of one pratica, read from disk rather than from the index: a sync
     /// must act on the file as it is now, not as the last scan saw it.
     static func dossier(at praticaPath: String, vaultRoot: URL) -> Dossier? {
-        let url = vaultRoot
+        Dossier.parse(praticaFileAt: vaultRoot
             .appending(path: praticaPath, directoryHint: .isDirectory)
-            .appending(path: praticaFileName, directoryHint: .notDirectory)
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return Dossier.parse(NoteDocument.parse(text).frontmatter.foreignKeys)
+            .appending(path: praticaFileName, directoryHint: .notDirectory))
     }
 
     /// `en_US_POSIX`, GMT and a fixed pattern: the heading is a file format, not a

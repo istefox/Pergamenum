@@ -88,7 +88,14 @@ struct PratichePane: View {
         } message: { _ in
             // R-34: the folder goes to the Trash, never to `removeItem` - so the
             // sentence promises exactly what the code does.
+            //
+            // `pratiche-delete-alert` (UX-BLUEPRINT's checklist) lands here, on the
+            // message, because an alert is its own window: an identifier on the view
+            // that presents it never reaches the alert, and this text is the one
+            // element of it that stands for the whole. The destructive button keeps
+            // `pratiche-delete-confirm`, which names a button rather than a dialog.
             Text("La cartella, i messaggi e gli allegati vanno nel Cestino.")
+                .accessibilityIdentifier("pratiche-delete-alert")
         }
         // A sheet and not an alert: R-34's «Elimina pratica» is the only alert in the
         // whole feature (UX-BLUEPRINT), and a name to type is not a yes/no question.

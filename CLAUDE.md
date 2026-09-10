@@ -255,6 +255,14 @@ move the previous copy aside rather than deleting it.
   which keeps `SparkleUpdateController` from starting the updater at all. Every UI-test file
   passes it, not only the one that would need it — a stray modal alert during `launch()` reads
   as the app hanging, not as an update being offered. A new UI-test file wants the flag too.
+- **A UI test that launches the app must never let it reach the real Apple Mail store**, the
+  third flag of the same family. The suite passes `-mailStoreRoot <fixture>` (ADR-0036), which
+  `MailStoreLocation.resolve()` reads before anything else, so a run resolves to a directory the
+  test made and threw away rather than to `~/Library/Mail/V10`. Every UI-test file passes it, not
+  only the pratiche ones — an empty temporary directory where the test has no Mail fixture of its
+  own. Without it, any pratiche sync a run happens to trigger reads the person's actual mail, and
+  a Full Disk Access grant is what makes that *succeed* rather than fail visibly. A new UI-test
+  file wants the flag too.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to

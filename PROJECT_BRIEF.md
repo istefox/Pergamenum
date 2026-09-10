@@ -87,6 +87,31 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-10: **Pratiche (ADR-0036) — all 10 plan tasks implemented on `feat/pratiche`; Stefano's
+  manual acceptance is the remaining gate.** A pratica is a vault folder that fills itself from a
+  *published copy* of Apple Mail's Envelope Index and shows messages, attachments, notes and calls
+  as one timeline; nothing in the feature opens a socket, and principle 2 gains no exception. The
+  last batch closed the two ends the rest of the chain left open: Impostazioni gains an eleventh
+  tab, "Pratiche" (R-35 — root folder, own addresses pre-filled from Mail's Sent mailboxes,
+  attachment threshold, proposal window, daily-note mirror, and a real «Sincronizza adesso» that
+  reports what the ledger last recorded), and the connectors gain the read-only half of R-36:
+  `perg pratiche`, `perg pratica <titolo|percorso>`, and the MCP tools `pratiche`/`pratica`, both
+  declared `readOnlyHint`. Those connectors answer from what a sync already wrote to disk and are
+  structurally forbidden to do otherwise — `SharedSourcesPurityTests` fails the build if
+  `MailStore`, `EMLXReader` or `SQLite3` is so much as named under `Sources/Connector`,
+  `Sources/CLI` or `Sources/MCPServer`. Unit suite: **2642 tests in 114 suites, 1 failure** —
+  `MailStoreReaderSentSenderAddressesTests.sentSenderAddressesRecognisesTheItalianPostaInviataSpelling()`,
+  whose fixture files its message under mailbox ROWID 1 while inserting only mailbox ROWID 3, so
+  the messages→mailboxes join has nothing to return; left red rather than answered with a query
+  that ignores the mailbox it is supposed to filter on. `scripts/mcp-smoke.py` green, the two new
+  tools included; `perg` and `pergamenum-mcp` both build. Two things the hand-check should know:
+  the Settings tab's own-address pre-fill reads the **real** Mail store when Full Disk Access is
+  granted, so a throwaway vault is not a throwaway Mail store (`-mailStoreRoot` is), and
+  `IndexCache.StoredFrontmatter` keeps no `pergamenum-*` foreign key, so anything reading a dossier
+  off `index.allNotes` goes blind from the second scan of a vault onward — found while the MCP
+  server answered `[]` on a correct fixture, and closed by making the index name the candidate
+  `pratica.md` paths while one shared reader, `Dossier.parse(praticaFileAt:)`, decides from the
+  file, for the sidebar, the sync and both connectors alike. No `IndexCache.schemaVersion` bump.
 - 2026-09-08: **pergamenum-view-query-builder (ADR-0034, visual query builder for `pergamenum-view`
   fences) — all 10 tasks implemented and merged onto `feat/pergamenum-view-query-builder`.** One
   shared "Modifica query" affordance in `RenderedViewBlock`'s header, present on both the live-render

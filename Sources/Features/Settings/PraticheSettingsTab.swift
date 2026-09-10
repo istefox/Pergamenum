@@ -7,24 +7,25 @@ import SwiftUI
 //
 // The eleventh Settings tab. Eight rows (UX-BLUEPRINT's own table): six bind
 // `VaultSettings.pratiche` directly (a trivial, deterministic `Binding` - the same
-// class of "real" mapping `TaskSettings`'s own Picker/Toggle bindings already ship,
-// not a stub), and two are UI-only and read something other than the settings file -
-// «Accesso completo al disco» reads `FullDiskAccessProbe.state()` (already real,
-// Task 5), «Sincronizzazione» triggers a sync the coder wires (this tab has no
-// `PraticheController` of its own - Settings can be opened with no pratica pane ever
-// having existed this launch).
+// class of "real" mapping `TaskSettings`'s own Picker/Toggle bindings already ship),
+// and two read something other than the settings file - «Accesso completo al disco»
+// reads `FullDiskAccessProbe.state()` (Task 5), «Sincronizzazione» runs
+// `PraticheController.syncAll(in:kind:)`, the pane's own trigger, through the
+// controller the `Settings` scene injects for exactly this.
 //
 // Own addresses pre-fill (R-35, SPEC "Sent detection and counterpart") calls
 // `MailStoreReader.sentSenderAddresses()` behind the same publish-then-open sequence
 // `MailSeedPicker.reader(mailRoot:stateDirectory:)` already uses - genuinely off the
 // Mail store, which is why this tab (not a connector) is where it belongs (R-36 keeps
-// `VaultAPI` from doing the same). That query is itself a RED stub
-// (`Sources/Core/Email/MailStoreReader.swift`), so the pre-fill call below is wired
-// but returns nothing until the coder fills it in - never crashes, never touches
-// `ownAddresses` when the store cannot be read.
+// `VaultAPI` from doing the same). It never touches `ownAddresses` when the store
+// cannot be read, and never overwrites a list a person has edited down.
 struct PraticheSettingsTab: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    /// Injected into the `Settings` scene of its own (`PergamenumApp.swift`): an object
+    /// put into the main window's environment is not visible here, and reading a
+    /// missing one is a trap at run time rather than a compile error.
+    @Environment(PraticheController.self) private var pratiche
 
     @State private var newAddress = ""
     @State private var fullDiskAccessState = FullDiskAccessProbe.state()
@@ -149,11 +150,14 @@ struct PraticheSettingsTab: View {
     private func prefillOwnAddressesIfNeeded() {
         guard vault.settings.pratiche.ownAddresses.isEmpty else { return }
         guard fullDiskAccessState == .granted else { return }
+        // Impostazioni opens with no vault as readily as with one (the app starts on
+        // «nessuna cartella» and the window is reachable from the menu bar), so the
+        // session is asked for rather than assumed: there is nowhere to write a
+        // pre-filled address to, and nowhere to publish a copy of the index into.
+        guard let session = vault.session else { return }
         let addresses = PraticheSettingsTab.sentSenderAddresses(
             mailRoot: MailStoreLocation.resolve(),
-            stateDirectory: PraticheController.stateDirectory(
-                for: vault.session ?? { fatalError("no open vault") }()
-            )
+            stateDirectory: PraticheController.stateDirectory(for: session)
         )
         guard !addresses.isEmpty else { return }
         vault.updateSettings { $0.pratiche.ownAddresses = addresses }
@@ -213,24 +217,55 @@ struct PraticheSettingsTab: View {
 
     // MARK: - Sincronizzazione
 
-    /// «Aggiorna tutte le pratiche ora · ultima: …» (UX-BLUEPRINT). No
-    /// `PraticheController` is guaranteed to exist when Settings opens (a person can
-    /// reach Impostazioni without ever having opened the Pratiche pane this launch),
-    /// so this row is deliberately inert until the coder decides where that trigger
-    /// actually lives - a stub, not a real sync, so nothing here can silently touch
-    /// the Mail store from Settings.
+    /// «Aggiorna tutte le pratiche ora · ultima: …» (UX-BLUEPRINT, screen 1f).
+    ///
+    /// The trigger is `PraticheController.syncAll(in:kind:)`, the same one «Aggiorna»
+    /// in the pane's own toolbar reaches - never a second sync path. The controller is
+    /// injected into the `Settings` scene explicitly (`PergamenumApp.swift`), because a
+    /// person can reach Impostazioni without ever having opened the Pratiche pane this
+    /// launch: `load(from:)` runs first for exactly that case, or `syncAll` would
+    /// iterate an empty list and look like a button that does nothing.
+    ///
+    /// Every trigger re-probes Full Disk Access and every pratica's own watcher decides
+    /// whether it is due (R-17/R-18), so this button can no more touch the Mail store
+    /// behind somebody's back than the pane's own can.
     private var syncRow: some View {
         LabeledContent("Sincronizzazione") {
-            VStack(alignment: .leading) {
-                Button("Aggiorna tutte le pratiche ora") {
-                    syncProblem = "Apri il pannello Pratiche per sincronizzare."
-                }
-                .accessibilityIdentifier("settings-pratiche-sync-now")
+            VStack(alignment: .leading, spacing: 2) {
+                Button("Aggiorna tutte le pratiche ora") { synchronizeAll() }
+                    .disabled(vault.root == nil)
+                    .accessibilityIdentifier("settings-pratiche-sync-now")
+                Text("Ultima sincronizzazione: \(lastSyncDescription)")
+                    .themedText(.caption, color: .textTertiary)
+                    .accessibilityIdentifier("settings-pratiche-sync-last")
                 if let syncProblem {
-                    Text(syncProblem).themedText(.caption, color: .textTertiary)
+                    Text(syncProblem).themedText(.caption, color: .taskOverdue)
                 }
             }
         }
         .accessibilityIdentifier("settings-pratiche-sync")
+        .task { pratiche.load(from: vault) }
+    }
+
+    private func synchronizeAll() {
+        guard vault.root != nil else { return }
+        syncProblem = nil
+        Task {
+            // The list is rebuilt first: `syncAll` walks `pratiche.pratiche`, which is
+            // empty until something has loaded it, and Settings may well be the first
+            // surface of this launch to ask for a sync.
+            pratiche.load(from: vault)
+            await pratiche.syncAll(in: vault, kind: .manualRefresh)
+            syncProblem = pratiche.problem
+        }
+    }
+
+    /// The newest `lastSyncAt` any pratica carries. Read off the ledger rather than
+    /// held here: it is what the last sync actually wrote, and it survives a relaunch.
+    private var lastSyncDescription: String {
+        guard let last = pratiche.ledger.byPraticaPath.values.compactMap(\.lastSyncAt).max() else {
+            return "mai"
+        }
+        return last.formatted(date: .abbreviated, time: .shortened)
     }
 }

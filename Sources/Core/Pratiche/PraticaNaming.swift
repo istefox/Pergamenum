@@ -133,6 +133,11 @@ enum PraticaNaming {
         return path[root.count]
     }
 
+    /// What a pratica with no client folder above it is called, in the sidebar and in
+    /// `perg pratiche` alike. Here rather than on `PraticheController`, which
+    /// `Sources/Connector` cannot see (CLAUDE.md "AI connector").
+    static let unnamedClient = "Senza cliente"
+
     private static func components(of path: String) -> [String] {
         path.split(separator: "/").map(String.init)
     }

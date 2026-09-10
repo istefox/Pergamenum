@@ -174,6 +174,38 @@ enum ToolCatalogue {
             annotations: .init(readOnlyHint: true)
         ),
         Tool(
+            name: "pratiche",
+            description: """
+                Le pratiche del vault (ADR-0036): una pratica è una cartella con dentro \
+                «pratica.md», i messaggi importati e i loro allegati. Per ognuna: \
+                percorso, titolo, cliente, stato, controparti, ultima attività, quanti \
+                messaggi e quante conversazioni aspettano di essere smistate. Legge i \
+                file e il registro del vault: non apre mai l'archivio di Mail.
+                """,
+            inputSchema: ["type": "object", "properties": [:]],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
+            name: "pratica",
+            description: """
+                La cronologia di una pratica, dalla più vecchia: messaggi, note e \
+                telefonate con data, direzione, mittente, oggetto, allegati e testo. \
+                Si indica per titolo (il nome della cartella) o per percorso esatto; \
+                un titolo che ne individua più d'una viene rifiutato, non indovinato.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "pratica": [
+                        "type": "string",
+                        "description": "il titolo della pratica, oppure il percorso della sua cartella",
+                    ],
+                ],
+                "required": ["pratica"],
+            ],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
             name: "journal_log",
             description: """
                 Le scritture fatte dai connettori, dalla più vecchia. Ogni riga ha un id \

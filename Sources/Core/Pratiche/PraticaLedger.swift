@@ -93,6 +93,24 @@ struct PraticaLedger: Equatable, Sendable, Codable {
 
     static let empty = PraticaLedger(byPraticaPath: [:])
 
+    /// SPEC "Per-vault state": `…/vaults/<id>/pratiche/ledger.json`.
+    ///
+    /// Here, in a file both the app and the two connectors compile, rather than only on
+    /// `PraticheController` (which imports AppKit and is not in `sharedSources`):
+    /// `VaultAPI.pratiche(_:)` reads `trayCount` out of this same file, and two
+    /// spellings of one path is how a connector ends up reporting an empty ledger for a
+    /// vault the app has been syncing all along. `PraticheController` names these
+    /// constants rather than repeating the strings.
+    static let stateDirectoryName = "pratiche"
+    static let fileName = "ledger.json"
+
+    /// `directory` is `VaultState.directory` - the vault's own state folder.
+    static func url(inVaultState directory: URL) -> URL {
+        directory
+            .appending(path: stateDirectoryName, directoryHint: .isDirectory)
+            .appending(path: fileName, directoryHint: .notDirectory)
+    }
+
     /// Reads `ledger.json` from the per-vault state directory (ADR-0017 precedent).
     /// Missing or unreadable → `.empty`: a fresh ledger costs one full re-sync,
     /// nothing else.

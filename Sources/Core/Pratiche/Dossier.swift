@@ -58,6 +58,27 @@ struct Dossier: Equatable, Sendable {
         )
     }
 
+    /// The dossier of a `pratica.md` at `url`, read from the file. `nil` when the file
+    /// is unreadable or carries no `pergamenum-dossier` - both mean "not a pratica"
+    /// (R-01), and neither is worth telling apart at a call site that is deciding
+    /// whether to draw a row.
+    ///
+    /// **The index cannot answer this and must not be asked.**
+    /// `IndexCache.StoredFrontmatter` persists `date`, `tags`, `aliases` and `related`
+    /// and nothing else, so a `NoteRecord` a scan reused from the cache - which is
+    /// every unchanged file from the second scan of a vault onward - comes back with
+    /// `foreignKeys` empty and no dossier on it. A unit test never sees that: a
+    /// `TemporaryVault` plus one `rescan()` is always the *first* scan.
+    ///
+    /// So the index names the candidates by path and the file decides, here, once, for
+    /// the sidebar (`PraticheController.listItems`), the sync
+    /// (`PraticheController.dossier(at:vaultRoot:)`) and both connectors
+    /// (`VaultAPI.pratiche`/`.pratica`) alike.
+    static func parse(praticaFileAt url: URL) -> Dossier? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return parse(NoteDocument.parse(text).frontmatter.foreignKeys)
+    }
+
     /// Renders the seven keys as `Frontmatter.ForeignKey` lines, in the SPEC's own
     /// order (ADR §D12). A key whose list is empty is omitted, matching
     /// `FrontmatterSerializer`'s own "no empty list key" rule.

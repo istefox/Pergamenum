@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=100 -->
+<!-- project-tasks: prefix=PG lastId=104 -->
 # PROJECT TASKS
 
-Updated: 2026-09-07 · Open: 6 (P1: 0) · In progress: 0
+Updated: 2026-09-10 · Open: 10 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -12,6 +12,20 @@ _none_
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-101` **P3** «ChatGPT inside Pergamenum»: an in-app assistant over a pratica, rather than an export command out of one — no file yet, its own chain <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain by Stefano's explicit choice (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The stated direction is to bring ChatGPT into the app, not to export to it, so **no «Esporta per ChatGPT» command was built either**: the timeline is plain markdown on disk and `perg pratica <titolo>` prints it, which already covers copy-and-paste by hand.
+  - One measured obstacle worth keeping (SPEC.md:44): ChatGPT.app registers only the `codex://` URL scheme, so there is no way to hand it text through a URL. Whatever this becomes, it is not a URL hand-off.
+
+- [ ] `PG-102` **P3** «Apri come board»: turn a pratica's timeline into a `.canvas` with one card per message — `Sources/Features/Pratiche/**` + `Sources/Vault/CanvasStore.swift` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain (SPEC.md "Out of scope", ADR-0036 §D20, R-41). Nothing was built toward it: no command, no `.canvas` writer, no node layout. The pieces that would serve it already exist independently — `CanvasStore`, `CanvasID.generate(avoiding:)` and the JSON Canvas 1.0 round trip (principle 4) — so this is composition, not new machinery.
+
+- [ ] `PG-103` **P3** `pergamenum://pratica/add?message=…` URL-scheme entry point, so a message can be filed into a pratica from outside the app — `Sources/Core/Conventions/PergamenumRoute.swift` + `Sources/App/**` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain as M6 territory (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The in-app path exists and is what this would automate: «Aggiungi a pratica da Mail…» (Cmd+Shift+P) reads the selected message through `MailLink.selectedMessage()` and files it. A new route case would need the same Automation consent story and a decision about what happens when the app is closed.
+
+- [ ] `PG-104` **P3** Connector **write** access to pratiche (`perg pratica add-note`, an MCP write tool) — `Sources/Connector/VaultPratiche.swift`, `Sources/CLI/Commands/PraticheCommands.swift`, `Sources/MCPServer/ToolCatalogue+Writing.swift` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain: v1 is read-only on purpose (SPEC.md "Out of scope", ADR-0036 §D20, R-36/R-41). `VaultAPI.pratiche(_:)` and `VaultAPI.pratica(_:_:)` shipped, both reading only what is on disk — and a purity test forbids `MailStore`/`EMLXReader`/`SQLite3` under `Sources/Connector`, `Sources/CLI` and `Sources/MCPServer`, which a write path must keep honouring: writing a manual entry touches `pratica.md`, never Mail.
+  - What it would cost, from the existing shape: `PraticaEntry.insert(kind:at:counterpart:in:)` is already pure and shared, so the write itself is one `VaultSession.write` behind `VaultAPI.arm` (dry-run + `UnifiedDiff` + `WriteJournal`, ADR-0007 §D6), plus the MCP tool's `dryRun`-defaults-to-true lock. R-29's daily-note mirror would have to be decided on: the app writes it, a connector arguably should not.
 
 - [ ] `PG-099` **P3** An open Workspace board's pending (debounced) autosave can silently clobber a rename/move's board-repoint write, losing the rewrite with no error shown — `Sources/Features/Workspace/WorkspaceController.swift` (`scheduleSave`/`save`, ~lines 553-585) <!-- src:session opened:2026-09-07 -->
 - [ ] `PG-100` **P4** No test covers a Workspace `.text` card whose body contains both a real `[[Wikilink]]` match and a separate, coincidentally fold-matching quoted bullet on note rename — `Tests/NoteFileOperationTests.swift` (compound case for `renamingDoesNotRewriteAnUnrelatedQuotedBulletInATextCard`, commit `9bb0b50`) <!-- src:session opened:2026-09-07 -->

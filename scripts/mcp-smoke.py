@@ -50,6 +50,30 @@ render: table
 ```
 """
 
+# One pratica as a sync would have left it, minus the sync: the `pergamenum-dossier`
+# keys are what make the folder a pratica at all (ADR-0036 R-01), and the `##` heading
+# is a manual entry, the one kind of timeline row that exists without a message file.
+PRATICA_NOTE = """---
+date: 2026-09-01
+tags:
+  - type-note
+  - topic-pratica
+  - client-rossi
+  - status-active
+  - source-email
+pergamenum-dossier: 1
+pergamenum-dossier-counterparts:
+  - m.rossi@rossi-spa.it
+pergamenum-dossier-conversations: [112409]
+---
+
+Appunti pratica.
+
+## 2026-06-10 14:06 Telefonata · Mario Rossi
+
+Richiamare lunedì.
+"""
+
 failures = []
 
 
@@ -246,6 +270,50 @@ def views(binary, vault):
         server.close()
 
 
+def pratiche(binary, vault):
+    """ADR-0036 R-36: the two pratiche tools answer from what a sync left on disk.
+
+    Nothing here goes near Mail: the fixture is a folder this script writes, and a
+    connector that tried to open the store would be refusing to compile long before it
+    got here (`SharedSourcesPurityTests`). What only a real server can show is that both
+    tools are declared read-only, that the payload keys survive the JSON crossing, and
+    that an unknown pratica comes back as a sentence rather than as a dead pipe.
+    """
+    print("pratiche")
+    folder = os.path.join(vault, "01 Progetti", "Rossi", "Offerta")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "pratica.md"), "w", encoding="utf-8") as handle:
+        handle.write(PRATICA_NOTE)
+
+    server = Server(binary, vault, allow_write=False)
+    try:
+        tools = server.send("tools/list", {})["result"]["tools"]
+        declared = {tool["name"]: tool for tool in tools}
+        check("pratiche" in declared and "pratica" in declared,
+              "i due strumenti delle pratiche sono elencati")
+
+        listed = server.payload("pratiche")
+        check(len(listed) == 1, "pratiche trova la pratica del vault di prova")
+        check(listed[0]["path"] == "01 Progetti/Rossi/Offerta", "e la nomina col suo percorso")
+        # The client is the folder above the pratica, never a field somebody typed.
+        check(listed[0]["client"] == "Rossi", "il cliente è la cartella che la contiene")
+        check(listed[0]["status"] == "active", "lo stato viene dal tag status-*")
+        check(listed[0]["counterparts"] == ["m.rossi@rossi-spa.it"], "la controparte è quella del dossier")
+        # Zero, and said out loud: no sync has ever run against this vault.
+        check(listed[0]["messageCount"] == 0, "senza sincronizzazione non c'è nessun messaggio")
+
+        timeline = server.payload("pratica", {"pratica": "Offerta"})
+        check(timeline["path"] == "01 Progetti/Rossi/Offerta", "pratica risolve il titolo alla cartella")
+        check(len(timeline["entries"]) == 1, "la timeline ha la sola voce scritta a mano")
+        check(timeline["entries"][0]["kind"] == "call", "e la riconosce come telefonata")
+        check("Richiamare" in timeline["entries"][0]["body"], "col testo che il file porta")
+
+        missing = server.payload("pratica", {"pratica": "Non esiste"})
+        check(missing.get("isError") is True, "una pratica che non c'è è un errore parlante")
+    finally:
+        server.close()
+
+
 def resources(binary, vault):
     print("risorse")
     server = Server(binary, vault, allow_write=False)
@@ -268,7 +336,7 @@ def resources(binary, vault):
 binary = find_binary()
 print("binario: %s\n" % binary)
 
-for stage in (read_only, writing, views, resources):
+for stage in (read_only, writing, views, pratiche, resources):
     vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
     try:
         with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

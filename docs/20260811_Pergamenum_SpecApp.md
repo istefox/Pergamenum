@@ -497,7 +497,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 |---|---|---|
 | Stack | SwiftUI nativo, non Electron | Requisito email ridotto a link+apertura; PDFKit ed EventKit nativi |
 | Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
-| Rendering corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente |
+| Rendering **HTML** del corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente. Estrazione del testo del corpo in markdown leggero inclusa dal 2026-09-09 (pratiche, ADR-0036 §D16): il costo escluso era quello di mantenere un renderer HTML, che un riduttore a testo non ha. Nessuna WebView, nessun sidecar `.html`, nessun rendering con stili; la card `.eml` del Workspace resta invariata |
 | Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |

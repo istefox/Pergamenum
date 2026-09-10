@@ -66,12 +66,29 @@ struct MailStoreReader {
     /// disagreed on case with a hand-typed address would be a second, silent notion
     /// of "the same address".
     ///
-    /// RED stub (tester-declared boundary, ADR-0155 §D1): the coder writes the real
-    /// `mb.url LIKE '%Sent%' OR mb.url LIKE '%Posta Inviata%'` join here - always
-    /// empty for now, which is wrong-but-compiling rather than a query the fixture in
-    /// `Tests/MailStoreReaderTests.swift` could accidentally already satisfy.
+    /// `%Posta%Inviata%` rather than the `%Posta Inviata%` this function was declared
+    /// with: a mailbox url is a URL, so the Italian name reaches the index either as
+    /// `Posta Inviata` or percent-encoded as `Posta%20Inviata`, and one `LIKE`
+    /// wildcard between the two words covers both without a second clause. `LIKE` is
+    /// case-insensitive for ASCII in SQLite, so `Posta inviata` matches too.
+    ///
+    /// Deleted messages are not excluded, unlike every other query here: an address a
+    /// message was sent *from* is still mine after that message goes to the trash, and
+    /// a person who empties their Sent mailbox would otherwise pre-fill nothing.
     func sentSenderAddresses() -> [String] {
-        []
+        let sql = """
+        SELECT DISTINCT a.address
+        FROM messages AS m
+        JOIN addresses AS a ON a.ROWID = m.sender
+        JOIN mailboxes AS mb ON mb.ROWID = m.mailbox
+        WHERE mb.url LIKE '%Sent%' OR mb.url LIKE '%Posta%Inviata%'
+        """
+        let addresses = (try? collect(sql) { _ in } read: { statement in
+            connection.columnText(statement, 0)?
+                .trimmingCharacters(in: .whitespaces)
+                .lowercased()
+        }) ?? []
+        return Set(addresses.filter { !$0.isEmpty }).sorted()
     }
 
     // MARK: - R-03, the five queries

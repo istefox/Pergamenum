@@ -45,7 +45,10 @@ struct AddToPraticaSheet: View {
         .frame(width: 520, height: 460)
         .background(theme.color(.backgroundPrimary))
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-add-sheet")
+        // UX-BLUEPRINT's checklist calls this sheet `pratiche-picker`, and a UI test
+        // finds a control by identifier and never by the words on it: the name is the
+        // contract, so it is the checklist's spelling rather than a second one.
+        .accessibilityIdentifier("pratiche-picker")
         .onAppear(perform: readSelection)
     }
 
@@ -111,7 +114,10 @@ struct AddToPraticaSheet: View {
             Text(pratica.title).themedText(.body).lineLimit(1)
             Text(subtitle(pratica)).themedText(.caption, color: .textTertiary).lineLimit(1)
         }
-        .accessibilityIdentifier("pratiche-add-row-\(pratica.id)")
+        // `pratiche-picker-row-<slug>` in the checklist; the slug is the pratica's own
+        // folder path, the same value `pratiche-row-<pratica.id>` carries in the
+        // sidebar, so one pratica answers to one spelling on both surfaces.
+        .accessibilityIdentifier("pratiche-picker-row-\(pratica.id)")
         .badge(pratica.messagesSinceLastOpen)
         .tag(pratica.id)
     }

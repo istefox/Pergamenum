@@ -21,6 +21,11 @@ func dispatch(_ group: String, _ arguments: Arguments) async throws -> ExitCode 
     case "view": return try await ViewCommands.run(arguments)
     case "journal": return try await JournalCommands.run(arguments)
     case "app": return try await AppCommands.run(arguments)
+    // Two groups rather than `pratiche list`/`pratiche show`: the plural lists and the
+    // singular takes a name, which is how a person says it out loud (SPEC "Connectors":
+    // `pratiche` and `pratica <title|path>`).
+    case "pratiche": return try await PraticheCommands.list(arguments)
+    case "pratica": return try await PraticheCommands.show(arguments)
     case "help":
         Output.line(Help.text)
         return .success
