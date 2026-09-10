@@ -1312,7 +1312,8 @@ final class PraticaLiveSync {
             claimedByOtherPratiche: claimed
         )
         controller.updateTray(
-            PraticaTrayModel.proposals(from: tray), for: praticaPath, in: vault
+            PraticaTrayModel.proposals(from: tray, ownAddresses: Set(settings.ownAddresses)),
+            for: praticaPath, in: vault
         )
     }
 

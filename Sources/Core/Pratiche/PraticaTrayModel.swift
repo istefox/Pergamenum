@@ -32,11 +32,19 @@ enum PraticaTrayModel {
     ///
     /// The most recent message names the proposal - a thread is known by its latest
     /// subject («Re: Preventivo»), not by the one it opened with, and its sender is the
-    /// address a person recognises the conversation by.
+    /// address a person recognises the conversation by - unless that sender is the
+    /// person's own address (the newest message was sent, not received), in which case
+    /// the counterpart is the first recipient of that same message that is not one of
+    /// the person's own addresses (`MessageDocument.counterpart(direction:from:to:cc:
+    /// ownAddresses:)`'s own rule, applied here to `MailMessageRow`'s flat, undifferentiated
+    /// `recipients` since this row carries no To/Cc distinction).
     ///
     /// A conversation whose messages carry no date at all is still offered, dated
     /// `.distantPast`: dropping it would hide a proposal rather than explain it.
-    static func proposals(from entries: [MembershipRule.TrayEntry]) -> [PraticaTrayProposal] {
+    static func proposals(
+        from entries: [MembershipRule.TrayEntry],
+        ownAddresses: Set<String> = []
+    ) -> [PraticaTrayProposal] {
         entries.compactMap { entry in
             let dates = entry.messages.map(date(of:))
             guard let earliest = dates.min(), let latest = dates.max(),
@@ -45,11 +53,21 @@ enum PraticaTrayModel {
             return PraticaTrayProposal(
                 conversationID: entry.conversationID,
                 subject: newest.subject ?? "",
-                counterpart: newest.sender ?? "",
+                counterpart: counterpart(of: newest, ownAddresses: ownAddresses),
                 dateRange: earliest...latest,
                 messageCount: entry.messages.count
             )
         }
+    }
+
+    /// `newest.sender` unless it is one of the person's own addresses, in which case the
+    /// first non-own recipient of that message - falling back to the sender itself if
+    /// every recipient is also an own address, rather than offering an empty string.
+    private static func counterpart(of row: MailMessageRow, ownAddresses: Set<String>) -> String {
+        let mine = Set(ownAddresses.map { $0.lowercased() })
+        let sender = row.sender ?? ""
+        guard mine.contains(sender.lowercased()) else { return sender }
+        return row.recipients.first { !mine.contains($0.lowercased()) } ?? sender
     }
 
     /// `MembershipRule`'s own date rule, which is `private` there: the sent date, the

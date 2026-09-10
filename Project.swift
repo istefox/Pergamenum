@@ -156,6 +156,13 @@ let project = Project(
                 ],
                 "NSCalendarsFullAccessUsageDescription": "Pergamenum mostra e crea eventi nella timeline giornaliera.",
                 "NSRemindersFullAccessUsageDescription": "Pergamenum sincronizza i task con Promemoria.",
+                // Required since macOS Mojave for any Apple Event sent to another app - without
+                // it, recent macOS versions (confirmed on Tahoe) can refuse the request outright
+                // and never show the consent prompt or list the app under Automazione at all,
+                // rather than falling back to a default description. `MailLink.selectedMessage()`
+                // (ADR-0036's «Dalla selezione di Mail» seed and SPEC §10's «Inserisci») is the
+                // one call site that sends Mail an Apple Event.
+                "NSAppleEventsUsageDescription": "Pergamenum legge il messaggio selezionato in Mail per collegarlo o usarlo come seme di una pratica.",
                 // ADR-0026 §D3. A dragged sidebar row carries two representations on one
                 // pasteboard item, and the structured one travels under a type this app
                 // owns (`Sources/App/VaultItemDrag.swift`).

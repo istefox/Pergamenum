@@ -15,13 +15,14 @@ import Testing
 
 @Suite struct PraticaTrayModelTests {
     private static func row(
-        rowID: Int, conversationID: Int, sender: String, subject: String, secondsFromEpoch: Double
+        rowID: Int, conversationID: Int, sender: String, subject: String, secondsFromEpoch: Double,
+        recipients: [String] = []
     ) -> MailMessageRow {
         MailMessageRow(
             rowID: rowID, indexMessageIDHash: rowID, globalMessageID: rowID, subject: subject,
             sender: sender, dateSent: Date(timeIntervalSince1970: secondsFromEpoch), dateReceived: nil,
             mailbox: MailboxRef(rowID: 1, url: "ews://acct/INBOX"), conversationID: conversationID,
-            deleted: false, messageID: "<\(rowID)@rossi-spa.it>"
+            deleted: false, messageID: "<\(rowID)@rossi-spa.it>", recipients: recipients
         )
     }
 
@@ -65,6 +66,38 @@ import Testing
         )
         let proposals = PraticaTrayModel.proposals(from: [first, second])
         #expect(Set(proposals.map(\.conversationID)) == [1, 2])
+    }
+
+    // MARK: - The counterpart is never the person's own address
+
+    @Test func aProposalWhoseNewestMessageWasSentByThePersonNamesTheRecipientNotThemself() {
+        let received = Self.row(
+            rowID: 1, conversationID: 42, sender: "tecnico@tifone.com", subject: "Antivibrante",
+            secondsFromEpoch: 1_749_000_000
+        )
+        let sent = Self.row(
+            rowID: 2, conversationID: 42, sender: "s.ferri@vibrofer.it", subject: "Re: Antivibrante",
+            secondsFromEpoch: 1_749_100_000, recipients: ["tecnico@tifone.com"]
+        )
+        let entry = MembershipRule.TrayEntry(conversationID: 42, messages: [received, sent])
+
+        let proposals = PraticaTrayModel.proposals(from: [entry], ownAddresses: ["s.ferri@vibrofer.it"])
+        #expect(proposals.count == 1)
+        #expect(
+            proposals.first?.counterpart == "tecnico@tifone.com",
+            "the newest message's sender is the person's own address, so the counterpart is its recipient"
+        )
+    }
+
+    @Test func aProposalWhoseNewestMessageHasNoNonOwnRecipientFallsBackToTheSender() {
+        let sent = Self.row(
+            rowID: 1, conversationID: 42, sender: "s.ferri@vibrofer.it", subject: "Promemoria",
+            secondsFromEpoch: 1_749_000_000, recipients: ["s.ferri@vibrofer.it"]
+        )
+        let entry = MembershipRule.TrayEntry(conversationID: 42, messages: [sent])
+
+        let proposals = PraticaTrayModel.proposals(from: [entry], ownAddresses: ["s.ferri@vibrofer.it"])
+        #expect(proposals.first?.counterpart == "s.ferri@vibrofer.it")
     }
 
     // MARK: - R-30: "the strip is hidden when empty"

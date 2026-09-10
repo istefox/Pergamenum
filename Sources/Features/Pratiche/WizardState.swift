@@ -18,6 +18,10 @@ struct WizardState: Equatable, Sendable {
         case nameAndClient
         case seed
         case proposals
+        /// Only ever reached when the detector finds something to offer
+        /// (`isLastStep`) - «Crea» stays on `.proposals` otherwise, unchanged from
+        /// before this step existed.
+        case newCounterparts
 
         static func < (lhs: Step, rhs: Step) -> Bool { lhs.rawValue < rhs.rawValue }
     }
@@ -67,6 +71,17 @@ struct WizardState: Equatable, Sendable {
     /// Step 3's free-text «Parole chiave» field, comma/newline separated - see
     /// `keywordList` for the parsed form `Dossier.keywords` actually stores.
     var keywords: String = ""
+    /// Every message of every conversation seen so far (search sheet, seed
+    /// resolution, step 3's own fetch, the post-accept re-fetch below), keyed by
+    /// `conversation_id` - `NewCounterpartDetector`'s raw input, kept here so
+    /// nothing re-reads the Mail store to get it.
+    var conversationMessages: [Int: [MailMessageRow]] = [:]
+    /// The new-counterparts step's own candidates (SPEC "Rilevazione di nuove
+    /// controparti nella wizard «Nuova pratica»", R-01…R-07), recomputed by
+    /// `refreshNewCounterpartCandidates` whenever `selectedProposalIDs` or
+    /// `conversationMessages` changes.
+    var newCounterpartCandidates: [NewCounterpartDetector.NewCounterpartCandidate] = []
+    var selectedNewCounterpartAddresses: Set<String> = []
 
     /// Step 1's gate (R-20): a pratica needs a non-blank title and a chosen client
     /// folder before advancing - screen 1d draws «Continua» disabled until both hold.
@@ -81,7 +96,19 @@ struct WizardState: Equatable, Sendable {
     var canAdvance: Bool {
         switch step {
         case .nameAndClient: canContinueFromNameAndClient
-        case .seed, .proposals: true
+        case .seed, .proposals, .newCounterparts: true
+        }
+    }
+
+    /// Whether `step` is the last one actually reached this run - `.proposals`
+    /// exactly when the detector found nothing to offer (today's behavior,
+    /// unchanged), `.newCounterparts` always, since it is only ever entered when
+    /// there is something to show.
+    var isLastStep: Bool {
+        switch step {
+        case .nameAndClient, .seed: false
+        case .proposals: newCounterpartCandidates.isEmpty
+        case .newCounterparts: true
         }
     }
 
@@ -89,7 +116,7 @@ struct WizardState: Equatable, Sendable {
     /// gate still holds (nothing between steps can un-set it, but nothing should
     /// assume that either).
     var canCreate: Bool {
-        step == .proposals && canContinueFromNameAndClient
+        isLastStep && canContinueFromNameAndClient
     }
 
     /// The pratica folder's vault-relative path, built from the three fields above -
@@ -134,5 +161,22 @@ struct WizardState: Equatable, Sendable {
             keywords: keywordList,
             included: [], excluded: [], ignored: []
         )
+    }
+
+    /// Recomputes `newCounterpartCandidates` from every ticked conversation's
+    /// messages (R-01/R-02: nothing is ever a candidate outside the union of what
+    /// `selectedProposalIDs` names), and drops any address from
+    /// `selectedNewCounterpartAddresses` that no longer appears - a selection
+    /// change must not leave a stale checkbox ticked for a candidate that dropped
+    /// out of the list.
+    mutating func refreshNewCounterpartCandidates(ownAddresses: Set<String>) {
+        let messages = selectedProposalIDs
+            .compactMap { Int($0) }
+            .flatMap { conversationMessages[$0] ?? [] }
+        newCounterpartCandidates = NewCounterpartDetector.candidates(
+            in: messages, counterparts: counterparts, ownAddresses: ownAddresses
+        )
+        let stillOffered = Set(newCounterpartCandidates.map(\.address))
+        selectedNewCounterpartAddresses.formIntersection(stillOffered)
     }
 }

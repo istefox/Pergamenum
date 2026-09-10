@@ -124,6 +124,59 @@ import Testing
         state.selectedProposalIDs = []
         #expect(state.makeDossier().conversations.isEmpty)
     }
+
+    // MARK: - The new-counterparts step (SPEC "Rilevazione di nuove controparti
+    // nella wizard «Nuova pratica»", R-01, R-02, R-09)
+
+    private static func row(sender: String, conversationID: Int) -> MailMessageRow {
+        MailMessageRow(
+            rowID: 1, indexMessageIDHash: 1, globalMessageID: 1, subject: "S", sender: sender,
+            dateSent: Date(), dateReceived: nil, mailbox: MailboxRef(rowID: 1, url: "ews://acct/INBOX"),
+            conversationID: conversationID, deleted: false, messageID: "<1@rossi-spa.it>", recipients: []
+        )
+    }
+
+    @Test func proposalsIsStillTheLastStepWhenNoNewCounterpartIsFound() {
+        var state = WizardState()
+        state.title = "Offerta 2026"
+        state.clientFolder = "Rossi"
+        state.step = .proposals
+        #expect(state.isLastStep, "R-02: an empty candidate list changes nothing")
+        #expect(state.canCreate)
+    }
+
+    @Test func proposalsIsNotTheLastStepOnceANewCounterpartIsFound() {
+        var state = WizardState()
+        state.title = "Offerta 2026"
+        state.clientFolder = "Rossi"
+        state.step = .proposals
+        state.conversationMessages = [10: [Self.row(sender: "tecnico@tifone.com", conversationID: 10)]]
+        state.selectedProposalIDs = ["10"]
+        state.refreshNewCounterpartCandidates(ownAddresses: [])
+        #expect(!state.newCounterpartCandidates.isEmpty)
+        #expect(!state.isLastStep, "R-01: a found candidate moves «Crea» to the new step")
+        #expect(!state.canCreate, "«Crea» is not reachable from .proposals once there is a new step")
+
+        state.step = .newCounterparts
+        #expect(state.isLastStep)
+        #expect(state.canCreate)
+    }
+
+    @Test func refreshingDropsAStaleSelectionWhenACandidateNoLongerAppears() {
+        var state = WizardState()
+        state.conversationMessages = [10: [Self.row(sender: "tecnico@tifone.com", conversationID: 10)]]
+        state.selectedProposalIDs = ["10"]
+        state.refreshNewCounterpartCandidates(ownAddresses: [])
+        state.selectedNewCounterpartAddresses = ["tecnico@tifone.com"]
+
+        state.selectedProposalIDs = []
+        state.refreshNewCounterpartCandidates(ownAddresses: [])
+        #expect(state.newCounterpartCandidates.isEmpty)
+        #expect(
+            state.selectedNewCounterpartAddresses.isEmpty,
+            "a candidate that dropped out of the list must not stay ticked"
+        )
+    }
 }
 
 @Suite struct AddToPraticaOrderingTests {

@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=110 -->
+<!-- project-tasks: prefix=PG lastId=111 -->
 # PROJECT TASKS
 
-Updated: 2026-09-10 · Open: 12 (P1: 0) · In progress: 0
+Updated: 2026-09-10 · Open: 13 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -12,6 +12,9 @@ _none_
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-111` **P3** [roadmap, future] Detect new counterparts that join an *already-followed* pratica's conversation during regular sync, not only at wizard creation time <!-- src:session opened:2026-09-10 -->
+  - Explicitly deferred by Stefano when scoping the new "detect new counterparts" wizard feature (2026-09-10): the wizard-time detection (analyze the whole conversation, propose addresses not yet in `Dossier.counterparts`, one-by-one selector) is being built now via `concept-to-code`. This item is the natural follow-up he flagged as "interessante": once a pratica is already being followed, a later sync can encounter a message from/to an address never seen in that pratica before (someone new joins the thread after the pratica was created) — right now nothing surfaces that, the person only finds out by reading the email itself. Likely lands near `PraticaLiveSync`/the tray mechanism (`PraticaTrayModel`), proposing new *people* rather than new *conversations*. Not started - scope, ADR impact and UI (tray row? sheet? notification?) still to be designed.
 
 - [ ] `PG-110` **P3** `ReleasePipelineTests.appcastSelfTestExitsZeroWithOutput` fails reliably when run as part of the full `PergamenumTests` suite via `xcodebuild test`, but passes every time run in isolation — `Tests/ReleasePipelineTests.swift:24` <!-- src:session opened:2026-09-10 -->
   - Found on 2026-09-10 while confirming the pratiche PG-105-108 follow-up commit's tests: `.claude/test-cmd`'s full run failed with exactly this one test red (2682 tests, 1 failure), unrelated to anything touched by that commit (no Sparkle/appcast/release-pipeline file was in the diff). Reproduced 3 times in a row inside the full suite, on two separate turns.

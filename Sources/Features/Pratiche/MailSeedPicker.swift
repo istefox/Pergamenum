@@ -19,6 +19,11 @@ import SwiftUI
 struct MailSeedResult: Sendable {
     var proposals: [WizardState.Proposal]
     var problem: String?
+    /// Every message of every conversation this read touched, keyed by
+    /// `conversation_id` - the raw input `NewCounterpartDetector.candidates(in:
+    /// counterparts:ownAddresses:)` needs, kept alongside the reduced `proposals`
+    /// so the wizard never re-reads the Mail store to get it.
+    var messagesByConversationID: [Int: [MailMessageRow]] = [:]
 
     static let empty = MailSeedResult(proposals: [], problem: nil)
 }
@@ -32,7 +37,7 @@ enum MailSeedLoader {
     /// by `conversation_id`, the same fold `PraticaLiveSync.prepare` does for the tray.
     nonisolated static func proposals(
         counterparts: [String], within window: ClosedRange<Date>,
-        mailRoot: URL, stateDirectory: URL
+        mailRoot: URL, stateDirectory: URL, ownAddresses: Set<String> = []
     ) -> MailSeedResult {
         let addresses = counterparts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -49,7 +54,10 @@ enum MailSeedLoader {
                     conversations[conversation.conversationID] = conversation.messages
                 }
             }
-            return MailSeedResult(proposals: reduce(conversations), problem: nil)
+            let reduced = reduce(conversations, ownAddresses: ownAddresses)
+            return MailSeedResult(
+                proposals: reduced.proposals, problem: nil, messagesByConversationID: reduced.messages
+            )
         }
     }
 
@@ -60,7 +68,7 @@ enum MailSeedLoader {
     /// hash) answers with a problem sentence, never with a silent empty result: the
     /// person picked a message and is owed an explanation for why it did not take.
     nonisolated static func seed(
-        messageID: String, mailRoot: URL, stateDirectory: URL
+        messageID: String, mailRoot: URL, stateDirectory: URL, ownAddresses: Set<String> = []
     ) -> MailSeedResult {
         switch reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
         case .failed(let message):
@@ -75,7 +83,10 @@ enum MailSeedLoader {
                 )
             }
             let messages = reader.messages(inConversation: conversationID)
-            return MailSeedResult(proposals: reduce([conversationID: messages]), problem: nil)
+            let reduced = reduce([conversationID: messages], ownAddresses: ownAddresses)
+            return MailSeedResult(
+                proposals: reduced.proposals, problem: nil, messagesByConversationID: reduced.messages
+            )
         }
     }
 
@@ -103,11 +114,13 @@ enum MailSeedLoader {
     /// `PraticaTrayModel.proposals(from:)`'s own reduction, reused rather than written
     /// a second time: the wizard's step 3 and the tray strip show the same four fields
     /// about the same kind of thing, and two reductions would drift.
-    private nonisolated static func reduce(_ conversations: [Int: [MailMessageRow]]) -> [WizardState.Proposal] {
+    private nonisolated static func reduce(
+        _ conversations: [Int: [MailMessageRow]], ownAddresses: Set<String> = []
+    ) -> (proposals: [WizardState.Proposal], messages: [Int: [MailMessageRow]]) {
         let entries = conversations
             .map { MembershipRule.TrayEntry(conversationID: $0.key, messages: $0.value) }
             .sorted { $0.conversationID < $1.conversationID }
-        return PraticaTrayModel.proposals(from: entries).map { proposal in
+        let proposals = PraticaTrayModel.proposals(from: entries, ownAddresses: ownAddresses).map { proposal in
             WizardState.Proposal(
                 id: String(proposal.conversationID),
                 subject: proposal.subject,
@@ -119,6 +132,7 @@ enum MailSeedLoader {
         // Newest first, which is the order a person recognises a thread in - the
         // dictionary above has none, and the id order is Mail's own arrival order.
         .sorted { $0.dateRange.upperBound > $1.dateRange.upperBound }
+        return (proposals, conversations)
     }
 
     /// Not a `Result`: the failure side is the Italian sentence the sheet shows, and a
@@ -163,11 +177,14 @@ struct MailSeedPicker: View {
     /// person is never offered a seed the tray would then refuse to follow up.
     let windowDays: Int
     let onCancel: () -> Void
-    /// The chosen address and the conversation under it.
-    let onChoose: (_ address: String, _ proposal: WizardState.Proposal) -> Void
+    /// The chosen address, the conversation under it, and that conversation's raw
+    /// messages - what the wizard needs to fold into `WizardState.conversationMessages`
+    /// without a second Mail-store read once this seed reaches step 3.
+    let onChoose: (_ address: String, _ proposal: WizardState.Proposal, _ messages: [MailMessageRow]) -> Void
 
     @State private var address = ""
     @State private var proposals: [WizardState.Proposal] = []
+    @State private var messagesByConversationID: [Int: [MailMessageRow]] = [:]
     @State private var problem: String?
     @State private var isSearching = false
     @State private var chosen: String?
@@ -236,7 +253,8 @@ struct MailSeedPicker: View {
                 .accessibilityIdentifier("pratiche-seed-cancel")
             Button("Usa questa conversazione") {
                 guard let chosen, let proposal = proposals.first(where: { $0.id == chosen }) else { return }
-                onChoose(address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), proposal)
+                let messages = Int(proposal.id).flatMap { messagesByConversationID[$0] } ?? []
+                onChoose(address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), proposal, messages)
             }
             .keyboardShortcut(.defaultAction)
             .disabled(chosen == nil)
@@ -262,15 +280,17 @@ struct MailSeedPicker: View {
         let mailRoot = MailStoreLocation.resolve()
         let now = Date()
         let window = now.addingTimeInterval(-Double(windowDays) * 86_400)...now
+        let ownAddresses = Set(vault.settings.pratiche.ownAddresses)
         isSearching = true
         Task {
             let result = await Task.detached(priority: .userInitiated) {
                 MailSeedLoader.proposals(
                     counterparts: [needle], within: window,
-                    mailRoot: mailRoot, stateDirectory: stateDirectory
+                    mailRoot: mailRoot, stateDirectory: stateDirectory, ownAddresses: ownAddresses
                 )
             }.value
             proposals = result.proposals
+            messagesByConversationID = result.messagesByConversationID
             problem = result.problem
             chosen = result.proposals.first?.id
             isSearching = false

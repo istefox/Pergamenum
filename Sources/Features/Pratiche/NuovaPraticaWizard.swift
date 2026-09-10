@@ -32,7 +32,7 @@ struct NuovaPraticaWizard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("PASSO \(state.step.rawValue + 1) DI 3")
+            Text("PASSO \(state.step.rawValue + 1) DI \(state.newCounterpartCandidates.isEmpty ? 3 : 4)")
                 .themedText(.caption, color: .textTertiary)
                 .accessibilityIdentifier("pratiche-wizard-step")
             Text(Self.title(of: state.step)).themedText(.title)
@@ -41,6 +41,7 @@ struct NuovaPraticaWizard: View {
                 case .nameAndClient: nameAndClient
                 case .seed: seed
                 case .proposals: proposals
+                case .newCounterparts: newCounterparts
                 }
             }
             .formStyle(.grouped)
@@ -62,8 +63,9 @@ struct NuovaPraticaWizard: View {
             MailSeedPicker(
                 windowDays: vault.settings.pratiche.proposalWindowDays,
                 onCancel: { isShowingSeedPicker = false },
-                onChoose: { address, proposal in
+                onChoose: { address, proposal, messages in
                     isShowingSeedPicker = false
+                    if let id = Int(proposal.id) { state.conversationMessages[id] = messages }
                     adopt(seed: .search, address: address, proposal: proposal)
                 }
             )
@@ -75,6 +77,7 @@ struct NuovaPraticaWizard: View {
         case .nameAndClient: "Nome e cliente"
         case .seed: "Seme"
         case .proposals: "Proposte"
+        case .newCounterparts: "Nuove controparti"
         }
     }
 
@@ -223,6 +226,61 @@ struct NuovaPraticaWizard: View {
             get: { state.selectedProposalIDs.contains(id) },
             set: { isOn in
                 if isOn { state.selectedProposalIDs.insert(id) } else { state.selectedProposalIDs.remove(id) }
+                state.refreshNewCounterpartCandidates(ownAddresses: Set(vault.settings.pratiche.ownAddresses))
+            }
+        )
+    }
+
+    // MARK: - Step "Nuove controparti"
+
+    @ViewBuilder
+    private var newCounterparts: some View {
+        Section("Indirizzi nuovi trovati nella conversazione") {
+            ForEach(cappedCandidates.filter(\.wroteAtLeastOnce)) { candidate in
+                newCounterpartRow(candidate, detail: Self.wroteDetail(candidate.messageCount))
+            }
+            ForEach(cappedCandidates.filter { !$0.wroteAtLeastOnce }) { candidate in
+                newCounterpartRow(candidate, detail: "solo in copia, mai scritto direttamente")
+            }
+            if newCounterpartOverflowCount > 0 {
+                Text("e altri \(newCounterpartOverflowCount) indirizzi ignorati")
+                    .themedText(.caption, color: .textTertiary)
+                    .accessibilityIdentifier("pratiche-wizard-new-counterpart-overflow")
+            }
+        }
+    }
+
+    private func newCounterpartRow(
+        _ candidate: NewCounterpartDetector.NewCounterpartCandidate, detail: String
+    ) -> some View {
+        Toggle(isOn: newCounterpartTick(candidate.address)) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(candidate.address).themedText(.body)
+                Text(detail).themedText(.caption, color: .textTertiary)
+            }
+        }
+        .accessibilityIdentifier("pratiche-wizard-new-counterpart-\(candidate.address)")
+    }
+
+    private static func wroteDetail(_ count: Int) -> String {
+        count == 1 ? "ha scritto 1 messaggio" : "ha scritto \(count) messaggi"
+    }
+
+    /// R-05: at most 10 shown individually, ranked/grouped order preserved.
+    private var cappedCandidates: [NewCounterpartDetector.NewCounterpartCandidate] {
+        Array(state.newCounterpartCandidates.prefix(10))
+    }
+
+    private var newCounterpartOverflowCount: Int {
+        max(0, state.newCounterpartCandidates.count - 10)
+    }
+
+    private func newCounterpartTick(_ address: String) -> Binding<Bool> {
+        Binding(
+            get: { state.selectedNewCounterpartAddresses.contains(address) },
+            set: { isOn in
+                if isOn { state.selectedNewCounterpartAddresses.insert(address) }
+                else { state.selectedNewCounterpartAddresses.remove(address) }
             }
         )
     }
@@ -239,7 +297,7 @@ struct NuovaPraticaWizard: View {
                 Button("Indietro") { step(by: -1) }
                     .accessibilityIdentifier("pratiche-wizard-back")
             }
-            if state.step == .proposals {
+            if state.isLastStep {
                 Button("Crea", action: create)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!state.canCreate)
@@ -288,15 +346,18 @@ struct NuovaPraticaWizard: View {
         }
         let stateDirectory = PraticheController.stateDirectory(for: session)
         let mailRoot = MailStoreLocation.resolve()
+        let ownAddresses = Set(vault.settings.pratiche.ownAddresses)
         isLoadingProposals = true
         Task {
             let result = await Task.detached(priority: .userInitiated) {
                 MailSeedLoader.seed(
-                    messageID: messageID, mailRoot: mailRoot, stateDirectory: stateDirectory
+                    messageID: messageID, mailRoot: mailRoot, stateDirectory: stateDirectory,
+                    ownAddresses: ownAddresses
                 )
             }.value
             isLoadingProposals = false
             problem = result.problem
+            state.conversationMessages.merge(result.messagesByConversationID) { _, new in new }
             guard let proposal = result.proposals.first else { return }
             adopt(seed: state.seed, address: proposal.counterpart, proposal: proposal)
         }
@@ -322,6 +383,18 @@ struct NuovaPraticaWizard: View {
     /// the proposal window. Anything already ticked stays ticked - a person moving back
     /// and forth between steps must not lose their choices.
     private func loadProposals() {
+        Task { await performLoadProposals(preselectingNew: false) }
+    }
+
+    /// Step 3's own read: every conversation touching the ticked counterparts,
+    /// inside the proposal window. Anything already ticked stays ticked.
+    ///
+    /// `preselectingNew`: false for the ordinary step-3 fetch (today's behavior -
+    /// a person ticks conversations by hand); true only for the post-accept
+    /// re-fetch in `createAfterAcceptingNewCounterparts()`, where a newly found
+    /// conversation must join the pratica automatically (R-08), the same
+    /// treatment `adopt()` already gives the seed's own conversation.
+    private func performLoadProposals(preselectingNew: Bool) async {
         guard let session = vault.session, !state.counterparts.isEmpty else { return }
         let counterparts = state.counterparts
         let stateDirectory = PraticheController.stateDirectory(for: session)
@@ -330,19 +403,22 @@ struct NuovaPraticaWizard: View {
         let window = now.addingTimeInterval(
             -Double(vault.settings.pratiche.proposalWindowDays) * 86_400
         )...now
+        let ownAddresses = Set(vault.settings.pratiche.ownAddresses)
         isLoadingProposals = true
-        Task {
-            let result = await Task.detached(priority: .userInitiated) {
-                MailSeedLoader.proposals(
-                    counterparts: counterparts, within: window,
-                    mailRoot: mailRoot, stateDirectory: stateDirectory
-                )
-            }.value
-            isLoadingProposals = false
-            problem = result.problem
-            let known = Set(state.proposals.map(\.id))
-            state.proposals += result.proposals.filter { !known.contains($0.id) }
-        }
+        let result = await Task.detached(priority: .userInitiated) {
+            MailSeedLoader.proposals(
+                counterparts: counterparts, within: window,
+                mailRoot: mailRoot, stateDirectory: stateDirectory, ownAddresses: ownAddresses
+            )
+        }.value
+        isLoadingProposals = false
+        problem = result.problem
+        state.conversationMessages.merge(result.messagesByConversationID) { _, new in new }
+        let known = Set(state.proposals.map(\.id))
+        let newOnes = result.proposals.filter { !known.contains($0.id) }
+        state.proposals += newOnes
+        if preselectingNew { state.selectedProposalIDs.formUnion(newOnes.map(\.id)) }
+        state.refreshNewCounterpartCandidates(ownAddresses: ownAddresses)
     }
 
     // MARK: - «Crea»
@@ -350,7 +426,25 @@ struct NuovaPraticaWizard: View {
     /// R-20: one conformant `pratica.md` (ADR §D11's tag set plus the dossier keys),
     /// then the ordinary per-pratica sync - the pane's own progress bar reports it, and
     /// rows arrive newest-last because the timeline is ascending by design.
+    /// R-08: a checked new-counterpart candidate must become a real counterpart,
+    /// pull in whatever else in Mail already involves it, and only then let the
+    /// pratica be created - so a checked box never leaves anyone off the pratica's
+    /// counterparts. An empty selection (R-09) is exactly today's «Crea».
     private func create() {
+        guard !state.selectedNewCounterpartAddresses.isEmpty else {
+            performCreate()
+            return
+        }
+        for address in state.selectedNewCounterpartAddresses where !state.counterparts.contains(address) {
+            state.counterparts.append(address)
+        }
+        Task {
+            await performLoadProposals(preselectingNew: true)
+            performCreate()
+        }
+    }
+
+    private func performCreate() {
         guard let session = vault.session else { return }
         let folder = state.relativePath
         let path = PraticaCommandActions.praticaNotePath(of: folder)
