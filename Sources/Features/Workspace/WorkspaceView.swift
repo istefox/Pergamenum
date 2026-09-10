@@ -362,6 +362,9 @@ struct WorkspaceView: View {
                 // Third overlay outside the `scaleEffect` above, and the only one of the three
                 // that answers the pointer, so it comes after both (ADR-0027 §D5).
                 BoardFormatBarLayer(workspace: workspace, viewport: viewportSize)
+                // Same placement, same reason as the layer above (ADR §D5): outside the
+                // `scaleEffect`, after it in the ZStack so it answers the pointer for row clicks.
+                BoardWikilinkCompletionLayer(workspace: workspace, viewport: viewportSize)
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)
@@ -483,6 +486,13 @@ struct WorkspaceView: View {
         workspace.hidesMarkup = vault.settings.hidesMarkup
         // ADR-0037 §D8: the same route, one property wider.
         workspace.revealsInlineSpans = vault.settings.revealsInlineSpans
+        // The `[[` completion popup's candidate pool (point 1 of the workspace wikilink
+        // regression chain) - refreshed on the same triggers as the settings above, not on
+        // every vault mutation: a note created in another pane while this board stays open
+        // will not appear until the next settings change re-runs this method, the same
+        // accepted staleness `hidesMarkup` itself already has.
+        workspace.wikilinkNoteTitles = vault.index.allNotes.map(\.title)
+        workspace.wikilinkBoardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
     }
 
     private var grid: some View {

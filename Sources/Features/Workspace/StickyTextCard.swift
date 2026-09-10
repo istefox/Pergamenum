@@ -64,6 +64,10 @@ struct StickyTextCard: View {
             // preferences here the same way, and a `@Environment(VaultController.self)` read at
             // this level would crash a card built in a preview or a test.
             hidesMarkup: workspace.hidesMarkup,
+            // The `[[` completion popup's candidate pool, off the controller by the same route
+            // as the setting above.
+            wikilinkNoteTitles: workspace.wikilinkNoteTitles,
+            wikilinkBoardTitles: workspace.wikilinkBoardTitles,
             // ADR-0037 §D8: the same route `hidesMarkup` above already takes.
             revealsInlineSpans: workspace.revealsInlineSpans,
             // Which of this card's headings are folded (ADR-0028 §D8), off the controller by node
@@ -78,6 +82,11 @@ struct StickyTextCard: View {
             // card's, so nothing here has to be undone when editing moves elsewhere.
             onSelectionChange: { textView in
                 workspace.cardTextSelection.update(nodeID: node.id, from: textView)
+            },
+            // The `[[` completion popup changed - same reasoning as `onSelectionChange` above,
+            // one holder the board's own popup overlay reads.
+            onWikilinkCompletionChange: { textView in
+                workspace.wikilinkCompletionState.update(nodeID: node.id, from: textView)
             },
             // Guarded on this card's own session, exactly as the focus commit above is: when
             // editing moves straight from one card to another, this card's text view resigns

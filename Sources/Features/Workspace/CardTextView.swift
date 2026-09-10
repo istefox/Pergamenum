@@ -31,6 +31,12 @@ struct CardTextView: NSViewRepresentable {
     /// inside the card - a card built in a preview or a test has no such environment and would
     /// crash on it.
     let hidesMarkup: Bool
+    /// The vault's note titles and boards, offered as `[[` completion candidates - the same
+    /// `hidesMarkup`-style route, off `WorkspaceController.wikilinkNoteTitles`/
+    /// `.wikilinkBoardTitles`. Defaulted, like `foldedEntries` below: a card in a preview or
+    /// a test offers no completion rather than crashing.
+    var wikilinkNoteTitles: [String] = []
+    var wikilinkBoardTitles: [String] = []
     /// Whether reveal-on-caret narrows from paragraph to span for this card's bold/italic runs
     /// (ADR-0037 §D8), travelling the same route `hidesMarkup` above already does:
     /// `WorkspaceView.applyBoardSettings()` → `WorkspaceController.revealsInlineSpans` →
@@ -52,6 +58,11 @@ struct CardTextView: NSViewRepresentable {
     /// that something out there asked to be told. Both `nil`-safe by default, so a card built
     /// without a board behind it - a preview, a test - publishes to nobody.
     var onSelectionChange: (FormattingTextView) -> Void = { _ in }
+    /// The card's `[[` completion popup changed - opened, moved its highlight, or closed -
+    /// with the live view so the caller can read its state and act on it. Same shape as
+    /// `onSelectionChange` above, and for the same reason: this view knows nothing about the
+    /// board it floats on.
+    var onWikilinkCompletionChange: (FormattingTextView) -> Void = { _ in }
     /// Esc, a click outside, or the keyboard going anywhere else. One closure for all three
     /// because today all three do the same thing - `endTextEdit(commit: true)` - and a second
     /// one would only record a distinction the card does not make.
@@ -115,6 +126,10 @@ struct CardTextView: NSViewRepresentable {
         textView.onToggleFold = { [weak coordinator] entry in coordinator?.parent.onToggleFold(entry) }
         // A click on a task line's checkbox glyph (PG-074), reported the same way.
         textView.onToggleTask = { [weak coordinator] lineIndex in coordinator?.parent.onToggleTask(lineIndex) }
+        // The `[[` completion popup changed, reported the same way.
+        textView.onWikilinkCompletionChange = { [weak coordinator] view in
+            coordinator?.parent.onWikilinkCompletionChange(view)
+        }
 
         // The rendering rule, handed over in the two lines that carry it - the same pair
         // `NoteTextView.swift:148-149` assigns, to the same class rather than to a fork of it
@@ -122,6 +137,8 @@ struct CardTextView: NSViewRepresentable {
         // second copy of it is how a card and a note would quietly stop agreeing.
         textView.textContentStorage?.delegate = coordinator.decorations
         textView.textLayoutManager?.delegate = coordinator.decorations
+        textView.wikilinkNoteTitles = wikilinkNoteTitles
+        textView.wikilinkBoardTitles = wikilinkBoardTitles
         textView.string = text
         coordinator.configure(textView, editable: isEditable)
         coordinator.applyStyling(to: textView)
@@ -140,6 +157,8 @@ struct CardTextView: NSViewRepresentable {
         // `textViewDidChangeSelection` synchronously. Publishing the selection from in there
         // would be a state mutation during a view update, so the coordinator holds the
         // publication back for the length of the pass (ADR-0027 §D5).
+        textView.wikilinkNoteTitles = wikilinkNoteTitles
+        textView.wikilinkBoardTitles = wikilinkBoardTitles
         context.coordinator.duringViewUpdate {
             // Only touch the text when the model diverges from what is on screen: reassigning it
             // unconditionally would reset the caret on every keystroke (`NoteTextView`'s own guard).
@@ -235,6 +254,9 @@ struct CardTextView: NSViewRepresentable {
             // a selection measured against the previous layout is a bar a few points off the words
             // it labels.
             publishSelection(textView)
+            // Also after the restyle, for the same reason: the trigger and its candidates are
+            // read against the text the pass above has just measured.
+            textView.refreshWikilinkCompletion()
         }
 
         /// Every arrow key, every drag, and the `setSelectedRange` that ends a format action land
@@ -247,6 +269,10 @@ struct CardTextView: NSViewRepresentable {
             // (R-03). `publishSelection` below returns early for a card at rest; this must not.
             applyReveal(to: textView)
             publishSelection(textView)
+            // Arrow keys carry the caret in and out of a `[[...]]` span with no text change of
+            // their own - the note editor's own `refreshCompletion` has the identical second
+            // call site, via `refreshFormatBar`'s neighbouring hook.
+            textView.refreshWikilinkCompletion()
         }
 
         /// Hands the board this card's current selection, but **only while this card is the one
