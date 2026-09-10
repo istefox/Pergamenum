@@ -26,4 +26,17 @@ struct MailMessageRow: Equatable, Sendable {
     /// §D3, Task 3), never through the index. `nil` for a row the ledger has never
     /// seen.
     var messageID: String?
+    /// Every recipient address of this message - To, Cc and Bcc alike, lower-cased,
+    /// joined from `recipients` through `addresses` (ADR §D24.1). Empty for a store
+    /// whose schema has no `recipients` table and for a message that has none.
+    ///
+    /// Flat, with no To/Cc/Bcc distinction: every consumer asks "does this message
+    /// touch this address", and nothing in this feature renders or filters by
+    /// recipient kind.
+    ///
+    /// Declared **last** and defaulted so the memberwise initialiser stays
+    /// source-compatible with every existing construction site (`Tests/PraticaSyncTests.swift`,
+    /// `Tests/MembershipRuleTests.swift`, `Tests/MailStoreReaderTests.swift`,
+    /// `Tests/PraticaTrayTests.swift`).
+    var recipients: [String] = []
 }

@@ -35,6 +35,13 @@ actor PraticaSyncEngine {
         /// (R-11).
         var onDisk: Set<String>
         var settings: PraticheSettings
+        /// The one message an explicit «Rigenera» (§D6's second exception) may
+        /// rewrite. `nil` for every ordinary sync, which is what keeps §D6's guard
+        /// absolute everywhere else (ADR §D21).
+        ///
+        /// Defaulted, and declared last, so every existing `SyncRequest(...)` call
+        /// site (production and test) keeps compiling unchanged.
+        var regenerating: String? = nil
     }
 
     /// What one `sync(_:)` call did, for the caller that records it in the ledger and
@@ -63,10 +70,18 @@ actor PraticaSyncEngine {
         /// processed - `writtenFiles`/`importedMessageIDs` still hold everything
         /// finished before the boundary where cancellation was observed (R-11).
         var cancelled: Bool
+        /// §D3's bridge triples for every message this run wrote - a fresh import and a
+        /// regeneration alike, since a regeneration is exactly when a stale ROWID gets
+        /// corrected. A row Mail did not thread (`conversationID == nil`) produces no
+        /// triple: there is no conversation for R-14 to re-derive.
+        ///
+        /// Declared here (ADR-0155 §D1); `commit` does not append to it yet - that is
+        /// the coder's job (ADR §D23.1).
+        var bridge: [PraticaLedger.Entry]
 
         static let empty = SyncOutcome(
             writtenFiles: [], importedMessageIDs: [], noLongerInMail: [],
-            regeneratedPendingFiles: [], cancelled: false
+            regeneratedPendingFiles: [], cancelled: false, bridge: []
         )
     }
 
@@ -273,13 +288,23 @@ actor PraticaSyncEngine {
 
     // MARK: - One message, decoded
 
-    private struct PreparedAttachment {
+    /// `fileprivate` for the same reason as `PreparedMessage` below, which holds an
+    /// array of these.
+    fileprivate struct PreparedAttachment: Sendable {
         var fileName: String
         var bytes: Data
         var digest: String
     }
 
-    private struct PreparedMessage {
+    /// `Sendable`: holds only value types (ADR §D21) - what lets a `RegenerationPlan`
+    /// carry one across the `actor` boundary unopened.
+    ///
+    /// `fileprivate`, not `private`: `RegenerationPlan.prepared` below is itself
+    /// `fileprivate` (ADR §D21's "declared in the same file, so `fileprivate` reaches
+    /// it"), and a `fileprivate` stored property cannot have a strictly-`private`
+    /// type - the compiler rejects that as inconsistent access. Still invisible
+    /// outside this file either way.
+    fileprivate struct PreparedMessage: Sendable {
         var messageID: String
         var fileName: String
         var noteText: String
@@ -292,6 +317,11 @@ actor PraticaSyncEngine {
         var takenAttachmentNames: Set<String>
         /// R-15: this file exists and says `body: pending`, and the body has arrived.
         var isRegeneration: Bool
+        /// §D3's bridge: the index ROWID and Mail's own `conversation_id` for this
+        /// message, carried through to `commit` so it can append the triple `outcome.bridge`
+        /// records (ADR §D23.1). `conversationID` is `nil` for a row Mail did not thread.
+        var rowID: Int
+        var conversationID: Int?
     }
 
     /// Reads and decodes one message. Writes nothing, and answers `nil` for every
@@ -324,9 +354,13 @@ actor PraticaSyncEngine {
         let isPending = container.bodyState == .pending
         let existing = folder.messagesByID[messageID]
         if let existing {
-            // §D6: a file already on disk is rewritten for exactly one reason - it was
-            // written `pending` and the body has since arrived (R-15).
-            guard existing.document.frontmatter.body == .pending, !isPending else { return nil }
+            // §D6: a file already on disk is rewritten for one of two reasons - it was
+            // written `pending` and the body has since arrived (R-15), or this is the
+            // one message an explicit «Rigenera» named (ADR §D21.1), which narrows this
+            // guard rather than removing it: every other message stays untouched.
+            let isRequestedRegeneration = request.regenerating == messageID
+            guard isRequestedRegeneration || (existing.document.frontmatter.body == .pending && !isPending)
+            else { return nil }
         }
 
         let date = headers.date ?? row.dateSent ?? row.dateReceived ?? .distantPast
@@ -473,7 +507,9 @@ actor PraticaSyncEngine {
             attachments: writes,
             attachmentNameByDigest: attachmentNameByDigest,
             takenAttachmentNames: takenAttachmentNames,
-            isRegeneration: existing != nil
+            isRegeneration: existing != nil,
+            rowID: row.rowID,
+            conversationID: row.conversationID
         )
     }
 
@@ -487,6 +523,110 @@ actor PraticaSyncEngine {
         case .notInStore, .ruleFailed:
             return nil
         }
+    }
+
+    // MARK: - «Rigenera» (ADR §D21)
+
+    /// Everything an approved «Rigenera» needs to perform itself, acquired before any
+    /// file was touched. Opaque on purpose: the only way to obtain one is
+    /// `regenerationPreview`, and the only thing that can be done with one is
+    /// `commitRegeneration` - so the bytes shown and the bytes written cannot diverge.
+    struct RegenerationPlan: Sendable, Identifiable {
+        var id: String { notePath }
+        let praticaFolder: String
+        let messageID: String
+        let notePath: String
+        let currentText: String
+        let replacementText: String
+        let diff: String?
+        let attachmentFileNames: [String]
+        let rewritesOriginalEML: Bool
+        fileprivate let prepared: PreparedMessage
+        fileprivate let request: SyncRequest
+    }
+
+    enum RegenerationFailure: Error, Equatable, Sendable {
+        case rowNotFound
+        case notInStore
+        case notDecodable
+        case fileMissing
+    }
+
+    /// ADR §D21.1/§D21.3: resolves the row (the index first, the ledger's own `rowID`
+    /// only on `.notResolvableFromIndex`), locates and decodes its `.emlx` through the
+    /// existing `prepare(_:request:reader:folder:)` with `request.regenerating` set to
+    /// `messageID` (which is what narrows §D6's guard for exactly this one message),
+    /// and diffs the result against the file already on disk.
+    func regenerationPreview(
+        _ request: SyncRequest, messageID: String, rowID: Int?
+    ) async throws -> RegenerationPlan {
+        let reader = try openedReader()
+
+        let row: MailMessageRow
+        if let known = request.candidates.first(where: { $0.messageID == messageID }) {
+            // Already resolved by whoever built this request (typically the same
+            // candidate set a sync just ran with) - reusing it, rather than re-querying
+            // the index, is what makes «Rigenera» reproduce exactly what the last
+            // import wrote when nothing has changed.
+            row = known
+        } else {
+            switch reader.row(forMessageID: messageID) {
+            case .found(let found):
+                row = found
+            case .notResolvableFromIndex:
+                guard let rowID, let found = reader.row(rowID: rowID) else {
+                    throw RegenerationFailure.rowNotFound
+                }
+                row = found
+            }
+        }
+
+        // §D4: only `.notInStore` is R-16's legitimate «non più in Mail» - a drifted
+        // fan-out rule is a diagnostic, not that, so it is reported as `.notDecodable`
+        // rather than silently reused as `.notInStore`.
+        switch EMLXLocator.locate(predictedURL: reader.emlxPath(forRow: row)) {
+        case .found, .foundPartial:
+            break
+        case .notInStore:
+            throw RegenerationFailure.notInStore
+        case .ruleFailed:
+            throw RegenerationFailure.notDecodable
+        }
+
+        var regenerationRequest = request
+        regenerationRequest.regenerating = messageID
+        let folder = folderContext(of: request)
+        guard let prepared = prepare(row, request: regenerationRequest, reader: reader, folder: folder)
+        else { throw RegenerationFailure.notDecodable }
+
+        let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
+        let noteURL = vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+        guard let currentText = try? String(contentsOf: noteURL, encoding: .utf8) else {
+            throw RegenerationFailure.fileMissing
+        }
+
+        return RegenerationPlan(
+            praticaFolder: request.praticaFolder,
+            messageID: messageID,
+            notePath: notePath,
+            currentText: currentText,
+            replacementText: prepared.noteText,
+            diff: UnifiedDiff.between(currentText, prepared.noteText, path: notePath, context: 3),
+            attachmentFileNames: prepared.attachments.map(\.fileName),
+            rewritesOriginalEML: prepared.originalBytes != nil,
+            prepared: prepared,
+            request: regenerationRequest
+        )
+    }
+
+    /// ADR §D21.2: reuses the existing `commit(_:request:folder:outcome:)` verbatim -
+    /// a throwaway `FolderContext` is enough, since a regeneration writes exactly one
+    /// message and does not need the rest of the folder's state.
+    func commitRegeneration(_ plan: RegenerationPlan) async throws -> SyncOutcome {
+        var folder = FolderContext()
+        var outcome = SyncOutcome.empty
+        try await commit(plan.prepared, request: plan.request, folder: &folder, outcome: &outcome)
+        return outcome
     }
 
     // MARK: - Writing
@@ -530,6 +670,13 @@ actor PraticaSyncEngine {
             fileName: prepared.fileName, document: prepared.document
         )
         outcome.writtenFiles.append(notePath)
+        // §D23.1: outside the isRegeneration branch above — a regeneration is exactly
+        // when a stale ROWID gets corrected, so its triple is recorded too.
+        if let conversationID = prepared.conversationID {
+            outcome.bridge.append(PraticaLedger.Entry(
+                messageID: prepared.messageID, rowID: prepared.rowID, conversationID: conversationID
+            ))
+        }
     }
 
     /// SPEC "Sync algorithm": «re-check `pending` files from earlier runs». A message

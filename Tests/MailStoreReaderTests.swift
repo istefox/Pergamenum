@@ -257,6 +257,58 @@ import Testing
         #expect(emlxURL == expectedURL)
     }
 
+    // MARK: - ADR §D24 (PG-108): recipients folded onto the row
+
+    @Test func messagesInConversationFoldsRecipientsLowerCasedOntoEachRow() throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [Self.inboxMailbox],
+            messages: [Self.messageWithRecipients, Self.messageWithNoRecipients]
+        )
+
+        // §D24.1/§D24.2: `messages(inConversation:)` must fold the `recipients` join
+        // onto each row, lower-cased. The reader's own `rows(_:bind:)` still builds
+        // every `MailMessageRow` with the field at its default (`[]`), so this is red
+        // until the coder wires the join in.
+        let reader = try MailStoreReader(storeURL: fixture.indexURL)
+        let messages = reader.messages(inConversation: Self.recipientsConversationID)
+
+        let withRecipients = messages.first { $0.rowID == Self.messageWithRecipients.rowID }
+        #expect(
+            Set(withRecipients?.recipients ?? []) == ["a.bianchi@rossi-spa.it", "carla@rossi-spa.it"],
+            "expected the fixture's two recipient addresses, lower-cased"
+        )
+
+        let withNoRecipients = messages.first { $0.rowID == Self.messageWithNoRecipients.rowID }
+        #expect(withNoRecipients?.recipients == [], "a message with no recipient row must get an empty array")
+    }
+
+    @Test func supportsRecipientsIsTrueWhenTheTableExists() throws {
+        let fixture = try MailStoreFixture.build(mailboxes: [Self.inboxMailbox], messages: [Self.firstMessage])
+        let reader = try MailStoreReader(storeURL: fixture.indexURL)
+
+        // §D24.4: a store whose schema includes `recipients` must answer true - the
+        // tester's stub always answers false, so this is red until the coder
+        // implements `SELECT 1 FROM recipients LIMIT 1`.
+        #expect(reader.supportsRecipients())
+    }
+
+    @Test func aStoreWithNoRecipientsTableAnswersEmptyRecipientsWithNoThrow() throws {
+        let fixture = try MailStoreFixture.build(mailboxes: [Self.inboxMailbox], messages: [Self.firstMessage])
+        try MailStoreFixture.dropRecipientsTable(indexURL: fixture.indexURL)
+
+        // §D24.4/F5: a schema with no `recipients` table must fail closed - every row
+        // still comes back with `recipients == []`, `supportsRecipients()` answers
+        // false, and the pre-existing sender-only case is unaffected. This already
+        // holds against the tester's stub (recipients defaults to `[]`,
+        // `supportsRecipients()` defaults to `false`); it stays true once the coder
+        // wires the real join and query in, which is what this test guards.
+        let reader = try MailStoreReader(storeURL: fixture.indexURL)
+        let messages = reader.messages(inConversation: Self.sharedConversationID)
+        #expect(messages.allSatisfy { $0.recipients.isEmpty })
+        #expect(!reader.supportsRecipients())
+        #expect(Set(messages.map(\.rowID)) == [Self.firstMessage.rowID], "the existing sender-only case still passes")
+    }
+
     // MARK: - The one-file rule (ADR §D1)
 
     @Test func onlyMailStoreConnectionMentionsSQLite3Symbols() throws {
@@ -325,6 +377,29 @@ import Testing
             MailStoreFixture.Attachment(attachmentID: "att-1", name: "offerta.pdf"),
             MailStoreFixture.Attachment(attachmentID: "att-2", name: "disegno.dwg"),
         ]
+    )
+
+    private static let recipientsConversationID = 424_242
+
+    private static let messageWithRecipients = MailStoreFixture.Message(
+        rowID: 5,
+        subject: "Preventivo con destinatari",
+        senderAddress: "m.rossi@rossi-spa.it",
+        mailboxRowID: 1,
+        conversationID: recipientsConversationID,
+        dateSent: Date(timeIntervalSinceReferenceDate: 700_030_000),
+        dateReceived: Date(timeIntervalSinceReferenceDate: 700_030_030),
+        recipients: ["A.Bianchi@ROSSI-SPA.IT", "carla@rossi-spa.it"]
+    )
+
+    private static let messageWithNoRecipients = MailStoreFixture.Message(
+        rowID: 6,
+        subject: "Senza destinatari",
+        senderAddress: "m.rossi@rossi-spa.it",
+        mailboxRowID: 1,
+        conversationID: recipientsConversationID,
+        dateSent: Date(timeIntervalSinceReferenceDate: 700_030_100),
+        dateReceived: Date(timeIntervalSinceReferenceDate: 700_030_130)
     )
 
     private static func freshStateDirectory() throws -> URL {

@@ -41,12 +41,19 @@ final class PraticheUITests: XCTestCase {
         stateBase = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        // R-19/ADR §D7: a per-test fixture root, never the real `~/Library/Mail` -
-        // no test in this file writes an Envelope Index into it, so every FDA/tray
-        // read below finds an empty, readable store rather than a real mailbox.
+        // R-19/ADR §D7: a per-test fixture root, never the real `~/Library/Mail`. Left
+        // empty for every test but the «Rigenera» one below, which seeds a real
+        // Envelope Index into it before `launch()` so a message reaches the timeline -
+        // `FullDiskAccessProbe.state()` reads a successful `open(2)` on real content
+        // the same way it reads `ENOENT` on an empty store, `.granted` either way
+        // (`FullDiskAccessProbe.swift`'s own doc comment), so seeding it here does not
+        // disturb `testTheFullDiskAccessBannerIsAbsentWithAReadableMailStoreFixture`.
         mailStoreRoot = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
+        if name.contains("testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk") {
+            try seedMailStoreFixtureForRegeneration()
+        }
 
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
@@ -117,6 +124,28 @@ final class PraticheUITests: XCTestCase {
         try praticaNote.write(
             to: folder.appending(path: "pratica.md", directoryHint: .notDirectory),
             atomically: true, encoding: .utf8
+        )
+    }
+
+    /// A real, schema-accurate Envelope Index (`MailStoreFixture`, `Tests/`-authored
+    /// and pure Foundation, no XCTest import - reused here rather than forked so this
+    /// UI test and the unit suite never carry two copies of the SQL fixture script) with
+    /// one message on the fixture pratica's already-followed conversation
+    /// (`pergamenum-dossier-conversations: [112409]` above), so a sync run
+    /// (`PratichePane`'s own `.task`, fired on every test's `showPratiche()`) writes it
+    /// straight into the timeline rather than into the tray. Only the «Rigenera» test
+    /// below calls this - every other test in this file keeps the empty mail store its
+    /// own doc comments describe.
+    private func seedMailStoreFixtureForRegeneration() throws {
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+            )],
+            in: mailStoreRoot
         )
     }
 
@@ -205,5 +234,49 @@ final class PraticheUITests: XCTestCase {
         XCTAssertTrue(element("pratiche-wizard").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-wizard-title").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-wizard-client").waitForExistence(timeout: 5))
+    }
+
+    // MARK: - ADR-0036 §D21: «Rigenera» previews before it trashes/rewrites anything
+
+    /// Selects the one message this test's `seedMailStoreFixtureForRegeneration()`
+    /// synced into the timeline, opens its «Rigenera…» command, and asserts the sheet
+    /// (`pratiche-regenerate`) appears. Clicking «Annulla» must leave the note file on
+    /// disk untouched - nothing is trashed until the sheet's own confirm button runs
+    /// (`PratichePane.regenerationReadySheet`'s `pratiche-regenerate-confirm`, not
+    /// exercised here, since triggering the real write is exactly the destructive
+    /// step this test exists to confirm never happens on «Annulla»).
+    func testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk() throws {
+        selectFirstPratica()
+        let messageRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'pratiche-message-' AND NOT (identifier CONTAINS 'command')"))
+            .firstMatch
+        XCTAssertTrue(messageRow.waitForExistence(timeout: 10), "il messaggio sincronizzato non è comparso nella timeline")
+
+        let emailDirectory = vault
+            .appending(path: Self.praticaFolder, directoryHint: .isDirectory)
+            .appending(path: "email", directoryHint: .isDirectory)
+        let notePathBefore = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(atPath: emailDirectory.path(percentEncoded: false)).first,
+            "la sincronizzazione non ha scritto la nota del messaggio"
+        )
+
+        messageRow.rightClick()
+        let regenerate = element("pratiche-message-command-regenerate")
+        XCTAssertTrue(regenerate.waitForExistence(timeout: 5), "manca «Rigenera…» nel menu del messaggio")
+        regenerate.click()
+
+        XCTAssertTrue(element("pratiche-regenerate").waitForExistence(timeout: 5), "il foglio di anteprima non si è aperto")
+
+        let cancel = app.buttons["Annulla"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.click()
+
+        XCTAssertFalse(element("pratiche-regenerate").waitForExistence(timeout: 2), "il foglio è rimasto aperto dopo «Annulla»")
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: emailDirectory.appending(path: notePathBefore, directoryHint: .notDirectory).path(percentEncoded: false)
+            ),
+            "«Annulla» non deve toccare il file della nota"
+        )
     }
 }

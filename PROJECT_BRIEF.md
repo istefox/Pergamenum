@@ -87,6 +87,21 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-10: **Pratiche follow-up (PG-105…PG-108) — all four closed on `feat/pratiche`.**
+  `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md`, six tasks. ADR-0036 gains three
+  sections: §D23 (the ledger now records a message/ROWID/conversation-id bridge per import and
+  recovers a followed conversation whose id renumbered, R-14), §D22 (the keyword arm evaluates
+  against unfollowed messages too, and `DossierWriter` persists newly auto-followed conversations),
+  §D21 («Rigenera» acquires the replacement text and a `UnifiedDiff` before trashing or rewriting
+  anything — `PraticaSyncEngine.RegenerationPlan`, `PraticheController.RegenerationState`, `DiffView`
+  moved to `Sources/DesignSystem/` and shared with `TagRenameSheet`). PG-108's live probe (Task 2,
+  Stefano present, schema/addresses only) confirmed the `recipients` join's shape; `MailMessageRow`
+  gained `recipients: [String]` and `MembershipRule.touches()` now matches To/Cc, not sender alone.
+  Unit suite green in full: **2682 tests in 123 suites, 0 failures** — the prior entry's one known
+  failure (`sentSenderAddressesRecognisesTheItalianPostaInviataSpelling`) is fixed, not merely
+  unaffected. `perg` and `pergamenum-mcp` both build. §D23.5's tray-row work for an unrecoverable
+  conversation stays open, filed as `PG-109` rather than folded in. Not yet merged to `main` — the
+  full `scripts/uitests.sh` run is still owed before that, same as the base Pratiche chain below.
 - 2026-09-10: **Pratiche (ADR-0036) — all 10 plan tasks implemented on `feat/pratiche`; Stefano's
   manual acceptance is the remaining gate.** A pratica is a vault folder that fills itself from a
   *published copy* of Apple Mail's Envelope Index and shows messages, attachments, notes and calls

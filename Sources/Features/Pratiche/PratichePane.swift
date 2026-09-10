@@ -102,9 +102,11 @@ struct PratichePane: View {
         .sheet(item: renameRequest) { pratica in
             renameSheet(pratica)
         }
-        .sheet(item: regenerationRequest) { request in
-            regenerationSheet(request)
-        }
+        // §D21.4: the sheet body reads `pratiche.regeneration` live, never the
+        // closure's captured item - the preparing→ready transition happens while the
+        // sheet is already on screen, and a captured `.preparing` snapshot would never
+        // show the diff once it resolves.
+        .sheet(item: regenerationBinding) { _ in regenerationSheet() }
     }
 
     /// The one `PraticaCommandActions` every surface of this pane shares, so the list
@@ -138,10 +140,10 @@ struct PratichePane: View {
         )
     }
 
-    private var regenerationRequest: Binding<PraticaRegenerationRequest?> {
+    private var regenerationBinding: Binding<PraticheController.RegenerationState?> {
         Binding(
-            get: { pratiche.regenerationRequest },
-            set: { pratiche.regenerationRequest = $0 }
+            get: { pratiche.regeneration },
+            set: { pratiche.regeneration = $0 }
         )
     }
 
@@ -169,25 +171,69 @@ struct PratichePane: View {
         .accessibilityIdentifier("pratiche-rename")
     }
 
-    /// «Rigenera…» (§D6's second exception): the current files go to the Trash and the
-    /// message is imported again from Mail's own bytes. Asked for first, because a
-    /// message file may hold edits made by hand.
-    private func regenerationSheet(_ request: PraticaRegenerationRequest) -> some View {
+    /// «Rigenera…» (§D6's second exception, §D21): shows the diff *before* anything is
+    /// trashed or rewritten. `pratiche.regeneration` drives every state this sheet can
+    /// be in - acquiring the replacement (`.preparing`), showing it (`.ready`, with a
+    /// diff or, when nothing changed, a plain notice) - so re-reading it here rather
+    /// than switching on a captured parameter is what lets the sheet update itself
+    /// while it is already on screen (§D21.4).
+    @ViewBuilder
+    private func regenerationSheet() -> some View {
+        switch pratiche.regeneration {
+        case .preparing(_, let subject):
+            regenerationPreparingSheet(subject: subject)
+        case .ready(let plan):
+            regenerationReadySheet(plan)
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private func regenerationPreparingSheet(subject: String) -> some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rigenerare «\(request.subject)»?").themedText(.title)
-            Text("""
-            Il file del messaggio va nel Cestino e viene riscritto da Mail. \
-            Le modifiche fatte a mano in «\(request.notePath)» vanno perse.
-            """)
-            .themedText(.caption, color: .textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+            Text("Rigenerare «\(subject)»?").themedText(.title)
+            HStack(spacing: theme.spacing(.s)) {
+                ProgressView().controlSize(.small)
+                Text("Sto leggendo il messaggio da Mail…").themedText(.caption, color: .textSecondary)
+            }
             HStack {
                 Spacer()
-                Button("Annulla") { pratiche.regenerationRequest = nil }
+                Button("Annulla") { pratiche.regeneration = nil }
                     .keyboardShortcut(.cancelAction)
-                Button("Rigenera") { actions.confirmRegeneration(request) }
-                    .keyboardShortcut(.defaultAction)
-                    .accessibilityIdentifier("pratiche-regenerate-confirm")
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 440)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pratiche-regenerate")
+    }
+
+    private func regenerationReadySheet(_ plan: PraticaSyncEngine.RegenerationPlan) -> some View {
+        let fileName = (plan.notePath as NSString).lastPathComponent
+        return VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Rigenerare «\(fileName)»?").themedText(.title)
+            if let diff = plan.diff {
+                Text("Le modifiche fatte a mano in «\(plan.notePath)» vanno perse.")
+                    .themedText(.caption, color: .textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                DiffView(path: plan.notePath, diff: diff)
+            } else {
+                Text("Il file è già identico al messaggio in Mail: non c'è nulla da rigenerare.")
+                    .themedText(.caption, color: .textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                if plan.diff != nil {
+                    Button("Annulla") { pratiche.regeneration = nil }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Rigenera") { actions.confirmRegeneration(plan) }
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityIdentifier("pratiche-regenerate-confirm")
+                } else {
+                    Button("Chiudi") { pratiche.regeneration = nil }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
         }
         .padding(theme.spacing(.l))

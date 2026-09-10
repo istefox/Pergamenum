@@ -496,14 +496,254 @@ private func row(
         let mdURL = emailDir.appending(path: mdName)
 
         // Second sync: the message no longer surfaces among this run's candidates -
-        // its row is gone from Mail - but the ledger still remembers importing it.
+        // its row is gone from Mail - but the ledger still remembers importing it. A
+        // fresh, separate fixture with no rows at all (rather than rebuilding the same
+        // one) is what actually makes `reader.row(forMessageID:)` answer
+        // `.notResolvableFromIndex` here: `PraticaSyncEngine.openedReader()` caches its
+        // `MailStoreReader` for the actor's lifetime, so a rebuild "in place" at the
+        // first fixture's own path would be invisible to this already-open engine.
+        let goneFixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
+        let secondEngine = Self.makeEngine(mailStoreURL: goneFixture.indexURL, vaultRoot: vaultRoot)
         let secondRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
             candidates: [], onDisk: ["<abc123@rossi-spa.it>"], settings: .default
         )
-        let secondOutcome = try await engine.sync(secondRequest)
+        let secondOutcome = try await secondEngine.sync(secondRequest)
 
         #expect(secondOutcome.noLongerInMail == ["<abc123@rossi-spa.it>"])
         #expect(FileManager.default.fileExists(atPath: mdURL.path(percentEncoded: false)), "the file is kept, never deleted")
+    }
+
+    // MARK: §D23.1 - the bridge triple is recorded at the write boundary
+
+    // ADR §D23, plan docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 1
+    // - `SyncOutcome.bridge` is declared by this batch's tester (ADR-0155 §D1);
+    // `commit` does not append to it yet, so `outcome.bridge` stays empty regardless
+    // of what was imported. Both tests below are red until the coder wires the
+    // `PreparedMessage.rowID`/`.conversationID` fields and the `commit`-time append
+    // (§D23.1's own two numbered steps).
+    @Test func recordsOneBridgeEntryPerImportedMessageAndNoneForAMessageWithNoConversationID() async throws {
+        let messageWithConversation = EmailFixtureCorpus.completeMessageRFC822
+        let messageWithoutConversation = EmailFixtureCorpus.completeMessageRFC822
+            .replacingOccurrences(of: "abc123@rossi-spa.it", with: "noconv@rossi-spa.it")
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [
+                .init(
+                    rowID: 1, subject: "Con conversazione", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1000),
+                    dateReceived: Date(timeIntervalSince1970: 1000), emlxBody: messageWithConversation
+                ),
+                .init(
+                    rowID: 2, subject: "Senza conversazione", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 2000),
+                    dateReceived: Date(timeIntervalSince1970: 2000), emlxBody: messageWithoutConversation
+                ),
+            ]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        var withConversation = row(rowID: 1, messageID: "<abc123@rossi-spa.it>", date: Date(timeIntervalSince1970: 1000))
+        withConversation.conversationID = 112_409
+        var withoutConversation = row(rowID: 2, messageID: "<noconv@rossi-spa.it>", date: Date(timeIntervalSince1970: 2000))
+        withoutConversation.conversationID = nil
+
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [withoutConversation, withConversation],
+            onDisk: [], settings: .default
+        )
+        let outcome = try await engine.sync(request)
+
+        #expect(outcome.writtenFiles.count == 2, "both messages are imported regardless of the bridge")
+        #expect(outcome.bridge.count == 1, "only the message with a conversation_id gets a bridge entry")
+        let entry = try #require(outcome.bridge.first)
+        #expect(entry.messageID == "<abc123@rossi-spa.it>")
+        #expect(entry.rowID == 1)
+        #expect(entry.conversationID == 112_409)
+    }
+
+    @Test func aRegenerationOfAPendingMessageRecordsItsBridgeTripleToo() async throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta (corpo in arrivo)", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.headersOnlyMessageRFC822
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [row(rowID: 1, messageID: "<pending123@rossi-spa.it>")],
+            onDisk: [], settings: .default
+        )
+
+        let firstOutcome = try await engine.sync(request)
+        #expect(firstOutcome.bridge.count == 1, "the pending placeholder still gets a bridge triple - §D23.1 is 'outside the isRegeneration branch'")
+
+        // The body has since arrived under a NEW ROWID (Mail's own reindex): the
+        // regeneration must replace the triple, not merely add to it.
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 99, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+                    .replacingOccurrences(of: "abc123@rossi-spa.it", with: "pending123@rossi-spa.it")
+            )],
+            in: fixture.root
+        )
+        var regenerated = row(rowID: 99, messageID: "<pending123@rossi-spa.it>")
+        regenerated.conversationID = 112_409
+        let secondRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [regenerated], onDisk: ["<pending123@rossi-spa.it>"], settings: .default
+        )
+        let secondOutcome = try await engine.sync(secondRequest)
+
+        #expect(secondOutcome.regeneratedPendingFiles.count == 1)
+        #expect(secondOutcome.bridge.count == 1, "the regeneration's own run records exactly its own triple")
+        #expect(secondOutcome.bridge.first?.rowID == 99, "the stale ROWID 1 is what this regeneration corrects")
+    }
+}
+
+// MARK: - §D21 - «Rigenera» acquires the replacement before it destroys anything
+
+// ADR §D21, plan docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 5 -
+// `regenerationPreview`/`commitRegeneration` are declared-but-stubbed by this batch's
+// tester (ADR-0155 §D1): both always throw `RegenerationFailure.rowNotFound`
+// unconditionally, so every test below is red because the stub never resolves a row or
+// writes anything, not because a symbol is missing.
+@Suite struct PraticaRegenerationTests {
+    private static func makeVaultRoot() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-pratica-regen-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private static func makeEngine(mailStoreURL: URL, vaultRoot: URL) -> PraticaSyncEngine {
+        PraticaSyncEngine(mailStoreURL: mailStoreURL, vaultRoot: vaultRoot) { text, relativePath in
+            let url = vaultRoot.appending(path: relativePath, directoryHint: .notDirectory)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try Data(text.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    private static let praticaFolder = "01 Progetti/Rossi/Offerta 2026"
+    private static let messageID = "<abc123@rossi-spa.it>"
+
+    /// Builds a fixture with the one standard message this whole suite regenerates,
+    /// and a fresh vault it has already been synced into once.
+    private static func syncedFixtureAndVault() async throws -> (fixture: MailStoreFixture.Built, vaultRoot: URL, engine: PraticaSyncEngine, request: PraticaSyncEngine.SyncRequest) {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1000),
+                dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [row(rowID: 1, messageID: Self.messageID)],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+        return (fixture, vaultRoot, engine, request)
+    }
+
+    /// The one `.md` note the fixture above writes, and its vault-relative path.
+    private static func writtenNote(under vaultRoot: URL) throws -> (path: String, text: String) {
+        let emailDir = vaultRoot.appending(path: "\(praticaFolder)/email", directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: emailDir.path(percentEncoded: false))) ?? []
+        let name = try #require(names.first { $0.hasSuffix(".md") }, "the first sync must have written a note")
+        let url = emailDir.appending(path: name, directoryHint: .notDirectory)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return ("\(praticaFolder)/email/\(name)", text)
+    }
+
+    @Test func regenerationPreviewReplacementTextMatchesTheOriginalImportAndDiffIsNilUntilEdited() async throws {
+        let (_, vaultRoot, engine, request) = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: vaultRoot)
+
+        // Unmodified: the file on disk already matches what a fresh import would
+        // write, so there is nothing to show a diff of.
+        let unchangedPlan = try await engine.regenerationPreview(request, messageID: Self.messageID, rowID: nil)
+        #expect(unchangedPlan.notePath == notePath)
+        #expect(unchangedPlan.currentText == originalText)
+        #expect(
+            unchangedPlan.replacementText == originalText,
+            "re-decoding the same .emlx must reproduce the same note text"
+        )
+        #expect(unchangedPlan.diff == nil, "current and replacement are identical; there is nothing to diff")
+
+        // Hand-edited: the replacement is still what a fresh import would write, but
+        // now it differs from what is on disk, so a diff must be shown.
+        let handEditedText = originalText + "\n\nAggiunto a mano.\n"
+        try Data(handEditedText.utf8).write(
+            to: vaultRoot.appending(path: notePath, directoryHint: .notDirectory), options: .atomic
+        )
+        let editedPlan = try await engine.regenerationPreview(request, messageID: Self.messageID, rowID: nil)
+        #expect(editedPlan.currentText == handEditedText)
+        #expect(editedPlan.replacementText == originalText, "the replacement is unaffected by the hand edit")
+        #expect(editedPlan.diff != nil, "a hand-edited file must produce a non-nil diff against the replacement")
+    }
+
+    @Test func commitRegenerationWritesExactlyThePlansReplacementTextToItsNotePath() async throws {
+        let (_, vaultRoot, engine, request) = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: vaultRoot)
+        let noteURL = vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+        try Data((originalText + "\n\nAggiunto a mano.\n").utf8).write(to: noteURL, options: .atomic)
+
+        let plan = try await engine.regenerationPreview(request, messageID: Self.messageID, rowID: nil)
+        _ = try await engine.commitRegeneration(plan)
+
+        let writtenText = try String(contentsOf: noteURL, encoding: .utf8)
+        #expect(
+            writtenText == plan.replacementText,
+            "commitRegeneration must write exactly the previewed replacement text, not re-acquire it"
+        )
+    }
+
+    // ADR §D4/§D21: the `.emlx` is genuinely gone - the acquisition must fail with
+    // `.notInStore` specifically (never a bug, R-16's own case), and touch no file. A
+    // test that only asserted "throws" would already pass against the stub for the
+    // wrong reason, since the stub always throws unconditionally
+    // (`RegenerationFailure.rowNotFound`); asserting the exact case is what keeps this
+    // one red until the coder distinguishes "no row" from "row found, no .emlx".
+    @Test func regenerationPreviewFailsWithNotInStoreWhenTheEmlxIsGoneAndTheFileOnDiskIsUntouched() async throws {
+        let (fixture, vaultRoot, engine, request) = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: vaultRoot)
+
+        // The row still resolves from the index; only the underlying `.emlx` file is
+        // gone.
+        let everyFile = (FileManager.default.enumerator(at: fixture.root, includingPropertiesForKeys: nil)?
+            .allObjects as? [URL]) ?? []
+        for url in everyFile where url.pathExtension == "emlx" {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        do {
+            _ = try await engine.regenerationPreview(request, messageID: Self.messageID, rowID: nil)
+            Issue.record("expected regenerationPreview to throw RegenerationFailure.notInStore")
+        } catch let failure as PraticaSyncEngine.RegenerationFailure {
+            #expect(failure == .notInStore, "the row resolves; only the .emlx is missing - this is R-16's case, not rowNotFound")
+        } catch {
+            Issue.record("expected RegenerationFailure.notInStore, got \(error)")
+        }
+
+        let bytesAfter = try Data(contentsOf: vaultRoot.appending(path: notePath, directoryHint: .notDirectory))
+        #expect(bytesAfter == Data(originalText.utf8), "a failed acquisition must never touch the file on disk")
     }
 }

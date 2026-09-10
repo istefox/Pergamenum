@@ -662,7 +662,7 @@ paths were read. Four measured facts amend the decisions above; none reverses on
   new `ShortcutCommand` reads the plain domain and prints the entry count.
 - **Task 7/8 implementation deviations (coder):** «Rigenera» is a confirmation sheet that trashes
   the message file and re-syncs it, not a `UnifiedDiff` preview — §D6's diff is recorded as an
-  open point, not implemented; «Inserisci qui» is a submenu of the row's context menu, not a hover
+  open point, not implemented — closed by §D21 below; «Inserisci qui» is a submenu of the row's context menu, not a hover
   gap between rows; the wizard has no «@dominio» counterpart chip because `MembershipRule` has no
   domain arm; the «Aggiungi anche a…» sheet counts messages from the ledger; manual-entry
   headings are written in UTC (`Z`) as the test pins them; `PraticaTopBar` and the columns gained
@@ -696,11 +696,640 @@ paths were read. Four measured facts amend the decisions above; none reverses on
   and the manual acceptance on the Labs vault; the UI suite (`scripts/uitests.sh`) is run by the
   orchestrator, never by an agent.
 
+## Follow-up — §D21…§D24, the four RTF findings left after commit `9cd6595` (2026-09-10)
+
+Five review findings from the RTF cycles on `feat/pratiche` were fixed in commit `9cd6595`. Four
+were deferred every cycle as architectural and tracked as `PG-105`…`PG-108` in `TODO.md`. They are
+decided here. Each was re-verified at the line before anything was designed; two of the four turned
+out to be smaller than their TODO entry says and one turned out to be a different bug than the one
+reported.
+
+### What was found at the line, before deciding
+
+- **F1 (PG-105).** `PraticaCommandActions.confirmRegeneration` (`PraticaCommandActions.swift:260`)
+  calls `trash(filesOf:)` on line `:262`, `forgetImportedMessage` on `:263`, then
+  `refreshNow` on `:264`. There is no diff anywhere in the path, and the replacement content does
+  not exist at the moment the file is destroyed: it is fetched by a *later* sync that may fail,
+  may find the `.emlx` gone, or may be cancelled. §D6 promised the opposite. `UnifiedDiff` has
+  existed since ADR-0007 and is already shown to a person once, by `TagRenameSheet.swift:84`
+  through a `private struct DiffView` in that file.
+- **F2 (PG-106).** `PraticheController.Prepared` (`PraticheController.swift:1082`) carries two
+  disjoint maps, and `:1085-1089` states in a comment that `trayConversations` is "**never** folded
+  into `snapshot`". `MembershipRule.candidates`'s keyword arm (`MembershipRule.swift:65`) scans
+  `everyMessage(in: store)`, which is `snapshot.conversations ∪ snapshot.messagesByID`
+  (`:92`) — followed conversations and hand-included ids, and nothing else. A keyword can therefore
+  only match inside a conversation the pratica already follows, where rule 1 has already imported
+  every message anyway. The arm is a no-op in every case it was written for.
+  `Candidates.autoFollowedConversations` is read in exactly one place in the repository,
+  `Tests/MembershipRuleTests.swift:89`. No production code reads it; nothing writes it to a
+  dossier.
+- **F3 (PG-107).** `PraticaLedger.PraticaState.entries` is written in exactly one place,
+  `PraticheController.swift:522`, and that place is a `removeAll`. Nothing appends. It is read at
+  `:1129` (`ledgerEntries: state.entries`) and by
+  `PraticaLedger.memberMessageIDs(forConversation:praticaPath:)`, which is called nowhere.
+  `MembershipRule.recoverConversationID` is called nowhere outside
+  `Tests/MembershipRuleTests.swift:134`. The whole R-14 machine is built, tested and inert: the
+  ledger's `entries` array is empty on every machine, so the bridge §D3 describes does not exist on
+  disk.
+- **F4 (PG-108), and it is not the reported bug.** The TODO entry says Cc/To matching is
+  "impossible with current data". The store-side query is not the problem:
+  `MailStoreReader.conversations(counterpart:within:)` (`MailStoreReader.swift:115`) already
+  matches recipients, with an `EXISTS (SELECT 1 FROM recipients …)` clause at `:124`, and the tray's
+  candidate conversations are exactly what it returns. What discards them is the *in-memory*
+  re-check: `MembershipRule.trayCandidates` at `:141-144` reads `row.sender` and nothing else, and
+  `MailStoreReader.rowSelect` (`:213`) selects no recipient column, so every row of an
+  outgoing-only conversation fails the predicate and the whole entry is dropped. The conversation is
+  fetched from SQLite at cost and thrown away one function later. The keyword arm at `:66` has the
+  same defect against its own doc comment, which says "from/to a `dossier.counterparts` address".
+- **F5, found while reading F4, not reported by anyone.** `conversations(counterpart:within:)`
+  wraps its whole query in `do { … } catch { return [] }`. If the real store's `recipients` table
+  is not named `recipients`, or its columns are not `message`/`address`, the statement fails to
+  prepare and the function answers "no conversations" — an empty tray, forever, with no error and
+  no log. The `recipients` schema in `Tests/MailStoreFixture.swift:256-262` was written by the
+  tester of Task 1; the plan asked for `PRAGMA table_info(recipients)` on the real store
+  (`docs/superpowers/plans/2026-09-09-pratiche.md:133`) but the recorded probe results say nothing
+  about it. That table's shape is, in writing, a guess that shipped.
+
+### §D21 — «Rigenera» acquires the replacement before it destroys anything, and the diff it shows is the bytes it writes
+
+Amends §D6, whose diff was recorded as an open point in the Task 7/8 follow-up. Closes `PG-105`.
+
+The order is inverted end to end. Nothing on disk is touched until a person has read a diff of the
+exact replacement text, and the text they approved is the text written — not a second acquisition
+that could differ.
+
+1. **Acquisition, before anything.** `PraticaSyncEngine` gains a preview entry point that reuses
+   its own `prepare(_:request:reader:folder:)` unchanged. That function already does the right
+   thing for a regeneration: when the message file exists it reuses `existing.fileName`
+   (`PraticaSyncEngine.swift:425-429`), so the replacement lands on the same path and every
+   `[[link]]` to it in the vault survives. The only thing standing in the way is §D6's own guard at
+   `:329`, which returns `nil` for an existing file that is not a `pending` awaiting its body. The
+   guard is not removed: it is given one caller-declared exception.
+
+   ```swift
+   /// The one message an explicit «Rigenera» (§D6's second exception) may rewrite.
+   /// `nil` for every ordinary sync, which is what keeps §D6's guard absolute
+   /// everywhere else.
+   var regenerating: String?          // new field on PraticaSyncEngine.SyncRequest
+   ```
+
+   and at `:329`
+
+   ```swift
+   if let existing {
+       let isRequestedRegeneration = request.regenerating == messageID
+       guard isRequestedRegeneration || (existing.document.frontmatter.body == .pending && !isPending)
+       else { return nil }
+   }
+   ```
+
+2. **The plan is a value, carried from the preview to the write.** The engine answers
+
+   ```swift
+   /// Everything an approved «Rigenera» needs to perform itself, acquired before any
+   /// file was touched. Opaque on purpose: the only way to obtain one is
+   /// `regenerationPreview`, and the only thing that can be done with one is
+   /// `commitRegeneration` — so the bytes shown and the bytes written cannot diverge.
+   struct RegenerationPlan: Sendable, Identifiable {
+       var id: String { notePath }
+       let praticaFolder: String
+       let messageID: String
+       let notePath: String            // "<folder>/email/<name>.md"
+       let currentText: String         // what is on disk now
+       let replacementText: String     // what an import would write now
+       /// `UnifiedDiff.between(currentText, replacementText, path: notePath, context: 3)`
+       /// — `nil` when the file is already identical to what Mail holds.
+       let diff: String?
+       /// Names that would land in `allegati/`, for the sheet's second line.
+       let attachmentFileNames: [String]
+       let rewritesOriginalEML: Bool
+       fileprivate let prepared: PreparedMessage
+       fileprivate let request: SyncRequest
+   }
+
+   enum RegenerationFailure: Error, Equatable, Sendable {
+       case rowNotFound          // neither the index nor the ledger resolves the Message-ID
+       case notInStore           // §D4: the `.emlx` is genuinely gone — R-16, not a bug
+       case notDecodable         // the `.emlx` is there and `prepare` still answered nil
+       case fileMissing          // the message note is not on disk at all
+   }
+
+   func regenerationPreview(
+       _ request: SyncRequest, messageID: String, rowID: Int?
+   ) async throws -> RegenerationPlan
+
+   func commitRegeneration(_ plan: RegenerationPlan) async throws -> SyncOutcome
+   ```
+
+   `PreparedMessage` becomes `Sendable` (it already holds only value types) and stays `private`;
+   `RegenerationPlan` is declared in the same file, so `fileprivate` reaches it. Outside that file
+   a plan can be held, shown and handed back, and nothing else.
+
+   `commitRegeneration` calls the existing private `commit(_:request:folder:outcome:)` with a fresh
+   throwaway `FolderContext` and returns the resulting `SyncOutcome`. Because `prepare` set
+   `isRegeneration = true` (the file existed), `commit` records the path in
+   `regeneratedPendingFiles` and does **not** append to `importedMessageIDs` — the message stays
+   imported, which is correct, and `forgetImportedMessage` is no longer called at all.
+
+3. **Finding the row.** `regenerationPreview` resolves the `MailMessageRow` in two steps:
+   `MailStoreReader.row(forMessageID:)` first (which answers for 96.9% of real rows through
+   `message_global_data`, Task 1's C9), and on `.notResolvableFromIndex` a new sixth query,
+   `MailStoreReader.row(rowID:)`, against the ROWID the **ledger** holds for that `Message-ID`.
+   That second path is §D3's bridge doing the job it was designed for, and it only works once §D23
+   below is implemented — which is why §D23 ships first (see the plan's task order). Until it does,
+   `regenerationPreview` throws `.rowNotFound` for the 3.1%, which is reported and changes no file:
+   strictly better than today, where the file is already in the Trash by the time anything fails.
+
+4. **The sheet shows the diff, and the trash step moves after the approval.**
+   `PraticaRegenerationRequest` is replaced by `RegenerationPlan` as the sheet's item; a
+   `preparing` state is carried by the same value rather than a second variable (ADR-0024 §D2's
+   rule):
+
+   ```swift
+   // PraticheController
+   enum RegenerationState: Identifiable, Sendable {
+       case preparing(notePath: String, subject: String)
+       case ready(PraticaSyncEngine.RegenerationPlan)
+       var id: String { … }
+   }
+   var regeneration: RegenerationState?
+   ```
+
+   `requestRegeneration` sets `.preparing` synchronously (so the sheet opens at once, with a
+   `ProgressView` and «Annulla»), runs the acquisition off the main actor, then either replaces the
+   value with `.ready(plan)` or clears it and calls `pratiche.report(_:)` with the Italian sentence
+   for the failure. **The sheet body must read `pratiche.regeneration`, not the item the
+   `.sheet(item:)` closure was handed**: SwiftUI passes the item once at presentation and does not
+   re-invoke the closure when a same-`id` value changes, so a sheet built from the closure's
+   parameter would show the spinner forever. Spelled as
+   `.sheet(item: regenerationBinding) { _ in regenerationSheet() }`.
+
+   On «Rigenera», in this order: (a) `trash(filesOf: plan.notePath)` — the existing private helper,
+   unchanged, so the previous `.md` and `.eml` are recoverable in the Trash exactly as they are
+   today; (b) `commitRegeneration(plan)`; (c) on a throw from (b), `restore(_:)` the trashed files
+   and report. The Trash step is kept rather than replaced by a plain overwrite because it is the
+   only deletion convention this repo has and `trash`/`restore` are already written and paired; the
+   diff is the guardrail, the Trash copy is the parachute, and neither is expensive.
+
+   When `plan.diff == nil` the sheet says «Il file è già identico al messaggio in Mail: non c'è
+   nulla da rigenerare» and offers only «Chiudi». Nothing is trashed, nothing is written.
+
+5. **The diff view stops being private to the tag sheet.** `DiffView` moves out of
+   `TagRenameSheet.swift` into `Sources/DesignSystem/DiffView.swift` as an internal view, with its
+   "it is the only place in the app that shows one to a person" comment corrected. `TagRenameSheet`
+   keeps calling it with the same two arguments. Two copies of a diff renderer is precisely the
+   "named once, rendered twice" failure ADR-0023 §D1 exists to prevent.
+
+6. **Not changed.** `forgetImportedMessage` is left in place (the tray and the «Escludi»/«Sposta»
+   paths still use the ledger surgery around it) but loses its «Rigenera» caller, and its doc
+   comment is corrected to say so. No `refreshNow` is triggered by a regeneration any more: the
+   write is complete when the sheet closes, so the timeline is refreshed by the existing `reload()`
+   and nothing else runs.
+
+### §D22 — Keyword auto-follow evaluates over the counterpart pool the tray already loads, and what it follows is written to the dossier
+
+Amends §D3's membership half and the `Prepared` comment at `PraticheController.swift:1085-1089`,
+which is reversed. Closes `PG-106`.
+
+1. **`MembershipStoreSnapshot` gains a third, explicitly-named pool**, declared last so every
+   existing construction site and both test fixtures keep compiling:
+
+   ```swift
+   /// Every message of every conversation the counterpart search found inside the
+   /// proposal window, followed or not — the pool rule 3's keyword arm scans and the
+   /// tray proposes from. Separate from `conversations` on purpose: rule 1 imports
+   /// what `dossier.conversations` names, and nothing here is followed yet.
+   var unfollowed: [Int: [MailMessageRow]] = [:]
+   ```
+
+   `MembershipRule.everyMessage(in:)` (`:92`) folds `unfollowed.values.flatMap { $0 }` in. It is
+   used by rule 3 and by nothing else, verified at the line, so this widens the keyword arm and
+   only the keyword arm.
+
+   The `Prepared` comment's fear — "an unfollowed conversation added there would start importing
+   itself" — is wrong on the code as written: rule 1 iterates `dossier.conversations`, rule 2
+   iterates `dossier.included`, and neither consults the pool. Only rule 3 does, and only for a
+   message that is both from/to a counterpart **and** carries a keyword in its subject, which is
+   the feature. The comment is deleted with the field it described.
+
+2. **`trayCandidates` iterates both maps**, `store.conversations.merging(store.unfollowed) { existing, _ in existing }`,
+   so one snapshot can serve both calls and the two evaluations stop being fed different worlds.
+   Its own `!followed.contains(conversationID)` filter already excludes anything in
+   `dossier.conversations`, so folding the followed map in changes no tray output.
+
+3. **Two evaluations, and the second is proved to be the last.** `runExclusive`
+   (`PraticheController.swift:1141`) becomes:
+
+   ```swift
+   var effective = dossier
+   var candidates = MembershipRule.candidates(dossier: effective, store: prepared.snapshot, onDisk: onDisk)
+   if !candidates.autoFollowedConversations.isEmpty {
+       for id in candidates.autoFollowedConversations {
+           effective = PraticaTrayModel.following(conversationID: id, in: effective)
+       }
+       DossierWriter.update(at: praticaPath, session: session) { $0 = effective }
+       // Rule 3 skips an id already in `dossier.conversations`, so this evaluation
+       // auto-follows nothing new: two passes are a fixed point, never a loop.
+       candidates = MembershipRule.candidates(dossier: effective, store: prepared.snapshot, onDisk: onDisk)
+   }
+   ```
+
+   The second pass exists so a keyword match imports the **whole** thread in the run that found it,
+   rather than the one matching message now and the rest at some later trigger. For rule 1 to reach
+   the freshly-followed conversation, its lookup must consult both pools; `MembershipStoreSnapshot`
+   gains one accessor and rule 1 calls it:
+
+   ```swift
+   func messages(inConversation id: Int) -> [MailMessageRow] { conversations[id] ?? unfollowed[id] ?? [] }
+   ```
+
+   «Aggiungi» from the tray is spelled through the same `PraticaTrayModel.following(conversationID:in:)`
+   the strip already uses, so "follow a conversation" has one implementation.
+
+4. **`DossierWriter` is extracted, not duplicated.** The read-modify-write of `pratica.md`'s
+   `pergamenum-dossier-*` keys currently lives only on `PraticaCommandActions.updateDossier`
+   (`PraticaCommandActions.swift:296`), a `@MainActor` struct built from a view's environment and
+   unreachable from the sync. A new `Sources/Features/Pratiche/DossierWriter.swift` holds the body:
+
+   ```swift
+   @MainActor
+   enum DossierWriter {
+       /// Read-modify-write of one pratica's dossier keys through `VaultSession.write`,
+       /// byte-preserving on every key it does not own (`Dossier.merging`, §D12).
+       /// Returns the Italian sentence when it failed, `nil` on success — including
+       /// "nothing changed", which is a success with no write.
+       @discardableResult
+       static func update(
+           at praticaPath: String, session: VaultSession, _ change: (inout Dossier) -> Void
+       ) -> String?
+   }
+   ```
+
+   `PraticaCommandActions.updateDossier` becomes a three-line wrapper that reports the sentence
+   through `pratiche.report`. There is one writer of the dossier after this, not two.
+
+5. **The keyword arm's reach is the proposal window, deliberately.** `unfollowed` is built from
+   `MailStoreReader.conversations(counterpart:within:)`, whose window is
+   `settings.proposalWindowDays` (default 90). A keyword therefore auto-follows inside the last
+   *N* days and no further back. The alternative — scanning the whole store per sync for a subject
+   substring — is an unindexed full scan of 127,677 rows on this Mac's own store, per pratica, per
+   trigger, and there is no counterpart-scoped query that avoids it. The bound is named in the
+   Settings help text beside «Finestra proposte», so widening the reach is a number a person can
+   change rather than a behaviour they have to discover.
+
+6. **Consequence a person can feel, recorded on purpose:** a broad keyword on a counterpart with a
+   large archive inside the window now imports a lot of mail on the first sync after it is typed.
+   That is what the feature does; the guardrails are that keywords are opt-in, per pratica, and
+   that `dossier.excluded` (which rule 4 subtracts, and `PraticaSyncPlan.workItems` subtracts
+   again) survives a re-sync.
+
+### §D23 — The sync records the bridge triple, and recovery runs where the conversation goes missing
+
+Implements the second half of §D3, which was designed and never wired. Closes `PG-107`.
+
+1. **Recording, at the write boundary.** `PraticaSyncEngine.PreparedMessage` gains
+   `rowID: Int` and `conversationID: Int?`, copied from the `MailMessageRow` in `prepare`.
+   `SyncOutcome` gains
+
+   ```swift
+   /// §D3's bridge triples for every message this run wrote — a fresh import and a
+   /// regeneration alike, since a regeneration is exactly when a stale ROWID gets
+   /// corrected. A row Mail did not thread (`conversationID == nil`) produces no
+   /// triple: there is no conversation for R-14 to re-derive.
+   var bridge: [PraticaLedger.Entry]
+   ```
+
+   appended in `commit` (`PraticaSyncEngine.swift:494-533`) beside the existing
+   `outcome.importedMessageIDs.append` at `:525`, but **outside** the `isRegeneration` branch so
+   both paths record it.
+
+   `PraticaLedger.Entry.conversationID` stays a non-optional `Int`. Making it optional to carry
+   unthreaded messages would widen a persisted `Codable` shape to store a value
+   `memberMessageIDs(forConversation:praticaPath:)` filters out anyway.
+
+2. **Persisting, in `recordSyncOutcome`** (`PraticheController.swift:456`), one merge beside the
+   two already there, keyed by `Message-ID` with the newest triple winning:
+
+   ```swift
+   var entriesByID = Dictionary(state.entries.map { ($0.messageID, $0) }, uniquingKeysWith: { _, new in new })
+   for entry in outcome.bridge { entriesByID[entry.messageID] = entry }
+   state.entries = entriesByID.values.sorted { $0.messageID < $1.messageID }
+   ```
+
+   Newest wins because Mail renumbers ROWIDs on an index rebuild and a stale ROWID is worse than
+   none (the same sentence `forgetImportedMessage`'s doc already uses). Sorted because
+   `PraticaLedger.save` pretty-prints with `.sortedKeys` so the file stays diffable by hand.
+
+3. **Detecting, in `prepare`** (`PraticheController.swift:1217`). The two loops swap order —
+   `messagesByID` is built first, because recovery resolves against it — and the conversation loop
+   becomes:
+
+   ```swift
+   var conversations: [Int: [MailMessageRow]] = [:]
+   var remap: [Int: Int] = [:]
+   var unrecoverable: [Int] = []
+   let resolved = MembershipStoreSnapshot(conversations: [:], messagesByID: messagesByID)
+   for conversation in dossier.conversations {
+       let rows = reader.messages(inConversation: conversation)
+       guard rows.isEmpty else { conversations[conversation] = rows; continue }
+       // An empty conversation is only evidence of renumbering when this pratica has
+       // actually imported from it. Nothing imported means nothing to re-derive, and a
+       // conversation whose every message a person deleted is not a bug to report.
+       let members = ledgerEntries.filter { $0.conversationID == conversation }.map(\.messageID)
+       guard !members.isEmpty else { conversations[conversation] = []; continue }
+       switch MembershipRule.recoverConversationID(knownMemberMessageIDs: members, store: resolved) {
+       case .recovered(let recovered) where recovered != conversation:
+           remap[conversation] = recovered
+           conversations[recovered] = reader.messages(inConversation: recovered)
+       case .recovered:
+           conversations[conversation] = []
+       case .unrecoverable:
+           unrecoverable.append(conversation)
+       }
+   }
+   ```
+
+   `MembershipRule.recoverConversationID`'s signature does not change: it takes a
+   `MembershipStoreSnapshot`, and a snapshot carrying only `messagesByID` is a legal one.
+   "The conversation returned no rows" is the trigger, and it is the only trigger — there is no
+   separate detection pass and no extra query.
+
+4. **Repointing.** `Prepared` gains `conversationRemap: [Int: Int]` and
+   `unrecoverableConversations: [Int]`. Back on the main actor, before candidates are evaluated:
+
+   - for each `old → new`, `DossierWriter.update` replaces `old` with `new` in
+     `dossier.conversations` **in place** (position preserved, duplicates collapsed) — the list is
+     something a person reads in their own `pratica.md`, and the order it grew in is the order they
+     followed things in (`PraticaTrayModel.following`'s own reason);
+   - the ledger's own triples are repointed too, through a new
+     `PraticheController.remapLedgerConversations(_ remap: [Int: Int], of praticaPath: String, in vault:)`,
+     or the next sync's `memberMessageIDs(forConversation:)` answers nothing for the new id and the
+     pratica silently loses its recovery data one renumbering later;
+   - the in-memory `dossier` used for this run's evaluation is updated from the same value, so the
+     run that discovered the renumbering already imports through the new id.
+
+5. **Reporting, and what is deliberately not built.** `unrecoverableConversations` is reported
+   through the pane's existing banner, `controller.report(_:)`, as
+   «Una conversazione seguita non è più ricostruibile in Mail: <n>.» — R-14's "reported, never
+   silently dropped" is met, and the conversation stays in the dossier rather than being removed.
+   **The tray strip's own «non più ricostruibile» row (SPEC "Edge cases") is not built here**, and
+   this is the one place where these four fixes leave the SPEC short of its own words. Building it
+   means persisting the state (a fifth `PraticaState` field), inventing its invalidation rule (when
+   does a conversation stop being unrecoverable?) and a non-actionable row in
+   `PraticaTrayStrip.swift`. That is a separate, small piece of work; it is recorded as such rather
+   than half-done here, because a banner that says the true thing beats a tray row that needs a
+   staleness rule nobody has designed.
+
+6. **The test that would have caught this.** `Tests/MailStoreFixture.swift` builds a store from
+   code, which makes the renumbering case cheap: build a fixture, sync, rebuild the same messages
+   under different `conversation_id` values, sync again, assert the dossier's
+   `pergamenum-dossier-conversations` now names the new id and the ledger's `entries` came with it.
+   R-14 has never had an end-to-end test; the pure function had two.
+
+### §D24 — A message row carries its recipients, and one predicate decides "touches this counterpart"
+
+Amends §D3's `MailMessageRow` shape (Task 1's R-03 row). Closes `PG-108`.
+
+1. **One new field on the row, sourced by its own query.**
+
+   ```swift
+   /// Every recipient address of this message — To, Cc and Bcc alike, lower-cased,
+   /// joined from `recipients` through `addresses`. Empty for a store whose schema has
+   /// no `recipients` table and for a message that has none.
+   ///
+   /// Flat, with no To/Cc/Bcc distinction: every consumer asks "does this message touch
+   /// this address", and nothing in this feature renders or filters by recipient kind.
+   /// Not modelling `recipients.type` also means its integer encoding never has to be
+   /// probed.
+   var recipients: [String] = []
+   ```
+
+   Declared **last** in `MailMessageRow`, so the memberwise initialiser stays source-compatible
+   with all four existing construction sites (`Tests/PraticaSyncTests.swift:33`,
+   `Tests/MembershipRuleTests.swift:18`, `Tests/MailStoreReaderTests.swift:237`,
+   `Tests/PraticaTrayTests.swift:20`).
+
+2. **A separate query, never a widened `rowSelect`.** Joining `recipients` into
+   `MailStoreReader.rowSelect` (`:213`) multiplies every message row by its recipient count and
+   would silently change what every one of the five queries returns. Instead
+   `MailStoreReader` gains one private helper with two `WHERE` clauses:
+
+   ```sql
+   SELECT r.message, a.address
+   FROM recipients AS r
+   JOIN addresses AS a ON a.ROWID = r.address
+   JOIN messages AS m ON m.ROWID = r.message
+   WHERE m.conversation_id = ?1        -- messages(inConversation:)
+   ```
+   ```sql
+   SELECT r.message, a.address
+   FROM recipients AS r
+   JOIN addresses AS a ON a.ROWID = r.address
+   WHERE r.message = ?1                -- row(forMessageID:), row(rowID:)
+   ```
+
+   One extra statement per conversation, none per message: no dynamic `IN (?,?,…)` list, so no
+   `SQLITE_MAX_VARIABLE_NUMBER` chunking rule to get wrong. `messages(inConversation:)` folds the
+   `[Int: [String]]` it gets back onto the rows it already built. Both forms fail closed the way
+   every other query in that file does — an unpreparable statement answers "no recipients", never a
+   throw. No new file says `sqlite3_`: this is all in `MailStoreReader`, which talks to
+   `MailStoreConnection` (§D1 intact, and `Tests/MailStoreReaderTests.swift`'s own assertion
+   unaffected).
+
+3. **One predicate, used by both arms.** `MembershipRule` gains
+
+   ```swift
+   /// SPEC "Membership rule": a message *from or to* a counterpart. The tray
+   /// (`trayCandidates`) and the keyword arm (`candidates`, rule 3) ask this same
+   /// question and must never answer it differently — the sender-only version of this
+   /// check is what made an outgoing-only conversation invisible to both.
+   private static func touches(_ row: MailMessageRow, counterparts: Set<String>) -> Bool {
+       if let sender = row.sender?.lowercased(), counterparts.contains(sender) { return true }
+       return row.recipients.contains { counterparts.contains($0.lowercased()) }
+   }
+   ```
+
+   called at `:66` (replacing the `guard let sender …` line) and at `:141-144` (replacing the
+   `live.contains { … }` body, keeping the `window.contains(date(of: row))` clause it is `&&`-ed
+   with). Both sides are lower-cased at the point of comparison, matching
+   `MessageDocument.direction`'s own case-insensitive address rule and
+   `sentSenderAddresses()`'s lower-casing.
+
+4. **F5's silent failure gets a voice.** `MailStoreReader` gains
+
+   ```swift
+   /// Whether this store exposes a queryable `recipients` table. Asked once per sync,
+   /// because a store without one silently reduces the tray and the keyword arm to
+   /// sender-only matching — the exact defect §D24 fixes, reintroduced by a schema
+   /// rather than by code.
+   func supportsRecipients() -> Bool
+   ```
+
+   (`SELECT 1 FROM recipients LIMIT 1`, prepared and finalized). `PraticheController.prepare` calls
+   it once and, when it answers `false`, reports
+   «L'indice di Mail non espone i destinatari: la vaschetta vede solo i messaggi ricevuti.»
+   through the banner. This also covers the pre-existing exposure: today a mis-named table makes
+   `conversations(counterpart:within:)` return `[]` and the tray is simply empty, with nothing said.
+
+5. **A live probe is still required, and it is narrower than Task 1's.** The `recipients` schema
+   this design (and the already-shipped tray query) rests on is written down only in a fixture the
+   tester authored; the Task 1 follow-up records no `table_info(recipients)` result. Before the
+   coder starts, with Stefano present, on a copy published by `MailStoreCopy.publish` and never on
+   Mail's live file:
+
+   ```
+   PRAGMA table_info(recipients);
+   SELECT count(*) FROM recipients;
+   SELECT r.message, a.address FROM recipients AS r
+     JOIN addresses AS a ON a.ROWID = r.address
+     WHERE r.message = <a ROWID whose message is known to have several recipients>;
+   ```
+
+   Both outcomes have a design. Names match → the SQL above ships as written. Names differ → the
+   two new statements *and* the shipped `EXISTS` clause at `MailStoreReader.swift:124` are
+   corrected together, `Tests/MailStoreFixture.swift`'s `CREATE TABLE recipients` is corrected to
+   the measured shape, and the result is recorded as a further follow-up note in this ADR —
+   the same contract Task 1's probes ran under. The probe reads schema and addresses only; no
+   message body, no subject, and nothing is copied into `Tests/`.
+
+### Alternatives considered
+
+- **§D21: keep the trash-then-resync flow and merely show a diff of the file about to be
+  destroyed.** Rejected: a diff of "the current file versus nothing" tells a person only what they
+  are losing, not what they are getting, and §D6's promise is a diff of the *replacement*. It also
+  leaves the acquisition after the destruction, which is the actual defect — a failed or cancelled
+  re-sync still ends with the message gone.
+- **§D21: acquire twice — compute the text for the preview, throw it away, recompute at commit.**
+  Rejected: the guarantee a diff gate exists to give is "what you approved is what happened", and
+  recomputation cannot give it. Holding one message's decoded bytes for the life of a modal sheet
+  is bounded by the attachment threshold (default 100 MB, in practice a few MB) and is the cheaper
+  side of the trade.
+- **§D21: overwrite in place with no Trash copy, since the diff was approved.** Rejected as a
+  net loss of recoverability for no gain: `trash(filesOf:)`/`restore(_:)` are already written,
+  already paired, and already the only deletion convention this repo has. Moving the call after the
+  approval is the whole change.
+- **§D21: an `AskUserQuestion`-style alert rather than a sheet.** Rejected: R-34's «Elimina
+  pratica» is the only alert in the feature (UX blueprint), and an alert cannot show a scrolling
+  diff.
+- **§D22: merge `trayConversations` straight into `snapshot.conversations`.** Rejected on
+  readability rather than behaviour — with rule 1 iterating `dossier.conversations`, merging is
+  behaviourally identical, but it makes `snapshot.conversations` mean two different things
+  depending on who built it, and `trayCandidates` *does* iterate that map's keys. A named third
+  field costs one line and cannot be misread.
+- **§D22: scan the whole store for keyword matches, ignoring the proposal window.** Rejected:
+  no counterpart-scoped index exists for a subject substring, so this is a full scan of the
+  `messages`/`subjects` join per pratica per trigger (127,677 rows measured on this Mac). The
+  window is a number in Settings; an unbounded scan is a design nobody can turn off.
+- **§D22: keep one evaluation and let the auto-followed thread arrive on the next sync** (what
+  `MembershipRule`'s own comment promises today). Rejected: "next sync" is a trigger that may be
+  hours away, and the second evaluation is a pure function over data already in memory that is
+  provably a fixed point. Recorded because the comment at `MembershipRule.swift:62-64` must be
+  corrected when this lands, not left contradicting the code.
+- **§D23: trigger recovery from a separate, explicit "verify followed conversations" pass.**
+  Rejected: it is a second query per followed conversation for information the existing
+  `messages(inConversation:)` call already returns. An empty result is the signal; nothing else is
+  needed.
+- **§D23: drop an unrecoverable conversation from the dossier automatically.** Rejected outright
+  by R-14 — a pratica that quietly stops receiving mail is the worst failure this feature has.
+- **§D23: persist `unrecoverableConversations` in the ledger and draw a tray row now.** Rejected
+  *for this batch* (see §D23.5): it needs an invalidation rule that has not been designed. Named as
+  known, bounded, remaining work rather than silently skipped.
+- **§D24: model `recipients.type` as a To/Cc/Bcc enum.** Rejected: nothing in this feature asks the
+  question, and modelling it would require probing an integer encoding that no recorded measurement
+  covers. `MessageDocument`'s own `to`/`cc` frontmatter comes from the RFC headers in the `.emlx`,
+  not from the index, and is unaffected.
+- **§D24: widen `rowSelect` with a `LEFT JOIN recipients` and `group_concat`.** Rejected:
+  `group_concat` on a five-way join changes the row cardinality and the `NULL` handling of every
+  one of the five R-03 queries at once, to save one statement per conversation.
+- **§D24: match the counterpart by domain rather than by address**, which would sidestep the
+  recipient problem for the common "anyone at rossi-spa.it" case. Rejected as out of scope and
+  already recorded as absent: the Task 7/8 follow-up notes the wizard has no «@dominio» chip
+  because `MembershipRule` has no domain arm. Adding one is a separate decision about what a
+  counterpart *is*, not a fix to a predicate that reads the wrong field.
+
+### Consequences
+
+**Positive.**
+
+- §D6 stops being a promise the code contradicts: «Rigenera» now cannot destroy a file it has no
+  replacement for, and the person sees the replacement's own text before agreeing to it.
+- The keyword arm and `autoFollowedConversations` become live for the first time; a pratica can
+  discover a conversation nobody has followed, which is the whole of SPEC's membership rule item 3.
+- §D3's bridge exists on disk. R-14's recovery — designed, implemented, unit-tested and never
+  called — is reachable, and gets its first end-to-end test.
+- An outgoing-only thread ("I wrote to them, they have not replied yet") appears in the tray. The
+  SQL that finds it has been shipping since Task 1; only the predicate that threw it away changes.
+- A `recipients` table Mail does not have, or has under another name, now says so once per sync
+  instead of producing a permanently empty tray in silence.
+- The dossier has exactly one writer (`DossierWriter`) and the diff has exactly one renderer
+  (`DiffView`) after this, where each had one plus a place that could not reach it.
+
+**Negative.**
+
+- `MailMessageRow` grows a field and `MailStoreReader` runs one extra statement per conversation
+  per sync. Measured cost is not known and is not measured here; the row count per conversation is
+  small and the statement is indexed on `recipients.message` in Mail's own schema — if a real store
+  disagrees, it will show in the sync progress and the fix is the same chunked `IN` list this
+  design rejected for simplicity.
+- A broad keyword can now import a large volume of mail on its first sync (§D22.6). This is the
+  feature working; it is nonetheless a surprise available to a person who types «Re».
+- The second membership evaluation runs `MembershipRule.candidates` twice per sync whenever a
+  keyword matched. It is pure and over in-memory values, but it is not free on a pratica following
+  hundreds of conversations.
+- Holding a `RegenerationPlan` keeps one message's decoded attachments in memory for as long as the
+  sheet is open. Bounded by the attachment threshold, unbounded in count.
+- R-14's tray-side «non più ricostruibile» rendering is still not built (§D23.5). The state is
+  reported in a banner that clears on the next successful load, so a person who looks away misses
+  it until the next sync says it again.
+- `PraticaRegenerationRequest` is replaced rather than extended, so `PratichePane`'s sheet, its
+  binding and the `pratiche-regenerate*` accessibility identifiers all move together. The
+  identifiers are kept byte-identical so the UI suite's selectors do not churn.
+
+**Neutral.**
+
+- No `IndexCache.schemaVersion` bump: nothing here is cached in the app's own index.
+- No new protected interface. `Dossier.render` and `PraticaNaming.messageFileName` are read by this
+  work and neither changes shape. `PraticaLedger.PraticaState` gains no field at all — `entries`
+  already exists and is already `decodeIfPresent`-decoded, so a ledger written by a build before
+  this work loads unchanged and simply fills its bridge on the next sync.
+- No connector change. `Sources/Features/Pratiche/**` is outside `sharedSources`, and the two files
+  under `Sources/Core/**` that do change (`MailMessageRow`, `MembershipRule`) are compiled by
+  `perg`/`pergamenum-mcp` but called by neither — `SharedSourcesPurityTests`' ban on `MailStore`,
+  `EMLXReader` and `SQLite3` under `Sources/Connector`, `Sources/CLI` and `Sources/MCPServer` is
+  untouched (§D19).
+- No new dependency, no new `ShortcutCommand`, no new frontmatter key, no new `pergamenum-*`
+  property, no migration.
+- Both exceptions to CLAUDE.md principle 2 stay where they are: nothing here opens a socket.
+
+## Follow-up — Task 2 probe results, PG-108 (2026-09-10)
+
+Ran on a copy published the same way Task 1's own two probes were (`Envelope Index` + `-wal`
+copied to a `/tmp` staging directory, `PRAGMA quick_check`ed, deleted immediately after). Mail's
+live file was never opened; schema, a row count and addresses only — no subject, no body.
+
+- **`PRAGMA table_info(recipients)`:** `ROWID INTEGER PRIMARY KEY`, `message INTEGER NOT NULL`,
+  `address INTEGER NOT NULL`, `type INTEGER`, `position INTEGER` — column-for-column identical to
+  `Tests/MailStoreFixture.swift`'s existing `recipients` table. **No fixture correction needed.**
+- **`SELECT count(*) FROM recipients`:** 176,840 rows on this Mac's store.
+  `SELECT type, count(*) FROM recipients GROUP BY type`: `0` → 159,259 rows, `1` → 17,581 rows —
+  two recipient kinds (To/Cc-shaped vs. a smaller second class), neither queried by column name
+  anywhere in this codebase, so the split has no design consequence: every read here joins on
+  `message`/`address` only, matching §D24.5's own precedent.
+  `SELECT r.message, a.address FROM recipients AS r JOIN addresses AS a ON a.ROWID = r.address
+  WHERE r.message = <a ROWID with 631 recipients>` returned real `address` strings for every row —
+  the join columns are exactly `recipients.message`/`recipients.address` →
+  `addresses.ROWID`/`addresses.address`, which is what the already-shipped `EXISTS` clause at
+  `MailStoreReader.swift:124` (`conversations(counterpart:within:)`) already uses. **§D24.5's
+  condition resolves to "measured, matches" — the shipped clause is correct today; finding F5 does
+  not apply.** Task 3 proceeds with `MailMessageRow.recipients`/`supportsRecipients()`/`row(rowID:)`
+  as designed, no schema-driven change to either the fixture or the existing join.
+
 ## References
 
 - `SPEC.md` (topic slug `pratiche`, R-01…R-41), `UX-BLUEPRINT.md`, `DESIGN.md` and its export at
   `docs/design/pratiche/Pergamenum Pratiche.dc.html`.
-- Plan: `docs/superpowers/plans/2026-09-09-pratiche.md`.
+- Plan: `docs/superpowers/plans/2026-09-09-pratiche.md`,
+  `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md` (§D21…§D24).
 - `docs/adr/0007-…` (connector boundary), `docs/adr/0017-…` (per-vault state),
   `docs/adr/0020-…` (prefixed keys), `docs/adr/0023-universal-command-surface-parity.md`,
   `docs/adr/0024-workspace-board-tree-single-selection.md`,

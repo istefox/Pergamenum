@@ -136,7 +136,37 @@ final class PraticheController {
     var renameRequest: PraticaListItem?
     /// R-34's «Elimina pratica», the one alert in the whole feature.
     var deletionRequest: PraticaListItem?
-    var regenerationRequest: PraticaRegenerationRequest?
+
+    /// ADR §D21: one value that carries «acquiring the replacement» and «ready to show
+    /// a diff» rather than two variables kept in sync (ADR-0024 §D2's rule) - the
+    /// replacement for the old two-step `PraticaRegenerationRequest` confirmation.
+    enum RegenerationState: Identifiable, Sendable {
+        case preparing(notePath: String, subject: String)
+        case ready(PraticaSyncEngine.RegenerationPlan)
+
+        var id: String {
+            switch self {
+            case .preparing(let notePath, _): notePath
+            case .ready(let plan): plan.id
+            }
+        }
+    }
+
+    /// «Rigenera…» set by `PraticaCommandActions.requestRegeneration` to `.preparing`,
+    /// then to `.ready` once `prepareRegeneration` below resolves the diff - `nil`
+    /// dismisses the sheet at any point.
+    var regeneration: RegenerationState?
+
+    /// §D21.1/§D21.3: acquires the replacement text and diffs it against what is on
+    /// disk, without trashing or writing anything - wired by `PraticheController.live`
+    /// to `PraticaLiveSync.prepareRegeneration`. `nil` means nothing is wired (a
+    /// preview/test controller), and the sheet never opens.
+    @ObservationIgnored var prepareRegeneration: (@MainActor (_ praticaPath: String, _ messageID: String) async -> Void)?
+
+    /// §D21.2: commits an already-previewed `RegenerationPlan` and records the
+    /// outcome in the ledger, answering whether it succeeded - wired by
+    /// `PraticheController.live` to `PraticaLiveSync.commitRegeneration`.
+    @ObservationIgnored var commitRegeneration: (@MainActor (_ plan: PraticaSyncEngine.RegenerationPlan) async -> Bool)?
 
     /// R-30: the strip a person collapsed stays collapsed until they open it again,
     /// for this window only.
@@ -471,6 +501,16 @@ final class PraticheController {
         gone.formUnion(outcome.noLongerInMail)
         gone.subtract(outcome.importedMessageIDs)
         state.notInStore = gone.sorted()
+        // §D23.2: the §D3 bridge, keyed by Message-ID so a regeneration's fresh triple
+        // replaces the stale one rather than appending a second - newest wins because
+        // Mail renumbers ROWIDs on an index rebuild, and a stale ROWID is worse than
+        // none (`forgetImportedMessage`'s own reason). Sorted because `PraticaLedger.save`
+        // pretty-prints with `.sortedKeys`, so the file stays diffable by hand.
+        var entriesByID = Dictionary(
+            state.entries.map { ($0.messageID, $0) }, uniquingKeysWith: { _, new in new }
+        )
+        for entry in outcome.bridge { entriesByID[entry.messageID] = entry }
+        state.entries = entriesByID.values.sorted { $0.messageID < $1.messageID }
         sessionLedger.byPraticaPath[praticaPath] = state
         do {
             try sessionLedger.save(to: url)
@@ -508,18 +548,22 @@ final class PraticheController {
         }
     }
 
-    /// «Rigenera…» (R-31): the message's files have just gone to the Trash, so the
-    /// ledger has to forget it too - a sync skips what `importedMessageIDs` names, and
-    /// a regeneration that only deleted the file would leave a hole nothing refills.
+    /// §D23.4: Mail renumbered a followed conversation Mail's own way (a new
+    /// `conversation_id` recovered from a member `Message-ID`'s still-known row) - the
+    /// ledger's own triples have to be repointed too, or the next sync's
+    /// `memberMessageIDs(forConversation:)` answers nothing for the new id and the
+    /// pratica silently loses its recovery data one renumbering later.
     ///
-    /// The bridge triple goes with it: it is re-derived from the index on the next
-    /// import, and a stale ROWID is worse than none (§D3).
-    func forgetImportedMessage(_ messageID: String, of praticaPath: String, in vault: VaultController) {
-        guard var state = ledger.byPraticaPath[praticaPath] else { return }
-        state.importedMessageIDs.removeAll { $0 == messageID }
-        state.pending.removeAll { $0 == messageID }
-        state.notInStore.removeAll { $0 == messageID }
-        state.entries.removeAll { $0.messageID == messageID }
+    /// Declared here (ADR-0155 §D1); the coder wires the body (§D23.4's repointing,
+    /// called from `PraticaLiveSync.runExclusive` before candidates are evaluated).
+    func remapLedgerConversations(_ remap: [Int: Int], of praticaPath: String, in vault: VaultController) {
+        guard !remap.isEmpty, var state = ledger.byPraticaPath[praticaPath] else { return }
+        state.entries = state.entries.map { entry in
+            guard let newID = remap[entry.conversationID] else { return entry }
+            return PraticaLedger.Entry(
+                messageID: entry.messageID, rowID: entry.rowID, conversationID: newID
+            )
+        }
         ledger.byPraticaPath[praticaPath] = state
         guard let session = vault.session else { return }
         do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
@@ -888,6 +932,12 @@ extension PraticheController {
         )
         coordinator.controller = controller
         controller.requestSyncCancellation = { [coordinator] in coordinator.cancel() }
+        controller.prepareRegeneration = { [coordinator] praticaPath, messageID in
+            await coordinator.prepareRegeneration(praticaPath: praticaPath, messageID: messageID)
+        }
+        controller.commitRegeneration = { [coordinator] plan in
+            await coordinator.commitRegeneration(plan)
+        }
         return controller
     }
 }
@@ -973,6 +1023,11 @@ final class PraticaLiveSync {
     /// request whose recorded session no longer matches the live one instead of
     /// running it.
     private var queuedRequests: [String: QueuedRequest] = [:]
+
+    /// Held between `prepareRegeneration` and `commitRegeneration` (ADR §D21.2):
+    /// `PraticaSyncEngine.commitRegeneration(_:)` only writes, it never re-opens the
+    /// reader, so the same actor instance that produced the plan is what commits it.
+    private var regenerationEngine: PraticaSyncEngine?
 
     /// «Annulla» (R-11). Cooperative and asynchronous by nature: the engine observes
     /// it at its next message boundary, so everything already written stays complete.
@@ -1081,13 +1136,25 @@ final class PraticaLiveSync {
 
     private struct Prepared: Sendable {
         var indexURL: URL
+        /// R-30/§D22.3: `snapshot.unfollowed` already carries every conversation
+        /// touching a counterpart inside the proposal window, followed or not - one
+        /// snapshot serves both `MembershipRule.candidates` (rule 3 reads it through
+        /// `everyMessage(in:)`) and `MembershipRule.trayCandidates` (merges it with
+        /// `conversations`), so there is no second field to keep in step with this one.
         var snapshot: MembershipStoreSnapshot
-        /// R-30: every conversation touching one of this pratica's counterparts inside
-        /// the proposal window, followed or not - a **second** snapshot on purpose, and
-        /// never folded into `snapshot`: `MembershipRule.candidates`'s keyword arm reads
-        /// every message of the snapshot it is given, so an unfollowed conversation
-        /// added there would start importing itself.
-        var trayConversations: [Int: [MailMessageRow]]
+        /// §D23.3/§D23.4: `old → new` for every followed conversation `prepare` found
+        /// renumbered this run - defaulted empty so every existing construction site
+        /// keeps compiling (ADR-0155 §D1; the coder fills the detection in `prepare`).
+        var conversationRemap: [Int: Int] = [:]
+        /// §D23.5: followed conversations whose every known member has vanished from
+        /// the store - reported through `controller.report(_:)`, never removed from
+        /// the dossier (R-14).
+        var unrecoverableConversations: [Int] = []
+        /// §D24.4: `false` when the store's schema has no queryable `recipients`
+        /// table - reported through `controller.report(_:)` once per sync, since a
+        /// store in that shape silently reduces the tray and the keyword arm to
+        /// sender-only matching.
+        var recipientsUnsupported: Bool = false
     }
 
     /// What `prepare(...)` answers. Not a `Result`: the failure side is the Italian
@@ -1138,9 +1205,65 @@ final class PraticaLiveSync {
             return
         }
 
-        let candidates = MembershipRule.candidates(
-            dossier: dossier, store: prepared.snapshot, onDisk: onDisk
+        var effectiveDossier = dossier
+        // §D23.4: repoint the ledger and the dossier together, before candidates are
+        // evaluated, so this run already imports through the renumbered id rather than
+        // waiting for a later sync to notice.
+        if !prepared.conversationRemap.isEmpty {
+            controller.remapLedgerConversations(prepared.conversationRemap, of: praticaPath, in: vault)
+            let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
+            do {
+                var document = NoteDocument.parse(try session.read(notePath).text)
+                let before = document
+                if var updated = Dossier.parse(document.frontmatter.foreignKeys) {
+                    for index in updated.conversations.indices {
+                        if let newID = prepared.conversationRemap[updated.conversations[index]] {
+                            updated.conversations[index] = newID
+                        }
+                    }
+                    // Collapse a duplicate a remap can create (two old ids folding into
+                    // one new one) while preserving first-seen position - the order a
+                    // person followed things in (`PraticaTrayModel.following`'s own reason).
+                    var seen: Set<Int> = []
+                    updated.conversations = updated.conversations.filter { seen.insert($0).inserted }
+                    document.frontmatter.foreignKeys = Dossier.merging(updated, into: document.frontmatter.foreignKeys)
+                    if document != before {
+                        try session.write(document.serialized(), to: notePath)
+                    }
+                    effectiveDossier = updated
+                }
+            } catch {
+                controller.report("«\(notePath)» non è stato aggiornato: \(error.localizedDescription)")
+            }
+        }
+        if !prepared.unrecoverableConversations.isEmpty {
+            controller.report(
+                "Una conversazione seguita non è più ricostruibile in Mail: \(prepared.unrecoverableConversations.count)."
+            )
+        }
+        if prepared.recipientsUnsupported {
+            controller.report(
+                "L'indice di Mail non espone i destinatari: la vaschetta vede solo i messaggi ricevuti."
+            )
+        }
+
+        // §D22.3: two evaluations, and the second is proved to be the last - rule 3
+        // skips an id already in `dossier.conversations`, so once every auto-followed
+        // id from the first pass is written into `effectiveDossier`, a second pass
+        // auto-follows nothing new. This lets a keyword match import the whole thread
+        // in the run that found it, not just the one matching message.
+        var candidates = MembershipRule.candidates(
+            dossier: effectiveDossier, store: prepared.snapshot, onDisk: onDisk
         )
+        if !candidates.autoFollowedConversations.isEmpty {
+            for conversation in candidates.autoFollowedConversations {
+                effectiveDossier = PraticaTrayModel.following(conversationID: conversation, in: effectiveDossier)
+            }
+            DossierWriter.update(at: praticaPath, session: session) { $0 = effectiveDossier }
+            candidates = MembershipRule.candidates(
+                dossier: effectiveDossier, store: prepared.snapshot, onDisk: onDisk
+            )
+        }
         let engine = PraticaSyncEngine(mailStoreURL: prepared.indexURL, vaultRoot: root) { text, path in
             _ = try session.write(text, to: path)
         }
@@ -1156,7 +1279,7 @@ final class PraticaLiveSync {
         do {
             let result = try await engine.sync(PraticaSyncEngine.SyncRequest(
                 praticaFolder: praticaPath,
-                dossier: dossier,
+                dossier: effectiveDossier,
                 candidates: candidates.messages,
                 onDisk: onDisk,
                 settings: settings
@@ -1181,18 +1304,111 @@ final class PraticaLiveSync {
         // After the import and not before it: a conversation this run has just started
         // following is no longer a proposal, and the tray would otherwise offer back
         // what the person just accepted.
-        let followed = PraticheController.dossier(at: praticaPath, vaultRoot: root) ?? dossier
+        let followed = PraticheController.dossier(at: praticaPath, vaultRoot: root) ?? effectiveDossier
         let tray = MembershipRule.trayCandidates(
             dossier: followed,
-            store: MembershipStoreSnapshot(
-                conversations: prepared.trayConversations, messagesByID: [:]
-            ),
+            store: prepared.snapshot,
             window: window,
             claimedByOtherPratiche: claimed
         )
         controller.updateTray(
             PraticaTrayModel.proposals(from: tray), for: praticaPath, in: vault
         )
+    }
+
+    // MARK: - «Rigenera» (ADR §D21)
+
+    /// §D21.1: publishes a fresh store copy, then asks the engine to acquire the
+    /// replacement text and diff it - nothing is trashed or written yet. The engine is
+    /// kept in `regenerationEngine` for `commitRegeneration` below, since it is the
+    /// one thing that must not be re-derived between preview and commit.
+    func prepareRegeneration(praticaPath: String, messageID: String) async {
+        guard let controller, let session = vault.session, let root = vault.root else { return }
+        let settings = vault.settings.pratiche
+        guard let dossier = PraticheController.dossier(at: praticaPath, vaultRoot: root) else {
+            controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
+            controller.regeneration = nil
+            return
+        }
+        let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
+        let onDisk = Set(state.importedMessageIDs)
+        // §D3: the ledger's own bridge, for a message the fresh index copy cannot
+        // resolve by `Message-ID` on its own.
+        let rowID = state.entries.first { $0.messageID == messageID }?.rowID
+        let mailRoot = MailStoreLocation.resolve()
+        let stateDirectory = PraticheController.stateDirectory(for: session)
+
+        let generation: URL
+        switch MailStoreCopy.publish(from: mailRoot, into: stateDirectory) {
+        case .published(let url), .unchanged(let url):
+            generation = url
+        case .mailIsWriting:
+            controller.report("Mail sta scrivendo nel suo archivio: riprova fra qualche secondo.")
+            controller.regeneration = nil
+            return
+        case .storeMissing:
+            controller.report("Nessun archivio di Mail trovato in \(mailRoot.path(percentEncoded: false)).")
+            controller.regeneration = nil
+            return
+        }
+        let indexURL = generation.appending(path: "Envelope Index", directoryHint: .notDirectory)
+
+        let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path in
+            _ = try session.write(text, to: path)
+        }
+        regenerationEngine = engine
+
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: praticaPath, dossier: dossier, candidates: [], onDisk: onDisk, settings: settings
+        )
+        do {
+            let plan = try await engine.regenerationPreview(request, messageID: messageID, rowID: rowID)
+            guard vault.session === session else { return }
+            controller.regeneration = .ready(plan)
+        } catch {
+            guard vault.session === session else { return }
+            controller.regeneration = nil
+            controller.report(Self.regenerationFailureMessage(error))
+        }
+    }
+
+    /// §D21.2: commits an already-previewed plan through the same engine instance that
+    /// produced it, then records the outcome in the ledger exactly as an ordinary sync
+    /// would (`isRegeneration` routes it into `regeneratedPendingFiles`, never
+    /// `importedMessageIDs` - `PraticaSyncEngine.commit`'s own rule). `false` on
+    /// failure, so the caller can put the trashed files back.
+    func commitRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) async -> Bool {
+        guard let controller, let session = vault.session, let engine = regenerationEngine else {
+            controller?.report("Rigenerazione non riuscita: il motore di sincronizzazione non è più disponibile.")
+            return false
+        }
+        do {
+            let outcome = try await engine.commitRegeneration(plan)
+            controller.recordSyncOutcome(
+                outcome, for: plan.praticaFolder, session: session, isCurrentVault: vault.session === session
+            )
+            return true
+        } catch {
+            guard vault.session === session else { return false }
+            controller.report(Self.regenerationFailureMessage(error))
+            return false
+        }
+    }
+
+    private static func regenerationFailureMessage(_ error: Error) -> String {
+        guard let failure = error as? PraticaSyncEngine.RegenerationFailure else {
+            return "Rigenerazione non riuscita: \(error.localizedDescription)"
+        }
+        switch failure {
+        case .rowNotFound:
+            return "Il messaggio non è stato trovato nell'indice di Mail."
+        case .notInStore:
+            return "Il messaggio non è più in Mail: non c'è nulla da cui rigenerarlo."
+        case .notDecodable:
+            return "Il messaggio non è stato letto correttamente da Mail."
+        case .fileMissing:
+            return "Il file della nota non è stato trovato nel vault."
+        }
     }
 
     /// R-13's `claimedByOtherPratiche`: every conversation any *other* pratica already
@@ -1233,10 +1449,8 @@ final class PraticaLiveSync {
             return .failed("La copia dell'indice di Mail non si è aperta.")
         }
 
-        var conversations: [Int: [MailMessageRow]] = [:]
-        for conversation in dossier.conversations {
-            conversations[conversation] = reader.messages(inConversation: conversation)
-        }
+        // `messagesByID` first (§D23.3): recovery below resolves against it, so it must
+        // exist before the conversation loop that may need it.
         var messagesByID: [String: MailMessageRow] = [:]
         // The ledger's own triples first (ADR §D3): they are what resolves an id the
         // index cannot answer for on its own.
@@ -1246,21 +1460,49 @@ final class PraticaLiveSync {
             }
         }
 
+        // §D23.3/R-14: an empty result for a followed conversation is only evidence of
+        // renumbering when this pratica has actually imported from it - nothing
+        // imported means nothing to re-derive, and a conversation whose every message
+        // a person deleted is not a bug to report.
+        var conversations: [Int: [MailMessageRow]] = [:]
+        var remap: [Int: Int] = [:]
+        var unrecoverable: [Int] = []
+        let resolved = MembershipStoreSnapshot(conversations: [:], messagesByID: messagesByID)
+        for conversation in dossier.conversations {
+            let rows = reader.messages(inConversation: conversation)
+            guard rows.isEmpty else { conversations[conversation] = rows; continue }
+            let members = ledgerEntries.filter { $0.conversationID == conversation }.map(\.messageID)
+            guard !members.isEmpty else { conversations[conversation] = []; continue }
+            switch MembershipRule.recoverConversationID(knownMemberMessageIDs: members, store: resolved) {
+            case .recovered(let recovered) where recovered != conversation:
+                remap[conversation] = recovered
+                conversations[recovered] = reader.messages(inConversation: recovered)
+            case .recovered:
+                conversations[conversation] = []
+            case .unrecoverable:
+                unrecoverable.append(conversation)
+            }
+        }
+
         // R-30: the counterpart query the tray is made of
         // (`MailStoreReader.conversations(counterpart:within:)`, written for exactly
         // this), asked once per counterpart and folded into one map - two counterparts
         // in one conversation are one proposal, not two.
-        var trayConversations: [Int: [MailMessageRow]] = [:]
+        var unfollowed: [Int: [MailMessageRow]] = [:]
         for address in dossier.counterparts {
             for conversation in reader.conversations(counterpart: address, within: proposalWindow) {
-                trayConversations[conversation.conversationID] = conversation.messages
+                unfollowed[conversation.conversationID] = conversation.messages
             }
         }
 
         return .ready(Prepared(
             indexURL: indexURL,
-            snapshot: MembershipStoreSnapshot(conversations: conversations, messagesByID: messagesByID),
-            trayConversations: trayConversations
+            snapshot: MembershipStoreSnapshot(
+                conversations: conversations, messagesByID: messagesByID, unfollowed: unfollowed
+            ),
+            conversationRemap: remap,
+            unrecoverableConversations: unrecoverable,
+            recipientsUnsupported: !reader.supportsRecipients()
         ))
     }
 }

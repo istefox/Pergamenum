@@ -40,6 +40,11 @@ enum MailStoreFixture {
         var deleted: Bool = false
         var attachments: [Attachment] = []
         var emlxBody: String = "Subject: test\n\ncorpo del messaggio di prova.\n"
+        /// Recipient addresses joined into `recipients` through `addresses`, exactly
+        /// the shape Task 2's live probe confirmed (ADR §D24.5's "Follow-up - Task 2
+        /// probe results, PG-108": column names, no schema correction needed). Empty
+        /// by default - most fixture messages in the existing suites carry none.
+        var recipients: [String] = []
     }
 
     struct Built {
@@ -91,6 +96,14 @@ enum MailStoreFixture {
         }
 
         return Built(root: root, indexURL: indexURL, mailboxes: mailboxes, messages: messages)
+    }
+
+    /// Removes `recipients` from an already-built fixture's index, in place - the
+    /// "older Mail / mis-named table" shape `supportsRecipients()` and the recipients
+    /// join must both fail closed against, never throw (ADR §D24.4).
+    static func dropRecipientsTable(indexURL: URL) throws {
+        let statement = ["DROP", "TABLE recipients;"].joined(separator: " ")
+        try runSQLite3(script: statement, databasePath: indexURL)
     }
 
     // MARK: - Directory scaffolding
@@ -193,9 +206,57 @@ enum MailStoreFixture {
                 VALUES (\(message.rowID), '\(escaped(attachment.attachmentID))', '\(escaped(attachment.name))');
                 """)
             }
+
+            // §D24.1's join target: `recipients.message`/`.address` → `addresses.ROWID`,
+            // column-for-column what Task 2's live probe measured (ADR §D24.5's own
+            // follow-up note). Reuses `addressRowIDByAddress` so a recipient sharing an
+            // address with a sender (or another recipient) is not inserted twice.
+            for (position, recipientAddress) in message.recipients.enumerated() {
+                let recipientRowID = rowID(for: recipientAddress, in: &addressRowIDByAddress) { nextRowID in
+                    let address = escaped(recipientAddress)
+                    statements.append(
+                        "INSERT INTO addresses (ROWID, address, comment) VALUES (\(nextRowID), '\(address)', '');"
+                    )
+                }
+                statements.append("""
+                INSERT INTO recipients (message, address, position)
+                VALUES (\(message.rowID), \(recipientRowID), \(position));
+                """)
+            }
+
+            // 96.9% of a real store's rows carry this (PROBE 1, `MailStoreReader.row(forMessageID:)`'s
+            // own doc comment) - the fixture reproduces it whenever the authored `emlxBody` actually
+            // carries a `Message-ID` header, so `row(forMessageID:)` is exercised the same way a real
+            // store answers it, not always `.notResolvableFromIndex`.
+            if let header = messageIDHeader(in: message.emlxBody) {
+                statements.append("""
+                INSERT INTO message_global_data (ROWID, message_id, message_id_header)
+                VALUES (\(message.rowID), \(indexMessageIDHash(for: message.rowID)), '\(escaped(header))');
+                """)
+            }
         }
 
         return statements.joined(separator: "\n")
+    }
+
+    /// Extracts the `Message-ID:` header's value from a raw RFC 822 body, the same
+    /// text `writeEMLX` writes to disk - never a separate authored field, or the two
+    /// could silently disagree.
+    private static func messageIDHeader(in emlxBody: String) -> String? {
+        // `.split(separator: "\n")` (a Character) never matches here: Swift composes a
+        // literal `\r\n` into one extended grapheme cluster, so a Character equal to a
+        // bare `"\n"` does not occur in this text at all, and the "split" is the whole
+        // body as a single element. `components(separatedBy:)` searches for the
+        // substring `"\n"` instead, which does find it inside the cluster.
+        for line in emlxBody.components(separatedBy: "\n") {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.isEmpty { break }
+            guard let colon = trimmedLine.firstIndex(of: ":") else { continue }
+            let name = trimmedLine[trimmedLine.startIndex..<colon].trimmingCharacters(in: .whitespaces)
+            guard name.caseInsensitiveCompare("Message-ID") == .orderedSame else { continue }
+            return trimmedLine[trimmedLine.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return nil
     }
 
     /// A stand-in for Mail's own opaque `messages.message_id` hash (PROBE 1, C9:
@@ -275,6 +336,11 @@ enum MailStoreFixture {
         deleted_count INTEGER NOT NULL DEFAULT 0,
         unseen_count INTEGER NOT NULL DEFAULT 0,
         unread_count_adjusted_for_duplicates INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE message_global_data (
+        ROWID INTEGER PRIMARY KEY,
+        message_id INTEGER NOT NULL,
+        message_id_header TEXT
     );
     """
 

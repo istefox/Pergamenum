@@ -17,17 +17,6 @@ import SwiftUI
 // from the view's `@Environment(\.undoManager)` (ADR-0026 §D5) - this type never
 // reaches for `NSApp.keyWindow?.undoManager`.
 
-/// «Rigenera…» waiting for its confirmation (UX-BLUEPRINT: a sheet, not an alert -
-/// R-34's «Elimina pratica» is the only alert in the feature).
-struct PraticaRegenerationRequest: Equatable, Identifiable, Sendable {
-    var praticaPath: String
-    var notePath: String
-    var messageID: String
-    var subject: String
-
-    var id: String { notePath }
-}
-
 @MainActor
 struct PraticaCommandActions {
     let pratiche: PraticheController
@@ -237,8 +226,11 @@ struct PraticaCommandActions {
         reload()
     }
 
-    /// «Rigenera…» (§D6's second exception): asks first, because the message file may
-    /// hold edits made by hand and rewriting it is exactly what §D6 otherwise forbids.
+    /// «Rigenera…» (§D6's second exception, §D21): asks first, because the message
+    /// file may hold edits made by hand. Unlike the old confirm-then-sync flow, the
+    /// replacement text and its diff against what is on disk are acquired *before*
+    /// anything is trashed - `prepareRegeneration` fills `pratiche.regeneration` with
+    /// `.ready` once it resolves, or clears it and reports on failure.
     private func requestRegeneration(of entry: PraticaTimelineEntry, detail: PraticaRowDetail?) {
         guard let praticaPath = praticaPath(of: entry, detail: detail),
               let messageID = entry.messageID, let detail
@@ -247,21 +239,23 @@ struct PraticaCommandActions {
             pratiche.report("«\(entry.subject)» non è più in Mail: non c'è nulla da cui rigenerarlo.")
             return
         }
-        pratiche.regenerationRequest = PraticaRegenerationRequest(
-            praticaPath: praticaPath, notePath: detail.notePath,
-            messageID: messageID, subject: entry.subject
-        )
+        pratiche.regeneration = .preparing(notePath: detail.notePath, subject: entry.subject)
+        Task { await pratiche.prepareRegeneration?(praticaPath, messageID) }
     }
 
-    /// The regeneration itself, once agreed to: the current files go to the Trash
-    /// (recoverable, the only deletion convention this repo has), the id leaves the
-    /// ledger so the message stops counting as already imported, and the pratica syncs
-    /// - which writes the message again from Mail's own bytes.
-    func confirmRegeneration(_ request: PraticaRegenerationRequest) {
-        pratiche.regenerationRequest = nil
-        guard !trash(filesOf: request.notePath).isEmpty else { return }
-        pratiche.forgetImportedMessage(request.messageID, of: request.praticaPath, in: vault)
-        Task { await pratiche.refreshNow(request.praticaPath, in: vault) }
+    /// The regeneration itself, once the diff has been shown and agreed to (§D21.4):
+    /// the current files go to the Trash first (recoverable, the only deletion
+    /// convention this repo has), then the previewed replacement is committed - put
+    /// back if that fails, so «Rigenera» never leaves the message file missing.
+    func confirmRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) {
+        pratiche.regeneration = nil
+        let trashed = trash(filesOf: plan.notePath)
+        guard !trashed.isEmpty else { return }
+        Task {
+            let succeeded = await pratiche.commitRegeneration?(plan) ?? false
+            if !succeeded { restore(trashed) }
+            reload()
+        }
     }
 
     // MARK: - The tray (R-30)
@@ -294,10 +288,9 @@ struct PraticaCommandActions {
     /// `VaultSession.write`. Byte-preserving on every key it does not own
     /// (`Dossier.merging`, §D12).
     func updateDossier(at praticaPath: String, _ change: (inout Dossier) -> Void) {
-        updateNote(at: Self.praticaNotePath(of: praticaPath)) { document in
-            guard var dossier = Dossier.parse(document.frontmatter.foreignKeys) else { return }
-            change(&dossier)
-            document.frontmatter.foreignKeys = Dossier.merging(dossier, into: document.frontmatter.foreignKeys)
+        guard let session = vault.session else { return }
+        if let message = DossierWriter.update(at: praticaPath, session: session, change) {
+            pratiche.report(message)
         }
     }
 

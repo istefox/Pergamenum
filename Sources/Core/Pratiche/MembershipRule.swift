@@ -20,8 +20,22 @@ struct MembershipStoreSnapshot: Equatable, Sendable {
     /// lookup `MailStoreReader.row(forMessageID:)` cannot always answer on its own
     /// (ADR §D3), pre-resolved by the caller before this pure function ever runs.
     var messagesByID: [String: MailMessageRow]
+    /// Every message of every conversation the counterpart search found inside the
+    /// proposal window, followed or not - the pool rule 3's keyword arm scans and the
+    /// tray proposes from. Separate from `conversations` on purpose: rule 1 imports
+    /// what `dossier.conversations` names, and nothing here is followed yet.
+    var unfollowed: [Int: [MailMessageRow]] = [:]
 
     static let empty = MembershipStoreSnapshot(conversations: [:], messagesByID: [:])
+
+    /// One conversation's messages, followed or not (ADR §D22.1). Tester stub
+    /// (ADR-0155 §D1): trivial and pure, implemented for real rather than left as a
+    /// no-op stub, since there is no judgment call in a one-line union of two
+    /// dictionary lookups. `MembershipRule.everyMessage(in:)` does not call this yet -
+    /// that rewiring is coder work per §D22.1.
+    func messages(inConversation id: Int) -> [MailMessageRow] {
+        conversations[id] ?? unfollowed[id] ?? []
+    }
 }
 
 enum MembershipRule {
@@ -48,22 +62,26 @@ enum MembershipRule {
         var collected: [MailMessageRow] = []
         var autoFollowed: [Int] = []
 
-        // 1. every non-deleted message of a followed conversation.
+        // 1. every non-deleted message of a followed conversation - through
+        //    `store.messages(inConversation:)` (§D22.3) so a conversation this very
+        //    evaluation just auto-followed (rule 3, still only in `unfollowed` at this
+        //    point) is reachable on the second pass without a second snapshot.
         for conversation in dossier.conversations {
-            collected.append(contentsOf: (store.conversations[conversation] ?? []).filter { !$0.deleted })
+            collected.append(contentsOf: store.messages(inConversation: conversation).filter { !$0.deleted })
         }
         // 2. plus every message added by hand, wherever it lives.
         for messageID in dossier.included {
             if let row = store.messagesByID[messageID], !row.deleted { collected.append(row) }
         }
         // 3. plus a keyword match on a counterpart's message - which also follows that
-        //    conversation from now on, so the rest of the thread arrives by rule 1 next
-        //    sync instead of depending on every subject repeating the keyword.
+        //    conversation from now on. The caller (`PraticheController.runExclusive`,
+        //    §D22.3) re-evaluates once more with the id written into `dossier`, so the
+        //    rest of the thread arrives through rule 1 in this same sync.
         if !dossier.keywords.isEmpty {
             let counterparts = Set(dossier.counterparts.map { $0.lowercased() })
             let keywords = dossier.keywords.map { $0.lowercased() }
             for row in everyMessage(in: store) where !row.deleted {
-                guard let sender = row.sender?.lowercased(), counterparts.contains(sender) else { continue }
+                guard touches(row, counterparts: counterparts) else { continue }
                 let subject = (row.subject ?? "").lowercased()
                 guard keywords.contains(where: { !$0.isEmpty && subject.contains($0) }) else { continue }
                 collected.append(row)
@@ -89,8 +107,24 @@ enum MembershipRule {
         )
     }
 
+    /// §D22.1: widens the keyword arm's pool to `unfollowed`, the counterpart-search
+    /// results the tray already loads - used by rule 3 and by nothing else, so this
+    /// change reaches only the keyword arm, never rule 1 or rule 2.
     private static func everyMessage(in store: MembershipStoreSnapshot) -> [MailMessageRow] {
-        deduplicated(store.conversations.values.flatMap { $0 } + store.messagesByID.values)
+        deduplicated(
+            store.conversations.values.flatMap { $0 }
+                + store.unfollowed.values.flatMap { $0 }
+                + store.messagesByID.values
+        )
+    }
+
+    /// SPEC "Membership rule": a message *from or to* a counterpart. The tray
+    /// (`trayCandidates`) and the keyword arm (`candidates`, rule 3) ask this same
+    /// question and must never answer it differently - the sender-only version of this
+    /// check is what made an outgoing-only conversation invisible to both.
+    private static func touches(_ row: MailMessageRow, counterparts: Set<String>) -> Bool {
+        if let sender = row.sender?.lowercased(), counterparts.contains(sender) { return true }
+        return row.recipients.contains { counterparts.contains($0.lowercased()) }
     }
 
     /// One message reaches a pratica through several routes at once (a followed
@@ -131,16 +165,20 @@ enum MembershipRule {
         let followed = Set(dossier.conversations)
         let ignored = Set(dossier.ignored)
 
+        // §D22.2: `unfollowed` folded in so one snapshot serves both `candidates` and
+        // this call - its own `!followed.contains` guard below already excludes
+        // anything in `dossier.conversations`, so this changes no tray output.
+        let allConversations = store.conversations.merging(store.unfollowed) { existing, _ in existing }
+
         var entries: [TrayEntry] = []
-        for (conversationID, messages) in store.conversations {
+        for (conversationID, messages) in allConversations {
             guard !followed.contains(conversationID),
                   !ignored.contains(conversationID),
                   !claimedByOtherPratiche.contains(conversationID)
             else { continue }
             let live = messages.filter { !$0.deleted }
             let touchesCounterpart = live.contains { row in
-                guard let sender = row.sender?.lowercased() else { return false }
-                return counterparts.contains(sender) && window.contains(date(of: row))
+                touches(row, counterparts: counterparts) && window.contains(date(of: row))
             }
             guard touchesCounterpart else { continue }
             entries.append(TrayEntry(conversationID: conversationID, messages: live))

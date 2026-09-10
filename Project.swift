@@ -224,7 +224,16 @@ let project = Project(
             bundleId: "\(bundleId).uitests",
             deploymentTargets: .macOS(deploymentTarget),
             infoPlist: .default,
-            sources: ["UITests/**"],
+            // `MailStoreFixture.swift`/`EmailFixtureCorpus.swift` are pure Foundation
+            // (no XCTest import), authored for `Tests/**` - reused here rather than
+            // forked so a UI test can seed a real Envelope Index/`.emlx` fixture
+            // (`PraticheUITests`'s «Rigenera» coverage, ADR-0036 §D21) without a second
+            // copy of the schema-accurate SQL script drifting from the unit suite's.
+            sources: [
+                "UITests/**",
+                "Tests/MailStoreFixture.swift",
+                "Tests/EmailFixtureCorpus.swift",
+            ],
             dependencies: [.target(name: projectName)],
             settings: .settings(base: baseSettings)
         ),

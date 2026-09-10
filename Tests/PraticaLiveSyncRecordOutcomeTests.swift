@@ -62,7 +62,8 @@ import Testing
             importedMessageIDs: ["<abc@rossi-spa.it>"],
             noLongerInMail: [],
             regeneratedPendingFiles: [],
-            cancelled: false
+            cancelled: false,
+            bridge: []
         )
 
         controller.recordSyncOutcome(outcome, for: praticaPath, session: sessionA, isCurrentVault: true)
@@ -100,7 +101,7 @@ import Testing
         controller.recordSyncOutcome(
             PraticaSyncEngine.SyncOutcome(
                 writtenFiles: [], importedMessageIDs: ["<a@rossi-spa.it>"],
-                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false
+                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false, bridge: []
             ),
             for: praticaPathA, session: sessionA, isCurrentVault: true
         )
@@ -112,7 +113,7 @@ import Testing
         controller.recordSyncOutcome(
             PraticaSyncEngine.SyncOutcome(
                 writtenFiles: [], importedMessageIDs: ["<b@verdi-srl.it>"],
-                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false
+                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false, bridge: []
             ),
             for: praticaPathB, session: sessionB, isCurrentVault: false
         )

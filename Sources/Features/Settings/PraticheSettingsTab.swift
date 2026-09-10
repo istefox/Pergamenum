@@ -60,6 +60,8 @@ struct PraticheSettingsTab: View {
                 in: PraticheSettings.proposalWindowRange
             )
             .accessibilityIdentifier("settings-pratiche-proposal-window")
+            Text("Una parola chiave segue automaticamente una conversazione solo se un messaggio è dentro questa finestra: allargarla estende anche quanto indietro la parola chiave può cercare.")
+                .themedText(.caption, color: .textTertiary)
 
             Toggle("Scrivi nel diario", isOn: Binding(
                 get: { vault.settings.pratiche.mirrorsToDailyNote },

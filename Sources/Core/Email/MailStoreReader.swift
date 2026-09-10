@@ -102,7 +102,12 @@ struct MailStoreReader {
         WHERE m.conversation_id = ?1 AND m.deleted = 0
         ORDER BY m.date_sent
         """
-        return (try? rows(sql) { connection.bindInt($0, 1, conversationID) }) ?? []
+        var messages = (try? rows(sql) { connection.bindInt($0, 1, conversationID) }) ?? []
+        let recipientsByMessage = recipients(forConversation: conversationID)
+        for index in messages.indices {
+            messages[index].recipients = recipientsByMessage[messages[index].rowID] ?? []
+        }
+        return messages
     }
 
     /// Conversations with at least one message from/to `address`, dated within
@@ -156,10 +161,84 @@ struct MailStoreReader {
         WHERE g.message_id_header = ?1
         LIMIT 1
         """
-        guard let found = try? rows(sql, bind: { connection.bindText($0, 1, messageID) }).first else {
+        guard var found = try? rows(sql, bind: { connection.bindText($0, 1, messageID) }).first else {
             return .notResolvableFromIndex
         }
+        found.recipients = recipients(forMessage: found.rowID)
         return .found(found)
+    }
+
+    /// Whether this store exposes a queryable `recipients` table (ADR §D24.4).
+    /// Asked once per sync, because a store without one silently reduces the tray
+    /// and the keyword arm to sender-only matching - the exact defect §D24 fixes,
+    /// reintroduced by a schema rather than by code.
+    ///
+    func supportsRecipients() -> Bool {
+        guard let statement = try? connection.prepare("SELECT 1 FROM recipients LIMIT 1") else {
+            return false
+        }
+        defer { connection.finalize(statement) }
+        return (try? connection.step(statement)) != nil
+    }
+
+    /// A row by index ROWID (ADR §D24, the sixth query) - needed by Task 5's
+    /// regeneration flow, not by this task's tests.
+    func row(rowID: Int) -> MailMessageRow? {
+        let sql = """
+        \(Self.rowSelect)
+        WHERE m.ROWID = ?1
+        LIMIT 1
+        """
+        guard var found = try? rows(sql, bind: { connection.bindInt($0, 1, rowID) }).first else {
+            return nil
+        }
+        found.recipients = recipients(forMessage: found.rowID)
+        return found
+    }
+
+    /// §D24.2: the recipients join for a whole conversation, one extra statement
+    /// per conversation (never per message) - folded onto `messages(inConversation:)`'s
+    /// already-built rows by the caller. Fails closed (an unpreparable statement, e.g.
+    /// no `recipients` table, answers "no recipients" for everyone) rather than
+    /// throwing (§D24.4).
+    private func recipients(forConversation conversationID: Int) -> [Int: [String]] {
+        let sql = """
+        SELECT r.message, a.address
+        FROM recipients AS r
+        JOIN addresses AS a ON a.ROWID = r.address
+        JOIN messages AS m ON m.ROWID = r.message
+        WHERE m.conversation_id = ?1
+        """
+        let rows = (try? collect(sql) { statement in
+            connection.bindInt(statement, 1, conversationID)
+        } read: { statement -> (Int, String)? in
+            guard let message = connection.columnInt(statement, 0),
+                  let address = connection.columnText(statement, 1)
+            else { return nil }
+            return (message, address.lowercased())
+        }) ?? []
+
+        var byMessage: [Int: [String]] = [:]
+        for (message, address) in rows {
+            byMessage[message, default: []].append(address)
+        }
+        return byMessage
+    }
+
+    /// §D24.2's other `WHERE` variant, for a single message (`row(forMessageID:)`,
+    /// `row(rowID:)`) - same fail-closed behavior as the conversation form above.
+    private func recipients(forMessage rowID: Int) -> [String] {
+        let sql = """
+        SELECT r.message, a.address
+        FROM recipients AS r
+        JOIN addresses AS a ON a.ROWID = r.address
+        WHERE r.message = ?1
+        """
+        return (try? collect(sql) { statement in
+            connection.bindInt(statement, 1, rowID)
+        } read: { statement in
+            connection.columnText(statement, 1)?.lowercased()
+        }) ?? []
     }
 
     /// Attachment names recorded for one message (R-03).
