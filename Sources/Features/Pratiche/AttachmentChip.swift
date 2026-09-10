@@ -49,11 +49,11 @@ struct AttachmentChip: View {
         .simultaneousGesture(TapGesture(count: 2).onEnded { openWithDefaultApp() })
         .contextMenu {
             Button("Anteprima") { preview() }
-                .disabled(localURL == nil)
+                .disabled(previewURL == nil)
             Button("Apri") { openWithDefaultApp() }
-                .disabled(localURL == nil)
+                .disabled(openURL == nil)
             Button("Mostra nel Finder") { showInFinder() }
-                .disabled(localURL == nil)
+                .disabled(revealURL == nil)
             Button("Copia nome") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(name, forType: .string)
@@ -70,29 +70,37 @@ struct AttachmentChip: View {
         }
     }
 
-    /// `nil` for a store reference, and for a file whose copy is not on disk: both are
-    /// chips with nothing to preview, and the difference between them is the message
-    /// the tooltip carries.
-    private var localURL: URL? {
-        guard case .file(let reference) = content else { return nil }
-        return FileManager.default.fileExists(atPath: reference.url.path(percentEncoded: false))
-            ? reference.url
-            : nil
+    /// Injected into `AttachmentChipModel` rather than read there directly (ADR-0155):
+    /// keeps the pure decision testable with an arbitrary filesystem state.
+    private func fileExists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
-    private var isMissing: Bool { localURL == nil }
+    /// Quick Look's target (R-27): `nil` for a store reference and for a file whose copy
+    /// is not on disk - both are chips with nothing to preview.
+    private var previewURL: URL? { AttachmentChipModel.previewURL(for: content, fileExists: fileExists) }
 
-    private var symbol: String {
-        switch content {
-        case .file: localURL == nil ? "questionmark.folder" : "paperclip"
-        case .storeReference: "icloud.slash"
-        }
+    /// The default-app / double-click target (R-27): the local copy, or a store
+    /// reference's own store path when it is still there.
+    private var openURL: URL? { AttachmentChipModel.openURL(for: content, fileExists: fileExists) }
+
+    /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`.
+    private var revealURL: URL? { AttachmentChipModel.revealURL(for: content, fileExists: fileExists) }
+
+    /// A file whose copy is not on disk: the difference between it and a store reference
+    /// is the message the tooltip carries, not this flag, which only ever asks "is this a
+    /// file reference with nothing to preview".
+    private var isMissing: Bool {
+        guard case .file = content else { return true }
+        return previewURL == nil
     }
+
+    private var symbol: String { AttachmentChipModel.symbol(for: content, fileExists: fileExists) }
 
     private var helpText: String {
         switch content {
         case .file:
-            localURL == nil
+            previewURL == nil
                 ? "\(name) — il file non è in allegati/"
                 : name
         case .storeReference(let reference):
@@ -116,17 +124,17 @@ struct AttachmentChip: View {
     // MARK: Actions
 
     private func preview() {
-        guard let localURL else { return }
-        onQuickLook(localURL)
+        guard let previewURL else { return }
+        onQuickLook(previewURL)
     }
 
     private func openWithDefaultApp() {
-        guard let localURL else { return }
-        NSWorkspace.shared.open(localURL)
+        guard let openURL else { return }
+        NSWorkspace.shared.open(openURL)
     }
 
     private func showInFinder() {
-        guard let localURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([localURL])
+        guard let revealURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([revealURL])
     }
 }
