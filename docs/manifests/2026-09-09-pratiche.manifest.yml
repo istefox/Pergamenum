@@ -9,14 +9,14 @@ step5_codex_review_asked: false
 step5_codex_review_model: null
 step5_codex_review_effort: null
 use_codex_tester: false
-step5_codex_tester_asked: false
+step5_codex_tester_asked: true
 use_codex_coder: false
 step5_codex_coder_model: null
 step5_codex_coder_effort: null
 chain_path: "standard"
 created_at: "2026-09-09T14:00:48+00:00"
-last_updated_at: "2026-09-09T15:26:54+00:00"
-current_step: "ready_for_implementation"
+last_updated_at: "2026-09-10T06:21:25+00:00"
+current_step: "step_6_review"
 status: "in_progress"
 
 # Gate 0 routing result (ADR-0017)
@@ -37,11 +37,11 @@ coder_model: "opus"
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: false
-step5_mode: null
+hook_verified: true
+step5_mode: "agent_batch"
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
-recovery_baseline_sha: null
+recovery_baseline_sha: "0f42b3f642f96e670d83c104688664eb6e123db8"
 
 # Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
@@ -51,7 +51,7 @@ recovery_baseline_sha: null
 # it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
 # with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
 # sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
-worktree_baseref_verified: false
+worktree_baseref_verified: true
 worktree_merges: []
 
 # Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
@@ -92,7 +92,7 @@ license: "None"
 xcode_project: false
 initial_commit_push: "push"
 git_remote_url: "https://github.com/istefox/Pergamenum.git"
-step6_mode: null
+step6_mode: "skill_fallback"
 
 # Artifacts (absolute paths, populated as steps complete)
 artifacts:
@@ -130,15 +130,15 @@ hitl_gates:
     notes: "Confirmed — I will /clear and resume"
   - gate: 5
     label: "review_cycle_decision"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-09-10T06:21:25+00:00"
+    notes: "Run review-triage-fix"
 
 # Session boundary tracking
 session_boundary:
   pre_step_4_session_id: null
   fresh_session_started_at: null
-  resumed_at: null
+  resumed_at: "2026-09-09T17:41:33+00:00"
 
 # Failure tracking (populated only on status=failed)
 failure:

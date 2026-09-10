@@ -109,4 +109,20 @@ struct PraticaWatcher: Equatable, Sendable {
         }
         return now >= fireAt
     }
+
+    /// Clears the pulse once its sync has run, so `isFSEventsFireDue` waits for a new
+    /// pulse rather than answering `true` at every later check.
+    mutating func consumeFSEventsPulse() {
+        pendingFSEventsFireAt = nil
+    }
+
+    /// Updates the cached eligibility `isFSEventsFireDue` gates on, from a caller that
+    /// already has the live truth (`PraticheController.fireDueFSEventsPulses`, reading
+    /// `Self.eligibility(of:)` fresh every fire check). Without this, a pratica closed
+    /// then reopened stays stuck refusing FSEvents pulses forever: nothing besides
+    /// `decideWindowKeyTrigger` ever moves `lastKnownEligibility`, and a window-key
+    /// trigger is not guaranteed to land between the reopen and the next pulse.
+    mutating func refreshEligibility(_ eligibility: Eligibility) {
+        lastKnownEligibility = eligibility
+    }
 }

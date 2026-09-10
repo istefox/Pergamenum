@@ -530,6 +530,172 @@ unregenerable. Fixtures are built by code (§D7).
 
 ---
 
+## Follow-up — Task 1 probe results (2026-09-09)
+
+Both probes ran on a copy published by `MailStoreCopy.publish` (355 MB index + 1.2 MB `-wal`,
+under `$TMPDIR`, deleted afterwards). Mail's live file was never opened; only schema, counts and
+paths were read. Four measured facts amend the decisions above; none reverses one.
+
+- **C9 (§D3), answered:** `messages.message_id` is `INTEGER NOT NULL`, an opaque hash in all
+  127,677 rows — it can never match an RFC `Message-ID`. The RFC id is nevertheless queryable
+  elsewhere: `message_global_data.message_id_header TEXT` holds the header verbatim for 123,693 of
+  123,695 rows (96.9% of all messages, shaped `<…@…>`), joined on
+  `message_global_data.message_id = messages.message_id` (never on `messages.ROWID`). §D3's
+  conditional therefore resolves to "implemented": `MailStoreReader.row(forMessageID:)` queries
+  that table and answers `.notResolvableFromIndex` when the table is absent or the id is not there.
+  The ledger stays load-bearing for the remaining 3.1%, for R-14's renumbered `conversation_id`,
+  and for any store whose schema lacks that Mail-internal table.
+- **C10 (§D4), answered:** the rule is
+  `<V10>/<account-uuid = mailbox url host>/<Folder>.mbox[/<Sub>.mbox…]/<store-uuid>/Data/<fan>/Messages/<ROWID>.emlx`,
+  folders being the url's percent-decoded path components, `<fan>` = `ROWID / 1000` written one
+  digit per directory **in reverse order**, empty below 1000. Confirmed on 6 rows across 5
+  mailboxes of 3 accounts (directory 6 of 6). The `<store-uuid>` level is identical for every
+  mailbox of every account and appears in no table: it is read from the directory, never derived.
+  Three of the six rows exist only as `<ROWID>.partial.emlx` (Mail's headers-only form; 723 of them
+  in one mailbox). `EMLXLocator` must try `.partial.emlx` before returning `.notInStore`, and a
+  `.partial` hit is R-15's «corpo non ancora scaricato», never R-16's «non più in Mail».
+- **Not asked, found:** `date_sent` / `date_received` are **Unix epoch seconds**, not Mac absolute
+  time (measured range 2007-11-21 … 2026-09-09). Read through `timeIntervalSinceReferenceDate`
+  every message lands in 2038–2057. The reader uses `Date(timeIntervalSince1970:)`; the fixture
+  writes the same epoch.
+- **§D2, refined:** the generation stamp is `max(mtime(Envelope Index), mtime(-wal))`. Measured,
+  the live `-wal` was fifteen minutes newer than the database, because Mail appends there and
+  writes the database only at a checkpoint; an index-only stamp answers `.unchanged` for hours
+  while new mail sits in the log the copy also takes.
+- Also observed, no design consequence: a `subjects` table (`ROWID`, `subject TEXT`) backs
+  `messages.subject INTEGER`; `Attachments/` sits beside `Messages/` at the same fan-out level.
+
+## Follow-up — Task 2/3 measurement and deviations (2026-09-09)
+
+- **§D9, measured:** both `message://` encodings open the message in Mail. One real
+  `Message-ID` was read from a temporary copy of the index (schema only, no body), both forms were
+  built and handed to `NSWorkspace.open` once each, and Mail opened the same message window for
+  both (verified through Mail's own window list before and after each open). The default §D9
+  names therefore stands: `MailURL.forMessageID` keeps `MailLink.url`'s form (`<`/`>` percent-
+  escaped, `@` literal), and `EmailHeaders.mailURL` and `MailLink.url(forMessageID:)` both
+  delegate to it. No output shape changed, so no note already carrying a `message://` link and no
+  existing assertion is affected.
+- **§D4, refined at implementation:** `EMLXLocator.locate` returns `.notInStore` only when the
+  enumeration ran over an existing `Data/` tree and found nothing; an unrecognisable path shape, a
+  missing `Data/` ancestor or an exhausted enumeration budget is `.ruleFailed`. The per-mailbox
+  cache §D4 mentions is not inside the locator, which is a static function over one URL; it belongs
+  to the sync that calls it (Task 4 onwards).
+- **§D7 / SPEC message frontmatter, open point:** the `MessageDocument` declaration carries no
+  `subject` field, so `pergamenum-mail-subject` is not written yet; the subject survives only in the
+  file name's slug. Task 4's sync needs it, and the tester of that batch adds the field to the
+  declaration (tester owns the signature, ADR-0155).
+- **Deliberate divergences from the SPEC's worked examples:** an empty `pergamenum-mail-*` list is
+  omitted rather than written as `[]`, matching what `FrontmatterSerializer` already does for
+  `related`/`aliases`; the dossier codec reads both the block and the inline `[a, b]` list forms
+  and writes only the block form, so a `pratica.md` typed by hand from the SPEC parses.
+- **`QuoteSplitter`:** only the `-- ` signature marker is implemented; the "sender's display name
+  followed by a few short lines" variant has no sender available at `split(_:)` and is deferred.
+- **R-10 over-threshold record, named (batch 3):** the SPEC says the frontmatter records
+  `{ name, size, storePath }` for an attachment above the threshold but names no key. The key is
+  `pergamenum-mail-store-references`, a block list of flow maps in exactly the SPEC's brace shape
+  (`- { name: "…", size: 157286400, storePath: "…" }`), omitted when empty like the other lists,
+  read into `MessageDocument.StoreReference`.
+
+## Follow-up — Task 4 implementation notes (2026-09-09)
+
+- **R-16 needs two inputs, not one.** `MembershipRule.candidates` already subtracts what is on
+  disk, so «absent from this run's candidates» alone would flag every imported message. A message
+  loses its link only when it is absent from the candidates **and** `MailStoreReader.row(forMessageID:)`
+  does not answer `.found`; the residual is §D3's known 3.1% of rows without a `Message-ID` header.
+- **R-15 is a second pass.** `PraticaSyncPlan.workItems` refuses anything already on disk (its own
+  test demands it), so a `pending` file from an earlier run is regenerated by a post-loop pass over
+  the candidates whose file says `body: pending`, **in place**, matched by the recorded `Message-ID`
+  and never by a derived name: the subject can change when the body arrives, and a fresh name would
+  leave two files.
+- **`SyncOutcome.writtenFiles` counts message notes, one entry per message**, not sidecars or
+  attachments; `progressStream()` stays open until the running sync ends, so a consumer subscribing
+  right after `sync` starts misses nothing.
+- **Smaller choices:** `workItems` also honours `dossier.excluded`; the `-N` collision rule for
+  attachments is engine state, `PraticaNaming.attachmentFileName` is reused unchanged;
+  `pergamenum-mail-subject` is written even when empty; an over-threshold `storePath` is Mail's
+  `Attachments/<ROWID>/<part>/<name>` when that file exists, else the `.emlx` container path; no
+  per-mailbox `.emlx` cache was added (the predicted path hits in the normal case and the fallback
+  enumeration is already bounded).
+
+## Follow-up — Task 5/6 implementation notes (2026-09-10)
+
+- **Accessibility identifiers are the hyphenated `pratiche-*` names** the plan's Task 10 and the
+  UX blueprint enumerate. Two «Aggiorna ora» buttons exist, so the timeline's keeps
+  `pratiche-refresh` and the list column's is `pratiche-refresh-all`; a pratica row is
+  `pratiche-row-<folder path>`, not a title slug, because two clients can hold a pratica of the
+  same name; message rows use an FNV-1a hex of the `Message-ID`, never `hashValue`, which is
+  process-seeded.
+- **R-26's «non più in Mail» half is deferred to the ledger.** `PraticaLedger.PraticaState`
+  carries `pending` but no not-in-store list, so the timeline currently treats every message as
+  still in Mail; `PraticaTimelineModel.subjectLink` already implements both branches and needs
+  only that field, which Task 7's tester adds beside the R-16 sync outcome.
+- **The pane arms the FSEvents watcher, not the app scene**: nothing reads a Mail store until the
+  person opens Pratiche once in the session. Full Disk Access is answered from `open(2)`'s errno,
+  where only `EPERM`/`EACCES` mean not granted and `ENOENT` means readable-but-absent.
+- **The inspector is read-only for now** (`MarkdownBlocksView` plus «Apri nell'editor»); Task 7's
+  `Navigation.jumpToLine` hand-off lands in the note editor unchanged (§D13). Task 7 and 8 verbs
+  («Nuova pratica», «Aggiungi nota/telefonata», the tray strip, «Inserisci qui», Chiudi/Riapri)
+  are drawn disabled with their identifiers in place, so the catalogue is written once in Task 7.
+
+## Follow-up — Task 7/8 measurements and declarations (2026-09-10)
+
+- **§D20, measured:** `com.apple.symbolichotkeys` exported read-only and parsed: 58 entries, 52
+  carrying a `parameters` triple; none maps key code 35 (`p`) to Ctrl+Cmd, Cmd+Opt or Cmd+Shift.
+  The three bindings ship as designed: `panePratiche` Ctrl+Cmd+P, `newPratica` Cmd+Opt+P
+  (section File), `addToPraticaFromMail` Cmd+Shift+P (section Inserisci), all appended after
+  `refreshRecordings`, never inserted.
+- **§D3/R-16/R-26 closed:** `PraticaLedger.PraticaState` gains `notInStore: [String]`
+  (Message-IDs), decoded with `decodeIfPresent` so an older ledger still loads. The sync writes
+  it on the R-16 outcome and the timeline reads it for «non più in Mail».
+- **R-30 has a pure model:** `PraticaTrayModel` reduces `MembershipRule.TrayEntry` rows into
+  proposals (subject, counterpart, date range, count), decides when the strip is hidden, and
+  applies «Ignora» (into `pergamenum-dossier-ignored` of this pratica only) and «Aggiungi» (into
+  `conversations`) as pure dossier transforms the strip view calls.
+- **§D17 tracer bullet (R-22) not run:** it needs a person dragging a message from Mail. Deferred
+  to the review gate; `MailDropReceiver` ships as a thin shell that reports what it receives and
+  shows the Mail-selection path as the documented way, which is R-22's own escape clause.
+
+- **§D20, the domain that answered:** `defaults -currentHost export com.apple.symbolichotkeys -`
+  reports «Domain does not exist» on this Mac; the live domain is the plain one
+  (`defaults export com.apple.symbolichotkeys -`). A script reading only `-currentHost` sees an
+  empty plist and reports no collision, which is a false all-clear. Any later measurement for a
+  new `ShortcutCommand` reads the plain domain and prints the entry count.
+- **Task 7/8 implementation deviations (coder):** «Rigenera» is a confirmation sheet that trashes
+  the message file and re-syncs it, not a `UnifiedDiff` preview — §D6's diff is recorded as an
+  open point, not implemented; «Inserisci qui» is a submenu of the row's context menu, not a hover
+  gap between rows; the wizard has no «@dominio» counterpart chip because `MembershipRule` has no
+  domain arm; the «Aggiungi anche a…» sheet counts messages from the ledger; manual-entry
+  headings are written in UTC (`Z`) as the test pins them; `PraticaTopBar` and the columns gained
+  required parameters for the new verbs. `MailDropReceiver` is the §D17 probe shell only.
+
+## Follow-up — Task 9/10 implementation notes (2026-09-10)
+
+- **A dossier is read from `pratica.md` itself, never from an index record.**
+  `IndexCache.StoredFrontmatter` persists only `date`, `tags`, `aliases` and `related`, so a
+  record a scan reuses from the cache carries no `pergamenum-*` foreign key; the pane and the
+  connector both listed nothing from the second scan of a vault onward. Both now let the index
+  name the candidate `*/pratica.md` paths and parse the file through one Foundation-only
+  `Dossier.parse(praticaFileAt:)`. No `IndexCache.schemaVersion` bump: persisting foreign keys
+  in the cache is a separate decision on a protected interface.
+- **§D19 connector reads:** `VaultAPI.pratiche(_:)` and `VaultAPI.pratica(_:_:)` answer from
+  `pratica.md`, the message files and the per-vault ledger only; the tray count is persisted into
+  `PraticaLedger.PraticaState.trayCount` by the app so a re-launched connector can report it.
+  `perg pratiche`/`perg pratica`, MCP tools `pratiche`/`pratica` with `readOnlyHint`, and
+  `scripts/mcp-smoke.py` gained a `pratiche` stage.
+- **§D10 Settings tab, measured:** eleven `tabItem`s collapse into a «more toolbar items» popup
+  at 700 pt; the window is 760×560 (item widths sum to 698 pt plus a 17 pt inset). Own addresses
+  pre-fill from the Sent/«Posta inviata» mailboxes through `MailStoreReader.sentSenderAddresses()`.
+- **Identifiers:** `pratiche-picker`/`pratiche-picker-row-<path>` replace the add-sheet's earlier
+  names; `pratiche-delete-alert` added; `pratiche-insert-here-<kind>` and `pratiche-row-<id>`
+  stay as batch 5 spelled them.
+- **R-27 closed after the coverage gate:** the chip's decisions (symbol, preview/open/reveal
+  targets, what «Copia» copies, the two menu titles) live in a pure `AttachmentChipModel`; a store
+  reference now opens and reveals from its `storePath` when it still resolves, and «Copia» puts the
+  file URL on the pasteboard, the bare name only when no file is on disk.
+- **Deferred to the review gate:** the R-22 tracer bullet, the first sync against the real store
+  and the manual acceptance on the Labs vault; the UI suite (`scripts/uitests.sh`) is run by the
+  orchestrator, never by an agent.
+
 ## References
 
 - `SPEC.md` (topic slug `pratiche`, R-01…R-41), `UX-BLUEPRINT.md`, `DESIGN.md` and its export at

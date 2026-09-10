@@ -131,7 +131,7 @@ import Testing
         var syncCallCount = 0
         let controller = PraticheController(
             probe: { FullDiskAccessProbe.state(probing: unreadable) },
-            performSync: { _ in syncCallCount += 1 }
+            performSync: { _, _ in syncCallCount += 1 }
         )
 
         // Real behaviour (R-18): the probe runs once at `init`, so an unreadable
@@ -158,7 +158,7 @@ import Testing
         var syncCallCount = 0
         let controller = PraticheController(
             probe: { FullDiskAccessProbe.state(probing: unreadable) },
-            performSync: { _ in syncCallCount += 1 }
+            performSync: { _, _ in syncCallCount += 1 }
         )
 
         await controller.trigger("01 Progetti/Rossi/Offerta", kind: .vaultOpen, eligibility: .automatic)

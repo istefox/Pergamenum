@@ -49,7 +49,14 @@ struct AddToPraticaSheet: View {
         // finds a control by identifier and never by the words on it: the name is the
         // contract, so it is the checklist's spelling rather than a second one.
         .accessibilityIdentifier("pratiche-picker")
-        .onAppear(perform: readSelection)
+        .onAppear {
+            readSelection()
+            // R-21's list is `pratiche.pratiche` (`readSelection` above), which stays
+            // empty until something has called `load(from:)` - the pane and the
+            // Settings tab both do on `.task`/`onAppear`, but this sheet is reachable
+            // from Cmd+Shift+P and the Inserisci menu before either has ever run.
+            pratiche.load(from: vault)
+        }
     }
 
     // MARK: - The message

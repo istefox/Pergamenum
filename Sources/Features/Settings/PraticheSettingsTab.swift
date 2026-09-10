@@ -71,7 +71,7 @@ struct PraticheSettingsTab: View {
             syncRow
         }
         .formStyle(.grouped)
-        .task { prefillOwnAddressesIfNeeded() }
+        .task { await prefillOwnAddressesIfNeeded() }
     }
 
     // MARK: - Cartella radice
@@ -147,7 +147,17 @@ struct PraticheSettingsTab: View {
     /// R-35: "own addresses pre-fill from the index and stay editable". Runs once per
     /// appearance of this tab, only while the list is still empty - a person's own
     /// deletions (down to zero) must not be silently repopulated on every visit.
-    private func prefillOwnAddressesIfNeeded() {
+    ///
+    /// :1230's fix - `sentSenderAddresses` being `nonisolated` only means it CAN run
+    /// off the main actor, not that it DOES: called directly from here it still ran
+    /// synchronously on whatever context called it, which is `.task`'s own MainActor
+    /// context - so the copy-and-index-the-Mail-store work
+    /// (`MailStoreCopy.publish`/`MailStoreReader`, the same 355 MB-scale read
+    /// `PraticaLiveSync.prepare(...)` keeps off the main actor via a detached task)
+    /// blocked Settings from redrawing for exactly as long as that took. `Task
+    /// .detached` is what actually moves it off MainActor; awaiting a synchronous
+    /// `nonisolated` function alone hops nothing.
+    private func prefillOwnAddressesIfNeeded() async {
         guard vault.settings.pratiche.ownAddresses.isEmpty else { return }
         guard fullDiskAccessState == .granted else { return }
         // Impostazioni opens with no vault as readily as with one (the app starts on
@@ -155,11 +165,16 @@ struct PraticheSettingsTab: View {
         // session is asked for rather than assumed: there is nowhere to write a
         // pre-filled address to, and nowhere to publish a copy of the index into.
         guard let session = vault.session else { return }
-        let addresses = PraticheSettingsTab.sentSenderAddresses(
-            mailRoot: MailStoreLocation.resolve(),
-            stateDirectory: PraticheController.stateDirectory(for: session)
-        )
+        let mailRoot = MailStoreLocation.resolve()
+        let stateDirectory = PraticheController.stateDirectory(for: session)
+        let addresses = await Task.detached {
+            PraticheSettingsTab.sentSenderAddresses(mailRoot: mailRoot, stateDirectory: stateDirectory)
+        }.value
         guard !addresses.isEmpty else { return }
+        // Re-checked after the `await`, not assumed: the vault may have been closed
+        // or switched, or a person may have typed their own address in by hand, while
+        // this ran off the main actor.
+        guard vault.session === session, vault.settings.pratiche.ownAddresses.isEmpty else { return }
         vault.updateSettings { $0.pratiche.ownAddresses = addresses }
     }
 

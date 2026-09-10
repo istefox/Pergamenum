@@ -54,10 +54,7 @@ struct AttachmentChip: View {
                 .disabled(openURL == nil)
             Button("Mostra nel Finder") { showInFinder() }
                 .disabled(revealURL == nil)
-            Button("Copia nome") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(name, forType: .string)
-            }
+            Button("Copia") { copy() }
         }
     }
 
@@ -131,6 +128,20 @@ struct AttachmentChip: View {
     private func openWithDefaultApp() {
         guard let openURL else { return }
         NSWorkspace.shared.open(openURL)
+    }
+
+    /// R-27's «Copia»: the file itself when a copy is on disk (or the store path still
+    /// resolves), so a paste into Finder or Mail carries the attachment; the bare name
+    /// otherwise, which is the only thing a missing file still has.
+    private func copy() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let items = AttachmentChipModel.copyItems(for: content, fileExists: fileExists)
+        if items.isEmpty {
+            pasteboard.setString(name, forType: .string)
+        } else {
+            pasteboard.writeObjects(items as [NSURL])
+        }
     }
 
     private func showInFinder() {

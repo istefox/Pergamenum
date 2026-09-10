@@ -93,7 +93,11 @@ enum MailSeedLoader {
         let encoded = String(url.dropFirst(scheme.count))
         let decoded = encoded.removingPercentEncoding ?? encoded
         let trimmed = decoded.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-        return trimmed.isEmpty ? nil : trimmed
+        // Canonical form is the header's own, brackets included: that is what
+        // `message_global_data.message_id_header` holds verbatim (ADR §D3's probe),
+        // what `PraticaSyncEngine` derives from a parsed header, and therefore what
+        // `dossier.included` and the ledger key on. A bare id matched none of them.
+        return trimmed.isEmpty ? nil : "<\(trimmed)>"
     }
 
     /// `PraticaTrayModel.proposals(from:)`'s own reduction, reused rather than written

@@ -1,56 +1,54 @@
-<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md tasks=4 lines=213-239 -->
-# Step 5 Batch Brief -- 2026-09-06-pg-099-views-board-renderer-orphaned-by.md -- tasks 4-4
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md tasks=4 lines=237-260 -->
+# Step 5 Batch Brief -- 2026-09-09-pratiche.md -- tasks 4-4
 
-## Task text (verbatim, plan lines 213-239)
+## Task text (verbatim, plan lines 237-260)
 
-### Task 4 — `ViewBlockAttachment` and `ViewBlockHostStore`, keyed by ordinal (R-01, R-02, R-03, R-06)
+### Task 4 — the sync: atomic writes, attachments, `.eml`, pending, deletions (R-09, R-10, R-11, R-15, R-16)
 
-- **Tester** writes `Tests/ViewBlockHostStoreTests.swift` and declares `ViewBlockHostStore`
-  (`@MainActor`, `host(for ordinal: Int, in textView: NSTextView) -> NSHostingView<…>`,
-  `hosts(for ordinals: [Int], in:) -> [Int: NSHostingView<…>]`, `update(_ root:, forOrdinal:)`) and
-  `ViewBlockAttachment` with its `height` constant, all stubbed. Assertions:
-  - **the same host instance comes back for the same ordinal across calls** (ADR §D3) — the property
-    that keeps the query from re-running, asserted by identity (`===`), not by equality;
-  - **the host survives a changed paragraph offset** — ask for ordinal 0, then ask again after the
-    note gained a line above the fence, and get the same instance. This is the assertion that
-    distinguishes this store from `TableGridStore` and it is the one that must never be relaxed
-    (C6, ADR §D3);
-  - **`hosts(for:in:)` prunes**: an ordinal absent from the array is dropped, and a note that loses a
-    fence does not accumulate a host;
-  - **two identical fences in one note get two distinct hosts** (ADR §D3's rejection of a source-text
-    key) — an `NSView` has one superview;
-  - `attachmentBounds(…)` returns `proposedLineFragment.width` × the constant height, **independent of
-    the content** (R-06, ADR §D8) — asserted at two different proposed widths and with two different
-    stub result sets.
-- **Coder** implements both, plus the provider (`tracksTextAttachmentViewBounds = true`,
-  `loadView` assigning the host **it was given**), copying `TableAttachment.swift` for shape and
-  diverging only where D3 and D8 say to. The root view is
-  `ScrollView { RenderedViewBlock(…) }.environment(\.theme, theme)` — **the `ScrollView` lives here,
-  never inside `RenderedViewBlock`** (ADR §D8, and R-10/R-11 depend on it).
-- Deletes the Task 3 probe scaffold.
-- Budget: `Sources/Features/Editor/ViewBlockAttachment.swift`, `Sources/Features/Editor/ViewBlockHostStore.swift`, `Tests/ViewBlockHostStoreTests.swift` (~260 lines)
+- Budget: `Sources/Core/Pratiche/PraticaSyncPlan.swift`,
+  `Sources/Features/Pratiche/PraticaSyncEngine.swift`, `Tests/PraticaSyncTests.swift` (~700 lines)
+- Tester writes: `PraticaSyncPlan.workItems(dossier:candidates:onDisk:settings:)` (pure, ordered
+  newest-first) and the `PraticaSyncEngine` actor's signatures (`sync(_:)`, `cancel()`, progress
+  stream). Tests drive the pure plan plus the engine against a fixture store and a temporary vault.
+- Tests (red): every write lands through temp-then-rename and a cancellation between two messages
+  leaves only complete files, resumable from the ledger (R-11); `.eml` written with the same base
+  name and referenced by `pergamenum-mail-original` when retention is on, absent when off, and
+  **never written for a `pending` message** (R-09, ADR §D18); an attachment is copied as
+  `YYYYMMDD_<name>`, an identical SHA-256 is linked rather than copied, a different one collides to
+  `-2`, an over-threshold one is recorded as a store reference with no copy, an inline image under
+  50 KB is dropped and a larger one is saved and embedded (R-10); a headers-only message is written
+  with `body: pending` and a placeholder, and is the **only** file a later sync rewrites unasked
+  (R-15); a message whose row disappears keeps its files and loses its link, and **no sync ever
+  deletes a file** (R-16); the same `Message-ID` present in two mailboxes produces exactly one file
+  (ADR §D15).
+- Coder: bodies. The actor owns the connection; each finished message hops once to `@MainActor` for
+  `VaultSession.write`; cancellation is checked at that boundary.
+- `tuist generate --no-open`; full unit suite.
+
+## Phase 3 — the app
 
 ## File map (from Budget: declarations, tasks 4-4)
 
-- Sources/Features/Editor/ViewBlockAttachment.swift
-- Sources/Features/Editor/ViewBlockHostStore.swift
-- Tests/ViewBlockHostStoreTests.swift
+- (none declared -- no task in this range carries a parseable Budget:)
+
+No parseable Budget: for task(s): 4 (absent is not zero -- consult the task text above)
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 2 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 3 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
-- Task 10 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+- Task 1 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 2 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 3 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 9 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 10 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
-Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-plain-cameras-read-gxgvl/docs/superpowers/plans/2026-09-06-pg-099-views-board-renderer-orphaned-by.md
+Full plan: /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: docs/adr/0033-views-render-live-in-the-editor.md -- attachment mechanism, delegate ownership split, host store keying rule (ADR §D3)
-- SPEC: SPEC.md -- requirement IDs for this batch's tests
+- ADR: docs/adr/0036-pratiche.md -- D2, D4, D5, D6, D7 and both Follow-up sections (Task 1 probes; Task 2/3: locator .notInStore/.ruleFailed split, no cache in the locator so the sync owns it, missing subject field the tester adds) bind the sync's atomic writes, attachments, pending bodies and deletions
+- SPEC: SPEC.md -- requirement IDs R-09, R-10, R-11, R-15, R-16 for this batch's tests, plus the message-file frontmatter block (pergamenum-mail-subject)
+- CLAUDE.md: CLAUDE.md -- sharedSources rule (Foundation-only under Sources/Core), file-over-app principle (a sync never deletes), tuist generate after adding files

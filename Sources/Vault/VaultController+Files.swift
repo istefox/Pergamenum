@@ -16,10 +16,14 @@ extension VaultController {
     /// same question of every note it is about to carry, and a second copy of the guard
     /// is a second place for it to stop matching the editor's actual state.
     func canOperate(on relativePath: String) -> Bool {
-        guard let note = openNote, note.relativePath == relativePath, note.hasUnsavedChanges
-        else { return true }
-        recordProblem(Self.unsavedNoteRefusal)
-        return false
+        let dirtyTabs = columns.flatMap(\.tabs).filter {
+            $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges
+        }
+        guard dirtyTabs.isEmpty else {
+            recordProblem(Self.unsavedNoteRefusal)
+            return false
+        }
+        return true
     }
 
     /// The exact sentence `canOperate(on:)` records, kept as one value so

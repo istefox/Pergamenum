@@ -80,9 +80,14 @@ import Testing
     }
 
     @Test func sentSenderAddressesRecognisesTheItalianPostaInviataSpelling() throws {
+        // The message must live in the «Posta Inviata» mailbox (ROWID 3) for the
+        // messages → mailboxes join to find it; the shared `firstSentMessage` fixture
+        // files itself under ROWID 1, which this store does not contain.
+        var message = Self.firstSentMessage
+        message.mailboxRowID = Self.postaInviataMailbox.rowID
         let fixture = try MailStoreFixture.build(
             mailboxes: [Self.postaInviataMailbox],
-            messages: [Self.firstSentMessage]
+            messages: [message]
         )
 
         let reader = try MailStoreReader(storeURL: fixture.indexURL)

@@ -18,3 +18,5 @@
 - [Memory index entries can outrun their files](memory-index-entries-can-outrun-their-files.md) — 6 MEMORY.md lines cite files never actually committed; `Read` before relying on any cited memory's content.
 - [SwiftUI @ViewBuilder Mirror reflection](swiftui-viewbuilder-mirror-reflection.md) — recursive `Mirror` walk extracts a concrete child view (or even Text/accessibilityIdentifier strings) from an opaque `some View` with no accessor to call instead.
 - [Purity test substring false positives](purity-test-substring-match-false-positives.md) — a repo-walk `.contains("import X")` guard test false-positives on doc-comment prose and pre-existing guarded imports; match exact trimmed lines + named exceptions instead.
+- [New test file needs tuist generate](new-test-file-needs-tuist-generate.md) — a brand-new Tests/ file is invisible to `-only-testing` until `tuist generate` runs, despite the existing `Tests/**` glob.
+- [PraticheController.ledger is ambient](pratiche-controller-ledger-is-ambient.md) — `recordSyncOutcome` merges into one shared in-memory `ledger`, not per-session; don't test two sessions on one controller without a reload between.

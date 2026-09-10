@@ -41,6 +41,10 @@ struct PraticaEntryComposer {
         else { return }
 
         let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
+        // The same refusal every file operation makes (`VaultController+Files`): a
+        // tab holding unsaved edits to this note is asked to save first, never
+        // merged with and never discarded - the hand-off below reloads that tab.
+        guard vault.canOperate(on: notePath) else { return }
         let counterpart = counterpart(of: praticaPath, fallback: pratica.client)
         do {
             let source = try session.read(notePath).text
@@ -89,6 +93,14 @@ struct PraticaEntryComposer {
     /// body line. `jumpToLine` sets `pane = .notes` itself, so nothing here has to.
     private func handOff(_ insertion: PraticaEntry.Insertion, notePath: String) {
         vault.openChosenNote(at: notePath)
+        // `openNote(at:)` focuses a tab that already holds the note rather than
+        // re-reading it - and after the first entry it always does, since this very
+        // hand-off opened it. That buffer predates the write above, and its next
+        // save would put the file back without the heading: catch it up first. Safe
+        // to replace outright, since `canOperate(on:)` above refused a dirty tab.
+        if vault.openNote?.relativePath == notePath {
+            vault.reloadFocusedNote()
+        }
         navigation.jumpToLine(
             range: insertion.cursorRange,
             ordinal: Self.ordinal(ofOffset: insertion.cursorRange.location, in: insertion.text)

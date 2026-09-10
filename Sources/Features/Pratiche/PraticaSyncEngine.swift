@@ -314,6 +314,12 @@ actor PraticaSyncEngine {
         // read straight out of the index, which carries none (ADR §D3).
         guard let messageID = row.messageID ?? headers.messageID.map({ "<\($0)>" })
         else { return nil }
+        // «Escludi» enforced a second time, now that the id is known: a row read
+        // straight out of the index carries no `Message-ID`, so
+        // `MembershipRule.candidates` could not match it against `dossier.excluded`
+        // and let it through. Without this check every excluded message came back on
+        // the next sync.
+        guard !request.dossier.excluded.contains(messageID) else { return nil }
 
         let isPending = container.bodyState == .pending
         let existing = folder.messagesByID[messageID]
@@ -387,10 +393,24 @@ actor PraticaSyncEngine {
                     )
                     if let write = placed.write { writes.append(write) }
                     // Embedded rather than listed: an inline image belongs where the
-                    // sender put it (SPEC "Edge cases").
-                    body = body.replacingOccurrences(
-                        of: "cid:\(contentID)", with: "![[\(placed.fileName)]]"
-                    )
+                    // sender put it (SPEC "Edge cases"). The whole Markdown image
+                    // construct `HTMLTextReducer.appendImage` wrote - `![alt](cid:…)`,
+                    // brackets and parens included - is replaced, not just the `cid:`
+                    // reference inside it: replacing the reference alone left the
+                    // image syntax around it in place, so the wikilink embed landed
+                    // wrapped in `![alt](…)` instead of standing on its own.
+                    let escapedContentID = NSRegularExpression.escapedPattern(for: contentID)
+                    while let range = body.range(
+                        of: #"!\[[^\]]*\]\(cid:\#(escapedContentID)\)"#,
+                        options: .regularExpression
+                    ) {
+                        body.replaceSubrange(range, with: "![[\(placed.fileName)]]")
+                    }
+                    // A bare `cid:` reference outside the Markdown image construct (a second
+                    // mention, or one the HTML reducer emitted unwrapped) still names the same
+                    // placed attachment - point it there too, or the embed above is replaced
+                    // while this one is silently dropped from the rendered note.
+                    body = body.replacingOccurrences(of: "cid:\(contentID)", with: "![[\(placed.fileName)]]")
 
                 case .textPlain, .textHTML:
                     continue
@@ -648,12 +668,15 @@ actor PraticaSyncEngine {
         return TaskTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
     }
 
-    /// ADR §D11's tag set for a message file, corrected against the real linter:
-    /// `type-email`, the pratica's own `client-<slug>` when the folder layout gives
-    /// one, and `source-email`.
+    /// ADR §D11's tag set for a message file: `type-note` (what `missingRequired`
+    /// demands of every non-daily note - two `type-*` tags is legal, only `status` is
+    /// limited to one), `type-email`, `topic-pratica`, the pratica's own
+    /// `client-<slug>` when the folder layout gives one, and `source-email`.
     private static func tags(for request: SyncRequest) -> [Tag] {
         [
+            Tag("type-note"),
             Tag("type-email"),
+            Tag("topic-pratica"),
             PraticaNaming.clientTag(
                 forPraticaAt: request.praticaFolder, root: request.settings.rootFolder
             ),

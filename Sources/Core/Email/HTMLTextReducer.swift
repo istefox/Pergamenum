@@ -139,10 +139,16 @@ private enum HTMLTokenizer {
         return attributes
     }
 
+    /// Case-insensitive on purpose: this backs `end(of:)`'s search for a `</style`/
+    /// `</script` closing tag (§the walk, `name == "style" || name == "script"`), and
+    /// HTML element and comment/bracket tokens are case-insensitive by spec - a
+    /// `</STYLE>` sent by a real mail client discarded the rest of the body when this
+    /// compared case-sensitively, since the search then ran to end-of-text.
     private static func matches(_ needle: String, at index: Int, in characters: [Character]) -> Bool {
         let needleCharacters = Array(needle)
         guard index + needleCharacters.count <= characters.count else { return false }
-        return Array(characters[index..<(index + needleCharacters.count)]) == needleCharacters
+        return zip(characters[index..<(index + needleCharacters.count)], needleCharacters)
+            .allSatisfy { $0.lowercased() == $1.lowercased() }
     }
 
     private static func firstIndex(of character: Character, from index: Int, in characters: [Character]) -> Int? {

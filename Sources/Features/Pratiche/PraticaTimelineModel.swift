@@ -34,6 +34,12 @@ struct PraticaTimelineEntry: Equatable, Sendable, Identifiable {
     /// `nil` for `.note`/`.call` - direction only exists for a message (R-25).
     var direction: MessageDocument.Direction?
     var senderDisplayName: String
+    /// The bare address the sender menu offers and filters by (R-32) - `nil` for a
+    /// manual entry, and defaulted so the memberwise init stays source-compatible
+    /// everywhere a caller has no address to give. `senderDisplayName` alone cannot
+    /// serve the menu: it holds Mail's own display name, which two different people
+    /// share far more often than they share a mailbox.
+    var senderAddress: String? = nil
     var subject: String
     var bodyPreview: String
     var hasAttachments: Bool
@@ -125,12 +131,18 @@ enum PraticaTimelineModel {
         }
     }
 
-    /// A substring match rather than an equality one: the menu offers addresses, and
-    /// what a row carries is the display name Mail put on the header
-    /// (`"Mario Rossi <m.rossi@rossi-spa.it>"` as often as the bare address).
+    /// Equality against the parsed address (R-32: "addresses, not display names" -
+    /// `PraticheController.senderAddresses` offers only addresses, so a substring
+    /// match against `senderDisplayName` could match a *different* Mario Rossi's
+    /// display name). Falls back to the old substring match on `senderDisplayName`
+    /// only when a row carries no parsed address at all, so a message somehow missing
+    /// one is not unconditionally hidden.
     private static func matchesSender(_ entry: PraticaTimelineEntry, _ sender: String?) -> Bool {
         guard let sender, !sender.isEmpty else { return true }
         guard entry.kind == .message else { return true }
+        if let address = entry.senderAddress {
+            return address.localizedCaseInsensitiveCompare(sender) == .orderedSame
+        }
         return entry.senderDisplayName.localizedCaseInsensitiveContains(sender)
     }
 

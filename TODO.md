@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=104 -->
+<!-- project-tasks: prefix=PG lastId=108 -->
 # PROJECT TASKS
 
-Updated: 2026-09-10 · Open: 10 (P1: 0) · In progress: 0
+Updated: 2026-09-10 · Open: 14 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
@@ -12,6 +12,18 @@ _none_
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-105` **P2** Rigenera trashes existing message files before a replacement is available, with no ADR-0036 D6 diff shown before confirmation — `Sources/Features/Pratiche/PraticaCommandActions.swift:~262` <!-- src:session opened:2026-09-10 -->
+  - Raised by RTF's Codex review (astra, xhigh) every cycle since cycle 1 of the Pratiche RTF review, deferred each time as architectural. Fix needs the replacement message prepared and its `UnifiedDiff` shown for confirmation BEFORE any existing file is touched, then an atomic replace only after approval — this means wiring a Mail-store preview into the UI layer that doesn't exist yet, not a bounded code change.
+
+- [ ] `PG-106` **P2** Keyword evaluation only sees followed/included messages; `autoFollowedConversations` is computed but never persisted — `Sources/Features/Pratiche/PraticheController.swift:~1262` <!-- src:session opened:2026-09-10 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. A real fix needs counterpart messages from unfollowed conversations included in the membership-evaluation snapshot, plus `autoFollowedConversations` persisted through `VaultSession.write`/the dossier — a membership-snapshot redesign, not a localized patch.
+
+- [ ] `PG-107` **P2** Sync never records ledger message/ROWID/conversation-id triples and never invokes conversation recovery (ADR-0036 R-14) — `Sources/Features/Pratiche/PraticheController.swift:~456` <!-- src:session opened:2026-09-10 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. This is unimplemented SPEC data-model work: persisting the ledger's message/ROWID/conversation-id bridge for imported messages, invoking R-14's recovery when a followed conversation id disappears (e.g. after an index rebuild renumbers conversations), and reporting unrecoverable ones — genuinely out of a bounded review-cycle fix's scope.
+
+- [ ] `PG-108` **P2** Tray membership's counterpart check only matches the sender, so an outgoing-only conversation addressed to the counterpart is never picked up — `Sources/Core/Pratiche/MembershipRule.swift:141` <!-- src:session opened:2026-09-10 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. Investigated during the Pratiche RTF cycle 5 triage: `MailMessageRow` (`Sources/Core/Email/MailMessageRow.swift`) carries no recipient (To/Cc) field at all, only `sender` — fixing this needs a new join/query added to `MailStoreConnection.swift`, the ONE file in the repo `SharedSourcesPurityTests`/the isolation guard permit to call `sqlite3_*`. A genuine schema-level, multi-layer change, not something RTF's coder-dispatch cap fits.
 
 - [ ] `PG-101` **P3** «ChatGPT inside Pergamenum»: an in-app assistant over a pratica, rather than an export command out of one — no file yet, its own chain <!-- src:session opened:2026-09-10 -->
   - Deferred out of the Pratiche chain by Stefano's explicit choice (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The stated direction is to bring ChatGPT into the app, not to export to it, so **no «Esporta per ChatGPT» command was built either**: the timeline is plain markdown on disk and `perg pratica <titolo>` prints it, which already covers copy-and-paste by hand.
