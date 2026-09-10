@@ -27,6 +27,15 @@ struct WindowPlace {
             .day(day.day, day.scale)
         case .notes:
             vault.openNote.map { .note($0.relativePath) } ?? .pane(.notes)
+        case .workspace:
+            // Read the *requested* path before the real one confirms it (ADR-0015 §D1
+            // amendment) - `vault.openBoardPath` only catches up once `WorkspaceView` has
+            // mounted and consumed the route, a render pass later than `navigation.pane`
+            // itself changing. Falling back to it only after `pendingCanvas` clears is what
+            // keeps `destination` reading the same board throughout the hand-off, so an
+            // observer never sees `.pane(.workspace)` as an intermediate, spurious step.
+            (vault.routeState.pendingCanvas?.path ?? vault.openBoardPath)
+                .map { .workspaceBoard($0) } ?? .pane(.workspace)
         default:
             .pane(navigation.pane)
         }
@@ -50,9 +59,18 @@ struct WindowPlace {
     /// the one `VaultController+Routes` makes for a `pergamenum://` link, for the same reason -
     /// a promise to take you somewhere has to fail out loud or not be made.
     func isReachable(_ destination: Destination) -> Bool {
-        guard case .note(let path) = destination else { return true }
-        guard let store else { return false }
-        return FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false))
+        switch destination {
+        case .note(let path):
+            guard let store else { return false }
+            return FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false))
+        case .workspaceBoard(let path):
+            guard let root = vault.root else { return false }
+            return FileManager.default.fileExists(
+                atPath: CanvasStore(root: root).url(forBoard: path).path(percentEncoded: false)
+            )
+        default:
+            return true
+        }
     }
 
     /// Puts the window back where a destination says.
@@ -67,6 +85,12 @@ struct WindowPlace {
         case .note(let path):
             navigation.pane = .notes
             vault.openNote(at: path)
+        case .workspaceBoard(let path):
+            navigation.pane = .workspace
+            // The exact mechanism a board wikilink's own cmd+click already uses
+            // (`CommandActions+LinkNavigation.swift`) - `WorkspaceView`'s existing
+            // `.task`/`.onChange` pair for `pendingCanvas` opens it once mounted.
+            vault.routeState.pendingCanvas = (path, nil)
         case .day(let date, let scale):
             navigation.pane = .today
             // `show` and not `move`: arriving at a day from the history is a jump, whatever

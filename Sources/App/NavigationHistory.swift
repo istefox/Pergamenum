@@ -8,19 +8,21 @@ import Observation
 /// the panes have no anchor - the Viste pane shows every view in the vault, «Preferite» every
 /// starred note, and going there is going to one place.
 enum Destination: Equatable, Sendable {
-    /// A pane with nothing to anchor it: tags, starred, views, tasks, conformance, diary, the
-    /// Workspace, and the Note pane with no note open, which is a real place - it is what the
-    /// window shows before the first note is opened.
-    ///
-    /// The Workspace is here rather than carrying its canvas because its folder lives on a
-    /// `WorkspaceController` held as `@State` inside `WorkspaceView`: view state the window
-    /// cannot read. ADR-0015 §D1 records that as a limit with a way out, not as a judgement.
+    /// A pane with nothing to anchor it: tags, starred, views, tasks, conformance, diary, and
+    /// the Note pane with no note open, which is a real place - it is what the window shows
+    /// before the first note is opened.
     case pane(Navigation.Pane)
     /// The Note pane, by relative path.
     ///
     /// The path and not the tab id: back means «that note», and a tab closed and reopened is
     /// the same place, which a tab id would make a different one.
     case note(String)
+    /// The Workspace, with this board open - by vault-relative path, the same identity
+    /// `WorkspaceController.board` itself uses. ADR-0015 §D1 originally left the Workspace
+    /// anchorless because its board lived only on `WorkspaceController`, `@State` inside
+    /// `WorkspaceView` and unreadable by the window; `VaultController.openBoardPath` is the
+    /// one value lifted to close that gap, amended into §D1 rather than reopening it.
+    case workspaceBoard(String)
     /// The Oggi pane, at a day and a scale. Both, because ADR-0013 §D4 makes the three scales
     /// three ways of looking at one anchor: the day alone would not say which one you were in.
     case day(CalendarDate, DayScale)

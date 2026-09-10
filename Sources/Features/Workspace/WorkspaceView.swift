@@ -92,6 +92,14 @@ struct WorkspaceView: View {
                 // link that launches the app arrives before this view exists.
                 .task { openPendingCanvas() }
                 .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
+                // The one value `Destination.workspaceBoard` (ADR-0015 §D1 amendment) needs
+                // the window to read - `workspace.board` itself is `@State` here and stays
+                // unreachable from `WindowPlace`, so it is mirrored up rather than exposed
+                // directly. `""` is "nothing open" on the controller (`WorkspaceController.
+                // swift:80`); `nil` is the same on `VaultController.openBoardPath`.
+                .onChange(of: workspace.board) { _, board in
+                    vault.openBoardPath = board.isEmpty ? nil : board
+                }
         )
     }
 
