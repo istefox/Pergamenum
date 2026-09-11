@@ -4,12 +4,18 @@ import Testing
 
 // ADR-0036 §D16/§D18 (over-threshold attachments stay in Mail's own store, recorded as
 // `MessageDocument.StoreReference` rather than copied - R-10), plan
-// docs/superpowers/plans/2026-09-09-pratiche.md Task 6 - R-27.
+// docs/superpowers/plans/2026-09-09-pratiche.md Task 6 - R-27; ADR-0040 §D8 (R-08, R-09).
 //
 // `AttachmentChipModel` is a tester-declared boundary (ADR-0155): every test below exercises
 // the real (non-stubbed) implementation, since the extraction needed no placeholder body.
 // A temporary directory stands in for `allegati/` and for Mail's own store - never
 // `~/Library/Mail`.
+//
+// This batch's staleness rewrite (ADR-0040 §D8, plan Task 8): every function moved from a
+// `fileExists: (URL) -> Bool` probe to a `state: (URL) -> AttachmentChipModel.FileState`
+// probe, so the same 21 assertions below now assert through `.usable`/`.missing` instead of
+// `true`/`false` - same outcomes, new vocabulary. New tests cover the third state,
+// `.unusable`, and the new `.pending` content case.
 
 @Suite struct AttachmentChipModelTests {
     private static func withTemporaryFile(_ body: (URL) throws -> Void) rethrows {
@@ -20,23 +26,39 @@ import Testing
         try body(root)
     }
 
-    private static func fileExists(_ url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+    /// Stands in for the production probe (`FileManager.fileExists` gated by
+    /// `AttachmentIntegrity.verdict(ofFileAt:named:)`): present on disk is `.usable`,
+    /// absent is `.missing`. No test in this file exercises `.unusable` through the
+    /// real filesystem - the two dedicated tests below inject a constant `.unusable`
+    /// probe instead, since provoking a real damaged file is Task 8's coder-side
+    /// integration concern, not this pure model's.
+    private static func state(_ url: URL) -> AttachmentChipModel.FileState {
+        FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) ? .usable : .missing
     }
 
-    // MARK: - R-27: a copied file present on disk
+    /// Records every URL it is asked about, always answering `.unusable` - used by the
+    /// `.pending` test to prove the probe is never consulted at all (R-08).
+    private final class RecordingProbe {
+        private(set) var calls: [URL] = []
+        func state(_ url: URL) -> AttachmentChipModel.FileState {
+            calls.append(url)
+            return .unusable
+        }
+    }
 
-    @Test func aLocalFileOnDiskGetsThePaperclipSymbolAndPreviewsOpensAndReveals() throws {
+    // MARK: - R-27: a copied, usable file present on disk
+
+    @Test func aLocalUsableFileOnDiskGetsThePaperclipSymbolAndPreviewsOpensAndReveals() throws {
         try Self.withTemporaryFile { root in
             let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: url)
             let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
 
-            #expect(AttachmentChipModel.symbol(for: content, fileExists: Self.fileExists) == "paperclip")
-            #expect(AttachmentChipModel.previewURL(for: content, fileExists: Self.fileExists) == url)
-            #expect(AttachmentChipModel.openURL(for: content, fileExists: Self.fileExists) == url)
-            #expect(AttachmentChipModel.revealURL(for: content, fileExists: Self.fileExists) == url)
-            #expect(AttachmentChipModel.copyItems(for: content, fileExists: Self.fileExists) == [url])
+            #expect(AttachmentChipModel.symbol(for: content, state: Self.state) == "paperclip")
+            #expect(AttachmentChipModel.previewURL(for: content, state: Self.state) == url)
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == url)
+            #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == url)
+            #expect(AttachmentChipModel.copyItems(for: content, state: Self.state) == [url])
         }
     }
 
@@ -47,16 +69,16 @@ import Testing
             .appending(path: "pergamenum-attachment-chip-missing-\(UUID().uuidString)/offerta.pdf")
         let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
 
-        #expect(AttachmentChipModel.symbol(for: content, fileExists: Self.fileExists) == "questionmark.folder")
-        #expect(AttachmentChipModel.previewURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.openURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.revealURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.copyItems(for: content, fileExists: Self.fileExists).isEmpty)
+        #expect(AttachmentChipModel.symbol(for: content, state: Self.state) == "questionmark.folder")
+        #expect(AttachmentChipModel.previewURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.copyItems(for: content, state: Self.state).isEmpty)
     }
 
-    // MARK: - R-10/R-27: a store reference whose store path still resolves
+    // MARK: - R-10/R-27: a store reference whose store path still resolves and is usable
 
-    @Test func aStoreReferenceWithAnExistingStorePathGetsTheCloudSlashSymbolButNoPreview() throws {
+    @Test func aStoreReferenceWithAnExistingUsableStorePathGetsTheCloudSlashSymbolButNoPreview() throws {
         try Self.withTemporaryFile { root in
             let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: storeURL)
@@ -65,13 +87,13 @@ import Testing
             )
             let content = AttachmentChip.Content.storeReference(reference)
 
-            #expect(AttachmentChipModel.symbol(for: content, fileExists: Self.fileExists) == "icloud.slash")
+            #expect(AttachmentChipModel.symbol(for: content, state: Self.state) == "icloud.slash")
             // A store reference never previews in place (R-27): it opens from its store
             // path instead, which is a different action from Quick Look.
-            #expect(AttachmentChipModel.previewURL(for: content, fileExists: Self.fileExists) == nil)
-            #expect(AttachmentChipModel.openURL(for: content, fileExists: Self.fileExists) == storeURL)
-            #expect(AttachmentChipModel.revealURL(for: content, fileExists: Self.fileExists) == storeURL)
-            #expect(AttachmentChipModel.copyItems(for: content, fileExists: Self.fileExists) == [storeURL])
+            #expect(AttachmentChipModel.previewURL(for: content, state: Self.state) == nil)
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == storeURL)
+            #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == storeURL)
+            #expect(AttachmentChipModel.copyItems(for: content, state: Self.state) == [storeURL])
         }
     }
 
@@ -84,16 +106,66 @@ import Testing
         )
         let content = AttachmentChip.Content.storeReference(reference)
 
-        #expect(AttachmentChipModel.symbol(for: content, fileExists: Self.fileExists) == "icloud.slash")
-        #expect(AttachmentChipModel.previewURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.openURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.revealURL(for: content, fileExists: Self.fileExists) == nil)
-        #expect(AttachmentChipModel.copyItems(for: content, fileExists: Self.fileExists).isEmpty)
+        #expect(AttachmentChipModel.symbol(for: content, state: Self.state) == "icloud.slash")
+        #expect(AttachmentChipModel.previewURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == nil)
+        #expect(AttachmentChipModel.copyItems(for: content, state: Self.state).isEmpty)
     }
 
     // MARK: - R-27: the context menu's exact wording and order
 
     @Test func theContextMenuOffersExactlyMostraNelFinderAndCopia() {
         #expect(AttachmentChipModel.contextMenuTitles == ["Mostra nel Finder", "Copia"])
+    }
+
+    // MARK: - ADR-0040 §D8, R-09: a copied file `AttachmentIntegrity` rejects
+
+    @Test func aFileWhoseProbeAnswersUnusableGetsTheTriangleSymbolAndEveryTargetIsNilLikeMissing() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+            let unusable: (URL) -> AttachmentChipModel.FileState = { _ in .unusable }
+
+            #expect(
+                AttachmentChipModel.symbol(for: content, state: unusable) == "exclamationmark.triangle",
+                "an unusable file must read differently from an absent one (R-09)"
+            )
+            #expect(AttachmentChipModel.previewURL(for: content, state: unusable) == nil)
+            #expect(AttachmentChipModel.openURL(for: content, state: unusable) == nil)
+            #expect(AttachmentChipModel.revealURL(for: content, state: unusable) == nil)
+            #expect(AttachmentChipModel.copyItems(for: content, state: unusable).isEmpty)
+        }
+    }
+
+    // MARK: - ADR-0040 §D8, R-07: a store reference whose bytes are unusable
+
+    @Test func aStoreReferenceWhoseProbeAnswersUnusableHasNoOpenOrRevealTarget() {
+        let reference = MessageDocument.StoreReference(
+            name: "allegato-grande.zip", size: 400_000_000, storePath: "/tmp/allegato-grande.zip"
+        )
+        let content = AttachmentChip.Content.storeReference(reference)
+        let unusable: (URL) -> AttachmentChipModel.FileState = { _ in .unusable }
+
+        #expect(AttachmentChipModel.openURL(for: content, state: unusable) == nil)
+        #expect(AttachmentChipModel.revealURL(for: content, state: unusable) == nil)
+    }
+
+    // MARK: - ADR-0040 §D8, R-08: an attachment still waiting for its bytes
+
+    @Test func aPendingContentGetsTheClockSymbolEveryTargetIsNilAndTheProbeIsNeverCalled() {
+        let content = AttachmentChip.Content.pending(name: "offerta.pdf")
+        let probe = RecordingProbe()
+
+        #expect(AttachmentChipModel.symbol(for: content, state: probe.state) == "clock.badge.questionmark")
+        #expect(AttachmentChipModel.previewURL(for: content, state: probe.state) == nil)
+        #expect(AttachmentChipModel.openURL(for: content, state: probe.state) == nil)
+        #expect(AttachmentChipModel.revealURL(for: content, state: probe.state) == nil)
+        #expect(AttachmentChipModel.copyItems(for: content, state: probe.state).isEmpty)
+        #expect(
+            probe.calls.isEmpty,
+            "a pending attachment has no file to probe - the state closure must never be invoked (R-08)"
+        )
     }
 }

@@ -394,3 +394,49 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         #expect(dossier.conversations == [112_409], "R-14: an unrecoverable conversation is never dropped from the dossier")
     }
 }
+
+// ADR-0040 §D8 (R-08): a pending attachment entry (the bare name, no `[[…]]`) must not
+// silently become an ordinary chip pointing at a file `allegati/` does not have.
+// `readMessages` (`PraticheController.swift:738`) is the RED stub under test - it still
+// maps the whole `attachments` list through `attachmentFileName(fromWikilink:)`
+// unconditionally, so a pending entry there produces a `PraticaAttachmentRef` exactly
+// like a linked one instead of landing in the new `pendingAttachments` list.
+
+@Suite struct PraticaReadTimelinePendingAttachmentsTests {
+    @Test func readTimelineSplitsOneLinkedAndOnePendingAttachmentIntoTheirOwnLists() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "pratica-pending-attachments-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let praticaPath = "Rossi/Offerta"
+        let messagesFolder = root.appending(path: "\(praticaPath)/email", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: messagesFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let document = MessageDocument(
+            frontmatter: MessageDocument.MailFrontmatter(
+                schemaVersion: 1, messageID: "<offerta@rossi-spa.it>", conversationID: 1, direction: .received,
+                date: Date(timeIntervalSince1970: 1_749_557_170), received: nil,
+                from: "m.rossi@rossi-spa.it", to: [], cc: [], subject: "Offerta",
+                attachments: ["[[offerta.pdf]]", "bozza.docx"], body: .complete, original: nil
+            ),
+            newText: "Testo del messaggio.", quotedHistory: nil, signature: nil
+        )
+        let text = MessageDocument.render(document, tags: [Tag(namespace: .type, value: "email")])
+        try text.write(
+            to: messagesFolder.appending(path: "20260610_1406_Rossi_offerta.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+
+        let read = PraticheController.readTimeline(praticaPath: praticaPath, vaultRoot: root)
+
+        #expect(read.entries.count == 1)
+        let detail = try #require(read.details[read.entries[0].id])
+        #expect(
+            detail.attachments.map(\.name) == ["offerta.pdf"],
+            "only the linked `[[…]]` entry becomes a PraticaAttachmentRef"
+        )
+        #expect(
+            detail.pendingAttachments == ["bozza.docx"],
+            "the bare, still-pending entry must land in pendingAttachments, not attachments"
+        )
+    }
+}

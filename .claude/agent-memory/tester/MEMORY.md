@@ -3,6 +3,8 @@
 - [Swift Testing filter gap](swift-testing-only-testing-gap.md) — `-only-testing:PergamenumTests/<File>` silently selects 0 tests for loose top-level `@Test func`s.
 - [Fresh worktree needs tuist install first](tuist-worktree-fresh-checkout.md) — `tuist generate` fails "could not find external dependencies" until `tuist install` runs once per worktree.
 - [Tester-owns-interface stub pattern](pergamenum-tester-stub-pattern.md) — how to keep exhaustive switches compiling when declaring not-yet-built enum cases/types (ADR-0155 §D1).
+- [No-stub dispatch variant](pergamenum-no-stub-dispatch-variant.md) — some dispatches forbid touching Sources/ entirely; tests are expected to fail to compile, no stub, no build-first check.
+- [No-stub cross-task symbol gap](no-stub-dispatch-cross-task-symbol-gap.md) — a red test can reference a field an earlier task's tester was supposed to declare but hasn't landed; write it anyway, don't stub, don't weaken.
 - [spec-coverage.sh MALFORMED on this SPEC.md](spec-coverage-malformed-success-criteria.md) — script chokes on the `- [ ] R-NN —` bullet format; read §9 directly instead.
 - [Theme.emergency force-unwrap crash](pergamenum-emergency-theme-force-unwrap.md) — a new TokenKey case needs a placeholder in `Theme.emergency` too, or a red test crashes the whole xctest process.
 - [ADR-0030 plan "SPEC §N" refs](adr-0030-plan-section-refs-not-spec.md) — those section numbers are the plan's own, not the real SPEC; the roadmap doc it also cites doesn't exist in-tree.
@@ -24,3 +26,5 @@
 - [MembershipRuleTests shared fixture keyword collision](membershiprule-shared-fixture-keyword-collision.md) — `Self.snapshot()`'s `includedMessage` has subject "Offerta", the default keyword; a keyword-arm test reusing it auto-follows an unrelated conversation.
 - [fileprivate field, private type mismatch](fileprivate-field-private-type-mismatch.md) — a `fileprivate` stored property with a `private`-typed value fails to compile even in the same enclosing type; widen the type to `fileprivate`, never narrow the field.
 - [Worktree path translation for brief paths](worktree-path-translation-brief-paths.md) — Read crosses worktrees silently, Edit/Write refuse; translate brief paths to your own cwd before editing.
+- [Self-authored comment trips own purity grep](self-authored-comment-trips-own-purity-grep.md) — a tester-written stub's doc comment quoting the banned API by name false-positives the tester's own structural guard test.
+- [AttachmentIntegrity PNG fixture construction](attachment-integrity-png-fixture-construction.md) — real signature + literal "IEND" in the tail is enough to pass the gate; noisy pixels defeat deflate for a heavy-but-decodable fixture, garbage post-signature bytes defeat CGImageSource for a light-but-undecodable one.
