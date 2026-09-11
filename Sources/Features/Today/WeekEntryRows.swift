@@ -53,8 +53,6 @@ struct WeekEntryRow: View {
 /// the text carries which one it is. A cell that tried to show the hour as well would
 /// show neither.
 struct MonthEntryRow: View {
-    @Environment(\.theme) private var theme
-
     let entry: WeekEntry
     var onOpen: (() -> Void)?
 
@@ -81,8 +79,6 @@ struct MonthEntryRow: View {
 /// What a column could not show. Never a silent truncation: a week that quietly showed
 /// four of eleven would be a week that lies about how full it is.
 struct HiddenEntriesRow: View {
-    @Environment(\.theme) private var theme
-
     let count: Int
 
     var body: some View {
