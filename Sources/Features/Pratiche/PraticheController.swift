@@ -521,15 +521,7 @@ final class PraticheController {
         }
         // The observable property is this controller's view of the LIVE vault - never
         // updated on behalf of a vault that is no longer the one open.
-        if isCurrentVault {
-            ledger = sessionLedger
-            // ADR-0040 §D10/§D7.3: what this run's attachment repair pass could not
-            // fix - a file it could not trash, a downgrade it could not write. Empty
-            // on every healthy run.
-            if !outcome.attachmentProblems.isEmpty {
-                problem = outcome.attachmentProblems.joined(separator: "\n")
-            }
-        }
+        if isCurrentVault { ledger = sessionLedger }
     }
 
     /// «Rinomina» (R-34) moves the folder, and the ledger is keyed by the folder's
@@ -610,12 +602,6 @@ struct PraticaRowDetail: Equatable, Sendable {
     /// (R-15). The row dims and offers «Apri in Mail» instead of a body.
     var isPending: Bool
     var senderAddress: String?
-    /// Attachment entries still waiting for their bytes (ADR-0040 §D8, R-08): the bare
-    /// name, as `MessageDocument.MailFrontmatter.pendingAttachmentNames` reads it back -
-    /// a chip with no file and no store path behind it at all. Declared last so every
-    /// existing call site (which lists `attachments:` through `senderAddress:`
-    /// positionally or by keyword) keeps compiling unchanged.
-    var pendingAttachments: [String] = []
 }
 
 /// One attachment chip's file (R-10). `url` is absolute and may not exist: a copy that
@@ -782,16 +768,16 @@ extension PraticheController {
                 body: document.newText,
                 quotedHistory: document.quotedHistory,
                 signature: document.signature,
-                attachments: document.frontmatter.linkedAttachmentNames.map { fileName in
-                    PraticaAttachmentRef(
+                attachments: document.frontmatter.attachments.map { wikilink in
+                    let fileName = attachmentFileName(fromWikilink: wikilink)
+                    return PraticaAttachmentRef(
                         name: fileName,
                         url: attachments.appending(path: fileName, directoryHint: .notDirectory)
                     )
                 },
                 storeReferences: document.frontmatter.storeReferences,
                 isPending: document.frontmatter.body == .pending,
-                senderAddress: sender?.address,
-                pendingAttachments: document.frontmatter.pendingAttachmentNames
+                senderAddress: sender?.address
             )
         }
     }

@@ -240,11 +240,6 @@ explicit «Rigenera», which shows a `UnifiedDiff` first (the type already exist
 `Sources/Core/UnifiedDiff.swift`). A sync **never deletes a file** (R-16): a message gone from Mail
 loses its link, not its file.
 
-**§D6 amended 2026-09-11 by ADR-0040 §D5/§D7** — a third automatic rewrite trigger (a `.complete`
-message carrying a pending attachment entry, amended in one line, never re-rendered) and one
-narrowing of "a sync never deletes a file" (a file in `allegati/` that fails `AttachmentIntegrity`
-is moved to the Trash). Everything else of §D6 stands; §D21 is not reopened.
-
 ### §D7 — `MailStoreLocation` is test-aware, and fixtures are built by code
 
 `MailStoreLocation.resolve()` returns, in order: the `-mailStoreRoot` launch argument when present
