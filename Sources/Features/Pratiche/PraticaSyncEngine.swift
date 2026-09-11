@@ -378,6 +378,9 @@ actor PraticaSyncEngine {
         var takenAttachmentNames = folder.takenAttachmentNames
         var writes: [PreparedAttachment] = []
         var links: [String] = []
+        // ADR-0040 §D3: placed names for parts `AttachmentIntegrity` rejected -
+        // never hashed, never written, never handed to `place`.
+        var pendingAttachmentNames: [String] = []
         var storeReferences: [MessageDocument.StoreReference] = []
         var newText: String
         var quotedHistory: String?
@@ -395,6 +398,19 @@ actor PraticaSyncEngine {
                 case .attachment(let filename):
                     let name = filename ?? Self.unnamedAttachment
                     let bytes = part.decodedData ?? Data()
+                    // ADR-0040 §D2/§D3, R-01/R-02/R-12: the verdict is taken once, before
+                    // the threshold comparison, and governs both the copy branch and the
+                    // store-reference branch (R-07, Task 5) - never place, never digest,
+                    // never a `StoreReference`, for anything but `.usable`.
+                    let verdict = AttachmentIntegrity.verdict(
+                        of: bytes, named: name, contentType: part.contentType
+                    )
+                    guard verdict == .usable else {
+                        pendingAttachmentNames.append(
+                            PraticaNaming.attachmentFileName(date: calendarDate, name: name)
+                        )
+                        continue
+                    }
                     if bytes.count > Self.thresholdBytes(request.settings) {
                         // R-10: recorded where it really lives, never copied.
                         storeReferences.append(MessageDocument.StoreReference(
@@ -415,6 +431,22 @@ actor PraticaSyncEngine {
 
                 case .inlineImage(let contentID):
                     let bytes = part.decodedData ?? Data()
+                    let name = part.filename ?? "\(contentID).png"
+                    // ADR-0040 §D9: integrity first, `isDecorative` second - a corrupt
+                    // image's dimensions are unreadable, so `isDecorative` would already
+                    // answer `false` (its own "never drop on a guess" rule) and place it.
+                    let verdict = AttachmentIntegrity.verdict(
+                        of: bytes, named: name, contentType: part.contentType
+                    )
+                    guard verdict == .usable else {
+                        pendingAttachmentNames.append(
+                            PraticaNaming.attachmentFileName(date: calendarDate, name: name)
+                        )
+                        // Same removal the decorative branch below performs, so the body
+                        // never ends up with an embed pointing nowhere.
+                        body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
+                        continue
+                    }
                     guard !InlineImageClassifier.isDecorative(bytes) else {
                         // R-10: a signature logo is not an attachment. The reference
                         // goes with it, or the body keeps a `cid:` pointing nowhere.
@@ -422,7 +454,7 @@ actor PraticaSyncEngine {
                         continue
                     }
                     let placed = Self.place(
-                        bytes, named: part.filename ?? "\(contentID).png", date: calendarDate,
+                        bytes, named: name, date: calendarDate,
                         nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
                     )
                     if let write = placed.write { writes.append(write) }
@@ -488,7 +520,12 @@ actor PraticaSyncEngine {
                 to: headers.to.map(Self.headerForm),
                 cc: carbonCopies.map(Self.headerForm),
                 subject: subject,
-                attachments: links.map(MessageDocument.attachmentEntry(linking:)),
+                // ADR-0040 §D3: linked entries in their existing order, then pending
+                // ones - `body` stays `isPending ? .pending : .complete` unchanged, so a
+                // message with some usable and some not-yet-usable parts is `.complete`
+                // (R-04).
+                attachments: links.map(MessageDocument.attachmentEntry(linking:))
+                    + pendingAttachmentNames.map(MessageDocument.attachmentEntry(pending:)),
                 storeReferences: storeReferences,
                 body: isPending ? .pending : .complete,
                 original: keepsOriginal ? "\(baseName).eml" : nil
