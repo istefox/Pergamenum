@@ -108,8 +108,10 @@ struct FolderFileOperations {
 
         var notePaths: [String] = []
         var subfolders = 0
+        // Built once, not per entry: the walk asks for the same two keys every time.
+        let keySet = Set(keys)
         while let url = enumerator.nextObject() as? URL {
-            let values = try? url.resourceValues(forKeys: Set(keys))
+            let values = try? url.resourceValues(forKeys: keySet)
             let name = values?.name ?? url.lastPathComponent
 
             if values?.isDirectory == true {
@@ -373,7 +375,7 @@ struct FolderFileOperations {
     /// carried in, removed, so `01 Progetti/vecchio/` and `01 Progetti/vecchio` name the
     /// same folder here - the trim `BoardFileOperations` makes for a board path too.
     static func normalized(_ relativePath: String) -> String {
-        relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        relativePath.trimmingCharacters(in: .pathSlashes)
     }
 
     /// `path` as it will read once `oldFolder` has become `newFolder`. Unchanged for

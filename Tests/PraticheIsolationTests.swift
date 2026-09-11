@@ -96,6 +96,14 @@ import Testing
         )
     }
 
+    /// The three expressions `strippingCommentsAndStringLiterals` applies, compiled once
+    /// rather than per scanned file: that function runs over every Swift file under the
+    /// guarded directories. `compactMap` keeps the same "a pattern that will not compile
+    /// is skipped" behaviour the loop's `try?`/`continue` had.
+    private static let strippingPatterns: [NSRegularExpression] =
+        ["/\\*[\\s\\S]*?\\*/", "\"([^\"\\\\]|\\\\.)*\"", "//[^\n]*"]
+            .compactMap { try? NSRegularExpression(pattern: $0) }
+
     /// Comments (`//` and `/* */`) and string-literal contents removed before the
     /// forbidden-name search, so a doc comment or a log message that merely NAMES one
     /// of the forbidden identifiers is never mistaken for a real source reference.
@@ -104,8 +112,7 @@ import Testing
     /// pragmatic heuristic over a full Swift lexer for a guard, not a compiler.
     private static func strippingCommentsAndStringLiterals(_ text: String) -> String {
         var result = text
-        for pattern in ["/\\*[\\s\\S]*?\\*/", "\"([^\"\\\\]|\\\\.)*\"", "//[^\n]*"] {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        for regex in strippingPatterns {
             let range = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
         }

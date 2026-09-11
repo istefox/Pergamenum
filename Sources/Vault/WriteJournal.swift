@@ -157,11 +157,18 @@ struct WriteJournal {
         entries().filter { $0.operation == operation }
     }
 
-    static func makeID(at date: Date) -> String {
+    /// Shaped exactly like `NoteHistory.idDateFormatter`, which reads this format back:
+    /// configured once at first use and never mutated afterwards, so the instance is
+    /// shared safely rather than rebuilt on every journalled write.
+    private static let idFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         formatter.timeZone = .current
+        return formatter
+    }()
+
+    static func makeID(at date: Date) -> String {
         let suffix = String(UUID().uuidString.prefix(4)).lowercased()
-        return "\(formatter.string(from: date))-\(suffix)"
+        return "\(idFormatter.string(from: date))-\(suffix)"
     }
 }
