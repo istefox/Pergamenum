@@ -150,8 +150,15 @@ actor PraticaSyncEngine {
             onDisk: request.onDisk,
             settings: request.settings
         )
-        var folder = folderContext(of: request)
         var outcome = SyncOutcome.empty
+        var folder = folderContext(of: request)
+        // ADR-0040 §D7.3: a file the scan above could not trash, reported once here -
+        // never silently retried, and its link was never touched.
+        outcome.attachmentProblems.append(contentsOf: folder.attachmentTrashFailures)
+        // §D7: repairs any corrupt file the scan just trashed before anything else in
+        // this run reads `folder`, so a fresh copy of the same attachment can resolve
+        // in the very same sync (see the main loop's `hasPendingAttachments` guard).
+        try await repairCorruptAttachments(request: request, folder: &folder, outcome: &outcome)
 
         for (offset, item) in items.enumerated() {
             // Decoding happens first and writes nothing: it is the window during which
@@ -270,6 +277,17 @@ actor PraticaSyncEngine {
         var takenNoteNames: [(fileName: String, messageID: String)] = []
         var attachmentNameByDigest: [String: String] = [:]
         var takenAttachmentNames: Set<String> = []
+        /// ADR-0040 §D7: names this scan trashed for failing `AttachmentIntegrity` -
+        /// free for a retry to reuse (never in `takenAttachmentNames`, never digested
+        /// into `attachmentNameByDigest`, R-11/R-12). `repairCorruptAttachments` turns
+        /// each into a pending entry on the message(s) that still link it, right after
+        /// this scan and before the main loop reads `messagesByID`.
+        var corruptAttachmentNames: Set<String> = []
+        /// §D7.3 sentences for a corrupt file this run could not move to the Trash -
+        /// merged into `outcome.attachmentProblems` by the caller. Its link is left
+        /// alone precisely because it is here: an orphan link to a file that could not
+        /// be removed is worse than a link to a file that is merely still broken.
+        var attachmentTrashFailures: [String] = []
     }
 
     private func folderContext(of request: SyncRequest) -> FolderContext {
@@ -289,9 +307,32 @@ actor PraticaSyncEngine {
 
         let allegatiDirectory = directory("allegati", of: request)
         for name in Self.fileNames(in: allegatiDirectory) {
-            context.takenAttachmentNames.insert(name)
             let url = allegatiDirectory.appending(path: name, directoryHint: .notDirectory)
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? Data(contentsOf: url) else {
+                context.takenAttachmentNames.insert(name)
+                continue
+            }
+            // ADR-0040 §D7.1: the verdict is taken before the digest, so a corrupt
+            // file's SHA-256 never enters `attachmentNameByDigest` (R-12) - the same
+            // ordering `prepare`'s own attachment loop already uses.
+            let verdict = AttachmentIntegrity.verdict(of: data, named: name, contentType: nil)
+            guard verdict == .usable else {
+                var trashedURL: NSURL?
+                do {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashedURL)
+                    // Free for the retry to reuse - never taken, never digested.
+                    context.corruptAttachmentNames.insert(name)
+                } catch {
+                    // §D7.3: a file that could not be removed keeps its name taken and
+                    // its link intact - only the failure is reported.
+                    context.takenAttachmentNames.insert(name)
+                    context.attachmentTrashFailures.append(
+                        "Non è stato possibile spostare «\(name)» nel Cestino: \(error.localizedDescription)"
+                    )
+                }
+                continue
+            }
+            context.takenAttachmentNames.insert(name)
             // First name wins, in the sorted order above: two identical files already
             // in the folder are a state this app did not create, and linking to the
             // same one of them every run beats linking to whichever the file system
@@ -302,6 +343,58 @@ actor PraticaSyncEngine {
             }
         }
         return context
+    }
+
+    /// ADR-0040 §D7: the second half of the repair pass - turns each corrupt
+    /// attachment's link into a pending entry on every message that still carries it,
+    /// right after the scan that found it and before the main loop reads `folder`, so
+    /// a message whose attachment both breaks and gets a fresh copy from Mail in the
+    /// same run resolves in that one sync.
+    private func repairCorruptAttachments(
+        request: SyncRequest,
+        folder: inout FolderContext,
+        outcome: inout SyncOutcome
+    ) async throws {
+        guard !folder.corruptAttachmentNames.isEmpty else { return }
+
+        // Sorted Message-IDs: a deterministic order for a deterministic outcome, the
+        // same reason `fileNames(in:)` sorts.
+        for messageID in folder.messagesByID.keys.sorted() {
+            guard let existing = folder.messagesByID[messageID] else { continue }
+            let corruptLinks = Set(existing.document.frontmatter.linkedAttachmentNames)
+                .intersection(folder.corruptAttachmentNames)
+            guard !corruptLinks.isEmpty else { continue }
+
+            // ADR §D14: the same per-message cancellation boundary as
+            // `regeneratePending` and the main loop.
+            await Task.yield()
+            if cancelled {
+                outcome.cancelled = true
+                return
+            }
+
+            var entries = existing.document.frontmatter.attachments
+            for name in corruptLinks {
+                guard let index = entries.firstIndex(of: MessageDocument.attachmentEntry(linking: name))
+                else { continue }
+                entries[index] = MessageDocument.attachmentEntry(pending: name)
+            }
+            guard let patchedText = MessageAttachmentPatch.applying(entries: entries, to: existing.text)
+            else { continue }
+            // §D6's no-op rule, reused for the repair patch: nothing to write means
+            // nothing written.
+            guard patchedText != existing.text else { continue }
+
+            let notePath = "\(request.praticaFolder)/email/\(existing.fileName)"
+            try await write(patchedText, notePath)
+
+            var updatedDocument = existing.document
+            updatedDocument.frontmatter.attachments = entries
+            folder.messagesByID[messageID] = ExistingMessage(
+                fileName: existing.fileName, document: updatedDocument, text: patchedText
+            )
+            outcome.resolvedAttachmentFiles.append(notePath)
+        }
     }
 
     // MARK: - One message, decoded
