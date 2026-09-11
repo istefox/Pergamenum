@@ -117,8 +117,7 @@ struct PraticaMessageRow: View {
 
     @ViewBuilder
     private var attachments: some View {
-        if let detail,
-           !detail.attachments.isEmpty || !detail.storeReferences.isEmpty || !detail.pendingAttachments.isEmpty {
+        if let detail, !detail.attachments.isEmpty || !detail.storeReferences.isEmpty {
             HStack(spacing: theme.spacing(.xs)) {
                 ForEach(Array(detail.attachments.enumerated()), id: \.offset) { index, reference in
                     AttachmentChip(
@@ -132,14 +131,6 @@ struct PraticaMessageRow: View {
                         content: .storeReference(reference),
                         identifier: "pratiche-attachment-\(Self.hash(of: entry))-"
                             + "\(detail.attachments.count + index)",
-                        onQuickLook: onQuickLook
-                    )
-                }
-                ForEach(Array(detail.pendingAttachments.enumerated()), id: \.offset) { index, name in
-                    AttachmentChip(
-                        content: .pending(name: name),
-                        identifier: "pratiche-attachment-\(Self.hash(of: entry))-"
-                            + "\(detail.attachments.count + detail.storeReferences.count + index)",
                         onQuickLook: onQuickLook
                     )
                 }

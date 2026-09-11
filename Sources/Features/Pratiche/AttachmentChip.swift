@@ -19,11 +19,6 @@ struct AttachmentChip: View {
         /// An attachment past `PraticheSettings.attachmentThresholdMB`, recorded rather
         /// than copied (R-10).
         case storeReference(MessageDocument.StoreReference)
-        /// An attachment entry Mail has not delivered bytes for yet (ADR-0040 §D8,
-        /// R-08). Carries only the bare name - there is no file and no store path to
-        /// point a URL function at, which is why every `AttachmentChipModel` function
-        /// answers `nil`/`[]` for this case without ever calling `state`.
-        case pending(name: String)
     }
 
     @Environment(\.theme) private var theme
@@ -39,7 +34,7 @@ struct AttachmentChip: View {
         Button(action: preview) {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: symbol)
-                Text(label).lineLimit(1)
+                Text(name).lineLimit(1)
             }
             .themedText(.caption, color: isMissing ? .textTertiary : .textSecondary)
             .padding(.horizontal, theme.spacing(.xs))
@@ -52,11 +47,6 @@ struct AttachmentChip: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(identifier)
         .simultaneousGesture(TapGesture(count: 2).onEnded { openWithDefaultApp() })
-        .popover(isPresented: $isShowingPendingExplanation) {
-            Text("L'allegato non è ancora disponibile in Mail. Verrà riprovato alla prossima sincronizzazione.")
-                .themedText(.body)
-                .padding(theme.spacing(.s))
-        }
         .contextMenu {
             Button("Anteprima") { preview() }
                 .disabled(previewURL == nil)
@@ -68,46 +58,31 @@ struct AttachmentChip: View {
         }
     }
 
-    @State private var isShowingPendingExplanation = false
-
     // MARK: What the chip is
 
     private var name: String {
         switch content {
         case .file(let reference): reference.name
         case .storeReference(let reference): reference.name
-        case .pending(let name): name
         }
     }
 
     /// Injected into `AttachmentChipModel` rather than read there directly (ADR-0155):
-    /// keeps the pure decision testable with an arbitrary filesystem state. Reads a
-    /// prefix and a suffix only (`AttachmentIntegrity.verdict(ofFileAt:named:)`), never
-    /// the whole file (ADR-0040 §D8, R-07, R-09).
-    private func state(_ url: URL) -> AttachmentChipModel.FileState {
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return .missing }
-        return AttachmentIntegrity.verdict(ofFileAt: url, named: name) == .usable ? .usable : .unusable
+    /// keeps the pure decision testable with an arbitrary filesystem state.
+    private func fileExists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// Quick Look's target (R-27): `nil` for a store reference and for a file whose copy
     /// is not on disk - both are chips with nothing to preview.
-    private var previewURL: URL? { AttachmentChipModel.previewURL(for: content, state: state) }
+    private var previewURL: URL? { AttachmentChipModel.previewURL(for: content, fileExists: fileExists) }
 
     /// The default-app / double-click target (R-27): the local copy, or a store
     /// reference's own store path when it is still there.
-    private var openURL: URL? { AttachmentChipModel.openURL(for: content, state: state) }
+    private var openURL: URL? { AttachmentChipModel.openURL(for: content, fileExists: fileExists) }
 
     /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`.
-    private var revealURL: URL? { AttachmentChipModel.revealURL(for: content, state: state) }
-
-    /// The chip's visible text (R-08): `.pending` shows «In attesa», not the file name -
-    /// the name is still reachable through `helpText`.
-    private var label: String {
-        switch content {
-        case .pending: "In attesa"
-        default: name
-        }
-    }
+    private var revealURL: URL? { AttachmentChipModel.revealURL(for: content, fileExists: fileExists) }
 
     /// A file whose copy is not on disk: the difference between it and a store reference
     /// is the message the tooltip carries, not this flag, which only ever asks "is this a
@@ -117,7 +92,7 @@ struct AttachmentChip: View {
         return previewURL == nil
     }
 
-    private var symbol: String { AttachmentChipModel.symbol(for: content, state: state) }
+    private var symbol: String { AttachmentChipModel.symbol(for: content, fileExists: fileExists) }
 
     private var helpText: String {
         switch content {
@@ -127,8 +102,6 @@ struct AttachmentChip: View {
                 : name
         case .storeReference(let reference):
             "\(name) — \(Self.megabytes(reference.size)) MB, resta nell'archivio di Mail: \(reference.storePath)"
-        case .pending:
-            "\(name) — non ancora disponibile in Mail"
         }
     }
 
@@ -136,7 +109,6 @@ struct AttachmentChip: View {
         switch content {
         case .file: "Allegato \(name)"
         case .storeReference: "Allegato \(name), non copiato"
-        case .pending: "Allegato \(name), in attesa"
         }
     }
 
@@ -148,14 +120,7 @@ struct AttachmentChip: View {
 
     // MARK: Actions
 
-    /// A click: previews a usable file, or - for `.pending` - opens the popover
-    /// explaining why (ADR-0040 §D8, R-08). Neither `onQuickLook` nor `NSWorkspace` is
-    /// ever called for a pending chip.
     private func preview() {
-        if case .pending = content {
-            isShowingPendingExplanation = true
-            return
-        }
         guard let previewURL else { return }
         onQuickLook(previewURL)
     }
@@ -171,7 +136,7 @@ struct AttachmentChip: View {
     private func copy() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        let items = AttachmentChipModel.copyItems(for: content, state: state)
+        let items = AttachmentChipModel.copyItems(for: content, fileExists: fileExists)
         if items.isEmpty {
             pasteboard.setString(name, forType: .string)
         } else {
