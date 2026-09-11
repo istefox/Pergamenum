@@ -167,6 +167,18 @@ struct CanvasStore: Sendable {
         walk().folders
     }
 
+    /// Both lists at once, for the caller that needs both - exactly what `allBoards()`
+    /// and `allFolders()` each return, same order and same exclusions, since each of
+    /// them is one field of this pair.
+    ///
+    /// The Workspace tree asked for both in a row and so enumerated the vault twice for
+    /// the one answer the walk below already computes in a single pass. Kept beside the
+    /// two single-answer accessors rather than replacing them: every other caller wants
+    /// one list and would otherwise have to discard the other.
+    func foldersAndBoards() -> (folders: [String], boards: [String]) {
+        walk()
+    }
+
     /// One walk, both answers, because they are the same walk: `allBoards()` passed
     /// every directory and discarded it, and those directories are exactly what
     /// `allFolders()` needs. A second enumerator would be a second exclusion rule to

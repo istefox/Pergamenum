@@ -18,6 +18,15 @@ struct TodayView: View {
     /// that has to be told it is today.
     @AppStorage("todayScale") private var storedScale = DayScale.day.rawValue
 
+    /// The `[[` completion pools the daily note's editor is handed: every note's title
+    /// and every board's vault-relative path.
+    ///
+    /// Fetched once per scan rather than in `noteBody`, which `body` calls: computed
+    /// there they sorted the whole index and walked the whole vault on disk
+    /// (`CanvasStore.allBoards()` is uncached) on every keystroke typed into the day.
+    @State private var noteTitles: [String] = []
+    @State private var boardTitles: [String] = []
+
     @State private var draftTitle = ""
     @State private var draftStartHour = 9
     @State private var draftDurationMinutes = 60
@@ -34,6 +43,12 @@ struct TodayView: View {
         .onChange(of: controller.scale) { _, newScale in storedScale = newScale.rawValue }
         .toolbar { DayToolbar(controller: controller, calendar: calendar, vault: vault, themeEngine: themeEngine) }
         .task(id: day) { await controller.load() }
+        // On the day view rather than inside `noteBody`: once per appearance and once per
+        // scan, never per keystroke, which is why the two pools are held at all.
+        .task(id: vault.scanGeneration) {
+            noteTitles = vault.index.allNotes.map(\.title)
+            boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+        }
         // Reloads when EventKit says the store moved, or when the app comes back to
         // the front having been granted access in the meantime. Without this the
         // permission the user has just given stays invisible until the next launch.
@@ -195,8 +210,8 @@ struct TodayView: View {
                     set: { vault.updateOpenNoteText($0) }
                 ),
                 theme: theme,
-                noteTitles: vault.index.allNotes.map(\.title),
-                boardTitles: vault.root.map { CanvasStore(root: $0).allBoards() } ?? [],
+                noteTitles: noteTitles,
+                boardTitles: boardTitles,
                 tagSuggestions: [],
                 spellCheck: vault.settings.spellCheck,
                 hidesMarkup: vault.settings.hidesMarkup,

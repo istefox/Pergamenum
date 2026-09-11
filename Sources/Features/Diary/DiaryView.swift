@@ -22,6 +22,14 @@ struct DiaryView: View {
     @Environment(DiaryController.self) private var controller
     @Environment(ThemeEngine.self) private var themeEngine
 
+    /// Every board's vault-relative path, for the editor's `[[` completion.
+    ///
+    /// Fetched once per scan rather than in `editor`, which `body` calls:
+    /// `CanvasStore.allBoards()` is an uncached walk of the whole vault on disk, and
+    /// computed there it ran on every keystroke. `TasksView.boards` and
+    /// `WorkspacePicker` make the same trade for the same reason.
+    @State private var boardTitles: [String] = []
+
     var body: some View {
         HSplitView {
             writingColumn
@@ -32,6 +40,9 @@ struct DiaryView: View {
         .background(theme.color(.backgroundPrimary))
         .toolbar { DiaryToolbar(controller: controller, themeEngine: themeEngine) }
         .task { controller.load() }
+        .task(id: vault.scanGeneration) {
+            boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+        }
         // Every way out of this pane writes the day: switching pane takes the view
         // away, and quitting or clicking on another app does not go through here at
         // all. A diary that loses the last sentence typed is not a diary.
@@ -89,7 +100,7 @@ struct DiaryView: View {
             text: Bindable(controller).prose,
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
-            boardTitles: vault.root.map { CanvasStore(root: $0).allBoards() } ?? [],
+            boardTitles: boardTitles,
             tagSuggestions: vault.tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
