@@ -39,12 +39,17 @@ struct OutlinePane: View {
                 Text("nessun titolo in questa nota")
                     .themedText(.caption, color: .textTertiary)
             } else {
+                // Both answers cost a pass over the whole note each, and both used to be
+                // asked once per row - `hiddenByFold` inside the `ForEach`, `foldable`
+                // through every chevron. Asked once here and handed down instead.
+                let hidden = hiddenByFold
+                let foldable = self.foldable
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
-                            if !hiddenByFold.contains(index) {
+                            if !hidden.contains(index) {
                                 gap(toPrecede: index)
-                                row(entry, at: index)
+                                row(entry, at: index, foldable: foldable)
                             }
                         }
                         gap(toPrecede: nil)
@@ -60,11 +65,11 @@ struct OutlinePane: View {
         .accessibilityIdentifier("outlinePane")
     }
 
-    private func row(_ entry: NoteOutline.Entry, at index: Int) -> some View {
+    private func row(_ entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>) -> some View {
         let isCurrent = vault.currentOutlineEntry == index
         return HStack(spacing: 0) {
-            chevron(for: entry, at: index)
-            button(entry, at: index, isCurrent: isCurrent)
+            chevron(for: entry, at: index, foldable: foldable)
+            button(entry, at: index, isCurrent: isCurrent, foldable: foldable)
         }
         .padding(.leading, CGFloat(entry.level - 1) * theme.spacing(.m))
         .modifier(HeadingDraggable(entry: entry, index: index, beginDrag: beginDrag))
@@ -138,8 +143,8 @@ struct OutlinePane: View {
     /// The fold control, and only where there is something to fold: an embed has no
     /// section, and a heading with nothing under it would fold to nothing.
     @ViewBuilder
-    private func chevron(for entry: NoteOutline.Entry, at index: Int) -> some View {
-        if let offset = foldableOffset(for: entry, at: index) {
+    private func chevron(for entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>) -> some View {
+        if let offset = foldableOffset(for: entry, at: index, foldable: foldable) {
             // `vault.foldedEntries` is offsets (`NoteTab.foldedEntries`); this row's own
             // `entry` already carries its heading's live offset, so no `NoteOutline` re-scan
             // is needed to ask or to toggle - only `hiddenByFold` below needs the full
@@ -164,8 +169,14 @@ struct OutlinePane: View {
     /// both the chevron and the row's own double-click without duplicating the `foldable` guard.
     /// Internal, not `private`, so `@testable import Pergamenum` can call it directly
     /// (`Tests/OutlinePaneFoldableOffsetTests.swift`).
-    func foldableOffset(for entry: NoteOutline.Entry, at index: Int) -> Int? {
-        guard case .heading = entry.kind, foldable.contains(index) else { return nil }
+    ///
+    /// `foldable` is passed in by the rows, which already hold the set `body` computed once
+    /// for the whole rebuild; left out, it is computed here, which is a pass over the note
+    /// per call and is why the drawing path never omits it.
+    func foldableOffset(for entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>? = nil) -> Int? {
+        guard case .heading = entry.kind else { return nil }
+        let known = foldable ?? self.foldable
+        guard known.contains(index) else { return nil }
         return text.utf16.distance(from: text.startIndex, to: entry.range.lowerBound)
     }
 
@@ -203,7 +214,9 @@ struct OutlinePane: View {
         return hidden
     }
 
-    private func button(_ entry: NoteOutline.Entry, at index: Int, isCurrent: Bool) -> some View {
+    private func button(
+        _ entry: NoteOutline.Entry, at index: Int, isCurrent: Bool, foldable: Set<Int>
+    ) -> some View {
         Button {
             onSelect(NSRange(entry.range, in: text), index)
         } label: {
@@ -232,7 +245,8 @@ struct OutlinePane: View {
         .help(entry.title)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard let offset = foldableOffset(for: entry, at: index) else { return }
+                guard let offset = foldableOffset(for: entry, at: index, foldable: foldable)
+                else { return }
                 vault.toggleFold(offset)
             }
         )

@@ -190,12 +190,17 @@ enum MembershipRule {
         }
         // Newest conversation first, and the id as a tiebreak so the tray's order is a
         // function of its contents rather than of a dictionary's iteration.
-        return entries.sorted { left, right in
-            let leftDate = left.messages.map(date).max() ?? .distantPast
-            let rightDate = right.messages.map(date).max() ?? .distantPast
-            if leftDate != rightDate { return leftDate > rightDate }
-            return left.conversationID < right.conversationID
-        }
+        //
+        // Each entry's newest date is taken once and carried beside it: read from inside
+        // the comparator, a conversation's whole message list is walked again on every
+        // comparison it takes part in.
+        return entries
+            .map { (newest: $0.messages.map(date).max() ?? .distantPast, entry: $0) }
+            .sorted { left, right in
+                if left.newest != right.newest { return left.newest > right.newest }
+                return left.entry.conversationID < right.entry.conversationID
+            }
+            .map(\.entry)
     }
 
     enum ConversationRecovery: Equatable, Sendable {

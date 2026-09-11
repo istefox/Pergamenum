@@ -203,13 +203,15 @@ enum TaskArrangement {
     /// `sorted(by:)` is not stable in the standard library, so two tasks with the same date
     /// could swap places between two redraws of the same list - a list that shuffles while
     /// nothing changed is the kind of defect nobody reports and everybody notices.
+    /// The key is built once per task: inside the comparator it is rebuilt per comparison.
     private static func sort(_ tasks: [TaskItem], by sorting: TaskSorting) -> [TaskItem] {
-        tasks.sorted { first, second in
-            let left = key(first, sorting)
-            let right = key(second, sorting)
-            if left != right { return left < right }
-            return first.id < second.id
-        }
+        tasks
+            .map { (key: key($0, sorting), id: $0.id, task: $0) }
+            .sorted { first, second in
+                if first.key != second.key { return first.key < second.key }
+                return first.id < second.id
+            }
+            .map(\.task)
     }
 
     /// One comparable string per task, so every sort is one code path.
