@@ -19,6 +19,11 @@ struct AttachmentChip: View {
         /// An attachment past `PraticheSettings.attachmentThresholdMB`, recorded rather
         /// than copied (R-10).
         case storeReference(MessageDocument.StoreReference)
+        /// An attachment entry Mail has not delivered bytes for yet (ADR-0040 §D8,
+        /// R-08). Carries only the bare name - there is no file and no store path to
+        /// point a URL function at, which is why every `AttachmentChipModel` function
+        /// answers `nil`/`[]` for this case without ever calling `state`.
+        case pending(name: String)
     }
 
     @Environment(\.theme) private var theme

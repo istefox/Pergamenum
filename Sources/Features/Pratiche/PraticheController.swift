@@ -610,6 +610,12 @@ struct PraticaRowDetail: Equatable, Sendable {
     /// (R-15). The row dims and offers «Apri in Mail» instead of a body.
     var isPending: Bool
     var senderAddress: String?
+    /// Attachment entries still waiting for their bytes (ADR-0040 §D8, R-08): the bare
+    /// name, as `MessageDocument.MailFrontmatter.pendingAttachmentNames` reads it back -
+    /// a chip with no file and no store path behind it at all. Declared last so every
+    /// existing call site (which lists `attachments:` through `senderAddress:`
+    /// positionally or by keyword) keeps compiling unchanged.
+    var pendingAttachments: [String] = []
 }
 
 /// One attachment chip's file (R-10). `url` is absolute and may not exist: a copy that
