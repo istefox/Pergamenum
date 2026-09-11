@@ -164,7 +164,7 @@ struct RenderedViewBlock: View {
         case .list: ViewListRenderer(block: block, result: result, onOpenNote: onOpenNote)
         case .gallery:
             ViewGalleryRenderer(
-                result: result, notePath: notePath, vaultRoot: vaultRoot, thumbnails: thumbnails,
+                result: result, vaultRoot: vaultRoot, thumbnails: thumbnails,
                 onOpenNote: onOpenNote
             )
         case .calendar: ViewCalendarRenderer(block: block, result: result, onOpenNote: onOpenNote)

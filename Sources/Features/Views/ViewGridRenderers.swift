@@ -11,7 +11,6 @@ struct ViewGalleryRenderer: View {
     @Environment(\.theme) private var theme
 
     let result: ViewResult
-    var notePath: String = ""
     var vaultRoot: URL?
     var thumbnails: ThumbnailStore?
     /// A click target carrying the clicked card's own title (ADR-0033 §D9, R-09). `nil` means

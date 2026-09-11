@@ -90,7 +90,7 @@ enum MarkdownStyler {
         /// once rather than twice.
         case tableRun
         /// A whole `pergamenum-view` fence's source run - opening backticks through
-        /// closing ones, inclusive - emitted by `viewBlockRuns(in:outside:)` below
+        /// closing ones, inclusive - emitted by `viewBlockRuns(outside:)` below
         /// (ADR-0033 §D1; plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`,
         /// Task 1). **Closed fences only**: an unclosed one at the end of a note yields no
         /// span at all, so typing the opening backticks never takes the rest of the note
@@ -137,7 +137,7 @@ enum MarkdownStyler {
         result.append(contentsOf: tableSpans(in: text, from: bodyStart, outside: fences))
         // After every `.codeBlock` span above, so a `.viewBlockRun` wins on overlap
         // (ADR-0033 §D14) - `spans(in:)`'s own header rule that later spans win.
-        result.append(contentsOf: viewBlockRuns(in: text, outside: fences))
+        result.append(contentsOf: viewBlockRuns(outside: fences))
         return result
     }
 
@@ -476,7 +476,6 @@ enum MarkdownStyler {
     /// does, since a real closing fence line sits after the body. The span does not read
     /// `render:` at all; which renderer a fence names is Task 5's concern.
     private static func viewBlockRuns(
-        in text: String,
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         fences

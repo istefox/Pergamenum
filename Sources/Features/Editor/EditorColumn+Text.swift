@@ -187,9 +187,6 @@ extension EditorColumnView {
         if navigation.isFindRequested { return .find }
         return nil
     }
-    /// An external edit arrived while this note had unsaved changes. Neither side is
-    /// discarded without the user choosing (ADR-0001 §D3.4).
-
     // `reading(_:)` built a `MarkdownReadingView` here until ADR-0029 §D13 removed the
     // Modifica/Lettura choice it was the other half of. The view itself is retained,
     // unreferenced (R-12, §D14); this column has one editor and draws it unconditionally.

@@ -13,8 +13,6 @@ struct ViewQueryBuilderSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
 
-    /// The fence's body at the moment the sheet opened — what the draft is seeded from.
-    let source: String
     /// Nil where there is no vault behind the sheet (a preview, a test): the live match
     /// count (Task 7) then stays absent rather than reading as zero matches.
     var queries: ViewQuerySource?
@@ -39,7 +37,6 @@ struct ViewQueryBuilderSheet: View {
         onCommit: @escaping (String) -> Bool,
         onCancel: @escaping () -> Void = {}
     ) {
-        self.source = source
         self.queries = queries
         self.onCommit = onCommit
         self.onCancel = onCancel

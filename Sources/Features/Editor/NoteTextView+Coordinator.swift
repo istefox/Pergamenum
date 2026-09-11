@@ -263,7 +263,7 @@ extension NoteTextView {
         }
 
         /// Every closed `pergamenum-view` fence's whole source range in `text`, in document
-        /// order - `MarkdownStyler.viewBlockRuns(in:outside:)`' own two filters over
+        /// order - `MarkdownStyler.viewBlockRuns(outside:)`' own two filters over
         /// `CodeFence.regions(in:)`, which is this app's single rule for where a fence begins
         /// and ends. `EditorDecorationDelegate.viewBlockRun(in:atParagraphStart:)` reads the
         /// same boundary from the live characters one block at a time, and the two agree
