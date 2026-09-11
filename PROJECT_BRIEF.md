@@ -37,7 +37,7 @@ applied by hand.
 **In scope (v1):** everything in SPEC §4 to §12 - vault and taxonomy, markdown editor
 with applied styling, Workspace with the 11-tool sidebar, PDF and email and URI
 cards, spacebar Quick Look, task syntax and views, daily notes and EventKit,
-`pergamenum://` URL scheme, conformance linter, full menu bar, search and index,
+`pergamenum://` URL scheme, conformance linter (CLI/MCP, no in-app pane — ADR-0038), full menu bar, search and index,
 token-based theming.
 
 **Out of scope (v1):** multi-user collaboration, proprietary real-time sync, plugin
@@ -82,8 +82,8 @@ Binding order, each yielding a usable app (SPEC §13):
    rescheduling, quick capture.
 5. **M5 Calendar** - daily notes, EventKit read and write, two-way Reminders,
    timeblocking.
-6. **M6 URL scheme and conformance** - `pergamenum://` routes, full menus, linter,
-   convention import, local notifications.
+6. **M6 URL scheme and conformance** - `pergamenum://` routes, full menus, linter
+   (CLI/MCP only — ADR-0038), convention import, local notifications.
 
 ## Status
 

@@ -188,14 +188,12 @@ struct VaultBrowser: View {
 
     @ViewBuilder
     private var inspector: some View {
-        // `isOpenNoteVisible` and not just `openNote`: backlinks, conformance and the
-        // history of a note the composer is covering describe something nobody is
-        // looking at (PG-027).
+        // `isOpenNoteVisible` and not just `openNote`: backlinks and the history of a
+        // note the composer is covering describe something nobody is looking at (PG-027).
         if let note = vault.openNote, vault.isOpenNoteVisible {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     star(note)
-                    conformance(note)
                     history(note)
                     backlinks(note)
                     // Under the backlinks, chosen from the mockup: the two answer the same
@@ -232,21 +230,6 @@ struct VaultBrowser: View {
         .buttonStyle(.plain)
         .help(isStarred ? "Togli dalle preferite" : "Aggiungi alle preferite")
         .accessibilityIdentifier("star-note")
-    }
-
-    private func conformance(_ note: VaultController.OpenNote) -> some View {
-        let violations = vault.violations(for: note)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("CONFORMITÀ").themedText(.caption, color: .textTertiary)
-            if violations.isEmpty {
-                Label("Conforme", systemImage: "checkmark.seal")
-                    .themedText(.caption, color: .textSecondary)
-            } else {
-                ForEach(ConformanceText.lines(violations), id: \.self) { line in
-                    Text(line).themedText(.caption, color: .taskOverdue)
-                }
-            }
-        }
     }
 
     private func backlinks(_ note: VaultController.OpenNote) -> some View {

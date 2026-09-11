@@ -31,7 +31,7 @@ extension CommandActions {
     func canRun(_ command: ShortcutCommand) -> Bool {
         switch command {
         case .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
-             .quickSwitcher, .runConformanceCheck:
+             .quickSwitcher:
             vault.root != nil
         case .save:
             vault.openNote?.hasUnsavedChanges == true
@@ -58,7 +58,7 @@ extension CommandActions {
         // `.disabled` today. See the type's own note about the last four.
         case .openVault, .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious,
              .insertWikilink,
-             .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance,
+             .paneNotes, .paneWorkspace, .paneToday, .paneTasks,
              .paneDiary, .paneTags, .paneViews, .paneStarred, .toggleInspector,
              .taskToday, .taskTomorrow,
              .taskPlusTwo, .taskNextWeek, .previousDay, .nextDay,

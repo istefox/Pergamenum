@@ -248,7 +248,6 @@ struct RootView: View {
         case .today: todayPane
         case .diary: diaryPane
         case .tasks: tasksPane
-        case .conformance: conformancePane
         case .tags: tagsPane
         case .views: viewsPane
         case .starred: starredPane
@@ -301,14 +300,6 @@ struct RootView: View {
         }
     }
 
-    @ViewBuilder
-    private var conformancePane: some View {
-        if vault.root == nil {
-            needsVault("Il linter verifica le note contro le convenzioni harness.")
-        } else {
-            ConformanceView()
-        }
-    }
 
     @ViewBuilder
     private var todayPane: some View {
