@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=120 -->
+<!-- project-tasks: prefix=PG lastId=121 -->
 # PROJECT TASKS
 
 Updated: 2026-09-11 · Open: 17 (P1: 0) · In progress: 0
@@ -18,6 +18,12 @@ Updated: 2026-09-11 · Open: 17 (P1: 0) · In progress: 0
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-121` **P3** [roadmap, future] Swift-native template engine inspired by Knap (obsidianmd/knap, npm, MIT) <!-- src:session opened:2026-09-11 runs:1 kind:roadmap -->
+  - Idea surfaced 2026-09-11 while analyzing Knap (github.com/obsidianmd/knap), Obsidian's Node/TypeScript template engine that converts JSON data into Markdown with YAML frontmatter using a Twig/Liquid-style syntax (`{{ variable | filter }}`, `{% if %}`, `{% for %}`) and an AST interpreter with no arbitrary code execution.
+  - Not integrable as a dependency: Knap requires a Node 20+ runtime, incompatible with Pergamenum's offline Swift 6 stack (Principle 1/2). The idea is to reimplement from scratch, in pure Swift, only the syntax plus a minimal set of filters relevant to the domain (`date`, `wikilink`, `yaml_property`, `table`, `upper/lower/title`), as an AST parser under `Sources/Core`, zero external dependencies.
+  - Use case: generating Markdown notes from external data (Plaud import, Pratiche) with a user-customizable format, instead of today's fixed Swift logic (`Dossier.render`, `ImportNaming`).
+  - Explicitly not to be started now: today `Dossier.render` and `ImportNaming` cover the case with a fixed format, which is correct as long as the output does not need to be user-configurable. Start only if/when a real need for output-format customization emerges — otherwise this is a premature abstraction for a single consumer.
 
 - [ ] `PG-111` **P3** [roadmap, future] Detect new counterparts that join an *already-followed* pratica's conversation during regular sync, not only at wizard creation time <!-- src:session opened:2026-09-10 runs:2 -->
   - Explicitly deferred by Stefano when scoping the new "detect new counterparts" wizard feature (2026-09-10): the wizard-time detection (analyze the whole conversation, propose addresses not yet in `Dossier.counterparts`, one-by-one selector) is being built now via `concept-to-code`. This item is the natural follow-up he flagged as "interessante": once a pratica is already being followed, a later sync can encounter a message from/to an address never seen in that pratica before (someone new joins the thread after the pratica was created) — right now nothing surfaces that, the person only finds out by reading the email itself. Likely lands near `PraticaLiveSync`/the tray mechanism (`PraticaTrayModel`), proposing new *people* rather than new *conversations*. Not started - scope, ADR impact and UI (tray row? sheet? notification?) still to be designed.
