@@ -10,7 +10,10 @@ extension TasksView {
         // to know which of them are rolled over, and asking a second time would be a second
         // pass over every task in the vault on every redraw.
         let rolled = rolledOverGroup
-        let arranged = arrangedGroups + rolled
+        // The same reason, one layer down: every read of `options` decodes the stored JSON
+        // map, and the arrangement is where that answer is actually needed.
+        let options = self.options
+        let arranged = arrangedGroups(options: options) + rolled
         let rolledIDs = Set(rolled.first?.tasks.map(\.id) ?? [])
         return VStack(alignment: .leading, spacing: 0) {
             TaskListControls(title: view.title, options: optionsBinding)
@@ -72,7 +75,7 @@ extension TasksView {
     /// The arrangement itself is in `TaskArrangement`, outside SwiftUI, because a sort that is
     /// not stable and a group that swallows the tasks with nothing to group by are defects a
     /// test can hold and a screenshot cannot.
-    var arrangedGroups: [TaskGroup] {
+    func arrangedGroups(options: TaskListOptions) -> [TaskGroup] {
         TaskArrangement.groups(
             vault.index.tasks(for: view, on: today),
             options: options,

@@ -86,20 +86,28 @@ enum ViewEvaluator {
 
     // MARK: Sorting
 
+    /// Each row's key values are read once, before the sort, and carried beside it: asked
+    /// from inside the comparator they are recomputed for both operands of every
+    /// comparison, and a field's value can be a walk of the graph.
     private static func sorted(
         _ rows: [ViewResult.Row], by keys: [ViewBlock.SortKey], in graph: ViewGraph
     ) -> [ViewResult.Row] {
-        rows.sorted { lhs, rhs in
-            for key in keys {
-                let left = key.field.value(of: lhs.record, in: graph)
-                let right = key.field.value(of: rhs.record, in: graph)
-                guard left != right else { continue }
-                return key.descending ? right < left : left < right
+        rows
+            .map { row in
+                (values: keys.map { $0.field.value(of: row.record, in: graph) }, row: row)
             }
-            // Always a last resort, so two notes that tie on every key still come back in
-            // the same order twice running.
-            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-        }
+            .sorted { lhs, rhs in
+                for (position, key) in keys.enumerated() {
+                    let left = lhs.values[position]
+                    let right = rhs.values[position]
+                    guard left != right else { continue }
+                    return key.descending ? right < left : left < right
+                }
+                // Always a last resort, so two notes that tie on every key still come back
+                // in the same order twice running.
+                return lhs.row.title.localizedStandardCompare(rhs.row.title) == .orderedAscending
+            }
+            .map(\.row)
     }
 
     // MARK: Grouping

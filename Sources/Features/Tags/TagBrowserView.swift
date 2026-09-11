@@ -82,7 +82,11 @@ struct TagBrowserView: View {
     // MARK: I tag
 
     private var tagColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // Counted once per redraw and handed down, never read again from the rows: every
+        // access to `usage` runs `tagUsage()` and rebuilds the dictionary, and the pinned
+        // rows, the namespaces, their rows and their totals all want the same answer.
+        let usage = self.usage
+        return VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
             List {
@@ -95,17 +99,17 @@ struct TagBrowserView: View {
                         Text("APPUNTATI").themedText(.caption, color: .textTertiary)
                     }
                 }
-                ForEach(namespacesInUse, id: \.self) { namespace in
+                ForEach(namespacesInUse(usage), id: \.self) { namespace in
                     Section {
                         if openNamespaces.contains(namespace) {
                             // The glyph rides the copy inside the namespace too: this is where
                             // being already pinned is not otherwise visible.
-                            ForEach(tags(in: namespace), id: \.self) { tag in
+                            ForEach(tags(in: namespace, usage: usage), id: \.self) { tag in
                                 row(tag, count: usage[tag] ?? 0, isPinned: vault.isPinned(tag))
                             }
                         }
                     } header: {
-                        namespaceHeader(namespace)
+                        namespaceHeader(namespace, usage: usage)
                     }
                 }
             }
@@ -130,14 +134,14 @@ struct TagBrowserView: View {
         .padding(.vertical, theme.spacing(.s))
     }
 
-    private func namespaceHeader(_ namespace: TagNamespace) -> some View {
+    private func namespaceHeader(_ namespace: TagNamespace, usage: [Tag: Int]) -> some View {
         Button { toggle(namespace) } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: openNamespaces.contains(namespace) ? "chevron.down" : "chevron.right")
                     .themedText(.caption, color: .textTertiary)
                 Text(namespace.rawValue).themedText(.caption, color: .textSecondary)
                 Spacer()
-                Text("\(total(in: namespace))").themedText(.caption, color: .textTertiary)
+                Text("\(total(in: namespace, usage: usage))").themedText(.caption, color: .textTertiary)
             }
             .contentShape(Rectangle())
         }
@@ -189,8 +193,12 @@ struct TagBrowserView: View {
     // MARK: Le note
 
     private var noteColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(noteColumnTitle).themedText(.caption, color: .textTertiary)
+        // The same reason as `tagColumn`'s `usage`: every read of `notes` walks the index
+        // for the notes carrying all the chosen tags, and the title, the emptiness check
+        // and the list itself each used to ask separately.
+        let notes = self.notes
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(noteColumnTitle(count: notes.count)).themedText(.caption, color: .textTertiary)
                 .padding(.horizontal, theme.spacing(.m))
                 .padding(.vertical, theme.spacing(.s))
             Divider()
@@ -240,16 +248,16 @@ struct TagBrowserView: View {
 
     /// Only the namespaces this vault actually uses: eight headings, five of them empty, is a
     /// browser describing the grammar rather than the notes.
-    private var namespacesInUse: [TagNamespace] {
+    private func namespacesInUse(_ usage: [Tag: Int]) -> [TagNamespace] {
         let used = Set(usage.keys.map(\.namespace))
         return TagNamespace.allCases.filter { used.contains($0) }
     }
 
-    private func tags(in namespace: TagNamespace) -> [Tag] {
+    private func tags(in namespace: TagNamespace, usage: [Tag: Int]) -> [Tag] {
         usage.keys.filter { $0.namespace == namespace }.sorted()
     }
 
-    private func total(in namespace: TagNamespace) -> Int {
+    private func total(in namespace: TagNamespace, usage: [Tag: Int]) -> Int {
         usage.filter { $0.key.namespace == namespace }.values.reduce(0, +)
     }
 
@@ -257,10 +265,10 @@ struct TagBrowserView: View {
     /// only reading under which a second tag narrows anything.
     private var notes: [NoteRecord] { vault.index.notes(carryingAll: chosen) }
 
-    private var noteColumnTitle: String {
+    private func noteColumnTitle(count: Int) -> String {
         guard !chosen.isEmpty else { return "NOTE" }
         let names = chosen.sorted().map(\.description).joined(separator: " + ")
-        return "NOTE · \(names) (\(notes.count))"
+        return "NOTE · \(names) (\(count))"
     }
 
     private func subtitle(_ note: NoteRecord) -> String {

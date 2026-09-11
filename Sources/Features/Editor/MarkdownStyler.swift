@@ -490,15 +490,19 @@ enum MarkdownStyler {
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
-        for link in WikilinkParser.links(in: String(text[start...])) {
+        // The slice and the base index are the same for every link in the note, and both
+        // are a walk over the whole text: built here once rather than four times per link,
+        // which is what the shift below used to cost.
+        let slice = String(text[start...])
+        let offset = text.distance(from: text.startIndex, to: start)
+        let sliceStart = text.index(text.startIndex, offsetBy: offset)
+        for link in WikilinkParser.links(in: slice) {
             // The parser worked on a slice; shift its indices back onto the full text.
-            let offset = text.distance(from: text.startIndex, to: start)
-            let sliceStart = text.index(text.startIndex, offsetBy: offset)
-            let lower = text.index(sliceStart, offsetBy: String(text[start...]).distance(
-                from: String(text[start...]).startIndex, to: link.range.lowerBound
+            let lower = text.index(sliceStart, offsetBy: slice.distance(
+                from: slice.startIndex, to: link.range.lowerBound
             ))
-            let upper = text.index(sliceStart, offsetBy: String(text[start...]).distance(
-                from: String(text[start...]).startIndex, to: link.range.upperBound
+            let upper = text.index(sliceStart, offsetBy: slice.distance(
+                from: slice.startIndex, to: link.range.upperBound
             ))
 
             // `[[Curva]]` written inside a code fence is a wikilink in an example, not a

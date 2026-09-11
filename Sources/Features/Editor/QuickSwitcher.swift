@@ -30,10 +30,14 @@ struct QuickSwitcher: View {
     @State private var selection: String?
 
     var body: some View {
+        // Once per render, not once per reader: `groups` runs an index search, and for a
+        // `Nota#sez` query it also reads the note's whole text and walks its outline -
+        // `list` asked for it, then handed to `rows`, which asked again.
+        let groups = self.groups
         VStack(spacing: 0) {
             field
             Divider()
-            list
+            list(groups)
             Divider()
             legend
         }
@@ -64,17 +68,17 @@ struct QuickSwitcher: View {
     /// Says what is missing rather than showing an empty box under a heading that promises
     /// rows - the same refusal the slash menu and the outline pane make.
     @ViewBuilder
-    private var list: some View {
+    private func list(_ groups: [Group]) -> some View {
         if groups.allSatisfy(\.rows.isEmpty) {
             Text(headingQuery == nil ? "Nessuna nota." : "Nessuna sezione con questo nome.")
                 .themedText(.body, color: .textTertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            rows
+            rows(groups)
         }
     }
 
-    private var rows: some View {
+    private func rows(_ groups: [Group]) -> some View {
         List(selection: $selection) {
             ForEach(groups) { group in
                 Section {
