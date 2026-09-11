@@ -1026,6 +1026,370 @@ private func row(
         #expect(secondOutcome.bridge.count == 1, "the regeneration's own run records exactly its own triple")
         #expect(secondOutcome.bridge.first?.rowID == 99, "the stale ROWID 1 is what this regeneration corrects")
     }
+
+    // MARK: Task 6 (ADR-0040 §D4, §D5, §D6) - every sync revisits a message that is
+    // still waiting, and amends one line when it resolves (R-05, R-06)
+    //
+    // `PraticaSyncEngine.FolderContext.ExistingMessage.text` (§D6 - needed to compare a
+    // patch against the file already read) does not exist yet, and neither does
+    // `SyncOutcome.resolvedAttachmentFiles`/`.attachmentProblems` (§D10). Most tests
+    // below are red because they fail to COMPILE against the current
+    // `PraticaSyncEngine.swift`, not merely because the logic is wrong - this batch's
+    // tester does not touch `Sources/` at all (per this dispatch's explicit scope); the
+    // coder both declares those symbols and fills in Task 6's guard clause, selection
+    // clause and write-mode fork.
+
+    private static func modificationDate(of url: URL) throws -> Date {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+        return try #require(attributes[.modificationDate] as? Date)
+    }
+
+    /// The single note this suite's fixtures produce, and its raw file URL - unlike
+    /// `onlyMessageDocument`, this keeps the text as written so a test can compare
+    /// byte-for-byte rather than through `MessageDocument.parse`'s round trip.
+    private static func onlyNoteURLAndText(under vaultRoot: URL) throws -> (url: URL, text: String) {
+        let emailDir = vaultRoot.appending(path: "\(praticaFolder)/email", directoryHint: .isDirectory)
+        let name = try #require(Self.mdFiles(under: vaultRoot).first, "expected exactly one message note")
+        let url = emailDir.appending(path: name, directoryHint: .notDirectory)
+        return (url, try String(contentsOf: url, encoding: .utf8))
+    }
+
+    /// `text` with its `pergamenum-mail-attachments:` line removed - the one line §D4's
+    /// patch mode may ever touch. Two texts equal after this strip differ, if at all,
+    /// only on that one line.
+    private static func removingAttachmentsLine(_ text: String) -> String {
+        text.components(separatedBy: "\n")
+            .filter { !$0.hasPrefix("\(MessageDocument.attachmentsKey):") }
+            .joined(separator: "\n")
+    }
+
+    /// A three-attachment message, for the "one of two pending resolves, a third
+    /// already-linked attachment is untouched" case (R-06's second sentence) - no
+    /// existing `EmailFixtureCorpus` builder carries three parts, and this batch's
+    /// tester scope is `Tests/PraticaSyncTests.swift` only.
+    private static func threeAttachmentMessageRFC822(
+        messageID: String,
+        firstBytes: Data,
+        secondBytes: Data,
+        thirdBytes: Data,
+        boundary: String = "----=_Pergamenum_ThreeAttachments_Boundary"
+    ) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: Offerta con tre allegati\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/mixed; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, in allegato tre file.\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="a-subito.pdf"\r
+        \r
+        \(firstBytes.base64EncodedString())\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="b-risolve.pdf"\r
+        \r
+        \(secondBytes.base64EncodedString())\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="c-mai.pdf"\r
+        \r
+        \(thirdBytes.base64EncodedString())\r
+        --\(boundary)--\r
+        """
+    }
+
+    @Test func aTruncatedAttachmentIsRetriedAtNoCostWhenNothingHasChanged() async throws {
+        let message = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "nocost@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<nocost@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let (noteURL, firstText) = try Self.onlyNoteURLAndText(under: vaultRoot)
+        let firstModified = try Self.modificationDate(of: noteURL)
+
+        let secondOutcome = try await engine.sync(request)
+
+        let secondText = try String(contentsOf: noteURL, encoding: .utf8)
+        #expect(secondText == firstText, "an unresolved retry must not touch a single byte of the note (§D6)")
+        #expect(
+            try Self.modificationDate(of: noteURL) == firstModified,
+            "an unresolved retry must not rewrite the file at all, not even to the same bytes"
+        )
+        #expect(secondOutcome.resolvedAttachmentFiles.isEmpty, "nothing resolved - no-op per §D6")
+        #expect(secondOutcome.regeneratedPendingFiles.isEmpty, "a patch is never counted as a full regeneration")
+    }
+
+    @Test func aResolvedAttachmentPatchesTheAttachmentsLineAndPreservesAHandEditedBody() async throws {
+        let firstMessage = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "resolve@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: firstMessage
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<resolve@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let (noteURL, originalText) = try Self.onlyNoteURLAndText(under: vaultRoot)
+        // §D4's whole reason to exist: a person annotates the note between two syncs.
+        let handEditedText = originalText + "\n\nAggiunto a mano dopo la prima sincronizzazione.\n"
+        try Data(handEditedText.utf8).write(to: noteURL, options: .atomic)
+
+        let secondMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "resolve@rossi-spa.it", attachmentFilename: "offerta.pdf",
+            attachmentBytes: EmailFixtureCorpus.pdfBytes()
+        )
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Con allegato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: secondMessage
+            )],
+            in: fixture.root
+        )
+
+        let secondOutcome = try await engine.sync(request)
+
+        let secondText = try String(contentsOf: noteURL, encoding: .utf8)
+        #expect(
+            Self.removingAttachmentsLine(secondText) == Self.removingAttachmentsLine(handEditedText),
+            "every byte but the attachments line must survive, including the hand-edited prose (R-06)"
+        )
+        #expect(
+            secondText.contains("Aggiunto a mano dopo la prima sincronizzazione."),
+            "the hand edit itself must survive the patch"
+        )
+
+        let doc = try #require(MessageDocument.parse(secondText))
+        #expect(doc.frontmatter.linkedAttachmentNames == ["20260610_offerta.pdf"])
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty, "the pending entry must be gone once bytes resolve")
+        #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_offerta.pdf"])
+        #expect(secondOutcome.resolvedAttachmentFiles.count == 1, "one note amended in one line")
+        #expect(secondOutcome.regeneratedPendingFiles.isEmpty, "a patch is never a full regeneration")
+    }
+
+    @Test func onlyTheResolvingAttachmentMovesWhileASecondStaysPendingAndAThirdLinkedOneIsUntouched() async throws {
+        let firstMessage = Self.threeAttachmentMessageRFC822(
+            messageID: "partial@rossi-spa.it",
+            firstBytes: EmailFixtureCorpus.pdfBytes(pages: 1),
+            secondBytes: EmailFixtureCorpus.truncatedPDFBytes(),
+            thirdBytes: EmailFixtureCorpus.truncatedPDFBytes()
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta con tre allegati", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: firstMessage
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<partial@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let doc1 = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc1.frontmatter.linkedAttachmentNames == ["20260610_a-subito.pdf"])
+        #expect(
+            Set(doc1.frontmatter.pendingAttachmentNames)
+                == Set(["20260610_b-risolve.pdf", "20260610_c-mai.pdf"])
+        )
+
+        // Only the second attachment's bytes resolve; the third stays truncated.
+        let secondMessage = Self.threeAttachmentMessageRFC822(
+            messageID: "partial@rossi-spa.it",
+            firstBytes: EmailFixtureCorpus.pdfBytes(pages: 1),
+            secondBytes: EmailFixtureCorpus.pdfBytes(pages: 2),
+            thirdBytes: EmailFixtureCorpus.truncatedPDFBytes()
+        )
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta con tre allegati", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: secondMessage
+            )],
+            in: fixture.root
+        )
+
+        let secondOutcome = try await engine.sync(request)
+
+        let doc2 = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(
+            Set(doc2.frontmatter.linkedAttachmentNames)
+                == Set(["20260610_a-subito.pdf", "20260610_b-risolve.pdf"]),
+            "the already-linked first attachment is untouched, the resolving second joins it"
+        )
+        #expect(
+            doc2.frontmatter.pendingAttachmentNames == ["20260610_c-mai.pdf"],
+            "the never-resolving third stays pending"
+        )
+        #expect(
+            Set(Self.allegatiFiles(under: vaultRoot))
+                == Set(["20260610_a-subito.pdf", "20260610_b-risolve.pdf"])
+        )
+        #expect(secondOutcome.resolvedAttachmentFiles.count == 1, "one note amended, even though two names changed in it")
+    }
+
+    @Test func tenConsecutiveSyncsOverANeverResolvingFixtureWriteOnlyOnceAndNeverGrowAnyOutcomeArray() async throws {
+        let message = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "nogrow@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<nogrow@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+
+        let firstOutcome = try await engine.sync(request)
+        #expect(firstOutcome.writtenFiles.count == 1, "the first sync writes the pending placeholder once")
+        let (noteURL, _) = try Self.onlyNoteURLAndText(under: vaultRoot)
+        let firstModified = try Self.modificationDate(of: noteURL)
+
+        for run in 2...10 {
+            let outcome = try await engine.sync(request)
+            #expect(outcome.writtenFiles.isEmpty, "run \(run) must write nothing - the attachment never resolves")
+            #expect(outcome.resolvedAttachmentFiles.isEmpty, "run \(run) must resolve nothing")
+            #expect(outcome.regeneratedPendingFiles.isEmpty, "run \(run) must regenerate nothing")
+        }
+
+        #expect(
+            try Self.modificationDate(of: noteURL) == firstModified,
+            "ten unresolved retries must leave the file exactly as the first sync wrote it - no leak (R-05)"
+        )
+    }
+
+    @Test func aCompleteMessageWithNoPendingAttachmentsIsNeverRePreparedOrRewritten() async throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1000),
+                dateReceived: Date(timeIntervalSince1970: 1000), emlxBody: EmailFixtureCorpus.completeMessageRFC822
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [row(rowID: 1, messageID: "<abc123@rossi-spa.it>")],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let (noteURL, _) = try Self.onlyNoteURLAndText(under: vaultRoot)
+        let firstModified = try Self.modificationDate(of: noteURL)
+
+        let secondOutcome = try await engine.sync(request)
+
+        #expect(secondOutcome.writtenFiles.isEmpty, "a .complete message with no pending attachment is never revisited")
+        #expect(secondOutcome.resolvedAttachmentFiles.isEmpty)
+        #expect(secondOutcome.regeneratedPendingFiles.isEmpty)
+        #expect(
+            try Self.modificationDate(of: noteURL) == firstModified,
+            "ADR-0036 §D6's rule, unchanged for a message that never had a pending attachment"
+        )
+    }
+
+    @Test func rigeneraOnAMessageWithAPendingAttachmentStillProducesAFullRenderNotAPatch() async throws {
+        let message = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "rigenera@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<rigenera@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let (noteURL, originalText) = try Self.onlyNoteURLAndText(under: vaultRoot)
+        let handEditedText = originalText + "\n\nAggiunto a mano, e che «Rigenera» deve scartare.\n"
+        try Data(handEditedText.utf8).write(to: noteURL, options: .atomic)
+
+        let plan = try await engine.regenerationPreview(request, messageID: "<rigenera@rossi-spa.it>", rowID: nil)
+
+        #expect(plan.currentText == handEditedText)
+        #expect(
+            !plan.replacementText.contains("Aggiunto a mano"),
+            "«Rigenera» is a full render (ADR §D21, unchanged) - it must not preserve a hand edit the way §D4's patch does"
+        )
+        #expect(
+            plan.replacementText == originalText,
+            "the replacement is a whole note reproducing what a fresh import would write, not a one-line patch"
+        )
+        #expect(plan.diff != nil, "the hand-edited file on disk differs from the full-render replacement")
+    }
 }
 
 // MARK: - §D21 - «Rigenera» acquires the replacement before it destroys anything
