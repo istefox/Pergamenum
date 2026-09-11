@@ -41,7 +41,6 @@ struct Frontmatter: Equatable, Sendable {
         foreignKeys: [], unparsableTags: [], usedInlineTagList: false
     )
 
-    static let allowedKeys: Set<String> = ["date", "tags", "related", "aliases"]
     static let maximumAliases = 3
 }
 

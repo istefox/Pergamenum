@@ -57,9 +57,6 @@ import Testing
         return Theme(document: document, id: "markdown-attributed-text-test", inheriting: .emergency)
     }
 
-    /// Installed on every machine this suite runs on, with a real italic face
-    /// (`AvenirNext-Italic`) - the same family/claim `ProseTypographyTests` verified directly.
-    private static let familyWithItalic = "Avenir Next"
     /// `/System/Library/Fonts/Papyrus.ttc` - verified by `ProseTypographyTests` to have
     /// neither a bold nor an italic face.
     private static let familyWithNoItalic = "Papyrus"

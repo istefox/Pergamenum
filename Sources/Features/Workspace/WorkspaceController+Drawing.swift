@@ -81,11 +81,6 @@ extension WorkspaceController {
         return id
     }
 
-    func discardDrawing() {
-        activeDrawing = .empty
-        editingDrawingNodeID = nil
-    }
-
     /// Reopens a drawing card for editing, when its SVG is one this app wrote.
     /// Returns false for an imported illustration, which is an image and not ink.
     @discardableResult

@@ -36,11 +36,6 @@ struct VaultScanner: Sendable {
     /// the second table `IndexCache` now carries.
     var cachedBoardTasks: [String: IndexCache.BoardEntry] = [:]
 
-    /// How many notes the last scan took from the cache, for the index panel.
-    final class Statistics: @unchecked Sendable {
-        var reused = 0
-    }
-
     func scan() -> Outcome {
         let store = NoteStore(root: root)
         let canvasStore = CanvasStore(root: root)

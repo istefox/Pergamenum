@@ -38,7 +38,7 @@ struct VaultBrowser: View {
             get: { vault.isShowingQuickSwitcher },
             set: { vault.isShowingQuickSwitcher = $0 }
         )) {
-            QuickSwitcher(mode: .navigate) { choice in
+            QuickSwitcher { choice in
                 vault.isShowingQuickSwitcher = false
                 open(choice)
             }
