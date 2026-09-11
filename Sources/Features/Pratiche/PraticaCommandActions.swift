@@ -153,7 +153,7 @@ struct PraticaCommandActions {
     /// a file in `allegati/` is very often somebody else's attachment too, and trashing
     /// it would break a message nobody asked to touch.
     func exclude(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?) {
-        guard let praticaPath = praticaPath(of: entry, detail: detail),
+        guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID,
               let detail
         else { return }
@@ -181,12 +181,12 @@ struct PraticaCommandActions {
     /// (so its own sync never writes it back) and the destination includes it (so its
     /// own sync knows the message belongs there even outside a followed conversation).
     func move(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem) {
-        guard let praticaPath = praticaPath(of: entry, detail: detail),
+        guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID,
               let detail
         else { return }
 
-        let (moved, rewrites) = moveFiles(of: detail, from: praticaPath, to: destination.id)
+        let (moved, rewrites) = moveFiles(of: detail, to: destination.id)
         guard !moved.isEmpty else { return }
         updateDossier(at: praticaPath) { dossier in
             if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
@@ -232,7 +232,7 @@ struct PraticaCommandActions {
     /// anything is trashed - `prepareRegeneration` fills `pratiche.regeneration` with
     /// `.ready` once it resolves, or clears it and reports on failure.
     private func requestRegeneration(of entry: PraticaTimelineEntry, detail: PraticaRowDetail?) {
-        guard let praticaPath = praticaPath(of: entry, detail: detail),
+        guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID, let detail
         else { return }
         guard entry.isInMail else {
@@ -379,7 +379,7 @@ struct PraticaCommandActions {
     }
 
     private func moveFiles(
-        of detail: PraticaRowDetail, from praticaPath: String, to destination: String
+        of detail: PraticaRowDetail, to destination: String
     ) -> (files: [MovedFile], rewrites: ContentRewrites) {
         let originalBaseName = (detail.notePath as NSString).lastPathComponent
             .replacingOccurrences(of: ".md", with: "")
@@ -664,7 +664,7 @@ struct PraticaCommandActions {
 
     /// Which pratica a row belongs to: the folder its file sits in, never the current
     /// selection alone - a command invoked from a row is about that row.
-    private func praticaPath(of entry: PraticaTimelineEntry, detail: PraticaRowDetail?) -> String? {
+    private func praticaPath(detail: PraticaRowDetail?) -> String? {
         guard let notePath = detail?.notePath,
               let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/")
         else { return pratiche.selection }
@@ -776,7 +776,7 @@ enum MessageMenuItems {
 
 extension PraticaCommandActions {
     /// The folder a row's file sits in, for the destinations submenu - the same
-    /// arithmetic `praticaPath(of:detail:)` does, reachable from the menu builder.
+    /// arithmetic `praticaPath(detail:)` does, reachable from the menu builder.
     func praticaPathForMenu(of detail: PraticaRowDetail?) -> String {
         guard let notePath = detail?.notePath,
               let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/")

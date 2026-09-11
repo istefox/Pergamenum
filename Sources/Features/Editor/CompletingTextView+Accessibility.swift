@@ -55,7 +55,7 @@ extension CompletingTextView {
     ///
     /// The arithmetic is exactly `NoteTextView.Coordinator.selectEmbed(at:in:)`'s own
     /// (`NoteTextView+EmbedCaret.swift`), read here rather than duplicated: the same
-    /// fragment enumeration `decoration(at:in:claimedBy:)` uses
+    /// fragment enumeration `decoration(in:claimedBy:)` uses
     /// (`NoteTextView+Transclusion.swift:182-196`), the same
     /// `drawnEmbedRange(atParagraphStart:in:)` as the one source of truth for "this embed
     /// is on screen right now", the same `frameForTextAttachment(at:)` plus

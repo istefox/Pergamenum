@@ -28,7 +28,7 @@ extension WorkspaceView {
     private func penGesture(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let point = canvasPoint(from: value.location, in: size)
+                let point = canvasPoint(from: value.location)
                 if isErasing {
                     workspace.eraseStrokes(near: point, radius: max(8, penWidth * 3))
                     return

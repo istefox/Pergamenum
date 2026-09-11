@@ -384,7 +384,7 @@ struct WorkspaceView: View {
             .gesture(pinchGesture)
             .onModifierKeysChanged(mask: [.shift, .option, .command]) { _, held in modifiers = held }
             .dropDestination(for: URL.self) { urls, location in
-                propose(import: urls, at: canvasPoint(from: location, in: geometry.size))
+                propose(import: urls, at: canvasPoint(from: location))
             }
             .onAppear {
                 viewportSize = geometry.size
@@ -418,7 +418,7 @@ struct WorkspaceView: View {
                 } else if workspace.editingTextNodeID != nil {
                     workspace.endTextEdit(commit: true)
                 } else {
-                    handleTap(at: canvasPoint(from: location, in: size))
+                    handleTap(at: canvasPoint(from: location))
                 }
             }
             // Attached to the background alone. On the whole board it also fired while a
@@ -546,9 +546,9 @@ struct WorkspaceView: View {
                     return
                 }
                 if workspace.marqueeRect == nil {
-                    workspace.beginMarquee(at: canvasPoint(from: value.startLocation, in: size))
+                    workspace.beginMarquee(at: canvasPoint(from: value.startLocation))
                 }
-                workspace.updateMarquee(to: canvasPoint(from: value.location, in: size))
+                workspace.updateMarquee(to: canvasPoint(from: value.location))
             }
             .onEnded { _ in
                 workspace.endPan()
@@ -558,7 +558,7 @@ struct WorkspaceView: View {
 
     /// Converts a point in the view to a point on the board, inverting
     /// `p * zoom + pan`.
-    func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
+    func canvasPoint(from location: CGPoint) -> CGPoint {
         CGPoint(
             x: (location.x - workspace.pan.width) / workspace.zoom,
             y: (location.y - workspace.pan.height) / workspace.zoom

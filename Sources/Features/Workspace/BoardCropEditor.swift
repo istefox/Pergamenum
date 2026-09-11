@@ -42,7 +42,7 @@ struct BoardCropEditor: View {
                         moveOverlay(screenRect)
                         ForEach(BoardGeometry.Handle.allCases, id: \.self) { handle in
                             CropHandleView(
-                                workspace: workspace, node: node, handle: handle, rect: screenRect,
+                                workspace: workspace, handle: handle, rect: screenRect,
                                 lockAspect: modifiers.contains(.shift)
                             )
                         }
@@ -141,7 +141,6 @@ struct BoardCropEditor: View {
 private struct CropHandleView: View {
     @Environment(\.theme) private var theme
     let workspace: WorkspaceController
-    let node: CanvasNode
     let handle: BoardGeometry.Handle
     /// The crop rectangle in the editor's own local space, in board units.
     let rect: CGRect
