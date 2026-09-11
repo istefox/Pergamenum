@@ -1,74 +1,54 @@
-<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md tasks=3 lines=190-237 -->
-# Step 5 Batch Brief -- 2026-09-08-word-grained-markdown-reveal-on-caret-in.md -- tasks 3-3
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md tasks=4 lines=237-260 -->
+# Step 5 Batch Brief -- 2026-09-09-pratiche.md -- tasks 4-4
 
-## Task text (verbatim, plan lines 190-237)
+## Task text (verbatim, plan lines 237-260)
 
-### Task 3 — the per-marker filter, and the two new inputs (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
+### Task 4 — the sync: atomic writes, attachments, `.eml`, pending, deletions (R-09, R-10, R-11, R-15, R-16)
 
-In `Sources/Features/Editor/EditorDecorationDelegate.swift`:
+- Budget: `Sources/Core/Pratiche/PraticaSyncPlan.swift`,
+  `Sources/Features/Pratiche/PraticaSyncEngine.swift`, `Tests/PraticaSyncTests.swift` (~700 lines)
+- Tester writes: `PraticaSyncPlan.workItems(dossier:candidates:onDisk:settings:)` (pure, ordered
+  newest-first) and the `PraticaSyncEngine` actor's signatures (`sync(_:)`, `cancel()`, progress
+  stream). Tests drive the pure plan plus the engine against a fixture store and a temporary vault.
+- Tests (red): every write lands through temp-then-rename and a cancellation between two messages
+  leaves only complete files, resumable from the ledger (R-11); `.eml` written with the same base
+  name and referenced by `pergamenum-mail-original` when retention is on, absent when off, and
+  **never written for a `pending` message** (R-09, ADR §D18); an attachment is copied as
+  `YYYYMMDD_<name>`, an identical SHA-256 is linked rather than copied, a different one collides to
+  `-2`, an over-threshold one is recorded as a store reference with no copy, an inline image under
+  50 KB is dropped and a larger one is saved and embedded (R-10); a headers-only message is written
+  with `body: pending` and a placeholder, and is the **only** file a later sync rewrites unasked
+  (R-15); a message whose row disappears keeps its files and loses its link, and **no sync ever
+  deletes a file** (R-16); the same `Message-ID` present in two mailboxes produces exactly one file
+  (ADR §D15).
+- Coder: bodies. The actor owns the connection; each finished message hops once to `@MainActor` for
+  `VaultSession.write`; cancellation is checked at that boundary.
+- `tuist generate --no-open`; full unit suite.
 
-- `HiddenMarker.Kind.isInline` — a computed `Bool`, `switch` with **no `default`**, `true` for
-  `.emphasis`/`.strikethrough`/`.link` and `false` for the other eight (ADR §D2).
-- `nonisolated(unsafe) private var revealedSpans: [Int: [NSRange]] = [:]` and
-  `func apply(revealedSpans:) -> Set<Int>` returning the symmetric difference of the **keys**, the
-  shape `apply(revealedParagraphs:)` has, so the caller invalidates two paragraphs and not a
-  document. No logging (this runs on every arrow key).
-- `nonisolated(unsafe) var revealsInlineSpans = false` and a guarded
-  `func apply(revealsInlineSpans:)`. **`apply(hiddenMarkers:hidingMarkup:)` is not touched.**
-- `static func collapsing(among:paragraphIsRevealed:revealedSpans:) -> [HiddenMarker]` — ADR §D3's
-  table, `nil` spans meaning the setting is off.
-- The hook's last guard rewritten to call it, and `linkTooltips` fed the **collapsed** set rather
-  than the survivors. `guard !collapsing.isEmpty else { return nil }` keeps the empty case
-  returning `nil` exactly as today.
+## Phase 3 — the app
 
-**Tester** extends `Tests/MarkupHidingTests.swift` with a new `@Suite` (the existing
-`displayedParagraph`/`substitutedParagraph` helpers gain a defaulted `spans:`/`revealsInlineSpans:`
-parameter rather than being replaced) and writes the declarations. Red first. At minimum:
+## File map (from Budget: declarations, tasks 4-4)
 
-- setting **off** + revealed paragraph → hook returns `nil` (R-07, and
-  `theHookReturnsNilForARevealedParagraph` stays green **unedited**);
-- setting **on** + revealed paragraph + one bold span revealed + a second bold span in the same
-  paragraph → exactly the second span's two markers carry `collapsedFont`, the first's do not
-  (R-01);
-- the same for a `.link` marker pair (R-02);
-- caret moved out (empty span table, paragraph still revealed) → every inline marker collapsed
-  again (R-03);
-- nested: outer + inner markers present, inner span revealed → outer's two collapsed, inner's two
-  not (R-05);
-- **R-06 by kind**: a paragraph carrying a `.heading` marker and a bold run, revealed, setting on
-  → the heading marker is **not** collapsed (paragraph rule) while the bold markers are; a `.rule`
-  marker is likewise governed by the paragraph;
-- `isInline` answers `false` for all eight block kinds (a compile-checked exhaustive switch plus
-  one assertion per kind);
-- `apply(revealedSpans:)` returns the changed keys and `[:]` twice returns nothing.
+- (none declared -- no task in this range carries a parseable Budget:)
 
-**Coder** fills the bodies. **The list, checkbox, blockquote, table, view-block and embed branches
-are not edited** (F4, F7) — if one looks like it needs to be, stop and report.
-
-- Budget: `Sources/Features/Editor/EditorDecorationDelegate.swift`, `Tests/MarkupHidingTests.swift` (~260 lines)
-
----
-
-## Phase 3 — the setting and the two surfaces
-
-## File map (from Budget: declarations, tasks 3-3)
-
-- Sources/Features/Editor/EditorDecorationDelegate.swift
-- Tests/MarkupHidingTests.swift
+No parseable Budget: for task(s): 4 (absent is not zero -- consult the task text above)
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 2 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 4 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 5 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 1 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 2 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 3 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 9 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 10 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
-Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+Full plan: /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md -- construct/span semantics + delegate filter (ADR §D2-D5)
-- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/SPEC.md -- requirement IDs for this task's tests
+- ADR: docs/adr/0036-pratiche.md -- D2, D4, D5, D6, D7 and both Follow-up sections (Task 1 probes; Task 2/3: locator .notInStore/.ruleFailed split, no cache in the locator so the sync owns it, missing subject field the tester adds) bind the sync's atomic writes, attachments, pending bodies and deletions
+- SPEC: SPEC.md -- requirement IDs R-09, R-10, R-11, R-15, R-16 for this batch's tests, plus the message-file frontmatter block (pergamenum-mail-subject)
+- CLAUDE.md: CLAUDE.md -- sharedSources rule (Foundation-only under Sources/Core), file-over-app principle (a sync never deletes), tuist generate after adding files

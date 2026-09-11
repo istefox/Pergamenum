@@ -13,7 +13,7 @@ struct StickyTextCard: View {
     @Environment(\.theme) private var theme
     // Reused for navigation only (issue #188, R-06): `CommandActions.open(link:)` is the one
     // place a wikilink target resolves to a note-open or a board-open, already reachable this
-    // way from `EditorColumnView`/`TasksView` (ADR-0036).
+    // way from `EditorColumnView`/`TasksView` (ADR-0039).
     @Environment(CommandActions.self) private var commandActions
     let node: CanvasNode
     let workspace: WorkspaceController

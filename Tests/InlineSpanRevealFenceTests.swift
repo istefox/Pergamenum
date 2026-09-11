@@ -383,7 +383,7 @@ private func substitutedParagraph(
 //
 // It could not survive as a standing regression test: the base SHA is frozen in the past, so
 // once this chain merged into `main`, ANY later legitimate commit to one of the fenced shared
-// files (e.g. ADR-0036's checkbox-click feature touching
+// files (e.g. ADR-0039's checkbox-click feature touching
 // `EditorDecorationDelegate+CheckboxRendering.swift`) trips it forever, with no way to clear it
 // short of deleting the suite. A point-in-time scope check has no business becoming a permanent
 // build gate keyed to a commit that predates every future contributor's work.

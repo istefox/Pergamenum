@@ -29,6 +29,14 @@ final class Navigation {
         /// sheet reached from somewhere else: the list is a place a person comes back to
         /// while a transcription is running, which is what a destination is for.
         case recordings
+        /// The pratiche of ADR-0036 §D-pane. Own list column (the pratiche tree, like
+        /// Note owns `NoteListPane`), timeline and inspector - `PratichePane`, still the
+        /// coder's body (Task 6/7). Appended, not inserted: `Navigation.Pane` is not
+        /// itself an overrides-file key (`ShortcutCommand.rawValue` is), but the sidebar
+        /// row order it drives is a placement fact this batch owns (plan Task 6, R-33),
+        /// not Task 8's - Task 8 only measures `panePratiche`'s key against
+        /// `com.apple.symbolichotkeys`.
+        case pratiche
 
         var id: String { rawValue }
 
@@ -43,6 +51,7 @@ final class Navigation {
             case .starred: "Preferite"
             case .views: "Viste"
             case .recordings: "Registrazioni"
+            case .pratiche: "Pratiche"
             }
         }
 
@@ -57,6 +66,11 @@ final class Navigation {
             case .starred: "star"
             case .views: "tablecells"
             case .recordings: "waveform"
+            // Neither DESIGN.md nor UX-BLUEPRINT.md names an exact SF Symbol for the
+            // sidebar row itself (both only draw/describe toolbar-button symbols inside
+            // the pane - "plus", "arrow.clockwise", "sidebar.trailing"), so this is the
+            // coordinator's own named fallback rather than a guess.
+            case .pratiche: "folder.badge.person.crop"
             }
         }
 
@@ -84,6 +98,10 @@ final class Navigation {
             // Ctrl+Cmd+0, appended at the end of the catalogue (ADR-0032, ADR-0005 §D8):
             // the tenth pane takes the last free digit, and that exhausts them.
             case .recordings: .paneRecordings
+            // Ctrl+Cmd+P, appended at the end of the catalogue (ADR-0036 §D8): the digits
+            // are exhausted (`recordings` took the last one), so the eleventh pane takes
+            // the next free letter on the same modifier pair instead.
+            case .pratiche: .panePratiche
             }
         }
     }
@@ -97,6 +115,29 @@ final class Navigation {
     /// reachable by the toolbar button beside it and by nothing else, so the panel that
     /// holds three of the app's answers had no key and no menu entry.
     var isShowingInspector = true
+
+    /// Whether the Pratiche pane shows its inspector - `pratica.md`, which is the one
+    /// place that file is edited (ADR-0036 §D13).
+    ///
+    /// A flag of its own rather than a second reader of `isShowingInspector`: the two
+    /// panels hold different things, and a person who keeps the note pane's backlinks
+    /// open has not asked to see a pratica's note beside every timeline. Closed by
+    /// default, unlike the Note pane's, because the timeline is the pane's subject and
+    /// the note is the thing you go and open (UX-BLUEPRINT "Navigation structure").
+    ///
+    /// Task 7 makes «Mostra/Nascondi nota della pratica» pane-aware in the Vista menu;
+    /// the pane's own toolbar toggle (`pratiche-inspector-toggle`) reaches it today.
+    var isShowingPraticaInspector = false
+
+    /// «Nuova pratica…» (R-20) and «Aggiungi a pratica da Mail…» (R-21), each reached
+    /// from a menu entry, a key and a button in the pane - three surfaces, one flag
+    /// apiece, which is ADR-0023 §D1 applied to a command that opens a sheet.
+    ///
+    /// Here rather than as `@State` in `PratichePane`: the menu bar has no reference to
+    /// a pane's private state, and the empty-state buttons of screen 1g are drawn by a
+    /// pane that the Note pane's own focus mode can hide.
+    var isShowingNuovaPratica = false
+    var isShowingAddToPratica = false
 
     /// Whether the Workspace shows its tray - unplaced items, linked tasks, and the
     /// board dashboard of ADR-0021 §D7.
@@ -169,7 +210,7 @@ final class Navigation {
     var isShowingConventionsHelp = false
     var isShowingDiaryHelp = false
 
-    /// The task `TaskCommand.linkBoard` opened `WorkspacePicker` for (ADR-0036 §D3).
+    /// The task `TaskCommand.linkBoard` opened `WorkspacePicker` for (ADR-0039 §D3).
     ///
     /// Held here rather than in `TasksView` (as `assigningWorkspaceFor` used to be): the
     /// command is reachable from the "Task collegati" panel too, which lives inside the

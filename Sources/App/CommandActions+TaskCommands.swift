@@ -1,6 +1,6 @@
 import Foundation
 
-/// `TaskCommand`'s three actions, in one callable place (ADR-0036 §D3) — the same pattern
+/// `TaskCommand`'s three actions, in one callable place (ADR-0039 §D3) — the same pattern
 /// `CommandActions.run(_:on:)`/`canRun(_:on:)` already use for the note-row context menu
 /// (`CommandActions.swift:117-126`, `CommandActions+CanRun.swift:92-95`), so the row's
 /// context menu, the Attività toolbar, the Task menu and the "Task collegati" panel's row
@@ -8,7 +8,7 @@ import Foundation
 extension CommandActions {
     /// Performs `command` on `task`. `.goToNote`/`.goToBoard` both bring the destination
     /// pane forward themselves rather than relying on a view to notice — the breadcrumb's
-    /// old defect (ADR-0036 §D1) was exactly a navigation that changed state nobody was
+    /// old defect (ADR-0039 §D1) was exactly a navigation that changed state nobody was
     /// watching.
     func run(_ command: TaskCommand, on task: TaskItem) {
         switch command {

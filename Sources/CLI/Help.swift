@@ -66,6 +66,15 @@ enum Help {
       view run <percorso> [--ordinal n]
                            esegue quella vista e stampa le righe che trova
 
+    PRATICHE
+      pratiche             le pratiche del vault: percorso, cliente, stato, quanti
+                           messaggi, quante conversazioni da smistare, ultima attività
+      pratica <titolo|percorso>
+                           la sua cronologia, dalla più vecchia: messaggi, note e
+                           telefonate come stanno nella cartella
+                           legge solo i file della pratica e il registro del vault: non
+                           apre mai l'archivio di Mail e non avvia nessuna sincronizzazione
+
     INDICE
       index stats          quante note, quanti task, quanto ha impiegato la scansione
 

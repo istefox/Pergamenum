@@ -84,6 +84,9 @@ struct TagRenameSheet: View {
         UnifiedDiff.between(change.before, change.after, path: change.path, context: 1)
     }
 
+    // `DiffView` lives in `Sources/DesignSystem/DiffView.swift` - shared with the
+    // Pratiche «Rigenera» preview (ADR-0036 §D21), not forked per surface.
+
     /// The new tag, or nil while what is typed is not one. SPEC §4.4 closes the grammar and a
     /// sheet is not where it is widened: the field refuses rather than writing something the
     /// linter would then report in forty notes.
@@ -105,36 +108,5 @@ struct TagRenameSheet: View {
     private var changes: [VaultSession.TagRenameChange] {
         guard let parsed else { return vault.tagRenamePreview(old, to: old) }
         return vault.tagRenamePreview(old, to: parsed)
-    }
-}
-
-/// A unified diff, coloured by line. Small enough to live here: it is the only place in the app
-/// that shows one to a person.
-private struct DiffView: View {
-    @Environment(\.theme) private var theme
-    let path: String
-    let diff: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(path).themedText(.caption, color: .textTertiary)
-            ForEach(Array(diff.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                Text(line)
-                    .themedText(.mono, color: colour(of: line))
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(theme.spacing(.s))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.color(.surfaceSunken))
-        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-    }
-
-    private func colour(of line: String) -> ColorToken {
-        if line.hasPrefix("+++") || line.hasPrefix("---") || line.hasPrefix("@@") { return .textTertiary }
-        if line.hasPrefix("+") { return .codeString }
-        if line.hasPrefix("-") { return .taskOverdue }
-        return .textSecondary
     }
 }

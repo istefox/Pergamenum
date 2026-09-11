@@ -1,3 +1,4 @@
+
 # SPEC — Cmd+click navigation for wikilinks and links in the editor
 
 **Topic slug:** wikilink-click-navigation
@@ -89,7 +90,7 @@ Out of scope (Non-goals):
   only the mouse-driven Cmd+click and the context-menu item are in scope.
 - No change to how links/wikilinks are authored, inserted, or autocompleted.
 - No back/forward navigation history — Cmd+click opens the target exactly the way the existing
-  navigation entry points (breadcrumb, "Task collegati" panel, per ADR-0036) already do; no new
+  navigation entry points (breadcrumb, "Task collegati" panel, per ADR-0039) already do; no new
   history stack.
 - No requirement to make read-only surfaces require Cmd+click — if plain click already navigates
   there, that stays unchanged.
@@ -100,7 +101,7 @@ Out of scope (Non-goals):
   `Sources/Features/Workspace/` (`CardTextView.swift`), consistent with every prior ADR-0028/
   ADR-0029/ADR-0037 chain — neither `Sources/Core` nor `Sources/Connector` nor either command-line
   target (`perg`, `pergamenum-mcp`) is touched.
-- **Navigation logic is reused, not reimplemented.** ADR-0036 already defines `open(link:)` and
+- **Navigation logic is reused, not reimplemented.** ADR-0039 already defines `open(link:)` and
   `WorkspaceBoardResolver`, used today by the breadcrumb and the "Task collegati" panel to resolve
   and navigate a wikilink to a note or a `.canvas` board, including not-found and ambiguous-board
   handling. This feature's Cmd+click/context-menu action calls into that same path rather than
@@ -149,7 +150,7 @@ ranges `MarkdownStyler`/`EditorDecorationDelegate` already compute, per ADR-0037
 ## UI flows
 
 1. **Cmd+click a wikilink or link in the editor** → the click is intercepted before normal caret
-   placement; the underlying target is resolved via the existing ADR-0036 `open(link:)` /
+   placement; the underlying target is resolved via the existing ADR-0039 `open(link:)` /
    `WorkspaceBoardResolver` path (note, `.canvas` board, or — new for this feature — an external
    URL via `NSWorkspace`); navigation happens exactly as it does from the breadcrumb/task panel
    today.
@@ -204,7 +205,7 @@ ranges `MarkdownStyler`/`EditorDecorationDelegate` already compute, per ADR-0037
 ## Success criteria
 
 - [x] R-01 — Cmd+clicking a wikilink (`[[Nota]]`) in the note editor navigates to that note, using
-  the same `open(link:)` resolution ADR-0036 already uses elsewhere.
+  the same `open(link:)` resolution ADR-0039 already uses elsewhere.
 - [x] R-02 — Cmd+clicking a `^[[board.canvas]]` wikilink marker in the note editor navigates to
   that Workspace board via `WorkspaceBoardResolver`, same as the existing breadcrumb/task-panel
   entry points.

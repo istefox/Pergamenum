@@ -58,6 +58,7 @@ final class VaultHost {
     private func perform(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result {
         if let result = try readNotes(name, arguments) { return result }
         if let result = try readWork(name, arguments) { return result }
+        if let result = try readPratiche(name, arguments) { return result }
         if let result = try write(name, arguments) { return result }
         throw ConnectorError("«\(name)» non è uno strumento di questo server", usage: true)
     }
@@ -114,6 +115,21 @@ final class VaultHost {
             return reply(try VaultAPI.journalLog(
                 at: session.root, base: try VaultState.applicationSupportBase(), limit: arguments.int("limit")
             ))
+        default:
+            return nil
+        }
+    }
+
+    /// The correspondence (ADR-0036, R-36). A table of its own rather than two more
+    /// cases in `readWork`: that switch is already at the branching SwiftLint allows,
+    /// and this pair answers about a different thing - a folder full of somebody's
+    /// mail, read from disk, never from Mail.
+    private func readPratiche(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result? {
+        switch name {
+        case "pratiche":
+            return reply(VaultAPI.pratiche(session))
+        case "pratica":
+            return reply(try VaultAPI.pratica(session, try arguments.required("pratica")))
         default:
             return nil
         }

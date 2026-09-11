@@ -221,7 +221,7 @@ enum MarkdownAttributedText {
     enum LinkClickTarget: Equatable {
         /// A note in this vault, by title - also what a `^[[board.canvas]]` marker's own
         /// target decodes to; resolving `.canvas` into a board navigation is
-        /// `CommandActions.open(link:)`'s job (ADR-0036 reuse), not this decoder's.
+        /// `CommandActions.open(link:)`'s job (ADR-0039 reuse), not this decoder's.
         case note(title: String)
         /// `![[foto.png]]`'s target: a file to preview, not a note to open.
         case embed(name: String)

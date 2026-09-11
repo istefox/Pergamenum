@@ -255,6 +255,14 @@ move the previous copy aside rather than deleting it.
   which keeps `SparkleUpdateController` from starting the updater at all. Every UI-test file
   passes it, not only the one that would need it — a stray modal alert during `launch()` reads
   as the app hanging, not as an update being offered. A new UI-test file wants the flag too.
+- **A UI test that launches the app must never let it reach the real Apple Mail store**, the
+  third flag of the same family. The suite passes `-mailStoreRoot <fixture>` (ADR-0036), which
+  `MailStoreLocation.resolve()` reads before anything else, so a run resolves to a directory the
+  test made and threw away rather than to `~/Library/Mail/V10`. Every UI-test file passes it, not
+  only the pratiche ones — an empty temporary directory where the test has no Mail fixture of its
+  own. Without it, any pratiche sync a run happens to trigger reads the person's actual mail, and
+  a Full Disk Access grant is what makes that *succeed* rather than fail visibly. A new UI-test
+  file wants the flag too.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to
@@ -524,8 +532,9 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0033** — Views render live in the editor again: `pergamenum-view` fences become an `NSHostingView`-hosted attachment reusing the existing `RenderedViewBlock` renderers, host keyed by fence ordinal (not paragraph offset), reveal-on-caret keyed on the fence's whole source range; does not reopen ADR-0009 or ADR-0029 → `docs/adr/0033-views-render-live-in-the-editor.md`
 - **ADR-0034** — Visual query builder for `pergamenum-view` fences: one shared "Modifica query" affordance in `RenderedViewBlock`'s header (both live-render and error-card states), validity round-trips through `ViewBlock.parse` itself, flat AND-of-terms `where` with raw-text fallback for or/not/parens, commit reuses `commitTable`'s anchor-and-reload-guard shape; does not reopen ADR-0009 or ADR-0033 → `docs/adr/0034-pergamenum-view-query-builder.md`
 - **ADR-0035** — View-block attachment height becomes content-adaptive, capped at the original 320pt (amends ADR-0033 §D8/R-06): measurement crosses the SwiftUI/TextKit isolation boundary via a lock-guarded box on the host, deferred `Task { @MainActor }` relayout to avoid re-entering TextKit, clamp-before-compare for convergence → `docs/adr/0035-view-block-adaptive-height.md`
-- **ADR-0036** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0036-task-note-board-link-and-navigation.md`
+- **ADR-0036** — Pratiche: a vault folder that fills itself from a published copy of Apple Mail's Envelope Index (system `SQLite3`, db+wal copied, WAL recovered, `quick_check`, own indexes, atomic rename), one markdown file per message plus `allegati/`, membership via `pergamenum-dossier-*` keys, two-lane timeline, `pratica.md` edited only in the inspector, no network, connectors read-only → `docs/adr/0036-pratiche.md`
 - **ADR-0038** — Removes both Conformità UI surfaces (the dedicated pane and the note inspector's CONFORMITÀ block); keeps `perg lint`, the MCP `lint` tool, `VaultAPI.LintFinding` (protected interface) and the rule engine untouched, since Principle 5 and tag-entry blocking depend on the engine, not the review UI → `docs/adr/0038-remove-conformance-ui-section.md`
+- **ADR-0039** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0039-task-note-board-link-and-navigation.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -903,6 +912,62 @@ Key architectural decisions:
 
 Detail: `docs/adr/0035-view-block-adaptive-height.md`.
 
+## Decisions from the Pratiche chain (ADR-0036)
+
+A «pratica» is one matter with one counterpart, kept as a vault folder that fills itself from
+Apple Mail's local store and shows received/sent messages, attachments, notes and phone calls as
+one two-lane chronological timeline: `docs/adr/0036-pratiche.md`. Amends SPEC §14 in one row
+(HTML rendering of email bodies stays excluded; text extraction to light markdown is included).
+Adds no exception to principle 2: no network, no socket, no loopback.
+
+Key architectural decisions:
+- **The Envelope Index is read from a published generation copy, never from Mail's live file** —
+  `Envelope Index` + `-wal` (never `-shm`) are copied into a staging dir under the vault's state
+  base, opened read-write so SQLite recovers the WAL, `quick_check`ed, given our own indexes on
+  `conversation_id`/`sender`, then published with one directory rename. A torn copy is retried once
+  and then reported as «Mail sta scrivendo», never papered over. `immutable=1`, the backup API and
+  any handle on Mail's own file are rejected outright.
+- **SQLite goes through the system `SQLite3` module, in exactly one file** —
+  `MailStoreConnection.swift` is the only place `sqlite3_` may appear (a test enforces it); every
+  value is bound with the transient destructor spelled `unsafeBitCast(-1, to:
+  sqlite3_destructor_type.self)`, and `SQLITE_OPEN_CREATE` is never passed, or a missing store
+  becomes an empty database that reports «nessun messaggio» forever. No GRDB, no manifest edit.
+- **The ledger bridges RFC `Message-ID` ↔ index ROWID ↔ `conversation_id`** — the index's
+  `message_id` column is a hash, so Task 1's human-present probe decides whether the RFC id is
+  queryable, and both outcomes have a designed implementation. `.emlx` location is a probed digit-fan
+  rule with an enumerated fallback; «non più in Mail» is shown only for `.notInStore`, never for a
+  locator miss.
+- **`pratica.md` has exactly one editor, the inspector** — timeline rows draw manual entries
+  read-only with `MarkdownBlocksView`; editing places the caret via the existing
+  `Navigation.jumpToLine`. The blueprint's *n* live text views bound to *n* ranges of one file,
+  inside a culling `List`, beside a background writer, is the shape of every text-loss defect this
+  repo has documented and was rejected on that evidence.
+- **A sync never deletes a file and rewrites a message file only for a `pending` body that
+  arrived or an explicit «Rigenera» with a `UnifiedDiff` preview.** Duplicate `Message-ID`s across
+  Sent/Archive are resolved once before any write; direction is decided by `From` against own
+  addresses, never by mailbox.
+- **`MailStoreLocation.resolve()` is test-aware like `VaultState.processDefaultBase()`** —
+  `-mailStoreRoot` launch argument first, a per-process fixture root under xctest, and only then
+  `~/Library/Mail/V10`. Fixtures are built by code, never copied from a real store. All 19 UI-test
+  files gain `-mailStoreRoot <fixture>` beside `-disableCalendar` and `-disableUpdater`.
+- **Full Disk Access is probed per trigger with `open(2)`, never at launch**; macOS denies silently
+  and never prompts, and the Apple Development signing identity is what keeps the grant across
+  rebuilds. The connectors compile the Mail-store files (they live under `Sources/Core/**`) but
+  are structurally forbidden to call them: `SharedSourcesPurityTests` asserts no file under
+  `Sources/Connector`, `Sources/CLI` or `Sources/MCPServer` names `MailStore`, `EMLXReader` or
+  `SQLite3`.
+- **Tag sets corrected against the real linter** — `pratica.md` carries `type-note`,
+  `topic-pratica`, `client-<slug>`, `status-*`, `source-email`; message files add `type-email`.
+  «Chiuse» means `status-archived`; `status-final` is read but never written. The dossier is a
+  line codec over `Frontmatter.ForeignKey`, byte-preserving on keys it does not own.
+- **Three new `ShortcutCommand` cases appended, never inserted** — `panePratiche` Ctrl+Cmd+P (the
+  pane digits ran out at ADR-0032), `newPratica` Cmd+Opt+P, `addToPraticaFromMail` Cmd+Shift+P;
+  `toggleInspector` becomes pane-aware instead of gaining a twin. One shared `message://` builder
+  replaces the two encodings in `EmailHeaders.mailURL` and `MailLink.url`, chosen by one measurement.
+- **Three protected interfaces declared** (`.claude/protected-interfaces`): `PraticaNaming.messageFileName`,
+  `Dossier.render`, `VaultAPI.PraticaSummary`.
+
+Detail: `docs/adr/0036-pratiche.md`.
 ## Decisions from the word-grained markdown reveal-on-caret chain (ADR-0037)
 
 Narrows reveal-on-caret (ADR-0018 §D2) from paragraph to span for emphasis, strikethrough and
@@ -939,10 +1004,10 @@ Key architectural decisions:
 
 Detail: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.
 
-## Decisions from the task-note-board-link-and-navigation chain (ADR-0036)
+## Decisions from the task-note-board-link-and-navigation chain (ADR-0039)
 
 Fixes a task's confused, partly-broken relation to its note and to a board:
-`docs/adr/0036-task-note-board-link-and-navigation.md`. Reopens SPEC §7.2's note-linking
+`docs/adr/0039-task-note-board-link-and-navigation.md`. Reopens SPEC §7.2's note-linking
 requirement (removed, deliberately) and R-05 of ADR-0021 (board navigation, added).
 
 Key architectural decisions:
@@ -980,4 +1045,4 @@ Key architectural decisions:
   the removed note-linking handler; removing the case itself touches a file outside this
   chain's scope and is named as a follow-up rather than folded in here.
 
-Detail: `docs/adr/0036-task-note-board-link-and-navigation.md`.
+Detail: `docs/adr/0039-task-note-board-link-and-navigation.md`.

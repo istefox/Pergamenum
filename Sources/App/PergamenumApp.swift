@@ -67,6 +67,16 @@ struct PergamenumApp: App {
     /// named here and its transport is not, deliberately - `Tests/PlaudIsolationTests.swift`
     /// matches the transport type's name as a plain string, comments included.
     @State private var recordings: RecordingsController
+    /// The Pratiche pane's controller (ADR-0036, R-17/R-18). At app level for the same
+    /// reason `recordings` is: a sync started from the pane must outlive a switch to
+    /// another pane, and the window-key trigger is a fact about the app rather than
+    /// about the view that happens to be on screen.
+    ///
+    /// Nothing in the constructor reads Mail: `PraticheController.live` only builds the
+    /// probe and the sync closures, and both triggers are armed later, by the pane's
+    /// own `startWatching(_:)`. Full Disk Access is probed per trigger, never at launch
+    /// (ADR §D10).
+    @State private var pratiche: PraticheController
     /// Global capture (ADR-0008). All three live at app level because the panel has to
     /// work with no window in front of the user - it is the whole point of the feature -
     /// and because the hot key is registered with the system once, not per window.
@@ -105,6 +115,7 @@ struct PergamenumApp: App {
         _day = State(initialValue: day)
         _diary = State(initialValue: DiaryController(vault: vault))
         _recordings = State(initialValue: recordings)
+        _pratiche = State(initialValue: PraticheController.live(vault: vault))
 
         let panel = CapturePanel(
             controller: capture,
@@ -169,6 +180,7 @@ struct PergamenumApp: App {
                 .environment(day)
                 .environment(diary)
                 .environment(recordings)
+                .environment(pratiche)
                 .environment(shortcuts)
                 .environment(commandActions)
                 .themed(by: themeEngine)
@@ -257,6 +269,10 @@ struct PergamenumApp: App {
                 // not through `vault.updateSettings` (ADR §D12), so this scene needs it too:
                 // an object injected into the main window is invisible here.
                 .environment(recordings)
+                // Impostazioni › Pratiche (Task 9) reads the Full Disk Access state and
+                // «Aggiorna tutte le pratiche ora» from this controller, and a scene
+                // that is missing it is a run-time trap rather than a compile error.
+                .environment(pratiche)
                 .themed(by: themeEngine)
         }
     }

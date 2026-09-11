@@ -250,6 +250,13 @@ extension Theme {
             .surfaceCard: RGBA(hex: "#FFFFFF")!,
             .surfaceRaised: RGBA(hex: "#FFFFFF")!,
             .surfaceSunken: RGBA(hex: "#F0F0F0")!,
+            // ADR-0036 (Pratiche) §D16: placeholders only, so a test resolving
+            // `.color(.surfaceReceived)` before the bundled themes define the token
+            // reads the emergency fallback rather than force-unwrapping `nil` and
+            // crashing the whole xctest process (Theme.color(_:)/rawColor(_:)).
+            .surfaceReceived: RGBA(hex: "#F0F0F0")!,
+            .surfaceSent: RGBA(hex: "#E4EEF8")!,
+            .surfaceEntry: RGBA(hex: "#FBF0C4")!,
             .borderSubtle: RGBA(hex: "#E0E0E0")!,
             .borderStrong: RGBA(hex: "#C4C4C4")!,
             .textPrimary: RGBA(hex: "#111111")!,

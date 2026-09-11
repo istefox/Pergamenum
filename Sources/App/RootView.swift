@@ -140,7 +140,7 @@ struct RootView: View {
             .sheet(isPresented: Bindable(navigation).isShowingDiaryHelp) {
                 HelpSheet(topic: .diary) { navigation.isShowingDiaryHelp = false }
             }
-            // `TaskCommand.linkBoard`'s picker (ADR-0036 §D3), hosted here rather than by
+            // `TaskCommand.linkBoard`'s picker (ADR-0039 §D3), hosted here rather than by
             // `TasksView` so it opens from every surface that offers the command — the
             // "Task collegati" panel included, which lives inside the Workspace pane where
             // `TasksView` does not exist.
@@ -193,6 +193,22 @@ struct RootView: View {
             set: { if !$0 { vault.taskDraft = nil } }
         )) {
             TaskComposer { vault.taskDraft = nil }
+        }
+        // At window level and not inside `PratichePane`, for the reason the two above
+        // are: «Aggiungi a pratica da Mail…» is Cmd+Shift+P from anywhere, and a sheet
+        // presented by that pane would do nothing at all from the other five
+        // (ADR-0036 R-20/R-21).
+        .sheet(isPresented: Bindable(navigation).isShowingNuovaPratica) {
+            NuovaPraticaWizard { navigation.isShowingNuovaPratica = false }
+        }
+        .sheet(isPresented: Bindable(navigation).isShowingAddToPratica) {
+            AddToPraticaSheet(
+                onClose: { navigation.isShowingAddToPratica = false },
+                onNewPratica: {
+                    navigation.pane = .pratiche
+                    navigation.isShowingNuovaPratica = true
+                }
+            )
         }
         // Wide enough for the Note pane's own three columns beside this sidebar:
         // below this the outer sidebar gets squeezed into an unreadable strip.
@@ -252,6 +268,16 @@ struct RootView: View {
         case .views: viewsPane
         case .starred: starredPane
         case .recordings: recordingsPane
+        case .pratiche: pratichePane
+        }
+    }
+
+    @ViewBuilder
+    private var pratichePane: some View {
+        if vault.root == nil {
+            needsVault("Una pratica è una cartella del vault che si riempie da Mail: senza un vault non c'è dove tenerla.")
+        } else {
+            PratichePane()
         }
     }
 

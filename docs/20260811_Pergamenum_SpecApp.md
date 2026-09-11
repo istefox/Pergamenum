@@ -329,7 +329,7 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 - **Dal task alla nota/canvas**: nelle viste task ogni wikilink è cliccabile e apre la destinazione (editor o canvas).
 - **Dalla nota/canvas ai task**: pannello "Task collegati" nella nota e nel canvas, che elenca tutti i task del vault il cui testo linka quella nota/canvas, con stato e date, completabili sul posto (la modifica scrive nel file di origine del task).
 - Questi collegamenti sono citazioni inline ai fini di wikilink.md (W-03): non impegnano `related`, non richiedono motivo né simmetria. Contano nell'indice backlink dell'app (la nota mostra il task tra i suoi backlink).
-- *Emendato 2026-09-08 (ADR-0036).* Il "collegamento assistito" a una nota è rimosso: la nota di un task è già quella scelta al momento della cattura (il composer decide in quale file la riga viene scritta), quindi non esiste una seconda nota da "collegare" in un secondo momento. Resta, unico, il collegamento assistito a una **board**: comando "Collega una board…", che scrive `^[[<board>.canvas]]` (§7.2 resta valido per il modello - un task può ancora contenere qualunque wikilink scritto a mano, verso note o canvas, e resta navigabile in entrambe le direzioni). Il menu contestuale del task espone "Vai alla nota di origine" (sempre) e "Vai alla board collegata" (solo con una board assegnata) al posto delle due voci "Apri nota collegata" / "Apri canvas collegato" di cui sopra, che descrivevano una capacità mai implementata sui wikilink liberi.
+- *Emendato 2026-09-08 (ADR-0039).* Il "collegamento assistito" a una nota è rimosso: la nota di un task è già quella scelta al momento della cattura (il composer decide in quale file la riga viene scritta), quindi non esiste una seconda nota da "collegare" in un secondo momento. Resta, unico, il collegamento assistito a una **board**: comando "Collega una board…", che scrive `^[[<board>.canvas]]` (§7.2 resta valido per il modello - un task può ancora contenere qualunque wikilink scritto a mano, verso note o canvas, e resta navigabile in entrambe le direzioni). Il menu contestuale del task espone "Vai alla nota di origine" (sempre) e "Vai alla board collegata" (solo con una board assegnata) al posto delle due voci "Apri nota collegata" / "Apri canvas collegato" di cui sopra, che descrivevano una capacità mai implementata sui wikilink liberi.
 
 ### 7.3 Comportamenti
 
@@ -412,7 +412,7 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
 
-**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0036) · Annulla task · Vai alla nota di origine · Vai alla board collegata
+**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0039) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
 **Calendario**: Vai a oggi · Giorno precedente/successivo (Cmd+←/→) · Vai a data… · Nuovo evento (Cmd+E) · Nuovo promemoria (Cmd+Shift+E) · Pubblica time block come evento · Aggiorna da EventKit
 
@@ -497,7 +497,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 |---|---|---|
 | Stack | SwiftUI nativo, non Electron | Requisito email ridotto a link+apertura; PDFKit ed EventKit nativi |
 | Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
-| Rendering corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente |
+| Rendering **HTML** del corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente. Estrazione del testo del corpo in markdown leggero inclusa dal 2026-09-09 (pratiche, ADR-0036 §D16): il costo escluso era quello di mantenere un renderer HTML, che un riduttore a testo non ha. Nessuna WebView, nessun sidecar `.html`, nessun rendering con stili; la card `.eml` del Workspace resta invariata |
 | Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |

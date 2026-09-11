@@ -20,6 +20,14 @@ enum ColorToken: String, TokenKey {
     case surfaceRaised = "color.surface.raised"
     case surfaceSunken = "color.surface.sunken"
 
+    // ADR-0036 (Pratiche) §D16, DESIGN.md "Binding decisions": the timeline's three
+    // surface tokens - `received` (left lane, neutral grey), `sent` (right lane, cool
+    // tint), `entry` (manual Nota/Telefonata, full width, warm tint). Direction is
+    // always redundant (glyph + alignment + colour), never colour alone (R-25, R-39).
+    case surfaceReceived = "color.surface.received"
+    case surfaceSent = "color.surface.sent"
+    case surfaceEntry = "color.surface.entry"
+
     case borderSubtle = "color.border.subtle"
     case borderStrong = "color.border.strong"
 

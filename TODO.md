@@ -1,20 +1,76 @@
-<!-- project-tasks: prefix=PG lastId=107 -->
+<!-- project-tasks: prefix=PG lastId=119 -->
 # PROJECT TASKS
 
-Updated: 2026-09-09 · Open: 10 (P1: 0) · In progress: 0
+Updated: 2026-09-11 · Open: 17 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 _none_
 ## Open Issues
 
 - [ ] `PG-108` **P3** Two pre-existing UI test failures found during issue #188's final full-suite run, unrelated to any file this chain touched — `UITests/DayViewUITests.swift` (`testTheMonthFollowsTheDividerAndHasNoGripOfItsOwn`, `XCTAssertGreaterThan` "460.0" not greater than "460.0") and `UITests/WorkspaceBoardUITests.swift` (`testAZoomedOutCardStillHasAReadableAccessibilityLabel`, `XCTAssertEqual` "" not equal to "CARD A") <!-- src:session opened:2026-09-09 kind:fix -->
-  - Both reproduced identically when re-run in isolation (not flaky). `git status --short` confirmed neither test's subsystem (calendar DayView divider geometry, Workspace card accessibility label at zoom) was touched by any file this chain (issue #188 click-navigation + bold-wikilink/italic fixes + PG-105) modified — out of scope for this chain, left open for a human to diagnose.
+  - Both reproduced identically when re-run in isolation (not flaky). `git status --short` confirmed neither test's subsystem (calendar DayView divider geometry, Workspace card accessibility label at zoom) was touched by any file this chain (issue #188 click-navigation + bold-wikilink/italic fixes + PG-116) modified — out of scope for this chain, left open for a human to diagnose.
 
 ## In Progress
 
 *Nothing in progress.*
 
 ## Backlog / To Add
+
+- [ ] `PG-111` **P3** [roadmap, future] Detect new counterparts that join an *already-followed* pratica's conversation during regular sync, not only at wizard creation time <!-- src:session opened:2026-09-10 -->
+  - Explicitly deferred by Stefano when scoping the new "detect new counterparts" wizard feature (2026-09-10): the wizard-time detection (analyze the whole conversation, propose addresses not yet in `Dossier.counterparts`, one-by-one selector) is being built now via `concept-to-code`. This item is the natural follow-up he flagged as "interessante": once a pratica is already being followed, a later sync can encounter a message from/to an address never seen in that pratica before (someone new joins the thread after the pratica was created) — right now nothing surfaces that, the person only finds out by reading the email itself. Likely lands near `PraticaLiveSync`/the tray mechanism (`PraticaTrayModel`), proposing new *people* rather than new *conversations*. Not started - scope, ADR impact and UI (tray row? sheet? notification?) still to be designed.
+
+- [ ] `PG-110` **P3** `ReleasePipelineTests.appcastSelfTestExitsZeroWithOutput` fails reliably when run as part of the full `PergamenumTests` suite via `xcodebuild test`, but passes every time run in isolation — `Tests/ReleasePipelineTests.swift:24` <!-- src:session opened:2026-09-10 -->
+  - Found on 2026-09-10 while confirming the pratiche PG-116-119 follow-up commit's tests: `.claude/test-cmd`'s full run failed with exactly this one test red (2682 tests, 1 failure), unrelated to anything touched by that commit (no Sparkle/appcast/release-pipeline file was in the diff). Reproduced 3 times in a row inside the full suite, on two separate turns.
+  - Confirmed passing standalone three independent ways: `python3 scripts/appcast.py --self-test` direct (10/10 checks, exit 0); `xcodebuild ... -only-testing:"PergamenumTests/ReleasePipelineTests" test` (the whole 6-test suite, 0.272s, all green, `appcastSelfTestExitsZeroWithOutput()` itself at 0.139s). This is the confirmed reproduction of the flake being suite-context-specific, not a defect in the test or the script.
+  - Tooling note for next time: Swift Testing's `-only-testing:` filter only resolves at the **suite** level here (`PergamenumTests/<SuiteName>`) — appending `/<testFuncName>` silently matches nothing and reports "Executed 0 tests, 0 failures" (looks like a pass, is actually a no-op). Filtering to the suite is still ~85x faster than the full suite (12s vs the full run's several minutes) and is precise enough to isolate this flake.
+  - Not yet root-caused. Candidate causes, none confirmed: the test shells out to `python3 scripts/appcast.py --self-test` via `Process`, and something about running inside `xcodebuild test`'s full-suite process tree (sandboxing, a different `PATH`/`python3` resolution, concurrent test execution touching the same `/tmp` appcast-selftest file another parallel test/run left behind) could make the subprocess behave differently than in a small/isolated run. Needs the actual failing stderr/exit code captured from inside a full-suite run — nothing gathered so far explains *why* it fails there, only that it reliably does.
+  - Not fixed and not disabled, per this repo's own rule against weakening a test to make a suite pass — left red and documented instead.
+
+`scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
+pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
+(PG-116's UI coverage, added by the PG-116-119 follow-up plan). Root cause was a bug in the test
+itself, not in production code: it synced a message from the fixture and immediately triggered
+«Rigenera» without ever editing the note, so `PratichePane.regenerationReadySheet` correctly found
+no diff and rendered its no-op "Chiudi" branch instead of "Annulla"/"Rigenera" — the test then
+waited 5s for an "Annulla" button that structurally wasn't there in that state. Fixed by having the
+test hand-edit the synced note before invoking «Rigenera» (so a real diff exists) and by tightening
+the final assertion to compare exact file content, not just existence. Verified only via
+`build-for-testing` (never run by the agent, per the standing UI-suite rule) — **not yet
+re-verified by a real `scripts/uitests.sh` hand-run, and not yet committed.**
+
+- [x] `PG-116` **P2** Rigenera trashes existing message files before a replacement is available, with no ADR-0036 D6 diff shown before confirmation — `Sources/Features/Pratiche/PraticaCommandActions.swift:~262` <!-- src:session opened:2026-09-10 closed:2026-09-10 runs:1 -->
+  - Raised by RTF's Codex review (astra, xhigh) every cycle since cycle 1 of the Pratiche RTF review, deferred each time as architectural. Fix needed the replacement message prepared and its `UnifiedDiff` shown for confirmation BEFORE any existing file is touched, then an atomic replace only after approval.
+  - Closed by ADR-0036 §D21 (`docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md` Task 5): `PraticaSyncEngine.regenerationPreview`/`commitRegeneration` acquire the replacement text and a `UnifiedDiff` before anything is trashed; `PraticheController.RegenerationState`/`PratichePane`'s sheet show it and require an explicit confirm. `DiffView` moved to `Sources/DesignSystem/DiffView.swift`, shared with `TagRenameSheet`. A build-for-testing-only UI test (`PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`) covers the sheet appearing and «Annulla» leaving the file untouched — not run by the agent, per this repo's standing UI-suite rule.
+
+- [x] `PG-117` **P2** Keyword evaluation only sees followed/included messages; `autoFollowedConversations` is computed but never persisted — `Sources/Features/Pratiche/PraticheController.swift:~1262` <!-- src:session opened:2026-09-10 closed:2026-09-10 runs:1 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. A real fix needed counterpart messages from unfollowed conversations included in the membership-evaluation snapshot, plus `autoFollowedConversations` persisted through the dossier.
+  - Closed by Task 4 of the same plan: `MembershipStoreSnapshot` gained `unfollowed: [Int: [MailMessageRow]]`, `MembershipRule`'s keyword arm evaluates against it, and `DossierWriter.update` persists newly auto-followed conversations into `pergamenum-dossier-conversations` instead of recomputing them from scratch every sync.
+
+- [x] `PG-118` **P2** Sync never records ledger message/ROWID/conversation-id triples and never invokes conversation recovery (ADR-0036 R-14) — `Sources/Features/Pratiche/PraticheController.swift:~456` <!-- src:session opened:2026-09-10 closed:2026-09-10 runs:1 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. This was unimplemented SPEC data-model work: persisting the ledger's message/ROWID/conversation-id bridge for imported messages, invoking R-14's recovery when a followed conversation id disappears, and reporting unrecoverable ones.
+  - Closed by Task 1 of the same plan (ADR-0036 §D23): `PraticaSyncEngine.SyncOutcome.bridge` records one `PraticaLedger.Entry` per imported message; `PraticheController.recordSyncOutcome` merges it into the ledger; `runExclusive` remaps a followed conversation's id when the index has renumbered it and reports `unrecoverableConversations` rather than silently dropping them.
+
+- [x] `PG-119` **P2** Tray membership's counterpart check only matches the sender, so an outgoing-only conversation addressed to the counterpart is never picked up — `Sources/Core/Pratiche/MembershipRule.swift:141` <!-- src:session opened:2026-09-10 closed:2026-09-10 runs:1 -->
+  - Raised by RTF's Codex review every cycle since cycle 1, deferred as architectural. Investigated during the Pratiche RTF cycle 5 triage: `MailMessageRow` (`Sources/Core/Email/MailMessageRow.swift`) carried no recipient (To/Cc) field at all, only `sender` — fixing this needed a new join/query added to `MailStoreConnection.swift`, the ONE file in the repo `SharedSourcesPurityTests`/the isolation guard permit to call `sqlite3_*`.
+  - Closed by Tasks 2-3 of the same plan: a HITL live probe against a published copy of the real Envelope Index (`docs/adr/0036-pratiche.md` "Follow-up — Task 2 probe results, PG-119") confirmed the `recipients` join's shape; `MailMessageRow` gained `recipients: [String]` (defaulted, declared last) and `MembershipRule`'s `touches()` predicate now matches To/Cc addresses, not sender alone.
+  - **Left open, filed separately below:** §D23.5's remaining tray-row work (persisting `unrecoverableConversations` in the ledger and drawing a tray row for it) — deliberately deferred for this batch per the plan's own Task 6 instruction, not part of PG-119's original scope.
+
+- [ ] `PG-109` **P3** An unrecoverable followed conversation (its id gone after an index renumber, R-14) is reported via `controller.report(...)` only — no ledger persistence, no tray row — `Sources/Features/Pratiche/PraticheController.swift` (`runExclusive`, `unrecoverableConversations`) <!-- src:session opened:2026-09-10 -->
+  - Named as open, on purpose, by ADR-0036 §D23.5 rather than folded into PG-118/PG-119: it needs an invalidation rule for the tray row that has not been designed (when does the row clear — a new sync that re-resolves the conversation? a person dismissing it by hand?), and persisting `unrecoverableConversations` in the ledger is a shape decision, not a bounded code change.
+
+- [ ] `PG-112` **P3** «ChatGPT inside Pergamenum»: an in-app assistant over a pratica, rather than an export command out of one — no file yet, its own chain <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain by Stefano's explicit choice (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The stated direction is to bring ChatGPT into the app, not to export to it, so **no «Esporta per ChatGPT» command was built either**: the timeline is plain markdown on disk and `perg pratica <titolo>` prints it, which already covers copy-and-paste by hand.
+  - One measured obstacle worth keeping (SPEC.md:44): ChatGPT.app registers only the `codex://` URL scheme, so there is no way to hand it text through a URL. Whatever this becomes, it is not a URL hand-off.
+
+- [ ] `PG-113` **P3** «Apri come board»: turn a pratica's timeline into a `.canvas` with one card per message — `Sources/Features/Pratiche/**` + `Sources/Vault/CanvasStore.swift` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain (SPEC.md "Out of scope", ADR-0036 §D20, R-41). Nothing was built toward it: no command, no `.canvas` writer, no node layout. The pieces that would serve it already exist independently — `CanvasStore`, `CanvasID.generate(avoiding:)` and the JSON Canvas 1.0 round trip (principle 4) — so this is composition, not new machinery.
+
+- [ ] `PG-114` **P3** `pergamenum://pratica/add?message=…` URL-scheme entry point, so a message can be filed into a pratica from outside the app — `Sources/Core/Conventions/PergamenumRoute.swift` + `Sources/App/**` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain as M6 territory (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The in-app path exists and is what this would automate: «Aggiungi a pratica da Mail…» (Cmd+Shift+P) reads the selected message through `MailLink.selectedMessage()` and files it. A new route case would need the same Automation consent story and a decision about what happens when the app is closed.
+
+- [ ] `PG-115` **P3** Connector **write** access to pratiche (`perg pratica add-note`, an MCP write tool) — `Sources/Connector/VaultPratiche.swift`, `Sources/CLI/Commands/PraticheCommands.swift`, `Sources/MCPServer/ToolCatalogue+Writing.swift` <!-- src:session opened:2026-09-10 -->
+  - Deferred out of the Pratiche chain: v1 is read-only on purpose (SPEC.md "Out of scope", ADR-0036 §D20, R-36/R-41). `VaultAPI.pratiche(_:)` and `VaultAPI.pratica(_:_:)` shipped, both reading only what is on disk — and a purity test forbids `MailStore`/`EMLXReader`/`SQLite3` under `Sources/Connector`, `Sources/CLI` and `Sources/MCPServer`, which a write path must keep honouring: writing a manual entry touches `pratica.md`, never Mail.
+  - What it would cost, from the existing shape: `PraticaEntry.insert(kind:at:counterpart:in:)` is already pure and shared, so the write itself is one `VaultSession.write` behind `VaultAPI.arm` (dry-run + `UnifiedDiff` + `WriteJournal`, ADR-0007 §D6), plus the MCP tool's `dryRun`-defaults-to-true lock. R-29's daily-note mirror would have to be decided on: the app writes it, a connector arguably should not.
 
 - [ ] `PG-099` **P3** An open Workspace board's pending (debounced) autosave can silently clobber a rename/move's board-repoint write, losing the rewrite with no error shown — `Sources/Features/Workspace/WorkspaceController.swift` (`scheduleSave`/`save`, ~lines 553-585) <!-- src:session opened:2026-09-07 -->
 - [ ] `PG-100` **P4** No test covers a Workspace `.text` card whose body contains both a real `[[Wikilink]]` match and a separate, coincidentally fold-matching quoted bullet on note rename — `Tests/NoteFileOperationTests.swift` (compound case for `renamingDoesNotRewriteAnUnrelatedQuotedBulletInATextCard`, commit `9bb0b50`) <!-- src:session opened:2026-09-07 -->
@@ -173,6 +229,60 @@ edit — kept here as their own tracked items rather than folded into Backlog.
   - **Closed 2026-09-03 (ADR-0029, `concept-to-code` chain, manifest `docs/manifests/2026-09-02-editor-wysiwyg-unification.manifest.yml`).** Full scope delivered: the Modifica/Lettura toggle is gone everywhere (`ShortcutCommand.readingMode` included, §D13), a GFM table is now a real `NSTextAttachmentViewProvider`-hosted editable grid rather than a fourth delimiter substitution (§D-table), and all four §D16 manual probes (nested first responder, `[[` tooltip, table line-fragment height, per-cell `Cmd+Z` granularity) are confirmed by hand. Merged as PR #164/#165; unit suite 2082/2082 green. One accepted platform limitation surfaced during probe 4 and left as documented, not reopened: the caret doesn't blink right after `NoteTextView+TableCaret.swift`'s Enter/Backspace redirect next to a table, a known AppKit/TextKit 2 issue (Apple FB17103305).
   - Also in scope when this proceeds: removing the per-tab `isReadingMode` toggle (`NoteTabBar.swift:70`, `VaultBrowser.swift:132`), whatever becomes of `MarkdownReadingView`/`MarkdownBlocksView` once nothing switches to them, and the UI tests that click the mode control (same family `PG-031` already touched once for an icon change).
   - Scoped by Stefano to go through the `concept-to-code` chain (interview → ADR superseding ADR-0005 §D2 and ADR-0018, amending SPEC §14 → plan), not as a direct code change.
+
+## PROGETTI — pratiche (derived from 2026-09-09-pratiche.manifest.yml) — COMPLETED 2026-09-10
+
+ADR-0036 (`docs/adr/0036-pratiche.md`): a «pratica» is a vault folder that fills itself from a
+published copy of Apple Mail's Envelope Index (system `SQLite3`, db+wal copied, WAL recovered,
+`quick_check`, own indexes, atomic rename), one markdown file per message plus `allegati/`,
+membership via `pergamenum-dossier-*` keys, two-lane timeline, `pratica.md` edited only in the
+inspector, no network, connectors read-only. Plan:
+`docs/superpowers/plans/2026-09-09-pratiche.md`, 10 tasks, R-01…R-41. Branch `feat/pratiche`,
+planning artifacts committed as `8fb5c6b`.
+
+**All 10 tasks implemented and merged into `feat/pratiche` (`step5-report.json`:
+`tasks_completed: [1..10]`, `tasks_failed: []`). Step 6 (review-triage-fix, 5 cycles, Codex
+astra/xhigh) converged and its fixes are in commit `9cd6595`. Manifest transitioned to
+`completed` 2026-09-10. Not yet merged to `main` — no PR opened by explicit choice; `main` merge
+still needs the full `scripts/uitests.sh` run per the Working agreements.** 4 architectural
+findings from review deliberately deferred, tracked as `PG-116`..`PG-119` below — **all four closed
+2026-09-10** by the follow-up plan `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md`
+(ADR-0036 §D21, §D22, §D23; PG-119's live probe). §D23.5's tray-row work stays open as `PG-109`.
+
+- [x] 1. Two probes on the real Mail store (index `message_id` column form, `.emlx` digit-fan
+      rule — Stefano present, schema/paths only), code-built fixture store, `MailStoreReader` (R-02, R-03, R-19)
+- [x] 2. `.emlx` reader, MIME decode, HTML→light markdown, quote split, one `message://` builder
+      measured against Mail (R-04–R-07)
+- [x] 3. Dossier line codec, `PraticaNaming`, message document, membership rule, ledger (R-01, R-08, R-12–R-14, R-37)
+- [x] 4. Sync: atomic writes, attachments (100 MB threshold), `.eml` retention, pending bodies,
+      deletions never delete files (R-09–R-11, R-15, R-16)
+- [x] 5. `PraticaSyncEngine` actor, triggers (pane open, window key, FSEvents debounce), Full Disk
+      Access probe per trigger, connector purity test (R-17–R-19, R-38)
+- [x] 6. Pane (list · timeline · inspector), two lanes, `surface.received/sent/entry` tokens in both
+      themes, sidebar row before Registrazioni (R-23–R-27, R-32, R-33, R-39; screens 1a, 1b, 1c, 1g)
+- [x] 7. Commands (Escludi, Sposta in, Aggiungi anche a, Chiudi/Riapri), «Da smistare» tray,
+      Nota/Telefonata entries via inspector caret, daily-note line (R-28–R-31, R-34)
+- [x] 8. «Nuova pratica…» wizard (Cmd+Opt+P), Mail seed via AppleScript, «Aggiungi a pratica da
+      Mail…» picker (Cmd+Shift+P), drop tracer bullet (R-20–R-22; screens 1d, 1e)
+- [x] 9. Settings › Pratiche eleventh tab (fits 700×560, re-measure toolbar collapse), `perg
+      pratiche`/`pratica` + MCP reads (R-35, R-36; screen 1f)
+- [x] 10. Accessibility identifiers, SPEC §14 amendment note, `-mailStoreRoot` in all 19 UI-test
+      files, regeneration diff sheet, full `scripts/uitests.sh` before merge (R-18, R-33, R-39, R-40, R-41)
+      — **caveat: the full UI suite is named as done by this task's own description, but the
+      full-suite run for the merge-to-`main` gate itself has not happened yet** (no PR/merge this
+      session by explicit choice); still owed before `main`.
+
+Deferred, recorded per R-41 (each needs its own chain, none blocks this one):
+- [ ] ChatGPT inside Pergamenum (Stefano, 2026-09-09: "vorrei portare chatgpt dentro a pergamenum")
+      — replaces the rejected «Esporta per ChatGPT» file export; no network in any feature, so the
+      shape is undecided
+- [ ] «Apri come board»: a pratica rendered as a `.canvas` in the Workspace
+- [ ] URL-scheme entry point `pergamenum://pratica/add?message=…`
+- [ ] Connector write access to pratiche (`perg`/`pergamenum-mcp` stay read-only in ADR-0036 §D19)
+
+Open risks named by the ADR: torn index copy while Mail writes (`quick_check` + one retry, then
+«Mail sta scrivendo»); 84k of 129k `.emlx` are `.partial` so first imports show many pending rows;
+shortcuts Ctrl+Cmd+P / Cmd+Opt+P / Cmd+Shift+P still to be measured against `com.apple.symbolichotkeys`.
 
 ## Steps — workspace-tasks-notes-integration (derived from 2026-08-24-workspace-tasks-notes-integration.manifest.yml)
 

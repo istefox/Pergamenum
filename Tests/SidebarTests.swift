@@ -49,6 +49,25 @@ import Testing
     #expect(Navigation.Pane.views.shortcut == .paneViews)
 }
 
+// ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 6 -
+// R-33: «Pratiche» sits in LAVORO, immediately before «Registrazioni» (UX-BLUEPRINT.md
+// "Sidebar (column 1, existing)": "new row «Pratiche» in the LAVORO group, immediately
+// before «Registrazioni»"). Red until the coder adds `.pane(.pratiche)` to
+// `SidebarItem.Group.work.items` - the tester declares the placement fact, not the row.
+@Test func praticheSitsInLavoroImmediatelyBeforeRecordings() {
+    let work = SidebarItem.Group.work.items
+    #expect(work.contains(.pane(.pratiche)), "«Pratiche» non è nel gruppo LAVORO")
+
+    let praticheIndex = work.firstIndex(of: .pane(.pratiche))
+    let recordingsIndex = work.firstIndex(of: .pane(.recordings))
+    if let praticheIndex, let recordingsIndex {
+        #expect(
+            recordingsIndex == praticheIndex + 1,
+            "«Pratiche» deve precedere immediatamente «Registrazioni» in LAVORO"
+        )
+    }
+}
+
 // MARK: - Il catalogo delle viste
 
 private let catalogueNote = """

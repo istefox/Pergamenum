@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0036: a task's board relation is named once, so the row's context menu, the
+// ADR-0039: a task's board relation is named once, so the row's context menu, the
 // Attività toolbar, the Task menu and the "Task collegati" panel's row read the same
 // catalogue instead of four hand-kept lists that had already drifted apart.
 

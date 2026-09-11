@@ -8,6 +8,7 @@ import XCTest
 final class SectionToolbarsUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
+    private var mailStoreRoot: URL!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -18,8 +19,12 @@ final class SectionToolbarsUITests: XCTestCase {
         stateBase = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
+        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
+            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
+                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-disablePlaud", "YES",
                                "-disableUpdater", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
@@ -31,6 +36,7 @@ final class SectionToolbarsUITests: XCTestCase {
         app?.terminate()
         try? FileManager.default.removeItem(at: vault)
         try? FileManager.default.removeItem(at: stateBase)
+        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     /// Clicks a pane in the sidebar and waits for it to be showing.
@@ -106,7 +112,7 @@ final class SectionToolbarsUITests: XCTestCase {
         // The four actions on a task are there and refuse to act on nothing: with no
         // row selected they would otherwise be four buttons that silently do nothing.
         // «Vai alla board collegata» is the fifth and is omitted rather than disabled with
-        // no task selected (ADR-0036 §D1), so it is not asserted here.
+        // no task selected (ADR-0039 §D1), so it is not asserted here.
         for label in ["Completa o riapri", "Pianifica oggi", "Collega una board…", "Vai alla nota di origine"] {
             XCTAssertFalse(button(label).isEnabled, "«\(label)» è attivo senza un task selezionato")
         }

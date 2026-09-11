@@ -1,139 +1,956 @@
 {
   "step5_mode": "agent_batch",
-  "manifest": "docs/manifests/2026-09-08-word-grained-markdown-reveal-on-caret-in.manifest.yml",
-  "tasks_completed": [1, 2, 3, 4, 5, 6, 7],
+  "tasks_completed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
   "tasks_failed": [],
-  "task_8_partial": {
-    "done": ["full unit suite green (2507 tests, 94 suites, 8.6s)", "verified only Task-3/Task-6-named test helper signatures were extended in existing tests, no assertion weakened", "CLAUDE.md verified already accurate (written at Gate 3)", "PROJECT_BRIEF.md Status entry added"],
-    "deferred_by_operator": ["scripts/uitests.sh (auth prompt canceled unattended, will run with operator present, after commit)", "R-11 hand check (Debug build + throwaway vault visual caret walk-through, after commit)"]
+  "files_modified": [
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/agent-memory/coder/MEMORY.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/agent-memory/tester/MEMORY.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/agent-memory/tester/pergamenum-tester-stub-pattern.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-1.done",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-2.done",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-3.done",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-4.done",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-5.done",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-batch-6.done",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-brief-1.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-brief-2.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-brief-3.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-brief-4.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/.claude/dispatch/step5-brief-6.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/CLAUDE.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/PROJECT_BRIEF.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Resources/Themes/pergamenum-dark.json",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Resources/Themes/pergamenum-light.json",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/CommandActions+CanRun.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/CommandActions.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/MenuCommands.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/Navigation.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/PergamenumApp.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/RootView.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/SidebarItem.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/App/VaultCommands.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/CLI/Commands/PraticheCommands.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/CLI/Help.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/CLI/main.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Connector/VaultPayloads.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Connector/VaultPratiche.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/EMLXLocator.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/EMLXReader.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/EmailHeaders.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/HTMLTextReducer.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MIMEDecoder.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MIMEPart.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailAttachmentRef.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailConversation.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailLink.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailMessageRow.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailStoreConnection.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailStoreCopy.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailStoreLocation.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailStoreReader.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailURL.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/MailboxRef.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Email/QuoteSplitter.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/DailyNoteMirror.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/Dossier.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/DossierYAML.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/MembershipRule.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/MessageDocument.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticaEntry.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticaLedger.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticaNaming.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticaSyncPlan.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticaTrayModel.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Pratiche/PraticheSettings.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Core/Shortcuts/ShortcutCommand.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/DesignSystem/Theme.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/DesignSystem/TokenKeys.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/AddToPraticaOrdering.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/AddToPraticaSheet.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/AttachmentChip.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/AttachmentChipModel.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/FullDiskAccessBanner.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/FullDiskAccessProbe.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/MailDropReceiver.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/MailSeedPicker.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/MessageCommand.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/NuovaPraticaWizard.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaCommand.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaCommandActions.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaEntryComposer.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaEntryRow.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaMessageRow.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaSyncEngine.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaTimelineModel.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaTimelineView.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaTopBar.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaTrayStrip.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticaWatcher.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticheController.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticheListColumn.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PratichePane.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/PraticheSidebarGrouping.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Pratiche/WizardState.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Settings/PraticheSettingsTab.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Features/Settings/SettingsView.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/MCPServer/ToolCatalogue.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/MCPServer/VaultHost.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Sources/Vault/VaultSettings.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/TODO.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/AttachmentChipTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/DesignSystemTests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/DossierTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/EMLXReaderTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/EmailFixtureCorpus.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/EmailTests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/HTMLTextReducerTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/MIMEDecoderTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/MailStoreFixture.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/MailStoreReaderTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/MembershipRuleTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/MessageDocumentTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaCommandTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaEntryTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaLedgerTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaNamingTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaSyncTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaTimelineTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaTrayTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticaWizardTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticheConnectorTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticheControllerTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticheIsolationTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/PraticheSettingsTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/QuoteSplitterTests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/SharedSourcesPurityTests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/ShortcutTests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/Tests/SidebarTests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/CompletionPanelUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/ComposerUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/DayViewUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/DesignAndReadingUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/DiaryUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/EditorCompletionUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/HistoryNavigationUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/NoteImageUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/NoteTreeAndShortcutsUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/PraticheUITests.swift",
+      "operation": "create"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/SectionToolbarsUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/SidebarMoveUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/TaskTimeUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/TimeBlockUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/TimelineHoursUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/UpdateMenuUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/WorkspaceBoardUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/WorkspaceFocusUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/WorkspaceIntegrationUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/UITests/WorkspaceOpenStateUITests.swift",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/docs/20260811_Pergamenum_SpecApp.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/docs/adr/0036-pratiche.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/docs/manifests/2026-09-09-pratiche.manifest.yml",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md",
+      "operation": "edit"
+    },
+    {
+      "path": "/Users/stefer/Developer/Pergamenum/scripts/mcp-smoke.py",
+      "operation": "edit"
+    }
+  ],
+  "test_result": "green",
+  "test_output_tail": "Test run with 2647 tests in 115 suites passed after 12.706 seconds. (serial run; two prior parallel runs red only on ReleasePipelineTests.appcastSelfTestExitsZeroWithOutput 60 s subprocess timeout under machine load: Time Machine + mds + a third-party helper at 85% CPU; the self-test alone runs in 0.1 s)",
+  "harness_deltas": "PASS=2647 FAIL=0 (baseline 0f42b3f: 2463; +184 tests). perg and pergamenum-mcp BUILD SUCCEEDED; scripts/mcp-smoke.py green incl. pratiche stage; interface-check 7 protected entries, 0 violations. UI suite (scripts/uitests.sh, whole bundle): 113 tests, 2 failures, both reproduced on main; PraticheUITests 7/7 green after the fixture fix.",
+  "checkpoint_reviews": [],
+  "weakening_findings": [],
+  "suspect_findings": [
+    {
+      "file": "Tests/PraticheConnectorTests.swift",
+      "detector": "zero-assertion-test",
+      "line": 162,
+      "note": "structural no-throw test for R-36; reviewed, kept"
+    },
+    {
+      "file": ".claude/dispatch/step5-brief-6.md",
+      "detector": "swallowed-error",
+      "line": 54,
+      "note": "brief prose, not code"
+    },
+    {
+      "file": "Sources/Vault/VaultWatcher.swift",
+      "detector": "flaky-crash",
+      "note": "pre-existing EXC_BAD_ACCESS in the FSEvents callback after the watcher is freed; attributed to whichever test runs; last watcher change 57a3dce; candidate PG ticket"
+    },
+    {
+      "file": "Tests/ReleasePipelineTests.swift",
+      "detector": "flaky-timeout",
+      "note": "appcastSelfTestExitsZeroWithOutput / fetchSparkleToolsScriptExistsAndPassesSyntaxCheck hit their 60 s subprocess timeout under machine load; pass alone in 0.2 s"
+    },
+    {
+      "file": "UITests/DayViewUITests.swift",
+      "detector": "ui-test-red-on-main",
+      "note": "testTheMonthFollowsTheDividerAndHasNoGripOfItsOwn fails identically on main (460 not > 460); pre-existing, not this chain"
+    },
+    {
+      "file": "UITests/WorkspaceBoardUITests.swift",
+      "detector": "ui-test-red-on-main",
+      "note": "testAZoomedOutCardStillHasAReadableAccessibilityLabel fails identically on main (empty label); pre-existing, not this chain"
+    }
+  ],
+  "weakening_scan": "ran",
+  "requirement_coverage": {
+    "ids_declared": 41,
+    "uncovered": [
+      {
+        "id": "R-22",
+        "missing": "tests",
+        "note": "tracer bullet: needs a person dragging a message from Mail; deferred to Gate 5 by decision; MailDropReceiver ships as the documented probe shell"
+      }
+    ],
+    "unscoped": [],
+    "status": "fail"
+  },
+  "tests_written_by": [
+    {
+      "task": 1,
+      "agent": "tester"
+    },
+    {
+      "task": 2,
+      "agent": "tester"
+    },
+    {
+      "task": 3,
+      "agent": "tester"
+    },
+    {
+      "task": 4,
+      "agent": "tester"
+    },
+    {
+      "task": 5,
+      "agent": "tester"
+    },
+    {
+      "task": 6,
+      "agent": "tester"
+    },
+    {
+      "task": 7,
+      "agent": "tester"
+    },
+    {
+      "task": 8,
+      "agent": "tester"
+    },
+    {
+      "task": 9,
+      "agent": "tester"
+    },
+    {
+      "task": 10,
+      "agent": "tester"
+    }
+  ],
+  "budget_findings": [],
+  "plan_deviations": [
+    {
+      "task": "1",
+      "constraint": "§D3 message_id lookup by RFC Message-ID",
+      "action": "altered",
+      "reason": "messages.message_id is a hash; lookup via message_id_header per probe"
+    },
+    {
+      "task": "2",
+      "constraint": "QuoteSplitter display-name signature rule",
+      "action": "declined",
+      "reason": "split(_:) has no sender; only the -- marker"
+    },
+    {
+      "task": "2",
+      "constraint": "EMLXLocator per-mailbox cache",
+      "action": "declined",
+      "reason": "static locator; the sync owns any cache"
+    },
+    {
+      "task": "3",
+      "constraint": "MessageDocument frontmatter field set",
+      "action": "altered",
+      "reason": "subject and storeReferences (pergamenum-mail-store-references) added by orchestrator decision"
+    },
+    {
+      "task": "4",
+      "constraint": "R-16 detection",
+      "action": "altered",
+      "reason": "absent from candidates AND row(forMessageID:) not .found; R-15 second in-place pass by Message-ID"
+    },
+    {
+      "task": "6",
+      "constraint": "identifiers and R-26 «non più in Mail»",
+      "action": "altered",
+      "reason": "hyphenated pratiche-*; not-in-store list added to the ledger in Task 7"
+    },
+    {
+      "task": "7",
+      "constraint": "«Rigenera» with a UnifiedDiff preview (ADR §D6)",
+      "action": "altered",
+      "reason": "confirmation sheet + trash + re-sync; diff preview recorded as open point"
+    },
+    {
+      "task": "7",
+      "constraint": "«Inserisci qui» hover gap between rows",
+      "action": "altered",
+      "reason": "row context submenu"
+    },
+    {
+      "task": "8",
+      "constraint": "@dominio counterpart chip in the wizard",
+      "action": "declined",
+      "reason": "MembershipRule has no domain arm"
+    },
+    {
+      "task": "8",
+      "constraint": "R-22 drop tracer bullet",
+      "action": "declined",
+      "reason": "needs a human drag; deferred to Gate 5, MailDropReceiver is a probe shell"
+    },
+    {
+      "task": "9",
+      "constraint": "connector mirrors PraticheController.listItems reading dossiers off index records",
+      "action": "altered",
+      "reason": "StoredFrontmatter drops foreign keys on cache reuse; both now parse pratica.md via Dossier.parse(praticaFileAt:)"
+    },
+    {
+      "task": "9",
+      "constraint": "Settings window 700 pt",
+      "action": "altered",
+      "reason": "eleven tabs collapse at 700 (measured); 760 fits"
+    },
+    {
+      "task": "10",
+      "constraint": "pratiche-insert-here-<index>, pratiche-row-<slug>",
+      "action": "altered",
+      "reason": "kind and folder path are the stable keys"
+    },
+    {
+      "task": "orchestrator",
+      "constraint": "R-27 chip menu «Copia»",
+      "action": "altered",
+      "reason": "orchestrator edit after the coverage gate: Copia writes the file URL, name fallback; AttachmentChipModel by an extra tester dispatch"
+    }
+  ],
+  "task_metrics": [
+    {
+      "task": "1",
+      "test_count_delta": 1,
+      "deleted_lines": 45,
+      "iteration_count": 3,
+      "elapsed_wall_seconds": 3170
+    },
+    {
+      "task": "2-3",
+      "test_count_delta": 9,
+      "deleted_lines": 150,
+      "iteration_count": 1,
+      "elapsed_wall_seconds": 7028
+    },
+    {
+      "task": "4",
+      "test_count_delta": 10,
+      "deleted_lines": 197,
+      "iteration_count": 1,
+      "elapsed_wall_seconds": 11874
+    },
+    {
+      "task": "5-6",
+      "test_count_delta": 13,
+      "deleted_lines": 256,
+      "iteration_count": 1,
+      "elapsed_wall_seconds": 16364
+    },
+    {
+      "task": "7-8",
+      "test_count_delta": 18,
+      "deleted_lines": 305,
+      "iteration_count": 1,
+      "elapsed_wall_seconds": 20887
+    },
+    {
+      "task": "9-10",
+      "test_count_delta": 21,
+      "deleted_lines": 315,
+      "iteration_count": 2,
+      "elapsed_wall_seconds": 25051
+    }
+  ],
+  "batch_sizing": {
+    "mode": "openers",
+    "computed": [
+      "1-3",
+      "4-6",
+      "7-9",
+      "10"
+    ],
+    "dispatched": [
+      "1",
+      "2-3",
+      "4",
+      "5-6",
+      "7-8",
+      "9-10"
+    ]
   },
   "worktree_merges": [
     {
-      "stage": "batch-1-tester",
+      "stage": "tester",
       "agent_type": "tester",
-      "branch": "worktree-agent-a6385459e214424d6",
-      "base_sha": "533172d959e518417ab20c40f471f471aed8524d",
-      "merge_result": "fast-forward 40e6205"
+      "branch": "worktree-agent-a5bb95fddf957de86",
+      "base_sha": "0f42b3f",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-1-coder",
+      "stage": "coder",
       "agent_type": "coder",
-      "branch": "worktree-agent-batch1-coder",
-      "base_sha": "40e6205",
-      "merge_result": "fast-forward 342a59e"
+      "branch": "worktree-agent-a333f15fdb294277d",
+      "base_sha": "af2b215",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-2-tester",
+      "stage": "tester-fix",
       "agent_type": "tester",
-      "branch": "worktree-agent-batch2-tester",
-      "base_sha": "342a59e",
-      "merge_result": "fast-forward 6489498"
+      "branch": "worktree-agent-abcb58cc77c7687d0",
+      "base_sha": "5958ecf",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-2-coder",
+      "stage": "tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-a680238c4f5637431",
+      "base_sha": "98ca4a6",
+      "merge_result": "fast-forward"
+    },
+    {
+      "stage": "coder",
       "agent_type": "coder",
-      "branch": "worktree-agent-batch2-coder",
-      "base_sha": "6489498",
-      "merge_result": "fast-forward e0a21c9"
+      "branch": "worktree-agent-a5e388fba896b0686",
+      "base_sha": "fcc4fda",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-3-tester",
+      "stage": "tester",
       "agent_type": "tester",
-      "branch": "worktree-agent-a87d000f962387da3",
-      "base_sha": "e0a21c9",
-      "merge_result": "fast-forward 8cf5239"
+      "branch": "worktree-agent-a64f87d9eca625abd",
+      "base_sha": "0b77bc4",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-3-coder",
+      "stage": "coder",
       "agent_type": "coder",
-      "branch": "worktree-agent-aa85ff9d442e2feba",
-      "base_sha": "8cf5239",
-      "merge_result": "fast-forward 25493a4"
+      "branch": "worktree-agent-a3219956e59e7c9dd",
+      "base_sha": "04da63d",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-4-tester",
+      "stage": "tester",
       "agent_type": "tester",
-      "branch": "worktree-agent-af6edcd3be8de95fb",
-      "base_sha": "25493a4",
-      "merge_result": "fast-forward 998ae52",
-      "note": "no coder dispatch — task had no meaningful red/stub split (stored property + SwiftUI Toggle), tester wrote complete implementation"
+      "branch": "worktree-agent-a88bbca6921d76239",
+      "base_sha": "8cdf2ab",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-5-tester",
-      "agent_type": "tester",
-      "branch": "worktree-agent-a2a683168ae244916",
-      "base_sha": "998ae52",
-      "merge_result": "fast-forward 34dfa63",
-      "note": "no coder dispatch — tester judged the applyReveal logic low-risk enough to write correct directly, no red/stub state"
+      "stage": "coder",
+      "agent_type": "coder",
+      "branch": "worktree-agent-a4528e7b0f74ee090",
+      "base_sha": "a0c4596",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-6-tester",
+      "stage": "tester",
       "agent_type": "tester",
-      "branch": "worktree-agent-af82038093c4fd542",
-      "base_sha": "34dfa63",
-      "merge_result": "fast-forward 78cef09",
-      "note": "no coder dispatch — mirrors Task 5's pattern one level down (card instead of note), tester wrote correct directly"
+      "branch": "worktree-agent-a9555e1787dd35ffd",
+      "base_sha": "530e29c",
+      "merge_result": "fast-forward"
     },
     {
-      "stage": "batch-7-tester",
+      "stage": "coder",
+      "agent_type": "coder",
+      "branch": "worktree-agent-a3b5ae9ee43f008aa",
+      "base_sha": "157c514",
+      "merge_result": "fast-forward"
+    },
+    {
+      "stage": "tester",
       "agent_type": "tester",
-      "branch": "worktree-agent-a15f075c5cfd87cdd",
-      "base_sha": "78cef09",
-      "merge_result": "fast-forward 44fc082",
-      "note": "no coder dispatch — task rule is 'no production code unless a fence fails'; all 5 assertion groups passed cleanly, no fence violation"
+      "branch": "worktree-agent-a8322be7a7b939601",
+      "base_sha": "dddd140",
+      "merge_result": "fast-forward"
+    },
+    {
+      "stage": "coder",
+      "agent_type": "coder",
+      "branch": "worktree-agent-a101dee3aba61f5f4",
+      "base_sha": "9a60cdb",
+      "merge_result": "fast-forward"
+    },
+    {
+      "stage": "tester",
+      "agent_type": "tester",
+      "branch": "worktree-agent-afc2127e521f919ec",
+      "base_sha": "5c2e472",
+      "merge_result": "fast-forward"
+    },
+    {
+      "stage": "tester-fix",
+      "agent_type": "tester",
+      "branch": "worktree-agent-a9061bfa8e3c14402",
+      "base_sha": "fd5c3fe",
+      "merge_result": "fast-forward"
     }
   ],
-  "checkpoint_reviews": [],
-  "weakening_findings": [],
-  "suspect_findings": [],
-  "budget_findings": [
-    {
-      "stage": "batch-5",
-      "type": "SCOPE",
-      "files": ["DiaryView.swift", "EditorColumn+Text.swift", "NoteTextView+Coordinator.swift", "NoteTextView.swift", "TodayView.swift"],
-      "verdict": "false-positive",
-      "reason": "diff-budget-check.sh matches exact path strings; plan Task 5's Budget line lists these five files by bare basename (no directory prefix), while the actual diff paths are directory-qualified. Manually confirmed all five are exactly the files Task 5's Budget declares, no real out-of-scope file. Reporter only, no gate."
-    },
-    {
-      "stage": "batch-6",
-      "type": "SCOPE",
-      "files": ["CardTextView+Reveal.swift", "CardTextView.swift", "StickyTextCard.swift", "WorkspaceController.swift", "WorkspaceView.swift"],
-      "verdict": "false-positive",
-      "reason": "Same bare-basename mismatch as batch-5's finding. Manually confirmed all five are exactly the files Task 6's Budget declares. Reporter only, no gate."
-    },
-    {
-      "stage": "batch-7",
-      "type": "BUDGET",
-      "files": ["Tests/InlineSpanRevealFenceTests.swift"],
-      "actual_lines": 445,
-      "declared_lines": 180,
-      "verdict": "accepted-overshoot",
-      "reason": "Test-only file (no production code, per Task 7's own rule) covering 5 distinct assertion groups (invariant, R-06, R-07, R-09/F1, out-of-scope fence), each needing its own fixtures. Reporter only, no gate."
-    }
-  ],
-  "plan_deviations": [
-    {
-      "stage": "end-of-task-7-fullcorpus-gate",
-      "type": "requirement-coverage",
-      "finding": "R-08 UNSCOPED by spec-coverage.sh --tests-root Tests",
-      "verdict": "expected-gap",
-      "reason": "R-08 is the settings Toggle offered in Impostazioni (Task 4). It's a SwiftUI Toggle with no unit-test precedent in EditorSettings.swift for testing individual Toggles; verified only by full-suite build success at Task 4. Expected to be exercised by scripts/uitests.sh and the R-11 hand check in Task 8."
-    },
-    {
-      "stage": "batch-8",
-      "type": "deferred",
-      "finding": "scripts/uitests.sh failed to launch: LocalAuthentication prompt canceled (nobody present to approve), not a code defect.",
-      "verdict": "deferred-by-operator",
-      "reason": "Operator (Stefano) chose to run scripts/uitests.sh after committing, in his own terminal presence, rather than retry unattended. TODO before merge to main: run scripts/uitests.sh once, all green, per CLAUDE.md's rule."
-    },
-    {
-      "stage": "batch-8",
-      "type": "deferred",
-      "finding": "R-11 hand check (ADR-0018 §D6 probe, Debug build + throwaway vault + visual caret walk-through in note editor and Workspace card) not yet performed.",
-      "verdict": "deferred-by-operator",
-      "reason": "Operator chose to perform the R-11 hand check after committing, alongside the UI suite. TODO before merge to main: run the hand check per Task 8's step 3, write the result into PROJECT_BRIEF.md beside the milestone."
-    }
-  ],
-  "task_metrics": [],
   "errors": []
 }

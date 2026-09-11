@@ -104,6 +104,14 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("font.proseTitle"), "\(id) should define font.proseTitle")
         #expect(!theme.inheritedTokens.contains("spacing.readable"), "\(id) should define spacing.readable")
         #expect(theme.spacing(.readable) == 720, "\(id): spacing.readable should resolve to 720")
+
+        // ADR-0036 (Pratiche) §D16, plan Task 6 - R-39: the timeline's three surface
+        // tokens must be defined by both bundled themes, not inherited from
+        // `Theme.emergency`'s placeholder. Red until the coder adds `color.surface.
+        // received`, `.sent` and `.entry` to both theme JSON files.
+        #expect(!theme.inheritedTokens.contains("color.surface.received"), "\(id) should define color.surface.received")
+        #expect(!theme.inheritedTokens.contains("color.surface.sent"), "\(id) should define color.surface.sent")
+        #expect(!theme.inheritedTokens.contains("color.surface.entry"), "\(id) should define color.surface.entry")
     }
 }
 

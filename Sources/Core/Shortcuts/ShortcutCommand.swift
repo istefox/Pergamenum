@@ -113,6 +113,28 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// (`CommandActions+CanRun.swift`, Task 8's coder step).
     case refreshRecordings
 
+    // ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 6 -
+    // R-33; ADR §D8. Appended at the end, never inserted (ADR-0005 §D8: raw values are
+    // the overrides-file keys). The case is a declaration this batch owns; Task 8 still
+    // does the `com.apple.symbolichotkeys` measurement before the binding below ships -
+    // it may change `defaultBinding` below, never remove or move this case.
+    /// The eleventh pane: jumps to "Pratiche" (`Navigation.Pane.pratiche`).
+    case panePratiche
+
+    // Plan Task 8 - R-20, R-21; ADR §D8/§D20. Appended at the end, never inserted
+    // (same reason as `panePratiche` above). Measured against
+    // `com.apple.symbolichotkeys` before being bound (58 entries examined, no enabled
+    // entry mapped to keycode 35/`p` under Cmd+Opt or Cmd+Shift - see
+    // `bothNewPraticheCommandsBindToTheirMeasuredFreeKeysInTheirOwnSections` and this
+    // batch's tester report).
+    /// File → "Nuova pratica…" (UX-BLUEPRINT.md's menu bar map): opens the wizard from
+    /// any pane.
+    case newPratica
+    /// Inserisci → "Aggiungi a pratica da Mail…": reads Mail's selection and opens the
+    /// pratica picker sheet, reachable from the Inserisci menu, the sidebar toolbar and
+    /// the pratica row's context menu from this one declaration (R-21).
+    case addToPraticaFromMail
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -139,18 +161,18 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory,
-             .toggleStar, .applyTemplate:
+             .toggleStar, .applyTemplate, .newPratica:
             .file
         case .newTab, .closeTab, .reopenTab:
             .tab
         case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious:
             .edit
-        case .insertWikilink, .insertRelated:
+        case .insertWikilink, .insertRelated, .addToPraticaFromMail:
             .insert
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .foldSection, .unfoldAll, .goBack, .goForward,
-             .paneRecordings, .refreshRecordings:
+             .paneRecordings, .refreshRecordings, .panePratiche:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -213,6 +235,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newReminder: "Nuovo promemoria"
         case .paneRecordings: "Vai a Registrazioni"
         case .refreshRecordings: "Aggiorna registrazioni"
+        case .panePratiche: "Vai a Pratiche"
+        case .newPratica: "Nuova pratica…"
+        case .addToPraticaFromMail: "Aggiungi a pratica da Mail…"
         }
     }
 
@@ -319,6 +344,21 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // Measured free both in this app (`revealInFinder` holds Cmd+Shift+R; nothing holds
         // the unshifted form) and in the system map (ADR §D15).
         case .refreshRecordings: KeyBinding("r", .command)
+        // Ctrl+Cmd+P: the digits are exhausted (Ctrl+Cmd+0 is `.paneRecordings`),
+        // so the eleventh pane takes the next free letter on the same modifier pair
+        // (plan Task 6; Task 8 still measures it against `com.apple.symbolichotkeys`
+        // before this ships, ADR §D8).
+        case .panePratiche: KeyBinding("p", [.command, .control])
+        // Measured against `com.apple.symbolichotkeys` at wiring time (Task 8, plan
+        // 2026-09-09-pratiche.md): 58 entries examined via `defaults export
+        // com.apple.symbolichotkeys -`, none mapped to keycode 35 (`p`) under
+        // Cmd+Opt or Cmd+Shift, and none of this catalogue's own bindings uses "p"
+        // under either modifier pair either (`noTwoCommandsShipOnTheSameKeys` is the
+        // standing guard). File → "Nuova pratica…" gets Cmd+Opt+P.
+        case .newPratica: KeyBinding("p", [.command, .option])
+        // Inserisci → "Aggiungi a pratica da Mail…" gets Cmd+Shift+P, the UX
+        // blueprint's own binding, checked the same way.
+        case .addToPraticaFromMail: KeyBinding("p", [.command, .shift])
         }
     }
 }

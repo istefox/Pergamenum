@@ -178,6 +178,12 @@ final class CommandActions {
             vault.saveOpenNote()
         case .openVault:
             VaultOpenPanel.chooseVault(into: vault)
+        case .newPratica:
+            // The Pratiche pane first, for the same reason «Nuova nota» goes to the
+            // Note pane: the sheet is presented over the window and «Crea» selects the
+            // new pratica, which from any other pane would happen out of sight.
+            navigation.pane = .pratiche
+            navigation.isShowingNuovaPratica = true
         case .copyLink, .revealInFinder, .toggleStar:
             runOnOpenNote(command)
         default:
@@ -226,6 +232,12 @@ final class CommandActions {
         switch command {
         case .insertWikilink:
             navigation.insert("[[]]", cursorBack: 2)
+        case .addToPraticaFromMail:
+            // No pane change, unlike «Nuova pratica…»: this one is about the message
+            // selected in Mail, and it is meant to work from wherever you are - the
+            // same reasoning the quick-capture sheet is presented at window level with
+            // (`RootView.swift`).
+            navigation.isShowingAddToPratica = true
         default:
             assertionFailure("«\(command.title)» è nella sezione Inserisci e non è gestito")
         }
@@ -234,7 +246,8 @@ final class CommandActions {
     private func runView(_ command: ShortcutCommand) {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneDiary,
-             .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings:
+             .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings,
+             .panePratiche:
             runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()

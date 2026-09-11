@@ -212,9 +212,9 @@ private func makeTask(_ line: String = "- [ ] Capofila", sourcePath: String = "x
     #expect(actions.vault.taskDraft == nil)
 }
 
-// MARK: - ADR-0036: `TaskCommand`'s three actions, on `CommandActions`
+// MARK: - ADR-0039: `TaskCommand`'s three actions, on `CommandActions`
 //
-// The breadcrumb's old defect (ADR-0036 §D1) was a navigation that changed state nobody
+// The breadcrumb's old defect (ADR-0039 §D1) was a navigation that changed state nobody
 // was watching: `vault.openNote(at:)` alone, with no `navigation.pane` change, loads a
 // note into a background tab that never comes forward. `.goToNote` closes that in the
 // one place every surface now reads from.

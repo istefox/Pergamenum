@@ -143,20 +143,27 @@ func parsesAddressForms(_ testCase: (raw: String, name: String?, address: String
 }
 
 // MARK: - message:// links
+//
+// ADR-0036 §D9 (plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 2): one
+// `message://` builder, `MailURL.forMessageID(_:)`, shared by `EmailHeaders.mailURL`
+// and `MailLink.url(forMessageID:)` - which encoding it emits is decided by an
+// on-device measurement with Stefano present, not by this test, so these assert
+// delegation only.
 
-@Test func buildsTheMailURLFromTheMessageID() throws {
+@Test func buildsTheMailURLByDelegatingToMailURL() {
     let headers = EmailHeaderParser.parse(realisticEml)
-    let url = try #require(headers.mailURL)
-    #expect(url.scheme == "message")
-    // Mail wants the angle brackets percent-encoded, which is why they are stripped
-    // on parse and restored here.
-    #expect(url.absoluteString.contains("%3C"))
-    #expect(url.absoluteString.contains("%3E"))
+    #expect(headers.mailURL == MailURL.forMessageID(headers.messageID))
 }
 
 @Test func hasNoMailURLWithoutAMessageID() {
     let headers = EmailHeaderParser.parse("From: a@b.test\nSubject: x\n\ncorpo")
+    #expect(headers.mailURL == MailURL.forMessageID(headers.messageID))
     #expect(headers.mailURL == nil)
+}
+
+@Test func mailLinkURLDelegatesToMailURL() {
+    let messageID = "abc@rossi-spa.it"
+    #expect(MailLink.url(forMessageID: messageID) == MailURL.forMessageID(messageID)?.absoluteString)
 }
 
 // MARK: - Thumbnail cache keys

@@ -96,6 +96,22 @@ import Testing
     #expect(ShortcutCommand.refreshRecordings.defaultBinding == KeyBinding("r", .command))
 }
 
+// MARK: - ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 8
+//
+// R-20, R-21; ADR §D8/§D20. `noTwoCommandsShipOnTheSameKeys` and
+// `everyShippedDefaultIsUsable` above already walk `ShortcutCommand.allCases`, so both
+// new commands are exercised by them with no edit to either test - this pins the two
+// facts those generic checks cannot: which key each carries and which section it lives
+// in, per this batch's `com.apple.symbolichotkeys` measurement (58 entries examined, no
+// enabled match for Ctrl+Cmd+P, Cmd+Opt+P or Cmd+Shift+P).
+
+@Test func bothNewPraticheCommandsBindToTheirMeasuredFreeKeysInTheirOwnSections() {
+    #expect(ShortcutCommand.newPratica.section == .file)
+    #expect(ShortcutCommand.newPratica.defaultBinding == KeyBinding("p", [.command, .option]))
+    #expect(ShortcutCommand.addToPraticaFromMail.section == .insert)
+    #expect(ShortcutCommand.addToPraticaFromMail.defaultBinding == KeyBinding("p", [.command, .shift]))
+}
+
 // MARK: - The store
 
 /// A throwaway suite, so these never touch the real preferences.

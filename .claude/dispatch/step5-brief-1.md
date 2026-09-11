@@ -1,60 +1,61 @@
-<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md tasks=1 lines=121-154 -->
-# Step 5 Batch Brief -- 2026-09-08-word-grained-markdown-reveal-on-caret-in.md -- tasks 1-1
+<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md tasks=1 lines=125-155 -->
+# Step 5 Batch Brief -- 2026-09-09-pratiche.md -- tasks 1-1
 
-## Task text (verbatim, plan lines 121-154)
+## Task text (verbatim, plan lines 125-155)
 
-### Task 1 — `InlineSpanReveal`: what a construct is, and which one the caret is in (R-01, R-02, R-04, R-05, R-10)
+### Task 1 — the two probes, the code-built fixture store, and `MailStoreReader` (R-02, R-03, R-19)
 
-New file `Sources/Features/Editor/InlineSpanReveal.swift`, an `enum` namespace with no state and
-two static functions, both taking a plain `String` paragraph:
-
-```swift
-static func constructs(inParagraph paragraph: String) -> [NSRange]
-static func revealed(inParagraph paragraph: String, touchedBy range: NSRange) -> [NSRange]
-```
-
-- `constructs` runs `MarkdownStyler.spans(in: paragraph)` and keeps, converted to UTF-16
-  `NSRange` with `NSRange(_:in:)`: every `.bold`/`.italic`/`.strikethrough` range as-is; every
-  `.linkSyntax` range whose text starts with `[[` as-is; and each `.linkSyntax` range that is
-  exactly `[`, joined to the **next** `.linkSyntax` range starting with `](` (F2). Sorted by
-  location. Duplicates removed.
-- `revealed` applies ADR §D5: for `range.length == 0`, the containing spans are those with
-  `s ≤ p ≤ NSMaxRange(span)` (**closed** interval — the SPEC's adjacency edge case) and only those
-  of minimum length are returned, ties included; for `range.length > 0`, every span with
-  `NSIntersectionRange(span, range).length > 0` is returned, with **no** innermost filtering.
-
-**Tester** writes `Tests/InlineSpanRevealTests.swift` plus both signatures returning `[]`. Red
-first. At minimum: `**grassetto**` alone; two bold runs in one line with the caret in the first
-(the R-01 multi-span case); `~~barrato~~`; `[[Nota]]`; `[[Nota reale|testo mostrato]]`;
-`[testo](https://x.y)` reconstructed whole; **two CommonMark links on one line** revealing only
-the one touched (the pairing's real test); `**bold con *italic* dentro**` with the caret in the
-inner run returning the inner range only, and with the caret in `bold con ` returning the outer
-only (R-05); a caret exactly at the first `*` and exactly after the last `*` both revealing
-(adjacency); a selection across two runs returning both (R-04); a line with no construct returning
-`[]`; an out-of-bounds and an `NSNotFound` range returning `[]` without crashing.
-
-**Coder** fills both bodies. No `MarkdownStyler` edit.
-
-- Budget: `Sources/Features/Editor/InlineSpanReveal.swift`, `Tests/InlineSpanRevealTests.swift` (~300 lines)
+- Budget: `Sources/Core/Email/MailStoreLocation.swift`, `MailStoreConnection.swift`,
+  `MailStoreCopy.swift`, `MailStoreReader.swift`, `MailMessageRow.swift`,
+  `Tests/MailStoreFixture.swift`, `Tests/MailStoreReaderTests.swift` (~700 lines)
+- **Probe first, with Stefano present, before any design is fixed.** Two questions, both answered
+  by reading *schema and paths only*, never message content, and both recorded in the plan file and
+  in an ADR follow-up note:
+  1. `PRAGMA table_info(messages)`, `table_info(addresses)`, `table_info(recipients)`,
+     `table_info(attachments)`, `table_info(mailboxes)` on a **copy** made by the code written in
+     this task — never on the live file. Answer C9: is `messages.message_id` an integer hash or a
+     queryable text id?
+  2. For three arbitrary ROWIDs from three mailboxes, print the `.emlx` path the fan-out rule
+     predicts and the path that actually exists (`find` limited to that mailbox). Answer C10.
+- Tester writes: `MailStoreLocation.resolve()`; `MailStoreCopy.publish(from:into:)` returning
+  `.published(URL)` / `.unchanged(URL)` / `.mailIsWriting` / `.storeMissing`;
+  `MailStoreConnection` (open/close, `prepare`, typed row accessors);
+  `MailStoreReader` with the five R-03 queries; the value types `MailMessageRow`, `MailboxRef`,
+  `MailAttachmentRef`, `MailConversation`. Plus `Tests/MailStoreFixture.swift`, a helper that
+  **creates** a small Envelope Index (the probed schema) plus `.emlx` files in a temp directory.
+- Tests (red): the copy skips when the source mtime is unchanged and republishes when it changes;
+  a deliberately truncated source produces `.mailIsWriting` after exactly one retry, never a
+  half-populated reader; the five queries return the fixture's known rows; `SQLITE_OPEN_CREATE` is
+  never passed (a missing store gives `.storeMissing`, not an empty database); `MailStoreLocation`
+  returns the fixture under xctest and honours `-mailStoreRoot`; **no file outside
+  `Sources/Core/Email/MailStoreConnection.swift` contains `sqlite3_`**.
+- Coder: bodies. Staging directory → copy db + `-wal` (never `-shm`) → open read-write, no CREATE →
+  `PRAGMA quick_check` + `SELECT count(*)` → `CREATE INDEX IF NOT EXISTS` on `conversation_id` and
+  `sender` → `PRAGMA query_only = 1` → publish by one directory rename → delete older generations.
+- `tuist generate --no-open`; full unit suite.
 
 ## File map (from Budget: declarations, tasks 1-1)
 
-- Sources/Features/Editor/InlineSpanReveal.swift
-- Tests/InlineSpanRevealTests.swift
+- (none declared -- no task in this range carries a parseable Budget:)
+
+No parseable Budget: for task(s): 1 (absent is not zero -- consult the task text above)
 
 ## Excluded tasks (not in this batch)
 
-- Task 2 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 3 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 4 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 5 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 6 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 7 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
-- Task 8 -- see /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+- Task 2 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 3 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 4 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 5 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 6 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 7 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 8 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 9 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 10 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
-Full plan: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/superpowers/plans/2026-09-08-word-grained-markdown-reveal-on-caret-in.md
+Full plan: /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md -- construct/span semantics (ADR §D2, §D4, §D5)
-- SPEC: /Users/stefer/Developer/Pergamenum_worktrees/feature-word-grained-markdown-reveal/SPEC.md -- requirement IDs R-01,R-02,R-04,R-05,R-10 for this task's tests
+- ADR: /Users/stefer/Developer/Pergamenum/docs/adr/0036-pratiche.md -- D1-D4 fix the SQLite access rule (one file, transient destructor, no CREATE), the published-copy protocol and the ledger/emlx-locator design the two probes decide
+- SPEC: /Users/stefer/Developer/Pergamenum/SPEC.md -- requirement IDs R-02, R-03, R-19 for this batch's tests
+- CLAUDE.md: /Users/stefer/Developer/Pergamenum/CLAUDE.md -- sharedSources rule: a file under Sources/Core must stay Foundation-only or both connector builds break; tuist generate after adding files

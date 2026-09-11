@@ -271,7 +271,7 @@ import Testing
     @Test func targetURLForACanvasMarkerEncodesTheWholeTargetIncludingTheExtension() throws {
         // `^[[board.canvas]]` styles through the same `.linkTarget` span as an ordinary
         // wikilink - deciding that a `.canvas` suffix means a board is `CommandActions.
-        // open(link:)`'s job (ADR-0036 reuse), not this decoder's, so it round-trips as a
+        // open(link:)`'s job (ADR-0039 reuse), not this decoder's, so it round-trips as a
         // plain `.note` target here.
         let url = try #require(MarkdownAttributedText.targetURL(for: "Progetti/board.canvas"))
         #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Progetti/board.canvas"))

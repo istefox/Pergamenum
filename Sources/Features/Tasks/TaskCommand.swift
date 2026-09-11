@@ -1,6 +1,6 @@
 import Foundation
 
-/// One command a task offers about its relation to a board (ADR-0036), named once so the
+/// One command a task offers about its relation to a board (ADR-0039), named once so the
 /// row's context menu, the Attività toolbar, the Task menu and the "Task collegati" panel's
 /// row read the same catalogue instead of four hand-kept lists that had already drifted
 /// apart — one of them missing the pane switch that makes navigation actually visible, one
@@ -11,7 +11,7 @@ import Foundation
 /// `import Foundation` only, deliberately: a pure catalogue a test can read without pulling
 /// in SwiftUI. Not in `sharedSources` — the connectors have no task-menu surface.
 ///
-/// The note side of the old "Collega nota o board…" is gone on purpose (ADR-0036 §D2): a
+/// The note side of the old "Collega nota o board…" is gone on purpose (ADR-0039 §D2): a
 /// task's note is the file it was captured into (`TaskComposer`'s `DestinationPicker`), so
 /// there is nothing left to "link" — only a board is ever a separate, optional relation.
 enum TaskCommand: String, CaseIterable, Sendable {

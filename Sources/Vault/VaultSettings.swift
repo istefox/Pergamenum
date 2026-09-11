@@ -134,6 +134,11 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// Finder would silently orphan every derived store keyed on it.
     var vaultID: String?
 
+    /// Settings › Pratiche (ADR-0036 §D10), nested rather than a flat top-level
+    /// group of its own - one construction site exists for `VaultSettings` in the
+    /// whole repo, so adding a defaulted field here is additive everywhere else.
+    var pratiche: PraticheSettings
+
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
     static let defaultDiaryFolder = "Diario"
@@ -156,7 +161,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         revealsInlineSpans: false,
         rollover: false,
         rolloverDays: VaultSettings.defaultRolloverDays,
-        patronSaint: nil
+        patronSaint: nil,
+        pratiche: .default
     )
 
     /// A week back, which is the unit M12 is about.
@@ -219,6 +225,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
                 : candidate
         }
         vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID)
+        // ADR-0036 §D10: additive, so a `settings.json` written before Pratiche
+        // existed decodes to `.default` rather than losing the whole file.
+        pratiche = try container.decodeIfPresent(PraticheSettings.self, forKey: .pratiche)
+            ?? fallback.pratiche
     }
 
     init(
@@ -238,7 +248,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         rollover: Bool = false,
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
         patronSaint: PatronSaint? = nil,
-        vaultID: String? = nil
+        vaultID: String? = nil,
+        pratiche: PraticheSettings = .default
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -257,6 +268,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.rolloverDays = rolloverDays
         self.patronSaint = patronSaint
         self.vaultID = vaultID
+        self.pratiche = pratiche
     }
 }
 

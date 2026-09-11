@@ -26,16 +26,27 @@ struct SettingsView: View {
             TimelineSettings().tabItem { Label("Giornata", systemImage: "clock") }
             conventions.tabItem { Label("Convenzioni", systemImage: "checkmark.seal") }
             calendarTab.tabItem { Label("Calendario", systemImage: "calendar") }
+            // ADR-0036 (Pratiche), R-35, screen 1f. Beside Calendario rather than after
+            // Avanzate: the two are the same kind of tab - a feature plus the system
+            // permission it depends on - and Avanzate stays last, where it has always
+            // been. Eleventh either way, which is what the collapse note below counts.
+            PraticheSettingsTab().tabItem { Label("Pratiche", systemImage: "folder.badge.person.crop") }
             advanced.tabItem { Label("Avanzate", systemImage: "wrench.and.screwdriver") }
         }
         // Taller than it was: the design system pane lists every colour token with
         // its well, and at 420 the list showed four rows and a scroll bar.
-        // Wide enough for AppKit's toolbar to lay out all ten tabItems directly: at
-        // 620, it collapsed Calendario and Avanzate into an unlabeled "more toolbar
-        // items" popup once the tab count crossed eight, verified empirically by
-        // dumping the toolbar's accessibility tree (no documented collapse constant
-        // exists to compute this from).
-        .frame(width: 700, height: 560)
+        // Wide enough for AppKit's toolbar to lay out every tabItem directly, measured
+        // twice by dumping the toolbar's accessibility tree (no documented collapse
+        // constant exists to compute this from):
+        //   - ten tabs: 620 collapsed Calendario and Avanzate into an unlabeled "more
+        //     toolbar items" popup; 700 laid all ten out.
+        //   - eleven tabs, after Pratiche (ADR-0036, R-35): 700 collapsed again, to
+        //     nine buttons plus that same `AXPopUpButton`. The eleven items measure
+        //     56+71+89+55+55+55+57+76+69+55+60 = 698 pt wide with 17 pt of window
+        //     inset around them, so 700 is short by a hair and 760 leaves slack for a
+        //     longer label. Widened rather than nesting the tab or putting a
+        //     `ScrollView` under it, which is what the plan of that chain requires.
+        .frame(width: 760, height: 560)
     }
 
     private func installSamples() {

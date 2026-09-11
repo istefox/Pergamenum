@@ -87,6 +87,46 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-10: **Pratiche follow-up (PG-116…PG-119) — all four closed on `feat/pratiche`.**
+  `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md`, six tasks. ADR-0036 gains three
+  sections: §D23 (the ledger now records a message/ROWID/conversation-id bridge per import and
+  recovers a followed conversation whose id renumbered, R-14), §D22 (the keyword arm evaluates
+  against unfollowed messages too, and `DossierWriter` persists newly auto-followed conversations),
+  §D21 («Rigenera» acquires the replacement text and a `UnifiedDiff` before trashing or rewriting
+  anything — `PraticaSyncEngine.RegenerationPlan`, `PraticheController.RegenerationState`, `DiffView`
+  moved to `Sources/DesignSystem/` and shared with `TagRenameSheet`). PG-119's live probe (Task 2,
+  Stefano present, schema/addresses only) confirmed the `recipients` join's shape; `MailMessageRow`
+  gained `recipients: [String]` and `MembershipRule.touches()` now matches To/Cc, not sender alone.
+  Unit suite green in full: **2682 tests in 123 suites, 0 failures** — the prior entry's one known
+  failure (`sentSenderAddressesRecognisesTheItalianPostaInviataSpelling`) is fixed, not merely
+  unaffected. `perg` and `pergamenum-mcp` both build. §D23.5's tray-row work for an unrecoverable
+  conversation stays open, filed as `PG-109` rather than folded in. Not yet merged to `main` — the
+  full `scripts/uitests.sh` run is still owed before that, same as the base Pratiche chain below.
+- 2026-09-10: **Pratiche (ADR-0036) — all 10 plan tasks implemented on `feat/pratiche`; Stefano's
+  manual acceptance is the remaining gate.** A pratica is a vault folder that fills itself from a
+  *published copy* of Apple Mail's Envelope Index and shows messages, attachments, notes and calls
+  as one timeline; nothing in the feature opens a socket, and principle 2 gains no exception. The
+  last batch closed the two ends the rest of the chain left open: Impostazioni gains an eleventh
+  tab, "Pratiche" (R-35 — root folder, own addresses pre-filled from Mail's Sent mailboxes,
+  attachment threshold, proposal window, daily-note mirror, and a real «Sincronizza adesso» that
+  reports what the ledger last recorded), and the connectors gain the read-only half of R-36:
+  `perg pratiche`, `perg pratica <titolo|percorso>`, and the MCP tools `pratiche`/`pratica`, both
+  declared `readOnlyHint`. Those connectors answer from what a sync already wrote to disk and are
+  structurally forbidden to do otherwise — `SharedSourcesPurityTests` fails the build if
+  `MailStore`, `EMLXReader` or `SQLite3` is so much as named under `Sources/Connector`,
+  `Sources/CLI` or `Sources/MCPServer`. Unit suite: **2642 tests in 114 suites, 1 failure** —
+  `MailStoreReaderSentSenderAddressesTests.sentSenderAddressesRecognisesTheItalianPostaInviataSpelling()`,
+  whose fixture files its message under mailbox ROWID 1 while inserting only mailbox ROWID 3, so
+  the messages→mailboxes join has nothing to return; left red rather than answered with a query
+  that ignores the mailbox it is supposed to filter on. `scripts/mcp-smoke.py` green, the two new
+  tools included; `perg` and `pergamenum-mcp` both build. Two things the hand-check should know:
+  the Settings tab's own-address pre-fill reads the **real** Mail store when Full Disk Access is
+  granted, so a throwaway vault is not a throwaway Mail store (`-mailStoreRoot` is), and
+  `IndexCache.StoredFrontmatter` keeps no `pergamenum-*` foreign key, so anything reading a dossier
+  off `index.allNotes` goes blind from the second scan of a vault onward — found while the MCP
+  server answered `[]` on a correct fixture, and closed by making the index name the candidate
+  `pratica.md` paths while one shared reader, `Dossier.parse(praticaFileAt:)`, decides from the
+  file, for the sidebar, the sync and both connectors alike. No `IndexCache.schemaVersion` bump.
 - 2026-09-09: **word-grained-markdown-reveal-on-caret-in (ADR-0037) — tutti gli 8 task
   implementati e mersati su `feat/word-grained-markdown-reveal-on-caret-in`.** Reveal-on-caret
   ristretto da paragrafo a span per grassetto/corsivo/barrato/link, dietro il nuovo setting

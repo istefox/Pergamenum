@@ -31,15 +31,11 @@ struct EmailHeaders: Equatable, Sendable {
     /// The `message://` URL that opens this message in Mail (SPEC §6.5).
     ///
     /// Mail's scheme wraps the Message-ID in percent-encoded angle brackets, which is
-    /// why the brackets are stripped on parse and put back here rather than kept.
-    var mailURL: URL? {
-        guard let messageID,
-              let encoded = "<\(messageID)>".addingPercentEncoding(
-                  withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~"))
-              )
-        else { return nil }
-        return URL(string: "message://\(encoded)")
-    }
+    /// why the brackets are stripped on parse and put back by the builder.
+    ///
+    /// ADR-0036 §D9: the encoding lives in `MailURL.forMessageID` alone, shared with
+    /// `MailLink.url(forMessageID:)`, so the two cannot drift apart again.
+    var mailURL: URL? { MailURL.forMessageID(messageID) }
 }
 
 struct EmailAddress: Equatable, Sendable {

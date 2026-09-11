@@ -1,4 +1,4 @@
-# ADR-0036: Task ↔ note/board link and navigation
+# ADR-0039: Task ↔ note/board link and navigation
 
 ## Status
 

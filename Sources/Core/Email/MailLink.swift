@@ -25,14 +25,12 @@ enum MailLink {
     ///
     /// RFC 5322 writes a message id inside `<…>`, and `message://` requires them
     /// percent-encoded; a link without them opens nothing.
+    ///
+    /// ADR-0036 §D9: the encoding itself lives in `MailURL.forMessageID`, shared with
+    /// `EmailHeaders.mailURL`. This shape (a `String?`, not a `URL?`) is what the
+    /// callers here store in a note, so it stays.
     static func url(forMessageID messageID: String) -> String? {
-        let trimmed = messageID.trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-        guard !trimmed.isEmpty else { return nil }
-        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "%"))
-        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: allowed)
-        else { return nil }
-        return "message://%3C\(encoded)%3E"
+        MailURL.forMessageID(messageID)?.absoluteString
     }
 
     /// Parses what the AppleScript returns: the id on the first line, the subject on
