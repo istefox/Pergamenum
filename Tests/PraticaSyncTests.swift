@@ -108,6 +108,25 @@ private func row(
         return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path(percentEncoded: false))) ?? []).sorted()
     }
 
+    /// Every message note currently on disk, parsed, in file-name order - Tasks 4/5's
+    /// tests read the attachment lists back through `MessageDocument`, never by
+    /// grepping the rendered text.
+    private static func messageDocuments(under vaultRoot: URL) throws -> [MessageDocument] {
+        let emailDir = vaultRoot.appending(path: "\(praticaFolder)/email", directoryHint: .isDirectory)
+        return try Self.mdFiles(under: vaultRoot).map { name in
+            let text = try String(contentsOf: emailDir.appending(path: name), encoding: .utf8)
+            return try #require(MessageDocument.parse(text), "\(name) must parse back as a message note")
+        }
+    }
+
+    /// The single message note this test's sync produced - fails loudly (`#require`)
+    /// rather than silently reading `nil` when a test's own setup wrote zero or more
+    /// than one, which would otherwise misreport as "no attachments" everywhere below.
+    private static func onlyMessageDocument(under vaultRoot: URL) throws -> MessageDocument {
+        let documents = try Self.messageDocuments(under: vaultRoot)
+        return try #require(documents.first, "expected exactly one message note, found \(documents.count)")
+    }
+
     // MARK: R-11 - atomic writes, cancel between two messages, resumable from the ledger
 
     @Test func cancellingBetweenTwoMessagesLeavesOnlyCompleteFilesResumableFromTheLedger() async throws {
@@ -436,6 +455,366 @@ private func row(
             files.contains { $0.contains("undecodable") },
             "unreadable dimensions must never be treated as decorative"
         )
+    }
+
+    // MARK: Task 4 (R-01, R-02, R-04, R-12) - the write path refuses bytes that are
+    // not the file, and a partly-ready message is still `.complete`
+    //
+    // `AttachmentIntegrity.verdict` (Task 1) and the pending-attachment codec
+    // (`MessageDocument.attachmentEntry(pending:)` / `.isPendingAttachmentEntry` /
+    // `.linkedAttachmentNames` / `.pendingAttachmentNames`, Task 3) already exist;
+    // `PraticaSyncEngine.prepare`'s part loop does not consult either one yet (ADR-0040
+    // §D2, §D3) - every test below is red today for that behavioural reason, not for a
+    // missing symbol, and stays red until Task 4's engine change lands.
+
+    @Test func aZeroByteAttachmentIsNeverPlacedAndBecomesAPendingEntry() async throws {
+        let message = EmailFixtureCorpus.zeroByteAttachmentMessageRFC822(
+            messageID: "zerobyte@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato vuoto", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<zerobyte@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty, "a zero-byte attachment must never be copied (R-01)")
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.body == .complete, "a partly-ready message is still .complete (R-04)")
+        #expect(doc.frontmatter.linkedAttachmentNames.isEmpty)
+        #expect(doc.frontmatter.pendingAttachmentNames == ["20260610_offerta.pdf"])
+    }
+
+    @Test func aTruncatedPDFAttachmentIsNeverPlacedAndBecomesAPendingEntry() async throws {
+        let message = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "truncated@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<truncated@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty, "a truncated PDF must never be copied (R-02)")
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.body == .complete)
+        #expect(doc.frontmatter.linkedAttachmentNames.isEmpty)
+        #expect(doc.frontmatter.pendingAttachmentNames == ["20260610_offerta.pdf"])
+    }
+
+    @Test func anUnknownFormatAttachmentIsPlacedNormallyRegardlessOfItsBytes() async throws {
+        // R-03's consequence at the engine level: `.dwg` has no signature entry, so an
+        // attachment this app cannot describe is never rejected for want of one - it is
+        // judged on emptiness alone, and 100 bytes of 0x41 is not empty.
+        let message = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "unknownformat@rossi-spa.it", attachmentFilename: "disegno.dwg",
+            attachmentBytes: Data(repeating: 0x41, count: 100)
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Disegno", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<unknownformat@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_disegno.dwg"])
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.linkedAttachmentNames == ["20260610_disegno.dwg"])
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty)
+    }
+
+    @Test func aMixedMessageWithOneValidAndOneTruncatedAttachmentIsStillComplete() async throws {
+        let message = EmailFixtureCorpus.mixedValidAndTruncatedAttachmentsRFC822(messageID: "mixed@rossi-spa.it")
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta con due allegati", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<mixed@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_valido.pdf"], "R-04: the good half is still placed")
+        #expect(Self.mdFiles(under: vaultRoot).count == 1)
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.body == .complete)
+        #expect(doc.frontmatter.linkedAttachmentNames == ["20260610_valido.pdf"])
+        #expect(doc.frontmatter.pendingAttachmentNames == ["20260610_troncato.pdf"])
+    }
+
+    // ADR-0040 R-12's regression: before this fix, two zero-byte attachments hashed
+    // alike (both empty `Data`), so the second was silently deduplicated onto the
+    // first one's placed name - two different missing files were reported as one.
+    @Test func twoDifferentMessagesWithADifferentZeroByteAttachmentEachGetTwoDistinctPendingEntriesAndNoFile() async throws {
+        let messageA = EmailFixtureCorpus.zeroByteAttachmentMessageRFC822(
+            messageID: "zeroA@rossi-spa.it", filename: "a.pdf"
+        )
+        let messageB = EmailFixtureCorpus.zeroByteAttachmentMessageRFC822(
+            messageID: "zeroB@rossi-spa.it", filename: "b.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [
+                .init(
+                    rowID: 1, subject: "Allegato vuoto A", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                    dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: messageA
+                ),
+                .init(
+                    rowID: 2, subject: "Allegato vuoto B", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_171),
+                    dateReceived: Date(timeIntervalSince1970: 1_781_093_171), emlxBody: messageB
+                ),
+            ]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<zeroA@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+                row(rowID: 2, messageID: "<zeroB@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_171)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty, "R-12: no shared file must ever be produced")
+        let docs = try Self.messageDocuments(under: vaultRoot)
+        #expect(docs.count == 2)
+        let pendingNames = Set(docs.flatMap(\.frontmatter.pendingAttachmentNames))
+        #expect(
+            pendingNames == ["20260610_a.pdf", "20260610_b.pdf"],
+            "each message must name its own pending attachment, never share one"
+        )
+    }
+
+    @Test func aZeroByteInlineImageIsNeverPlacedAndLeavesNoDanglingCidOrEmbedReference() async throws {
+        let message = EmailFixtureCorpus.singleInlineImageMessageRFC822(
+            messageID: "zeroinline@rossi-spa.it", contentID: "zeroinline", imageBytes: Data(), filename: "logo.png"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Immagine vuota", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<zeroinline@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty, "a zero-byte inline image must never be copied")
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(!doc.newText.contains("cid:"), "a bare cid: reference must never survive into the body")
+        #expect(!doc.newText.contains("![["), "no embed can point at a file that was never placed")
+        #expect(doc.frontmatter.linkedAttachmentNames.isEmpty)
+        #expect(doc.frontmatter.pendingAttachmentNames == ["20260610_logo.png"])
+    }
+
+    // MARK: Task 5 (R-07) - the over-threshold path is checked too, before the
+    // reference is recorded
+    //
+    // ADR-0040 finding 3: the store-reference branch is chosen by `bytes.count >
+    // thresholdBytes(...)`, so a zero-byte part can never reach it - these tests need
+    // genuinely large, and for the second one genuinely wrong, bytes.
+
+    @Test func anOverThresholdValidPDFStillGetsAStoreReferenceAndNoFile() async throws {
+        // Guards the case Task 5 must NOT break:
+        // `anAttachmentOverTheThresholdIsRecordedWithoutBeingCopied` above already
+        // proves this for a `.dwg` fixture, which has no entry in
+        // `AttachmentIntegrity`'s table and would pass even with the check wired in
+        // wrong. This repeats the guarantee with a `.pdf` name specifically so the
+        // signature check is actually exercised by a format it knows.
+        var bytes = Data("%PDF-1.7\n".utf8)
+        bytes.append(Data(repeating: 0x41, count: 2 * 1024 * 1024))
+        bytes.append(Data("\n%%EOF\n".utf8))
+        let message = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "bigvalid@rossi-spa.it", attachmentFilename: "offerta-grande.pdf", attachmentBytes: bytes
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta grande", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        var settings = PraticheSettings.default
+        settings.attachmentThresholdMB = 1
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<bigvalid@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: settings
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty)
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.storeReferences.map(\.name) == ["offerta-grande.pdf"])
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty)
+    }
+
+    @Test func anOverThresholdAttachmentWithWrongBytesGetsNoStoreReferenceButAPendingEntry() async throws {
+        // R-07: large, present, and wrong - exactly the case a guard on the copy
+        // branch alone (ADR-0040 finding 3) would let straight through unchanged.
+        let badBytes = Data(repeating: 0x41, count: 2 * 1024 * 1024)
+        let message = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "bigwrong@rossi-spa.it", attachmentFilename: "offerta-falsa.pdf", attachmentBytes: badBytes
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta falsa", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        var settings = PraticheSettings.default
+        settings.attachmentThresholdMB = 1
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<bigwrong@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: settings
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty)
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.storeReferences.isEmpty, "a reference is a promise the file is there - R-07")
+        #expect(doc.frontmatter.pendingAttachmentNames == ["20260610_offerta-falsa.pdf"])
+    }
+
+    // R-07's third case, from the plan verbatim: "reached through Task 6's retry, so
+    // this assertion may have to land in Task 6's batch if Task 5 ships first. Say so
+    // in the commit message rather than weakening it." Written here per that
+    // instruction - NOT weakened, NOT omitted. It needs more than Task 5 alone
+    // provides: `prepare`'s existing-file guard (`:356-364`) only lets a file be
+    // rewritten when it is `.pending` (or an explicit «Rigenera») - a `.complete`
+    // message with only a pending *attachment* (this case, per R-04's own rule) is not
+    // revisited by that guard until Task 6 adds its clause (ADR-0040 §D5). Expect this
+    // test to stay red after Task 5 alone and to go green only once Task 6 lands - if
+    // it is still red after Task 6 too, that is a real defect, not this test being
+    // wrong.
+    @Test func anOverThresholdAttachmentThatLaterBecomesValidGetsAStoreReferenceAndLosesItsPendingEntry() async throws {
+        let badBytes = Data(repeating: 0x41, count: 2 * 1024 * 1024)
+        let firstMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "bigretry@rossi-spa.it", attachmentFilename: "offerta-grande.pdf", attachmentBytes: badBytes
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta grande", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: firstMessage
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        var settings = PraticheSettings.default
+        settings.attachmentThresholdMB = 1
+        // Reused unchanged for both syncs, the same idiom
+        // `aHeadersOnlyMessageIsWrittenPendingAndRegeneratedOnceTheBodyArrives` uses
+        // above: `onDisk` stays empty both times, so the second sync reaches this
+        // message through `PraticaSyncPlan.workItems` exactly as the first one did,
+        // and whether it is actually rewritten is entirely `prepare`'s guard's call.
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<bigretry@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: settings
+        )
+        _ = try await engine.sync(request)
+
+        var goodBytes = Data("%PDF-1.7\n".utf8)
+        goodBytes.append(Data(repeating: 0x41, count: 2 * 1024 * 1024))
+        goodBytes.append(Data("\n%%EOF\n".utf8))
+        let secondMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "bigretry@rossi-spa.it", attachmentFilename: "offerta-grande.pdf", attachmentBytes: goodBytes
+        )
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta grande", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: secondMessage
+            )],
+            in: fixture.root
+        )
+
+        _ = try await engine.sync(request)
+
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.storeReferences.map(\.name) == ["offerta-grande.pdf"], "R-07's retry, via Task 6")
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty, "the pending entry must go once bytes resolve")
+        #expect(Self.allegatiFiles(under: vaultRoot).isEmpty, "still over threshold - never copied")
     }
 
     // MARK: R-15 - pending body, and the one file a later sync rewrites unasked
