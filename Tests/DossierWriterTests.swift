@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0036 §D22.4 (PG-106), plan
+// ADR-0036 §D22.4 (PG-117), plan
 // docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 4.
 //
 // `DossierWriter.update` is a tester-declared stub (ADR-0155): the coder extracts the

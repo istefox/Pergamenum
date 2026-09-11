@@ -123,7 +123,37 @@ private func walked(_ destinations: [Destination]) -> NavigationHistory {
     #expect(history.back == [.pane(.notes)])
 }
 
+// MARK: - `.workspaceBoard` (ADR-0015 §D1 amendment)
+
+@MainActor
+@Test func aWorkspaceBoardPushesAndPopsLikeANote() {
+    let visited: [Destination] = [.pane(.notes), .workspaceBoard("Calendar/testo.canvas")]
+    let history = walked(visited)
+
+    #expect(history.goBack(reachable: anywhere) == .pane(.notes))
+    #expect(history.goForward(reachable: anywhere) == .workspaceBoard("Calendar/testo.canvas"))
+}
+
+@MainActor
+@Test func chainingABoardAndANoteWalksBothInOrder() {
+    let visited: [Destination] = [
+        .workspaceBoard("prova.canvas"), .note("Note/prova-corta.md"), .workspaceBoard("altra.canvas"),
+    ]
+    let history = walked(visited)
+
+    #expect(history.goBack(reachable: anywhere) == .note("Note/prova-corta.md"))
+    #expect(history.goBack(reachable: anywhere) == .workspaceBoard("prova.canvas"))
+}
+
 // MARK: - Places that stopped existing
+
+@MainActor
+@Test func aBoardThatIsGoneIsSkippedAndTheWalkContinues() {
+    let history = walked([.pane(.notes), .workspaceBoard("cancellata.canvas"), .pane(.views)])
+    let survives: (Destination) -> Bool = { $0 != .workspaceBoard("cancellata.canvas") }
+
+    #expect(history.goBack(reachable: survives) == .pane(.notes))
+}
 
 @MainActor
 @Test func aNoteThatIsGoneIsSkippedAndTheWalkContinues() {

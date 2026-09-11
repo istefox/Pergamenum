@@ -245,18 +245,12 @@ final class CommandActions {
 
     private func runView(_ command: ShortcutCommand) {
         switch command {
-        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
+        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneDiary,
              .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings,
              .panePratiche:
             runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()
-        case .runConformanceCheck:
-            // Brings the pane forward as well as asking for the check: the view that runs
-            // the linter only exists while that pane is shown, so from anywhere else the
-            // command would do nothing at all.
-            navigation.pane = .conformance
-            vault.isCheckingConformance = true
         case .foldSection:
             // The section the caret is in, which the editor reports as it moves. Without a
             // caret there is no "this section", and the command is disabled rather than

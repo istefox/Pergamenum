@@ -37,7 +37,7 @@ applied by hand.
 **In scope (v1):** everything in SPEC §4 to §12 - vault and taxonomy, markdown editor
 with applied styling, Workspace with the 11-tool sidebar, PDF and email and URI
 cards, spacebar Quick Look, task syntax and views, daily notes and EventKit,
-`pergamenum://` URL scheme, conformance linter, full menu bar, search and index,
+`pergamenum://` URL scheme, conformance linter (CLI/MCP, no in-app pane — ADR-0038), full menu bar, search and index,
 token-based theming.
 
 **Out of scope (v1):** multi-user collaboration, proprietary real-time sync, plugin
@@ -82,19 +82,19 @@ Binding order, each yielding a usable app (SPEC §13):
    rescheduling, quick capture.
 5. **M5 Calendar** - daily notes, EventKit read and write, two-way Reminders,
    timeblocking.
-6. **M6 URL scheme and conformance** - `pergamenum://` routes, full menus, linter,
-   convention import, local notifications.
+6. **M6 URL scheme and conformance** - `pergamenum://` routes, full menus, linter
+   (CLI/MCP only — ADR-0038), convention import, local notifications.
 
 ## Status
 
-- 2026-09-10: **Pratiche follow-up (PG-105…PG-108) — all four closed on `feat/pratiche`.**
+- 2026-09-10: **Pratiche follow-up (PG-116…PG-119) — all four closed on `feat/pratiche`.**
   `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md`, six tasks. ADR-0036 gains three
   sections: §D23 (the ledger now records a message/ROWID/conversation-id bridge per import and
   recovers a followed conversation whose id renumbered, R-14), §D22 (the keyword arm evaluates
   against unfollowed messages too, and `DossierWriter` persists newly auto-followed conversations),
   §D21 («Rigenera» acquires the replacement text and a `UnifiedDiff` before trashing or rewriting
   anything — `PraticaSyncEngine.RegenerationPlan`, `PraticheController.RegenerationState`, `DiffView`
-  moved to `Sources/DesignSystem/` and shared with `TagRenameSheet`). PG-108's live probe (Task 2,
+  moved to `Sources/DesignSystem/` and shared with `TagRenameSheet`). PG-119's live probe (Task 2,
   Stefano present, schema/addresses only) confirmed the `recipients` join's shape; `MailMessageRow`
   gained `recipients: [String]` and `MembershipRule.touches()` now matches To/Cc, not sender alone.
   Unit suite green in full: **2682 tests in 123 suites, 0 failures** — the prior entry's one known
@@ -127,6 +127,53 @@ Binding order, each yielding a usable app (SPEC §13):
   server answered `[]` on a correct fixture, and closed by making the index name the candidate
   `pratica.md` paths while one shared reader, `Dossier.parse(praticaFileAt:)`, decides from the
   file, for the sidebar, the sync and both connectors alike. No `IndexCache.schemaVersion` bump.
+- 2026-09-09: **word-grained-markdown-reveal-on-caret-in (ADR-0037) — tutti gli 8 task
+  implementati e mersati su `feat/word-grained-markdown-reveal-on-caret-in`.** Reveal-on-caret
+  ristretto da paragrafo a span per grassetto/corsivo/barrato/link, dietro il nuovo setting
+  `revealsInlineSpans` (default off): `InlineSpanReveal` deriva gli estremi dei costrutti dal
+  parse ricorsivo già esistente di `MarkdownStyler`, senza un secondo parser (Task 1);
+  `MarkupReveal.inlineSpans` costruisce la tabella note-wide chiave-per-paragrafo (Task 2);
+  `EditorDecorationDelegate` filtra per marker via `HiddenMarker.Kind.isInline` (switch esaustivo,
+  nessun `default`) e `collapsing(...)` (Task 3); il setting è persistito in `VaultSettings` e
+  offerto in Impostazioni, disabilitato quando `hidesMarkup` è spento (Task 4); wiring completo
+  nell'editor nota (Diario e Oggi inclusi) e nella card Workspace, quest'ultima deliberatamente
+  invariata per barrato/wikilink (`hiddenKind` non allargato, ADR §D8) (Task 5-6); fence
+  out-of-scope e invariante "ogni chiave di `inlineSpans` è anche paragrafo rivelato" verificati
+  su un corpus, zero diff su `MarkdownStyler.swift`, le sei `EditorDecorationDelegate+*Rendering`,
+  `NoteTextView+EmbedCaret.swift`, `MarkdownBlocksView.swift`, `NoteExporter.swift` e tutto
+  `Sources/Core`/`Sources/Connector`/`Sources/CLI`/`Sources/MCPServer` (Task 7). Suite completa
+  verde: **2507 test, 94 suite, 8.6s.** CLAUDE.md già aggiornato a Gate 3 (sezione ADR-0037 +
+  indice), confermato accurato rispetto all'implementazione reale. **`scripts/uitests.sh` e
+  l'hand-check R-11 (ADR-0018 §D6 — cammino del caret dentro `**grassetto**`, `[[Nota]]`,
+  `[[Nota reale|testo mostrato]]`, `[testo](https://esempio.it)`, grassetto-con-corsivo-annidato,
+  in editor nota e in card Workspace, con occhio ai due costi noti: il punto di a-capo che si
+  sposta e il caret che sembra non muoversi attraversando un delimitatore collassato) restano i
+  due passi manuali prima del commit**, per scelta esplicita di Stefano (eseguiti insieme, dopo il
+  commit, con lui presente al Mac).
+- 2026-09-09: **R-11 hand check eseguito (ADR-0037) — due bug reali trovati e corretti, scope
+  ampliato per la card Workspace.** (1) Con `revealsInlineSpans` ON, il caret dentro un paragrafo
+  ma fuori da ogni span rivelava l'intero paragrafo invece di niente — `revealedSpans[offset]`
+  restituiva `nil` sia per "nessuno span in quel paragrafo" sia per "setting spento", indistinguibili
+  in `collapsing(...)`; fix: `revealedSpans[offset] ?? []` in `EditorDecorationDelegate.swift`. (2)
+  Con il caret in uno span esterno ma fuori da uno span interno annidato (es. `**grassetto con
+  *corsivo* dentro**`, caret su "con"), si rivelavano anche i delimitatori interni per contenimento
+  geometrico lasco; fix: match esatto sui bordi (`location`/`NSMaxRange` uguali), non contenimento.
+  Entrambi coperti da nuovo test di regressione, suite verde dopo ogni fix. **Scelta esplicita di
+  Stefano durante l'hand check: la card Workspace ora conceala/rivela barrato e link/wikilink
+  identicamente all'editor nota** (inversione di ADR-0037 §D8 originale/F1, non un'estensione di
+  scope implicita — `CardTextView`'s switch allargato a 7 kind, riusando
+  `NoteTextView.Coordinator.linkDelimiters` per `.link`; il seam ADR-0029 §D17 contro l'`NSView`
+  live delle tabelle resta intatto, nessuno dei due nuovi costrutti coinvolge un `NSView`). ADR-0037
+  §D8/F1 e la sezione CLAUDE.md aggiornate di conseguenza. Nuovi test in
+  `Tests/CardConcealmentTests.swift` (marker link/barrato, split dei delimitatori wikilink vs
+  CommonMark, reveal-on-caret dentro un wikilink) e fence F1 aggiornata a "7 kind" in
+  `Tests/InlineSpanRevealFenceTests.swift`. Suite completa verde: **2512 test, 94 suite.**
+  **Problema pre-esistente, fuori scope, tracciato separatamente**: click su wikilink/link non
+  apre mai nulla (né click singolo né Cmd+click) — solo `.toolTip` è applicato, mai l'attributo
+  `.link` di AppKit, conseguenza strutturale di ADR-0029 (editor sempre editabile). Riprodotto
+  identico anche con `revealsInlineSpans` OFF, quindi non è una regressione di questa chain.
+  Issue: https://github.com/istefox/Pergamenum/issues/188. **`scripts/uitests.sh` resta l'ultimo
+  passo manuale prima del merge**, da eseguire con Stefano presente al Mac.
 - 2026-09-08: **pergamenum-view-query-builder (ADR-0034, visual query builder for `pergamenum-view`
   fences) — all 10 tasks implemented and merged onto `feat/pergamenum-view-query-builder`.** One
   shared "Modifica query" affordance in `RenderedViewBlock`'s header, present on both the live-render

@@ -44,7 +44,7 @@ extension VaultAPI {
         let block: ViewBlock
         do {
             block = try blocks[index].get()
-        } catch let failure as ViewBlockError {
+        } catch let failure {
             throw ConnectorError("«\(path)», vista \(index): \(failure.description)")
         }
 

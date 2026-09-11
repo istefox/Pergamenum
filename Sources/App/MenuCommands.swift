@@ -90,9 +90,6 @@ struct ViewCommands: Commands {
 
             Divider()
 
-            Button("Verifica conformità") { actions.run(.runConformanceCheck) }
-                .keyboardShortcut(shortcuts.shortcut(for: .runConformanceCheck))
-                .disabled(!actions.canRun(.runConformanceCheck))
             // ADR-0032: the menu entry and the pane's own `arrow.clockwise` button are the
             // same command, and it is live only while the Registrazioni pane is showing
             // (blueprint). The pane rows themselves stay row-scoped and out of the menu bar.

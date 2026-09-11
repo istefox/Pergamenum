@@ -183,4 +183,28 @@ import Testing
             "a .codeBlock span's size must track ProseTypography.prose(theme), not .body"
         )
     }
+
+    // MARK: - R-06 (issue #188): a card's links become clickable, reopening ADR-0027 §D1
+
+    @Test func linkTargetCarriesLinkAndCursorForAResolvableTarget() throws {
+        let attributes = CardTextAttributes.attributes(for: .linkTarget("Nota"), theme: theme)
+        let url = try #require(attributes[.link] as? URL, ".linkTarget must now carry .link (R-06)")
+        #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota"))
+        #expect(attributes[.cursor] != nil, ".linkTarget must now carry .cursor (R-06)")
+    }
+
+    @Test func embedTargetCarriesLinkAndCursorForAFileReference() {
+        let attributes = CardTextAttributes.attributes(for: .embedTarget("foto.png"), theme: theme)
+        #expect(attributes[.link] as? URL == MarkdownAttributedText.embedURL(for: "foto.png"))
+        #expect(attributes[.cursor] != nil, ".embedTarget must now carry .cursor (R-06)")
+    }
+
+    /// An empty CommonMark href (`[testo]()`) never reaches `.linkTarget` at all
+    /// (`MarkdownStyler.markdownLinkSpans`'s own empty-target guard), but a `.linkTarget`
+    /// whose raw string cannot resolve to any URL still must not crash or promise a
+    /// navigation it cannot perform.
+    @Test func linkTargetWithAnEmptyStringStillReturnsAttributesWithoutCrashing() {
+        let attributes = CardTextAttributes.attributes(for: .linkTarget(""), theme: theme)
+        #expect(attributes[.foregroundColor] != nil)
+    }
 }

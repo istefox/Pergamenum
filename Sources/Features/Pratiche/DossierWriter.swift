@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR-0036 §D22.4 (PG-106), plan
+// ADR-0036 §D22.4 (PG-117), plan
 // docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 4.
 //
 // `PraticaCommandActions.updateDossier` is a thin wrapper over `update` below - every

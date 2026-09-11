@@ -51,6 +51,18 @@ does not need in order to be useful. When that lifting happens for another reaso
 `case canvas(String)` is a small amendment to this section and to one `switch`. Recorded here
 so the absence is a decision and not an oversight.
 
+**Amended 2026-09-10 (wikilink-from-a-card chain).** The limitation above is lifted, without
+lifting the whole controller: `Destination.workspaceBoard(String)` carries the open board's
+vault-relative path, fed by one new property, `VaultController.openBoardPath`, that
+`WorkspaceView` mirrors up from `workspace.board` on change - the single value the window
+needed, not the controller that owns it. `WindowPlace.destination` reads
+`vault.routeState.pendingCanvas?.path` ahead of `openBoardPath` for the `.workspace` case
+specifically, so a board request and its own confirmation always report the same
+destination and no transient `.pane(.workspace)` is ever recorded as a spurious step in
+between. `apply(_:)` for the new case reuses the same `pendingCanvas` mechanism a board
+wikilink's own cmd+click already goes through (`CommandActions.open(link:)`), so going back
+to a board and clicking into it forward are, from `WorkspaceView` down, one code path.
+
 **The Note pane's anchor is the path, not the tab id.** Back means «that note», and a tab
 closed and reopened is the same place; a tab id would make it a different one. A Note pane with
 nothing open is `.pane(.notes)`, which is a real place - it is what the window shows before the

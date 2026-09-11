@@ -51,6 +51,14 @@ final class VaultController {
     /// person is looking at", which is exactly what it still returns. The type changed shape
     /// underneath; its published surface did not.
     var openNote: OpenNote? { focusedTab?.note }
+    /// The Workspace board currently open, by vault-relative path - nil with none open.
+    ///
+    /// The one value `WindowPlace.destination` (ADR-0015 §D1 amendment) needs to give the
+    /// Workspace a `Destination.workspaceBoard` anchor, the same way `openNote` already gives
+    /// the Note pane one - pushed up from `WorkspaceView`'s own `.onChange(of: workspace.
+    /// board)` rather than read from `WorkspaceController` directly, which lives as `@State`
+    /// inside that view and stays unreachable from here.
+    var openBoardPath: String?
     /// The note being created, while it is still only a name being typed.
     ///
     /// Held here rather than in the browser because the New Note command is in the menu
@@ -82,10 +90,6 @@ final class VaultController {
     var isShowingQuickLook = false
     /// Set by the "Nota correlata…" command.
     var isAddingRelatedLink = false
-    /// Set by the "Verifica conformità" command; the Conformità pane runs the linter
-    /// when it sees it. The check is on request and never automatic (SPEC §4.7), so
-    /// this is a request and not a schedule.
-    var isCheckingConformance = false
     /// Set by the global search command (Cmd+Shift+F).
     var isShowingGlobalSearch = false
     /// Set by the quick switcher command.
@@ -255,9 +259,6 @@ final class VaultController {
     //
     // The behaviour is in VaultController+Tasks.swift; only the state an extension
     // cannot declare lives here.
-
-    /// Set by the Task menu; the Attività view opens the quick switcher (SPEC §7.2).
-    var isLinkingSelectedTask = false
 
     /// The task the task views and the Task menu act on.
     ///

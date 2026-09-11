@@ -211,3 +211,85 @@ private func makeTask(_ line: String = "- [ ] Capofila", sourcePath: String = "x
 
     #expect(actions.vault.taskDraft == nil)
 }
+
+// MARK: - ADR-0039: `TaskCommand`'s three actions, on `CommandActions`
+//
+// The breadcrumb's old defect (ADR-0039 §D1) was a navigation that changed state nobody
+// was watching: `vault.openNote(at:)` alone, with no `navigation.pane` change, loads a
+// note into a background tab that never comes forward. `.goToNote` closes that in the
+// one place every surface now reads from.
+
+@MainActor
+@Test func goToNoteOpensTheSourceNoteAndBringsTheNotesPaneForward() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    let actions = await makeActions(vault: vault.root)
+    actions.navigation.pane = .tasks
+    let task = makeTask(sourcePath: "a.md")
+
+    actions.run(.goToNote, on: task)
+
+    #expect(actions.vault.openNote?.relativePath == "a.md")
+    #expect(actions.navigation.pane == .notes)
+}
+
+@MainActor
+@Test func linkBoardOffersTheTaskToTheWorkspacePickerThroughNavigation() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    let actions = await makeActions(vault: vault.root)
+    let task = makeTask(sourcePath: "a.md")
+
+    actions.run(.linkBoard, on: task)
+
+    #expect(actions.navigation.taskPickingBoard == task)
+}
+
+@MainActor
+@Test func goToBoardResolvesAUniqueBoardStraightToPendingCanvas() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    try vault.write("{}", to: "Progetti/vibrofer-emea.canvas")
+    let actions = await makeActions(vault: vault.root)
+    let task = makeTask("- [ ] Verifica ^[[vibrofer-emea.canvas]]", sourcePath: "a.md")
+
+    actions.run(.goToBoard, on: task)
+
+    #expect(actions.vault.routeState.pendingCanvas?.path == "Progetti/vibrofer-emea.canvas")
+}
+
+@MainActor
+@Test func goToBoardOnAnAmbiguousFileNameOpensThePickerInstead() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    try vault.write("{}", to: "Progetti/vibrofer-emea.canvas")
+    try vault.write("{}", to: "Archivio/vibrofer-emea.canvas")
+    let actions = await makeActions(vault: vault.root)
+    let task = makeTask("- [ ] Verifica ^[[vibrofer-emea.canvas]]", sourcePath: "a.md")
+
+    actions.run(.goToBoard, on: task)
+
+    #expect(actions.vault.routeState.pendingCanvas == nil)
+    #expect(actions.navigation.taskPickingBoard == task)
+}
+
+@MainActor
+@Test func goToBoardIsRefusedWithNoBoardAssignedButOfferedWithOne() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    let actions = await makeActions(vault: vault.root)
+
+    #expect(!actions.canRun(.goToBoard, on: makeTask(sourcePath: "a.md")))
+    #expect(actions.canRun(.goToBoard, on: makeTask("- [ ] Verifica ^[[x.canvas]]", sourcePath: "a.md")))
+}
+
+@MainActor
+@Test func linkBoardAndGoToNoteAreAlwaysOffered() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    let actions = await makeActions(vault: vault.root)
+    let task = makeTask(sourcePath: "a.md")
+
+    #expect(actions.canRun(.linkBoard, on: task))
+    #expect(actions.canRun(.goToNote, on: task))
+}

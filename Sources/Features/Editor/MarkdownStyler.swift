@@ -513,9 +513,16 @@ enum MarkdownStyler {
             let openingLength = link.isEmbed ? 3 : 2
             let targetStart = text.index(lower, offsetBy: openingLength)
             if let targetEnd = text.index(targetStart, offsetBy: link.target.count, limitedBy: upper) {
+                // The range/length above is `link.target`'s literal source length, always - the
+                // payload carried for a note link is `resolvedTitle`, so a target styled bold
+                // in-place (`[[**Nota**]]`) still resolves to the note actually titled "Nota"
+                // rather than to a literal "**Nota**" nothing matches (issue #188 follow-up).
+                // An embed's target is a file name, never emphasis-wrapped in practice, and
+                // `NoteRename`'s `range: link.range` rewrite already depends on `target` staying
+                // the literal bracket interior elsewhere, so only this payload changes.
                 result.append(StyledRange(
                     range: targetStart..<targetEnd,
-                    span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.target)
+                    span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.resolvedTitle)
                 ))
             }
         }
@@ -606,12 +613,18 @@ private func blockquoteMarkerLength(
 }
 
 /// The `[` and `](url)` delimiters of a CommonMark `[testo](url)` link, as two
-/// `.linkSyntax` spans with the label between them left unspanned (ADR-0029 §D1).
+/// `.linkSyntax` spans, plus the label between them as a `.linkTarget` span carrying the
+/// raw href (issue #188 / R-03, R-04) - the same span case a wikilink's target already
+/// uses, so `MarkdownAttributedText`/`CardTextAttributes` need no new arm to make this
+/// label clickable: `.linkTarget`'s own URL construction now branches on whether the
+/// target looks like an external URL or a note reference (`MarkdownAttributedText.
+/// targetURL(for:)`).
 ///
-/// The existing `.linkSyntax` case, reused rather than a fifth one added: this is the same
-/// second-spelling decision ADR-0018 §D3 took for `![alt](file.png)`, and for the same
-/// reason - this app's own writers emit the wikilink form, `EditorEdits.markdownLink`
-/// excepted, and a vault opened from elsewhere holds both.
+/// The two delimiter spans keep the existing `.linkSyntax` case, reused rather than a
+/// fifth one added: this is the same second-spelling decision ADR-0018 §D3 took for
+/// `![alt](file.png)`, and for the same reason - this app's own writers emit the
+/// wikilink form, `EditorEdits.markdownLink` excepted, and a vault opened from elsewhere
+/// holds both.
 ///
 /// Two forms are skipped rather than matched. `[[Nota]]` is a wikilink and
 /// `wikilinkSpans(in:from:outside:)` already owns it, whole run and target alike. An
@@ -644,6 +657,15 @@ private func markdownLinkSpans(
             continue
         }
         result.append(MarkdownStyler.StyledRange(range: absolute(index, 1), span: .linkSyntax))
+        // The href sits between the `(` at `close + 1` and the `)` at `paren`, both
+        // absolute indices into `characters` (an `ArraySlice`'s indices are never
+        // renumbered from zero) - so a non-empty href needs `paren > close + 2`.
+        if paren > close + 2 {
+            let href = String(characters[(close + 2)..<paren])
+            result.append(MarkdownStyler.StyledRange(
+                range: absolute(index + 1, close - index - 1), span: .linkTarget(href)
+            ))
+        }
         result.append(MarkdownStyler.StyledRange(
             range: absolute(close, paren + 1 - close), span: .linkSyntax
         ))

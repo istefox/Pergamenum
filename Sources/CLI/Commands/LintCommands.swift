@@ -2,7 +2,7 @@ import Foundation
 
 /// `perg lint [percorso]` - the conformance check of SPEC §4.7.
 ///
-/// The same rules the Conformità pane applies, because it is the same code: names,
+/// The same rules the MCP `lint` tool applies, because it is the same code: names,
 /// the closed four-key frontmatter, the tag vocabularies, and the two directions of a
 /// structural link.
 enum LintCommands {

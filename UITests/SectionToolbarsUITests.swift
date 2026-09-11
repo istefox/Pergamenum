@@ -111,7 +111,9 @@ final class SectionToolbarsUITests: XCTestCase {
 
         // The four actions on a task are there and refuse to act on nothing: with no
         // row selected they would otherwise be four buttons that silently do nothing.
-        for label in ["Completa o riapri", "Pianifica oggi", "Collega nota o board", "Vai alla nota di origine"] {
+        // «Vai alla board collegata» is the fifth and is omitted rather than disabled with
+        // no task selected (ADR-0039 §D1), so it is not asserted here.
+        for label in ["Completa o riapri", "Pianifica oggi", "Collega una board…", "Vai alla nota di origine"] {
             XCTAssertFalse(button(label).isEnabled, "«\(label)» è attivo senza un task selezionato")
         }
 
@@ -119,19 +121,6 @@ final class SectionToolbarsUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5), "il task della nota di prova non è nell'elenco")
         row.click()
         XCTAssertTrue(button("Completa o riapri").isEnabled, "il task selezionato non ha attivato il pulsante")
-    }
-
-    func testTheConformitaSectionRunsTheLinterFromTheToolbar() throws {
-        show("Conformità")
-        XCTAssertTrue(app.staticTexts["Nessuna verifica eseguita."].waitForExistence(timeout: 5))
-
-        button("Verifica ora").click()
-        // The fixture note has no frontmatter at all, so the linter has something to
-        // report and "nothing ran" cannot be mistaken for "everything is conformant".
-        XCTAssertTrue(
-            app.staticTexts["1 note non conformi su 1"].waitForExistence(timeout: 10),
-            "il linter non ha prodotto un esito"
-        )
     }
 
     func testTheWorkspaceSectionCarriesTheBoardCommands() throws {

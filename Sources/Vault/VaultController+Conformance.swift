@@ -1,12 +1,11 @@
 import Foundation
 
-/// The linter of SPEC §4.7, as the conformance view asks it.
+/// The linter of SPEC §4.7, as `perg lint` and the MCP `lint` tool ask it from the app side.
 ///
-/// The rules are on `VaultSession` (ADR-0007 §D3), so `perg lint` and this pane judge
-/// a note by the same code. What is here is the one call that has no meaning outside
-/// the app: the note being edited, which may not be what is on disk.
+/// The rules are on `VaultSession` (ADR-0007 §D3), so every caller judges a note by the same
+/// code.
 extension VaultController {
-    /// Validates any note in the vault by path, for the vault-wide conformance view.
+    /// Validates any note in the vault by path.
     func violations(forRecordAt relativePath: String) -> NoteViolations? {
         session?.violations(forRecordAt: relativePath)
     }

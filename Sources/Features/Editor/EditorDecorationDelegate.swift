@@ -93,6 +93,25 @@ struct HiddenMarker: Equatable, Sendable {
     let kind: Kind
 }
 
+extension HiddenMarker.Kind {
+    /// Whether this kind's reveal is span-grained under ADR-0037's setting, or stays
+    /// paragraph-grained as ADR-0018 §D2 left it (ADR-0037 §D2). A `switch` with no
+    /// `default`, so an eleventh kind cannot be added without answering the question - the
+    /// five kinds with their own dedicated substitution branch (`.embed`, `.list`,
+    /// `.checkbox`, `.blockquote`, `.table`, `.viewBlock`) are already refused by the
+    /// generic path (`stillSpells` answers `false` for every one of them), so `.heading`
+    /// and `.rule` are the only block kinds the generic path ever sees, and
+    /// `.emphasis`/`.strikethrough`/`.link` are the only inline ones.
+    ///
+    /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
+    var isInline: Bool {
+        switch self {
+        case .emphasis, .strikethrough, .link: true
+        case .heading, .embed, .list, .checkbox, .blockquote, .rule, .table, .viewBlock: false
+        }
+    }
+}
+
 final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
                                       NSTextLayoutManagerDelegate, @unchecked Sendable {
     /// The UTF-16 offset at which each hidden line begins. A set, because this is asked
@@ -177,6 +196,20 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `textContentStorage(_:textParagraphWith:)` a no-op, i.e. today's behaviour - hiding
     /// markup is fully reversible with a toggle rather than a revert.
     nonisolated(unsafe) var hidesMarkup = false
+    /// Which spans, within a paragraph already in `revealedParagraphs`, are drawn in full
+    /// under ADR-0037's word-grained reveal setting - paragraph-relative, the same key
+    /// space `hiddenMarkers` and `revealedParagraphs` already use. A separate table, never
+    /// merged into `revealedParagraphs` (ADR-0037 §D1): *"two producers on one setter is
+    /// precisely what the delegate's own header forbids,"* `apply(tableRows:)`'s own reason
+    /// restated for a seventh input. Clearing one must never clear the other.
+    ///
+    /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
+    nonisolated(unsafe) private var revealedSpans: [Int: [NSRange]] = [:]
+    /// The vault's `revealsInlineSpans` setting (ADR-0037 §D7). `false` is what makes
+    /// `EditorDecorationDelegate.collapsing(among:paragraphIsRevealed:revealedSpans:)`
+    /// treat every marker exactly the way this hook already treats one with `hidesMarkup`
+    /// alone - so the whole feature is one boolean's worth of regression surface.
+    nonisolated(unsafe) var revealsInlineSpans = false
     /// The grid already vended for each table, by its header paragraph's own offset - the
     /// same finished-value hand-over `embedRenditions` already makes (ADR-0029 §D6): this
     /// object cannot be `@MainActor`, so it never asks `TableGridStore` for one itself, and
@@ -296,6 +329,25 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let changed = revealedParagraphs.symmetricDifference(paragraphs)
         revealedParagraphs = paragraphs
         return changed
+    }
+
+    /// Sets which spans are drawn in full, keyed the same way `revealedParagraphs` is, and
+    /// returns the paragraph keys that changed since the last call - the same
+    /// returns-what-changed shape `apply(revealedParagraphs:)` has above, so the caller
+    /// invalidates two paragraphs and not a document (ADR-0037 §D1). No logging: this runs
+    /// on every arrow key, the same reason `apply(revealedParagraphs:)` has none.
+    func apply(revealedSpans spans: [Int: [NSRange]]) -> Set<Int> {
+        let changed = Set(revealedSpans.keys).symmetricDifference(spans.keys)
+        revealedSpans = spans
+        return changed
+    }
+
+    /// Sets the vault's `revealsInlineSpans` setting (ADR-0037 §D7). Guarded, the same
+    /// shape `apply(hiddenMarkers:hidingMarkup:)` uses above: `applyStyling` calls this on
+    /// every keystroke and every SwiftUI update.
+    func apply(revealsInlineSpans value: Bool) {
+        guard value != revealsInlineSpans else { return }
+        revealsInlineSpans = value
     }
 
     // MARK: Hiding
@@ -446,20 +498,37 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return viewBlock
         }
 
-        guard !revealedParagraphs.contains(range.location),
-              let markers = hiddenMarkers[range.location], !markers.isEmpty
-        else { return nil }
+        // The generic path, D3's per-marker filter: a paragraph's own reveal state no
+        // longer bails this out wholesale - `collapsing` decides marker by marker, so an
+        // inline construct (emphasis/strikethrough/link) can stay collapsed inside a
+        // revealed paragraph while a block marker (heading/rule) is still governed by the
+        // paragraph alone (ADR-0037 §D2/§D3).
+        guard let markers = hiddenMarkers[range.location], !markers.isEmpty else { return nil }
 
-        let survivors = Self.survivors(among: markers, of: range, in: storage.string as NSString)
-        guard !survivors.isEmpty else { return nil }
+        let text = storage.string as NSString
+        let survivors = Self.survivors(among: markers, of: range, in: text)
+        let collapsing = Self.collapsing(
+            among: survivors,
+            paragraphIsRevealed: revealedParagraphs.contains(range.location),
+            // A missing key means "no span was revealed in this paragraph", never "the
+            // setting is off" - the latter is exactly what `revealsInlineSpans` already
+            // tests. Handing the dictionary's own `nil` through unchanged made a caret
+            // sitting in the paragraph but outside every span read as the setting-off
+            // case in `collapsing`, which falls back to `paragraphIsRevealed` and reveals
+            // every inline marker in the paragraph regardless of the caret's span.
+            revealedSpans: revealsInlineSpans ? (revealedSpans[range.location] ?? []) : nil
+        )
+        guard !collapsing.isEmpty else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        for marker in survivors {
+        for marker in collapsing {
             copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
         }
         // Over the whole run and not only over the brackets: what is left on screen once
-        // they are collapsed is the label, and the label is what a person hovers (R-04).
-        for tooltip in Self.linkTooltips(among: survivors, of: range, in: storage.string as NSString) {
+        // they are collapsed is the label, and the label is what a person hovers (R-04). Fed
+        // the *collapsed* set, not `survivors`: a revealed link shows its own brackets and
+        // does not need a hover telling it where it goes (ADR-0037 §D3).
+        for tooltip in Self.linkTooltips(among: collapsing, of: range, in: text) {
             copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
         return NSTextParagraph(attributedString: copy)
@@ -487,6 +556,49 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
                         location: paragraph.location + marker.range.location, length: marker.range.length
                     )
                 )
+        }
+    }
+
+    /// ADR-0037 §D3's per-marker filter: which of `survivors` should be drawn small
+    /// (`collapsedFont`) rather than shown in full. Expressed as one pure static function,
+    /// with no text view and no delegate state, so it is testable on its own
+    /// (`Tests/MarkupHidingTests.swift`'s `MarkupHidingInlineSpans` suite calls it
+    /// directly) - the same reason the ADR itself gives for this shape.
+    ///
+    /// - `revealedSpans == nil` means the setting is off: `paragraphIsRevealed ? [] :
+    ///   survivors` - byte-for-byte the paragraph-only rule this hook has followed since
+    ///   ADR-0018, so R-07 holds with no further work once this is wired in.
+    /// - Otherwise, a marker is collapsed unless (`kind.isInline` and it is one of the
+    ///   delimiters of one of `revealedSpans`) or (`!kind.isInline` and
+    ///   `paragraphIsRevealed`).
+    ///
+    /// A marker counts as one of a span's delimiters when it sits at that span's
+    /// opening or closing edge - never by loose containment (`span.location <=
+    /// marker.location && NSMaxRange(marker) <= NSMaxRange(span)`), which nesting
+    /// breaks: an inner run's tiny range is geometrically inside its outer run's wider
+    /// range by construction (R-05's whole premise), so containment alone would reveal
+    /// the inner delimiters too whenever only the outer span is the one actually
+    /// revealed (found by the R-11 hand check, not by a fixture - the two existing
+    /// nesting tests only exercised the inner-revealed direction, where an outer
+    /// marker's range is never inside the inner span either way and the bug had no
+    /// chance to show).
+    ///
+    /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
+    static func collapsing(
+        among survivors: [HiddenMarker],
+        paragraphIsRevealed: Bool,
+        revealedSpans: [NSRange]?
+    ) -> [HiddenMarker] {
+        guard let revealedSpans else {
+            return paragraphIsRevealed ? [] : survivors
+        }
+        return survivors.filter { marker in
+            let revealed = marker.kind.isInline
+                ? revealedSpans.contains {
+                    $0.location == marker.range.location || NSMaxRange($0) == NSMaxRange(marker.range)
+                }
+                : paragraphIsRevealed
+            return !revealed
         }
     }
 

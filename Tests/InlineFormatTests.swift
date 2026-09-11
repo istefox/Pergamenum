@@ -88,6 +88,18 @@ func togglingTwiceGivesBackExactlyTheOriginal(_ format: InlineFormat) {
     #expect(InlineFormat.isApplied(.italic, in: note, over: range(of: "amplifica", in: note)))
 }
 
+@Test func boldTextSelectedWholeWithItsMarkersDoesNotReportItselfItalic() {
+    // The "markers inside the selection" shape of `boldTextDoesNotReportItselfItalic` above:
+    // `**amplifica**` selected whole, markers included - as happens after a click selects a
+    // wikilink's target text and its `**...**` markers together. `isLongerMarker`'s inward
+    // widening once used the outward formula here, never matched the second `*` sitting one
+    // character further INTO the selection, and reported the bold run as italic too.
+    let note = "l'isolatore **amplifica** invece"
+    let wrapped = range(of: "**amplifica**", in: note)
+    #expect(InlineFormat.isApplied(.bold, in: note, over: wrapped))
+    #expect(!InlineFormat.isApplied(.italic, in: note, over: wrapped))
+}
+
 @Test func unwrappingBoldLeavesNoStrayAsterisk() {
     let note = "l'isolatore **amplifica** invece"
     #expect(toggling(.bold, "amplifica", in: note).text == "l'isolatore amplifica invece")

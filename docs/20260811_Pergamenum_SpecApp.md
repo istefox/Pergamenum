@@ -156,7 +156,7 @@ Regole vincolanti per l'app:
 
 ### 4.7 Linter di conformità
 
-Vista "Conformità" che verifica su richiesta (mai in automatico di massa, non retroattività): frontmatter a schema (F-01..F-09), tag conformi (T-01..T-10, set 5.1), coerenza `related` ↔ "Note correlate" (W-06), simmetria dei legami (W-05), titoli conformi (4.6), link non risolti nei registri (W-07). Output: elenco di non conformità con azione proposta, applicabile solo nota per nota.
+Linter CLI (`perg lint`) e tool MCP (ADR-0038: nessuna Vista dedicata in app) che verifica su richiesta (mai in automatico di massa, non retroattività): frontmatter a schema (F-01..F-09), tag conformi (T-01..T-10, set 5.1), coerenza `related` ↔ "Note correlate" (W-06), simmetria dei legami (W-05), titoli conformi (4.6), link non risolti nei registri (W-07). Output: elenco di non conformità con azione proposta, applicabile solo nota per nota.
 
 ### 4.8 Nota di governance
 
@@ -326,10 +326,10 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 ### 7.2 Collegamento task ↔ note e canvas (requisito)
 
 - Un task può contenere uno o più wikilink a **note .md** e a **file .canvas**. Il wikilink nel testo del task è il meccanismo di collegamento: nessuna sintassi aggiuntiva.
-- **Dal task alla nota/canvas**: nelle viste task ogni wikilink è cliccabile e apre la destinazione (editor o canvas). Menu contestuale: "Apri nota collegata" / "Apri canvas collegato".
+- **Dal task alla nota/canvas**: nelle viste task ogni wikilink è cliccabile e apre la destinazione (editor o canvas).
 - **Dalla nota/canvas ai task**: pannello "Task collegati" nella nota e nel canvas, che elenca tutti i task del vault il cui testo linka quella nota/canvas, con stato e date, completabili sul posto (la modifica scrive nel file di origine del task).
-- **Collegamento assistito**: dalla vista task, comando "Collega nota/canvas…" apre il quick switcher e inserisce il wikilink nel testo del task. Dall'editor, un task su una riga qualsiasi si collega trascinandovi sopra una nota dalla sidebar.
 - Questi collegamenti sono citazioni inline ai fini di wikilink.md (W-03): non impegnano `related`, non richiedono motivo né simmetria. Contano nell'indice backlink dell'app (la nota mostra il task tra i suoi backlink).
+- *Emendato 2026-09-08 (ADR-0039).* Il "collegamento assistito" a una nota è rimosso: la nota di un task è già quella scelta al momento della cattura (il composer decide in quale file la riga viene scritta), quindi non esiste una seconda nota da "collegare" in un secondo momento. Resta, unico, il collegamento assistito a una **board**: comando "Collega una board…", che scrive `^[[<board>.canvas]]` (§7.2 resta valido per il modello - un task può ancora contenere qualunque wikilink scritto a mano, verso note o canvas, e resta navigabile in entrambe le direzioni). Il menu contestuale del task espone "Vai alla nota di origine" (sempre) e "Vai alla board collegata" (solo con una board assegnata) al posto delle due voci "Apri nota collegata" / "Apri canvas collegato" di cui sopra, che descrivevano una capacità mai implementata sui wikilink liberi.
 
 ### 7.3 Comportamenti
 
@@ -410,9 +410,9 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Inserisci**: Wikilink [[ · Tag # (autocompletamento vincolato) · Task (- [ ]) · Data pianificata > · Scadenza ! · Promemoria @remind · Nota correlata… (flusso W-04/W-05) · Tabella · Immagine/file… · Link email da Mail (legge la selezione corrente di Mail via AppleScript e inserisce `message://`)
 
-**Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Conformità (linter §4.7) · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
+**Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
 
-**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega nota/canvas… (§7.2) · Annulla task · Vai alla nota di origine
+**Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0039) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
 **Calendario**: Vai a oggi · Giorno precedente/successivo (Cmd+←/→) · Vai a data… · Nuovo evento (Cmd+E) · Nuovo promemoria (Cmd+Shift+E) · Pubblica time block come evento · Aggiorna da EventKit
 
@@ -485,7 +485,7 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
 | M3 | Card PDF ed email | Thumbnail PDFKit con cache e resize, card .eml con header, card URI e strumento Link, strumenti To Do e Disegno, apertura con doppio click, anteprima rapida con barra spazio (§6.6), import .eml con rinomina assistita | I requisiti primari di §6.5 e §6.6 funzionano su PDF e .eml reali; spazio su una card apre il pannello Quick Look |
 | M4 | Task | Sintassi §7.1, collegamenti task-note/canvas §7.2, viste Attività, ripianificazione rapida, cattura rapida | Un task con wikilink a una nota è navigabile nei due sensi e si completa da ogni vista |
 | M5 | Calendario | Daily note YYYYMMDD, EventKit lettura/scrittura, Promemoria bidirezionali, timeblocking | Un time block trascinato appare nel Calendario Apple; un Promemoria completato in-app risulta completato in Promemoria |
-| M6 | URL scheme + conformità | Route §9, menu completi §10, linter §4.7, import convenzioni, notifiche locali | Da Obsidian e DEVONthink un link pergamenum:// apre la risorsa esatta; il linter segnala correttamente una nota non conforme di test |
+| M6 | URL scheme + conformità | Route §9, menu completi §10, linter §4.7, import convenzioni, notifiche locali | Da Obsidian e DEVONthink un link pergamenum:// apre la risorsa esatta; `perg lint` segnala correttamente una nota non conforme di test |
 
 Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia una milestone se il criterio della precedente non è verificato manualmente da Stefano.
 

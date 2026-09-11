@@ -62,7 +62,6 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case paneWorkspace
     case paneToday
     case paneTasks
-    case paneConformance
     case paneDiary
     case paneTags
     case paneViews
@@ -75,7 +74,6 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// Backlinks, «task collegati» and the unlinked mentions of ADR-0012 D9 all live in
     /// the inspector, which had a toolbar button and nothing else.
     case toggleInspector
-    case runConformanceCheck
     case foldSection
     case unfoldAll
 
@@ -171,9 +169,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
             .edit
         case .insertWikilink, .insertRelated, .addToPraticaFromMail:
             .insert
-        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneTags,
+        case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
-             .runConformanceCheck, .foldSection, .unfoldAll, .goBack, .goForward,
+             .foldSection, .unfoldAll, .goBack, .goForward,
              .paneRecordings, .refreshRecordings, .panePratiche:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
@@ -218,13 +216,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneWorkspace: "Vai a Workspace"
         case .paneToday: "Vai a Oggi"
         case .paneTasks: "Vai ad Attività"
-        case .paneConformance: "Vai a Conformità"
         case .paneDiary: "Vai a Diario"
         case .paneTags: "Vai a Tag"
         case .paneViews: "Vai a Viste"
         case .paneStarred: "Vai a Preferite"
         case .toggleInspector: "Ispettore"
-        case .runConformanceCheck: "Verifica conformità"
         case .foldSection: "Ripiega la sezione"
         case .unfoldAll: "Espandi tutto"
         case .taskToggle: "Completa o riapri il task"
@@ -306,7 +302,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneWorkspace: KeyBinding("2", [.command, .control])
         case .paneToday: KeyBinding("3", [.command, .control])
         case .paneTasks: KeyBinding("4", [.command, .control])
-        case .paneConformance: KeyBinding("5", [.command, .control])
+        // Ctrl+Cmd+5 was «Vai a Conformità» and is intentionally left unbound rather than
+        // reassigned: the raw values are the keys of the overrides file, and renumbering
+        // would silently move a binding a user had changed for a different pane.
         case .paneDiary: KeyBinding("6", [.command, .control])
         // Checked against the system's own before it was bound, which is the M9 lesson:
         // `com.apple.symbolichotkeys` defines nothing on Ctrl+Cmd+7.
@@ -318,7 +316,6 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneViews: KeyBinding("8", [.command, .control])
         case .paneStarred: KeyBinding("9", [.command, .control])
         case .toggleInspector: KeyBinding("i", [.command, .option])
-        case .runConformanceCheck: KeyBinding("l", [.command, .control])
         // The keys Xcode uses for the same thing. ⌘← and ⌘→ are already the
         // Calendario menu's day navigation, so the option key is what keeps them apart.
         case .foldSection: KeyBinding("left", [.command, .option])

@@ -89,7 +89,7 @@ import Testing
         #expect(candidates.autoFollowedConversations.contains(Self.followedConversation))
     }
 
-    // MARK: - ADR §D24 (PG-108): the keyword arm sees recipients, not only the sender
+    // MARK: - ADR §D24 (PG-119): the keyword arm sees recipients, not only the sender
 
     @Test func theKeywordArmMatchesAMessageAddressedToACounterpartNotOnlyFromOne() {
         var dossier = Self.baseDossier
@@ -115,7 +115,7 @@ import Testing
         #expect(candidates.messages.contains { $0.messageID == "<to-counterpart@stefer.it>" })
     }
 
-    // MARK: - ADR §D22 (PG-106): the keyword arm sees the counterpart pool
+    // MARK: - ADR §D22 (PG-117): the keyword arm sees the counterpart pool
 
     @Test func aKeywordMatchAutoFollowsAndImportsAConversationPresentOnlyInTheUnfollowedPool() {
         var dossier = Self.baseDossier
@@ -184,7 +184,7 @@ import Testing
     }
 
     @Test func trayListsAConversationWhereTheTrackedPersonOnlySentToTheCounterpart() {
-        // PG-108's own case: every message of this conversation was sent *by* the
+        // PG-119's own case: every message of this conversation was sent *by* the
         // tracked person *to* the counterpart, never received from them. Today's
         // sender-only check in `trayCandidates` (`guard let sender = row.sender?
         // .lowercased() … counterparts.contains(sender)`) never proposes it - this is

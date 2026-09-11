@@ -11,6 +11,10 @@ import SwiftUI
 /// undoes one edit rather than one character.
 struct StickyTextCard: View {
     @Environment(\.theme) private var theme
+    // Reused for navigation only (issue #188, R-06): `CommandActions.open(link:)` is the one
+    // place a wikilink target resolves to a note-open or a board-open, already reachable this
+    // way from `EditorColumnView`/`TasksView` (ADR-0039).
+    @Environment(CommandActions.self) private var commandActions
     let node: CanvasNode
     let workspace: WorkspaceController
 
@@ -60,6 +64,12 @@ struct StickyTextCard: View {
             // preferences here the same way, and a `@Environment(VaultController.self)` read at
             // this level would crash a card built in a preview or a test.
             hidesMarkup: workspace.hidesMarkup,
+            // The `[[` completion popup's candidate pool, off the controller by the same route
+            // as the setting above.
+            wikilinkNoteTitles: workspace.wikilinkNoteTitles,
+            wikilinkBoardTitles: workspace.wikilinkBoardTitles,
+            // ADR-0037 §D8: the same route `hidesMarkup` above already takes.
+            revealsInlineSpans: workspace.revealsInlineSpans,
             // Which of this card's headings are folded (ADR-0028 §D8), off the controller by node
             // id and along the same route as the setting above. Transient by construction: the
             // table is cleared in `attach`/`detach`, so a reopened board starts unfolded and
@@ -72,6 +82,11 @@ struct StickyTextCard: View {
             // card's, so nothing here has to be undone when editing moves elsewhere.
             onSelectionChange: { textView in
                 workspace.cardTextSelection.update(nodeID: node.id, from: textView)
+            },
+            // The `[[` completion popup changed - same reasoning as `onSelectionChange` above,
+            // one holder the board's own popup overlay reads.
+            onWikilinkCompletionChange: { textView in
+                workspace.wikilinkCompletionState.update(nodeID: node.id, from: textView)
             },
             // Guarded on this card's own session, exactly as the focus commit above is: when
             // editing moves straight from one card to another, this card's text view resigns
@@ -87,7 +102,11 @@ struct StickyTextCard: View {
             // deliberately so: the card's own click-hit-test does the same "this card only"
             // narrowing `onToggleFold` above needs a guard for, but `toggleTask` itself reads
             // whichever of the two states (`editingTextDraft` / the node's stored text) applies.
-            onToggleTask: { lineIndex in workspace.toggleTask(atLineIndex: lineIndex, forNodeID: node.id) }
+            onToggleTask: { lineIndex in workspace.toggleTask(atLineIndex: lineIndex, forNodeID: node.id) },
+            // Cmd+click / "Apri collegamento" on a wikilink or CommonMark link (issue #188,
+            // R-06) - unguarded on `isEditing` like `onToggleTask` above, for the same reason:
+            // the click can only arrive from this card's own text view.
+            onFollowLink: { title in commandActions.open(link: title) }
         )
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's

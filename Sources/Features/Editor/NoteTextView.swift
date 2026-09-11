@@ -11,6 +11,11 @@ struct NoteTextView: NSViewRepresentable {
     let theme: Theme
     /// Titles offered when completing after `[[`.
     let noteTitles: [String]
+    /// Workspace boards offered alongside notes when completing after `[[`, by vault-relative
+    /// path (`CanvasStore.allBoards()`) - defaults empty so a text view built without a vault
+    /// behind it behaves exactly as before (the `spellCheck`/`hidesMarkup` contrast above
+    /// documents the same convention).
+    var boardTitles: [String] = []
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
     /// Whether misspellings are underlined, and in which language (M8, SPEC §12). Off by
@@ -22,6 +27,12 @@ struct NoteTextView: NSViewRepresentable {
     /// `spellCheck`'s default: a text view with no vault behind it behaves exactly as
     /// before, and the vault's own default is what a real note editor reads through.
     var hidesMarkup = false
+    /// Whether emphasis/strikethrough/link markers are revealed span by span rather than
+    /// paragraph by paragraph (ADR-0037 §D2). **`false` here, `true` in `VaultSettings`,
+    /// deliberately** - the same contrast `hidesMarkup` above documents: a text view with
+    /// no vault behind it behaves exactly as before, and the vault's own default is what a
+    /// real note editor reads through.
+    var revealsInlineSpans = false
     /// Whether the text column is capped to a readable width and centred, rather than
     /// filling the whole pane (ADR-0030 §D6). **`false` here, `true` in `VaultSettings`,
     /// deliberately** - the same contrast `hidesMarkup` above documents: a text view with
@@ -312,6 +323,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.undoManager = textView.window?.undoManager
         textView.noteTitles = noteTitles
+        textView.boardTitles = boardTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
         // Re-applied on every update rather than only at build time: turning the checker on
@@ -326,13 +338,24 @@ struct NoteTextView: NSViewRepresentable {
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
         if textView.string != text {
+            // This view is one persistent instance per editor column (never rebuilt per
+            // note), so a genuine note switch and the same note's content changing
+            // externally (undo, sync) both land here. Carrying the old raw offset forward
+            // is right for the second case but wrong for the first: with no per-note caret
+            // bookmark anywhere in this app, a switched-to note's caret at whatever numeric
+            // offset the previous note happened to leave behind can - and did (issue #188)
+            // - land inside a paragraph whose markup reveal-on-caret (ADR-0018 §D2) then
+            // never gets a reason to re-hide. `notePath` is the one signal available to
+            // tell the two cases apart.
+            let isNoteSwitch = context.coordinator.lastNotePath != notePath
             let selection = textView.selectedRange()
             textView.string = text
             textView.setSelectedRange(NSRange(
-                location: min(selection.location, (text as NSString).length),
+                location: isNoteSwitch ? 0 : min(selection.location, (text as NSString).length),
                 length: 0
             ))
         }
+        context.coordinator.lastNotePath = notePath
         context.coordinator.applyStyling(to: textView, theme: theme)
         context.coordinator.applyEmbeds(to: textView)
         context.coordinator.applyTransclusions(to: textView, theme: theme)

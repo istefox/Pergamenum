@@ -191,6 +191,17 @@ private func emphasisMarkers(_ text: String) -> [String] {
     #expect(spans("scadenza !2026-08-11").contains(.due))
 }
 
+/// Issue #188 follow-up: a wikilink whose visible text was selected and made bold
+/// (`[[**Prova**]]`, produced by the format bar/Cmd+B) used to carry `.linkTarget("**Prova**")`
+/// - the URL/navigation this resolves to then looked for a note literally titled "**Prova**",
+/// found none, and Cmd+click silently did nothing. The payload now resolves through the
+/// wrapping markers to the actual note title, while the styled RANGE stays the full literal
+/// source text (`**Prova**`, all 9 characters) so the visible bold run is what is clickable.
+@Test func aWikilinkTargetWrappedInBoldStillResolvesToTheBareTitle() {
+    let text = "vedi [[**Prova**]] qui"
+    #expect(styled(text, .linkTarget("Prova")) == "**Prova**")
+}
+
 @Test func stylesWikilinksInsideTheBodyOfANoteWithFrontmatter() {
     // The body scan starts after the frontmatter; an off-by-one here would shift
     // every styled range in every real note.
@@ -597,15 +608,37 @@ func stylesAWholeThematicBreakLineAsOneHorizontalRule(rule: String) {
 }
 
 @Test func stylesACommonMarkLinkSyntaxSeparatelyFromItsLabel() {
-    // Reuses the existing `.linkSyntax` case (ADR §D1) rather than adding a new one - the
-    // opening bracket and the `](url)` tail are each their own span, and the label text
-    // itself is left unspanned by either.
+    // Reuses the existing `.linkSyntax` case (ADR §D1) rather than adding a new one for the
+    // delimiters - the opening bracket and the `](url)` tail are each their own span. The
+    // label itself now carries a `.linkTarget` span of its own (issue #188, R-03/R-04): the
+    // same case a wikilink's target already uses, carrying the raw href rather than a note
+    // title - `MarkdownAttributedText.targetURL(for:)` is what tells the two apart.
     let text = "[testo](https://x.it)"
-    let linkSyntaxRanges = MarkdownStyler.spans(in: text)
+    let spansIn = MarkdownStyler.spans(in: text)
+    let linkSyntaxRanges = spansIn
         .filter { $0.span == .linkSyntax }
         .map { String(text[$0.range]) }
     #expect(Set(linkSyntaxRanges) == Set(["[", "](https://x.it)"]))
     #expect(!linkSyntaxRanges.contains("testo"))
+
+    let linkTargetSpans = spansIn.filter {
+        if case .linkTarget = $0.span { return true }
+        return false
+    }
+    #expect(linkTargetSpans.count == 1)
+    #expect(linkTargetSpans.first.map { String(text[$0.range]) } == "testo")
+    #expect(linkTargetSpans.first?.span == .linkTarget("https://x.it"))
+}
+
+@Test func aCommonMarkLinkWithAnEmptyHrefGetsNoLinkTargetSpan() {
+    // `[testo]()` - the empty-target guard in `markdownLinkSpans`, the same shape as the
+    // `****`/`~~~~` empty-run guards elsewhere in this file.
+    let text = "[testo]()"
+    let hasLinkTarget = MarkdownStyler.spans(in: text).contains {
+        if case .linkTarget = $0.span { return true }
+        return false
+    }
+    #expect(!hasLinkTarget)
 }
 
 @Test func everyADR0029ConstructInsideAFenceYieldsNoneOfItsSpans() {

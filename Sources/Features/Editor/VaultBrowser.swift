@@ -124,11 +124,12 @@ struct VaultBrowser: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: vault.saveOpenNote) {
-                Label("Salva", systemImage: "text.badge.checkmark")
-            }
-            .help("Salva la nota")
-            .disabled(vault.openNote?.hasUnsavedChanges != true)
+            // The Salva button used to live here, mirroring `NoteTabBar`'s own save state.
+            // Removed (2026-09-09): the tab bar already carries the per-tab Salva/Salvato
+            // control, so a second one here was a duplicate reading the same
+            // `hasUnsavedChanges`, not a second capability. Cmd+S and File > Salva
+            // (`VaultCommands.swift`) are untouched — the toolbar was the discoverable
+            // copy, never the only implementation (ADR-0023).
 
             // «Modalità lettura» was here (ADR-0029 §D13): one editor now, always editable
             // and always styled, so there is no mode for a toolbar to toggle.
@@ -187,14 +188,12 @@ struct VaultBrowser: View {
 
     @ViewBuilder
     private var inspector: some View {
-        // `isOpenNoteVisible` and not just `openNote`: backlinks, conformance and the
-        // history of a note the composer is covering describe something nobody is
-        // looking at (PG-027).
+        // `isOpenNoteVisible` and not just `openNote`: backlinks and the history of a
+        // note the composer is covering describe something nobody is looking at (PG-027).
         if let note = vault.openNote, vault.isOpenNoteVisible {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                     star(note)
-                    conformance(note)
                     history(note)
                     backlinks(note)
                     // Under the backlinks, chosen from the mockup: the two answer the same
@@ -231,21 +230,6 @@ struct VaultBrowser: View {
         .buttonStyle(.plain)
         .help(isStarred ? "Togli dalle preferite" : "Aggiungi alle preferite")
         .accessibilityIdentifier("star-note")
-    }
-
-    private func conformance(_ note: VaultController.OpenNote) -> some View {
-        let violations = vault.violations(for: note)
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("CONFORMITÀ").themedText(.caption, color: .textTertiary)
-            if violations.isEmpty {
-                Label("Conforme", systemImage: "checkmark.seal")
-                    .themedText(.caption, color: .textSecondary)
-            } else {
-                ForEach(ConformanceText.lines(violations), id: \.self) { line in
-                    Text(line).themedText(.caption, color: .taskOverdue)
-                }
-            }
-        }
     }
 
     private func backlinks(_ note: VaultController.OpenNote) -> some View {

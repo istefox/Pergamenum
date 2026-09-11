@@ -39,6 +39,13 @@ final class FormattingTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         guard event.keyCode == Self.escapeKeyCode else { return super.keyDown(with: event) }
+        // The wikilink popup owns Esc while it is open (dismiss without leaving editing),
+        // exactly as `dismissCompletion()` does for the note editor's own panel - so this
+        // has to be checked before `onCancel?()`, which would otherwise close the card too.
+        if wikilinkCompletion != nil {
+            dismissWikilinkCompletion()
+            return
+        }
         onCancel?()
     }
 
@@ -55,16 +62,28 @@ final class FormattingTextView: NSTextView {
     /// bar exists only while there is one.
     func selectionFrameInView() -> CGRect? {
         let selection = selectedRange()
-        guard selection.length > 0,
-              let layoutManager = textLayoutManager,
+        guard selection.length > 0 else { return nil }
+        return frame(for: selection, type: .selection)
+    }
+
+    /// `selectionFrameInView()`'s sibling for a zero-length range at the caret, for the
+    /// wikilink popup's own placement - same view-local contract, same reason. `nil` when the
+    /// caret's position cannot be resolved to a layout segment (an as-yet-unlaid-out range).
+    func caretFrameInView() -> CGRect? {
+        frame(for: selectedRange(), type: .standard)
+    }
+
+    /// The shared `NSTextRange`/`enumerateTextSegments` plumbing behind both methods above.
+    private func frame(for range: NSRange, type: NSTextLayoutManager.SegmentType) -> CGRect? {
+        guard let layoutManager = textLayoutManager,
               let contentManager = layoutManager.textContentManager,
-              let start = contentManager.location(contentManager.documentRange.location, offsetBy: selection.location),
-              let end = contentManager.location(start, offsetBy: selection.length),
-              let range = NSTextRange(location: start, end: end)
+              let start = contentManager.location(contentManager.documentRange.location, offsetBy: range.location),
+              let end = contentManager.location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end)
         else { return nil }
 
         var union: CGRect?
-        layoutManager.enumerateTextSegments(in: range, type: .selection) { _, frame, _, _ in
+        layoutManager.enumerateTextSegments(in: textRange, type: type) { _, frame, _, _ in
             union = union.map { $0.union(frame) } ?? frame
             return true
         }
@@ -148,7 +167,89 @@ final class FormattingTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         if claimsFoldBadge(at: point) { return }
         if claimsCheckbox(at: point) { return }
+        // Cmd+click on a link/wikilink navigates instead of placing the caret (issue #188,
+        // R-06) - the card's half of `CompletingTextView.mouseDown(with:)`'s own addition, for
+        // the identical reason: this view runs TextKit 2 with the same shared content-storage
+        // delegate (`EditorDecorationDelegate`, ADR-0028 §D1), so AppKit's automatic
+        // "clickedOnLink" gesture is equally unreachable here.
+        if event.modifierFlags.contains(.command), followLinkIfPresent(at: point) { return }
         super.mouseDown(with: event)
+    }
+
+    /// The card's half of `CompletingTextView.rightMouseDown(with:)`'s own addition (issue
+    /// #188) - identical reason, including the selection-restore step: `menu(for:)`'s own
+    /// `super.menu(for: event)` call selects the link's whole range as an internal AppKit
+    /// side effect while building the standard "Open Link"/"Copy Link" items, which
+    /// reveal-on-caret reacts to. See that method's own comment for the full mechanism.
+    override func rightMouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let storage = textStorage else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              storage.attribute(.link, at: index, effectiveRange: nil) is URL
+        else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let originalSelection = selectedRange()
+        guard let menu = menu(for: event) else { return }
+        setSelectedRange(originalSelection)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    /// The card's own copy of `CompletingTextView.followLinkIfPresent(at:)` - not extracted,
+    /// for the reason every other shared piece of behaviour between these two views (this
+    /// file's header) already gives: `CompletingTextView+Pasteboard.swift` is outside this
+    /// chain's edits (ADR-0027 §D9), and the two views share `EditorDecorationDelegate`/
+    /// `MarkdownAttributedText.clickTarget(for:)` already, which is where the real logic lives.
+    @discardableResult
+    func followLinkIfPresent(at point: CGPoint) -> Bool {
+        guard let storage = textStorage else { return false }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return false }
+        return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
+    }
+
+    /// «Apri collegamento» (R-07), the card's half of `CompletingTextView.menu(for:)`'s own
+    /// addition - no `menu(for:)` override existed on this view before this feature.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let base = super.menu(for: event)
+        guard let storage = textStorage else { return base }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return base }
+        let menu = base ?? NSMenu()
+        let item = NSMenuItem(
+            title: "Apri collegamento", action: #selector(openLinkFromMenu(_:)), keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = PendingLinkClick(url: url, characterIndex: index)
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    /// «Apri collegamento» navigates without Cmd held, by design (R-07) - so it calls
+    /// `LinkNavigatingDelegate.performLinkNavigation(_:)` directly rather than
+    /// `NSTextViewDelegate.textView(_:clickedOnLink:at:)`, which the Coordinator gates on Cmd
+    /// actually being down (issue #188's plain-click regression fix).
+    @objc private func openLinkFromMenu(_ sender: NSMenuItem) {
+        guard let pending = sender.representedObject as? PendingLinkClick else { return }
+        (delegate as? LinkNavigatingDelegate)?.performLinkNavigation(pending.url)
+    }
+
+    /// What "Apri collegamento" needs to replay the click it was offered from - the card's
+    /// own copy of `CompletingTextView+Pasteboard.swift`'s private `PendingLinkClick`.
+    private struct PendingLinkClick {
+        let url: URL
+        let characterIndex: Int
     }
 
     /// Whether a folded heading's badge is under `point`, and toggling its section when one is.
@@ -300,6 +401,121 @@ final class FormattingTextView: NSTextView {
         textStorage?.replaceCharacters(in: whole, with: replacement)
         didChangeText()
         setSelectedRange(selection)
+    }
+
+    // MARK: - Wikilink completion (`[[`, point 1 of the workspace wikilink regression chain)
+
+    /// The vault's note titles, offered as `[[` completion candidates - threaded in from
+    /// `CardTextView`/`StickyTextCard`/`WorkspaceController.wikilinkNoteTitles`, the same
+    /// `hidesMarkup`-style data route this file's header describes. Empty on a card built in
+    /// a preview or a test, which then offers nothing rather than crashing.
+    var wikilinkNoteTitles: [String] = []
+    /// The vault's boards, offered the same way - a card can link `[[board.canvas]]` too,
+    /// which the note editor's own `[[` completion never offers.
+    var wikilinkBoardTitles: [String] = []
+
+    /// The popup's current state, or nil while the caret sits outside an unclosed `[[`, or
+    /// while what has been typed matches nothing.
+    private(set) var wikilinkCompletion: WikilinkCompletion?
+    /// Fired whenever `wikilinkCompletion` changes, including to nil - mirrors
+    /// `CardTextView.onSelectionChange`'s own shape: the closure reads state off the view it
+    /// is handed, never carries it as a parameter.
+    var onWikilinkCompletionChange: ((FormattingTextView) -> Void)?
+
+    /// The trigger location Escape (or a click away) dismissed, so the popup does not reopen
+    /// on the very next keystroke of the same still-open `[[` -
+    /// `CompletingTextView.dismissedLocation`'s own rule, copied rather than shared for the
+    /// reason every duplicated method in this file gives.
+    private var wikilinkDismissedLocation: Int?
+
+    /// Recomputes the popup for wherever the caret is now.
+    ///
+    /// Called from `CardTextView.Coordinator.textDidChange` after `applyStyling`, and from
+    /// `textViewDidChangeSelection` - arrow keys carry the caret in and out of a `[[...]]`
+    /// span with no text change of their own, the same second call site
+    /// `CompletingTextView.refreshCompletion` has via `refreshFormatBar`'s neighbouring hook.
+    func refreshWikilinkCompletion() {
+        let caret = selectedRange().location
+        guard let context = WikilinkTrigger.context(in: string, caret: caret) else {
+            wikilinkDismissedLocation = nil
+            setWikilinkCompletion(nil)
+            return
+        }
+        guard context.range.location != wikilinkDismissedLocation else { return }
+        let candidates = CardWikilinkCompletion.candidates(
+            matching: context.prefix, notes: wikilinkNoteTitles, boards: wikilinkBoardTitles
+        )
+        guard !candidates.isEmpty else {
+            setWikilinkCompletion(nil)
+            return
+        }
+        setWikilinkCompletion(WikilinkCompletion(context: context, candidates: candidates))
+    }
+
+    /// Escape's half of the dismissal (see `keyDown(with:)`): the popup goes, the typed prefix
+    /// stays - `CompletingTextView.dismissCompletion()`'s own "don't eat a literal character"
+    /// rule, since deleting what was typed on dismissal would make a literal `[[` unwritable.
+    private func dismissWikilinkCompletion() {
+        wikilinkDismissedLocation = wikilinkCompletion?.context.range.location
+        setWikilinkCompletion(nil)
+    }
+
+    private func setWikilinkCompletion(_ completion: WikilinkCompletion?) {
+        guard wikilinkCompletion != completion else { return }
+        wikilinkCompletion = completion
+        onWikilinkCompletionChange?(self)
+    }
+
+    private func moveWikilinkSelection(by offset: Int) {
+        guard var completion = wikilinkCompletion, !completion.candidates.isEmpty else { return }
+        completion.selectedIndex = min(
+            max(completion.selectedIndex + offset, 0), completion.candidates.count - 1
+        )
+        setWikilinkCompletion(completion)
+    }
+
+    /// Splices `candidate` into the trigger's range as `[[<insertText>]]` - the `[[` is
+    /// already there, only `prefix` (what `context.range` covers) and the closing `]]` are
+    /// written - through the single one-undo-step edit path
+    /// (`replaceWholeText(with:selecting:)`) every other programmatic edit on this view
+    /// already goes through.
+    func applyWikilinkCompletion(_ candidate: WikilinkCandidate) {
+        guard let completion = wikilinkCompletion else { return }
+        let whole = string as NSString
+        let inserted = "\(candidate.insertText)]]"
+        let newText = whole.replacingCharacters(in: completion.context.range, with: inserted)
+        let caret = completion.context.range.location + (inserted as NSString).length
+        wikilinkDismissedLocation = nil
+        setWikilinkCompletion(nil)
+        replaceWholeText(with: newText, selecting: NSRange(location: caret, length: 0))
+    }
+
+    /// The keys the popup owns while it is open, and only while it is open - the card's half
+    /// of `CompletingTextView.doCommand(by:)`. This view had no such override before this
+    /// feature, so nothing existing is touched by adding it; every unhandled selector still
+    /// reaches `super`, which is where `insertNewline(_:)`'s own list-continuation override
+    /// above is reached when no popup is open.
+    override func doCommand(by selector: Selector) {
+        guard wikilinkCompletion != nil else {
+            super.doCommand(by: selector)
+            return
+        }
+        switch selector {
+        case #selector(moveUp(_:)):
+            moveWikilinkSelection(by: -1)
+        case #selector(moveDown(_:)):
+            moveWikilinkSelection(by: 1)
+        case #selector(insertNewline(_:)), #selector(insertTab(_:)):
+            if let selected = wikilinkCompletion?.selected { applyWikilinkCompletion(selected) }
+        // Escape is intercepted earlier, in `keyDown(with:)`, before AppKit's own key-binding
+        // dispatch ever reaches this method - `complete:` is kept here regardless, the same
+        // belt-and-braces the note editor's own `dismissCompletion()` call site keeps, since
+        // some configurations route word completion here instead.
+        case #selector(cancelOperation(_:)), #selector(complete(_:)):
+            dismissWikilinkCompletion()
+        default:
+            super.doCommand(by: selector)
+        }
     }
 
     /// Cmd+B → `.bold`, Cmd+I → `.italic`, every other key or modifier combination → `nil`.

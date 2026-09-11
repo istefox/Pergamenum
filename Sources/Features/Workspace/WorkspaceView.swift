@@ -92,6 +92,14 @@ struct WorkspaceView: View {
                 // link that launches the app arrives before this view exists.
                 .task { openPendingCanvas() }
                 .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
+                // The one value `Destination.workspaceBoard` (ADR-0015 §D1 amendment) needs
+                // the window to read - `workspace.board` itself is `@State` here and stays
+                // unreachable from `WindowPlace`, so it is mirrored up rather than exposed
+                // directly. `""` is "nothing open" on the controller (`WorkspaceController.
+                // swift:80`); `nil` is the same on `VaultController.openBoardPath`.
+                .onChange(of: workspace.board) { _, board in
+                    vault.openBoardPath = board.isEmpty ? nil : board
+                }
         )
     }
 
@@ -362,6 +370,9 @@ struct WorkspaceView: View {
                 // Third overlay outside the `scaleEffect` above, and the only one of the three
                 // that answers the pointer, so it comes after both (ADR-0027 §D5).
                 BoardFormatBarLayer(workspace: workspace, viewport: viewportSize)
+                // Same placement, same reason as the layer above (ADR §D5): outside the
+                // `scaleEffect`, after it in the ZStack so it answers the pointer for row clicks.
+                BoardWikilinkCompletionLayer(workspace: workspace, viewport: viewportSize)
 
                 if workspace.tool == .drawing || !workspace.activeDrawing.strokes.isEmpty {
                     drawingLayer(in: geometry.size)
@@ -371,7 +382,7 @@ struct WorkspaceView: View {
             }
             .clipped()
             .gesture(pinchGesture)
-            .onModifierKeysChanged(mask: [.shift, .option]) { _, held in modifiers = held }
+            .onModifierKeysChanged(mask: [.shift, .option, .command]) { _, held in modifiers = held }
             .dropDestination(for: URL.self) { urls, location in
                 propose(import: urls, at: canvasPoint(from: location, in: geometry.size))
             }
@@ -481,6 +492,15 @@ struct WorkspaceView: View {
         // take (ADR-0028 §D10): one switch for both surfaces, re-run on every settings change by
         // the `onChange(of: vault.settings)` this method is already wired to.
         workspace.hidesMarkup = vault.settings.hidesMarkup
+        // ADR-0037 §D8: the same route, one property wider.
+        workspace.revealsInlineSpans = vault.settings.revealsInlineSpans
+        // The `[[` completion popup's candidate pool (point 1 of the workspace wikilink
+        // regression chain) - refreshed on the same triggers as the settings above, not on
+        // every vault mutation: a note created in another pane while this board stays open
+        // will not appear until the next settings change re-runs this method, the same
+        // accepted staleness `hidesMarkup` itself already has.
+        workspace.wikilinkNoteTitles = vault.index.allNotes.map(\.title)
+        workspace.wikilinkBoardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
     }
 
     private var grid: some View {

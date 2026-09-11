@@ -522,6 +522,7 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0024** — One derived `WorkspaceSelection` for the sidebar tree, flat rows replacing `DisclosureGroup`, supersedes ADR-0022 §D9 → `docs/adr/0024-workspace-board-tree-single-selection.md`
 - **ADR-0025** — Board addressed by own file path, not folder-derived; folders and boards are distinct tree rows; supersedes ADR-0024 §D2/§D3, relocates ADR-0022 §D4 → `docs/adr/0025-workspace-folder-board-separation.md`
 - **ADR-0026** — Drag-and-drop for both sidebar trees, `List`'s own multi-selection, moves reuse the existing "Sposta in ▸" file operations → `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`
+- **ADR-0037** — Reveal-on-caret narrows from paragraph to span for emphasis/strikethrough/link, behind a new off-by-default setting, reusing `MarkdownStyler`'s existing recursive parse → `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`
 - **ADR-0027** — Unify Nota/Testo into one Workspace tool, selection-based rich text (bold/italic/strikethrough/lists/headings as plain markdown) plus whole-card color/alignment as `pergamenum-*` properties → `docs/adr/0027-unificare-nota-e-testo-in-un-solo-strume.md`
 - **ADR-0028** — WYSIWYG markdown rendering (concealment + list glyphs) brought from Note into Workspace cards, reopening ADR-0027 §D10 → `docs/adr/0028-wysiwyg-markdown-in-workspace.md`
 - **ADR-0029** — One editor, always editable, no Modifica/Lettura toggle; a GFM table becomes a real `NSTextAttachmentViewProvider`-hosted grid; supersedes ADR-0005 §D2 and ADR-0018's "three named constructs" scope boundary → `docs/adr/0029-editor-wysiwyg-unification.md`
@@ -532,6 +533,8 @@ Detail: `docs/adr/0026-drag-and-drop-board-files-into-workspace.md`.
 - **ADR-0034** — Visual query builder for `pergamenum-view` fences: one shared "Modifica query" affordance in `RenderedViewBlock`'s header (both live-render and error-card states), validity round-trips through `ViewBlock.parse` itself, flat AND-of-terms `where` with raw-text fallback for or/not/parens, commit reuses `commitTable`'s anchor-and-reload-guard shape; does not reopen ADR-0009 or ADR-0033 → `docs/adr/0034-pergamenum-view-query-builder.md`
 - **ADR-0035** — View-block attachment height becomes content-adaptive, capped at the original 320pt (amends ADR-0033 §D8/R-06): measurement crosses the SwiftUI/TextKit isolation boundary via a lock-guarded box on the host, deferred `Task { @MainActor }` relayout to avoid re-entering TextKit, clamp-before-compare for convergence → `docs/adr/0035-view-block-adaptive-height.md`
 - **ADR-0036** — Pratiche: a vault folder that fills itself from a published copy of Apple Mail's Envelope Index (system `SQLite3`, db+wal copied, WAL recovered, `quick_check`, own indexes, atomic rename), one markdown file per message plus `allegati/`, membership via `pergamenum-dossier-*` keys, two-lane timeline, `pratica.md` edited only in the inspector, no network, connectors read-only → `docs/adr/0036-pratiche.md`
+- **ADR-0038** — Removes both Conformità UI surfaces (the dedicated pane and the note inspector's CONFORMITÀ block); keeps `perg lint`, the MCP `lint` tool, `VaultAPI.LintFinding` (protected interface) and the rule engine untouched, since Principle 5 and tag-entry blocking depend on the engine, not the review UI → `docs/adr/0038-remove-conformance-ui-section.md`
+- **ADR-0039** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0039-task-note-board-link-and-navigation.md`
 
 ## Decisions from the Nota/Testo unification + rich text chain (ADR-0027)
 
@@ -965,3 +968,81 @@ Key architectural decisions:
   `Dossier.render`, `VaultAPI.PraticaSummary`.
 
 Detail: `docs/adr/0036-pratiche.md`.
+## Decisions from the word-grained markdown reveal-on-caret chain (ADR-0037)
+
+Narrows reveal-on-caret (ADR-0018 §D2) from paragraph to span for emphasis, strikethrough and
+link constructs, behind a new off-by-default setting: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.
+Amends ADR-0018 §D2 for these three marker kinds only; amends ADR-0028 §D1 with a seventh shared
+delegate input. Does not reopen ADR-0029 §D17, ADR-0033 §D4, or ADR-0009.
+
+Key architectural decisions:
+- **The construct extents come out of `MarkdownStyler`'s existing recursive walk (PG-084), never
+  from a second parser** — `.bold`/`.italic`/`.strikethrough` already carry the whole run
+  including delimiters, nested runs included; only the CommonMark `[text](url)` form needs its
+  two `.linkSyntax` halves paired back into one extent.
+- **A new delegate input, `revealedSpans: [Int: [NSRange]]`, is never merged into
+  `revealedParagraphs`** — two producers on one setter is exactly what the delegate's existing
+  multi-input pattern forbids. With the new setting off, the generic substitution path collapses
+  to `paragraphIsRevealed ? [] : survivors`, byte-for-byte today's behavior.
+- **Which unit governs a marker is an exhaustive `switch` on `HiddenMarker.Kind.isInline`** — no
+  `default` case, so a future eleventh marker kind cannot be added without deciding which unit it
+  belongs to. Only `.emphasis`/`.strikethrough`/`.link` are span-grained; heading, embed, list,
+  checkbox, blockquote, rule, table and view-block stay paragraph-grained.
+- **A caret reveals only the innermost containing span (closed-interval, smallest length wins);
+  a non-empty selection reveals every span it intersects, innermost rule not applied** — the
+  asymmetry is deliberate: R-05 (nesting) speaks of the caret, R-04 (selection) of the range, and
+  a fully-covered paragraph short-circuits to one whole-paragraph span with no parse.
+- **The setting is pushed from `applyStyling`, never from `applyReveal`** — `applyReveal`
+  early-returns when the selection has not moved, so a toggle flip with a stationary caret would
+  never redraw under the old code path.
+- **The Workspace `.text` card conceals strikethrough and link/wikilink syntax identically to the
+  note editor** — amended 2026-09-09 (R-11 hand check): `CardTextView`'s marker switch now maps
+  `.strikethroughMarker`/`.linkSyntax` too, reusing `NoteTextView.Coordinator.linkDelimiters(in:of:)`
+  for the link case. ADR-0029 §D17's actual seam (a live `NSView` grid never landing in a
+  culling-deallocated card view) is untouched — neither construct involves an `NSView`, only the
+  same character substitution `.emphasis` already used in a card.
+
+Detail: `docs/adr/0037-word-grained-markdown-reveal-on-caret-in.md`.
+
+## Decisions from the task-note-board-link-and-navigation chain (ADR-0039)
+
+Fixes a task's confused, partly-broken relation to its note and to a board:
+`docs/adr/0039-task-note-board-link-and-navigation.md`. Reopens SPEC §7.2's note-linking
+requirement (removed, deliberately) and R-05 of ADR-0021 (board navigation, added).
+
+Key architectural decisions:
+- **`TaskCommand` (`Sources/Features/Tasks/TaskCommand.swift`) mirrors `CardCommand` and
+  `CalendarDayCommand`** — three cases (`.linkBoard`, `.goToNote`, `.goToBoard`), the last
+  offered only when `task.workspacePath != nil` — so the row's context menu, the Attività
+  toolbar, the Task menu and the "Task collegati" panel row read one catalogue instead of
+  four hand-kept lists that had already drifted (one missing the pane switch that makes
+  navigation visible, one missing a board destination entirely).
+- **"Collega nota o board…" loses its note half rather than gaining a working board half** —
+  a task's note is already the file `TaskComposer`'s `DestinationPicker` wrote it into at
+  capture time, so there was never a second note to link later. The command becomes
+  "Collega una board…", the one relation that is actually optional and separate.
+- **`CommandActions+TaskCommands.swift`'s `run(_:on:)`/`canRun(_:on:)` is the one place all
+  three actions live**, mirroring `CommandActions.run(_:on:)` for the note-row context menu
+  (ADR-0023 cluster 2) — `.goToNote` performs `vault.openNote(at:)` and
+  `navigation.pane = .notes` together, which is the whole fix for the breadcrumb's old
+  defect (a navigation that changed state nobody was watching). `.goToBoard` reuses
+  `WorkspaceBoardResolver` and `vault.routeState.pendingCanvas`, the same mechanism the
+  row's board chip already used correctly.
+- **The board picker's `.sheet(item:)` moves to `RootView`, off a new
+  `navigation.taskPickingBoard: TaskItem?`** — it used to live inside `TasksView`, reachable
+  from the Task menu only through a flag-plus-`onChange` round trip
+  (`vault.isLinkingSelectedTask`, removed). Hosted at `RootView` it works from every surface,
+  including the "Task collegati" panel, which lives inside the Workspace pane where
+  `TasksView` does not exist.
+- **`VaultSession.TaskChange.link` and `TaskParser+Writes.line(for:addingLinkTo:)` are kept,
+  not removed** — pure, tested vault-layer capability for writing a wikilink into a task
+  line. No UI calls it after this chain, which is a deliberate choice, not an oversight: a
+  wikilink typed by hand into a task line, to a note or to a `.canvas`, stays valid and
+  navigable.
+- **`open(link:)`'s `.canvas` branch is fixed to actually navigate**, through
+  `WorkspaceBoardResolver`, instead of a `return` that contradicted its own comment.
+- **`QuickSwitcher.Mode.pick` is left in place though now unreferenced** — its one caller was
+  the removed note-linking handler; removing the case itself touches a file outside this
+  chain's scope and is named as a follow-up rather than folded in here.
+
+Detail: `docs/adr/0039-task-note-board-link-and-navigation.md`.

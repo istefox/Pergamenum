@@ -16,7 +16,6 @@ final class Navigation {
         case today
         case diary
         case tasks
-        case conformance
         case tags
         /// The starred notes of ADR-0012 §D6. A place and not a filter: a row that only
         /// scrolled the note list to a section left the sidebar lit on «Note» and read
@@ -48,7 +47,6 @@ final class Navigation {
             case .today: "Oggi"
             case .diary: "Diario"
             case .tasks: "Attività"
-            case .conformance: "Conformità"
             case .tags: "Tag"
             case .starred: "Preferite"
             case .views: "Viste"
@@ -64,7 +62,6 @@ final class Navigation {
             case .today: "calendar"
             case .diary: "book.closed"
             case .tasks: "checklist"
-            case .conformance: "checkmark.seal"
             case .tags: "tag"
             case .starred: "star"
             case .views: "tablecells"
@@ -95,7 +92,6 @@ final class Navigation {
             // the next free key.
             case .diary: .paneDiary
             case .tasks: .paneTasks
-            case .conformance: .paneConformance
             case .tags: .paneTags
             case .starred: .paneStarred
             case .views: .paneViews
@@ -213,6 +209,14 @@ final class Navigation {
     var isShowingTaskSyntaxHelp = false
     var isShowingConventionsHelp = false
     var isShowingDiaryHelp = false
+
+    /// The task `TaskCommand.linkBoard` opened `WorkspacePicker` for (ADR-0039 §D3).
+    ///
+    /// Held here rather than in `TasksView` (as `assigningWorkspaceFor` used to be): the
+    /// command is reachable from the "Task collegati" panel too, which lives inside the
+    /// Workspace pane where `TasksView` does not exist. `RootView` hosts the sheet, the one
+    /// place every surface shares.
+    var taskPickingBoard: TaskItem?
 
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false

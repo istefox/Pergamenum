@@ -257,7 +257,7 @@ import Testing
         #expect(emlxURL == expectedURL)
     }
 
-    // MARK: - ADR §D24 (PG-108): recipients folded onto the row
+    // MARK: - ADR §D24 (PG-119): recipients folded onto the row
 
     @Test func messagesInConversationFoldsRecipientsLowerCasedOntoEachRow() throws {
         let fixture = try MailStoreFixture.build(

@@ -57,7 +57,7 @@ enum Help {
                            se l'ora è occupata il blocco scala, non si sovrappone
 
     CONFORMITÀ
-      lint [percorso]      le regole di SPEC §4.7, le stesse del pannello Conformità
+      lint [percorso]      le regole di SPEC §4.7, riferite e basta
                            esce 2 se qualcosa non è conforme
 
     VISTE

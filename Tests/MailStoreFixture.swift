@@ -42,7 +42,7 @@ enum MailStoreFixture {
         var emlxBody: String = "Subject: test\n\ncorpo del messaggio di prova.\n"
         /// Recipient addresses joined into `recipients` through `addresses`, exactly
         /// the shape Task 2's live probe confirmed (ADR §D24.5's "Follow-up - Task 2
-        /// probe results, PG-108": column names, no schema correction needed). Empty
+        /// probe results, PG-119": column names, no schema correction needed). Empty
         /// by default - most fixture messages in the existing suites carry none.
         var recipients: [String] = []
     }

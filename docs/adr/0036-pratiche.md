@@ -699,21 +699,21 @@ paths were read. Four measured facts amend the decisions above; none reverses on
 ## Follow-up — §D21…§D24, the four RTF findings left after commit `9cd6595` (2026-09-10)
 
 Five review findings from the RTF cycles on `feat/pratiche` were fixed in commit `9cd6595`. Four
-were deferred every cycle as architectural and tracked as `PG-105`…`PG-108` in `TODO.md`. They are
+were deferred every cycle as architectural and tracked as `PG-116`…`PG-119` in `TODO.md`. They are
 decided here. Each was re-verified at the line before anything was designed; two of the four turned
 out to be smaller than their TODO entry says and one turned out to be a different bug than the one
 reported.
 
 ### What was found at the line, before deciding
 
-- **F1 (PG-105).** `PraticaCommandActions.confirmRegeneration` (`PraticaCommandActions.swift:260`)
+- **F1 (PG-116).** `PraticaCommandActions.confirmRegeneration` (`PraticaCommandActions.swift:260`)
   calls `trash(filesOf:)` on line `:262`, `forgetImportedMessage` on `:263`, then
   `refreshNow` on `:264`. There is no diff anywhere in the path, and the replacement content does
   not exist at the moment the file is destroyed: it is fetched by a *later* sync that may fail,
   may find the `.emlx` gone, or may be cancelled. §D6 promised the opposite. `UnifiedDiff` has
   existed since ADR-0007 and is already shown to a person once, by `TagRenameSheet.swift:84`
   through a `private struct DiffView` in that file.
-- **F2 (PG-106).** `PraticheController.Prepared` (`PraticheController.swift:1082`) carries two
+- **F2 (PG-117).** `PraticheController.Prepared` (`PraticheController.swift:1082`) carries two
   disjoint maps, and `:1085-1089` states in a comment that `trayConversations` is "**never** folded
   into `snapshot`". `MembershipRule.candidates`'s keyword arm (`MembershipRule.swift:65`) scans
   `everyMessage(in: store)`, which is `snapshot.conversations ∪ snapshot.messagesByID`
@@ -723,7 +723,7 @@ reported.
   `Candidates.autoFollowedConversations` is read in exactly one place in the repository,
   `Tests/MembershipRuleTests.swift:89`. No production code reads it; nothing writes it to a
   dossier.
-- **F3 (PG-107).** `PraticaLedger.PraticaState.entries` is written in exactly one place,
+- **F3 (PG-118).** `PraticaLedger.PraticaState.entries` is written in exactly one place,
   `PraticheController.swift:522`, and that place is a `removeAll`. Nothing appends. It is read at
   `:1129` (`ledgerEntries: state.entries`) and by
   `PraticaLedger.memberMessageIDs(forConversation:praticaPath:)`, which is called nowhere.
@@ -731,7 +731,7 @@ reported.
   `Tests/MembershipRuleTests.swift:134`. The whole R-14 machine is built, tested and inert: the
   ledger's `entries` array is empty on every machine, so the bridge §D3 describes does not exist on
   disk.
-- **F4 (PG-108), and it is not the reported bug.** The TODO entry says Cc/To matching is
+- **F4 (PG-119), and it is not the reported bug.** The TODO entry says Cc/To matching is
   "impossible with current data". The store-side query is not the problem:
   `MailStoreReader.conversations(counterpart:within:)` (`MailStoreReader.swift:115`) already
   matches recipients, with an `EXISTS (SELECT 1 FROM recipients …)` clause at `:124`, and the tray's
@@ -752,7 +752,7 @@ reported.
 
 ### §D21 — «Rigenera» acquires the replacement before it destroys anything, and the diff it shows is the bytes it writes
 
-Amends §D6, whose diff was recorded as an open point in the Task 7/8 follow-up. Closes `PG-105`.
+Amends §D6, whose diff was recorded as an open point in the Task 7/8 follow-up. Closes `PG-116`.
 
 The order is inverted end to end. Nothing on disk is touched until a person has read a diff of the
 exact replacement text, and the text they approved is the text written — not a second acquisition
@@ -889,7 +889,7 @@ that could differ.
 ### §D22 — Keyword auto-follow evaluates over the counterpart pool the tray already loads, and what it follows is written to the dossier
 
 Amends §D3's membership half and the `Prepared` comment at `PraticheController.swift:1085-1089`,
-which is reversed. Closes `PG-106`.
+which is reversed. Closes `PG-117`.
 
 1. **`MembershipStoreSnapshot` gains a third, explicitly-named pool**, declared last so every
    existing construction site and both test fixtures keep compiling:
@@ -985,7 +985,7 @@ which is reversed. Closes `PG-106`.
 
 ### §D23 — The sync records the bridge triple, and recovery runs where the conversation goes missing
 
-Implements the second half of §D3, which was designed and never wired. Closes `PG-107`.
+Implements the second half of §D3, which was designed and never wired. Closes `PG-118`.
 
 1. **Recording, at the write boundary.** `PraticaSyncEngine.PreparedMessage` gains
    `rowID: Int` and `conversationID: Int?`, copied from the `MailMessageRow` in `prepare`.
@@ -1088,7 +1088,7 @@ Implements the second half of §D3, which was designed and never wired. Closes `
 
 ### §D24 — A message row carries its recipients, and one predicate decides "touches this counterpart"
 
-Amends §D3's `MailMessageRow` shape (Task 1's R-03 row). Closes `PG-108`.
+Amends §D3's `MailMessageRow` shape (Task 1's R-03 row). Closes `PG-119`.
 
 1. **One new field on the row, sourced by its own query.**
 
@@ -1301,7 +1301,7 @@ Amends §D3's `MailMessageRow` shape (Task 1's R-03 row). Closes `PG-108`.
   property, no migration.
 - Both exceptions to CLAUDE.md principle 2 stay where they are: nothing here opens a socket.
 
-## Follow-up — Task 2 probe results, PG-108 (2026-09-10)
+## Follow-up — Task 2 probe results, PG-119 (2026-09-10)
 
 Ran on a copy published the same way Task 1's own two probes were (`Envelope Index` + `-wal`
 copied to a `/tmp` staging directory, `PRAGMA quick_check`ed, deleted immediately after). Mail's

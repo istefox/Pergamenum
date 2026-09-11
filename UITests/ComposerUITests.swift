@@ -290,7 +290,7 @@ final class ComposerUITests: XCTestCase {
     }
 
     func testTheTaskComposerOpensFromAPaneThatIsNotAttivita() throws {
-        show("Conformità")
+        show("Tag")
         // Through the menu, which is where the command lives: presented by the Attività
         // pane it did nothing at all from anywhere else.
         app.menuBars.menuItems["Nuovo task rapido"].click()

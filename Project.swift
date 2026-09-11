@@ -21,6 +21,12 @@ let baseSettings: SettingsDictionary = [
     // compiles the set and nothing points the bundle at it, so the app ships with the
     // generic document icon and the set looks like it did not work.
     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+    // Tuist injects a reference to an "AccentColor" asset by default (mirroring Xcode's
+    // own new-project template), but no such set exists in Resources/Assets.xcassets -
+    // this app's accent color is a W3C DTCG token read through ThemeEngine, never an
+    // asset catalog color. Cleared explicitly rather than adding an unused asset just to
+    // silence the warning.
+    "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
 ]
 
 // Release only, and on the app target only. Notarization rejects a bundle without the
@@ -41,7 +47,7 @@ let appConfigurations: [Configuration] = [
 
 // The version shown in Informazioni. Raised by hand when the app reaches a version
 // worth naming; the build number underneath it is what tells two builds apart.
-let marketingVersion = "1.2"
+let marketingVersion = "1.3"
 
 // The number of commits behind HEAD, handed in by `scripts/release.sh` as
 // TUIST_BUILD_NUMBER. Not a counter kept in this file: a counter has to be remembered,

@@ -161,9 +161,11 @@ struct EditorColumnView: View {
     /// On the controller since the Diario pane's editor offers the same list.
     var tagSuggestions: [String] { vault.tagSuggestions }
 
+    /// Through `CommandActions.open(link:)` (issue #188), not `vault.index.resolve(title:)`
+    /// directly: a `^[[board.canvas]]` marker's target reaches this closure too (R-02), and
+    /// only the shared resolution knows to route a `.canvas` suffix to a board instead of a
+    /// note.
     func follow(title: String) {
-        let matches = vault.index.resolve(title: title)
-        guard let first = matches.first else { return }
-        focused { vault.openNote(at: first) }
+        focused { commandActions.open(link: title) }
     }
 }

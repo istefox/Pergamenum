@@ -31,6 +31,20 @@ struct CardTextView: NSViewRepresentable {
     /// inside the card - a card built in a preview or a test has no such environment and would
     /// crash on it.
     let hidesMarkup: Bool
+    /// The vault's note titles and boards, offered as `[[` completion candidates - the same
+    /// `hidesMarkup`-style route, off `WorkspaceController.wikilinkNoteTitles`/
+    /// `.wikilinkBoardTitles`. Defaulted, like `foldedEntries` below: a card in a preview or
+    /// a test offers no completion rather than crashing.
+    var wikilinkNoteTitles: [String] = []
+    var wikilinkBoardTitles: [String] = []
+    /// Whether reveal-on-caret narrows from paragraph to span for this card's bold/italic runs
+    /// (ADR-0037 §D8), travelling the same route `hidesMarkup` above already does:
+    /// `WorkspaceView.applyBoardSettings()` → `WorkspaceController.revealsInlineSpans` →
+    /// `StickyTextCard`. A defaulted `var`, not a `let`: the six preview/test construction
+    /// sites that predate this property must keep compiling unmodified. A card's `hiddenKind`
+    /// switch has no `.strikethrough`/`.link` case (ADR-0029 §D17, not widened by this chain),
+    /// so this setting only ever narrows the card's bold/italic reveal.
+    var revealsInlineSpans: Bool = false
     /// Which of this card's headings are folded (ADR-0028 §D8), as ordinals into
     /// `NoteOutline.entries(in:)` over this card's own text - the numbers `NoteTab.foldedEntries`
     /// holds for a note, down the route `hidesMarkup` above already travels. Defaulted like the
@@ -44,6 +58,11 @@ struct CardTextView: NSViewRepresentable {
     /// that something out there asked to be told. Both `nil`-safe by default, so a card built
     /// without a board behind it - a preview, a test - publishes to nobody.
     var onSelectionChange: (FormattingTextView) -> Void = { _ in }
+    /// The card's `[[` completion popup changed - opened, moved its highlight, or closed -
+    /// with the live view so the caller can read its state and act on it. Same shape as
+    /// `onSelectionChange` above, and for the same reason: this view knows nothing about the
+    /// board it floats on.
+    var onWikilinkCompletionChange: (FormattingTextView) -> Void = { _ in }
     /// Esc, a click outside, or the keyboard going anywhere else. One closure for all three
     /// because today all three do the same thing - `endTextEdit(commit: true)` - and a second
     /// one would only record a distinction the card does not make.
@@ -57,6 +76,15 @@ struct CardTextView: NSViewRepresentable {
     /// does not know which node id, or which of the two write paths (at rest / while editing),
     /// the toggle has to go through.
     var onToggleTask: (Int) -> Void = { _ in }
+    /// A wikilink or CommonMark link was Cmd+clicked (or "Apri collegamento" chosen), naming
+    /// the resolved title/href to navigate to (issue #188, R-06) - reported rather than acted
+    /// on for the same reason the closures above are: this view knows nothing about the
+    /// board or the vault, only that something out there asked to be told.
+    var onFollowLink: (String) -> Void = { _ in }
+    /// The embed half of the same click (`![[foto.png]]`'s target), naming the file. No card
+    /// surface previews an embed today, so the default is a no-op rather than a required
+    /// wiring - out of this feature's scope (SPEC scope is wikilinks/CommonMark links).
+    var onOpenEmbed: (String) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -98,6 +126,10 @@ struct CardTextView: NSViewRepresentable {
         textView.onToggleFold = { [weak coordinator] entry in coordinator?.parent.onToggleFold(entry) }
         // A click on a task line's checkbox glyph (PG-074), reported the same way.
         textView.onToggleTask = { [weak coordinator] lineIndex in coordinator?.parent.onToggleTask(lineIndex) }
+        // The `[[` completion popup changed, reported the same way.
+        textView.onWikilinkCompletionChange = { [weak coordinator] view in
+            coordinator?.parent.onWikilinkCompletionChange(view)
+        }
 
         // The rendering rule, handed over in the two lines that carry it - the same pair
         // `NoteTextView.swift:148-149` assigns, to the same class rather than to a fork of it
@@ -105,6 +137,8 @@ struct CardTextView: NSViewRepresentable {
         // second copy of it is how a card and a note would quietly stop agreeing.
         textView.textContentStorage?.delegate = coordinator.decorations
         textView.textLayoutManager?.delegate = coordinator.decorations
+        textView.wikilinkNoteTitles = wikilinkNoteTitles
+        textView.wikilinkBoardTitles = wikilinkBoardTitles
         textView.string = text
         coordinator.configure(textView, editable: isEditable)
         coordinator.applyStyling(to: textView)
@@ -123,6 +157,8 @@ struct CardTextView: NSViewRepresentable {
         // `textViewDidChangeSelection` synchronously. Publishing the selection from in there
         // would be a state mutation during a view update, so the coordinator holds the
         // publication back for the length of the pass (ADR-0027 §D5).
+        textView.wikilinkNoteTitles = wikilinkNoteTitles
+        textView.wikilinkBoardTitles = wikilinkBoardTitles
         context.coordinator.duringViewUpdate {
             // Only touch the text when the model diverges from what is on screen: reassigning it
             // unconditionally would reset the caret on every keystroke (`NoteTextView`'s own guard).
@@ -151,7 +187,7 @@ struct CardTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, LinkNavigatingDelegate {
         var parent: CardTextView
         /// The card's own undo stack (ADR-0027 §D2), never the window's.
         ///
@@ -181,6 +217,11 @@ struct CardTextView: NSViewRepresentable {
         /// reason: `applyReveal` runs on every arrow key. Not private for that type's other
         /// reason too - its mutator lives in `CardTextView+Reveal.swift`.
         var lastRevealed: Set<Int> = []
+        /// The revealed-span table already handed to `decorations`, beside `lastRevealed` for
+        /// the same reason (ADR-0037 §D6): both must be unchanged for `applyReveal` to skip
+        /// work, or a caret held still while only the setting flips would never redraw. Its
+        /// mutator lives in `CardTextView+Reveal.swift`.
+        var lastRevealedSpans: [Int: [NSRange]] = [:]
         /// The fold layout already handed to the delegate, so an unchanged one re-reads nothing -
         /// `NoteTextView.Coordinator.lastFoldLayout`'s restraint, mattering more here because
         /// `applyFolding` runs in every SwiftUI update of every card. Not private, like
@@ -213,6 +254,9 @@ struct CardTextView: NSViewRepresentable {
             // a selection measured against the previous layout is a bar a few points off the words
             // it labels.
             publishSelection(textView)
+            // Also after the restyle, for the same reason: the trigger and its candidates are
+            // read against the text the pass above has just measured.
+            textView.refreshWikilinkCompletion()
         }
 
         /// Every arrow key, every drag, and the `setSelectedRange` that ends a format action land
@@ -225,6 +269,10 @@ struct CardTextView: NSViewRepresentable {
             // (R-03). `publishSelection` below returns early for a card at rest; this must not.
             applyReveal(to: textView)
             publishSelection(textView)
+            // Arrow keys carry the caret in and out of a `[[...]]` span with no text change of
+            // their own - the note editor's own `refreshCompletion` has the identical second
+            // call site, via `refreshFormatBar`'s neighbouring hook.
+            textView.refreshWikilinkCompletion()
         }
 
         /// Hands the board this card's current selection, but **only while this card is the one
@@ -253,6 +301,38 @@ struct CardTextView: NSViewRepresentable {
 
         func textDidEndEditing(_ notification: Notification) {
             parent.onEndEditing()
+        }
+
+        /// Self-defending, like `NoteTextView.Coordinator`'s twin (issue #188's plain-click
+        /// regression fix): AppKit can invoke this delegate method on its own, on a plain click,
+        /// bypassing its own documented Cmd requirement under this app's custom TextKit 2
+        /// substitution - so the live modifier state is checked here rather than trusted from
+        /// the caller. "Apri collegamento" bypasses this gate on purpose, through
+        /// `performLinkNavigation(_:)` directly (see `LinkNavigatingDelegate`).
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard NSEvent.modifierFlags.contains(.command) else { return false }
+            return performLinkNavigation(link)
+        }
+
+        /// Same decode as `NoteTextView+Coordinator`'s own `performLinkNavigation` (issue #188,
+        /// R-06) - through `MarkdownAttributedText.clickTarget(for:)` rather than a second copy
+        /// of the URL parsing, so the two surfaces can never disagree about what a clicked URL
+        /// means.
+        @discardableResult
+        func performLinkNavigation(_ link: Any) -> Bool {
+            guard let url = link as? URL,
+                  let target = MarkdownAttributedText.clickTarget(for: url)
+            else { return false }
+
+            switch target {
+            case .external(let url):
+                NSWorkspace.shared.open(url)
+            case .embed(let name):
+                parent.onOpenEmbed(name)
+            case .note(let title):
+                parent.onFollowLink(title)
+            }
+            return true
         }
 
         /// The two states, and the single property that separates them (ADR-0027 §D3).
@@ -292,6 +372,13 @@ struct CardTextView: NSViewRepresentable {
                 case .embedRun: .embed
                 case .listMarker: .list
                 case .taskMarker: .checkbox
+                // ADR-0037 amendment to §D8: the card now conceals strikethrough and
+                // link/wikilink syntax identically to the note editor, at the user's explicit
+                // request (2026-09-09 hand check). `.link`'s whole run is never one marker -
+                // see the `linkDelimiters` split below, the same reason the note editor splits
+                // it.
+                case .strikethroughMarker: .strikethrough
+                case .linkSyntax: .link
                 default: nil
                 }
                 guard let kind else { continue }
@@ -300,14 +387,19 @@ struct CardTextView: NSViewRepresentable {
                 let paragraphStart = nsText.paragraphRange(
                     for: NSRange(location: nsRange.location, length: 0)
                 ).location
-                markers[paragraphStart, default: []].append(
-                    // The note editor's own mapping, called rather than copied: a `.list` marker's
-                    // range starts at its paragraph and not at its marker character, so that the
-                    // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
-                    // asymmetry is exactly how the two surfaces would start drawing nested items
-                    // differently.
-                    NoteTextView.Coordinator.hiddenMarker(kind, at: nsRange, paragraphStart: paragraphStart)
-                )
+                let spans = kind == .link
+                    ? NoteTextView.Coordinator.linkDelimiters(in: nsRange, of: nsText)
+                    : [nsRange]
+                for span in spans {
+                    markers[paragraphStart, default: []].append(
+                        // The note editor's own mapping, called rather than copied: a `.list` marker's
+                        // range starts at its paragraph and not at its marker character, so that the
+                        // indentation is inside it (ADR-0028 §D4), and a second spelling of that one
+                        // asymmetry is exactly how the two surfaces would start drawing nested items
+                        // differently.
+                        NoteTextView.Coordinator.hiddenMarker(kind, at: span, paragraphStart: paragraphStart)
+                    )
+                }
             }
             hiddenMarkers = markers
             // The badge a folded heading draws over itself, from the two tokens the note editor's
@@ -322,6 +414,12 @@ struct CardTextView: NSViewRepresentable {
             // the table rather than switching the walk off, so turning it back on redraws without
             // a styling pass of its own (ADR-0028 §D10).
             decorations.apply(hiddenMarkers: markers, hidingMarkup: parent.hidesMarkup)
+            // Pushed here rather than only from `applyReveal` (ADR-0037 §D7/F6, the same
+            // placement `NoteTextView+Coordinator.applyStyling` uses): that pass early-returns
+            // when the computed reveal already matches what it last applied, so a toggle flip
+            // with a stationary caret would otherwise never reach the delegate. `applyStyling`
+            // runs unconditionally on every `updateNSView`.
+            decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
         }
 
@@ -338,9 +436,12 @@ struct CardTextView: NSViewRepresentable {
         func releaseDecorations() {
             hiddenMarkers = [:]
             lastRevealed = []
+            lastRevealedSpans = [:]
             lastFoldLayout = NoteFolding.Layout()
             decorations.apply(hiddenMarkers: [:], hidingMarkup: false)
+            decorations.apply(revealsInlineSpans: false)
             _ = decorations.apply(revealedParagraphs: [])
+            _ = decorations.apply(revealedSpans: [:])
             decorations.apply(hiddenLines: [], foldedHeadings: [:])
         }
 
