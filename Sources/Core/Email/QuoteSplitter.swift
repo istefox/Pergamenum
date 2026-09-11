@@ -64,9 +64,16 @@ enum QuoteSplitter {
         return lines.firstIndex { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.count > 12 else { return false }
-            return endings.contains { trimmed.lowercased().hasSuffix($0) }
+            // Lowercased once per line, not once per ending: the closure below ran it
+            // up to five times for every line of every body.
+            let lowered = trimmed.lowercased()
+            return endings.contains { lowered.hasSuffix($0) }
         }
     }
+
+    /// The dashes and spaces `originalMessageLine` strips off its divider, held once
+    /// rather than rebuilt for every line it looks at.
+    private static let dashesAndSpaces = CharacterSet(charactersIn: "- ")
 
     /// `----- Messaggio originale -----` / `----- Original Message -----`, with any
     /// number of dashes on either side.
@@ -74,7 +81,7 @@ enum QuoteSplitter {
         lines.firstIndex { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("-") else { return false }
-            let inner = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "- ")).lowercased()
+            let inner = trimmed.trimmingCharacters(in: dashesAndSpaces).lowercased()
             return inner == "messaggio originale" || inner == "original message"
                 || inner == "messaggio inoltrato" || inner == "forwarded message"
         }

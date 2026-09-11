@@ -58,8 +58,10 @@ struct VaultScanner: Sendable {
             )
         }
 
+        // Built once, not per file: the walk asks for the same four keys every time.
+        let keySet = Set(keys)
         while let url = enumerator.nextObject() as? URL {
-            let values = try? url.resourceValues(forKeys: Set(keys))
+            let values = try? url.resourceValues(forKeys: keySet)
             let name = values?.name ?? url.lastPathComponent
 
             if values?.isDirectory == true {

@@ -31,7 +31,7 @@ struct NoteFileOperations {
             let path = url.standardizedFileURL.path(percentEncoded: false)
             guard path.hasPrefix(rootPath) else { continue }
             paths.append(String(path.dropFirst(rootPath.count)).trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
+                in: .pathSlashes
             ))
         }
         return paths
@@ -380,4 +380,15 @@ struct NoteFileOperations {
     private func exists(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
     }
+}
+
+extension CharacterSet {
+    /// The set every vault-relative path is trimmed with, so a leading or trailing
+    /// slash never makes two spellings of one path. Held once rather than built at each
+    /// call site: `boardPaths()` trims inside a walk of the whole vault. Declared in
+    /// this file because it is one of the few under `Sources/Vault` that `perg` and
+    /// `pergamenum-mcp` compile too (`sharedSources`), so the app-only callers -
+    /// `FolderFileOperations`, `BoardFileOperations`, `VaultController` - can reach it
+    /// while the connector builds still see the declaration they need.
+    static let pathSlashes = CharacterSet(charactersIn: "/")
 }

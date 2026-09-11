@@ -230,11 +230,17 @@ enum RFC5322Date {
     static func parse(_ raw: String) -> Date? {
         // The locale is fixed to POSIX: month and day names in the header are always
         // English, and parsing them under the user's locale fails on an Italian Mac.
+        //
+        // Formatter and cleaned text are built once for the whole call rather than once
+        // per candidate format - six identical allocations for every message read. The
+        // formatter stays local to the call, never a `static`, so there is no shared
+        // instance whose `dateFormat` two threads could be reassigning at once.
+        let text = cleaned(raw)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         for format in formats {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = format
-            if let date = formatter.date(from: cleaned(raw)) { return date }
+            if let date = formatter.date(from: text) { return date }
         }
         return nil
     }
