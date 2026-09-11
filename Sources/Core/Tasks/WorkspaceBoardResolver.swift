@@ -40,12 +40,17 @@ enum WorkspaceBoardResolver {
 
     static func resolve(_ workspacePath: String?, in boards: [String]) -> WorkspaceBoardResolution {
         guard let workspacePath else { return .notFound }
-        let hits = boards.filter { matches($0, workspacePath: workspacePath) }
-        switch hits.count {
-        case 0: return .notFound
-        case 1: return .unique(BoardPath(value: hits[0]))
-        default: return .ambiguous
+        // `matches(_:workspacePath:)`'s rule, with the needle lowercased once instead of
+        // once per board, and stopping at the second hit: the payload is still the first
+        // match in iteration order.
+        let needle = workspacePath.lowercased()
+        var hit: String?
+        for board in boards where fileName(of: board).lowercased() == needle {
+            guard hit == nil else { return .ambiguous }
+            hit = board
         }
+        guard let hit else { return .notFound }
+        return .unique(BoardPath(value: hit))
     }
 
     /// «Which board does this folder mean» (ADR-0025 §D5) — the tree/breadcrumb/hand-off

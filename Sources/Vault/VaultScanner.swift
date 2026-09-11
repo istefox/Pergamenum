@@ -38,7 +38,6 @@ struct VaultScanner: Sendable {
 
     func scan() -> Outcome {
         let store = NoteStore(root: root)
-        let canvasStore = CanvasStore(root: root)
         var records: [NoteRecord] = []
         var failures: [(String, String)] = []
         var reused = 0
@@ -74,10 +73,19 @@ struct VaultScanner: Sendable {
             guard url.pathExtension.lowercased() == "md" else {
                 if url.pathExtension.lowercased() == CanvasStore.fileExtension {
                     let boardPath = Self.relativePath(of: url, under: root)
-                    if let entry = cachedBoardTasks[boardPath], isUnchanged(entry, at: url) {
+                    // The walk already asked for the size and the modification date of this
+                    // very file; asking the file system again per entry is the one thing the
+                    // cheap check was meant to avoid. Nil handling is unchanged: a missing
+                    // size reads as -1 and a missing date answers false.
+                    if let entry = cachedBoardTasks[boardPath],
+                       Self.isUnchanged(
+                           entry,
+                           size: values?.fileSize ?? -1,
+                           modifiedAt: values?.contentModificationDate
+                       ) {
                         boardTaskRecords.append(entry.record.record)
                     } else if let record = Self.boardTaskRecord(
-                        at: url, relativePath: boardPath, store: canvasStore
+                        at: url, relativePath: boardPath
                     ) {
                         boardTaskRecords.append(record)
                     }
@@ -93,7 +101,12 @@ struct VaultScanner: Sendable {
             }
 
             let relativePath = Self.relativePath(of: url, under: root)
-            if let entry = cached[relativePath], isUnchanged(entry, at: url) {
+            if let entry = cached[relativePath],
+               Self.isUnchanged(
+                   entry,
+                   size: values?.fileSize ?? -1,
+                   modifiedAt: values?.contentModificationDate
+               ) {
                 records.append(entry.record.record)
                 reused += 1
                 continue
@@ -118,10 +131,13 @@ struct VaultScanner: Sendable {
     /// line already parses as a task line. A board unreadable or with no such node contributes
     /// nothing, silently - a `.canvas` a freehand card lives on is not a scanner failure.
     private static func boardTaskRecord(
-        at url: URL, relativePath: String, store: CanvasStore
+        at url: URL, relativePath: String
     ) -> BoardTaskRecord? {
+        // `CanvasStore.load(board:)` is an exists-check, a read and `CanvasDocument(data:)`;
+        // the read already happened on the line above, and the file existing is implied by
+        // it having been read. Decoding those same bytes keeps the error → nil behaviour.
         guard let data = try? Data(contentsOf: url),
-              let document = try? store.load(board: relativePath)
+              let document = try? CanvasDocument(data: data)
         else { return nil }
 
         var tasks: [TaskItem] = []
@@ -190,29 +206,11 @@ extension VaultScanner {
             && abs(entry.modifiedAt.timeIntervalSince(modifiedAt)) < 1
     }
 
-    private func isUnchanged(_ entry: IndexCache.Entry, at url: URL) -> Bool {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        return Self.isUnchanged(
-            entry,
-            size: values?.fileSize ?? -1,
-            modifiedAt: values?.contentModificationDate
-        )
-    }
-
-    /// Whether a cached board-task row still describes the file on disk - `isUnchanged(_:at:)`'s
-    /// sibling for the second table.
+    /// Whether a cached board-task row still describes the file on disk -
+    /// `isUnchanged(_:size:modifiedAt:)`'s sibling for the second table.
     static func isUnchanged(_ entry: IndexCache.BoardEntry, size: Int, modifiedAt: Date?) -> Bool {
         guard let modifiedAt else { return false }
         return entry.byteSize == size
             && abs(entry.modifiedAt.timeIntervalSince(modifiedAt)) < 1
-    }
-
-    private func isUnchanged(_ entry: IndexCache.BoardEntry, at url: URL) -> Bool {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        return Self.isUnchanged(
-            entry,
-            size: values?.fileSize ?? -1,
-            modifiedAt: values?.contentModificationDate
-        )
     }
 }

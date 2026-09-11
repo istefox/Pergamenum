@@ -730,11 +730,14 @@ private func listMarkerLength(
 }
 
 private func taskMarker(in line: some StringProtocol) -> (length: Int, state: TaskItem.State)? {
-    guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
+    guard let first = line.first, first == "-" || first == "*" else { return nil }
     let after = line.dropFirst()
-    guard after.hasPrefix(" ["), after.count >= 4 else { return nil }
-    let marker = Array(after)[2]
-    guard Array(after)[3] == "]" else { return nil }
+    // `!after.dropFirst(3).isEmpty` is `after.count >= 4`, which is `line.count >= 5`: the
+    // same two length conditions, without walking a whole line to count it, and without the
+    // two `Array(after)` copies the two marker characters used to be read through.
+    guard after.hasPrefix(" ["), !after.dropFirst(3).isEmpty else { return nil }
+    let box = after.dropFirst(2)
+    guard let marker = box.first, box.dropFirst().first == "]" else { return nil }
     let state: TaskItem.State = switch marker {
     case "x", "X": .done
     case ">": .rescheduled

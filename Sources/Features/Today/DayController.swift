@@ -128,10 +128,11 @@ final class DayController {
 
         let eventsByDay = store.events(from: first, through: last)
         let tasks = vault.index.allTasks.filter { showsCompleted || $0.state.isOpen }
-        let notePaths = Set(vault.index.allNotes.map(\.relativePath))
 
         return days.map { date in
-            let hasNote = notePaths.contains(vault.dailyNotePath(for: date))
+            // The index is already a dictionary keyed by relative path, so the daily
+            // note's presence is one lookup - no Set of every path in the vault.
+            let hasNote = vault.index.note(at: vault.dailyNotePath(for: date)) != nil
             return DayColumn(
                 day: date,
                 entries: WeekPlan.entries(
