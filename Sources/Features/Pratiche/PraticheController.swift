@@ -782,16 +782,16 @@ extension PraticheController {
                 body: document.newText,
                 quotedHistory: document.quotedHistory,
                 signature: document.signature,
-                attachments: document.frontmatter.attachments.map { wikilink in
-                    let fileName = attachmentFileName(fromWikilink: wikilink)
-                    return PraticaAttachmentRef(
+                attachments: document.frontmatter.linkedAttachmentNames.map { fileName in
+                    PraticaAttachmentRef(
                         name: fileName,
                         url: attachments.appending(path: fileName, directoryHint: .notDirectory)
                     )
                 },
                 storeReferences: document.frontmatter.storeReferences,
                 isPending: document.frontmatter.body == .pending,
-                senderAddress: sender?.address
+                senderAddress: sender?.address,
+                pendingAttachments: document.frontmatter.pendingAttachmentNames
             )
         }
     }
