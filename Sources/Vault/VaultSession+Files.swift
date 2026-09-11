@@ -96,10 +96,10 @@ extension VaultSession {
             let folder = (note.relativePath as NSString).deletingLastPathComponent
             guard !folder.isEmpty else { continue }
             // Every ancestor too, so a folder holding only subfolders is still offered.
-            var accumulated: [String] = []
+            var prefix = ""
             for component in folder.split(separator: "/") {
-                accumulated.append(String(component))
-                result.insert(accumulated.joined(separator: "/"))
+                prefix = prefix.isEmpty ? String(component) : prefix + "/" + component
+                result.insert(prefix)
             }
         }
         return result.sorted()

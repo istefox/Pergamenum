@@ -80,14 +80,19 @@ enum MembershipRule {
         if !dossier.keywords.isEmpty {
             let counterparts = Set(dossier.counterparts.map { $0.lowercased() })
             let keywords = dossier.keywords.map { $0.lowercased() }
+            // The two membership tests below run once per message in the store; the array
+            // `autoFollowed` stays the answer, because its order is what the caller writes
+            // into the dossier, and the Set beside it only answers "already seen".
+            let followed = Set(dossier.conversations)
+            var autoFollowedIDs = Set<Int>()
             for row in everyMessage(in: store) where !row.deleted {
                 guard touches(row, counterparts: counterparts) else { continue }
                 let subject = (row.subject ?? "").lowercased()
                 guard keywords.contains(where: { !$0.isEmpty && subject.contains($0) }) else { continue }
                 collected.append(row)
                 if let conversation = row.conversationID,
-                   !dossier.conversations.contains(conversation),
-                   !autoFollowed.contains(conversation) {
+                   !followed.contains(conversation),
+                   autoFollowedIDs.insert(conversation).inserted {
                     autoFollowed.append(conversation)
                 }
             }

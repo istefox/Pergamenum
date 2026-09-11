@@ -52,7 +52,7 @@ extension NoteListPane {
     private func renameSelection() {
         switch currentSelection {
         case .note(let path):
-            renaming = vault.index.allNotes.first { $0.relativePath == path }
+            renaming = vault.index.note(at: path)
         case .folder(let path):
             renamingFolder = path
         case nil:
@@ -64,7 +64,7 @@ extension NoteListPane {
     private func deleteSelection() {
         switch currentSelection {
         case .note(let path):
-            deleting = vault.index.allNotes.first { $0.relativePath == path }
+            deleting = vault.index.note(at: path)
         case .folder(let path):
             deletingFolder = path
         case nil:

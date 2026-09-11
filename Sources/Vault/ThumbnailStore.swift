@@ -123,10 +123,9 @@ actor ThumbnailStore {
 
     /// Path plus size, hashed so a name with slashes or accents is a valid file name.
     static func cacheKey(relativePath: String, bucket: Int) -> String {
-        let digest = SHA256.hash(data: Data(relativePath.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-            .prefix(24)
+        // The same lowercase hex `NoteStore.hash` writes, from the same helper - this key
+        // names files already on disk, so its spelling cannot drift.
+        let digest = NoteStore.hexString(SHA256.hash(data: Data(relativePath.utf8))).prefix(24)
         return "\(digest)@\(bucket)"
     }
 }

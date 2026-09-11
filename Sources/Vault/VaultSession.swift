@@ -243,8 +243,9 @@ final class VaultSession {
         let clock = ContinuousClock()
         let start = clock.now
         let cacheURL = cacheURL
-        let cached = IndexCache(url: cacheURL).load()
-        let cachedBoardTasks = IndexCache(url: cacheURL).loadBoardTasks()
+        let cache = IndexCache(url: cacheURL)
+        let cached = cache.load()
+        let cachedBoardTasks = cache.loadBoardTasks()
         let root = root
 
         let outcome = await Task.detached(priority: .userInitiated) {

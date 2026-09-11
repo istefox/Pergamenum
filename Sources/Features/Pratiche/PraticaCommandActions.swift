@@ -643,10 +643,20 @@ struct PraticaCommandActions {
         return restored
     }
 
-    /// Byte comparison, not a size/date shortcut: two attachments genuinely can share a
-    /// size by coincidence, and this decides whether a destination file gets reused
-    /// or renamed.
+    /// Byte comparison, never a size/date *equality* shortcut: two attachments genuinely
+    /// can share a size by coincidence, and this decides whether a destination file gets
+    /// reused or renamed. Unequal sizes are the one thing a stat can settle, since they
+    /// rule a match out outright.
     private static func contentsMatch(_ lhs: URL, _ rhs: URL) -> Bool {
+        // Two files of different sizes cannot hold the same bytes, and a size is a stat
+        // rather than a read of two attachments into memory. Every other case - equal
+        // sizes, or a size that cannot be read at all - still goes to the byte comparison,
+        // which stays the thing that decides.
+        if let lhsSize = try? lhs.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           let rhsSize = try? rhs.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           lhsSize != rhsSize {
+            return false
+        }
         guard let a = try? Data(contentsOf: lhs), let b = try? Data(contentsOf: rhs) else { return false }
         return a == b
     }

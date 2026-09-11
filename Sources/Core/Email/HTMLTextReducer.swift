@@ -195,9 +195,26 @@ private struct HTMLWalk {
     }
 
     func finished() -> String {
-        var text = buffers[0]
-        while text.contains("\n\n\n") {
-            text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        // One pass over the body instead of a rescan of the whole string per collapsed
+        // triple: the loop this replaces shortened every run of three or more newlines to
+        // exactly two, one newline at a time, which is what keeping the first two of each
+        // run does in a single sweep.
+        //
+        // The run is counted in **Characters**, not in code units, because that is what the
+        // old loop compared: `"\r\n"` is one Character and never equals `"\n"`, so a CRLF
+        // breaks a run here exactly as it did before. A `\n{3,}` regex would instead count
+        // the CRLF's own line feed and eat one newline too many.
+        var text = ""
+        text.reserveCapacity(buffers[0].count)
+        var consecutiveNewlines = 0
+        for character in buffers[0] {
+            if character == "\n" {
+                consecutiveNewlines += 1
+                if consecutiveNewlines <= 2 { text.append(character) }
+            } else {
+                consecutiveNewlines = 0
+                text.append(character)
+            }
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }

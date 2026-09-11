@@ -136,7 +136,22 @@ struct NoteStore: Sendable {
     }
 
     static func hash(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        hexString(SHA256.hash(data: data))
+    }
+
+    /// Lowercase hex, two digits per byte, no separator - byte-identical to
+    /// `bytes.map { String(format: "%02x", $0) }.joined()`, which spends a `String(format:)`
+    /// and a temporary String on each of a digest's thirty-two bytes. The hash it builds is
+    /// persisted in the index cache, so the spelling is not free to change.
+    static func hexString(_ bytes: some Sequence<UInt8>) -> String {
+        let digits: [UInt8] = Array("0123456789abcdef".utf8)
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.underestimatedCount * 2)
+        for byte in bytes {
+            out.append(digits[Int(byte >> 4)])
+            out.append(digits[Int(byte & 0x0f)])
+        }
+        return String(decoding: out, as: UTF8.self)
     }
 
     /// Link targets from the body only. Frontmatter `related` is read separately, so

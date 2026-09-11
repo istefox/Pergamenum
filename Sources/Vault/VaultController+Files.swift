@@ -16,10 +16,12 @@ extension VaultController {
     /// same question of every note it is about to carry, and a second copy of the guard
     /// is a second place for it to stop matching the editor's actual state.
     func canOperate(on relativePath: String) -> Bool {
-        let dirtyTabs = columns.flatMap(\.tabs).filter {
-            $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges
+        // The question is whether *any* tab is dirty, so it stops at the first one rather
+        // than flattening every column's tabs into an array to ask for its emptiness.
+        let hasDirtyTab = columns.contains { column in
+            column.tabs.contains { $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges }
         }
-        guard dirtyTabs.isEmpty else {
+        guard !hasDirtyTab else {
             recordProblem(Self.unsavedNoteRefusal)
             return false
         }

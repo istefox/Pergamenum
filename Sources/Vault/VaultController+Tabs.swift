@@ -124,7 +124,6 @@ extension VaultController {
             let tab = columns[focusedColumnIndex].tabs[index]
             columns[focusedColumnIndex].tabs[index] = tab.showing(note)
             columns[focusedColumnIndex].activeID = tab.id
-            rememberTabs()
         } else {
             var tab = NoteTab(note: note)
             tab.isPreview = true

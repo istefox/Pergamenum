@@ -155,7 +155,10 @@ struct MiniCalendar: View {
         let path = vault.settings.dailyFolder.isEmpty
             ? fileName
             : "\(vault.settings.dailyFolder)/\(fileName)"
-        return vault.index.allNotes.contains { $0.relativePath == path }
+        // `note(at:)` is the dictionary keyed by relative path; `allNotes` would
+        // materialise and locale-sort every note for a membership test, once per grid
+        // cell and again in the cell's context menu.
+        return vault.index.note(at: path) != nil
     }
 
     private func page(by months: Int) {
