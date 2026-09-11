@@ -9,14 +9,14 @@ step5_codex_review_asked: false
 step5_codex_review_model: null
 step5_codex_review_effort: null
 use_codex_tester: false
-step5_codex_tester_asked: false
+step5_codex_tester_asked: true
 use_codex_coder: false
 step5_codex_coder_model: null
 step5_codex_coder_effort: null
 chain_path: "standard"
 created_at: "2026-09-11T14:34:37+00:00"
-last_updated_at: "2026-09-11T15:33:05+00:00"
-current_step: "step_4_session_boundary"
+last_updated_at: "2026-09-11T16:32:08+00:00"
+current_step: "step_5_implementation"
 status: "in_progress"
 
 # Gate 0 routing result (ADR-0017)
@@ -37,11 +37,11 @@ coder_model: "opus"
 autopilot: false
 
 # Dynamic Workflows Step 5 tracking (ADR-0016) — default false; smoke test flips it true per environment
-hook_verified: false
-step5_mode: null
+hook_verified: true
+step5_mode: "workflow"
 
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
-recovery_baseline_sha: null
+recovery_baseline_sha: "ce7f529c9e6f551810fe1c4702abc6b455667784"
 
 # Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
@@ -51,8 +51,8 @@ recovery_baseline_sha: null
 # it goes via bash sed on the additive field, the step5_review_mode precedent above. Flip
 # with, per merged stage ({stage, agent_type, branch, base_sha, merge_result}):
 # sed -i '' 's/^worktree_merges: \[\]$/worktree_merges: [{stage: ..., agent_type: ..., branch: ..., base_sha: ..., merge_result: ...}]/' <manifest>
-worktree_baseref_verified: false
-worktree_merges: []
+worktree_baseref_verified: true
+worktree_merges: [{stage: "tester-task1", agent_type: "tester", branch: "wf_835fd0e5-ff7-1", base_sha: "ce7f529", merge_result: "clean"}, {stage: "tester-task2", agent_type: "tester", branch: "wf_835fd0e5-ff7-2", base_sha: "ce7f529", merge_result: "clean"}, {stage: "coder-task1", agent_type: "coder", branch: "wf_835fd0e5-ff7-4", base_sha: "ce7f529", merge_result: "conflict-resolved-take-coder"}, {stage: "tester-task3", agent_type: "tester", branch: "wf_f90e7fad-7fc-1", base_sha: "1c6fea7", merge_result: "clean"}, {stage: "coder-task3", agent_type: "coder", branch: "wf_1e171172-311-1", base_sha: "675aee9", merge_result: "clean"}, {stage: "tester-task4-5", agent_type: "tester", branch: "wf_b1fbdabe-35f-1", base_sha: "62eecff", merge_result: "clean"}, {stage: "fixture-fix-4-5", agent_type: "tester", branch: "wf_3b8f4f98-58c-1", base_sha: "ccb0652", merge_result: "clean"}, {stage: "coder-task4-5", agent_type: "coder", branch: "wf_52e580fd-3ee-1", base_sha: "ccb0652", merge_result: "clean-nonff-merge"}, {stage: "tester-task6", agent_type: "tester", branch: "wf_bf7e5012-3b7-1", base_sha: "e37a88b", merge_result: "clean"}, {stage: "coder-task6", agent_type: "coder", branch: "wf_9d0e34ac-e86-1", base_sha: "d6913ba", merge_result: "clean"}, {stage: "tester-task7", agent_type: "tester", branch: "wf_placeholder", base_sha: "1465ad8", merge_result: "clean"}, {stage: "coder-task7", agent_type: "coder", branch: "wf_26506118-395-1", base_sha: "ab8b223", merge_result: "clean-fast-forward"}]
 
 # Proportional audit depth (ADR-0055) — risk and task_type axes. Absent/null means STRICT
 # here, not inert (inverts the ADR-0052/0053/0054 pattern) — see concept-to-code/SKILL.md
@@ -125,9 +125,9 @@ hitl_gates:
     notes: "Approve (create/overwrite CLAUDE.md) — after one reject-and-revise round to compact CLAUDE.md from 1048 to 469 lines"
   - gate: 4
     label: "implementation_mode"
-    status: "pending"
-    approved_at: null
-    notes: null
+    status: "approved"
+    approved_at: "2026-09-11T15:40:40+00:00"
+    notes: "Confirmed — I will /clear and resume"
   - gate: 5
     label: "review_cycle_decision"
     status: "pending"
