@@ -8,7 +8,7 @@ import Observation
 /// the panes have no anchor - the Viste pane shows every view in the vault, «Preferite» every
 /// starred note, and going there is going to one place.
 enum Destination: Equatable, Sendable {
-    /// A pane with nothing to anchor it: tags, starred, views, tasks, conformance, diary, and
+    /// A pane with nothing to anchor it: tags, starred, views, tasks, diary, and
     /// the Note pane with no note open, which is a real place - it is what the window shows
     /// before the first note is opened.
     case pane(Navigation.Pane)

@@ -36,7 +36,7 @@ private func actions() -> CommandActions {
     // Exactly the set the File and Vista menus disabled on `vault.root == nil`.
     for command: ShortcutCommand in [
         .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook,
-        .globalSearch, .quickSwitcher, .runConformanceCheck,
+        .globalSearch, .quickSwitcher,
     ] {
         #expect(!actions.canRun(command), "«\(command.title)» dovrebbe essere spenta senza vault")
     }
@@ -82,7 +82,7 @@ private func actions() -> CommandActions {
     let actions = actions()
     for command: ShortcutCommand in [
         .openVault, .pastePlain, .findInNote, .replaceInNote, .insertWikilink,
-        .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneConformance, .paneDiary,
+        .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneDiary,
         .previousDay, .nextDay,
     ] {
         #expect(actions.canRun(command), "«\(command.title)» è diventata condizionata")

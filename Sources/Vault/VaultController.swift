@@ -90,10 +90,6 @@ final class VaultController {
     var isShowingQuickLook = false
     /// Set by the "Nota correlata…" command.
     var isAddingRelatedLink = false
-    /// Set by the "Verifica conformità" command; the Conformità pane runs the linter
-    /// when it sees it. The check is on request and never automatic (SPEC §4.7), so
-    /// this is a request and not a schedule.
-    var isCheckingConformance = false
     /// Set by the global search command (Cmd+Shift+F).
     var isShowingGlobalSearch = false
     /// Set by the quick switcher command.

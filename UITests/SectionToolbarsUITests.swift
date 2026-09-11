@@ -117,19 +117,6 @@ final class SectionToolbarsUITests: XCTestCase {
         XCTAssertTrue(button("Completa o riapri").isEnabled, "il task selezionato non ha attivato il pulsante")
     }
 
-    func testTheConformitaSectionRunsTheLinterFromTheToolbar() throws {
-        show("Conformità")
-        XCTAssertTrue(app.staticTexts["Nessuna verifica eseguita."].waitForExistence(timeout: 5))
-
-        button("Verifica ora").click()
-        // The fixture note has no frontmatter at all, so the linter has something to
-        // report and "nothing ran" cannot be mistaken for "everything is conformant".
-        XCTAssertTrue(
-            app.staticTexts["1 note non conformi su 1"].waitForExistence(timeout: 10),
-            "il linter non ha prodotto un esito"
-        )
-    }
-
     func testTheWorkspaceSectionCarriesTheBoardCommands() throws {
         show("Workspace")
         for label in ["Annulla", "Ripeti", "Anteprima"] {
