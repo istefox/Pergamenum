@@ -91,11 +91,6 @@ final class DayController {
         reload()
     }
 
-    func move(by days: Int) {
-        show(day.adding(days: days))
-        lastDayMoveWasDrift = true
-    }
-
     /// Moves by one unit of the scale being shown: a day, a week, a month.
     ///
     /// What the toolbar's two chevrons and the Calendario menu's `Cmd+←` both call. A

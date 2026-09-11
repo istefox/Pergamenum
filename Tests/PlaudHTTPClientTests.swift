@@ -194,11 +194,3 @@ private final class RecordingCaptureProtocol: URLProtocol, @unchecked Sendable {
         return data
     }
 }
-
-extension NSLock {
-    fileprivate func withLock<T>(_ body: () -> T) -> T {
-        lock()
-        defer { unlock() }
-        return body()
-    }
-}

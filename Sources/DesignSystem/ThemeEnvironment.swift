@@ -47,12 +47,6 @@ private struct ThemeInjection: ViewModifier {
     }
 }
 
-private extension ColorScheme {
-    var asThemeAppearance: ThemeAppearance {
-        self == .dark ? .dark : .light
-    }
-}
-
 // MARK: - Token-driven building blocks
 
 /// A card surface. Exists so the card radius, border and shadow are decided once

@@ -35,9 +35,9 @@ struct ReviewSheetState: Equatable, Sendable {
     var durationMs: Int
     var recordingKind: PlaudRecordingKind
     /// Only the speakers a person actually renamed, never an identity entry: the field in the
-    /// sheet is pre-filled with the label as given (C6) by reading
-    /// `renameText(for:)`, so a proposal nobody has touched carries no decisions at all and a
-    /// stale draft leaves nothing behind when it is discarded.
+    /// sheet is pre-filled with the label as given (C6), so a proposal nobody has touched
+    /// carries no decisions at all and a stale draft leaves nothing behind when it is
+    /// discarded.
     var speakerRenames: [String: String]
     var themes: [ReviewThemePresentation]
     /// `themes` is empty (`no_action_items`, SPEC Edge cases) - shown as a banner, and
@@ -49,11 +49,6 @@ struct ReviewSheetState: Equatable, Sendable {
     /// (SPEC), so this is a stored fact rather than a computed guess a future edit could get
     /// backwards.
     var isImportEnabled: Bool
-
-    /// What the rename field shows for a speaker: the person's own rename when there is one,
-    /// and otherwise the label exactly as the service gave it (C6) - which is already a real
-    /// name for most speakers, never a synthesised «Speaker N».
-    func renameText(for label: String) -> String { speakerRenames[label] ?? label }
 
     /// A fresh review with no persisted draft: every task starts checked except one whose
     /// fingerprint is already in `suppressedFingerprints`.

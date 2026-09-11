@@ -495,15 +495,6 @@ final class EventKitStore: CalendarStore {
         return created
     }
 
-    /// Titles of the reminder lists that can be written to.
-    var writableReminderListTitles: [String] {
-        guard reminderAccess.isGranted else { return [] }
-        return store.calendars(for: .reminder)
-            .filter(\.allowsContentModifications)
-            .map(\.title)
-            .sorted()
-    }
-
     private func calendar(named title: String?) -> EKCalendar? {
         guard let title else { return nil }
         return store.calendars(for: .event).first { $0.title == title && $0.allowsContentModifications }

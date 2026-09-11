@@ -31,8 +31,6 @@ struct IndexCache {
         var modifiedAt: Date
     }
 
-    private var handle: OpaquePointer?
-
     init(url: URL) {
         self.url = url
     }

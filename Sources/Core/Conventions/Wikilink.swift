@@ -17,11 +17,6 @@ struct Wikilink: Equatable, Hashable, Sendable {
     /// Character range in the source text, for the editor to style and click.
     var range: Range<String.Index>
 
-    /// An embed points at a file, so it carries an extension; a note link does not.
-    var looksLikeFileReference: Bool {
-        isEmbed || target.contains(".")
-    }
-
     /// `target`, with one matching pair of markdown emphasis delimiters wrapping it stripped -
     /// the note title `[[**Nota**]]` actually names, once a person selects a wikilink's visible
     /// text and presses Bold. `target` itself stays the literal bracket interior on purpose:

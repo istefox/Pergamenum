@@ -156,5 +156,4 @@ struct TaskRecurrence: Equatable, Sendable {
     var total: Int
 
     var rendered: String { "@repeat(\(completed)/\(total))" }
-    var isFinished: Bool { completed >= total }
 }
