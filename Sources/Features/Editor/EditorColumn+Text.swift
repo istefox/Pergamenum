@@ -54,8 +54,11 @@ extension EditorColumnView {
                 set: { text in focused { vault.updateOpenNoteText(text) } }
             ),
             theme: theme,
-            noteTitles: vault.index.allNotes.map(\.title),
-            boardTitles: vault.root.map { CanvasStore(root: $0).allBoards() } ?? [],
+            // Both pools come from the column's own state, refreshed on `scanGeneration`
+            // (see their declarations): computed here they were recomputed on every body
+            // evaluation, walking the vault on disk once per keystroke.
+            noteTitles: noteTitles,
+            boardTitles: boardTitles,
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
