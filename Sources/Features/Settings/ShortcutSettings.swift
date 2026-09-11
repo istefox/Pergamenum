@@ -105,7 +105,6 @@ struct ShortcutSettings: View {
 /// them. A local monitor runs inside `NSApplication.sendEvent`, before that dispatch,
 /// and returning nil from it swallows the event so the menu does not also fire.
 private struct KeyRecorder: View {
-    @Environment(\.theme) private var theme
     let binding: KeyBinding
     let onRecord: (KeyBinding) -> Void
 

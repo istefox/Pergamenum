@@ -7,7 +7,6 @@ import SwiftUI
 /// same. The theme and the keyboard shortcuts are per-user preferences and stay in
 /// `UserDefaults`.
 struct SettingsView: View {
-    @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
     @Environment(ThemeEngine.self) private var engine
     @Environment(EventKitStore.self) private var calendar

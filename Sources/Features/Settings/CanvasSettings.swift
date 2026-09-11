@@ -7,7 +7,6 @@ import SwiftUI
 /// predicting since the design system pane was added. Every tab it still holds inline is
 /// a candidate for the same treatment.
 struct CanvasSettings: View {
-    @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
     var body: some View {

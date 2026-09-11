@@ -13,7 +13,6 @@ import SwiftUI
 /// window toolbar: they are window-level commands, and the top bar is about where you
 /// are on the board, not what you can do to it.
 struct BoardTopBar: View {
-    @Environment(\.theme) private var theme
     let workspace: WorkspaceController
 
     var body: some View {
