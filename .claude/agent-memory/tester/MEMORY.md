@@ -24,3 +24,4 @@
 - [MembershipRuleTests shared fixture keyword collision](membershiprule-shared-fixture-keyword-collision.md) — `Self.snapshot()`'s `includedMessage` has subject "Offerta", the default keyword; a keyword-arm test reusing it auto-follows an unrelated conversation.
 - [fileprivate field, private type mismatch](fileprivate-field-private-type-mismatch.md) — a `fileprivate` stored property with a `private`-typed value fails to compile even in the same enclosing type; widen the type to `fileprivate`, never narrow the field.
 - [Worktree path translation for brief paths](worktree-path-translation-brief-paths.md) — Read crosses worktrees silently, Edit/Write refuse; translate brief paths to your own cwd before editing.
+- [Self-authored comment trips own purity grep](self-authored-comment-trips-own-purity-grep.md) — a tester-written stub's doc comment quoting the banned API by name false-positives the tester's own structural guard test.
