@@ -527,7 +527,9 @@ final class PraticheController {
             // fix - a file it could not trash, a downgrade it could not write. Empty
             // on every healthy run.
             if !outcome.attachmentProblems.isEmpty {
-                problem = outcome.attachmentProblems.joined(separator: "\n")
+                problem = [problem, outcome.attachmentProblems.joined(separator: "\n")]
+                    .compactMap { $0 }
+                    .joined(separator: "\n")
             }
         }
     }

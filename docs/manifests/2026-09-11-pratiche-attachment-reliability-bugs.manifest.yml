@@ -92,7 +92,7 @@ license: "None"
 xcode_project: false
 initial_commit_push: "commit"
 git_remote_url: "https://github.com/istefox/Pergamenum.git"
-step6_mode: null
+step6_mode: "skill_fallback"
 
 # Artifacts (absolute paths, populated as steps complete)
 artifacts:
