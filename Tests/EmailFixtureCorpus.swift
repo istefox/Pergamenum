@@ -126,7 +126,7 @@ enum EmailFixtureCorpus {
     Content-Transfer-Encoding: base64\r
     Content-Disposition: attachment; filename="offerta.pdf"\r
     \r
-    cGRmLWJ5dGVz\r
+    \(pdfBytes().base64EncodedString())\r
     --\(classificationBoundary)\r
     Content-Type: application/ms-tnef; name="winmail.dat"\r
     Content-Transfer-Encoding: base64\r
@@ -287,6 +287,82 @@ enum EmailFixtureCorpus {
         Content-Disposition: inline; filename="\(filename)"\r
         \r
         \(imageBytes.base64EncodedString())\r
+        --\(boundary)--\r
+        """
+    }
+
+    // MARK: - `AttachmentIntegrity` fixtures (ADR-0040 §D1, §D2 — Task 2, R-01, R-02, R-03, R-15)
+    //
+    // Byte sequences with the right head/tail for `AttachmentIntegrity.verdict` to read
+    // (§D2), never a real PDF document — a real one is not what the six ordered rules
+    // inspect.
+
+    /// `%PDF-1.7`, some filler that varies with `pages` (so two different `pages` values
+    /// produce genuinely different bytes, for the collision-vs-identical distinction in
+    /// `Tests/PraticaSyncTests.swift`), `%%EOF`.
+    static func pdfBytes(pages: Int = 1) -> Data {
+        var text = "%PDF-1.7\n"
+        for page in 1...Swift.max(pages, 1) {
+            text += "obj \(page) 0 R /Type /Page\n"
+        }
+        text += "%%EOF\n"
+        return Data(text.utf8)
+    }
+
+    /// The same head and filler as `pdfBytes(pages:)`, with no `%%EOF` at all.
+    static func truncatedPDFBytes() -> Data {
+        Data("%PDF-1.7\nobj 1 0 R /Type /Page\n".utf8)
+    }
+
+    /// R-15's first case: one `multipart/mixed` message whose single attachment part is
+    /// empty.
+    static func zeroByteAttachmentMessageRFC822(messageID: String, filename: String) -> String {
+        singleAttachmentMessageRFC822(
+            messageID: messageID, subject: "Allegato vuoto",
+            attachmentFilename: filename, attachmentBytes: Data()
+        )
+    }
+
+    /// R-15's second case: one `multipart/mixed` message whose single attachment part
+    /// has non-empty bytes that fail the check for their declared type.
+    static func truncatedAttachmentMessageRFC822(messageID: String, filename: String) -> String {
+        singleAttachmentMessageRFC822(
+            messageID: messageID, subject: "Allegato troncato",
+            attachmentFilename: filename, attachmentBytes: truncatedPDFBytes()
+        )
+    }
+
+    /// R-15's third case: two attachment parts under distinct filenames, one whose bytes
+    /// pass the check and one whose bytes fail it.
+    static func mixedValidAndTruncatedAttachmentsRFC822(
+        messageID: String,
+        boundary: String = "----=_Pergamenum_MixedAttachments_Boundary"
+    ) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: Offerta con due allegati\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/mixed; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, in allegato due file.\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="valido.pdf"\r
+        \r
+        \(pdfBytes().base64EncodedString())\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="troncato.pdf"\r
+        \r
+        \(truncatedPDFBytes().base64EncodedString())\r
         --\(boundary)--\r
         """
     }

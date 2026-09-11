@@ -252,7 +252,10 @@ private func row(
     // MARK: R-10 - attachment naming, SHA-256 linking, collision, threshold, inline images
 
     @Test func attachmentIsCopiedAsDateUnderscoreNameAndAnIdenticalSha256IsLinkedNotCopied() async throws {
-        let bytes = Data("contenuto-identico".utf8)
+        // PDF-shaped bytes (Tests/EmailFixtureCorpus.swift, Task 2, ADR-0040 §D2): plain
+        // prose named `.pdf` would fail `AttachmentIntegrity`'s check once Task 4 wires it
+        // in, turning this SHA-256-linking test red for a reason unrelated to its point.
+        let bytes = EmailFixtureCorpus.pdfBytes(pages: 1)
         let messageA = EmailFixtureCorpus.singleAttachmentMessageRFC822(
             messageID: "msgA@rossi-spa.it", attachmentFilename: "offerta.pdf", attachmentBytes: bytes
         )
@@ -291,13 +294,15 @@ private func row(
     }
 
     @Test func aDifferentContentAttachmentWithTheSameNameCollidesToDash2() async throws {
+        // PDF-shaped bytes, one page count each so the two attachments are genuinely
+        // different content (Tests/EmailFixtureCorpus.swift, Task 2, ADR-0040 §D2).
         let messageA = EmailFixtureCorpus.singleAttachmentMessageRFC822(
             messageID: "msgA@rossi-spa.it", attachmentFilename: "offerta.pdf",
-            attachmentBytes: Data("versione 1".utf8)
+            attachmentBytes: EmailFixtureCorpus.pdfBytes(pages: 1)
         )
         let messageB = EmailFixtureCorpus.singleAttachmentMessageRFC822(
             messageID: "msgB@rossi-spa.it", attachmentFilename: "offerta.pdf",
-            attachmentBytes: Data("versione 2, diversa".utf8)
+            attachmentBytes: EmailFixtureCorpus.pdfBytes(pages: 2)
         )
         let fixture = try MailStoreFixture.build(
             mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
