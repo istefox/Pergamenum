@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import SwiftUI
 import Testing
 @testable import Pergamenum
 

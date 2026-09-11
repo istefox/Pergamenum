@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// An `NSTextView` that completes note titles after `[[`, headings after `[[Nota#`, tags
 /// after `#`, and the command catalogue after `/`.

@@ -1,5 +1,4 @@
 import Foundation
-import Testing
 @testable import Pergamenum
 
 /// The scaffolding the day view's tests share: a calendar that never touches EventKit,
