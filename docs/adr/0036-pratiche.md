@@ -1324,6 +1324,37 @@ live file was never opened; schema, a row count and addresses only — no subjec
   not apply.** Task 3 proceeds with `MailMessageRow.recipients`/`supportsRecipients()`/`row(rowID:)`
   as designed, no schema-driven change to either the fixture or the existing join.
 
+## Follow-up — R-10 inline image drop, combined heuristic (2026-09-11)
+
+A real sync run surfaced R-10's byte-weight-only threshold (an inline image under 50 KB is a
+signature or logo, dropped) as a content-loss bug, not a design win: a pasted screenshot or photo
+compresses easily under 50 KB and was dropped silently — no file in `allegati/`, no `![[…]]`
+embed, not even a placeholder for the missing image.
+
+- **The heuristic now requires two independent signals to agree before dropping an inline
+  image: byte weight under 50 KB *and* pixel dimensions ≤200×200** (`InlineImageClassifier`,
+  `Sources/Core/Email/InlineImageClassifier.swift`, reading `kCGImagePropertyPixelWidth`/
+  `kCGImagePropertyPixelHeight` via `ImageIO` without a full decode). Either signal alone saying
+  "this is real content" — heavy, or larger than 200×200 — keeps the image, saved to `allegati/`
+  and embedded, exactly like the over-50-KB path already did. A genuine small logo is small on
+  both axes; a real screenshot or photo usually is not, whatever it compresses to.
+- **Dimensions unreadable (corrupt header, an exotic format `CGImageSource` does not recognise)
+  is resolved in favor of keeping the image**, never dropping on a guess — consistent with this
+  ADR's existing rule that a byte sequence a charset cannot decode becomes U+FFFD rather than a
+  dropped part (R-05).
+- **No new dependency and no `Project.swift` edit** — `ImageIO`/`CoreGraphics` are system
+  frameworks already imported under `Sources/Core` (`Canvas/JSONCanvas.swift`,
+  `Canvas/DrawingSVG.swift`), proven safe for the `perg`/`pergamenum-mcp` shared-sources build
+  before this chain; `InlineImageClassifier.swift` lands inside the existing `Sources/Core/**`
+  glob.
+- **No settings surface added.** Both thresholds stay hardcoded constants on the classifier, like
+  the 50 KB threshold was before — this fixes a demonstrated accuracy bug, it does not turn the
+  heuristic into a user-tunable feature.
+- **Dedup already absorbs the one cost this trades away** (an occasional tiny real logo now kept):
+  `PraticaSyncEngine`'s SHA-256 `attachmentNameByDigest` collapses a logo repeated across every
+  message in a pratica to one file on disk, so the storage/clutter cost of a false positive stays
+  at most one extra small file per pratica, not one per message.
+
 ## References
 
 - `SPEC.md` (topic slug `pratiche`, R-01…R-41), `UX-BLUEPRINT.md`, `DESIGN.md` and its export at

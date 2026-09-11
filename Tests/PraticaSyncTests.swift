@@ -373,45 +373,64 @@ private func row(
         #expect((reference?.size ?? 0) > 1024 * 1024, "the recorded size must be the real over-threshold size")
     }
 
-    @Test func anInlineImageUnder50KBIsDroppedAndALargerOneIsSavedAndEmbedded() async throws {
-        let smallImage = Data("hello".utf8) // ≪ 50 KB
-        let largeImage = Data(repeating: 0x42, count: 60_000) // > 50 KB
-        let smallMessage = EmailFixtureCorpus.singleInlineImageMessageRFC822(
-            messageID: "smallimg@rossi-spa.it", contentID: "logo-small", imageBytes: smallImage
-        )
-        let largeMessage = EmailFixtureCorpus.singleInlineImageMessageRFC822(
-            messageID: "largeimg@rossi-spa.it", contentID: "logo-large", imageBytes: largeImage
-        )
+    @Test func anInlineImageIsDroppedOnlyWhenBothLightAndSmallElseSavedAndEmbedded() async throws {
+        // Small-in-both: a genuine tiny logo - dropped, matching the pre-amendment case.
+        let logoImage = EmailFixtureCorpus.solidColorPNG(width: 32, height: 32)
+        // Light-in-bytes-but-real-dimensions: a solid-fill PNG compresses tiny regardless of
+        // pixel size - this is the actual regression fixture, a stand-in for a real screenshot
+        // or photo that happens to compress well under 50 KB.
+        let screenshotImage = EmailFixtureCorpus.solidColorPNG(width: 800, height: 600)
+        // Heavy regardless of dimensions: the pre-amendment "kept" case, unchanged.
+        let heavyImage = Data(repeating: 0x42, count: 60_000)
+        // Undecodable and light: the safe-fallback path - never dropped on a guess.
+        let undecodableImage = Data("hello".utf8)
+
+        let messages: [(id: String, contentID: String, filename: String, bytes: Data)] = [
+            ("logo@rossi-spa.it", "logo", "logo.png", logoImage),
+            ("screenshot@rossi-spa.it", "screenshot", "screenshot.png", screenshotImage),
+            ("heavy@rossi-spa.it", "heavy", "heavy.png", heavyImage),
+            ("undecodable@rossi-spa.it", "undecodable", "undecodable.png", undecodableImage),
+        ]
         let fixture = try MailStoreFixture.build(
             mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
-            messages: [
+            messages: messages.enumerated().map { index, message in
                 .init(
-                    rowID: 1, subject: "Immagine piccola", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
-                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1000),
-                    dateReceived: Date(timeIntervalSince1970: 1000), emlxBody: smallMessage
-                ),
-                .init(
-                    rowID: 2, subject: "Immagine grande", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
-                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 2000),
-                    dateReceived: Date(timeIntervalSince1970: 2000), emlxBody: largeMessage
-                ),
-            ]
+                    rowID: index + 1, subject: "Immagine \(message.contentID)",
+                    senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: Double(1000 * (index + 1))),
+                    dateReceived: Date(timeIntervalSince1970: Double(1000 * (index + 1))),
+                    emlxBody: EmailFixtureCorpus.singleInlineImageMessageRFC822(
+                        messageID: message.id, contentID: message.contentID,
+                        imageBytes: message.bytes, filename: message.filename
+                    )
+                )
+            }
         )
         let vaultRoot = try Self.makeVaultRoot()
         let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
-            candidates: [
-                row(rowID: 1, messageID: "<smallimg@rossi-spa.it>", date: Date(timeIntervalSince1970: 1000)),
-                row(rowID: 2, messageID: "<largeimg@rossi-spa.it>", date: Date(timeIntervalSince1970: 2000)),
-            ],
+            candidates: messages.enumerated().map { index, message in
+                row(
+                    rowID: index + 1, messageID: "<\(message.id)>",
+                    date: Date(timeIntervalSince1970: Double(1000 * (index + 1)))
+                )
+            },
             onDisk: [], settings: .default
         )
         _ = try await engine.sync(request)
 
         let files = Self.allegatiFiles(under: vaultRoot)
-        #expect(!files.contains { $0.contains("logo-small") }, "an inline image under 50 KB is dropped")
-        #expect(files.contains { $0.hasSuffix(".png") }, "the larger inline image must be saved")
+        #expect(!files.contains { $0.contains("logo") }, "an image small in both bytes and pixels is dropped")
+        #expect(
+            files.contains { $0.contains("screenshot") },
+            "a light-but-real-dimensions image must be kept, not mistaken for a logo"
+        )
+        #expect(files.contains { $0.contains("heavy") }, "an over-50-KB inline image must still be kept")
+        #expect(
+            files.contains { $0.contains("undecodable") },
+            "unreadable dimensions must never be treated as decorative"
+        )
     }
 
     // MARK: R-15 - pending body, and the one file a later sync rewrites unasked

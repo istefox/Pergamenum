@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 2 - R-04,
@@ -262,6 +264,7 @@ enum EmailFixtureCorpus {
         subject: String = "Con immagine inline",
         contentID: String,
         imageBytes: Data,
+        filename: String = "inline.png",
         boundary: String = "----=_Pergamenum_Inline_Boundary"
     ) -> String {
         """
@@ -281,10 +284,36 @@ enum EmailFixtureCorpus {
         Content-Type: image/png\r
         Content-Transfer-Encoding: base64\r
         Content-ID: <\(contentID)>\r
-        Content-Disposition: inline; filename="inline.png"\r
+        Content-Disposition: inline; filename="\(filename)"\r
         \r
         \(imageBytes.base64EncodedString())\r
         --\(boundary)--\r
         """
+    }
+
+    // MARK: - Real, ImageIO-decodable PNG bytes (`InlineImageClassifier` R-10 amendment)
+
+    /// A solid-color PNG of the given pixel size, decodable by `CGImageSourceCreateWithData`
+    /// like a real pasted image - unlike the placeholder byte blobs the other fixtures use, a
+    /// classifier reading pixel dimensions needs bytes that are actually a PNG. A solid fill
+    /// compresses tightly regardless of pixel dimensions, so this can produce a fixture that is
+    /// light in bytes but large in pixels - the exact shape a real screenshot or photo takes.
+    static func solidColorPNG(width: Int, height: Int) -> Data {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            fatalError("EmailFixtureCorpus.solidColorPNG: CGContext/CGImage creation failed")
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
+            fatalError("EmailFixtureCorpus.solidColorPNG: CGImageDestination creation failed")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            fatalError("EmailFixtureCorpus.solidColorPNG: CGImageDestinationFinalize failed")
+        }
+        return data as Data
     }
 }

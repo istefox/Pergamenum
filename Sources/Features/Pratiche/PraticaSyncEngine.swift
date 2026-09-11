@@ -415,7 +415,7 @@ actor PraticaSyncEngine {
 
                 case .inlineImage(let contentID):
                     let bytes = part.decodedData ?? Data()
-                    guard bytes.count >= Self.inlineImageMinimumBytes else {
+                    guard !InlineImageClassifier.isDecorative(bytes) else {
                         // R-10: a signature logo is not an attachment. The reference
                         // goes with it, or the body keeps a `cid:` pointing nowhere.
                         body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
@@ -851,8 +851,6 @@ actor PraticaSyncEngine {
     private static let frontmatterSchemaVersion = 1
     private static let unknownCounterpart = "Sconosciuto"
     private static let unnamedAttachment = "allegato"
-    /// SPEC "Edge cases": under 50 KB an inline image is a signature or a logo.
-    private static let inlineImageMinimumBytes = 50 * 1024
     private static let pendingPlaceholder =
         "*Il corpo di questo messaggio non è ancora stato scaricato da Mail.*"
 
