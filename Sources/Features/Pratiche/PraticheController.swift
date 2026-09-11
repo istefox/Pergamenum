@@ -521,7 +521,15 @@ final class PraticheController {
         }
         // The observable property is this controller's view of the LIVE vault - never
         // updated on behalf of a vault that is no longer the one open.
-        if isCurrentVault { ledger = sessionLedger }
+        if isCurrentVault {
+            ledger = sessionLedger
+            // ADR-0040 §D10/§D7.3: what this run's attachment repair pass could not
+            // fix - a file it could not trash, a downgrade it could not write. Empty
+            // on every healthy run.
+            if !outcome.attachmentProblems.isEmpty {
+                problem = outcome.attachmentProblems.joined(separator: "\n")
+            }
+        }
     }
 
     /// «Rinomina» (R-34) moves the folder, and the ledger is keyed by the folder's
