@@ -157,6 +157,16 @@ import Testing
     /// that terminates the process and throws loudly rather than hanging the suite. Output is
     /// read only after the process has exited, which is fine for the short, small-output
     /// commands this file runs (a bash -n check, appcast.py's in-process self-test).
+    ///
+    /// Uses `terminationHandler`, never a block dispatched onto `DispatchQueue.global`, to
+    /// signal completion: a manually queued `.utility`-QoS block waiting on
+    /// `process.waitUntilExit()` starves under the full suite's much higher concurrent load
+    /// (confirmed via a captured Xcode runtime warning: "Thread running at User-initiated
+    /// quality-of-service class waiting on a lower QoS thread running at Utility
+    /// quality-of-service class") — a priority inversion that let this test's 60s watchdog
+    /// fire even though the child process itself exits in milliseconds. `terminationHandler`
+    /// is driven by the process's own dispatch source, not a shared global-queue worker slot,
+    /// so it isn't subject to that starvation. → PG-110
     private static func run(
         executable: String,
         arguments: [String],
@@ -173,13 +183,10 @@ import Testing
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        try process.run()
-
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
-            process.waitUntilExit()
-            finished.signal()
-        }
+        process.terminationHandler = { _ in finished.signal() }
+
+        try process.run()
 
         if finished.wait(timeout: .now() + timeout) == .timedOut {
             process.terminate()
