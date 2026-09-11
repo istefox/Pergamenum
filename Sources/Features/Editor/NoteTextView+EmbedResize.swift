@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// A drawn embed's resize handle: where it is, and the drag that starts on it (ADR-0019:
 /// "A drawn embed is resized by dragging it, and the size is written into the note"). Plan

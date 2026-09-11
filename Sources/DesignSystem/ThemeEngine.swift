@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import SwiftUI
 
 /// Loads token files and publishes the theme the views should render with.
 ///

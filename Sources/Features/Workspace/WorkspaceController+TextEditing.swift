@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// Inline editing sessions on a card's own text, title and fold state - split out of

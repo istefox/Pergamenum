@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// The view-block half of `EditorDecorationDelegate`'s re-read machinery (ADR-0033 §D1/§D6/§D7;
 /// plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 5) - split out on its own

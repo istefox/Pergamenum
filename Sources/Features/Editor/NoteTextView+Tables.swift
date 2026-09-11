@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// A table the editor is drawing right now: the grid vended for it and the shape that grid
 /// was built from, as of the last styling pass.

@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// A note's blocks, drawn. No scrolling, no keyboard, no focus - just the rendering.
