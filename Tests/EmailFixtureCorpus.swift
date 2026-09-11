@@ -392,4 +392,53 @@ enum EmailFixtureCorpus {
         }
         return data as Data
     }
+
+    /// A pixel-noisy PNG of the given size, real and `CGImageSourceCreateWithData`-decodable
+    /// like `solidColorPNG` - but where a solid fill compresses to almost nothing regardless of
+    /// dimensions, deflate cannot meaningfully shrink uncorrelated pixel bytes, so this stays
+    /// over `InlineImageClassifier.weightThreshold` at a moderate, fast-to-generate dimension.
+    /// For a fixture that needs to be genuinely heavy in byte size while still passing
+    /// `AttachmentIntegrity`'s real-PNG check (signature + `IEND`) and an actual ImageIO decode.
+    static func noisyPNG(width: Int, height: Int) -> Data {
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        var pixels = [UInt8](repeating: 0xFF, count: bytesPerRow * height)
+        // A small deterministic LCG, not `SystemRandomNumberGenerator` - the fixture must
+        // produce the same bytes on every run. Alpha is left at the initial 0xFF fill so
+        // every pixel stays opaque; only the RGB triplet is randomized.
+        var state: UInt32 = 0x9E37_79B9
+        for index in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index] = UInt8((state >> 24) & 0xFF)
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index + 1] = UInt8((state >> 24) & 0xFF)
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index + 2] = UInt8((state >> 24) & 0xFF)
+        }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        // Context, image and PNG encoding all happen inside the buffer's own lifetime -
+        // `CGContext(data:)` wraps `pixels`' storage directly rather than copying it, so
+        // nothing may read from the image after `pixels` could be deallocated or moved.
+        let pngData: Data? = pixels.withUnsafeMutableBytes { rawBuffer -> Data? in
+            guard let baseAddress = rawBuffer.baseAddress,
+                  let context = CGContext(
+                      data: baseAddress, width: width, height: height, bitsPerComponent: 8,
+                      bytesPerRow: bytesPerRow, space: colorSpace,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ),
+                  let image = context.makeImage()
+            else { return nil }
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
+                return nil
+            }
+            CGImageDestinationAddImage(destination, image, nil)
+            guard CGImageDestinationFinalize(destination) else { return nil }
+            return data as Data
+        }
+        guard let pngData else {
+            fatalError("EmailFixtureCorpus.noisyPNG: CGContext/CGImageDestination pipeline failed")
+        }
+        return pngData
+    }
 }

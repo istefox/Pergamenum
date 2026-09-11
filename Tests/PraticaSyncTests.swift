@@ -404,10 +404,23 @@ private func row(
         // pixel size - this is the actual regression fixture, a stand-in for a real screenshot
         // or photo that happens to compress well under 50 KB.
         let screenshotImage = EmailFixtureCorpus.solidColorPNG(width: 800, height: 600)
-        // Heavy regardless of dimensions: the pre-amendment "kept" case, unchanged.
-        let heavyImage = Data(repeating: 0x42, count: 60_000)
-        // Undecodable and light: the safe-fallback path - never dropped on a guess.
-        let undecodableImage = Data("hello".utf8)
+        // Heavy regardless of dimensions: the pre-amendment "kept" case, unchanged. Must be a
+        // real, ImageIO-decodable PNG (`AttachmentIntegrity` now gates the write on signature +
+        // `IEND` before size is ever considered) that still lands over the weight threshold -
+        // `solidColorPNG` compresses too well at any dimension to reach that, so this uses noisy,
+        // low-correlation pixel data deflate cannot shrink.
+        let heavyImage = EmailFixtureCorpus.noisyPNG(width: 200, height: 200)
+        // Undecodable and light: the safe-fallback path - never dropped on a guess. A real PNG
+        // signature and a literal `IEND` inside the tail window make `AttachmentIntegrity` call
+        // this `.usable`, but the bytes between them are not a valid IHDR/IDAT chunk stream, so
+        // `CGImageSourceCopyPropertiesAtIndex` cannot read pixel dimensions from it and
+        // `InlineImageClassifier.isDecorative` falls through to its safe "keep it" default.
+        let undecodableImage: Data = {
+            var bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            bytes.append(Data("not a real IHDR chunk, garbage ImageIO cannot parse as PNG structure".utf8))
+            bytes.append(Data("IEND".utf8))
+            return bytes
+        }()
 
         let messages: [(id: String, contentID: String, filename: String, bytes: Data)] = [
             ("logo@rossi-spa.it", "logo", "logo.png", logoImage),
