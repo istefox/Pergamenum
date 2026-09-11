@@ -137,7 +137,7 @@ struct MessageDocument: Equatable, Sendable {
         // that message rather than a key with nothing to say.
         add("pergamenum-mail-subject", quoted(mail.subject))
         if !mail.attachments.isEmpty {
-            add("pergamenum-mail-attachments", inlineList(mail.attachments))
+            add(attachmentsKey, inlineList(mail.attachments))
         }
         if !mail.storeReferences.isEmpty {
             keys.append(Frontmatter.ForeignKey(
@@ -153,6 +153,15 @@ struct MessageDocument: Equatable, Sendable {
     }
 
     static let storeReferencesKey = "pergamenum-mail-store-references"
+    static let attachmentsKey = "pergamenum-mail-attachments"
+
+    /// The full `pergamenum-mail-attachments:` line for a list of entries, in the same
+    /// quoting `foreignKeys(of:)` already uses for this key (ADR-0040 §D4) -
+    /// `MessageAttachmentPatch.applying`'s only source for the line's text, so the
+    /// codec is written in exactly one place.
+    static func attachmentsLine(for entries: [String]) -> String {
+        "\(attachmentsKey): \(inlineList(entries))"
+    }
 
     /// `  - { name: "big.zip", size: 157286400, storePath: "/…/big.zip" }` - a YAML flow
     /// map per over-threshold attachment (SPEC "Edge cases"). One line each, so
@@ -226,7 +235,7 @@ struct MessageDocument: Equatable, Sendable {
                 // empty subject rather than failing to parse: the file is still a
                 // message, and its `Message-ID` is what every caller matches on.
                 subject: scalar("pergamenum-mail-subject", lines).map(unquoted) ?? "",
-                attachments: list("pergamenum-mail-attachments", lines),
+                attachments: list(attachmentsKey, lines),
                 storeReferences: storeReferences(in: lines),
                 body: scalar("pergamenum-mail-body", lines)
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
@@ -444,5 +453,54 @@ struct MessageDocument: Equatable, Sendable {
                 ?? cc.first { !isOwn($0, ownAddresses) }
                 ?? cc.first
         }
+    }
+}
+
+// MARK: - R-04 (ADR-0040 §D3): the pending-attachment codec
+//
+// An attachment already placed in `allegati/` is a wikilink, `"[[name]]"`; one still
+// waiting for its bytes is the bare name. `hasPrefix("[[") && hasSuffix("]]")` is the
+// discriminator - a pending entry is everything that is not that shape.
+
+extension MessageDocument {
+    static func attachmentEntry(linking fileName: String) -> String {
+        "[[\(fileName)]]"
+    }
+
+    static func attachmentEntry(pending fileName: String) -> String {
+        fileName
+    }
+
+    static func isPendingAttachmentEntry(_ entry: String) -> Bool {
+        !(entry.hasPrefix("[[") && entry.hasSuffix("]]"))
+    }
+
+    /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included -
+    /// mirrors `PraticheController.attachmentFileName(fromWikilink:)` exactly (Core
+    /// cannot depend on Features, so the rule is duplicated rather than shared; the two
+    /// must agree, and the one in `PraticheController` is about to stop being used for
+    /// classification).
+    fileprivate static func unwrapWikilink(_ entry: String) -> String {
+        var name = entry.trimmingCharacters(in: .whitespaces)
+        if name.hasPrefix("[[") { name.removeFirst(2) }
+        if name.hasSuffix("]]") { name.removeLast(2) }
+        return name.components(separatedBy: "|").first ?? name
+    }
+}
+
+extension MessageDocument.MailFrontmatter {
+    /// Attachments already placed in `allegati/` (ADR-0040 §D3): the wikilink form,
+    /// unwrapped and with its alias half (after `|`) dropped.
+    var linkedAttachmentNames: [String] {
+        attachments
+            .filter { !MessageDocument.isPendingAttachmentEntry($0) }
+            .map(MessageDocument.unwrapWikilink)
+    }
+
+    /// Attachments still waiting for their bytes (ADR-0040 §D3): the bare name, as
+    /// written - empty for every note written before this fix, since such a note
+    /// carries only `[[…]]` entries (the retry rule of ADR-0040 §D5 rests on this).
+    var pendingAttachmentNames: [String] {
+        attachments.filter(MessageDocument.isPendingAttachmentEntry)
     }
 }

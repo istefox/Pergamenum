@@ -488,7 +488,7 @@ actor PraticaSyncEngine {
                 to: headers.to.map(Self.headerForm),
                 cc: carbonCopies.map(Self.headerForm),
                 subject: subject,
-                attachments: links.map { "[[\($0)]]" },
+                attachments: links.map(MessageDocument.attachmentEntry(linking:)),
                 storeReferences: storeReferences,
                 body: isPending ? .pending : .complete,
                 original: keepsOriginal ? "\(baseName).eml" : nil
