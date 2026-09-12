@@ -479,6 +479,11 @@ Order and outcome:
    deliberate cost, taken because the alternative is either a body rewrite (§D4's whole subject) or
    a second, different kind of surgery on somebody's prose.
 
+**§D9 amended 2026-09-12 by ADR-0042 §D1–§D9** — item 2 no longer records a pending *attachment*
+entry for an inline image (it leaves a body placeholder and a dedicated frontmatter key instead),
+and item 3's stated cost is paid back: a late arrival now re-enters the body at its own
+placeholder. Item 1 (integrity before `isDecorative`) is untouched.
+
 ### §D10 — `SyncOutcome` gains two fields, both defaulted and declared last, and no existing field changes meaning
 
 ```swift
