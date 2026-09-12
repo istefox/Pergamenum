@@ -21,7 +21,7 @@ import Testing
 
     // MARK: - R-07: scripts/appcast.py --self-test (ADR-0031 §D10)
 
-    @Test func appcastSelfTestExitsZeroWithOutput() throws {
+    @Test func appcastSelfTestExitsZeroWithOutput() async throws {
         let repoRoot = try Self.resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/appcast.py")
         try #require(
@@ -29,7 +29,7 @@ import Testing
             "scripts/appcast.py does not exist yet (Task 8, R-07)"
         )
 
-        let result = try Self.run(
+        let result = try await Self.run(
             executable: "/usr/bin/env",
             arguments: ["python3", "scripts/appcast.py", "--self-test"],
             currentDirectory: repoRoot
@@ -47,9 +47,9 @@ import Testing
 
     // MARK: - R-06: scripts/release.sh distributable + preflight (ADR-0031 §D8, §D11, §D12)
 
-    @Test func releaseScriptPassesBashSyntaxCheck() throws {
+    @Test func releaseScriptPassesBashSyntaxCheck() async throws {
         let repoRoot = try Self.resolvedRepoRoot()
-        let result = try Self.run(
+        let result = try await Self.run(
             executable: "/bin/bash",
             arguments: ["-n", "scripts/release.sh"],
             currentDirectory: repoRoot
@@ -106,7 +106,7 @@ import Testing
 
     // MARK: - Task 6 / R-06 support: scripts/fetch-sparkle-tools.sh (ADR-0031 §D11)
 
-    @Test func fetchSparkleToolsScriptExistsAndPassesSyntaxCheck() throws {
+    @Test func fetchSparkleToolsScriptExistsAndPassesSyntaxCheck() async throws {
         let repoRoot = try Self.resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/fetch-sparkle-tools.sh")
         try #require(
@@ -114,7 +114,7 @@ import Testing
             "scripts/fetch-sparkle-tools.sh does not exist yet (Task 6, R-06)"
         )
 
-        let result = try Self.run(
+        let result = try await Self.run(
             executable: "/bin/bash",
             arguments: ["-n", "scripts/fetch-sparkle-tools.sh"],
             currentDirectory: repoRoot
@@ -156,9 +156,9 @@ import Testing
     /// A short timeout against a command that deliberately outlives it, asserting the specific
     /// `ProcessTimeoutError` rather than merely "throws something": this must stay green across
     /// the rewrite, not go red once and get quietly relaxed to pass either way.
-    @Test func aProcessThatOutlivesItsTimeoutIsReportedRatherThanAwaitedForever() throws {
-        #expect(throws: ProcessTimeoutError.self) {
-            _ = try Self.run(
+    @Test func aProcessThatOutlivesItsTimeoutIsReportedRatherThanAwaitedForever() async throws {
+        await #expect(throws: ProcessTimeoutError.self) {
+            _ = try await Self.run(
                 executable: "/bin/sleep",
                 arguments: ["5"],
                 currentDirectory: FileManager.default.temporaryDirectory,
@@ -175,26 +175,66 @@ import Testing
         let stderr: String
     }
 
+    /// Signals exactly one waiter with the first outcome to arrive, whichever of
+    /// `terminationHandler` or the timeout `Task` fires first. Guards against the race where
+    /// the outcome lands before `withCheckedContinuation`'s body has installed the
+    /// continuation (a process that exits in well under a millisecond is not hypothetical here
+    /// - `bash -n` routinely does): `resume(finished:)` records the outcome even with no
+    /// continuation yet registered, and `wait(startingTimeoutWith:)` replays it immediately
+    /// if it finds one already recorded. Either way only the first outcome is ever delivered.
+    private final class ProcessOutcomeBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recordedOutcome: Bool?
+        private var continuation: CheckedContinuation<Bool, Never>?
+
+        func resume(finished: Bool) {
+            lock.lock()
+            guard recordedOutcome == nil else {
+                lock.unlock()
+                return
+            }
+            recordedOutcome = finished
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: finished)
+        }
+
+        func wait(startingTimeoutWith startTimeout: () -> Void) async -> Bool {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                lock.lock()
+                if let outcome = recordedOutcome {
+                    lock.unlock()
+                    continuation.resume(returning: outcome)
+                    return
+                }
+                self.continuation = continuation
+                lock.unlock()
+                startTimeout()
+            }
+        }
+    }
+
     /// Runs `executable arguments…` with `currentDirectory` as cwd, bounded by a 60s watchdog
     /// that terminates the process and throws loudly rather than hanging the suite. Output is
     /// read only after the process has exited, which is fine for the short, small-output
     /// commands this file runs (a bash -n check, appcast.py's in-process self-test).
     ///
-    /// Uses `terminationHandler`, never a block dispatched onto `DispatchQueue.global`, to
-    /// signal completion: a manually queued `.utility`-QoS block waiting on
-    /// `process.waitUntilExit()` starves under the full suite's much higher concurrent load
-    /// (confirmed via a captured Xcode runtime warning: "Thread running at User-initiated
-    /// quality-of-service class waiting on a lower QoS thread running at Utility
-    /// quality-of-service class") — a priority inversion that let this test's 60s watchdog
-    /// fire even though the child process itself exits in milliseconds. `terminationHandler`
-    /// is driven by the process's own dispatch source, not a shared global-queue worker slot,
-    /// so it isn't subject to that starvation. → PG-110
+    /// Continuation-based rather than a blocking `DispatchSemaphore` wait (ADR-0041 Task 9):
+    /// `terminationHandler` and a timeout `Task.sleep` race to resolve the same
+    /// `ProcessOutcomeBox` first, so this suspends the calling task instead of parking a thread.
+    /// `terminationHandler` is still driven by the process's own dispatch source, not a manually
+    /// queued block waiting on `process.waitUntilExit()` — that queued-block shape previously
+    /// starved under the full suite's concurrent load (a captured priority-inversion warning:
+    /// "Thread running at User-initiated quality-of-service class waiting on a lower QoS thread
+    /// running at Utility quality-of-service class") and let the 60s watchdog fire even though
+    /// the child process exited in milliseconds. → PG-110
     private static func run(
         executable: String,
         arguments: [String],
         currentDirectory: URL,
         timeout: TimeInterval = 60
-    ) throws -> ProcessResult {
+    ) async throws -> ProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -205,12 +245,21 @@ import Testing
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
+        let outcome = ProcessOutcomeBox()
+        process.terminationHandler = { _ in outcome.resume(finished: true) }
 
         try process.run()
 
-        if finished.wait(timeout: .now() + timeout) == .timedOut {
+        var timeoutTask: Task<Void, Never>?
+        let didFinish = await outcome.wait {
+            timeoutTask = Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                outcome.resume(finished: false)
+            }
+        }
+        timeoutTask?.cancel()
+
+        if !didFinish {
             process.terminate()
             throw ProcessTimeoutError(executable: executable, arguments: arguments, timeout: timeout)
         }
