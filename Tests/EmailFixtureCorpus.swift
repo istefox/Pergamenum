@@ -291,6 +291,186 @@ enum EmailFixtureCorpus {
         """
     }
 
+    // MARK: - ADR-0042 (Pratiche inline image placeholders) — Task 3, R-11
+    //
+    // A real HTML+inline-images mail nests `multipart/alternative` (plain, html) inside
+    // `multipart/related`, with the inline image parts as further `related` siblings -
+    // the shape `htmlToMarkdown`/`bodyText` and the decode loop actually have to walk,
+    // not a flattened stand-in for it.
+
+    /// One inline image descriptor for the HTML fixtures below: `contentID` is what the
+    /// HTML's `<img src="cid:…">` and the part's own `Content-ID` header both carry;
+    /// `bytes` empty means "Mail hasn't downloaded this part yet" (ADR-0040 §D1).
+    struct InlineImageSpec {
+        let contentID: String
+        let filename: String
+        let bytes: Data
+
+        init(contentID: String, filename: String = "img.png", bytes: Data) {
+            self.contentID = contentID
+            self.filename = filename
+            self.bytes = bytes
+        }
+    }
+
+    private static func inlineImagePart(_ image: InlineImageSpec, boundary: String) -> String {
+        """
+        --\(boundary)\r
+        Content-Type: image/png\r
+        Content-Transfer-Encoding: base64\r
+        Content-ID: <\(image.contentID)>\r
+        Content-Disposition: inline; filename="\(image.filename)"\r
+        \r
+        \(image.bytes.base64EncodedString())\r
+
+        """
+    }
+
+    private static func alternativePart(
+        plainText: String, html: String, boundary: String
+    ) -> String {
+        """
+        Content-Type: multipart/alternative; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        \(plainText)\r
+        --\(boundary)\r
+        Content-Type: text/html; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        \(html)\r
+        --\(boundary)--\r
+
+        """
+    }
+
+    /// Case 1 (ADR-0042 finding 1, part A): the HTML part embeds every `image` through
+    /// `<img src="cid:…">`, and the plain-text alternative is empty - so `bodyText`
+    /// falls through to the HTML reduction and the body really carries `![alt](cid:…)`
+    /// constructs (R-11).
+    static func htmlInlineImagesMessageRFC822(
+        messageID: String,
+        subject: String = "Newsletter con immagini inline",
+        images: [InlineImageSpec],
+        outerBoundary: String = "----=_Pergamenum_Related_Boundary",
+        altBoundary: String = "----=_Pergamenum_Alternative_Boundary"
+    ) -> String {
+        let imageTags = images.map { "<img src=\"cid:\($0.contentID)\">" }.joined(separator: "<br>")
+        let imageParts = images.map { inlineImagePart($0, boundary: outerBoundary) }.joined()
+        return """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: \(subject)\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/related; boundary="\(outerBoundary)"\r
+        \r
+        --\(outerBoundary)\r
+        \(alternativePart(plainText: "", html: "<html><body><p>Ciao,</p>\(imageTags)</body></html>", boundary: altBoundary))\(imageParts)--\(outerBoundary)--\r
+        """
+    }
+
+    /// Case 2 (ADR-0042 finding 1, part B - the reported defect): identical to
+    /// `htmlInlineImagesMessageRFC822`, except the plain-text alternative is a real body
+    /// that never mentions any `cid:` id - because `bodyText` prefers `text/plain` when
+    /// it is non-empty, none of the images' ids are ever referenced, and R-03 requires
+    /// no placeholder, no pending state, at all.
+    static func htmlInlineImagesWithPlainAlternativeRFC822(
+        messageID: String,
+        subject: String = "Newsletter con immagini inline",
+        plainText: String = "Ciao, questa è la versione testuale della newsletter.",
+        images: [InlineImageSpec],
+        outerBoundary: String = "----=_Pergamenum_Related_Boundary",
+        altBoundary: String = "----=_Pergamenum_Alternative_Boundary"
+    ) -> String {
+        let imageTags = images.map { "<img src=\"cid:\($0.contentID)\">" }.joined(separator: "<br>")
+        let imageParts = images.map { inlineImagePart($0, boundary: outerBoundary) }.joined()
+        return """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: \(subject)\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/related; boundary="\(outerBoundary)"\r
+        \r
+        --\(outerBoundary)\r
+        \(alternativePart(plainText: plainText, html: "<html><body><p>Ciao,</p>\(imageTags)</body></html>", boundary: altBoundary))\(imageParts)--\(outerBoundary)--\r
+        """
+    }
+
+    /// Case 3 (ADR-0042 §D6): a reply whose new text, quoted history and signature each
+    /// reference one distinct inline image - `newText`'s id is the *last* MIME part and
+    /// `signature`'s id is the *first*, so a test asserting `pendingInlineImages` in file
+    /// order (new text, quoted, signature) fails if the code ever used MIME/decode order
+    /// instead of the post-`QuoteSplitter.split` render order.
+    static func signatureInlineImagesReplyRFC822(
+        messageID: String,
+        subject: String = "Re: Richiesta offerta",
+        newTextImage: InlineImageSpec,
+        quotedImage: InlineImageSpec,
+        signatureImage: InlineImageSpec,
+        outerBoundary: String = "----=_Pergamenum_Reply_Boundary",
+        altBoundary: String = "----=_Pergamenum_ReplyAlternative_Boundary"
+    ) -> String {
+        // MIME order deliberately reversed against reading order: the signature image's
+        // part comes first, the new-text image's part comes last.
+        //
+        // `QuoteSplitter.split` only ever looks for a `-- ` signature marker inside the
+        // text BEFORE its own quote cut (`withSignature` is applied to that chunk alone)
+        // - so the one plain-text layout that actually produces all three of newText,
+        // signature and quotedHistory is signature-before-quote, not the top-posted
+        // "quote then signature" shape a real client would send. This fixture exists to
+        // exercise the render-order invariant (ADR-0042 §D6), not to model a realistic
+        // reply.
+        let plainText = """
+        Buongiorno,
+
+        confermo quanto sotto, vedi immagine cid:\(newTextImage.contentID)
+        --
+        Mario Rossi
+        cid:\(signatureImage.contentID)
+
+        > Il giorno 9 giu 2026, alle ore 18:02, Stefano Ferri ha scritto:
+        > cid:\(quotedImage.contentID)
+        """
+        let imageParts = [signatureImage, quotedImage, newTextImage]
+            .map { inlineImagePart($0, boundary: outerBoundary) }.joined()
+        return """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: \(subject)\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/related; boundary="\(outerBoundary)"\r
+        \r
+        --\(outerBoundary)\r
+        \(alternativePart(plainText: plainText, html: "", boundary: altBoundary))\(imageParts)--\(outerBoundary)--\r
+        """
+    }
+
+    /// Rebuilds `rfc822` with `oldContentID`'s inline part's bytes replaced by
+    /// `newBytes`, keeping every other byte identical - the second `.emlx` a two-sync
+    /// arrival test needs, differing from the first only in that one part's payload
+    /// (Task 5).
+    static func fillingInlineImageBytes(
+        in rfc822: String, contentID: String, with newBytes: Data
+    ) -> String {
+        let marker = "Content-ID: <\(contentID)>\r\n"
+        guard let markerRange = rfc822.range(of: marker) else { return rfc822 }
+        guard let blankLineRange = rfc822.range(of: "\r\n\r\n", range: markerRange.upperBound..<rfc822.endIndex)
+        else { return rfc822 }
+        let payloadStart = blankLineRange.upperBound
+        guard let payloadEnd = rfc822.range(of: "\r\n", range: payloadStart..<rfc822.endIndex)
+        else { return rfc822 }
+        return rfc822.replacingCharacters(
+            in: payloadStart..<payloadEnd.lowerBound,
+            with: newBytes.base64EncodedString()
+        )
+    }
+
     // MARK: - `AttachmentIntegrity` fixtures (ADR-0040 §D1, §D2 — Task 2, R-01, R-02, R-03, R-15)
     //
     // Byte sequences with the right head/tail for `AttachmentIntegrity.verdict` to read
