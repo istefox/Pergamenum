@@ -255,8 +255,13 @@ final class PraticheUITests: XCTestCase {
         let emailDirectory = vault
             .appending(path: Self.praticaFolder, directoryHint: .isDirectory)
             .appending(path: "email", directoryHint: .isDirectory)
+        // `email/` can hold both the message's `.md` note and, when `keepOriginalEML` is on
+        // (the default), an `.eml` sidecar written first for the same message (ADR-0036).
+        // `contentsOfDirectory` gives no ordering guarantee between the two, so picking `.first`
+        // can non-deterministically grab the sidecar instead of the note this test edits.
         let notePathBefore = try XCTUnwrap(
-            FileManager.default.contentsOfDirectory(atPath: emailDirectory.path(percentEncoded: false)).first,
+            FileManager.default.contentsOfDirectory(atPath: emailDirectory.path(percentEncoded: false))
+                .first { $0.hasSuffix(".md") },
             "la sincronizzazione non ha scritto la nota del messaggio"
         )
         let noteFile = emailDirectory.appending(path: notePathBefore, directoryHint: .notDirectory)

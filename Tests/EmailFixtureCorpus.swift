@@ -126,7 +126,7 @@ enum EmailFixtureCorpus {
     Content-Transfer-Encoding: base64\r
     Content-Disposition: attachment; filename="offerta.pdf"\r
     \r
-    cGRmLWJ5dGVz\r
+    \(pdfBytes().base64EncodedString())\r
     --\(classificationBoundary)\r
     Content-Type: application/ms-tnef; name="winmail.dat"\r
     Content-Transfer-Encoding: base64\r
@@ -291,6 +291,82 @@ enum EmailFixtureCorpus {
         """
     }
 
+    // MARK: - `AttachmentIntegrity` fixtures (ADR-0040 §D1, §D2 — Task 2, R-01, R-02, R-03, R-15)
+    //
+    // Byte sequences with the right head/tail for `AttachmentIntegrity.verdict` to read
+    // (§D2), never a real PDF document — a real one is not what the six ordered rules
+    // inspect.
+
+    /// `%PDF-1.7`, some filler that varies with `pages` (so two different `pages` values
+    /// produce genuinely different bytes, for the collision-vs-identical distinction in
+    /// `Tests/PraticaSyncTests.swift`), `%%EOF`.
+    static func pdfBytes(pages: Int = 1) -> Data {
+        var text = "%PDF-1.7\n"
+        for page in 1...Swift.max(pages, 1) {
+            text += "obj \(page) 0 R /Type /Page\n"
+        }
+        text += "%%EOF\n"
+        return Data(text.utf8)
+    }
+
+    /// The same head and filler as `pdfBytes(pages:)`, with no `%%EOF` at all.
+    static func truncatedPDFBytes() -> Data {
+        Data("%PDF-1.7\nobj 1 0 R /Type /Page\n".utf8)
+    }
+
+    /// R-15's first case: one `multipart/mixed` message whose single attachment part is
+    /// empty.
+    static func zeroByteAttachmentMessageRFC822(messageID: String, filename: String) -> String {
+        singleAttachmentMessageRFC822(
+            messageID: messageID, subject: "Allegato vuoto",
+            attachmentFilename: filename, attachmentBytes: Data()
+        )
+    }
+
+    /// R-15's second case: one `multipart/mixed` message whose single attachment part
+    /// has non-empty bytes that fail the check for their declared type.
+    static func truncatedAttachmentMessageRFC822(messageID: String, filename: String) -> String {
+        singleAttachmentMessageRFC822(
+            messageID: messageID, subject: "Allegato troncato",
+            attachmentFilename: filename, attachmentBytes: truncatedPDFBytes()
+        )
+    }
+
+    /// R-15's third case: two attachment parts under distinct filenames, one whose bytes
+    /// pass the check and one whose bytes fail it.
+    static func mixedValidAndTruncatedAttachmentsRFC822(
+        messageID: String,
+        boundary: String = "----=_Pergamenum_MixedAttachments_Boundary"
+    ) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: Offerta con due allegati\r
+        Message-Id: <\(messageID)>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/mixed; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, in allegato due file.\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="valido.pdf"\r
+        \r
+        \(pdfBytes().base64EncodedString())\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="troncato.pdf"\r
+        \r
+        \(truncatedPDFBytes().base64EncodedString())\r
+        --\(boundary)--\r
+        """
+    }
+
     // MARK: - Real, ImageIO-decodable PNG bytes (`InlineImageClassifier` R-10 amendment)
 
     /// A solid-color PNG of the given pixel size, decodable by `CGImageSourceCreateWithData`
@@ -315,5 +391,54 @@ enum EmailFixtureCorpus {
             fatalError("EmailFixtureCorpus.solidColorPNG: CGImageDestinationFinalize failed")
         }
         return data as Data
+    }
+
+    /// A pixel-noisy PNG of the given size, real and `CGImageSourceCreateWithData`-decodable
+    /// like `solidColorPNG` - but where a solid fill compresses to almost nothing regardless of
+    /// dimensions, deflate cannot meaningfully shrink uncorrelated pixel bytes, so this stays
+    /// over `InlineImageClassifier.weightThreshold` at a moderate, fast-to-generate dimension.
+    /// For a fixture that needs to be genuinely heavy in byte size while still passing
+    /// `AttachmentIntegrity`'s real-PNG check (signature + `IEND`) and an actual ImageIO decode.
+    static func noisyPNG(width: Int, height: Int) -> Data {
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        var pixels = [UInt8](repeating: 0xFF, count: bytesPerRow * height)
+        // A small deterministic LCG, not `SystemRandomNumberGenerator` - the fixture must
+        // produce the same bytes on every run. Alpha is left at the initial 0xFF fill so
+        // every pixel stays opaque; only the RGB triplet is randomized.
+        var state: UInt32 = 0x9E37_79B9
+        for index in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index] = UInt8((state >> 24) & 0xFF)
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index + 1] = UInt8((state >> 24) & 0xFF)
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels[index + 2] = UInt8((state >> 24) & 0xFF)
+        }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        // Context, image and PNG encoding all happen inside the buffer's own lifetime -
+        // `CGContext(data:)` wraps `pixels`' storage directly rather than copying it, so
+        // nothing may read from the image after `pixels` could be deallocated or moved.
+        let pngData: Data? = pixels.withUnsafeMutableBytes { rawBuffer -> Data? in
+            guard let baseAddress = rawBuffer.baseAddress,
+                  let context = CGContext(
+                      data: baseAddress, width: width, height: height, bitsPerComponent: 8,
+                      bytesPerRow: bytesPerRow, space: colorSpace,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ),
+                  let image = context.makeImage()
+            else { return nil }
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
+                return nil
+            }
+            CGImageDestinationAddImage(destination, image, nil)
+            guard CGImageDestinationFinalize(destination) else { return nil }
+            return data as Data
+        }
+        guard let pngData else {
+            fatalError("EmailFixtureCorpus.noisyPNG: CGContext/CGImageDestination pipeline failed")
+        }
+        return pngData
     }
 }

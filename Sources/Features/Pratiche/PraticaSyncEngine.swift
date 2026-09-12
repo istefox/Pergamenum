@@ -78,6 +78,19 @@ actor PraticaSyncEngine {
         /// Declared here (ADR-0155 §D1); `commit` does not append to it yet - that is
         /// the coder's job (ADR §D23.1).
         var bridge: [PraticaLedger.Entry]
+        /// Note paths whose attachment list this run amended - a pending entry that
+        /// resolved, or a corrupt file that was trashed and downgraded (ADR-0040 §D5,
+        /// §D7). Never a full rewrite: `regeneratedPendingFiles` keeps its exact
+        /// ADR-0036 meaning, a `pending` body that arrived, and nothing is added to it
+        /// by this fix.
+        ///
+        /// Defaulted and declared last (ADR-0040 §D10), so every existing
+        /// construction site, production and test, keeps compiling unchanged.
+        var resolvedAttachmentFiles: [String] = []
+        /// Sentences for the pane's `problem` line: a file that could not be trashed, a
+        /// downgrade that could not be written (ADR-0040 §D7.3). Empty on every
+        /// healthy run.
+        var attachmentProblems: [String] = []
 
         static let empty = SyncOutcome(
             writtenFiles: [], importedMessageIDs: [], noLongerInMail: [],
@@ -137,8 +150,15 @@ actor PraticaSyncEngine {
             onDisk: request.onDisk,
             settings: request.settings
         )
-        var folder = folderContext(of: request)
         var outcome = SyncOutcome.empty
+        var folder = folderContext(of: request)
+        // ADR-0040 §D7.3: a file the scan above could not trash, reported once here -
+        // never silently retried, and its link was never touched.
+        outcome.attachmentProblems.append(contentsOf: folder.attachmentTrashFailures)
+        // §D7: repairs any corrupt file the scan just trashed before anything else in
+        // this run reads `folder`, so a fresh copy of the same attachment can resolve
+        // in the very same sync (see the main loop's `hasPendingAttachments` guard).
+        try await repairCorruptAttachments(request: request, folder: &folder, outcome: &outcome)
 
         for (offset, item) in items.enumerated() {
             // Decoding happens first and writes nothing: it is the window during which
@@ -241,6 +261,11 @@ actor PraticaSyncEngine {
     private struct ExistingMessage {
         var fileName: String
         var document: MessageDocument
+        /// The file's raw text, as read from disk - ADR-0040 §D6: a patch is compared
+        /// against this so `commit` needs no second read, and the no-op rule (a patch
+        /// identical to what is already there is never written) has something to
+        /// compare against.
+        var text: String
     }
 
     /// Everything the folder already holds that a decision this run makes depends on.
@@ -252,6 +277,17 @@ actor PraticaSyncEngine {
         var takenNoteNames: [(fileName: String, messageID: String)] = []
         var attachmentNameByDigest: [String: String] = [:]
         var takenAttachmentNames: Set<String> = []
+        /// ADR-0040 §D7: names this scan trashed for failing `AttachmentIntegrity` -
+        /// free for a retry to reuse (never in `takenAttachmentNames`, never digested
+        /// into `attachmentNameByDigest`, R-11/R-12). `repairCorruptAttachments` turns
+        /// each into a pending entry on the message(s) that still link it, right after
+        /// this scan and before the main loop reads `messagesByID`.
+        var corruptAttachmentNames: Set<String> = []
+        /// §D7.3 sentences for a corrupt file this run could not move to the Trash -
+        /// merged into `outcome.attachmentProblems` by the caller. Its link is left
+        /// alone precisely because it is here: an orphan link to a file that could not
+        /// be removed is worse than a link to a file that is merely still broken.
+        var attachmentTrashFailures: [String] = []
     }
 
     private func folderContext(of request: SyncRequest) -> FolderContext {
@@ -265,15 +301,38 @@ actor PraticaSyncEngine {
             context.takenNoteNames.append((name, document?.frontmatter.messageID ?? ""))
             guard let document else { continue }
             context.messagesByID[document.frontmatter.messageID] = ExistingMessage(
-                fileName: name, document: document
+                fileName: name, document: document, text: text
             )
         }
 
         let allegatiDirectory = directory("allegati", of: request)
         for name in Self.fileNames(in: allegatiDirectory) {
-            context.takenAttachmentNames.insert(name)
             let url = allegatiDirectory.appending(path: name, directoryHint: .notDirectory)
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? Data(contentsOf: url) else {
+                context.takenAttachmentNames.insert(name)
+                continue
+            }
+            // ADR-0040 §D7.1: the verdict is taken before the digest, so a corrupt
+            // file's SHA-256 never enters `attachmentNameByDigest` (R-12) - the same
+            // ordering `prepare`'s own attachment loop already uses.
+            let verdict = AttachmentIntegrity.verdict(of: data, named: name, contentType: nil)
+            guard verdict == .usable else {
+                var trashedURL: NSURL?
+                do {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashedURL)
+                    // Free for the retry to reuse - never taken, never digested.
+                    context.corruptAttachmentNames.insert(name)
+                } catch {
+                    // §D7.3: a file that could not be removed keeps its name taken and
+                    // its link intact - only the failure is reported.
+                    context.takenAttachmentNames.insert(name)
+                    context.attachmentTrashFailures.append(
+                        "Non è stato possibile spostare «\(name)» nel Cestino: \(error.localizedDescription)"
+                    )
+                }
+                continue
+            }
+            context.takenAttachmentNames.insert(name)
             // First name wins, in the sorted order above: two identical files already
             // in the folder are a state this app did not create, and linking to the
             // same one of them every run beats linking to whichever the file system
@@ -284,6 +343,58 @@ actor PraticaSyncEngine {
             }
         }
         return context
+    }
+
+    /// ADR-0040 §D7: the second half of the repair pass - turns each corrupt
+    /// attachment's link into a pending entry on every message that still carries it,
+    /// right after the scan that found it and before the main loop reads `folder`, so
+    /// a message whose attachment both breaks and gets a fresh copy from Mail in the
+    /// same run resolves in that one sync.
+    private func repairCorruptAttachments(
+        request: SyncRequest,
+        folder: inout FolderContext,
+        outcome: inout SyncOutcome
+    ) async throws {
+        guard !folder.corruptAttachmentNames.isEmpty else { return }
+
+        // Sorted Message-IDs: a deterministic order for a deterministic outcome, the
+        // same reason `fileNames(in:)` sorts.
+        for messageID in folder.messagesByID.keys.sorted() {
+            guard let existing = folder.messagesByID[messageID] else { continue }
+            let corruptLinks = Set(existing.document.frontmatter.linkedAttachmentNames)
+                .intersection(folder.corruptAttachmentNames)
+            guard !corruptLinks.isEmpty else { continue }
+
+            // ADR §D14: the same per-message cancellation boundary as
+            // `regeneratePending` and the main loop.
+            await Task.yield()
+            if cancelled {
+                outcome.cancelled = true
+                return
+            }
+
+            var entries = existing.document.frontmatter.attachments
+            for name in corruptLinks {
+                guard let index = entries.firstIndex(of: MessageDocument.attachmentEntry(linking: name))
+                else { continue }
+                entries[index] = MessageDocument.attachmentEntry(pending: name)
+            }
+            guard let patchedText = MessageAttachmentPatch.applying(entries: entries, to: existing.text)
+            else { continue }
+            // §D6's no-op rule, reused for the repair patch: nothing to write means
+            // nothing written.
+            guard patchedText != existing.text else { continue }
+
+            let notePath = "\(request.praticaFolder)/email/\(existing.fileName)"
+            try await write(patchedText, notePath)
+
+            var updatedDocument = existing.document
+            updatedDocument.frontmatter.attachments = entries
+            folder.messagesByID[messageID] = ExistingMessage(
+                fileName: existing.fileName, document: updatedDocument, text: patchedText
+            )
+            outcome.resolvedAttachmentFiles.append(notePath)
+        }
     }
 
     // MARK: - One message, decoded
@@ -354,12 +465,16 @@ actor PraticaSyncEngine {
         let isPending = container.bodyState == .pending
         let existing = folder.messagesByID[messageID]
         if let existing {
-            // §D6: a file already on disk is rewritten for one of two reasons - it was
-            // written `pending` and the body has since arrived (R-15), or this is the
-            // one message an explicit «Rigenera» named (ADR §D21.1), which narrows this
-            // guard rather than removing it: every other message stays untouched.
+            // §D6: a file already on disk is rewritten for one of three reasons - it was
+            // written `pending` and the body has since arrived (R-15), this is the one
+            // message an explicit «Rigenera» named (ADR §D21.1), or it carries at least
+            // one pending attachment entry (ADR-0040 §D3/§D5) - which narrows this guard
+            // rather than removing it: every other message stays untouched.
             let isRequestedRegeneration = request.regenerating == messageID
-            guard isRequestedRegeneration || (existing.document.frontmatter.body == .pending && !isPending)
+            let hasPendingAttachments = !existing.document.frontmatter.pendingAttachmentNames.isEmpty
+            guard isRequestedRegeneration
+                || (existing.document.frontmatter.body == .pending && !isPending)
+                || hasPendingAttachments
             else { return nil }
         }
 
@@ -378,6 +493,9 @@ actor PraticaSyncEngine {
         var takenAttachmentNames = folder.takenAttachmentNames
         var writes: [PreparedAttachment] = []
         var links: [String] = []
+        // ADR-0040 §D3: placed names for parts `AttachmentIntegrity` rejected -
+        // never hashed, never written, never handed to `place`.
+        var pendingAttachmentNames: [String] = []
         var storeReferences: [MessageDocument.StoreReference] = []
         var newText: String
         var quotedHistory: String?
@@ -395,6 +513,19 @@ actor PraticaSyncEngine {
                 case .attachment(let filename):
                     let name = filename ?? Self.unnamedAttachment
                     let bytes = part.decodedData ?? Data()
+                    // ADR-0040 §D2/§D3, R-01/R-02/R-12: the verdict is taken once, before
+                    // the threshold comparison, and governs both the copy branch and the
+                    // store-reference branch (R-07, Task 5) - never place, never digest,
+                    // never a `StoreReference`, for anything but `.usable`.
+                    let verdict = AttachmentIntegrity.verdict(
+                        of: bytes, named: name, contentType: part.contentType
+                    )
+                    guard verdict == .usable else {
+                        pendingAttachmentNames.append(
+                            PraticaNaming.attachmentFileName(date: calendarDate, name: name)
+                        )
+                        continue
+                    }
                     if bytes.count > Self.thresholdBytes(request.settings) {
                         // R-10: recorded where it really lives, never copied.
                         storeReferences.append(MessageDocument.StoreReference(
@@ -415,6 +546,22 @@ actor PraticaSyncEngine {
 
                 case .inlineImage(let contentID):
                     let bytes = part.decodedData ?? Data()
+                    let name = part.filename ?? "\(contentID).png"
+                    // ADR-0040 §D9: integrity first, `isDecorative` second - a corrupt
+                    // image's dimensions are unreadable, so `isDecorative` would already
+                    // answer `false` (its own "never drop on a guess" rule) and place it.
+                    let verdict = AttachmentIntegrity.verdict(
+                        of: bytes, named: name, contentType: part.contentType
+                    )
+                    guard verdict == .usable else {
+                        pendingAttachmentNames.append(
+                            PraticaNaming.attachmentFileName(date: calendarDate, name: name)
+                        )
+                        // Same removal the decorative branch below performs, so the body
+                        // never ends up with an embed pointing nowhere.
+                        body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
+                        continue
+                    }
                     guard !InlineImageClassifier.isDecorative(bytes) else {
                         // R-10: a signature logo is not an attachment. The reference
                         // goes with it, or the body keeps a `cid:` pointing nowhere.
@@ -422,7 +569,7 @@ actor PraticaSyncEngine {
                         continue
                     }
                     let placed = Self.place(
-                        bytes, named: part.filename ?? "\(contentID).png", date: calendarDate,
+                        bytes, named: name, date: calendarDate,
                         nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
                     )
                     if let write = placed.write { writes.append(write) }
@@ -488,7 +635,12 @@ actor PraticaSyncEngine {
                 to: headers.to.map(Self.headerForm),
                 cc: carbonCopies.map(Self.headerForm),
                 subject: subject,
-                attachments: links.map { "[[\($0)]]" },
+                // ADR-0040 §D3: linked entries in their existing order, then pending
+                // ones - `body` stays `isPending ? .pending : .complete` unchanged, so a
+                // message with some usable and some not-yet-usable parts is `.complete`
+                // (R-04).
+                attachments: links.map(MessageDocument.attachmentEntry(linking:))
+                    + pendingAttachmentNames.map(MessageDocument.attachmentEntry(pending:)),
                 storeReferences: storeReferences,
                 body: isPending ? .pending : .complete,
                 original: keepsOriginal ? "\(baseName).eml" : nil
@@ -638,7 +790,9 @@ actor PraticaSyncEngine {
         outcome: inout SyncOutcome
     ) async throws {
         // Sidecars first, note last: a note is what says "this message is imported", so
-        // it must never be the thing that exists while what it points at does not.
+        // it must never be the thing that exists while what it points at does not. The
+        // attachment bytes are written the same way regardless of write mode below
+        // (ADR-0040 §D4).
         let allegatiDirectory = directory("allegati", of: request)
         for attachment in prepared.attachments {
             try Self.writeAtomically(
@@ -646,6 +800,60 @@ actor PraticaSyncEngine {
                 to: allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
             )
         }
+        folder.attachmentNameByDigest = prepared.attachmentNameByDigest
+        folder.takenAttachmentNames = prepared.takenAttachmentNames
+
+        let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
+
+        // ADR-0040 §D4: the write-mode fork, decided here and nowhere else - the guard
+        // in `prepare` is reached from two callers (the main loop and
+        // `regeneratePending`) and a mode chosen there would differ between them. Four
+        // rows, evaluated in order; the first three keep today's full render, the
+        // fourth is the new attachment-line-only patch.
+        //
+        // One addition beyond §D4's own table: a pending attachment can resolve into an
+        // over-threshold `StoreReference` rather than a local link (R-07's retry). That
+        // entry is never part of `pergamenum-mail-attachments` - `MessageAttachmentPatch`
+        // only ever touches that one key (its own test suite confirms this) - so a
+        // change to `storeReferences` cannot be expressed as a one-line patch and falls
+        // back to a full render, the same tradeoff §D4 already accepts for a `pending`
+        // body's arrival. This never fires for an attachment that keeps failing (the
+        // no-cost retry of §D6 is untouched): it fires exactly once, the sync the
+        // reference actually appears.
+        let existingOnDisk = folder.messagesByID[prepared.messageID]
+        let isRequestedRegeneration = request.regenerating == prepared.messageID
+        let mustFullyRender = existingOnDisk == nil
+            || isRequestedRegeneration
+            || existingOnDisk?.document.frontmatter.body == .pending
+            || existingOnDisk?.document.frontmatter.storeReferences != prepared.document.frontmatter.storeReferences
+
+        guard mustFullyRender else {
+            // Row 4: an existing, non-`pending`, non-regenerating note - only its
+            // `pergamenum-mail-attachments` line may change. The `.eml` sidecar is
+            // never rewritten in this mode: its bytes have not changed (§D18).
+            guard let existingOnDisk,
+                  let patchedText = MessageAttachmentPatch.applying(
+                      entries: prepared.document.frontmatter.attachments, to: existingOnDisk.text
+                  )
+            else { return }
+            // §D6: a patch identical to the file already on disk is never written -
+            // this is what makes the unresolved retry free.
+            guard patchedText != existingOnDisk.text else { return }
+
+            try await write(patchedText, notePath)
+
+            folder.messagesByID[prepared.messageID] = ExistingMessage(
+                fileName: prepared.fileName, document: prepared.document, text: patchedText
+            )
+            outcome.resolvedAttachmentFiles.append(notePath)
+            if let conversationID = prepared.conversationID {
+                outcome.bridge.append(PraticaLedger.Entry(
+                    messageID: prepared.messageID, rowID: prepared.rowID, conversationID: conversationID
+                ))
+            }
+            return
+        }
+
         if let originalBytes = prepared.originalBytes {
             let baseName = (prepared.fileName as NSString).deletingPathExtension
             try Self.writeAtomically(
@@ -655,11 +863,8 @@ actor PraticaSyncEngine {
             )
         }
 
-        let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
         try await write(prepared.noteText, notePath)
 
-        folder.attachmentNameByDigest = prepared.attachmentNameByDigest
-        folder.takenAttachmentNames = prepared.takenAttachmentNames
         if !prepared.isRegeneration {
             folder.takenNoteNames.append((prepared.fileName, prepared.messageID))
             outcome.importedMessageIDs.append(prepared.messageID)
@@ -667,7 +872,7 @@ actor PraticaSyncEngine {
             outcome.regeneratedPendingFiles.append(notePath)
         }
         folder.messagesByID[prepared.messageID] = ExistingMessage(
-            fileName: prepared.fileName, document: prepared.document
+            fileName: prepared.fileName, document: prepared.document, text: prepared.noteText
         )
         outcome.writtenFiles.append(notePath)
         // §D23.1: outside the isRegeneration branch above — a regeneration is exactly
@@ -682,7 +887,8 @@ actor PraticaSyncEngine {
     /// SPEC "Sync algorithm": «re-check `pending` files from earlier runs». A message
     /// whose id the ledger already lists is not a work item (`PraticaSyncPlan` skips
     /// it), so the one file §D6 allows a sync to rewrite would otherwise stay pending
-    /// forever.
+    /// forever - widened by ADR-0040 §D5 to also revisit a `.complete` message that
+    /// still carries a pending attachment entry, for the same reason.
     private func regeneratePending(
         request: SyncRequest,
         reader: MailStoreReader,
@@ -691,7 +897,9 @@ actor PraticaSyncEngine {
     ) async throws {
         for row in request.candidates {
             guard let messageID = row.messageID, request.onDisk.contains(messageID) else { continue }
-            guard folder.messagesByID[messageID]?.document.frontmatter.body == .pending else { continue }
+            let frontmatter = folder.messagesByID[messageID]?.document.frontmatter
+            guard frontmatter?.body == .pending || !(frontmatter?.pendingAttachmentNames.isEmpty ?? true)
+            else { continue }
             guard let prepared = prepare(row, request: request, reader: reader, folder: folder)
             else { continue }
             await Task.yield()
