@@ -245,6 +245,11 @@ message carrying a pending attachment entry, amended in one line, never re-rende
 narrowing of "a sync never deletes a file" (a file in `allegati/` that fails `AttachmentIntegrity`
 is moved to the Trash). Everything else of §D6 stands; §D21 is not reopened.
 
+**§D6 widened 2026-09-12 by ADR-0042 §D7** — a fourth automatic rewrite trigger, of the same shape
+as the third: a `.complete` message carrying a pending *inline image* (`pergamenum-mail-inline-pending`),
+amended in its placeholders and that one frontmatter line, never re-rendered. §D21 is still not
+reopened.
+
 ### §D7 — `MailStoreLocation` is test-aware, and fixtures are built by code
 
 `MailStoreLocation.resolve()` returns, in order: the `-mailStoreRoot` launch argument when present

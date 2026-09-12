@@ -379,6 +379,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0038** — Removes both Conformità UI surfaces (the dedicated pane and the note inspector's CONFORMITÀ block); keeps `perg lint`, the MCP `lint` tool, `VaultAPI.LintFinding` (protected interface) and the rule engine untouched, since Principle 5 and tag-entry blocking depend on the engine, not the review UI → `docs/adr/0038-remove-conformance-ui-section.md`
 - **ADR-0039** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0039-task-note-board-link-and-navigation.md`
 - **ADR-0040** — Fixes Pratiche attachment reliability: an unvalidated `part.decodedData ?? Data()` wrote empty/corrupt bytes straight to `allegati/`; a magic-byte `AttachmentIntegrity` check now gates every write, a pending entry patches the message's attachment line in place rather than re-rendering, and a `.complete` message with a pending entry is now automatically retried every sync; a corrupt file already on disk is moved to the Trash. Amends ADR-0036 §D6 → `docs/adr/0040-pratiche-attachment-reliability-bugs.md`
+- **ADR-0042** — An inline (`cid:`) image Mail hasn't downloaded yet stops being counted as a pending attachment: a per-image body placeholder plus a dedicated `pergamenum-mail-inline-pending` frontmatter key replace the old chip, resolved every sync with no retry cap, and dropped entirely when the body never references the image. Amends ADR-0040 §D9, widens ADR-0036 §D6 → `docs/adr/0042-pratiche-inline-image-placeholders.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0040)
 
@@ -465,5 +466,18 @@ already lives in the Chain decision index above.
   `allegati/` is moved to the Trash (never deleted outright) and re-enqueued as pending. Attachment
   chip UI moves from a `Bool` gate to a three-state `FileState { usable, missing, unusable }` plus a
   `.pending` chip content case. Protected interface: `MessageDocument.isPendingAttachmentEntry`.
+- **ADR-0042 (Pratiche inline image placeholders, amends ADR-0040 §D9):** an HTML signature's
+  `cid:` images (logo, social icons) stopped being treated like attachments — an undownloaded one
+  no longer records a pending entry in `pergamenum-mail-attachments`; it leaves a one-sentence
+  italic placeholder (`MessageInlineImage.placeholder`) at its own position in the body and records
+  its content id in a new, dedicated key, `pergamenum-mail-inline-pending`. When the body never
+  references the `cid:` at all — the common case, since the body usually comes from the
+  `text/plain` MIME alternative — no placeholder and no pending state are recorded for it; this is
+  what removes most of the reported "In attesa" pills. A resolved image re-enters the body at its
+  own placeholder on the next sync (`MessageInlineImagePatch`, count-guarded against a hand-edited
+  body — a mismatch links the image as an ordinary attachment instead of touching the wrong
+  placeholder), widening ADR-0036 §D6's automatic-rewrite exceptions by one clause, same no-cap
+  retry policy as ADR-0040 §D5. No protected interface touched; no new frontmatter schema key
+  outside the one sanctioned prefixed addition (ADR-0020's precedent).
 
 Detail: see each ADR under `docs/adr/`.
