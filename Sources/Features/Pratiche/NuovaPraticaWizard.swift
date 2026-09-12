@@ -432,7 +432,7 @@ struct NuovaPraticaWizard: View {
     /// counterparts. An empty selection (R-09) is exactly today's «Crea».
     private func create() {
         guard !state.selectedNewCounterpartAddresses.isEmpty else {
-            performCreate()
+            Task { await performCreate() }
             return
         }
         for address in state.selectedNewCounterpartAddresses where !state.counterparts.contains(address) {
@@ -440,11 +440,13 @@ struct NuovaPraticaWizard: View {
         }
         Task {
             await performLoadProposals(preselectingNew: true)
-            performCreate()
+            await performCreate()
         }
     }
 
-    private func performCreate() {
+    /// `async` since ADR-0041 Task 8 (`VaultSession.write`'s actor-hop overload); `create()`
+    /// itself stays synchronous and wraps both call sites in `Task { }`.
+    private func performCreate() async {
         guard let session = vault.session else { return }
         let folder = state.relativePath
         let path = PraticaCommandActions.praticaNotePath(of: folder)
@@ -460,7 +462,7 @@ struct NuovaPraticaWizard: View {
             frontmatter: frontmatter, body: "\n", hasFrontmatterBlock: true
         )
         do {
-            try session.write(document.serialized(), to: path)
+            try await session.write(document.serialized(), to: path)
         } catch {
             problem = "«\(path)» non è stato creato: \(error.localizedDescription)"
             return

@@ -116,7 +116,7 @@ actor PraticaSyncEngine {
     init(
         mailStoreURL: URL,
         vaultRoot: URL,
-        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) throws -> Void
+        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
     ) {
         self.mailStoreURL = mailStoreURL
         self.vaultRoot = vaultRoot
@@ -130,7 +130,11 @@ actor PraticaSyncEngine {
     /// reaches it from a caller, not from a walk - into a directory it reads or writes
     /// (ADR-0041 §D2).
     private let boundary: VaultBoundary
-    private let write: @Sendable @MainActor (_ text: String, _ relativePath: String) throws -> Void
+    /// `async` since ADR-0041 Task 8: the closure's body calls `VaultSession.write`'s
+    /// actor-hop overload. Every call site already says `await` regardless - crossing
+    /// from this actor to the closure's `@MainActor` isolation required it before this
+    /// change too - so nothing at the three call sites (`:394`, `:848`, `:871`) changes.
+    private let write: @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
     private var cancelled = false
     private var progressChannel: (
         stream: AsyncStream<Progress>,

@@ -101,6 +101,9 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/PinnedTagsStore.swift",
     "Sources/Vault/RecentVaults.swift",
     "Sources/Vault/StarredStore.swift",
+    // The disk work of a write, moved off the main actor into one actor (ADR-0041 §D9,
+    // Task 8) - named by hand, per ADR-0007 §D2, because it sits outside every glob above.
+    "Sources/Vault/VaultDisk.swift",
     "Sources/Vault/VaultScanner.swift",
     "Sources/Vault/VaultSession.swift",
     "Sources/Vault/VaultSession+Diary.swift",
@@ -114,6 +117,9 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+Tasks.swift",
     "Sources/Vault/VaultSession+TimeBlocks.swift",
     "Sources/Vault/VaultSession+Watching.swift",
+    // `VaultSession.write`'s async overload calls `apply(_:at:)`'s §D11 sequence guard,
+    // so this has to be shared too, not only `VaultDisk.swift` itself (ADR-0007 §D2).
+    "Sources/Vault/VaultSession+WriteOrdering.swift",
     "Sources/Vault/VaultSettings.swift",
     "Sources/Vault/VaultState.swift",
     "Sources/Vault/VaultState+Migration.swift",

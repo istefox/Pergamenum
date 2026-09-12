@@ -1296,7 +1296,7 @@ final class PraticaLiveSync {
             )
         }
         let engine = PraticaSyncEngine(mailStoreURL: prepared.indexURL, vaultRoot: root) { text, path in
-            _ = try session.write(text, to: path)
+            _ = try await session.write(text, to: path)
         }
         // Kept for the duration of this one sync and cleared after it: «Annulla» has
         // an engine to reach only while there is a sync to stop.
@@ -1386,7 +1386,7 @@ final class PraticaLiveSync {
         let indexURL = generation.appending(path: "Envelope Index", directoryHint: .notDirectory)
 
         let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path in
-            _ = try session.write(text, to: path)
+            _ = try await session.write(text, to: path)
         }
         regenerationEngine = engine
 
