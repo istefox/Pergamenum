@@ -17,17 +17,35 @@ Updated: 2026-09-12 · Open: 45 (P1: 3) · In progress: 0
 
 *Nothing in progress.*
 
-## Backlog / To Add
+## Roadmap new feature
 
-- [ ] `PG-121` **P3** [roadmap, future] Swift-native template engine inspired by Knap (obsidianmd/knap, npm, MIT) <!-- src:session opened:2026-09-11 runs:1 kind:roadmap -->
+Speculative feature ideas, explicitly deferred with a stated reason, not yet scoped or designed.
+Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as backlog only.
+
+- [ ] `PG-121` **P3** [roadmap, future] Swift-native template engine inspired by Knap (obsidianmd/knap, npm, MIT) <!-- src:session opened:2026-09-11 runs:1 kind:roadmap gh:closed#206 -->
   - Idea surfaced 2026-09-11 while analyzing Knap (github.com/obsidianmd/knap), Obsidian's Node/TypeScript template engine that converts JSON data into Markdown with YAML frontmatter using a Twig/Liquid-style syntax (`{{ variable | filter }}`, `{% if %}`, `{% for %}`) and an AST interpreter with no arbitrary code execution.
   - Not integrable as a dependency: Knap requires a Node 20+ runtime, incompatible with Pergamenum's offline Swift 6 stack (Principle 1/2). The idea is to reimplement from scratch, in pure Swift, only the syntax plus a minimal set of filters relevant to the domain (`date`, `wikilink`, `yaml_property`, `table`, `upper/lower/title`), as an AST parser under `Sources/Core`, zero external dependencies.
   - Use case: generating Markdown notes from external data (Plaud import, Pratiche) with a user-customizable format, instead of today's fixed Swift logic (`Dossier.render`, `ImportNaming`).
   - Explicitly not to be started now: today `Dossier.render` and `ImportNaming` cover the case with a fixed format, which is correct as long as the output does not need to be user-configurable. Start only if/when a real need for output-format customization emerges — otherwise this is a premature abstraction for a single consumer.
 
-- [ ] `PG-111` **P3** [roadmap, future] Detect new counterparts that join an *already-followed* pratica's conversation during regular sync, not only at wizard creation time <!-- src:session opened:2026-09-10 runs:2 -->
+- [ ] `PG-111` **P3** [roadmap, future] Detect new counterparts that join an *already-followed* pratica's conversation during regular sync, not only at wizard creation time <!-- src:session opened:2026-09-10 runs:2 gh:closed#207 -->
   - Explicitly deferred by Stefano when scoping the new "detect new counterparts" wizard feature (2026-09-10): the wizard-time detection (analyze the whole conversation, propose addresses not yet in `Dossier.counterparts`, one-by-one selector) is being built now via `concept-to-code`. This item is the natural follow-up he flagged as "interessante": once a pratica is already being followed, a later sync can encounter a message from/to an address never seen in that pratica before (someone new joins the thread after the pratica was created) — right now nothing surfaces that, the person only finds out by reading the email itself. Likely lands near `PraticaLiveSync`/the tray mechanism (`PraticaTrayModel`), proposing new *people* rather than new *conversations*. Not started - scope, ADR impact and UI (tray row? sheet? notification?) still to be designed.
 
+- [ ] `PG-112` **P3** [roadmap, future] «ChatGPT inside Pergamenum»: an in-app assistant over a pratica, rather than an export command out of one — no file yet, its own chain <!-- src:session opened:2026-09-10 runs:2 gh:closed#209 -->
+  - Deferred out of the Pratiche chain by Stefano's explicit choice (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The stated direction is to bring ChatGPT into the app, not to export to it, so **no «Esporta per ChatGPT» command was built either**: the timeline is plain markdown on disk and `perg pratica <titolo>` prints it, which already covers copy-and-paste by hand.
+  - One measured obstacle worth keeping (SPEC.md:44): ChatGPT.app registers only the `codex://` URL scheme, so there is no way to hand it text through a URL. Whatever this becomes, it is not a URL hand-off.
+
+- [ ] `PG-113` **P3** [roadmap, future] «Apri come board»: turn a pratica's timeline into a `.canvas` with one card per message — `Sources/Features/Pratiche/**` + `Sources/Vault/CanvasStore.swift` <!-- src:session opened:2026-09-10 runs:2 gh:closed#210 -->
+  - Deferred out of the Pratiche chain (SPEC.md "Out of scope", ADR-0036 §D20, R-41). Nothing was built toward it: no command, no `.canvas` writer, no node layout. The pieces that would serve it already exist independently — `CanvasStore`, `CanvasID.generate(avoiding:)` and the JSON Canvas 1.0 round trip (principle 4) — so this is composition, not new machinery.
+
+- [ ] `PG-114` **P3** [roadmap, future] `pergamenum://pratica/add?message=…` URL-scheme entry point, so a message can be filed into a pratica from outside the app — `Sources/Core/Conventions/PergamenumRoute.swift` + `Sources/App/**` <!-- src:session opened:2026-09-10 runs:2 gh:closed#211 -->
+  - Deferred out of the Pratiche chain as M6 territory (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The in-app path exists and is what this would automate: «Aggiungi a pratica da Mail…» (Cmd+Shift+P) reads the selected message through `MailLink.selectedMessage()` and files it. A new route case would need the same Automation consent story and a decision about what happens when the app is closed.
+
+- [ ] `PG-115` **P3** [roadmap, future] Connector **write** access to pratiche (`perg pratica add-note`, an MCP write tool) — `Sources/Connector/VaultPratiche.swift`, `Sources/CLI/Commands/PraticheCommands.swift`, `Sources/MCPServer/ToolCatalogue+Writing.swift` <!-- src:session opened:2026-09-10 runs:2 gh:closed#212 -->
+  - Deferred out of the Pratiche chain: v1 is read-only on purpose (SPEC.md "Out of scope", ADR-0036 §D20, R-36/R-41). `VaultAPI.pratiche(_:)` and `VaultAPI.pratica(_:_:)` shipped, both reading only what is on disk — and a purity test forbids `MailStore`/`EMLXReader`/`SQLite3` under `Sources/Connector`, `Sources/CLI` and `Sources/MCPServer`, which a write path must keep honouring: writing a manual entry touches `pratica.md`, never Mail.
+  - What it would cost, from the existing shape: `PraticaEntry.insert(kind:at:counterpart:in:)` is already pure and shared, so the write itself is one `VaultSession.write` behind `VaultAPI.arm` (dry-run + `UnifiedDiff` + `WriteJournal`, ADR-0007 §D6), plus the MCP tool's `dryRun`-defaults-to-true lock. R-29's daily-note mirror would have to be decided on: the app writes it, a connector arguably should not.
+
+## Backlog / To Add
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
@@ -60,20 +78,6 @@ re-verified by a real `scripts/uitests.sh` hand-run, and not yet committed.**
 
 - [ ] `PG-109` **P3** An unrecoverable followed conversation (its id gone after an index renumber, R-14) is reported via `controller.report(...)` only — no ledger persistence, no tray row — `Sources/Features/Pratiche/PraticheController.swift` (`runExclusive`, `unrecoverableConversations`) <!-- src:session opened:2026-09-10 runs:2 -->
   - Named as open, on purpose, by ADR-0036 §D23.5 rather than folded into PG-118/PG-119: it needs an invalidation rule for the tray row that has not been designed (when does the row clear — a new sync that re-resolves the conversation? a person dismissing it by hand?), and persisting `unrecoverableConversations` in the ledger is a shape decision, not a bounded code change.
-
-- [ ] `PG-112` **P3** «ChatGPT inside Pergamenum»: an in-app assistant over a pratica, rather than an export command out of one — no file yet, its own chain <!-- src:session opened:2026-09-10 runs:2 -->
-  - Deferred out of the Pratiche chain by Stefano's explicit choice (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The stated direction is to bring ChatGPT into the app, not to export to it, so **no «Esporta per ChatGPT» command was built either**: the timeline is plain markdown on disk and `perg pratica <titolo>` prints it, which already covers copy-and-paste by hand.
-  - One measured obstacle worth keeping (SPEC.md:44): ChatGPT.app registers only the `codex://` URL scheme, so there is no way to hand it text through a URL. Whatever this becomes, it is not a URL hand-off.
-
-- [ ] `PG-113` **P3** «Apri come board»: turn a pratica's timeline into a `.canvas` with one card per message — `Sources/Features/Pratiche/**` + `Sources/Vault/CanvasStore.swift` <!-- src:session opened:2026-09-10 runs:2 -->
-  - Deferred out of the Pratiche chain (SPEC.md "Out of scope", ADR-0036 §D20, R-41). Nothing was built toward it: no command, no `.canvas` writer, no node layout. The pieces that would serve it already exist independently — `CanvasStore`, `CanvasID.generate(avoiding:)` and the JSON Canvas 1.0 round trip (principle 4) — so this is composition, not new machinery.
-
-- [ ] `PG-114` **P3** `pergamenum://pratica/add?message=…` URL-scheme entry point, so a message can be filed into a pratica from outside the app — `Sources/Core/Conventions/PergamenumRoute.swift` + `Sources/App/**` <!-- src:session opened:2026-09-10 runs:2 -->
-  - Deferred out of the Pratiche chain as M6 territory (SPEC.md "Out of scope", ADR-0036 §D20, R-41). The in-app path exists and is what this would automate: «Aggiungi a pratica da Mail…» (Cmd+Shift+P) reads the selected message through `MailLink.selectedMessage()` and files it. A new route case would need the same Automation consent story and a decision about what happens when the app is closed.
-
-- [ ] `PG-115` **P3** Connector **write** access to pratiche (`perg pratica add-note`, an MCP write tool) — `Sources/Connector/VaultPratiche.swift`, `Sources/CLI/Commands/PraticheCommands.swift`, `Sources/MCPServer/ToolCatalogue+Writing.swift` <!-- src:session opened:2026-09-10 runs:2 -->
-  - Deferred out of the Pratiche chain: v1 is read-only on purpose (SPEC.md "Out of scope", ADR-0036 §D20, R-36/R-41). `VaultAPI.pratiche(_:)` and `VaultAPI.pratica(_:_:)` shipped, both reading only what is on disk — and a purity test forbids `MailStore`/`EMLXReader`/`SQLite3` under `Sources/Connector`, `Sources/CLI` and `Sources/MCPServer`, which a write path must keep honouring: writing a manual entry touches `pratica.md`, never Mail.
-  - What it would cost, from the existing shape: `PraticaEntry.insert(kind:at:counterpart:in:)` is already pure and shared, so the write itself is one `VaultSession.write` behind `VaultAPI.arm` (dry-run + `UnifiedDiff` + `WriteJournal`, ADR-0007 §D6), plus the MCP tool's `dryRun`-defaults-to-true lock. R-29's daily-note mirror would have to be decided on: the app writes it, a connector arguably should not.
 
 - [ ] `PG-099` **P3** An open Workspace board's pending (debounced) autosave can silently clobber a rename/move's board-repoint write, losing the rewrite with no error shown — `Sources/Features/Workspace/WorkspaceController.swift` (`scheduleSave`/`save`, ~lines 553-585) <!-- src:session opened:2026-09-07 runs:2 -->
 - [ ] `PG-100` **P4** No test covers a Workspace `.text` card whose body contains both a real `[[Wikilink]]` match and a separate, coincidentally fold-matching quoted bullet on note rename — `Tests/NoteFileOperationTests.swift` (compound case for `renamingDoesNotRewriteAnUnrelatedQuotedBulletInATextCard`, commit `9bb0b50`) <!-- src:session opened:2026-09-07 runs:2 -->
