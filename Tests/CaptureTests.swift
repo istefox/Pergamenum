@@ -230,7 +230,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     _ = try VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
-    _ = try VaultAPI.undo(session, id: id)
+    _ = try await VaultAPI.undo(session, id: id)
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
     #expect(!onDisk.contains("Aggiunta"))

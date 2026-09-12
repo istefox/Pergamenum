@@ -145,6 +145,28 @@ import Testing
         )
     }
 
+    // MARK: - R-08: the watchdog itself survives the continuation-based rewrite (ADR-0041 Task 9)
+
+    /// `run`'s `DispatchSemaphore` + `finished.wait(timeout:)` (ADR-0041 §D9) is due to become
+    /// a continuation-based wait, still bounded by the same timeout. Nothing here exercised the
+    /// timeout path itself before this test: every other case above runs a command that finishes
+    /// well inside 60s, so a rewrite that quietly dropped the watchdog - turning it into an
+    /// unbounded wait on a hung `xcodebuild` subprocess - would have nothing here to catch it.
+    ///
+    /// A short timeout against a command that deliberately outlives it, asserting the specific
+    /// `ProcessTimeoutError` rather than merely "throws something": this must stay green across
+    /// the rewrite, not go red once and get quietly relaxed to pass either way.
+    @Test func aProcessThatOutlivesItsTimeoutIsReportedRatherThanAwaitedForever() throws {
+        #expect(throws: ProcessTimeoutError.self) {
+            _ = try Self.run(
+                executable: "/bin/sleep",
+                arguments: ["5"],
+                currentDirectory: FileManager.default.temporaryDirectory,
+                timeout: 0.2
+            )
+        }
+    }
+
     // MARK: - Shared plumbing
 
     private struct ProcessResult {
