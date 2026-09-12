@@ -92,10 +92,10 @@ Corpo con un [[Altro titolo]] e un ![[schema.pdf]].
     let store = NoteStore(root: vault.root)
     // Wikilinks and pergamenum:// arguments are user-supplied text; without this
     // guard a crafted path would write anywhere on disk.
-    #expect(throws: NoteStore.StoreError.self) {
+    #expect(throws: VaultBoundary.Violation.self) {
         try store.write("x", to: "../fuori.md")
     }
-    #expect(throws: NoteStore.StoreError.self) {
+    #expect(throws: VaultBoundary.Violation.self) {
         try store.read("../../etc/passwd")
     }
 }
@@ -633,7 +633,7 @@ private func makeRecord(
     defer { try? FileManager.default.removeItem(at: link) }
 
     let store = NoteStore(root: link)
-    #expect(throws: NoteStore.StoreError.self) {
+    #expect(throws: VaultBoundary.Violation.self) {
         try store.write("x", to: "../fuori.md")
     }
 }

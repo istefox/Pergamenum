@@ -105,7 +105,7 @@ private func expectOutsideVault(
     do {
         try operation()
         Issue.record("Expected outsideVault for \(path)", sourceLocation: sourceLocation)
-    } catch NoteStore.StoreError.outsideVault(let originalPath) {
+    } catch VaultBoundary.Violation.outsideVault(let originalPath) {
         #expect(originalPath == path, sourceLocation: sourceLocation)
     } catch {
         Issue.record("Expected outsideVault for \(path), received \(error)", sourceLocation: sourceLocation)

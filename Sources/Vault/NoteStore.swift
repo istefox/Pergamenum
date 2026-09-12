@@ -45,28 +45,26 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
 /// half-written note, and "file over app" is worthless if the file can be corrupted
 /// by the app that promises to protect it.
 struct NoteStore: Sendable {
-    /// The vault root, with symlinks resolved once at construction.
-    ///
-    /// Resolving here rather than at each comparison is what makes the boundary check
-    /// sound: `resolvingSymlinksInPath` does nothing for a path that does not exist
-    /// yet, so a not-yet-created note under a symlinked vault kept the unresolved
-    /// spelling while the root had the resolved one, and every write was refused as
-    /// "outside the vault". Building every path from the resolved root removes the
-    /// mismatch instead of trying to undo it later.
+    /// The vault root, with symlinks resolved once at construction - see
+    /// `VaultBoundary.root` for why that resolution happens here and not per comparison.
     let root: URL
 
+    /// The only way this type turns a caller's relative path into a `URL` on disk
+    /// (ADR-0041 §D1).
+    private let boundary: VaultBoundary
+
     init(root: URL) {
-        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        let boundary = VaultBoundary(root: root)
+        self.boundary = boundary
+        self.root = boundary.root
     }
 
     enum StoreError: Error, CustomStringConvertible {
         case notUTF8(String)
-        case outsideVault(String)
 
         var description: String {
             switch self {
             case .notUTF8(let path): "\(path) is not valid UTF-8"
-            case .outsideVault(let path): "\(path) is outside the vault"
             }
         }
     }
@@ -77,8 +75,7 @@ struct NoteStore: Sendable {
 
     /// Reads a note and derives its record.
     func read(_ relativePath: String) throws -> (record: NoteRecord, text: String) {
-        let fileURL = url(for: relativePath)
-        try assertInsideVault(fileURL, relativePath)
+        let fileURL = try boundary.url(for: relativePath)
 
         let data = try Data(contentsOf: fileURL)
         guard let text = String(data: data, encoding: .utf8) else {
@@ -106,8 +103,7 @@ struct NoteStore: Sendable {
     /// watcher to recognise as its own.
     @discardableResult
     func write(_ text: String, to relativePath: String) throws -> String {
-        let fileURL = url(for: relativePath)
-        try assertInsideVault(fileURL, relativePath)
+        let fileURL = try boundary.url(for: relativePath)
 
         let parent = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -115,24 +111,6 @@ struct NoteStore: Sendable {
         let data = Data(text.utf8)
         try data.write(to: fileURL, options: .atomic)
         return Self.hash(data)
-    }
-
-    /// Guards against a relative path escaping the vault through `..`.
-    ///
-    /// Paths reach this layer from wikilinks and from the URL scheme, both of which
-    /// are user-supplied text; without the check, `pergamenum://note?file=../../…`
-    /// would write outside the vault.
-    private func assertInsideVault(_ fileURL: URL, _ relativePath: String) throws {
-        // Both sides start from the already-resolved root, so this compares like with
-        // like; `standardized` still collapses any `..` the relative path smuggled in,
-        // which is what the guard is actually for.
-        let resolvedRoot = root.path(percentEncoded: false)
-        let resolved = fileURL.standardizedFileURL.path(percentEncoded: false)
-
-        let rootWithSeparator = resolvedRoot.hasSuffix("/") ? resolvedRoot : resolvedRoot + "/"
-        guard resolved.hasPrefix(rootWithSeparator) else {
-            throw StoreError.outsideVault(relativePath)
-        }
     }
 
     static func hash(_ data: Data) -> String {
