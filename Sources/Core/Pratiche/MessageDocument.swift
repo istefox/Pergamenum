@@ -64,6 +64,12 @@ struct MessageDocument: Equatable, Sendable {
         /// `attachments`/`to`/`cc` already follow, so every existing call site of this
         /// memberwise initializer keeps compiling unchanged.
         var storeReferences: [StoreReference] = []
+        /// `pergamenum-mail-inline-pending` (ADR-0042 §D3): the content ids of inline
+        /// images this note is still waiting for, one per placeholder, in the order the
+        /// placeholders appear in the rendered file. Defaulted empty, so every existing
+        /// construction site keeps compiling and every note written before this fix
+        /// reads back as "waiting for nothing".
+        var pendingInlineImages: [String] = []
         var body: BodyState
         /// `pergamenum-mail-original` - absent when retention is off (R-09).
         var original: String?
@@ -139,6 +145,9 @@ struct MessageDocument: Equatable, Sendable {
         if !mail.attachments.isEmpty {
             add(attachmentsKey, inlineList(mail.attachments))
         }
+        if !mail.pendingInlineImages.isEmpty {
+            add(inlinePendingKey, inlineList(mail.pendingInlineImages))
+        }
         if !mail.storeReferences.isEmpty {
             keys.append(Frontmatter.ForeignKey(
                 name: storeReferencesKey,
@@ -154,6 +163,10 @@ struct MessageDocument: Equatable, Sendable {
 
     static let storeReferencesKey = "pergamenum-mail-store-references"
     static let attachmentsKey = "pergamenum-mail-attachments"
+    /// `pergamenum-mail-inline-pending` (ADR-0042 §D3), positioned after
+    /// `attachmentsKey` and before `storeReferencesKey` in both `foreignKeys(of:)` and
+    /// `MessageFrontmatterPatch`'s insertion order.
+    static let inlinePendingKey = "pergamenum-mail-inline-pending"
 
     /// The full `pergamenum-mail-attachments:` line for a list of entries, in the same
     /// quoting `foreignKeys(of:)` already uses for this key (ADR-0040 §D4) -
@@ -161,6 +174,12 @@ struct MessageDocument: Equatable, Sendable {
     /// codec is written in exactly one place.
     static func attachmentsLine(for entries: [String]) -> String {
         "\(attachmentsKey): \(inlineList(entries))"
+    }
+
+    /// The full `pergamenum-mail-inline-pending:` line for a list of content ids
+    /// (ADR-0042 §D3) - `MessageFrontmatterPatch`'s only source for this key's text.
+    static func inlinePendingLine(for contentIDs: [String]) -> String {
+        "\(inlinePendingKey): \(inlineList(contentIDs))"
     }
 
     /// `  - { name: "big.zip", size: 157286400, storePath: "/…/big.zip" }` - a YAML flow
@@ -237,6 +256,7 @@ struct MessageDocument: Equatable, Sendable {
                 subject: scalar("pergamenum-mail-subject", lines).map(unquoted) ?? "",
                 attachments: list(attachmentsKey, lines),
                 storeReferences: storeReferences(in: lines),
+                pendingInlineImages: list(inlinePendingKey, lines),
                 body: scalar("pergamenum-mail-body", lines)
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
                 original: scalar("pergamenum-mail-original", lines).map(unquoted)

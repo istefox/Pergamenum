@@ -108,6 +108,50 @@ import Testing
         #expect(parsed.frontmatter.storeReferences == original.frontmatter.storeReferences)
     }
 
+    // MARK: - ADR-0042: `pergamenum-mail-inline-pending` (deferred inline images)
+
+    @Test func rendersThePergamenumMailInlinePendingKeyBetweenAttachmentsAndStoreReferences() {
+        var document = Self.sampleDocument()
+        document.frontmatter.pendingInlineImages = ["image001.png@01DA5C3E"]
+        document.frontmatter.storeReferences = [
+            MessageDocument.StoreReference(
+                name: "big.zip", size: 157_286_400,
+                storePath: "/Users/stefano/Labs/Attachments/2026/big.zip"
+            )
+        ]
+        let text = MessageDocument.render(document, tags: [Tag("type-note")!])
+        #expect(text.contains("pergamenum-mail-inline-pending: [\"image001.png@01DA5C3E\"]"))
+
+        let lines = text.components(separatedBy: "\n")
+        let attachmentsIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.attachmentsKey + ":") })
+        let inlinePendingIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.inlinePendingKey + ":") })
+        let storeReferencesIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.storeReferencesKey + ":") })
+        #expect(attachmentsIndex != nil)
+        #expect(inlinePendingIndex != nil)
+        #expect(storeReferencesIndex != nil)
+        #expect(attachmentsIndex! < inlinePendingIndex!)
+        #expect(inlinePendingIndex! < storeReferencesIndex!)
+    }
+
+    @Test func omitsThePergamenumMailInlinePendingKeyWhenEmpty() {
+        let text = MessageDocument.render(Self.sampleDocument(), tags: [Tag("type-note")!])
+        #expect(!text.contains(MessageDocument.inlinePendingKey))
+    }
+
+    @Test func roundTripsPendingInlineImagesThroughParse() throws {
+        var original = Self.sampleDocument()
+        original.frontmatter.pendingInlineImages = ["image001.png@01DA5C3E", "image002.jpg@01DA5C3F"]
+        let text = MessageDocument.render(original, tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.pendingInlineImages == original.frontmatter.pendingInlineImages)
+    }
+
+    @Test func pendingInlineImagesIsEmptyForANoteWrittenBeforeThisFix() throws {
+        let text = MessageDocument.render(Self.sampleDocument(), tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.pendingInlineImages.isEmpty)
+    }
+
     // MARK: - R-12: direction and counterpart
 
     private static let ownAddresses: Set<String> = ["stefano@stefer.it"]
