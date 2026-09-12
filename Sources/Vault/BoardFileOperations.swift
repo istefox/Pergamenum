@@ -149,7 +149,7 @@ struct BoardFileOperations {
         if plan.newPath != oldPath {
             do {
                 try FileManager.default.moveItem(
-                    at: store.url(for: oldPath), to: store.url(for: plan.newPath)
+                    at: try store.url(for: oldPath), to: try store.url(for: plan.newPath)
                 )
             } catch {
                 throw FileOperationError.failed("rinomina board: \(error)")
@@ -169,7 +169,7 @@ struct BoardFileOperations {
         // (`FolderFileOperations.renameFolder` writes its own the same way).
         for change in plan.boardChanges {
             do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
@@ -190,7 +190,7 @@ struct BoardFileOperations {
         var resulting: NSURL?
         do {
             try FileManager.default.trashItem(
-                at: store.url(for: board), resultingItemURL: &resulting
+                at: try store.url(for: board), resultingItemURL: &resulting
             )
         } catch {
             throw FileOperationError.failed("eliminazione board: \(error)")
@@ -266,11 +266,11 @@ struct BoardFileOperations {
 
         if plan.newPath != oldPath {
             do {
-                let destination = store.url(for: plan.newPath)
+                let destination = try store.url(for: plan.newPath)
                 try FileManager.default.createDirectory(
                     at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
                 )
-                try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
+                try FileManager.default.moveItem(at: try store.url(for: oldPath), to: destination)
             } catch {
                 throw FileOperationError.failed("spostamento board: \(error)")
             }
@@ -283,7 +283,7 @@ struct BoardFileOperations {
         // `repointBoardsPlan`'s `writePath` substitution already computed.
         for change in plan.boardChanges {
             do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
@@ -300,17 +300,21 @@ struct BoardFileOperations {
         relativePath.trimmingCharacters(in: .pathSlashes)
     }
 
+    /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
+    /// `Bool`-returning sites).
     private func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// There, and not a directory: a folder may share a name with a `.canvas` beside it
     /// (`CanvasStore.createBoard`), so "the file exists" is not the same question as
-    /// "something with this path exists".
+    /// "something with this path exists". A boundary violation answers `false` here too.
     private func isFile(_ relativePath: String) -> Bool {
+        guard let url = try? store.url(for: relativePath) else { return false }
         var flag: ObjCBool = false
         let found = FileManager.default.fileExists(
-            atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag
+            atPath: url.path(percentEncoded: false), isDirectory: &flag
         )
         return found && !flag.boolValue
     }

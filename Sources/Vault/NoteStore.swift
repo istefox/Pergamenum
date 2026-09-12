@@ -69,7 +69,11 @@ struct NoteStore: Sendable {
         }
     }
 
-    func url(for relativePath: String) -> URL {
+    /// **Tester declaration only (ADR-0155, Task 2).** Signature changed to `throws` so every
+    /// call site propagates; the body still does not route through `boundary` - that
+    /// integration is the coder's job. Every adversarial test in
+    /// `VaultBoundaryCallSiteTests.swift` that reaches this accessor is red until it does.
+    func url(for relativePath: String) throws -> URL {
         root.appending(path: relativePath, directoryHint: .notDirectory)
     }
 

@@ -205,8 +205,8 @@ struct FolderFileOperations {
         var failures: [String] = []
 
         for boardPath in canvas.allBoards() {
-            let url = store.url(for: boardPath)
-            guard let data = try? Data(contentsOf: url),
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
                   var document = try? CanvasDocument(data: data)
             else { continue }
 
@@ -319,7 +319,7 @@ struct FolderFileOperations {
         }
         for change in plan.boardChanges {
             do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
                 outcome.rewrittenPaths.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
@@ -387,14 +387,18 @@ struct FolderFileOperations {
         return newFolder + String(path.dropFirst(oldFolder.count))
     }
 
+    /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
+    /// `Bool`-returning sites), matching `VaultSession.exists`.
     func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     func isDirectory(_ relativePath: String) -> Bool {
+        guard let url = try? store.url(for: relativePath) else { return false }
         var flag: ObjCBool = false
         let found = FileManager.default.fileExists(
-            atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag
+            atPath: url.path(percentEncoded: false), isDirectory: &flag
         )
         return found && flag.boolValue
     }

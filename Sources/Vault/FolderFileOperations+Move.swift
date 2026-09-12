@@ -118,7 +118,7 @@ extension FolderFileOperations {
         )
         for change in plan.boardChanges {
             do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
+                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
                 outcome.rewrittenPaths.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")

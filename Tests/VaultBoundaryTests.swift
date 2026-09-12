@@ -59,7 +59,7 @@ struct VaultBoundaryTests {
 
         #expect(try store.read("b.md").text == "inside")
         #expect(try store.read("a/../b.md").text == "inside")
-        #expect(store.url(for: "a/../b.md").standardizedFileURL.path ==
+        #expect(try store.url(for: "a/../b.md").standardizedFileURL.path ==
                 fixture.root.appending(path: "b.md").path)
     }
 
@@ -89,7 +89,7 @@ struct VaultBoundaryTests {
         let store = NoteStore(root: link)
 
         #expect(store.root.path == fixture.root.path)
-        #expect(store.url(for: "Nuova.md").path == destination.path)
+        #expect(try store.url(for: "Nuova.md").path == destination.path)
         _ = try store.write("new note", to: "Nuova.md")
 
         #expect(try store.read("Nuova.md").text == "new note")

@@ -57,12 +57,12 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
-        let destination = store.url(for: newPath)
+        let destination = try store.url(for: newPath)
         do {
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
+            try FileManager.default.moveItem(at: try store.url(for: oldPath), to: destination)
         } catch {
             throw FileOperationError.failed(
                 "spostamento: \(error.localizedDescription)"
@@ -104,12 +104,12 @@ extension VaultSession {
         // Read before the refusal to perform, not after: a dry run that skipped the read would
         // not discover an unreadable file, and the real thing would then fail where the
         // rehearsal had said it was fine.
-        let data = try? Data(contentsOf: store.url(for: relativePath))
+        let data = (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
         guard !isDryRun else { return }
 
         do {
             try FileManager.default.trashItem(
-                at: store.url(for: relativePath), resultingItemURL: nil
+                at: try store.url(for: relativePath), resultingItemURL: nil
             )
         } catch {
             throw FileOperationError.failed(
@@ -144,11 +144,11 @@ extension VaultSession {
     /// a rename that cannot be undone.
     func writeFile(_ text: String, to relativePath: String) throws {
         let existing = (journal != nil && !isDryRun)
-            ? try? String(contentsOf: store.url(for: relativePath), encoding: .utf8)
+            ? (try? store.url(for: relativePath)).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
             : nil
         guard !isDryRun else { return }
 
-        let url = store.url(for: relativePath)
+        let url = try store.url(for: relativePath)
         let data = Data(text.utf8)
         do {
             try data.write(to: url, options: .atomic)
@@ -299,7 +299,9 @@ extension VaultSession {
     /// `entry.hashBefore`/`hashAfter` regardless of kind, since both are `NoteStore.hash` over
     /// raw bytes.
     private func currentHash(at relativePath: String) -> String? {
-        (try? Data(contentsOf: store.url(for: relativePath))).map(NoteStore.hash)
+        (try? store.url(for: relativePath))
+            .flatMap { try? Data(contentsOf: $0) }
+            .map(NoteStore.hash)
     }
 
     // MARK: Support

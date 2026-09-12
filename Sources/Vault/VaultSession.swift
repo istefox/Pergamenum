@@ -109,8 +109,13 @@ final class VaultSession {
         try store.read(relativePath)
     }
 
+    /// A boundary violation answers `false`, not a thrown error (ADR-0041 §D2, Task 2's
+    /// tester-declared policy for the four `Bool`/`URL?`-returning call sites): "does this
+    /// path exist inside the vault" is a question a caller-supplied string can only answer
+    /// truthfully from inside the vault.
     func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// What a write did, for a caller that has to react to it.

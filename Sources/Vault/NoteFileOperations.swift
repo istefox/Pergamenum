@@ -169,8 +169,8 @@ struct NoteFileOperations {
         var changes: [FileChange] = []
         var failures: [String] = []
         for boardPath in boardPaths() {
-            let url = store.url(for: boardPath)
-            guard let data = try? Data(contentsOf: url),
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
                   let decoded = try? CanvasDocument(data: data),
                   let document = repointedDocument(
                       decoded, from: oldPath, to: newPath, titleChange: titleChange
@@ -221,7 +221,7 @@ struct NoteFileOperations {
 
         if newPath != relativePath {
             do {
-                try FileManager.default.moveItem(at: store.url(for: relativePath), to: store.url(for: newPath))
+                try FileManager.default.moveItem(at: try store.url(for: relativePath), to: try store.url(for: newPath))
             } catch {
                 throw FileOperationError.failed("rinomina: \(error.localizedDescription)")
             }
@@ -267,11 +267,11 @@ struct NoteFileOperations {
         guard !exists(newPath) else { throw FileOperationError.alreadyExists(newPath) }
 
         do {
-            let destination = store.url(for: newPath)
+            let destination = try store.url(for: newPath)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            try FileManager.default.moveItem(at: store.url(for: relativePath), to: destination)
+            try FileManager.default.moveItem(at: try store.url(for: relativePath), to: destination)
         } catch {
             throw FileOperationError.failed("spostamento: \(error.localizedDescription)")
         }
@@ -294,8 +294,8 @@ struct NoteFileOperations {
     ) {
         guard oldPath != newPath else { return }
         for boardPath in boardPaths() {
-            let url = store.url(for: boardPath)
-            guard let data = try? Data(contentsOf: url),
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
                   let decoded = try? CanvasDocument(data: data),
                   let document = repointedDocument(
                       decoded, from: oldPath, to: newPath, titleChange: titleChange
@@ -358,7 +358,7 @@ struct NoteFileOperations {
         let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
 
         do {
-            try FileManager.default.trashItem(at: store.url(for: relativePath), resultingItemURL: nil)
+            try FileManager.default.trashItem(at: try store.url(for: relativePath), resultingItemURL: nil)
         } catch {
             throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
         }
@@ -370,8 +370,11 @@ struct NoteFileOperations {
         }
     }
 
+    /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
+    /// `Bool`-returning sites).
     private func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 }
 

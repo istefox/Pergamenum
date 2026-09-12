@@ -146,7 +146,7 @@ private func makeEditor(_ text: String) -> (NSTextView, NoteTextView.Coordinator
 
         try store.write(everyConstruct, to: path)
         let (record, text) = try store.read(path)
-        let bytes = try Data(contentsOf: store.url(for: path))
+        let bytes = try Data(contentsOf: try store.url(for: path))
 
         #expect(text == everyConstruct)
         #expect(bytes == Data(everyConstruct.utf8))
