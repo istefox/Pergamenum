@@ -11,6 +11,16 @@ import Foundation
 struct FolderFileOperations {
     let store: NoteStore
 
+    /// Test-only observability: called once per pass this type makes over
+    /// `canvas.allBoards()` while computing a repoint - never once per node, never once per
+    /// file it decides to rewrite. A no-op default costs one branch and changes no
+    /// production behaviour; nothing outside a test ever sets it, and each test constructs
+    /// its own `FolderFileOperations` value, so there is no shared state for two tests to
+    /// race on. Exists so `Tests/VaultBatchMoveTests.swift` can assert R-05's "one walk for
+    /// the whole batch" claim exactly, rather than inferring it from output shape alone
+    /// (ADR-0041 §D8, Task 7).
+    var onBoardsWalk: () -> Void = {}
+
     /// Built here rather than injected: `CanvasStore` is a value over the same root, and
     /// what this file needs from it - `allBoards()`, "every board in the vault" (F4) -
     /// is a walk with exclusion rules that would be a second spelling of an enumeration
@@ -206,6 +216,7 @@ struct FolderFileOperations {
         to newPath: String
     ) -> (changes: [VaultFileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
+        onBoardsWalk()
         var changes: [VaultFileChange] = []
         var failures: [String] = []
 
@@ -248,6 +259,33 @@ struct FolderFileOperations {
             } catch {
                 failures.append("\(boardPath): \(error)")
             }
+        }
+        return (changes, failures)
+    }
+
+    /// Batched form of `repointBoardsPlan(from:to:)` above (ADR-0041 §D8, Task 7): every
+    /// path a batch moved, repointed together rather than one `canvas.allBoards()` walk per
+    /// pair.
+    ///
+    /// **Declared here as the tester's stub, not the coder's real thing.** This loops
+    /// `moves` and calls the single-pair `repointBoardsPlan(from:to:)` once per entry, so it
+    /// still walks `canvas.allBoards()` once per move and, when two moves touch the same
+    /// board, produces one `VaultFileChange` per move rather than one merged change for the
+    /// board - each one read from the board's still-unwritten-at-plan-time bytes, so a
+    /// caller that fed both into `VaultPlanApplication.apply` would have the later change
+    /// for that path silently discard the earlier one's repoint. That data-loss shape, and
+    /// the walk count, are exactly what `Tests/VaultBatchMoveTests.swift`'s tests assert
+    /// against - correctly, on purpose, so they are red until the coder replaces this loop
+    /// with one pass over `canvas.allBoards()` that checks every move per board.
+    func repointBoardsPlan(
+        moves: [(from: String, to: String)]
+    ) -> (changes: [VaultFileChange], failures: [String]) {
+        var changes: [VaultFileChange] = []
+        var failures: [String] = []
+        for move in moves {
+            let result = repointBoardsPlan(from: move.from, to: move.to)
+            changes.append(contentsOf: result.changes)
+            failures.append(contentsOf: result.failures)
         }
         return (changes, failures)
     }

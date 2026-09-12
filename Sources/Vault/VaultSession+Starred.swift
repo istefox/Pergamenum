@@ -26,6 +26,7 @@ extension VaultSession {
             starred.remove(relativePath)
         }
         guard starred != before else { return }
+        testOnlyStarredSaveCount += 1
         if let problem = starredStore.save(starred) { recordProblem(problem) }
     }
 
@@ -38,7 +39,26 @@ extension VaultSession {
         guard starred.contains(oldPath) else { return }
         starred.remove(oldPath)
         starred.insert(newPath)
+        testOnlyStarredSaveCount += 1
         if let problem = starredStore.save(starred) { recordProblem(problem) }
+    }
+
+    /// Batched form of `moveStar(from:to:)` above (ADR-0041 §D8, Task 7): every star a
+    /// batch's items carried, meant to be saved once instead of once per moved note.
+    ///
+    /// **Declared here as the tester's stub, not the coder's real thing.** This still calls
+    /// `moveStar(from:to:)` once per pair, so it still saves `starred.json` once per starred
+    /// note in `pairs` - correct output, wrong call count. It exists so
+    /// `VaultSession+Move.swift`'s batched `moveItems` (this task's coder work) has a
+    /// symbol to call, and so `Tests/VaultBatchMoveTests.swift`'s call-count assertion on
+    /// `testOnlyStarredSaveCount` has something to be red against. The real batching -
+    /// compute every changed path once, save `starred` once at the end - is the coder's,
+    /// and must keep incrementing `testOnlyStarredSaveCount` exactly once per call for the
+    /// test to go green.
+    func moveStars(_ pairs: [(old: String, new: String)]) {
+        for pair in pairs {
+            moveStar(from: pair.old, to: pair.new)
+        }
     }
 
     /// Drops the star of a note that is no longer there.

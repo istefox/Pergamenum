@@ -36,6 +36,14 @@ final class VaultSession {
     @ObservationIgnored let history: NoteHistory
     /// Where the starred paths are read from and written back to (ADR-0012 D6).
     @ObservationIgnored let starredStore: StarredStore
+
+    /// Test-only observability: incremented once per `starredStore.save` this session
+    /// performs, wherever `VaultSession+Starred.swift` calls it. Per-instance - two tests
+    /// each opening their own session cannot see each other's increments, and nothing in
+    /// production reads it. Exists so `Tests/VaultBatchMoveTests.swift` can assert R-05's
+    /// "one starred-file rewrite per batch, not per moved note" claim without instrumenting
+    /// the file system (ADR-0041 §D8, Task 7).
+    @ObservationIgnored var testOnlyStarredSaveCount = 0
     /// Where this vault's derived, per-machine state lives, resolved once at open
     /// (ADR-0017). `cacheURL` and `VaultController`'s `ThumbnailStore` both read it.
     @ObservationIgnored let state: VaultState
