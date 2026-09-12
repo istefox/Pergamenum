@@ -35,8 +35,8 @@ struct BoardFileOperations {
     /// board's file name is ambiguous (ADR-0025 §D6).
     struct BoardRenamePlan {
         var newPath: String
-        var noteChanges: [NoteFileOperations.FileChange] = []
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var noteChanges: [VaultFileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -105,7 +105,7 @@ struct BoardFileOperations {
                 ) else { continue }
                 // No path substitution: renaming a board moves one file and no note
                 // with it, so every note is still where it was read from.
-                plan.noteChanges.append(NoteFileOperations.FileChange(
+                plan.noteChanges.append(VaultFileChange(
                     path: path, before: text, after: updated
                 ))
             }
@@ -157,23 +157,19 @@ struct BoardFileOperations {
         }
 
         var outcome = RenameOutcome(newPath: plan.newPath, failures: plan.failures)
-        for change in plan.noteChanges {
-            do {
-                try store.write(change.after, to: change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let notes = VaultPlanApplication.apply(plan.noteChanges) {
+            try store.write($0.after, to: $0.path)
         }
         // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a
         // note and the planned text is already the encoded document
-        // (`FolderFileOperations.renameFolder` writes its own the same way).
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        // (`FolderFileOperations.renameFolder` writes its own the same way) - the split
+        // `apply` keeps at the call site by taking the writer (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        // `RenameOutcome` has no `rewrittenPaths` field, so only the failures are carried
+        // over - exactly what the two loops this replaced recorded.
+        outcome.failures.append(contentsOf: notes.failures + boards.failures)
         return outcome
     }
 
@@ -205,7 +201,7 @@ struct BoardFileOperations {
     /// the name (ADR-0026 §D1).
     struct MovePlan: Equatable, Sendable {
         var newPath: String
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -281,13 +277,11 @@ struct BoardFileOperations {
         // reason: a `.canvas` is not a note and the planned text is already the encoded
         // document. The board that moved is written at its **new** path, which is what
         // `repointBoardsPlan`'s `writePath` substitution already computed.
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        // `MoveOutcome` has no `rewrittenPaths` field, so only the failures are carried over.
+        outcome.failures.append(contentsOf: boards.failures)
         return outcome
     }
 

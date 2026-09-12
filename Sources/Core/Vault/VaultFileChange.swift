@@ -6,10 +6,9 @@ import Foundation
 /// performer that later applies it agree on exactly what changed, the same triple `renamePlan`
 /// already computes and `rename`/`renameFolder`/`renameBoard`/`moveBoard` each write from their
 /// own hand-copied loop today. Carries the same three fields, with the same names, as the type it
-/// replaces - so the nineteen call sites the coder repoints change spelling only, not meaning.
-///
-/// TESTER-OWNED INTERFACE (ADR-0155 §D1): the coder does the repointing; this declaration only
-/// has to compile against `Tests/VaultPlanApplicationTests.swift`.
+/// replaces - so the call sites repointed onto it changed spelling only, not meaning. No
+/// typealias was left behind for the old name (§D4): a type with two names is a type a future
+/// reader has to check twice.
 struct VaultFileChange: Equatable, Sendable {
     let path: String
     let before: String

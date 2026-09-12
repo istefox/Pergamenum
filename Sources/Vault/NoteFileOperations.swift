@@ -58,20 +58,12 @@ struct NoteFileOperations {
     // exactly that inside a transaction. A dry run is then honest by construction, not by a flag
     // every method has to remember to check.
 
-    /// One file's text before and after a rename or a move that has not happened, so the plan and
-    /// the performance read the same triple.
-    struct FileChange: Equatable, Sendable {
-        let path: String
-        let before: String
-        let after: String
-    }
-
     /// What a rename would change: its destination, the notes that would be rewritten, the
     /// boards that would be repointed, and anything unreadable along the way.
     struct RenamePlan: Equatable, Sendable {
         var newPath: String
-        var noteChanges: [FileChange] = []
-        var boardChanges: [FileChange] = []
+        var noteChanges: [VaultFileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -79,7 +71,7 @@ struct NoteFileOperations {
     /// note text: a wikilink names a note by title, not by path (wikilink.md W-01).
     struct MovePlan: Equatable, Sendable {
         var newPath: String
-        var boardChanges: [FileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -105,8 +97,11 @@ struct NoteFileOperations {
 
         var plan = RenamePlan(newPath: newPath)
         for path in knownPaths {
-            // The note itself is still at `relativePath`: only the performer, moving it first,
-            // earns the right to read it back from `newPath`.
+            // The note itself is included: a note may link to its own title from its
+            // `## Note correlate` section only by mistake, but its frontmatter or body can
+            // still mention it, and leaving that one stale would be arbitrary. It is still at
+            // `relativePath` while this runs - nothing has moved yet - so it is read from
+            // there and written at `newPath`, which is where the performer moves it first.
             let readPath = path == relativePath ? relativePath : path
             let writePath = path == relativePath ? newPath : path
             guard let (_, text) = try? store.read(readPath) else {
@@ -115,7 +110,7 @@ struct NoteFileOperations {
             }
             guard let updated = NoteRename.rewritingLinks(in: text, from: oldTitle, to: newTitle)
             else { continue }
-            plan.noteChanges.append(FileChange(path: writePath, before: text, after: updated))
+            plan.noteChanges.append(VaultFileChange(path: writePath, before: text, after: updated))
         }
 
         let boards = repointBoardsPlan(
@@ -164,9 +159,9 @@ struct NoteFileOperations {
     /// already is (`NoteRename.rewritingLinks`), not only its `.file`-kind embeds.
     private func repointBoardsPlan(
         from oldPath: String, to newPath: String, titleChange: (old: String, new: String)? = nil
-    ) -> (changes: [FileChange], failures: [String]) {
+    ) -> (changes: [VaultFileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
-        var changes: [FileChange] = []
+        var changes: [VaultFileChange] = []
         var failures: [String] = []
         for boardPath in boardPaths() {
             guard let url = try? store.url(for: boardPath),
@@ -187,7 +182,7 @@ struct NoteFileOperations {
                     failures.append("\(boardPath): non codificabile come testo")
                     continue
                 }
-                changes.append(FileChange(path: boardPath, before: before, after: after))
+                changes.append(VaultFileChange(path: boardPath, before: before, after: after))
             } catch {
                 failures.append("\(boardPath): \(error)")
             }
@@ -201,57 +196,42 @@ struct NoteFileOperations {
     /// either happens or does not, while the rewrite touches many files and can fail
     /// on any of them. Doing it the other way round would leave the vault pointing at
     /// a note that does not exist yet if the move then failed.
+    ///
+    /// What to change is `renamePlan`'s answer and nothing else (ADR-0041 §D5). The loop this
+    /// method used to keep read each note back from its new path *after* the move; the plan
+    /// performs the same substitution as `writePath` *before* it, over the same text, so the
+    /// bytes are the ones `NoteRenameCharacterizationTests` pinned down against the old loop.
+    /// The validation - invalid title, missing note, colliding destination - is the plan's own
+    /// too, and it still throws before anything has moved or been written.
     func rename(
         _ relativePath: String,
         to newTitle: String,
         knownPaths: [String]
     ) throws -> Outcome {
-        let violations = NoteName.validate(newTitle)
-        guard violations.isEmpty else { throw FileOperationError.invalidTitle(violations) }
+        let plan = try renamePlan(relativePath, to: newTitle, knownPaths: knownPaths)
 
-        let oldTitle = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
-        let folder = (relativePath as NSString).deletingLastPathComponent
-        let fileName = NoteName.fileName(for: newTitle)
-        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
-
-        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
-        guard newPath == relativePath || !exists(newPath) else {
-            throw FileOperationError.alreadyExists(newPath)
-        }
-
-        if newPath != relativePath {
+        if plan.newPath != relativePath {
             do {
-                try FileManager.default.moveItem(at: try store.url(for: relativePath), to: try store.url(for: newPath))
+                try FileManager.default.moveItem(
+                    at: try store.url(for: relativePath), to: try store.url(for: plan.newPath)
+                )
             } catch {
                 throw FileOperationError.failed("rinomina: \(error.localizedDescription)")
             }
         }
 
-        var outcome = Outcome(newPath: newPath)
-        for path in knownPaths {
-            // The note itself is included: a note may link to its own title from its
-            // `## Note correlate` section only by mistake, but its frontmatter or body
-            // can still mention it, and leaving that one stale would be arbitrary.
-            let readPath = path == relativePath ? newPath : path
-            guard let (_, text) = try? store.read(readPath) else {
-                outcome.failures.append("\(path): non leggibile")
-                continue
-            }
-            guard let updated = NoteRename.rewritingLinks(in: text, from: oldTitle, to: newTitle)
-            else { continue }
-
-            do {
-                _ = try store.write(updated, to: readPath)
-                outcome.rewrittenPaths.append(readPath)
-            } catch {
-                outcome.failures.append("\(readPath): \(error)")
-            }
+        var outcome = Outcome(newPath: plan.newPath, failures: plan.failures)
+        let notes = VaultPlanApplication.apply(plan.noteChanges) {
+            try store.write($0.after, to: $0.path)
         }
-
-        repointBoards(
-            from: relativePath, to: newPath, titleChange: (old: oldTitle, new: newTitle),
-            into: &outcome
-        )
+        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a note and
+        // the planned text is already the encoded document - the same split `FolderFileOperations`
+        // and `BoardFileOperations` make, which is why the writer is injected (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
+        }
+        outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
+        outcome.failures.append(contentsOf: notes.failures + boards.failures)
         return outcome
     }
 

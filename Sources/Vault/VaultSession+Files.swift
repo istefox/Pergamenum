@@ -23,22 +23,17 @@ extension VaultSession {
             if plan.newPath != relativePath {
                 try moveFile(from: relativePath, to: plan.newPath)
             }
-            for change in plan.noteChanges {
-                do {
-                    try write(change.after, to: change.path)
-                    outcome.rewrittenPaths.append(change.path)
-                } catch {
-                    outcome.failures.append("\(change.path): \(error)")
-                }
+            let notes = VaultPlanApplication.apply(plan.noteChanges) {
+                try write($0.after, to: $0.path)
             }
-            for change in plan.boardChanges {
-                do {
-                    try writeFile(change.after, to: change.path)
-                    outcome.rewrittenPaths.append(change.path)
-                } catch {
-                    outcome.failures.append("\(change.path): \(error)")
-                }
+            // A `.canvas` goes through `writeFile` rather than `write`: it is journalled like a
+            // note but leaves the index and the per-note history alone, because a board is not a
+            // note - the reason `apply` takes the writer instead of assuming it (ADR-0041 §D4).
+            let boards = VaultPlanApplication.apply(plan.boardChanges) {
+                try writeFile($0.after, to: $0.path)
             }
+            outcome.rewrittenPaths.append(contentsOf: notes.rewrittenPaths + boards.rewrittenPaths)
+            outcome.failures.append(contentsOf: notes.failures + boards.failures)
         }
 
         // The star is a path, so it moves with the file or it points at nothing (ADR-0012 D6).
@@ -58,14 +53,11 @@ extension VaultSession {
             if plan.newPath != relativePath {
                 try moveFile(from: relativePath, to: plan.newPath)
             }
-            for change in plan.boardChanges {
-                do {
-                    try writeFile(change.after, to: change.path)
-                    outcome.rewrittenPaths.append(change.path)
-                } catch {
-                    outcome.failures.append("\(change.path): \(error)")
-                }
+            let boards = VaultPlanApplication.apply(plan.boardChanges) {
+                try writeFile($0.after, to: $0.path)
             }
+            outcome.rewrittenPaths.append(contentsOf: boards.rewrittenPaths)
+            outcome.failures.append(contentsOf: boards.failures)
         }
 
         if !isDryRun {

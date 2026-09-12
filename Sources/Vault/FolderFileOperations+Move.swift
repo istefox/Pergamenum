@@ -18,7 +18,7 @@ extension FolderFileOperations {
     /// the name (ADR-0026 §D1).
     struct MovePlan: Equatable, Sendable {
         var newPath: String
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -116,14 +116,11 @@ extension FolderFileOperations {
         var outcome = MoveOutcome(
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
-                outcome.rewrittenPaths.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        outcome.rewrittenPaths.append(contentsOf: boards.rewrittenPaths)
+        outcome.failures.append(contentsOf: boards.failures)
         return outcome
     }
 }

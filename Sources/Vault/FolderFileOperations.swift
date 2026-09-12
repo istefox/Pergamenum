@@ -144,8 +144,8 @@ struct FolderFileOperations {
     /// writes through is one a future planner can break loudly rather than silently.
     struct FolderRenamePlan: Equatable, Sendable {
         var newPath: String
-        var noteChanges: [NoteFileOperations.FileChange] = []
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var noteChanges: [VaultFileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -204,9 +204,9 @@ struct FolderFileOperations {
     func repointBoardsPlan(
         from oldPath: String,
         to newPath: String
-    ) -> (changes: [NoteFileOperations.FileChange], failures: [String]) {
+    ) -> (changes: [VaultFileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
-        var changes: [NoteFileOperations.FileChange] = []
+        var changes: [VaultFileChange] = []
         var failures: [String] = []
 
         for boardPath in canvas.allBoards() {
@@ -242,7 +242,7 @@ struct FolderFileOperations {
                     failures.append("\(boardPath): non codificabile come testo")
                     continue
                 }
-                changes.append(NoteFileOperations.FileChange(
+                changes.append(VaultFileChange(
                     path: writePath, before: before, after: after
                 ))
             } catch {
@@ -314,22 +314,17 @@ struct FolderFileOperations {
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
 
-        for change in plan.noteChanges {
-            do {
-                try store.write(change.after, to: change.path)
-                outcome.rewrittenPaths.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let notes = VaultPlanApplication.apply(plan.noteChanges) {
+            try store.write($0.after, to: $0.path)
         }
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: try store.url(for: change.path), options: .atomic)
-                outcome.rewrittenPaths.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a note and
+        // the planned text is already the encoded document - which is why `apply` takes the
+        // writer rather than assuming one (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
+        outcome.failures.append(contentsOf: notes.failures + boards.failures)
         return outcome
     }
 

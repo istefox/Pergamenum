@@ -7,25 +7,32 @@ import Foundation
 /// through `writing: { try store.write($0.after, to: $0.path) }` or a `.canvas` document through
 /// `writing: { try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic) }`
 /// - `apply` itself must stay ignorant of which, so a caller supplies the writer.
-///
-/// STUB (ADR-0155 §D1, tester-owns-interface): the body below is a placeholder that ignores
-/// `changes` entirely, deliberately left wrong so `VaultPlanApplicationTests`'s positive
-/// assertions (three changes rewritten, a thrown middle change still letting the third be
-/// attempted, the failure string format) stay red until the coder implements the real loop.
 enum VaultPlanApplication {
     struct Outcome: Equatable, Sendable {
         var rewrittenPaths: [String] = []
         var failures: [String] = []
     }
 
-    /// Coder: for each change in order, call `writing(change)`; on success append `change.path`
-    /// to `rewrittenPaths`; on throw append `"\(change.path): \(error)"` to `failures` (matching
-    /// all six existing copies exactly) and continue to the next change regardless - a thrown
-    /// change must never stop the ones after it from being attempted (R-06, Task 7).
+    /// Each change in order: on success its path joins `rewrittenPaths`, on a throw the
+    /// interpolation `"\(change.path): \(error)"` joins `failures` - the format all six copies
+    /// this replaces already wrote, so no caller's assertion changes when it switches over.
+    ///
+    /// A throw never stops the loop. The changes are independent files and a rename that gave up
+    /// halfway would leave the vault half-rewritten with nothing said about the rest; every one of
+    /// the six originals continued too, and R-06 (Task 7) leans on it.
     static func apply(
         _ changes: [VaultFileChange],
         writing: (VaultFileChange) throws -> Void
     ) -> Outcome {
-        Outcome()
+        var outcome = Outcome()
+        for change in changes {
+            do {
+                try writing(change)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        return outcome
     }
 }
