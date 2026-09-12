@@ -120,11 +120,16 @@ actor PraticaSyncEngine {
     ) {
         self.mailStoreURL = mailStoreURL
         self.vaultRoot = vaultRoot
+        self.boundary = VaultBoundary(root: vaultRoot)
         self.write = write
     }
 
     private let mailStoreURL: URL
     private let vaultRoot: URL
+    /// The only way this engine turns `request.praticaFolder` - a folder name that
+    /// reaches it from a caller, not from a walk - into a directory it reads or writes
+    /// (ADR-0041 §D2).
+    private let boundary: VaultBoundary
     private let write: @Sendable @MainActor (_ text: String, _ relativePath: String) throws -> Void
     private var cancelled = false
     private var progressChannel: (
@@ -151,7 +156,7 @@ actor PraticaSyncEngine {
             settings: request.settings
         )
         var outcome = SyncOutcome.empty
-        var folder = folderContext(of: request)
+        var folder = try folderContext(of: request)
         // ADR-0040 §D7.3: a file the scan above could not trash, reported once here -
         // never silently retried, and its link was never touched.
         outcome.attachmentProblems.append(contentsOf: folder.attachmentTrashFailures)
@@ -290,10 +295,10 @@ actor PraticaSyncEngine {
         var attachmentTrashFailures: [String] = []
     }
 
-    private func folderContext(of request: SyncRequest) -> FolderContext {
+    private func folderContext(of request: SyncRequest) throws -> FolderContext {
         var context = FolderContext()
 
-        let emailDirectory = directory("email", of: request)
+        let emailDirectory = try directory("email", of: request)
         for name in Self.fileNames(in: emailDirectory) where name.hasSuffix(".md") {
             let url = emailDirectory.appending(path: name, directoryHint: .notDirectory)
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
@@ -305,7 +310,7 @@ actor PraticaSyncEngine {
             )
         }
 
-        let allegatiDirectory = directory("allegati", of: request)
+        let allegatiDirectory = try directory("allegati", of: request)
         for name in Self.fileNames(in: allegatiDirectory) {
             let url = allegatiDirectory.appending(path: name, directoryHint: .notDirectory)
             guard let data = try? Data(contentsOf: url) else {
@@ -747,12 +752,12 @@ actor PraticaSyncEngine {
 
         var regenerationRequest = request
         regenerationRequest.regenerating = messageID
-        let folder = folderContext(of: request)
+        let folder = try folderContext(of: request)
         guard let prepared = prepare(row, request: regenerationRequest, reader: reader, folder: folder)
         else { throw RegenerationFailure.notDecodable }
 
         let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
-        let noteURL = vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+        let noteURL = try boundary.url(for: notePath)
         guard let currentText = try? String(contentsOf: noteURL, encoding: .utf8) else {
             throw RegenerationFailure.fileMissing
         }
@@ -793,7 +798,7 @@ actor PraticaSyncEngine {
         // it must never be the thing that exists while what it points at does not. The
         // attachment bytes are written the same way regardless of write mode below
         // (ADR-0040 §D4).
-        let allegatiDirectory = directory("allegati", of: request)
+        let allegatiDirectory = try directory("allegati", of: request)
         for attachment in prepared.attachments {
             try Self.writeAtomically(
                 attachment.bytes,
@@ -858,7 +863,7 @@ actor PraticaSyncEngine {
             let baseName = (prepared.fileName as NSString).deletingPathExtension
             try Self.writeAtomically(
                 originalBytes,
-                to: directory("email", of: request)
+                to: try directory("email", of: request)
                     .appending(path: "\(baseName).eml", directoryHint: .notDirectory)
             )
         }
@@ -1041,10 +1046,13 @@ actor PraticaSyncEngine {
 
     // MARK: - Paths and constants
 
-    private func directory(_ name: String, of request: SyncRequest) -> URL {
-        vaultRoot
-            .appending(path: request.praticaFolder, directoryHint: .isDirectory)
-            .appending(path: name, directoryHint: .isDirectory)
+    /// `email/` or `allegati/` under the pratica's own folder, refused when
+    /// `praticaFolder` escapes the vault (ADR-0041 §D2). Every read and every write this
+    /// engine performs under a pratica goes through here, so the refusal lands before the
+    /// directory is listed rather than after something has been read out of it.
+    private func directory(_ name: String, of request: SyncRequest) throws -> URL {
+        let folder = request.praticaFolder
+        return try boundary.url(for: folder.isEmpty ? name : "\(folder)/\(name)")
     }
 
     private static func fileNames(in directory: URL) -> [String] {

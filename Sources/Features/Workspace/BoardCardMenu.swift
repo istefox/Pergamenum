@@ -165,12 +165,13 @@ struct BoardCardActions {
 
     /// The URL `open(_:)` would hand to `NSWorkspace`, or `nil` when nothing should be
     /// opened - split out of `open(_:)` (ADR-0041 §D2, Task 2) so a `.canvas` node's `file`
-    /// path can be exercised without driving `NSWorkspace` for real. **Tester declaration
-    /// only**: this still reproduces `open(_:)`'s exact prior behaviour (a bare
-    /// `root.appending(path:)`, no boundary check) - wiring it through `VaultBoundary` so a
-    /// path escaping the vault answers `nil` is the coder's job.
+    /// path can be exercised without driving `NSWorkspace` for real.
+    ///
+    /// It refuses silently rather than throwing because its one caller is a double click:
+    /// a gesture has nobody to report to, and handing `NSWorkspace` a path outside the
+    /// vault is the one outcome that must not happen.
     nonisolated static func resolvedOpenURL(for path: String, root: URL) -> URL? {
-        root.appending(path: path)
+        try? VaultBoundary(root: root).url(for: path)
     }
 
     /// Double click, and «Apri»: enter a folder's board, or open the file the card points

@@ -69,12 +69,15 @@ struct NoteStore: Sendable {
         }
     }
 
-    /// **Tester declaration only (ADR-0155, Task 2).** Signature changed to `throws` so every
-    /// call site propagates; the body still does not route through `boundary` - that
-    /// integration is the coder's job. Every adversarial test in
-    /// `VaultBoundaryCallSiteTests.swift` that reaches this accessor is red until it does.
+    /// The door thirty-one call sites use to get a `URL` on disk, and therefore the one
+    /// that has to carry the guard (ADR-0041 §D2).
+    ///
+    /// It is `throws` for the reason the ADR gives: making the accessor throwing is what
+    /// converts «nine call sites forgot the check» into «nine call sites will not compile
+    /// until they handle it». `read` and `write` below resolve through `boundary`
+    /// directly rather than through this accessor, because they already did.
     func url(for relativePath: String) throws -> URL {
-        root.appending(path: relativePath, directoryHint: .notDirectory)
+        try boundary.url(for: relativePath)
     }
 
     /// Reads a note and derives its record.

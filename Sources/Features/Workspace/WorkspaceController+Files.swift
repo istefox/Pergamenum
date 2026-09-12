@@ -7,9 +7,14 @@ import Foundation
 /// writer.
 extension WorkspaceController {
     /// Absolute URL of the file a node points at, when it points at one.
+    ///
+    /// A node's `file` is ordinary JSON a person, Obsidian or a pasteboard drop can
+    /// write, so it goes through the store's own boundary (ADR-0041 §D2). A path escaping
+    /// the vault answers `nil`, which this signature already meant: "this node points at
+    /// nothing I can show you".
     func fileURL(for node: CanvasNode) -> URL? {
         guard let store, case .file(let path, _) = node.kind else { return nil }
-        return store.root.appending(path: path, directoryHint: .notDirectory)
+        return try? store.boundary.url(for: path)
     }
 
     /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).

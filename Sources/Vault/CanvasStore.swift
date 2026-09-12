@@ -16,12 +16,26 @@ struct CanvasStore: Sendable {
     /// Resolved at construction for the same reason as `NoteStore.root`.
     let root: URL
 
+    /// The only way this store turns a caller's board path into a `URL` it will read or
+    /// write (ADR-0041 §D2). A board path reaches here from a `^[[…]]` marker, which is
+    /// typed text, so it is no more trusted than a wikilink.
+    ///
+    /// Not `private`, unlike `NoteStore.boundary`: `WorkspaceController.fileURL(for:)`
+    /// resolves a `.canvas` node's `file` against this same store and must go through the
+    /// same guard rather than build a second one beside it.
+    let boundary: VaultBoundary
+
     init(root: URL) {
-        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        let boundary = VaultBoundary(root: root)
+        self.boundary = boundary
+        self.root = boundary.root
     }
 
     static let fileExtension = "canvas"
 
+    /// Where a board's file *would* be, for a caller that only asks whether something is
+    /// there. It performs no boundary check, and so it is never how bytes are read or
+    /// written: `load`, `save` and `createBoard` resolve through `boundary` instead.
     func url(forBoard board: String) -> URL {
         root.appending(path: board, directoryHint: .notDirectory)
     }
@@ -32,7 +46,7 @@ struct CanvasStore: Sendable {
     /// if it exists" asks which board a folder means and gets an answer that can be
     /// "none" (§D5) - it does not name a path and hope.
     func load(board: String) throws -> CanvasDocument {
-        let fileURL = url(forBoard: board)
+        let fileURL = try boundary.url(for: board)
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             throw StoreError.missing(board)
         }
@@ -41,7 +55,7 @@ struct CanvasStore: Sendable {
 
     @discardableResult
     func save(_ document: CanvasDocument, board: String) throws -> String {
-        let fileURL = url(forBoard: board)
+        let fileURL = try boundary.url(for: board)
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
@@ -119,7 +133,7 @@ struct CanvasStore: Sendable {
     /// name in one directory.
     func createBoard(named name: String, in parent: String) throws -> String {
         let relativePath = Self.boardFilePath(named: name, in: parent)
-        let fileURL = url(forBoard: relativePath)
+        let fileURL = try boundary.url(for: relativePath)
         guard !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             throw StoreError.alreadyExists(relativePath)
         }

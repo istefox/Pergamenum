@@ -747,7 +747,15 @@ extension PraticheController {
         in folder: URL, praticaPath: String, notInStore: Set<String>, into read: inout TimelineRead
     ) {
         let messages = folder.appending(path: messagesDirectoryName, directoryHint: .isDirectory)
-        let attachments = folder.appending(path: attachmentsDirectoryName, directoryHint: .isDirectory)
+        // ADR-0041 §D2: an attachment entry is a *name* out of a message note's
+        // frontmatter, which is generated from an `.emlx` whose file name Apple Mail
+        // chose - not trusted input. The boundary is rooted at `allegati/` rather than at
+        // the vault, and deliberately so: `<pratica>/allegati/../../../secret.pdf`
+        // standardises back to a path *inside* the vault root, so a vault-level check
+        // would wave it through while it names a file this pratica does not own.
+        let attachments = VaultBoundary(
+            root: folder.appending(path: attachmentsDirectoryName, directoryHint: .isDirectory)
+        )
         let names = (try? FileManager.default.contentsOfDirectory(
             atPath: messages.path(percentEncoded: false)
         )) ?? []
@@ -784,11 +792,12 @@ extension PraticheController {
                 body: document.newText,
                 quotedHistory: document.quotedHistory,
                 signature: document.signature,
-                attachments: document.frontmatter.linkedAttachmentNames.map { fileName in
-                    PraticaAttachmentRef(
-                        name: fileName,
-                        url: attachments.appending(path: fileName, directoryHint: .notDirectory)
-                    )
+                // A name the boundary refuses is omitted from the row rather than failing
+                // the whole read: the other attachments, and the message itself, are
+                // still worth showing.
+                attachments: document.frontmatter.linkedAttachmentNames.compactMap { fileName in
+                    guard let url = try? attachments.url(for: fileName) else { return nil }
+                    return PraticaAttachmentRef(name: fileName, url: url)
                 },
                 storeReferences: document.frontmatter.storeReferences,
                 isPending: document.frontmatter.body == .pending,
