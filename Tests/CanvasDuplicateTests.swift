@@ -164,7 +164,7 @@ import Testing
 
         // Addressed by its own path (ADR-0025 §D1): the root board is the `.canvas`
         // named after the vault, which is the path the controller opened.
-        let canvasURL = store.url(forBoard: "\(root.url.lastPathComponent).canvas")
+        let canvasURL = try store.url(forBoard: "\(root.url.lastPathComponent).canvas")
         let namesBefore = try FileManager.default
             .contentsOfDirectory(atPath: root.url.path(percentEncoded: false)).sorted()
         let bytesBefore = try Data(contentsOf: canvasURL)
