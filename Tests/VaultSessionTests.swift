@@ -329,7 +329,9 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
 
     // Its own write comes back from the watcher and is not reported: the caller
     // already knows about it, and reporting it would raise a conflict against itself.
-    try session.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nDue.\n", to: "N.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload; this call is
+    // already inside an `async throws` test, so it now resolves there.
+    try await session.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nDue.\n", to: "N.md")
     #expect(session.reconcile(["N.md"]).isEmpty)
 
     // A second writer in the vault - which ADR-0007 puts there - is reported.

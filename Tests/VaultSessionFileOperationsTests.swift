@@ -147,7 +147,8 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let operationID = try #require(session.journalOnDisk.entries().first?.operation)
 
     // Somebody edits the rewritten link afterwards.
-    try session.write(note("Vedi [[Nuovo titolo]]. Aggiunta a mano."), to: "Altra.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write(note("Vedi [[Nuovo titolo]]. Aggiunta a mano."), to: "Altra.md")
 
     let undone = session.undo(operation: operationID)
 
@@ -172,7 +173,8 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     // Restored by hand from the Finder, or simply a new note created at the same path: either
     // way, something is there now that the journal knows nothing about.
-    try session.write(note("Nota nuova, non quella di prima."), to: "Sparita.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write(note("Nota nuova, non quella di prima."), to: "Sparita.md")
 
     let undone = session.undo(operation: operationID)
 

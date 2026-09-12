@@ -1253,7 +1253,13 @@ final class PraticaLiveSync {
                     updated.conversations = updated.conversations.filter { seen.insert($0).inserted }
                     document.frontmatter.foreignKeys = Dossier.merging(updated, into: document.frontmatter.foreignKeys)
                     if document != before {
-                        try session.write(document.serialized(), to: notePath)
+                        // ADR-0041 Task 8: `VaultSession.write` gained an async overload
+                        // this dispatch declares; `runExclusive` was already `async` for
+                        // unrelated reasons, so Swift's overload resolution now requires
+                        // this call to be awaited. Mechanical only - no behaviour change,
+                        // the awaited overload's stub body is today's synchronous write
+                        // called as-is.
+                        try await session.write(document.serialized(), to: notePath)
                     }
                     effectiveDossier = updated
                 }

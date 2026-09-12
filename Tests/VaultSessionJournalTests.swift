@@ -31,6 +31,12 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let vault = try TemporaryVault()
     let session = try await armedSession(vault)
 
+    // `transaction`'s own closure parameter is a plain synchronous `() throws -> T`
+    // (ADR-0016 §D6, unrelated to this chain) - `await` cannot appear inside it without
+    // widening that signature, which is out of this task's scope. These two calls
+    // therefore keep resolving to the untouched synchronous `write(_:to:)` overload,
+    // exactly as before ADR-0041 Task 8 added the async one; only a call site directly
+    // inside an `async` function or closure needs `await` added (see below).
     session.transaction("note rename") {
         try? session.write(note("Uno, riscritta."), to: "Uno.md")
         try? session.write(note("Due, riscritta."), to: "Due.md")
@@ -49,7 +55,10 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.journalCommand = "note append"
 
-    try session.write(note("Da sola."), to: "Uno.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload; this call is
+    // directly inside an `async throws` test (not inside a synchronous closure), so it
+    // resolves there.
+    try await session.write(note("Da sola."), to: "Uno.md")
 
     #expect(session.journalOnDisk.entries().first?.operation == nil)
 }

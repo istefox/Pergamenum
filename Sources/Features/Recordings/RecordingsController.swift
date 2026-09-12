@@ -327,7 +327,12 @@ final class RecordingsController {
         // Phase 1: the file first. A failure here means nothing was imported at all, so
         // nothing is recorded and no confirmation is owed.
         do {
-            try session.write(text, to: path)
+            // ADR-0041 Task 8: `importAccepted` was already `async` for unrelated reasons
+            // (the loopback confirmation phase below); `VaultSession.write`'s new async
+            // overload now wins overload resolution here too, so this needs `await`.
+            // Mechanical only - the awaited overload's stub body is today's synchronous
+            // write called as-is.
+            try await session.write(text, to: path)
         } catch {
             rowErrors[recordingID] = "Scrittura della nota non riuscita: \(path)"
             return

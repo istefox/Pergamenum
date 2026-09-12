@@ -99,7 +99,8 @@ import Testing
     session.journal = session.journalOnDisk
     session.journalCommand = "prova"
 
-    try session.write("dopo\n", to: "N.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("dopo\n", to: "N.md")
 
     let entries = session.journalOnDisk.entries()
     #expect(entries.count == 1)
@@ -118,7 +119,8 @@ import Testing
     await session.rescan()
     session.journal = session.journalOnDisk
 
-    try session.write("nuovo\n", to: "N.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("nuovo\n", to: "N.md")
 
     let entry = try #require(session.journalOnDisk.entries().first)
     // Nil rather than "": undoing a creation means deleting, which is a different act
@@ -136,7 +138,8 @@ import Testing
     session.journal = session.journalOnDisk
     session.isDryRun = true
 
-    try session.write("dopo\n", to: "N.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("dopo\n", to: "N.md")
 
     // Nothing happened, and an entry saying otherwise would be a lie in the one file
     // whose whole job is to be trusted.

@@ -72,6 +72,18 @@ final class VaultSession {
     /// hashes to the recorded value is our own write coming back and is ignored.
     var selfWrittenHashes: [String: String] = [:]
 
+    /// Highest `VaultDisk.DiskWriteOutcome.sequence` this session has applied to the
+    /// index, per path (ADR-0041 §D11, Task 8).
+    ///
+    /// An `actor` serialises its own state but not the order its callers' continuations
+    /// resume in, so two `write`s racing on the same path could otherwise apply to the
+    /// index out of order. This is the bookkeeping the guard needs: an outcome whose
+    /// `sequence` is not strictly greater than what is recorded here for its path must be
+    /// dropped rather than applied. Test-visible (not `private`) because `apply(_:at:)`
+    /// below - `VaultWriteOrderingTests`' seam for forcing that inversion deterministically
+    /// - has to read and write it from outside this file.
+    var appliedSequence: [String: UInt64] = [:]
+
     /// The copy of `vocabolari.json` shipped with the app, used to seed a vault that
     /// has none yet (SPEC §4.6).
     ///
@@ -196,8 +208,20 @@ final class VaultSession {
     ///
     /// Files first, index second: a crash between the two must leave the file correct,
     /// never the cache (ADR-0001 §D2.3).
+    ///
+    /// A thin wrapper over `writeSynchronously(_:to:)` (ADR-0041 Task 8): the body used to
+    /// live here directly, and moved out under its own name so the new async overload
+    /// below can call the same implementation without recursing into itself - Swift's
+    /// overload resolution prefers an async candidate over a sync one of the same name
+    /// once the caller is itself async, `await` or not, which made `try
+    /// write(text, to: relativePath)` inside the async overload call itself instead of
+    /// this one (confirmed against the installed toolchain, not assumed).
     @discardableResult
     func write(_ text: String, to relativePath: String) throws -> WriteResult {
+        try writeSynchronously(text, to: relativePath)
+    }
+
+    private func writeSynchronously(_ text: String, to relativePath: String) throws -> WriteResult {
         // Read first, and only when somebody is going to use it: the journal needs what
         // was there, and a dry run needs nothing at all.
         let existing = (journal != nil && !isDryRun) ? try? read(relativePath) : nil
@@ -405,5 +429,50 @@ final class VaultSession {
         } catch {
             problems.append("vocabolari.json could not be written: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - ADR-0041 Task 8 (tester dispatch: declares the async door and its test seam)
+//
+// `write(_:to:)` above stays exactly as it is - untouched, still the synchronous
+// implementation every one of the ~35 production call sites the ADR's Context section
+// counts still compiles against unchanged. This extension adds the **async** overload
+// the ADR's §D9 sketch describes, as a second declaration rather than a rewrite of the
+// first: Swift resolves the two by whether the call site says `await` (verified live
+// against the installed Swift 6 toolchain before writing this, not assumed), so a test
+// that awaits reaches the code below and a production call site that does not keeps
+// reaching the synchronous method above with zero edits required to it.
+//
+// **Why this could not stay purely additive.** Swift's overload resolution prefers the
+// async candidate whenever the *call site* is already inside an `async` function, even
+// without `await` present, and then refuses to compile until `await` is added - it does
+// not fall back to the synchronous overload the way a same-context call from a
+// synchronous function does. Three production call sites were already `async` for
+// reasons unrelated to this chain (`PraticheController.runExclusive`,
+// `PraticheController.prepareRegeneration`, `RecordingsController.importAccepted`) and
+// broke the moment this overload was declared, before a single mechanical edit was made
+// to them on purpose. Fixing that means adding `await` there too - still no logic change,
+// still not the coder's real actor wiring - and it is called out explicitly in the tester
+// report rather than left silent, since the brief's own count of "~35 call sites, all
+// coder's mechanical step 6" did not anticipate it.
+extension VaultSession {
+    /// The async door onto the same write ADR-0041 §D9 describes, added as a second
+    /// overload (see the block comment above for why) rather than as a change to the
+    /// synchronous method's signature.
+    ///
+    /// **STUB (ADR-0041 Task 8, tester dispatch).** The body is exactly the synchronous
+    /// implementation above, called as-is: no actor hop, no `VaultDisk`, no §D10 hash-
+    /// before-hop, no §D11 sequence guard. This is deliberate - the tester declares the
+    /// interface, the coder fills the body (§D9's coder-implements list, items 1-4). Every
+    /// existing test that now awaits this keeps exercising the untouched synchronous
+    /// write, which is what keeps `VaultSessionTests`, `NoteHistoryTests`,
+    /// `VaultSessionJournalTests`, `VaultSessionFileOperationsTests` and `TagRenameTests`
+    /// green with no assertion touched. `VaultWriteOrderingTests`' actor/sequencing
+    /// coverage goes through `VaultDisk` directly and through `apply(_:at:)`
+    /// (`VaultSession+WriteOrdering.swift`) instead of through this stub, precisely
+    /// because this stub has no actor hop to exercise.
+    @discardableResult
+    func write(_ text: String, to relativePath: String) async throws -> WriteResult {
+        try writeSynchronously(text, to: relativePath)
     }
 }
