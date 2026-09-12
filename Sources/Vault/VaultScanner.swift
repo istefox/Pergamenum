@@ -183,7 +183,7 @@ struct VaultScanner: Sendable {
     ///
     /// No walk calls this any more - `VaultWalk` drops a prefix it computed once, which is
     /// what `PG-140`'s `perf-VaultScanner.swift-a0b` asked for. It stays because
-    /// `VaultWatcher` still needs it (`VaultWatcher.swift:82`), and for a path that arrived
+    /// `VaultWatcher` still needs it (`VaultWatcher.Sink.handle`), and for a path that arrived
     /// from FSEvents rather than from an enumerator the per-URL `standardizedFileURL` is
     /// the work, not the waste: nothing has canonicalised that spelling yet.
     static func relativePath(of url: URL, under root: URL) -> String {
