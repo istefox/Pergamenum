@@ -34,10 +34,15 @@ struct CanvasStore: Sendable {
     static let fileExtension = "canvas"
 
     /// Where a board's file *would* be, for a caller that only asks whether something is
-    /// there. It performs no boundary check, and so it is never how bytes are read or
-    /// written: `load`, `save` and `createBoard` resolve through `boundary` instead.
-    func url(forBoard board: String) -> URL {
-        root.appending(path: board, directoryHint: .notDirectory)
+    /// there.
+    ///
+    /// It delegates to `boundary` rather than resolving the path itself (ADR-0041 §D2),
+    /// so it answers about exactly the file `load`, `save` and `createBoard` would touch
+    /// and refuses exactly what they refuse. A "does this exist" that resolves a board
+    /// path more permissively than the read does is a question answered about a different
+    /// file than the one the caller is about to open.
+    func url(forBoard board: String) throws -> URL {
+        try boundary.url(for: board)
     }
 
     /// Reads the board at a vault-relative path, failing when the file is not there.
@@ -146,10 +151,13 @@ struct CanvasStore: Sendable {
     /// `createFolder` (ADR-0022 §D11), so the creation sheet can refuse a taken name
     /// before the verb runs.
     func boardNameIsAvailable(_ name: String, in parent: String) -> Bool {
-        !FileManager.default.fileExists(
-            atPath: url(forBoard: Self.boardFilePath(named: name, in: parent))
-                .path(percentEncoded: false)
-        )
+        // A name whose path leaves the vault is not a name `createBoard` would write, so
+        // the sheet refuses it exactly as it refuses a taken one - the `Bool` this
+        // signature already returns says "no" for both reasons.
+        guard let fileURL = try? url(forBoard: Self.boardFilePath(named: name, in: parent)) else {
+            return false
+        }
+        return !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
     }
 
     /// The single spelling of "the file a board called `name` in `parent` would be", so

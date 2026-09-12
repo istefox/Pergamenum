@@ -39,9 +39,14 @@ extension WorkspaceController {
     /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
     /// cheap even for a message with a large attachment: the file is mapped rather than
     /// copied, and only the bytes before the blank line are decoded.
+    ///
+    /// The path is a node's `file`, the same untrusted JSON `fileURL(for:)` above resolves
+    /// through the store's boundary (ADR-0041 §D2), so it is resolved the same way here. A
+    /// path escaping the vault memoises nothing and leaves the card's header block empty -
+    /// which is what this method already did for a file it could not read.
     func loadEmailHeaders(for relativePath: String) {
         guard let store, emailHeaders[relativePath] == nil else { return }
-        let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
+        guard let fileURL = try? store.boundary.url(for: relativePath) else { return }
         guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return }
         let headerBytes = Self.headerBlock(of: data)
 
