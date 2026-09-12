@@ -1,244 +1,247 @@
-# SPEC — Fix Pratiche attachment reliability bugs (amends ADR-0036)
+# SPEC — Vault layer consistency and security chain
 
-**Topic slug:** pratiche-attachment-reliability-bugs
+**Topic slug:** vault-layer-consistency-and-security-cha
 
 ## Objective
 
-Pratiche (ADR-0036) syncs Apple Mail messages into vault notes with attachments copied into an
-`allegati/` subfolder. Attachments are unreliable today: some are written to disk empty or
-truncated (typically because Mail/iCloud has not yet fully materialized the attachment on this
-Mac at the instant Pergamenum reads the `.emlx` file), a corrupt file fails to open both in Finder
-and inside the Pratiche timeline UI ("file is empty"), and some emails with visible attachments in
-Mail end up with none written at all. Once a message note is written as `.complete`, ADR-0036
-never revisits it automatically, so a message captured at a bad instant stays broken forever
-unless the user manually triggers «Rigenera».
+Close a path-traversal security gap in the vault layer, deduplicate three drifted
+implementations of the same directory-walk/apply-plan pattern, remove redundant
+disk I/O in the rename/move code paths, and move synchronous disk work off the
+main actor on every save, selection change and keystroke — all four issues share
+overlapping files and a fix ordering already recorded in TODO.md's Deep Refactor
+Roadmap, so they are designed and implemented together in one pass.
 
-This fix makes attachment capture self-healing without adding any network dependency: Pergamenum
-detects an incomplete/corrupt attachment at decode time, treats the affected message as
-"not yet available", and automatically retries at every subsequent sync — with no retry cap —
-until Mail has the bytes. It also guards both the write path and the open path so a known-bad
-file is never silently written to disk or handed to QuickLook/`NSWorkspace`.
-
-Dedup does **not** change: `PraticaSyncEngine.digest(of:)` already computes SHA-256 over decoded
-attachment bytes and keys placement/reuse on that digest, not on filename. The only defect fixed
-here is that it can currently hash empty/corrupt bytes, which is eliminated once corrupt bytes are
-never placed in the first place.
+Source items: PG-122 (GH #222, security, P1), PG-145 (GH #245, structure, P2),
+PG-140 (GH #240, perf, P3), PG-137 (GH #237, perf, P2).
 
 ## Scope
 
 **In scope:**
-- Attachment integrity validation at decode time (`bytes.count > 0` plus a magic-byte sanity check
-  for common formats: PDF, PNG, JPEG, ZIP/Office-based formats which are ZIP containers).
-- A new "not yet available" state for an individual attachment, distinct from the existing
-  `.pending` (headers-only/no-body) message state.
-- Extending the existing automatic self-heal retry mechanism (today: `regeneratePending`, fires
-  only on `.pending → .complete`) so it also revisits messages that were written `.complete` but
-  contain one or more "not yet available" attachments — every sync, no attempt cap.
-- Partial-completeness handling: a message with some valid and some not-yet-available attachments
-  is written `.complete` immediately with the valid attachments linked; the not-yet-available ones
-  are represented as a distinct placeholder entry in the same note and are added when they later
-  validate.
-- The over-threshold "store-reference" attachment path (large attachments left in Mail's own
-  `Attachments/` folder, only referenced by path) gets the same integrity check before being
-  linked or opened.
-- Timeline UI (`AttachmentChip`/`AttachmentChipModel`): a chip for a not-yet-available attachment
-  renders a distinct "in attesa" badge/state instead of the filename; clicking it shows an
-  informational message and performs no open/preview action (no call to QuickLook or
-  `NSWorkspace.open`).
-- One-time repair pass: on the first sync after this fix ships, any existing file in an
-  `allegati/` folder that fails the new integrity check is deleted and its owning `.complete`
-  message is transitioned back to the new "not yet available" state so it re-enters the automatic
-  retry cycle.
-- Amending ADR-0036 §D6/§D21 (the "a `.complete` message is only ever rewritten via the documented
-  pending→complete self-heal or explicit «Rigenera»" rule) to add this one additional, narrow
-  automatic-rewrite trigger. No other aspect of that rule changes.
-- Extending the existing `EmailFixtureCorpus` Swift Testing fixtures with synthetic `.emlx` cases:
-  a zero-byte attachment, a mid-truncated attachment, and a message mixing a valid and a truncated
-  attachment.
+
+1. Extract the vault-boundary guard (`NoteStore.assertInsideVault`) into a shared,
+   pure type in `Sources/Core`, and apply it to every call site in the vault layer
+   that joins a caller-supplied relative path onto the vault root without a check:
+   `CanvasStore.swift`, `VaultSession+Journal.swift`, `ThumbnailStore.swift`,
+   `WorkspaceController+Files.swift`, `BoardCardMenu.swift`,
+   `PraticheController.swift`, `PraticaSyncEngine.swift`.
+2. Extract the vault directory walk and the "apply plan" loop (currently three and
+   six drifted copies respectively) into shared pure helpers in `Sources/Core`,
+   covering both sharedSources call sites (`CanvasStore`, `NoteFileOperations`,
+   `VaultScanner`) and app-only call sites (`FolderFileOperations`,
+   `BoardFileOperations`, `VaultSession+BoardDrop`). Replace the `rename` that
+   re-implements `renamePlan` with a call to the shared helper.
+3. Move `VaultController.swift` from `Sources/Vault/` to `Sources/App/`, matching
+   the existing convention for SwiftUI-dependent app-shell facades
+   (`PergamenumApp`, `RootView`, `CommandActions`, `VaultCommands`). Update all
+   ~112 references. No behavior change — file relocation only.
+4. Batch the per-item reads/writes in the rename/move code paths
+   (`NoteStore.swift`, `VaultSession+Move.swift`, `VaultSession+Journal.swift`,
+   `VaultSession+Starred.swift`, `VaultScanner.swift`) into a single per-batch
+   plan: one vault walk, one frontmatter parse per file, one starred-file rewrite
+   per batch rather than per moved note.
+5. Move the disk work in `VaultSession`'s read/write path off the main actor onto
+   a background actor, reporting results back to the main actor for index/journal/
+   history updates, preserving ADR-0001's invariant that the index is updated
+   immediately after every write and is never itself the source of truth. Apply
+   the same pattern to the five tail call sites: `WorkspaceController+Files.swift`,
+   `BoardCardMenu.swift`, `PraticheController.swift`, `PraticaSyncEngine.swift`,
+   `RecordingsController.swift`, `MCPServer/VaultHost.swift`, and update
+   `Tests/ReleasePipelineTests.swift` accordingly.
 
 **Out of scope:**
-- Any network call to iCloud or Mail to force/expedite attachment download (Principle 2, fully
-  offline — Pergamenum has no channel to do this and must not add one).
-- Adding retry/backoff logic inside `EMLXReader.read(contentsOf:)` itself — the `.emlx` file is
-  still read once per sync attempt; retrying happens across sync cycles, not within one read.
-- Changing the dedup algorithm (`digest(of:)` SHA-256-over-bytes) — it is already correct.
-- Changing `PraticaNaming.messageFileName`, `Dossier.render`, or `VaultAPI.PraticaSummary`
-  (ADR-0036's declared protected interfaces) — none of this fix's changes require touching their
-  signatures or behavior.
-- A manual "Verifica e ripara allegati" command — the one-time repair runs automatically on the
-  first post-fix sync instead.
-- Any change to the existing `.pending` (headers-only body) message-level state or its existing
-  `regeneratePending` trigger condition beyond the addition described above.
+
+- Any other Deep Refactor Roadmap finding not listed above (e.g. `PG-124`,
+  `structure-NoteExport.swift-c0f`, `PergamenumURL.swift` route refusal) —
+  separate chains.
+- Changing the on-disk format, frontmatter schema, or `.canvas` JSON Canvas
+  compatibility.
+- Adding new user-facing UI or settings.
 
 ## Stack
 
-Swift 6, SwiftUI, macOS 26 SDK, Swift Testing. No new dependency: `CryptoKit` (already imported by
-`PraticaSyncEngine`) is reused for nothing new here; no new framework is needed for magic-byte
-detection (a handful of literal byte-prefix comparisons in pure Swift).
+Swift 6 strict concurrency, SwiftUI (macOS 26 SDK only where explicitly UI-facing),
+Foundation, Swift Testing. No new dependency. Affects `Sources/Core`,
+`Sources/Vault`, `Sources/App`, `Sources/Connector`, `Sources/Index`,
+`Sources/Features/Workspace`, `Sources/Features/Pratiche`,
+`Sources/Features/Recordings`, `Sources/MCPServer`, `Tests/`.
 
 ## Architecture
 
-### New attachment-level state
+### Boundary guard (PG-122)
 
-Today a placed attachment part is either linked (copied into `allegati/` or referenced via
-store-path) or silently dropped. This fix introduces a third outcome at the point where
-`PraticaSyncEngine` currently does `let bytes = part.decodedData ?? Data()` and unconditionally
-schedules a write (`Sources/Features/Pratiche/PraticaSyncEngine.swift:397-414`):
+- New pure type in `Sources/Core` (e.g. `VaultPathGuard`), holding the resolved
+  vault root and exposing a function that resolves a relative path against the
+  root and throws when the result escapes it — the same logic currently private
+  to `NoteStore.assertInsideVault`, generalized so both `Sources/Core`-only
+  callers and app-only callers (not in sharedSources) can reach it without a
+  second copy.
+- `NoteStore` is refactored to delegate to this shared type rather than keep its
+  own private copy.
+- Every one of the 9 call sites listed in Scope item 1 is updated to call the
+  shared guard before touching disk. Where the enclosing function is not
+  currently `throws`, it becomes `throws`, and its callers are updated to
+  propagate or handle the new error — this is a deliberate signature change, not
+  an oversight, per the confirmed answer that a boundary violation must fail
+  loudly (`throw`), never silently log-and-continue, since the untrusted input
+  in these paths originates from wikilinks and the `pergamenum://` URL scheme.
 
-- **Integrity check** (new, pure function, no I/O): given decoded bytes and the part's declared
-  filename/content-type, return `valid` or `notYetAvailable`. `notYetAvailable` when
-  `bytes.isEmpty`, OR when a magic-byte signature is known for the declared type/extension and the
-  leading bytes do not match it (PDF `%PDF`, PNG `\x89PNG`, JPEG `\xFF\xD8\xFF`, ZIP-based formats
-  including Office Open XML `PK\x03\x04`). A part whose type has no known signature (not on this
-  list) is validated on `bytes.isEmpty` alone — never rejected solely for lacking a signature
-  entry.
-- A `notYetAvailable` part is never hashed, never placed under `allegati/`, and never linked to a
-  store-reference path. It is instead recorded on the message as a distinct "pending attachment"
-  entry (filename known, bytes not yet usable) so the timeline chip has something to render.
-- The over-threshold store-reference path applies the same integrity check to the bytes read from
-  Mail's `Attachments/` folder before recording that reference as usable.
+### Walk / apply-plan dedup (PG-145)
 
-### Message-level: partial completeness
+- A second pure type or set of functions in `Sources/Core` (alongside the
+  boundary guard, same file or same small file group) replacing the three
+  drifted vault-walk implementations and the six drifted apply-plan-loop
+  implementations. The walk helper composes with the boundary guard: every path
+  it yields has already passed the guard, so callers cannot reintroduce the gap
+  PG-122 closes by walking around it.
+- `rename` (wherever it duplicates `renamePlan`) is replaced with a call to
+  `renamePlan` plus the shared apply-plan helper.
+- `VaultController.swift` moves from `Sources/Vault/` to `Sources/App/`
+  (Scope item 3) — a pure relocation, no logic change, done in the same chain
+  because it is the same "vault layer should not carry UI-only files" finding
+  that PG-145 raised, and because the boundary/walk refactor above already
+  touches import lines across the Vault directory.
 
-A message with N attachment parts, where M ≤ N validate and the rest are `notYetAvailable`, is
-written as `.complete` with M attachments linked normally and the remaining recorded as pending
-attachment placeholders in the same note. This is a refinement of the existing `place`/`commit`
-flow (`PraticaSyncEngine.swift:634-737`) — it does not change when a *message* is `.complete` vs
-`.pending` (that distinction stays governed by `bodyState`), it only allows a `.complete` message
-to carry pending attachment entries.
+### Redundant I/O (PG-140)
 
-### Retry trigger — extending `regeneratePending`
+- The batch move/rename path gains a single per-batch plan: one vault walk (via
+  the new shared helper), one frontmatter parse per file (not two), one
+  `NoteStore.text(_:)`-style accessor for read paths that only need the body,
+  one starred-file rewrite per batch (not once per moved note), one
+  root-path-standardization per batch (not once per file).
+- Failure mode is best-effort per item, confirmed: each note in a batch is
+  attempted independently; the caller receives which items succeeded and which
+  failed. No simulated all-or-nothing transaction across file-system renames —
+  "file over app" means a note that already moved successfully is never rolled
+  back artificially to satisfy an all-or-nothing contract the file system does
+  not itself provide.
 
-`regeneratePending` (`PraticaSyncEngine.swift:672-704`) today re-examines only messages whose
-recorded body state is `.pending`. This fix extends its selection to also include `.complete`
-messages that carry at least one pending attachment entry from a previous sync. Both categories
-are re-parsed from the current `.emlx` on every `sync(_:)` call, with no attempt counter and no
-cap — matching the existing pending-body behavior. A message that resolves fully (all attachments
-now valid) is rewritten with all attachments linked, dropping the pending entries; a message that
-still has some or all attachments not-yet-available keeps exactly those still-pending entries.
+### Main-actor I/O (PG-137)
 
-### One-time repair of pre-existing corrupt files
-
-On the first sync run after this fix ships, before or as part of the existing
-`folderContext(of:)` scan (`PraticaSyncEngine.swift:272-286`, which already digests every file
-present in `allegati/`), any file that fails the new integrity check is deleted from disk and its
-owning message (found via the existing digest/link bookkeeping) is downgraded so its
-corresponding attachment becomes a pending entry again, making it eligible for the retry mechanism
-above. This is a one-time migration path, not a recurring background scan — after the first
-post-fix sync, every remaining file in `allegati/` has already passed the new check at write time.
-
-### Timeline UI
-
-- `AttachmentChipModel`/`AttachmentChip` (`Sources/Features/Pratiche/AttachmentChipModel.swift`,
-  `AttachmentChip.swift`) render a distinct visual state for a pending attachment entry (badge or
-  icon, no filename-as-action) instead of the filename-based clickable chip used for a normal
-  attachment.
-- Clicking a pending-attachment chip shows a short informational message (e.g. as a tooltip or a
-  transient popover) stating the attachment is not yet available and will be retried at the next
-  sync. It performs no `QuickLookPresenter`/`NSWorkspace.open` call.
-- A normal (non-pending) chip's existing `fileExists`-only gate in `AttachmentChip.swift:72-95`
-  gains the same integrity check used at write time before handing a URL to QuickLook or
-  `NSWorkspace.open`, as a defense-in-depth guard against any file that reaches disk corrupt
-  through a path other than `PraticaSyncEngine` (e.g. manual tampering, a future code path).
+- `VaultSession`'s write path (and the equivalent read path) delegates the disk
+  work — read, write, hash — to a background actor. The main actor awaits the
+  result and then performs the index update, journal entry, and history record
+  in the existing order and on the existing thread, preserving ADR-0001's
+  "index updated immediately after write, cache is never truth" invariant:
+  nothing about *when* the index updates relative to the write changes, only
+  *where the disk bytes move* changes.
+- The five tail call sites (`WorkspaceController+Files`, `BoardCardMenu`,
+  `PraticheController` x2, `PraticaSyncEngine`, `RecordingsController`,
+  `MCPServer/VaultHost`) adopt the same background-actor-then-main-actor-report
+  pattern rather than being left synchronous, per the confirmed decision to
+  fold the full PG-137 scope into this chain (same architectural seam, avoids a
+  second round of testing on the same pattern). `Tests/ReleasePipelineTests.swift`
+  is updated for the new async surface.
+- Explicitly rejected: `Task.detached` fire-and-forget per call, which would let
+  two writes to the same file race out of order and let the UI observe a stale
+  index after a write it just triggered.
 
 ## Data model
 
-No new persisted field format, no index schema bump. The "pending attachment" entry is expressed
-the same way the existing pending-body state already is: as parsed structure recovered from
-`.complete`-frontmatter's existing attachment-list encoding plus a marker distinguishing a
-resolved link from a not-yet-resolved filename-only entry — encoded in the message note's existing
-attachment section, not as a new frontmatter key. No change to `IndexCache.schemaVersion` (stays
-3, per ADR-0021 §D1 precedent — no new table, no migration).
+No changes to `NoteRecord`, `Frontmatter`, `.canvas` JSON Canvas schema, or any
+persisted format. This chain is internal-implementation-only: same data in, same
+data out, on-disk representation untouched.
 
 ## API
 
-No new connector-facing API. `VaultAPI.PraticaSummary` (protected interface) is unchanged — this
-fix does not add a new field for pending-attachment counts to the connector surface; that
-information stays purely inside the app's Pratiche feature layer.
+- `Sources/Core`: two new pure types/functions (boundary guard, walk/apply-plan
+  helper), both `Sendable`, both usable from `Sources/Vault`, `Sources/Connector`,
+  `Sources/Features/*`, `Sources/MCPServer`, `Sources/CLI` alike, since
+  `Sources/Core/**` is already a full sharedSources glob and requires no
+  `Project.swift` edit.
+- `NoteStore`, `CanvasStore`, `VaultScanner`, `FolderFileOperations`,
+  `BoardFileOperations`, `VaultSession+BoardDrop` delegate to the new `Sources/Core`
+  helpers instead of each holding a private/duplicated implementation.
+- Several currently non-throwing functions across the 9 PG-122 call sites become
+  `throws` (see Architecture — Boundary guard). Their callers are updated in the
+  same chain; this is not left as a follow-up.
+- `VaultSession`'s write/read surface gains `async` where disk work moves to a
+  background actor; callers on the main actor `await` as needed. No new public
+  type is introduced for this — the existing `VaultSession` API becomes async at
+  the touched entry points.
+- `VaultController` moves package/file location only (`Sources/Vault` →
+  `Sources/App`); its public interface to views is unchanged.
 
 ## UI flows
 
-1. **Normal attachment, always was fine:** unchanged — chip shows filename, click opens/previews
-   normally.
-2. **Attachment not yet available at capture time:** chip shows "in attesa" badge instead of
-   filename. Click shows an informational message, no open attempt. At the next sync, if Mail now
-   has the full bytes, the badge is replaced by the normal filename chip automatically — no user
-   action required.
-3. **Mixed email (2 of 3 attachments ready):** the 2 ready ones behave as in flow 1 immediately;
-   the 3rd behaves as in flow 2 until it resolves.
-4. **Pre-existing corrupt file from before this fix:** on first sync after upgrade, the corrupt
-   file disappears from `allegati/` and its chip becomes an "in attesa" badge (flow 2), then
-   resolves automatically once Mail has the bytes.
+None. This chain changes no UI. The move/rename/save/keystroke UI flows exercised
+by the app must continue to behave identically to a user — indistinguishable
+except for main-thread responsiveness, which should improve (PG-137) or stay the
+same, never regress.
 
 ## Edge cases
 
-- An attachment whose declared type has no known magic-byte signature (e.g. a plain-text `.txt`,
-  a proprietary format) is validated on non-emptiness only — it is never rejected purely for lack
-  of a signature entry, per the interview decision.
-- An attachment that is genuinely, permanently truncated in Mail itself (Mail will never complete
-  it, e.g. a message damaged in Mail's own store) stays in "in attesa" state forever, retried at
-  every sync with no user-visible failure state distinct from "still waiting" — the interview
-  explicitly chose unlimited retry with no cap and no distinct terminal-failure UI, since
-  Pergamenum cannot distinguish "still downloading" from "will never complete" without a network
-  call it is not allowed to make. Manual «Rigenera» remains available as an explicit user action if
-  they want to prompt a re-check outside the normal sync cadence, unaffected by this fix.
-- A store-reference (over-threshold) attachment whose Mail-side `Attachments/` file is itself
-  truncated is treated identically to a copied attachment: "in attesa", retried every sync.
-- Dedup interaction: a pending attachment is never hashed and never enters the dedup digest
-  index, so two different corrupt attachments can no longer be wrongly treated as identical (the
-  observed side effect of the pre-fix bug). Once an attachment validates, it is hashed and
-  deduped exactly as today.
-- Deleting the stale corrupt file during the one-time repair pass must not touch any *other* file
-  already correctly placed in the same `allegati/` folder, and must not orphan the dedup digest
-  index for files that remain valid.
+- A relative path containing `../` reaching any of the 9 newly-guarded call
+  sites via wikilink, URL scheme, or drag-and-drop must be rejected before any
+  disk access, not merely logged.
+- A batch move where item 3 of 10 hits a boundary violation or a file-system
+  error: items 1-2 that already succeeded stay moved; items 4-10 are still
+  attempted; the caller sees a per-item result, not a single aggregate
+  success/failure boolean.
+- Two rapid saves to the same note (fast typing, autosave) after PG-137's
+  background-actor move: the second save's disk write must not start before the
+  first's index/journal/history update has completed on the main actor, or the
+  watcher's self-write-hash bookkeeping (`selfWrittenHashes`) could see writes
+  out of order and misattribute an external edit as the app's own, or vice
+  versa. Ordering is guaranteed by serializing disk operations for a given
+  relative path through the background actor (an actor is inherently
+  serial for its own isolated state), not by the main actor's await ordering
+  alone.
+- Symlinked vault root: the boundary guard must keep resolving symlinks once at
+  construction (existing `NoteStore.init` behavior) — the shared `Sources/Core`
+  type preserves this, since the existing comment in `NoteStore.swift` documents
+  a prior regression from resolving at each comparison instead.
+- `VaultController` move: any file that imports it by relative/module path
+  assumption (none currently, since Swift target-internal imports don't need a
+  path) is unaffected; only the ~112 call sites that simply reference the type
+  are checked to still compile after the file moves target-internally within the
+  same `Pergamenum` app target (VaultController is not in sharedSources, so no
+  CLI target is affected by the move).
 
 ## Success criteria
 
-- [ ] R-01 — An attachment part whose decoded bytes are empty is never written to `allegati/` and
-      never linked to a store-reference path; the message is instead recorded with a pending
-      attachment entry for that part.
-- [ ] R-02 — An attachment part whose decoded bytes are non-empty but fail the magic-byte check
-      for its declared type (PDF, PNG, JPEG, or a ZIP-based format) is treated identically to R-01.
-- [ ] R-03 — An attachment part whose declared type has no known magic-byte signature is accepted
-      whenever its bytes are non-empty, regardless of content.
-- [ ] R-04 — A message with some valid and some not-yet-available attachments is written
-      `.complete` immediately, with the valid attachments linked normally and the others recorded
-      as pending attachment entries in the same note.
-- [ ] R-05 — At every `sync(_:)` call, every message carrying at least one pending attachment
-      entry (in addition to the existing `.pending`-body messages) is re-parsed from its current
-      `.emlx`, with no attempt cap and no cooldown.
-- [ ] R-06 — When a previously-pending attachment part now validates, the message is rewritten
-      with that attachment linked and its pending entry removed; other already-linked attachments
-      and other still-pending entries in the same note are left untouched.
-- [ ] R-07 — A store-reference (over-threshold) attachment path applies the same integrity check
-      (R-01/R-02/R-03) before the reference is recorded as usable or handed to the UI.
-- [ ] R-08 — The Pratiche timeline chip for a pending attachment entry renders a distinct "in
-      attesa" state instead of the filename, and never triggers QuickLook or `NSWorkspace.open`
-      when clicked; it shows an informational message instead.
-- [ ] R-09 — A normal (already-linked) attachment chip's open/preview path re-validates the file's
-      bytes with the same integrity check (R-01/R-02/R-03) before handing its URL to QuickLook or
-      `NSWorkspace.open`, as a defense-in-depth guard.
-- [ ] R-10 — On the first sync after this fix ships, every file already present under any
-      pratica's `allegati/` folder that fails the integrity check (R-01/R-02/R-03) is deleted, and
-      the message that owns it is downgraded so that attachment becomes a pending entry eligible
-      for the retry mechanism of R-05.
-- [ ] R-11 — The one-time repair pass of R-10 does not delete, modify, or affect the dedup digest
-      of any other, valid file already present in the same or a different `allegati/` folder.
-- [ ] R-12 — `PraticaSyncEngine.digest(of:)`-based dedup is never computed over a pending
-      attachment's bytes; two unrelated pending/invalid attachments are never treated as
-      duplicates of each other.
-- [ ] R-13 — `PraticaNaming.messageFileName`, `Dossier.render`, and `VaultAPI.PraticaSummary`
-      (ADR-0036's declared protected interfaces) are unchanged in signature and behavior by this
-      fix. (no-test: interface-check.sh at Step 6 verifies this mechanically against
-      .claude/protected-interfaces, not a Swift Testing assertion)
-- [ ] R-14 — No new network call, socket, or loopback connection is introduced anywhere in this
-      fix; Principle 2 (fully offline) is respected exactly as before. (no-test: verified by
-      code review and the absence of any new networking API usage, not a runtime assertion)
-- [ ] R-15 — `EmailFixtureCorpus` gains synthetic `.emlx` fixtures covering: a message with one
-      zero-byte attachment, a message with one mid-truncated (non-empty, magic-byte-mismatched)
-      attachment, and a message mixing one valid and one truncated attachment — exercising R-01
-      through R-06 in Swift Testing.
-- [ ] R-16 — ADR-0036 §D6/§D21 is amended (via a new ADR entry cross-referencing it, not a silent
-      rewrite of the original text) to document the one narrow additional automatic-rewrite
-      trigger added by R-05, with the rest of that rule unchanged. (no-test: documentation
-      obligation, verified by review that the ADR amendment exists and is cross-referenced)
+- [ ] R-01 — `Sources/Core` contains one boundary-guard type used by `NoteStore`
+      and by all 9 additional call sites named in Scope item 1; no call site in
+      the vault layer joins a relative path onto the vault root without going
+      through it.
+- [ ] R-02 — An adversarial test exists per guarded call site (10 total,
+      including the pre-existing `NoteStore` coverage) asserting that a
+      relative path containing `../` throws/fails rather than reading or
+      writing outside the vault root.
+- [ ] R-03 — `Sources/Core` contains one shared vault-walk helper and one shared
+      apply-plan helper; the three drifted walk copies and six drifted
+      apply-plan copies named in PG-145 are replaced by calls to these helpers,
+      and the `rename` that re-implemented `renamePlan` now calls it directly.
+- [ ] R-04 — `VaultController.swift` lives at `Sources/App/VaultController.swift`;
+      `Sources/Vault/` contains no `import SwiftUI`.
+- [ ] R-05 — The batch move/rename path performs one vault walk, one frontmatter
+      parse per file, and one starred-file rewrite per batch (not per moved
+      note), verified by a test asserting call counts on a batch of N > 1 notes.
+- [ ] R-06 — A batch operation where one item fails still completes the
+      remaining items and reports success/failure per item, verified by a test
+      that fails one item deliberately (e.g. a boundary violation) inside a
+      batch of at least 3.
+- [ ] R-07 — `VaultSession`'s write path performs its disk I/O off the main
+      actor and reports the result back to the main actor for index/journal/
+      history updates, in the pre-existing order, verified by a
+      concurrency-safe test exercising two rapid writes to the same relative
+      path.
+- [ ] R-08 — The five PG-137 tail call sites (`WorkspaceController+Files`,
+      `BoardCardMenu`, `PraticheController` x2, `PraticaSyncEngine`,
+      `RecordingsController`, `MCPServer/VaultHost`) adopt the same
+      background-actor pattern; `Tests/ReleasePipelineTests.swift` is updated
+      and passes.
+- [ ] R-09 — `perg` and `pergamenum-mcp` both build successfully after the
+      `Sources/Core` extraction (no new SwiftUI/AppKit import reaches
+      sharedSources).
+- [ ] R-10 — `scripts/mcp-smoke.py` is re-run manually against
+      `pergamenum-mcp` and completes without regression (no-test: manual
+      operational verification against a running stdio server, not a
+      Swift Testing assertion).
+- [ ] R-11 — A manual `perg` CLI pass against a scratch vault confirms
+      rename/move/journal commands still work end to end after the
+      `Sources/Core` extraction (no-test: manual CLI verification against a
+      real vault, not an automated assertion).
+- [ ] R-12 — The four TODO.md items (`PG-122`, `PG-145`, `PG-140`, `PG-137`) and
+      their GitHub issues (#222, #245, #240, #237) are closed/checked off with a
+      reference to the ADR and PR that fixed them (no-test: ledger/issue-tracker
+      bookkeeping, not a code assertion).

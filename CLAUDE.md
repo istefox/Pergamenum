@@ -203,6 +203,12 @@ move the previous copy aside rather than deleting it.
   §D-noted trap: a `.badge` applied after `.tag` drops the tag the same way). Use flat recursive rows
   instead (`NoteListPane.swift`'s shape: a `@ViewBuilder` row plus, as a sibling, `if isExpanded {
   ForEach(children) {...} }`, chevron and depth drawn by hand) — see ADR-0024.
+- **A security or invariant check exposed as a separately-callable assertion gets skipped by the
+  next call site, not maliciously — just by omission.** `NoteStore`'s vault-boundary check stayed
+  `private` and reachable from exactly two of eleven call sites for this reason (ADR-0041). Expose
+  it instead as the only way to obtain the value callers need (`VaultBoundary.url(for:) throws ->
+  URL`, not `assertInsideVault(url)`) — a resolver a caller cannot route around, rather than a step
+  a caller can forget.
 - Verify every change against `docs/20260811_Pergamenum_SpecApp.md`. If the spec and
   an instruction disagree, say so before writing code.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
@@ -379,8 +385,9 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0038** — Removes both Conformità UI surfaces (the dedicated pane and the note inspector's CONFORMITÀ block); keeps `perg lint`, the MCP `lint` tool, `VaultAPI.LintFinding` (protected interface) and the rule engine untouched, since Principle 5 and tag-entry blocking depend on the engine, not the review UI → `docs/adr/0038-remove-conformance-ui-section.md`
 - **ADR-0039** — Task ↔ note/board link and navigation: `TaskCommand` catalogue replaces the never-working "Collega nota o board…" with a single "Collega una board…" (the note is already fixed at capture time), `CommandActions.run(_:on:)` closes the breadcrumb's missing pane-switch, `navigation.taskPickingBoard` hosts the picker at `RootView` for every surface, reopens SPEC §7.2's note-linking requirement → `docs/adr/0039-task-note-board-link-and-navigation.md`
 - **ADR-0040** — Fixes Pratiche attachment reliability: an unvalidated `part.decodedData ?? Data()` wrote empty/corrupt bytes straight to `allegati/`; a magic-byte `AttachmentIntegrity` check now gates every write, a pending entry patches the message's attachment line in place rather than re-rendering, and a `.complete` message with a pending entry is now automatically retried every sync; a corrupt file already on disk is moved to the Trash. Amends ADR-0036 §D6 → `docs/adr/0040-pratiche-attachment-reliability-bugs.md`
+- **ADR-0041** — Vault layer consistency and security: the vault-boundary check becomes a resolver (`VaultBoundary.url(for:) throws -> URL`, not a skippable assert) used by all 11 call sites that touch the disk with a caller-supplied path; three drifted vault-walk copies and six drifted apply-plan copies become one shared helper in `Sources/Core`; `VaultController*` (18 files) moves out of `Sources/Vault` into `Sources/App`; the write path's disk work moves to a background actor with the hash computed before the hop and a per-path sequence number guarding update order, preserving ADR-0001's index-immediately-after-write invariant. Extends ADR-0001 and ADR-0007, amends neither → `docs/adr/0041-vault-layer-consistency-and-security-cha.md`
 
-## Decisions from later chains (ADR-0027 – ADR-0040)
+## Decisions from later chains (ADR-0027 – ADR-0041)
 
 Full narrative for these chains is compacted here to essentials; the one-line summary of each
 already lives in the Chain decision index above.
@@ -465,5 +472,20 @@ already lives in the Chain decision index above.
   `allegati/` is moved to the Trash (never deleted outright) and re-enqueued as pending. Attachment
   chip UI moves from a `Bool` gate to a three-state `FileState { usable, missing, unusable }` plus a
   `.pending` chip content case. Protected interface: `MessageDocument.isPendingAttachmentEntry`.
+- **ADR-0041 (vault layer consistency and security):** the boundary guard that used to be a private,
+  skippable `assertInsideVault` inside `NoteStore` becomes `VaultBoundary.url(for:) throws -> URL` in
+  `Sources/Core/Vault/` — a resolver is the only way to get a usable `URL`, so a new call site
+  inherits the check instead of needing to remember it. The same file holds one shared vault-walk
+  helper and one shared apply-plan helper, replacing three and six drifted copies respectively.
+  `VaultController*` (18 files) relocates from `Sources/Vault` to `Sources/App`, wider than the SPEC's
+  single-file scope because moving only the declaration would have left 17 app-shell files stranded
+  in the vault layer. The write path's disk I/O moves to a background actor; the hash is computed on
+  the main actor *before* the hop (not after) so `selfWrittenHashes` cannot observe an FSEvents batch
+  ahead of its own bookkeeping, and a per-path sequence number — not await-ordering alone — guards
+  against two rapid writes to the same file landing out of order. `VaultSession.read` deliberately
+  stays synchronous: it has 25 call sites that are synchronous `@Observable` computed properties
+  SwiftUI evaluates from `body`, which cannot `await`. Extends ADR-0001 (index-immediately-after-write
+  invariant, made mechanical rather than convention) and ADR-0007 (VaultSession/VaultController split,
+  shared-sources architecture) without amending either.
 
 Detail: see each ADR under `docs/adr/`.
