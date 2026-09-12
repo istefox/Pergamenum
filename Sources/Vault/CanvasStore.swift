@@ -206,46 +206,35 @@ struct CanvasStore: Sendable {
     /// `allFolders()` needs. A second enumerator would be a second exclusion rule to
     /// keep in step with this one.
     ///
-    /// The walk mirrors `VaultScanner.scan()`: an enumerator that skips the descendants
-    /// of an excluded directory outright rather than filtering its files one at a time,
-    /// so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are never entered.
+    /// The walk itself is `VaultWalk` since ADR-0041 §D3: it is built from this store's own
+    /// `boundary`, and it - not this method - consults `VaultLayout.isExcludedDirectory` and
+    /// calls `skipDescendants()`, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum`
+    /// are never entered. What is left here is only what this caller wanted: two lists.
     private func walk() -> (folders: [String], boards: [String]) {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsPackageDescendants]
+        // The two keys this caller used before the unification, kept rather than dropped to
+        // the walk's `[]` default: `.isDirectoryKey` follows a symlink to a directory where
+        // the URL's own trailing separator does not, and a folder row appearing or
+        // disappearing from the Workspace tree is not a change this task is making.
+        guard let walk = try? VaultWalk(
+            boundary: boundary, keys: [.isDirectoryKey, .nameKey]
         ) else {
             return (folders: [], boards: [])
         }
 
         var folders: [String] = []
         var boards: [String] = []
-        // Built once, not per entry: the walk asks for the same two keys every time.
-        let keySet = Set(keys)
-        while let url = enumerator.nextObject() as? URL {
-            // Deliberate fallback (PG-039): resourceValues can fail on a transient race
-            // with the file system, and the URL's own last path component is the same
-            // display name the volume would have reported anyway - display only, no
-            // write depends on this value.
-            let values = try? url.resourceValues(forKeys: keySet)
-            let name = values?.name ?? url.lastPathComponent
-
-            if values?.isDirectory == true {
-                if VaultLayout.isExcludedDirectory(name) {
-                    enumerator.skipDescendants()
-                    continue
-                }
+        walk.forEach { file in
+            if file.isDirectory {
                 // The enumerator hands back a *directory* URL, whose path ends in "/",
-                // and `VaultScanner.relativePath` preserves that faithfully - so this
+                // and `VaultWalk.Entry.relativePath` preserves that faithfully - so this
                 // would yield "01 Progetti/" where every other folder path in the app,
                 // the tree's ids and the selection included, is spelled without one.
-                let path = VaultScanner.relativePath(of: url, under: root)
+                let path = file.relativePath
                 folders.append(path.hasSuffix("/") ? String(path.dropLast()) : path)
-                continue
+                return
             }
-            guard url.pathExtension.lowercased() == Self.fileExtension else { continue }
-            boards.append(VaultScanner.relativePath(of: url, under: root))
+            guard file.url.pathExtension.lowercased() == Self.fileExtension else { return }
+            boards.append(file.relativePath)
         }
         return (folders: Self.sorted(folders), boards: Self.sorted(boards))
     }

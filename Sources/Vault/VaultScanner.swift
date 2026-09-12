@@ -43,36 +43,28 @@ struct VaultScanner: Sendable {
         var reused = 0
         var boardTaskRecords: [BoardTaskRecord] = []
 
-        let keys: [URLResourceKey] = [
+        // The exclusion rule, the `skipDescendants()` call and the root standardisation
+        // all live in `VaultWalk` now (ADR-0041 §D3). What stays here is the part that was
+        // never a walk concern: which files this scan cares about and when a cached row
+        // may stand in for reading one.
+        let keys: Set<URLResourceKey> = [
             .isDirectoryKey, .nameKey, .fileSizeKey, .contentModificationDateKey,
         ]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsPackageDescendants]
-        ) else {
+        guard let walk = try? VaultWalk(boundary: VaultBoundary(root: root), keys: keys) else {
             return Outcome(
                 records: [],
                 failures: [(root.lastPathComponent, "the vault could not be opened")]
             )
         }
 
-        // Built once, not per file: the walk asks for the same four keys every time.
-        let keySet = Set(keys)
-        while let url = enumerator.nextObject() as? URL {
-            let values = try? url.resourceValues(forKeys: keySet)
-            let name = values?.name ?? url.lastPathComponent
+        walk.forEach { file in
+            let url = file.url
+            let name = file.name
+            guard !file.isDirectory else { return }
 
-            if values?.isDirectory == true {
-                // Skipping descendants here is what keeps `.obsidian`, `.git` and our
-                // own `.pergamenum` out of the walk entirely rather than filtering
-                // their contents one file at a time.
-                if VaultLayout.isExcludedDirectory(name) { enumerator.skipDescendants() }
-                continue
-            }
             guard url.pathExtension.lowercased() == "md" else {
                 if url.pathExtension.lowercased() == CanvasStore.fileExtension {
-                    let boardPath = Self.relativePath(of: url, under: root)
+                    let boardPath = file.relativePath
                     // The walk already asked for the size and the modification date of this
                     // very file; asking the file system again per entry is the one thing the
                     // cheap check was meant to avoid. Nil handling is unchanged: a missing
@@ -80,8 +72,8 @@ struct VaultScanner: Sendable {
                     if let entry = cachedBoardTasks[boardPath],
                        Self.isUnchanged(
                            entry,
-                           size: values?.fileSize ?? -1,
-                           modifiedAt: values?.contentModificationDate
+                           size: file.byteSize ?? -1,
+                           modifiedAt: file.modifiedAt
                        ) {
                         boardTaskRecords.append(entry.record.record)
                     } else if let record = Self.boardTaskRecord(
@@ -91,25 +83,25 @@ struct VaultScanner: Sendable {
                     }
                 }
                 if let note = Self.evictedNoteName(from: name) {
-                    let placeholder = Self.relativePath(of: url, under: root)
+                    let placeholder = file.relativePath
                     failures.append((
                         String(placeholder.dropLast(name.count)) + note,
                         "non è scaricata da iCloud: apri il vault in Finder e scegli «Conserva scaricato»"
                     ))
                 }
-                continue
+                return
             }
 
-            let relativePath = Self.relativePath(of: url, under: root)
+            let relativePath = file.relativePath
             if let entry = cached[relativePath],
                Self.isUnchanged(
                    entry,
-                   size: values?.fileSize ?? -1,
-                   modifiedAt: values?.contentModificationDate
+                   size: file.byteSize ?? -1,
+                   modifiedAt: file.modifiedAt
                ) {
                 records.append(entry.record.record)
                 reused += 1
-                continue
+                return
             }
             do {
                 records.append(try store.read(relativePath).record)
@@ -187,6 +179,13 @@ struct VaultScanner: Sendable {
         return note
     }
 
+    /// Percent-decoded, separator-normalised path of `url` relative to `root`.
+    ///
+    /// No walk calls this any more - `VaultWalk` drops a prefix it computed once, which is
+    /// what `PG-140`'s `perf-VaultScanner.swift-a0b` asked for. It stays because
+    /// `VaultWatcher` still needs it (`VaultWatcher.swift:82`), and for a path that arrived
+    /// from FSEvents rather than from an enumerator the per-URL `standardizedFileURL` is
+    /// the work, not the waste: nothing has canonicalised that spelling yet.
     static func relativePath(of url: URL, under root: URL) -> String {
         let rootPath = root.standardizedFileURL.path(percentEncoded: false)
         let filePath = url.standardizedFileURL.path(percentEncoded: false)

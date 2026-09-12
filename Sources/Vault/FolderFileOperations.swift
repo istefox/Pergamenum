@@ -75,10 +75,12 @@ struct FolderFileOperations {
     /// of it: which notes are inside (so their tabs and their stars can follow) and how
     /// many subfolders there are (so the delete confirmation can say).
     ///
-    /// The walk mirrors `CanvasStore.allBoards()`: an enumerator that skips the
-    /// descendants of an excluded directory outright rather than filtering its files
-    /// one at a time, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are
-    /// never entered - and, more to the point here, never counted.
+    /// The walk no longer *mirrors* `CanvasStore.allBoards()`, it is the same one:
+    /// `VaultWalk` (ADR-0041 §D3) skips the descendants of an excluded directory outright
+    /// rather than filtering its files one at a time, so `.obsidian`, `.git`, `.trash` and
+    /// our own `.pergamenum` are never entered - and, more to the point here, never
+    /// counted. Two doc comments claiming to mirror each other is how the three copies
+    /// drifted in the first place.
     ///
     /// `nil` when `folder` does not exist or its enumerator could not be built (PG-048) -
     /// never silently folded into "nothing here", which is the answer for a folder that
@@ -89,41 +91,44 @@ struct FolderFileOperations {
     /// Same reason as `repointBoardsPlan` above, which `BoardFileOperations` already
     /// reaches from outside this file.
     func walk(_ folder: String) -> (notePaths: [String], subfolders: Int)? {
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
+        let boundary = VaultBoundary(root: store.root)
+        let directory: URL
+        if folder.isEmpty {
+            directory = boundary.root
+        } else {
+            // A folder path that leaves the vault is not a folder this can count, and the
+            // `nil` this signature already returns says so (ADR-0041 §D1/§D3).
+            guard let resolved = try? boundary.url(for: folder) else { return nil }
+            directory = resolved
+        }
 
+        // The existence check stays here rather than moving into the walk: an enumerator
+        // over a directory that is not there is not `nil`, it is empty - measured - so
+        // this is the only thing that still tells "gone" from "empty" (PG-048).
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
             return nil
         }
 
-        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory, includingPropertiesForKeys: keys, options: [.skipsPackageDescendants]
+        // Same two keys as before the unification, for `CanvasStore.walk()`'s reason: a
+        // symlink to a directory is one to `.isDirectoryKey` and not to the URL's own
+        // trailing separator, and what a delete dialog counts should not change here.
+        guard let walk = try? VaultWalk(
+            boundary: boundary, subfolder: folder, keys: [.isDirectoryKey, .nameKey]
         ) else {
             return nil
         }
 
         var notePaths: [String] = []
         var subfolders = 0
-        // Built once, not per entry: the walk asks for the same two keys every time.
-        let keySet = Set(keys)
-        while let url = enumerator.nextObject() as? URL {
-            let values = try? url.resourceValues(forKeys: keySet)
-            let name = values?.name ?? url.lastPathComponent
-
-            if values?.isDirectory == true {
-                if VaultLayout.isExcludedDirectory(name) {
-                    enumerator.skipDescendants()
-                    continue
-                }
+        walk.forEach { file in
+            if file.isDirectory {
                 subfolders += 1
-                continue
+                return
             }
-            guard url.pathExtension.lowercased() == "md" else { continue }
-            notePaths.append(VaultScanner.relativePath(of: url, under: store.root))
+            guard file.url.pathExtension.lowercased() == "md" else { return }
+            notePaths.append(file.relativePath)
         }
         return (notePaths, subfolders)
     }
