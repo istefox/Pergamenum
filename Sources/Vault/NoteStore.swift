@@ -81,6 +81,13 @@ struct NoteStore: Sendable {
     }
 
     /// Reads a note and derives its record.
+    ///
+    /// Parses `NoteDocument.parse(text)` exactly once (ADR-0041 §D7) and hands the parsed
+    /// document to `makeRecord`, which both this and `record(from:attributes:at:)`
+    /// (`NoteStore+ReadSurface.swift`) go through - the field-building logic is shared, the
+    /// parse is not, because each of those two entry points starts from a different thing
+    /// it already has (a `URL` here, raw `Data` there) and would otherwise have to parse
+    /// again to call the other.
     func read(_ relativePath: String) throws -> (record: NoteRecord, text: String) {
         let fileURL = try boundary.url(for: relativePath)
 
@@ -89,20 +96,35 @@ struct NoteStore: Sendable {
             throw StoreError.notUTF8(relativePath)
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
+        let document = NoteDocument.parse(text)
 
         return (
-            NoteRecord(
-                relativePath: relativePath,
-                title: NoteName.title(fromFileName: fileURL.lastPathComponent),
-                frontmatter: NoteDocument.parse(text).frontmatter,
-                linkTargets: Self.linkTargets(in: text),
-                embedTargets: Transclusion.embeddedFiles(in: text),
-                tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
-                modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
-                byteSize: data.count,
-                contentHash: Self.hash(data)
-            ),
+            Self.makeRecord(from: data, text: text, document: document, attributes: attributes, at: relativePath),
             text
+        )
+    }
+
+    /// The fields a read derives, given a document already parsed once by the caller.
+    /// Shared by `read` above and `record(from:attributes:at:)`
+    /// (`NoteStore+ReadSurface.swift`, ADR-0041 §D7) so the two do not drift onto two
+    /// copies of the same field list.
+    static func makeRecord(
+        from data: Data,
+        text: String,
+        document: NoteDocument,
+        attributes: [FileAttributeKey: Any],
+        at relativePath: String
+    ) -> NoteRecord {
+        NoteRecord(
+            relativePath: relativePath,
+            title: NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent),
+            frontmatter: document.frontmatter,
+            linkTargets: linkTargets(in: document),
+            embedTargets: Transclusion.embeddedFiles(in: text),
+            tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
+            modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
+            byteSize: data.count,
+            contentHash: hash(data)
         )
     }
 
@@ -146,14 +168,11 @@ struct NoteStore: Sendable {
     /// it names shows the backlink and a transclusion pointing nowhere turns up among the
     /// unresolved links. A file embed is still not one - `![[foto.png]]` stays invisible
     /// here, which is what leaves `embedTargets` free for M11's gallery (ADR-0009 §D2).
+    ///
+    /// A thin wrapper over `linkTargets(in document:)` (`NoteStore+ReadSurface.swift`) for
+    /// the two callers (`Tests/TransclusionTests.swift:182`, `:221`) that only have text,
+    /// not an already-parsed document (ADR-0041 §D7).
     static func linkTargets(in text: String) -> [String] {
-        let document = NoteDocument.parse(text)
-        var seen = Set<String>()
-        var ordered: [String] = []
-        for link in WikilinkParser.links(in: document.body)
-        where !link.isEmbed || Transclusion.isNoteReference(link.target) {
-            if seen.insert(link.target).inserted { ordered.append(link.target) }
-        }
-        return ordered
+        linkTargets(in: NoteDocument.parse(text))
     }
 }

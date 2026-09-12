@@ -104,7 +104,7 @@ struct NoteFileOperations {
             // there and written at `newPath`, which is where the performer moves it first.
             let readPath = path == relativePath ? relativePath : path
             let writePath = path == relativePath ? newPath : path
-            guard let (_, text) = try? store.read(readPath) else {
+            guard let text = try? store.text(readPath) else {
                 plan.failures.append("\(path): non leggibile")
                 continue
             }
@@ -145,7 +145,7 @@ struct NoteFileOperations {
         let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
         let needle = title.lowercased()
         return knownPaths.filter { path in
-            guard path != relativePath, let (_, text) = try? store.read(path) else { return false }
+            guard path != relativePath, let text = try? store.text(path) else { return false }
             return WikilinkParser.links(in: text).contains { $0.target.lowercased() == needle }
         }
     }
@@ -345,7 +345,7 @@ struct NoteFileOperations {
 
         let needle = title.lowercased()
         return knownPaths.filter { path in
-            guard path != relativePath, let (_, text) = try? store.read(path) else { return false }
+            guard path != relativePath, let text = try? store.text(path) else { return false }
             return WikilinkParser.links(in: text).contains { $0.target.lowercased() == needle }
         }
     }

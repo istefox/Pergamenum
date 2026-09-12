@@ -4,43 +4,47 @@ import Foundation
 // docs/superpowers/plans/2026-09-12-vault-layer-consistency-and-security-cha.md, Task 6 -
 // R-05: "A read parses once, stats once, and a caller that wants the text asks for the
 // text" (ADR §D7).
-//
-// **Tester-only signature declaration (ADR-0155).** These three members are the surface
-// `Tests/NoteStoreReadTests.swift` and Task 8's actor need to compile against. None of
-// them do the single-parse work the ADR describes - each returns a value that cannot
-// match what `read` derives for a real note, deliberately, so the tests exercising them
-// stay red until the coder replaces the body. `read` itself is untouched here: it still
-// parses `NoteDocument` twice (once directly, once inside `Self.linkTargets(in:)`), which
-// is exactly the double-parse this task removes.
 extension NoteStore {
-    /// Not yet the boundary-checked, no-parse, no-hash read the ADR asks for - a
-    /// placeholder so callers and the test file compile.
+    /// The boundary-checked, no-parse read a caller that only wants the body asks for -
+    /// `perf-NoteStore.swift-ce3`'s finding was that the rename/search callers in
+    /// `NoteFileOperations.swift` paid a full record derivation (parse, wikilink scan,
+    /// transclusion scan, task parse, SHA-256) to get a `String` they then rewrite. No
+    /// parse, no hash: the guard, the read, the UTF-8 decode, and nothing else.
     func text(_ relativePath: String) throws -> String {
-        ""
+        let fileURL = try url(for: relativePath)
+        let data = try Data(contentsOf: fileURL)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw StoreError.notUTF8(relativePath)
+        }
+        return text
     }
 
-    /// Not yet real: the coder inverts this so `linkTargets(in text:)` below becomes the
-    /// two-line wrapper and this parses the document that was handed to it, once. Returns
-    /// no targets so `linkTargets(in text:)`/`linkTargets(in document:)` disagree on any
-    /// note that has a link, until it does.
+    /// The real link-target scan, over a document already parsed once by the caller -
+    /// `linkTargets(in text:)` (`NoteStore.swift`) is now the thin wrapper over this, not
+    /// the other way round, which is what stops `read` from parsing `NoteDocument` twice
+    /// (ADR-0041 §D7). Moved here unchanged from what `linkTargets(in text:)` used to
+    /// compute inline.
     static func linkTargets(in document: NoteDocument) -> [String] {
-        []
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for link in WikilinkParser.links(in: document.body)
+        where !link.isEmbed || Transclusion.isNoteReference(link.target) {
+            if seen.insert(link.target).inserted { ordered.append(link.target) }
+        }
+        return ordered
     }
 
-    /// Not yet real: the coder derives every field `read` computes today from the bytes
-    /// and attributes a caller already has, and re-expresses `read` in terms of this.
-    /// Returns a record that cannot equal `read`'s own for any real note.
+    /// Everything `read` derives, given the bytes and attributes a caller already has -
+    /// `VaultSession.moveFile` (`VaultSession+Journal.swift`) and Task 8's write actor both
+    /// need this shape, one hashing bytes it just moved on disk, the other bytes it hashed
+    /// before hopping off the main actor. Decodes and parses once, then shares the same
+    /// field-building code `read` uses via `NoteStore.makeRecord` (`NoteStore.swift`) - the
+    /// two never build a `NoteRecord` two different ways.
     func record(from data: Data, attributes: [FileAttributeKey: Any], at relativePath: String) throws -> NoteRecord {
-        NoteRecord(
-            relativePath: relativePath,
-            title: "",
-            frontmatter: .empty,
-            linkTargets: [],
-            embedTargets: [],
-            tasks: [],
-            modifiedAt: .distantPast,
-            byteSize: 0,
-            contentHash: ""
-        )
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw StoreError.notUTF8(relativePath)
+        }
+        let document = NoteDocument.parse(text)
+        return NoteStore.makeRecord(from: data, text: text, document: document, attributes: attributes, at: relativePath)
     }
 }

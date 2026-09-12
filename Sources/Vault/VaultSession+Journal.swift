@@ -69,10 +69,21 @@ extension VaultSession {
             )
         }
 
-        let hash = (try? Data(contentsOf: destination)).map(NoteStore.hash) ?? ""
+        // One read of the moved file, not two (ADR-0041 §D7): the same bytes are hashed
+        // for the watcher and handed to `record(from:attributes:at:)` for the index, rather
+        // than hashing here and re-reading the file through `store.read(newPath)` after.
+        let movedData = try? Data(contentsOf: destination)
+        let hash = movedData.map(NoteStore.hash) ?? ""
         selfWrittenHashes[newPath] = hash
         updateIndex(nil, at: oldPath)
-        updateIndex(try? store.read(newPath).record, at: newPath)
+
+        let movedAttributes = try? FileManager.default.attributesOfItem(
+            atPath: destination.path(percentEncoded: false)
+        )
+        let movedRecord = movedData.flatMap { bytes in
+            try? store.record(from: bytes, attributes: movedAttributes ?? [:], at: newPath)
+        }
+        updateIndex(movedRecord, at: newPath)
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),
