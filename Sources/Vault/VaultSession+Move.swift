@@ -67,6 +67,17 @@ extension VaultSession {
     /// all-or-nothing of §D6 is a property of the decision (`VaultMoveBatch.plan` refuses
     /// before a byte is written), not a promise the file system can be held to once the
     /// writing has started.
+    ///
+    /// **The starred-note write is batched (ADR-0041 §D8, Task 7).** Every item in the loop
+    /// below still goes through its own existing operation - `moveNote`, `moveBoard`,
+    /// `moveFolder` - unchanged, so a `.canvas` repoint for a moved note or board is still
+    /// one pass per item, not one for the batch: `moveNote`'s repoint is
+    /// `NoteFileOperations`'s own private copy and is out of this task's scope
+    /// (`Tests/VaultBatchMoveTests.swift`'s header explains why). What changed is only the
+    /// starred-note write: `starred.json` is now saved **once** for the whole batch, through
+    /// `extractStarForBatchedMove`/`commitBatchedStarMoves` below, instead of once per
+    /// starred note the way `moveNote`'s own internal `moveStar` call used to trigger on
+    /// its own.
     func moveItems(_ items: [VaultItemRef], into destination: String) -> MoveBatchOutcome {
         var outcome = MoveBatchOutcome()
 
@@ -76,7 +87,18 @@ extension VaultSession {
             return outcome
 
         case .moves(let moves):
+            // Collected across every item in the batch and committed **once**, after the
+            // loop, through `commitBatchedStarMoves` (ADR-0041 §D8, Task 7) - not once per
+            // starred note the way `moveNote`'s own internal `moveStar` call would do on
+            // its own. See `extractStarForBatchedMove`'s doc comment
+            // (`VaultSession+Starred.swift`) for how its call below neutralizes that.
+            var pendingNewStarredPaths: [String] = []
+
             for move in moves {
+                // Set only for a `.note` item whose star was taken out ahead of the move
+                // below - the one case that can still throw *after* the extraction, and so
+                // the one case that needs putting back if it does.
+                var extractedStarPath: String?
                 do {
                     switch move.item.kind {
                     case .note:
@@ -84,8 +106,14 @@ extension VaultSession {
                         // through `transaction("note move")`, carries the star and repoints
                         // the cards. A second spelling of that verb here would be exactly
                         // the drift `CLAUDE.md`'s connector section is about.
+                        if extractStarForBatchedMove(move.item.path) {
+                            extractedStarPath = move.item.path
+                        }
                         let note = try moveNote(at: move.item.path, toFolder: move.to)
                         outcome.movedNotes.append(MovedNote(old: move.item.path, new: note.newPath))
+                        if extractedStarPath != nil {
+                            pendingNewStarredPaths.append(note.newPath)
+                        }
                         report(note.failures)
 
                     case .board:
@@ -98,14 +126,22 @@ extension VaultSession {
                         let folder = try folderOperations.moveFolder(at: move.item.path, toParent: move.to)
                         // A star is a path, so it moves with the file or it points at
                         // nothing (ADR-0012 §D6) - `renameFolder`'s own follow-up, once per
-                        // note the directory took with it.
-                        for moved in folder.movedNotes {
-                            moveStar(from: moved.old, to: moved.new)
+                        // note the directory took with it, folded into the same
+                        // once-per-batch commit as the `.note` case above rather than
+                        // saved per note here.
+                        for moved in folder.movedNotes where extractStarForBatchedMove(moved.old) {
+                            pendingNewStarredPaths.append(moved.new)
                         }
                         outcome.movedNotes.append(contentsOf: folder.movedNotes)
                         report(folder.failures)
                     }
                 } catch {
+                    // The file never moved, so a star taken from it above belongs back
+                    // where it was - in memory only, since the batch has not saved yet and
+                    // `starred.json` on disk was never touched for it.
+                    if let oldPath = extractedStarPath {
+                        restoreExtractedStar(oldPath)
+                    }
                     // Named, not swallowed, and `move` is deliberately not appended to
                     // `moves`: the inverse the caller registers must describe what is
                     // actually on disk, so an item that did not move must not be in the
@@ -115,6 +151,7 @@ extension VaultSession {
                 }
                 outcome.moves.append(move)
             }
+            commitBatchedStarMoves(pendingNewStarredPaths)
             return outcome
         }
     }

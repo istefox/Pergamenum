@@ -263,29 +263,72 @@ struct FolderFileOperations {
         return (changes, failures)
     }
 
-    /// Batched form of `repointBoardsPlan(from:to:)` above (ADR-0041 §D8, Task 7): every
-    /// path a batch moved, repointed together rather than one `canvas.allBoards()` walk per
-    /// pair.
+    /// Real batched form of `repointBoardsPlan(from:to:)` above (ADR-0041 §D8, Task 7):
+    /// every path a batch moved, repointed together in **one** pass over
+    /// `canvas.allBoards()` rather than one pass per move.
     ///
-    /// **Declared here as the tester's stub, not the coder's real thing.** This loops
-    /// `moves` and calls the single-pair `repointBoardsPlan(from:to:)` once per entry, so it
-    /// still walks `canvas.allBoards()` once per move and, when two moves touch the same
-    /// board, produces one `VaultFileChange` per move rather than one merged change for the
-    /// board - each one read from the board's still-unwritten-at-plan-time bytes, so a
-    /// caller that fed both into `VaultPlanApplication.apply` would have the later change
-    /// for that path silently discard the earlier one's repoint. That data-loss shape, and
-    /// the walk count, are exactly what `Tests/VaultBatchMoveTests.swift`'s tests assert
-    /// against - correctly, on purpose, so they are red until the coder replaces this loop
-    /// with one pass over `canvas.allBoards()` that checks every move per board.
+    /// Two moves that touch the same board merge into **one** `VaultFileChange` for that
+    /// board, every node it repoints carried in the same re-encoded document - not one
+    /// change per move, which would each read the board's original, still-unwritten bytes
+    /// and have the later one silently discard the earlier one's repoint once a caller fed
+    /// both into `VaultPlanApplication.apply` in order (the exact drift ADR-0041 names).
+    /// `onBoardsWalk()` fires exactly once for the whole call; an empty batch (after
+    /// dropping any no-op `from == to` pair) returns without walking at all, matching the
+    /// single-pair form's own early-out.
+    ///
+    /// `failures` here still names a board, same as the single-pair form, but a caller
+    /// should read an entry as the **batch's** failure rather than any one move's: several
+    /// of the batch's moves can all repoint a node on the same board, so there is no single
+    /// move it would be correct to blame that board's encode failure on.
     func repointBoardsPlan(
         moves: [(from: String, to: String)]
     ) -> (changes: [VaultFileChange], failures: [String]) {
+        let moves = moves.filter { $0.from != $0.to }
+        guard !moves.isEmpty else { return ([], []) }
+        onBoardsWalk()
         var changes: [VaultFileChange] = []
         var failures: [String] = []
-        for move in moves {
-            let result = repointBoardsPlan(from: move.from, to: move.to)
-            changes.append(contentsOf: result.changes)
-            failures.append(contentsOf: result.failures)
+
+        for boardPath in canvas.allBoards() {
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
+                  var document = try? CanvasDocument(data: data)
+            else { continue }
+
+            var changed = false
+            for index in document.nodes.indices {
+                guard case .file(let path, let subpath) = document.nodes[index].kind,
+                      let move = moves.first(where: { path == $0.from || path.hasPrefix("\($0.from)/") })
+                else { continue }
+                document.nodes[index].kind = .file(
+                    path: Self.repointing(path, from: move.from, to: move.to), subpath: subpath
+                )
+                changed = true
+            }
+            guard changed else { continue }
+
+            // Where this board itself lands, the same substitution a node's does: a board
+            // that is itself one of the batch's moved paths (a board move riding along in
+            // the same batch) writes to its own new location; every other board stays
+            // exactly where it is.
+            let writePath = moves.reduce(boardPath) { path, move in
+                Self.repointing(path, from: move.from, to: move.to)
+            }
+
+            guard let before = String(bytes: data, encoding: .utf8) else {
+                failures.append("\(boardPath): non leggibile come testo")
+                continue
+            }
+            do {
+                let encoded = try document.encoded()
+                guard let after = String(bytes: encoded, encoding: .utf8) else {
+                    failures.append("\(boardPath): non codificabile come testo")
+                    continue
+                }
+                changes.append(VaultFileChange(path: writePath, before: before, after: after))
+            } catch {
+                failures.append("\(boardPath): \(error)")
+            }
         }
         return (changes, failures)
     }
