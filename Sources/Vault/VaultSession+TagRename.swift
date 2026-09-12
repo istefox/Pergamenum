@@ -109,10 +109,16 @@ extension VaultSession {
     @discardableResult
     func undoJournalledWrites(_ ids: [String]) -> TagRenameOutcome {
         let journal = journalOnDisk
+        // `entry(id:)` re-reads and re-decodes the whole file per id. One read, keyed by
+        // id, answers the same thing: `uniquingKeysWith: { _, last in last }` keeps the
+        // last line carrying an id, which is exactly `entries().last { $0.id == id }`.
+        let byID = Dictionary(
+            journal.entries().map { ($0.id, $0) }, uniquingKeysWith: { _, last in last }
+        )
         var entries: [WriteJournal.Entry] = []
         var missing: [String] = []
         for id in ids {
-            if let entry = journal.entry(id: id) {
+            if let entry = byID[id] {
                 entries.append(entry)
             } else {
                 missing.append("\(id): non è nel journal")

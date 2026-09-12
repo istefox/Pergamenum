@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// The Coordinator's own half of the view-query builder's commit (ADR-0034 §D3): the write a
 /// "Fatto" tap in the sheet reaches - `commitTable`'s exact shape

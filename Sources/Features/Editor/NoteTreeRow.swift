@@ -233,7 +233,7 @@ struct NoteTreeRow: View {
         // unaffected; these rows have never paid for it and are not made to start here.
         .accessibilityIdentifier("note-row-\(node.id)")
         .contextMenu {
-            if let record = vault.index.allNotes.first(where: { $0.relativePath == node.id }) {
+            if let record = vault.index.note(at: node.id) {
                 NoteRowMenu(
                     note: record, renaming: $renaming, deleting: $deleting, moveRefused: $moveRefused
                 )

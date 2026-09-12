@@ -1,5 +1,3 @@
-import AppKit
-
 /// `CommandActions`'s "whether it can run" predicates, and the one command
 /// (`walkHistory`) whose own condition needs `place` to act (PG-035 — pure code motion
 /// off `CommandActions.swift`, which had drifted past both `file_length`'s and

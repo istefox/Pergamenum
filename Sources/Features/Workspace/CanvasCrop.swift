@@ -22,17 +22,11 @@ struct CanvasCrop: Equatable, Sendable {
     var width: CGFloat
     var height: CGFloat
 
-    var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
-
     init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
         self.x = x
         self.y = y
         self.width = width
         self.height = height
-    }
-
-    init(_ rect: CGRect) {
-        self.init(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
     }
 
     // MARK: Reading

@@ -1,11 +1,10 @@
-import CoreGraphics
 import Foundation
 
 /// One command a canvas card offers, named once so the card's own context menu and the
 /// board's contextual command bar (ADR-0023 §D1, §D7) read the same catalogue instead of
 /// two hand-kept lists that can drift apart.
 ///
-/// `import Foundation` and `import CoreGraphics` only, deliberately: this file stays a
+/// `import Foundation` only, deliberately: this file stays a
 /// pure catalogue a test can read without pulling in SwiftUI. Not in `sharedSources`
 /// (ADR-0023 §A6 - the connectors have no board-editing surface).
 ///

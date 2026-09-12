@@ -31,7 +31,7 @@ struct NoteFileOperations {
             let path = url.standardizedFileURL.path(percentEncoded: false)
             guard path.hasPrefix(rootPath) else { continue }
             paths.append(String(path.dropFirst(rootPath.count)).trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
+                in: .pathSlashes
             ))
         }
         return paths
@@ -171,33 +171,11 @@ struct NoteFileOperations {
         for boardPath in boardPaths() {
             let url = store.url(for: boardPath)
             guard let data = try? Data(contentsOf: url),
-                  var document = try? CanvasDocument(data: data)
+                  let decoded = try? CanvasDocument(data: data),
+                  let document = repointedDocument(
+                      decoded, from: oldPath, to: newPath, titleChange: titleChange
+                  )
             else { continue }
-
-            var changed = false
-            for index in document.nodes.indices {
-                switch document.nodes[index].kind {
-                case .file(let path, let subpath) where path == oldPath:
-                    document.nodes[index].kind = .file(path: newPath, subpath: subpath)
-                    changed = true
-                case .text(let body):
-                    // A card has no `related:` frontmatter to preserve, so this must not run
-                    // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
-                    // otherwise an unrelated quoted bullet line that happens to fold-match the
-                    // old title would be silently rewritten too.
-                    guard let titleChange,
-                          let updated = NoteRename.rewritingLinks(
-                              in: body, from: titleChange.old, to: titleChange.new,
-                              includeQuotedRelated: false
-                          )
-                    else { continue }
-                    document.nodes[index].kind = .text(updated)
-                    changed = true
-                default:
-                    continue
-                }
-            }
-            guard changed else { continue }
 
             guard let before = String(bytes: data, encoding: .utf8) else {
                 failures.append("\(boardPath): non leggibile come testo")
@@ -318,33 +296,11 @@ struct NoteFileOperations {
         for boardPath in boardPaths() {
             let url = store.url(for: boardPath)
             guard let data = try? Data(contentsOf: url),
-                  var document = try? CanvasDocument(data: data)
+                  let decoded = try? CanvasDocument(data: data),
+                  let document = repointedDocument(
+                      decoded, from: oldPath, to: newPath, titleChange: titleChange
+                  )
             else { continue }
-
-            var changed = false
-            for index in document.nodes.indices {
-                switch document.nodes[index].kind {
-                case .file(let path, let subpath) where path == oldPath:
-                    document.nodes[index].kind = .file(path: newPath, subpath: subpath)
-                    changed = true
-                case .text(let body):
-                    // A card has no `related:` frontmatter to preserve, so this must not run
-                    // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
-                    // otherwise an unrelated quoted bullet line that happens to fold-match the
-                    // old title would be silently rewritten too.
-                    guard let titleChange,
-                          let updated = NoteRename.rewritingLinks(
-                              in: body, from: titleChange.old, to: titleChange.new,
-                              includeQuotedRelated: false
-                          )
-                    else { continue }
-                    document.nodes[index].kind = .text(updated)
-                    changed = true
-                default:
-                    continue
-                }
-            }
-            guard changed else { continue }
 
             do {
                 try document.encoded().write(to: url, options: .atomic)
@@ -353,6 +309,43 @@ struct NoteFileOperations {
                 outcome.failures.append("\(boardPath): \(error)")
             }
         }
+    }
+
+    /// The node-rewrite rule itself, in one place: `repointBoardsPlan` reads its result and
+    /// `repointBoards` writes it, and neither owns a second copy of what a repoint means.
+    ///
+    /// Returns `nil` when the board mentions neither `oldPath` nor - for a rename -
+    /// `titleChange.old`, which is the "nothing to write here" case both callers skip.
+    private func repointedDocument(
+        _ document: CanvasDocument,
+        from oldPath: String, to newPath: String,
+        titleChange: (old: String, new: String)?
+    ) -> CanvasDocument? {
+        var document = document
+        var changed = false
+        for index in document.nodes.indices {
+            switch document.nodes[index].kind {
+            case .file(let path, let subpath) where path == oldPath:
+                document.nodes[index].kind = .file(path: newPath, subpath: subpath)
+                changed = true
+            case .text(let body):
+                // A card has no `related:` frontmatter to preserve, so this must not run
+                // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
+                // otherwise an unrelated quoted bullet line that happens to fold-match the
+                // old title would be silently rewritten too.
+                guard let titleChange,
+                      let updated = NoteRename.rewritingLinks(
+                          in: body, from: titleChange.old, to: titleChange.new,
+                          includeQuotedRelated: false
+                      )
+                else { continue }
+                document.nodes[index].kind = .text(updated)
+                changed = true
+            default:
+                continue
+            }
+        }
+        return changed ? document : nil
     }
 
     /// Moves a note to the Finder's trash, and reports which notes now link to
@@ -380,4 +373,15 @@ struct NoteFileOperations {
     private func exists(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
     }
+}
+
+extension CharacterSet {
+    /// The set every vault-relative path is trimmed with, so a leading or trailing
+    /// slash never makes two spellings of one path. Held once rather than built at each
+    /// call site: `boardPaths()` trims inside a walk of the whole vault. Declared in
+    /// this file because it is one of the few under `Sources/Vault` that `perg` and
+    /// `pergamenum-mcp` compile too (`sharedSources`), so the app-only callers -
+    /// `FolderFileOperations`, `BoardFileOperations`, `VaultController` - can reach it
+    /// while the connector builds still see the declaration they need.
+    static let pathSlashes = CharacterSet(charactersIn: "/")
 }

@@ -90,7 +90,7 @@ enum MarkdownStyler {
         /// once rather than twice.
         case tableRun
         /// A whole `pergamenum-view` fence's source run - opening backticks through
-        /// closing ones, inclusive - emitted by `viewBlockRuns(in:outside:)` below
+        /// closing ones, inclusive - emitted by `viewBlockRuns(outside:)` below
         /// (ADR-0033 §D1; plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`,
         /// Task 1). **Closed fences only**: an unclosed one at the end of a note yields no
         /// span at all, so typing the opening backticks never takes the rest of the note
@@ -137,7 +137,7 @@ enum MarkdownStyler {
         result.append(contentsOf: tableSpans(in: text, from: bodyStart, outside: fences))
         // After every `.codeBlock` span above, so a `.viewBlockRun` wins on overlap
         // (ADR-0033 §D14) - `spans(in:)`'s own header rule that later spans win.
-        result.append(contentsOf: viewBlockRuns(in: text, outside: fences))
+        result.append(contentsOf: viewBlockRuns(outside: fences))
         return result
     }
 
@@ -476,7 +476,6 @@ enum MarkdownStyler {
     /// does, since a real closing fence line sits after the body. The span does not read
     /// `render:` at all; which renderer a fence names is Task 5's concern.
     private static func viewBlockRuns(
-        in text: String,
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         fences
@@ -491,15 +490,19 @@ enum MarkdownStyler {
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
-        for link in WikilinkParser.links(in: String(text[start...])) {
+        // The slice and the base index are the same for every link in the note, and both
+        // are a walk over the whole text: built here once rather than four times per link,
+        // which is what the shift below used to cost.
+        let slice = String(text[start...])
+        let offset = text.distance(from: text.startIndex, to: start)
+        let sliceStart = text.index(text.startIndex, offsetBy: offset)
+        for link in WikilinkParser.links(in: slice) {
             // The parser worked on a slice; shift its indices back onto the full text.
-            let offset = text.distance(from: text.startIndex, to: start)
-            let sliceStart = text.index(text.startIndex, offsetBy: offset)
-            let lower = text.index(sliceStart, offsetBy: String(text[start...]).distance(
-                from: String(text[start...]).startIndex, to: link.range.lowerBound
+            let lower = text.index(sliceStart, offsetBy: slice.distance(
+                from: slice.startIndex, to: link.range.lowerBound
             ))
-            let upper = text.index(sliceStart, offsetBy: String(text[start...]).distance(
-                from: String(text[start...]).startIndex, to: link.range.upperBound
+            let upper = text.index(sliceStart, offsetBy: slice.distance(
+                from: slice.startIndex, to: link.range.upperBound
             ))
 
             // `[[Curva]]` written inside a code fence is a wikilink in an example, not a
@@ -731,11 +734,14 @@ private func listMarkerLength(
 }
 
 private func taskMarker(in line: some StringProtocol) -> (length: Int, state: TaskItem.State)? {
-    guard line.count >= 5, let first = line.first, first == "-" || first == "*" else { return nil }
+    guard let first = line.first, first == "-" || first == "*" else { return nil }
     let after = line.dropFirst()
-    guard after.hasPrefix(" ["), after.count >= 4 else { return nil }
-    let marker = Array(after)[2]
-    guard Array(after)[3] == "]" else { return nil }
+    // `!after.dropFirst(3).isEmpty` is `after.count >= 4`, which is `line.count >= 5`: the
+    // same two length conditions, without walking a whole line to count it, and without the
+    // two `Array(after)` copies the two marker characters used to be read through.
+    guard after.hasPrefix(" ["), !after.dropFirst(3).isEmpty else { return nil }
+    let box = after.dropFirst(2)
+    guard let marker = box.first, box.dropFirst().first == "]" else { return nil }
     let state: TaskItem.State = switch marker {
     case "x", "X": .done
     case ">": .rescheduled

@@ -155,7 +155,7 @@ extension NoteTextView.Coordinator {
     /// area under the source line.
     func openTransclusion(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard !lastRenditions.isEmpty else { return false }
-        return decoration(at: point, in: textView) { (fragment: TranscludedLineFragment) in
+        return decoration(in: textView) { (fragment: TranscludedLineFragment) in
             guard let rendition = fragment.rendition,
                   fragment.renditionFrame.contains(Self.inContainer(point, of: textView))
             else { return false }
@@ -176,7 +176,7 @@ extension NoteTextView.Coordinator {
     /// text* the heading is rather than *which position it holds in some earlier scan*.
     func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard decorations.isFolding, let onToggleFold = parent.onToggleFold else { return false }
-        return decoration(at: point, in: textView) { (fragment: FoldedHeadingFragment) in
+        return decoration(in: textView) { (fragment: FoldedHeadingFragment) in
             guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView))
             else { return false }
             onToggleFold(fragment.headingOffset)
@@ -193,7 +193,6 @@ extension NoteTextView.Coordinator {
     /// instantiates `Fragment` as the base class itself and needs this from outside the
     /// file.
     func decoration<Fragment: NSTextLayoutFragment>(
-        at point: CGPoint,
         in textView: NSTextView,
         claimedBy claim: (Fragment) -> Bool
     ) -> Bool {
@@ -212,7 +211,7 @@ extension NoteTextView.Coordinator {
     /// in the view's; between them sits `textContainerInset`, 24 by 20 here. The first
     /// version of the transclusion click compared the two directly, so the containment test
     /// could not succeed anywhere on the page. Not `private`, for the same reason as
-    /// `decoration(at:in:claimedBy:)` above: `selectEmbed(at:in:)` needs the same
+    /// `decoration(in:claimedBy:)` above: `selectEmbed(at:in:)` needs the same
     /// conversion rather than a second one that could drift from it.
     static func inContainer(_ point: CGPoint, of textView: NSTextView) -> CGPoint {
         let origin = textView.textContainerOrigin

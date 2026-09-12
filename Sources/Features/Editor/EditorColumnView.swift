@@ -55,6 +55,17 @@ struct EditorColumnView: View {
     /// (swipe, Esc) drives the same binding through `.sheet(item:)` and needs no separate
     /// handling.
     @State var editingViewQuery: ViewQueryEditRequest?
+    /// The `[[` completion pools handed to the text view: every note's title and every
+    /// board's vault-relative path.
+    ///
+    /// Fetched once per scan rather than in `editing(_:)`, which `body` calls: both were
+    /// computed inline there, so every keystroke sorted the whole index *and* walked the
+    /// whole vault on disk (`CanvasStore.allBoards()` is uncached). Refreshed on
+    /// `scanGeneration`, the same trigger the note tree and `TasksView.boards` rebuild on -
+    /// a note created in the app rescans (`VaultController+Notes.swift`), so the pool is
+    /// as fresh as the sidebar beside it.
+    @State var noteTitles: [String] = []
+    @State var boardTitles: [String] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +87,12 @@ struct EditorColumnView: View {
             }
         }
         .background(theme.color(.backgroundPrimary))
+        // On the column rather than on the editor: it runs once per appearance and once per
+        // scan, never per keystroke, which is the whole point of caching the two pools.
+        .task(id: vault.scanGeneration) {
+            noteTitles = vault.index.allNotes.map(\.title)
+            boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+        }
         // Anywhere in the column, not only on the tab bar: clicking into a note is how a person
         // says which half they are working in, and the panes around the editor follow it.
         .contentShape(Rectangle())

@@ -138,7 +138,7 @@ extension NoteTextView.Coordinator {
     /// is already in the text container's - the same two-space arithmetic
     /// `TranscludedLineFragment.renditionFrame` and
     /// `FoldedHeadingFragment.badgeFrame(at:)` already do, by adding a fragment-relative
-    /// offset to a container-relative origin. `decoration(at:in:claimedBy:)` is reused
+    /// offset to a container-relative origin. `decoration(in:claimedBy:)` is reused
     /// rather than walked again by hand: every fragment here is a plain
     /// `NSTextLayoutFragment` (Step 3 draws an embed without a custom subclass), so the
     /// generic parameter is instantiated as the base class itself, and the claim closure
@@ -149,7 +149,7 @@ extension NoteTextView.Coordinator {
         else { return nil }
         let text = textView.string as NSString
         var hit: NSRange?
-        _ = decoration(at: point, in: textView) { (fragment: NSTextLayoutFragment) in
+        _ = decoration(in: textView) { (fragment: NSTextLayoutFragment) in
             let paragraphStart = content.offset(
                 from: content.documentRange.location, to: fragment.rangeInElement.location
             )

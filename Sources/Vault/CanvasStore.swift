@@ -167,6 +167,18 @@ struct CanvasStore: Sendable {
         walk().folders
     }
 
+    /// Both lists at once, for the caller that needs both - exactly what `allBoards()`
+    /// and `allFolders()` each return, same order and same exclusions, since each of
+    /// them is one field of this pair.
+    ///
+    /// The Workspace tree asked for both in a row and so enumerated the vault twice for
+    /// the one answer the walk below already computes in a single pass. Kept beside the
+    /// two single-answer accessors rather than replacing them: every other caller wants
+    /// one list and would otherwise have to discard the other.
+    func foldersAndBoards() -> (folders: [String], boards: [String]) {
+        walk()
+    }
+
     /// One walk, both answers, because they are the same walk: `allBoards()` passed
     /// every directory and discarded it, and those directories are exactly what
     /// `allFolders()` needs. A second enumerator would be a second exclusion rule to
@@ -187,12 +199,14 @@ struct CanvasStore: Sendable {
 
         var folders: [String] = []
         var boards: [String] = []
+        // Built once, not per entry: the walk asks for the same two keys every time.
+        let keySet = Set(keys)
         while let url = enumerator.nextObject() as? URL {
             // Deliberate fallback (PG-039): resourceValues can fail on a transient race
             // with the file system, and the URL's own last path component is the same
             // display name the volume would have reported anyway - display only, no
             // write depends on this value.
-            let values = try? url.resourceValues(forKeys: Set(keys))
+            let values = try? url.resourceValues(forKeys: keySet)
             let name = values?.name ?? url.lastPathComponent
 
             if values?.isDirectory == true {

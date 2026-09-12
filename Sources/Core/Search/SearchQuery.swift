@@ -268,10 +268,13 @@ struct SearchQuery: Equatable, Sendable {
         return tokens
     }
 
+    /// Held once rather than built per fold: this runs per needle, per note, per line.
+    private static let foldingLocale = Locale(identifier: "it_IT")
+
     /// Lowercased and accent-folded, so "trasmissibilita" finds "trasmissibilità".
     static func fold(_ text: String) -> String {
         text.folding(options: [.diacriticInsensitive, .caseInsensitive],
-                     locale: Locale(identifier: "it_IT"))
+                     locale: foldingLocale)
     }
 }
 

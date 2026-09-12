@@ -230,7 +230,7 @@ final class FormattingTextView: NSTextView {
             title: "Apri collegamento", action: #selector(openLinkFromMenu(_:)), keyEquivalent: ""
         )
         item.target = self
-        item.representedObject = PendingLinkClick(url: url, characterIndex: index)
+        item.representedObject = PendingLinkClick(url: url)
         menu.insertItem(item, at: 0)
         menu.insertItem(.separator(), at: 1)
         return menu
@@ -249,7 +249,6 @@ final class FormattingTextView: NSTextView {
     /// own copy of `CompletingTextView+Pasteboard.swift`'s private `PendingLinkClick`.
     private struct PendingLinkClick {
         let url: URL
-        let characterIndex: Int
     }
 
     /// Whether a folded heading's badge is under `point`, and toggling its section when one is.
@@ -261,7 +260,7 @@ final class FormattingTextView: NSTextView {
     /// that also stopped it being picked up. The heading is still reachable from «Ripiega titoli»
     /// in both states, which is the command this only ever shadows.
     ///
-    /// The fragment walk below re-states `NoteTextView+Transclusion.decoration(at:in:claimedBy:)`
+    /// The fragment walk below re-states `NoteTextView+Transclusion.decoration(in:claimedBy:)`
     /// rather than extracting it (ADR-0028 §D9): that file is the note editor's, outside this
     /// chain's edits, and a shared helper would mean editing it. `textContainerOrigin` is taken off
     /// the point for the reason `NoteTextView+Transclusion.inContainer(_:of:)` exists at all - a

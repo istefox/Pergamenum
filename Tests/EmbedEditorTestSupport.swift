@@ -1,5 +1,4 @@
 import AppKit
-import Testing
 @testable import Pergamenum
 
 /// The scaffolding every drawn-embed editor suite shares: a temporary vault root, a real

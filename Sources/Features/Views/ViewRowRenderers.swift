@@ -86,8 +86,6 @@ struct ViewTableRenderer: View {
 /// One cell. Tags are chips wherever they appear, because a tag in a table and a tag in the
 /// sidebar are the same thing; everything else is the one string `ViewValueText` gives.
 struct ViewCell: View {
-    @Environment(\.theme) private var theme
-
     let field: ViewField
     let row: ViewResult.Row
     var isFirst = false

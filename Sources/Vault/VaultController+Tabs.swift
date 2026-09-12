@@ -124,7 +124,6 @@ extension VaultController {
             let tab = columns[focusedColumnIndex].tabs[index]
             columns[focusedColumnIndex].tabs[index] = tab.showing(note)
             columns[focusedColumnIndex].activeID = tab.id
-            rememberTabs()
         } else {
             var tab = NoteTab(note: note)
             tab.isPreview = true
@@ -250,13 +249,6 @@ extension VaultController {
               let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
         else { return }
         change(&columns[focusedColumnIndex].tabs[index])
-    }
-
-    /// Closes the note in the editor, for when the file it shows is no longer there.
-    func closeOpenNote() {
-        guard columns.indices.contains(focusedColumnIndex), let tab = focusedTab else { return }
-        columns[focusedColumnIndex].tabs.removeAll { $0.id == tab.id }
-        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.last?.id
     }
 
     /// Replaces the open note wholesale, keeping the tab and everything it knows.

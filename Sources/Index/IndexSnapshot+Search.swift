@@ -25,7 +25,9 @@ extension IndexSnapshot {
     func notes(carryingAll tags: Set<Tag>) -> [NoteRecord] {
         guard !tags.isEmpty else { return [] }
         return notes.values
-            .filter { tags.isSubset(of: Set($0.frontmatter.tags)) }
+            // Same truth value as `tags.isSubset(of: Set(record.frontmatter.tags))`, without
+            // building a Set of every note's tags: a note carries a handful of them.
+            .filter { record in tags.allSatisfy { record.frontmatter.tags.contains($0) } }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 

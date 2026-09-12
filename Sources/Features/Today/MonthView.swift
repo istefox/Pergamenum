@@ -121,32 +121,9 @@ struct MonthView: View {
         return ItalianHolidays.kind(of: day, patron: vault.settings.patronSaint).token ?? .textSecondary
     }
 
-    @ViewBuilder
+    /// The same menu the week grid draws, once (`DayColumnMenu`).
     private func menu(for column: DayColumn) -> some View {
-        Button("Vai a questo giorno") { controller.show(column.day) }
-        Button("Apri nella scala Giorno") {
-            controller.show(column.day)
-            controller.scale = .day
-        }
-        Button(column.hasNote ? "Apri la daily note" : "Crea la daily note") {
-            controller.show(column.day)
-            controller.openDailyNote()
-        }
-        Divider()
-        // The day first, then the flag, in both closures: the composer reads
-        // `controller.day`, so setting the flag on the anchor day would open a sheet about
-        // a different date than the one right-clicked.
-        CalendarDayMenuItems(
-            day: column.day,
-            onNewEvent: { day in
-                controller.show(day)
-                controller.isCreatingEvent = true
-            },
-            onNewReminder: { day in
-                controller.show(day)
-                controller.isCreatingReminder = true
-            }
-        )
+        DayColumnMenu(column: column, controller: controller)
     }
 
     /// The same four destinations as the week: a cell is smaller, not different.

@@ -303,7 +303,6 @@ struct RenameWorkspaceSheet: View {
 /// collision has no `ConformanceText` case because nothing else in the app blocks on one
 /// inline, so it gets its sentence here.
 private struct WorkspaceNameProblems: View {
-    @Environment(\.theme) private var theme
     let state: WorkspaceNameField.State
     let parent: FolderPath
 

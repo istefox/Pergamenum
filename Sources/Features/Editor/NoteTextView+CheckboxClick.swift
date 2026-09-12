@@ -64,7 +64,7 @@ extension NoteTextView.Coordinator {
     ///
     /// Restated from `FormattingTextView.checkboxStateOffset(in:)` rather than shared: that file
     /// is the Workspace card's, outside this feature's edits, and a shared helper would mean
-    /// editing it (the same call `NoteTextView+Transclusion.decoration(at:in:claimedBy:)`'s own
+    /// editing it (the same call `NoteTextView+Transclusion.decoration(in:claimedBy:)`'s own
     /// comment makes about `claimsFoldBadge`).
     private static func checkboxStateOffset(in paragraph: String) -> Int? {
         let indent = paragraph.prefix { $0 == " " || $0 == "\t" }.count

@@ -14,11 +14,20 @@ extension SearchQuery {
         /// True when the query cannot be satisfied by anything, because a pattern in it does
         /// not compile.
         private let refusesEverything: Bool
+        /// The needles already folded, for the same reason the patterns are already
+        /// compiled: folding them again per note (and, in `excerpt`, per line) is work
+        /// whose answer never changes for the length of a search.
+        private let foldedWords: [String]
+        private let foldedPhrases: [String]
+        private let foldedNegated: [String]
 
         init(_ query: SearchQuery) {
             self.query = query
             required = query.patterns.compactMap(Self.compile)
             forbidden = query.negatedPatterns.compactMap(Self.compile)
+            foldedWords = query.words.map(SearchQuery.fold)
+            foldedPhrases = query.phrases.map(SearchQuery.fold)
+            foldedNegated = (query.negatedWords + query.negatedPhrases).map(SearchQuery.fold)
             refusesEverything = !query.invalidPatterns.isEmpty
                 || required.count != query.patterns.count
                 || forbidden.count != query.negatedPatterns.count
@@ -44,10 +53,9 @@ extension SearchQuery {
         private func matchesText(_ text: String, title: String) -> Bool {
             let haystack = SearchQuery.fold(text + " " + title)
 
-            for needle in query.words + query.phrases
-            where !haystack.contains(SearchQuery.fold(needle)) { return false }
-            for needle in query.negatedWords + query.negatedPhrases
-            where haystack.contains(SearchQuery.fold(needle)) { return false }
+            for needle in foldedWords where !haystack.contains(needle) { return false }
+            for needle in foldedPhrases where !haystack.contains(needle) { return false }
+            for needle in foldedNegated where haystack.contains(needle) { return false }
 
             for expression in required where !expression.hasMatch(in: text) { return false }
             for expression in forbidden where expression.hasMatch(in: text) { return false }
@@ -61,10 +69,15 @@ extension SearchQuery {
             for path in query.paths where !pathHaystack.contains(path) { return false }
             for path in query.negatedPaths where pathHaystack.contains(path) { return false }
 
-            let noteTags = Set(record.frontmatter.tags.map { $0.description.lowercased() })
-                .union(record.tasks.flatMap { $0.tags.map { $0.description.lowercased() } })
-            for tag in query.tags where !noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
-            for tag in query.negatedTags where noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
+            // The set is the note's whole tag vocabulary, frontmatter plus tasks, and it is
+            // consulted by these two loops alone - a query asking about no tag at all must
+            // not pay for building it.
+            if !query.tags.isEmpty || !query.negatedTags.isEmpty {
+                let noteTags = Set(record.frontmatter.tags.map { $0.description.lowercased() })
+                    .union(record.tasks.flatMap { $0.tags.map { $0.description.lowercased() } })
+                for tag in query.tags where !noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
+                for tag in query.negatedTags where noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
+            }
 
             if let modified = query.modified, !modified.admits(CalendarDate(record.modifiedAt)) {
                 return false
@@ -83,12 +96,12 @@ extension SearchQuery {
         /// A query made only of `is:starred`, `modified:` or `orphan:` has nothing to point
         /// at inside the note and returns an empty string rather than an arbitrary line.
         func excerpt(in text: String) -> String {
-            let needles = query.phrases + query.words
-            guard !needles.isEmpty || !required.isEmpty else { return "" }
+            guard !foldedPhrases.isEmpty || !foldedWords.isEmpty || !required.isEmpty else { return "" }
 
             for line in text.components(separatedBy: "\n") {
                 let folded = SearchQuery.fold(line)
-                let hit = needles.contains { folded.contains(SearchQuery.fold($0)) }
+                let hit = foldedPhrases.contains { folded.contains($0) }
+                    || foldedWords.contains { folded.contains($0) }
                     || required.contains { $0.hasMatch(in: line) }
                 if hit { return line.trimmingCharacters(in: .whitespaces) }
             }

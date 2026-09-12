@@ -91,11 +91,6 @@ final class DayController {
         reload()
     }
 
-    func move(by days: Int) {
-        show(day.adding(days: days))
-        lastDayMoveWasDrift = true
-    }
-
     /// Moves by one unit of the scale being shown: a day, a week, a month.
     ///
     /// What the toolbar's two chevrons and the Calendario menu's `Cmd+←` both call. A
@@ -133,10 +128,11 @@ final class DayController {
 
         let eventsByDay = store.events(from: first, through: last)
         let tasks = vault.index.allTasks.filter { showsCompleted || $0.state.isOpen }
-        let notePaths = Set(vault.index.allNotes.map(\.relativePath))
 
         return days.map { date in
-            let hasNote = notePaths.contains(vault.dailyNotePath(for: date))
+            // The index is already a dictionary keyed by relative path, so the daily
+            // note's presence is one lookup - no Set of every path in the vault.
+            let hasNote = vault.index.note(at: vault.dailyNotePath(for: date)) != nil
             return DayColumn(
                 day: date,
                 entries: WeekPlan.entries(

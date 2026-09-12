@@ -165,10 +165,14 @@ extension CalendarDate {
 extension Calendar {
     /// The calendar every date computation here uses: dates in this app are days, not
     /// instants, so the zone has to be fixed or "today" changes with the machine.
-    static var gregorianUTC: Calendar {
+    ///
+    /// A `let`, not a computed `var`: every value in it is fixed, and this is read on
+    /// every date computation the app makes. `Calendar` is a value type, so a caller
+    /// that wants a different first weekday still gets its own copy to mutate.
+    static let gregorianUTC: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
         calendar.locale = Locale(identifier: "it_IT")
         return calendar
-    }
+    }()
 }

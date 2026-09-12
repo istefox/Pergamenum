@@ -43,12 +43,6 @@ extension VaultSession {
         return try body()
     }
 
-    /// The id of the gesture that just closed, for a caller that has to offer to undo it.
-    ///
-    /// Read inside the transaction, because outside it there is nothing to read. A caller that
-    /// wants it does `var id: String?; transaction("…") { id = openOperation; … }`.
-    var openOperation: String? { currentOperation }
-
     // MARK: The two shape changes
 
     /// Moves a file and records that it moved, so `undo` can move it back.

@@ -16,12 +16,16 @@ import Foundation
 //   5. an empty result is never a fingerprint: it matches nothing, including another empty
 //      one - the guard against a punctuation-only quote suppressing every other such quote.
 enum PlaudQuote {
+    /// Step 2's locale, held once: a fingerprint is computed for every quote of every
+    /// proposal and again for every task line already in the note.
+    private static let posix = Locale(identifier: "en_US_POSIX")
+
     static func fingerprint(_ raw: String) -> String {
         let folded = raw
             .precomposedStringWithCanonicalMapping
             .folding(
                 options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
+                locale: posix
             )
         // Step 3 is also what makes `TranscriptNote.sanitizedQuote` invisible here (ADR §D10):
         // the five characters it replaces with a space were going to become one anyway.

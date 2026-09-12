@@ -7,20 +7,10 @@ import SwiftUI
 /// the ones you keep to hand, today's daily note, a section inside a long note, and the note
 /// that does not exist yet.
 ///
-/// **Two callers, two questions.** The note pane asks "where do I go", and every row below is
-/// an answer. `TasksView` asks "which note does this task link to", and only an existing note
-/// is one - a heading, a daily note or a note that has still to be written would each mean
-/// something the caller cannot use. `Mode` is that difference, and it is the reason this view
-/// hands back a `Choice` instead of acting: the switcher knows what was picked, not what the
-/// caller meant by asking.
+/// **One caller, one question.** The note pane asks "where do I go", and every row below is
+/// an answer. It is the reason this view hands back a `Choice` instead of acting: the switcher
+/// knows what was picked, not what the caller meant by asking.
 struct QuickSwitcher: View {
-    enum Mode {
-        /// The note pane: recents, starred, the daily note, headings and «crea la nota».
-        case navigate
-        /// A picker for something else. Existing notes only.
-        case pick
-    }
-
     enum Choice: Equatable {
         case note(String)
         /// A heading inside a note: the range the editor scrolls to and the position in the
@@ -34,21 +24,22 @@ struct QuickSwitcher: View {
     @Environment(VaultController.self) private var vault
     @Environment(\.dismiss) private var dismiss
 
-    var mode: Mode = .pick
     let onChoose: (Choice) -> Void
 
     @State private var query = ""
     @State private var selection: String?
 
     var body: some View {
+        // Once per render, not once per reader: `groups` runs an index search, and for a
+        // `Nota#sez` query it also reads the note's whole text and walks its outline -
+        // `list` asked for it, then handed to `rows`, which asked again.
+        let groups = self.groups
         VStack(spacing: 0) {
             field
             Divider()
-            list
-            if mode == .navigate {
-                Divider()
-                legend
-            }
+            list(groups)
+            Divider()
+            legend
         }
         .frame(width: 560, height: 380)
         .background(theme.color(.surfaceCard))
@@ -56,8 +47,7 @@ struct QuickSwitcher: View {
     }
 
     private var field: some View {
-        TextField(mode == .navigate ? "Vai alla nota, o a una sezione con #…" : "Vai alla nota…",
-                  text: $query)
+        TextField("Vai alla nota, o a una sezione con #…", text: $query)
             .textFieldStyle(.plain)
             // Named, because the UI suite used to find this field by its placeholder and the
             // placeholder is prose: it grew «, o a una sezione con #…» when Quick Open learned
@@ -78,17 +68,17 @@ struct QuickSwitcher: View {
     /// Says what is missing rather than showing an empty box under a heading that promises
     /// rows - the same refusal the slash menu and the outline pane make.
     @ViewBuilder
-    private var list: some View {
+    private func list(_ groups: [Group]) -> some View {
         if groups.allSatisfy(\.rows.isEmpty) {
             Text(headingQuery == nil ? "Nessuna nota." : "Nessuna sezione con questo nome.")
                 .themedText(.body, color: .textTertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            rows
+            rows(groups)
         }
     }
 
-    private var rows: some View {
+    private func rows(_ groups: [Group]) -> some View {
         List(selection: $selection) {
             ForEach(groups) { group in
                 Section {
@@ -151,7 +141,7 @@ struct QuickSwitcher: View {
         if let heading = headingQuery { return headingGroups(heading) }
 
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty, mode == .navigate { return startingPoints }
+        if trimmed.isEmpty { return startingPoints }
 
         var groups = [Group(id: "notes", header: nil, rows: noteRows(matching: trimmed))]
         if let creation = creationRow(for: trimmed) {
@@ -198,7 +188,7 @@ struct QuickSwitcher: View {
     /// search that has not narrowed yet, and proposing to create a note called `vibr` there
     /// would be proposing a typo.
     private func creationRow(for title: String) -> Row? {
-        guard mode == .navigate, !title.isEmpty, !title.contains("#"),
+        guard !title.isEmpty, !title.contains("#"),
               vault.index.resolve(title: title).isEmpty
         else { return nil }
         return Row(id: "create:\(title)", icon: "plus", title: "Crea la nota «\(title)»",
@@ -210,7 +200,7 @@ struct QuickSwitcher: View {
     /// `Nota#sez` splits into the note and the section. `#sez` on its own means the note that
     /// is open, which is how you jump inside a long one without naming it again.
     private var headingQuery: (path: String, needle: String)? {
-        guard mode == .navigate, let hash = query.firstIndex(of: "#") else { return nil }
+        guard let hash = query.firstIndex(of: "#") else { return nil }
         let notePart = String(query[query.startIndex..<hash]).trimmingCharacters(in: .whitespaces)
         let needle = String(query[query.index(after: hash)...]).trimmingCharacters(in: .whitespaces)
         let path = notePart.isEmpty

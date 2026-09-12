@@ -80,14 +80,19 @@ enum MembershipRule {
         if !dossier.keywords.isEmpty {
             let counterparts = Set(dossier.counterparts.map { $0.lowercased() })
             let keywords = dossier.keywords.map { $0.lowercased() }
+            // The two membership tests below run once per message in the store; the array
+            // `autoFollowed` stays the answer, because its order is what the caller writes
+            // into the dossier, and the Set beside it only answers "already seen".
+            let followed = Set(dossier.conversations)
+            var autoFollowedIDs = Set<Int>()
             for row in everyMessage(in: store) where !row.deleted {
                 guard touches(row, counterparts: counterparts) else { continue }
                 let subject = (row.subject ?? "").lowercased()
                 guard keywords.contains(where: { !$0.isEmpty && subject.contains($0) }) else { continue }
                 collected.append(row)
                 if let conversation = row.conversationID,
-                   !dossier.conversations.contains(conversation),
-                   !autoFollowed.contains(conversation) {
+                   !followed.contains(conversation),
+                   autoFollowedIDs.insert(conversation).inserted {
                     autoFollowed.append(conversation)
                 }
             }
@@ -185,12 +190,17 @@ enum MembershipRule {
         }
         // Newest conversation first, and the id as a tiebreak so the tray's order is a
         // function of its contents rather than of a dictionary's iteration.
-        return entries.sorted { left, right in
-            let leftDate = left.messages.map(date).max() ?? .distantPast
-            let rightDate = right.messages.map(date).max() ?? .distantPast
-            if leftDate != rightDate { return leftDate > rightDate }
-            return left.conversationID < right.conversationID
-        }
+        //
+        // Each entry's newest date is taken once and carried beside it: read from inside
+        // the comparator, a conversation's whole message list is walked again on every
+        // comparison it takes part in.
+        return entries
+            .map { (newest: $0.messages.map(date).max() ?? .distantPast, entry: $0) }
+            .sorted { left, right in
+                if left.newest != right.newest { return left.newest > right.newest }
+                return left.entry.conversationID < right.entry.conversationID
+            }
+            .map(\.entry)
     }
 
     enum ConversationRecovery: Equatable, Sendable {

@@ -102,7 +102,11 @@ struct PraticheListColumn: View {
     }
 
     private var list: some View {
-        List(selection: selection) {
+        // Filtered, grouped and sorted once per redraw, the way `TasksView+List` binds
+        // `rolled`: every read of `grouped` is a pass over every pratica plus two sorts,
+        // and the open rows, the «Chiuse» heading and its rows all want the same answer.
+        let grouped = self.grouped
+        return List(selection: selection) {
             ForEach(grouped.open) { group in
                 clientRow(group)
                 if !collapsedClients.contains(group.client) {
@@ -112,7 +116,7 @@ struct PraticheListColumn: View {
                 }
             }
             if !grouped.closed.isEmpty {
-                closedRow
+                closedRow(count: grouped.closed.count)
                 if isShowingClosed {
                     ForEach(grouped.closed) { pratica in
                         praticaRow(pratica, depth: 1)
@@ -137,11 +141,11 @@ struct PraticheListColumn: View {
         .accessibilityIdentifier("pratiche-client-\(group.client)")
     }
 
-    private var closedRow: some View {
+    private func closedRow(count: Int) -> some View {
         HStack(spacing: theme.spacing(.xs)) {
             Image(systemName: isShowingClosed ? "chevron.down" : "chevron.right")
                 .themedText(.caption, color: .textTertiary)
-            Text("Chiuse \(grouped.closed.count)").themedText(.caption, color: .textSecondary)
+            Text("Chiuse \(count)").themedText(.caption, color: .textSecondary)
             Spacer()
         }
         .contentShape(Rectangle())

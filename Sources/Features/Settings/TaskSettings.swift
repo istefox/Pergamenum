@@ -5,7 +5,6 @@ import SwiftUI
 /// Its own type because `SettingsView` is one tab away from the size SwiftLint stops
 /// at, and a tab is a self-contained piece of it.
 struct TaskSettings: View {
-    @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
     var body: some View {

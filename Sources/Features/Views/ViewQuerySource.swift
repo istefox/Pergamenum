@@ -1,5 +1,3 @@
-import SwiftUI
-
 /// Where a `pergamenum-view` block gets its rows (ADR-0009 §D4).
 ///
 /// The same shape `TransclusionSource` has, and for the same reason: the block is drawn by

@@ -297,7 +297,7 @@ struct BoardFileOperations {
     /// carried in, removed - `FolderFileOperations.normalized`'s trim, applied to a file
     /// path so `/A/x.canvas` and `A/x.canvas` name the same board here too.
     private static func normalized(_ relativePath: String) -> String {
-        relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        relativePath.trimmingCharacters(in: .pathSlashes)
     }
 
     private func exists(_ relativePath: String) -> Bool {

@@ -354,10 +354,17 @@ struct IndexSnapshot: Sendable {
         })
     }
 
-    /// Whole days from one date to another, both at midnight.
-    private func daysBetween(_ from: CalendarDate, _ to: CalendarDate) -> Int {
+    /// The calendar `daysBetween` measures in, built once: it is called from inside the
+    /// filter closures of the task views, so once per task per pass.
+    private static let dayCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar
+    }()
+
+    /// Whole days from one date to another, both at midnight.
+    private func daysBetween(_ from: CalendarDate, _ to: CalendarDate) -> Int {
+        let calendar = Self.dayCalendar
         let start = DateComponents(calendar: calendar, year: from.year, month: from.month, day: from.day).date
         let end = DateComponents(calendar: calendar, year: to.year, month: to.month, day: to.day).date
         guard let start, let end else { return .max }

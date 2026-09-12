@@ -55,8 +55,12 @@ extension WorkspaceBrowser {
         // The two file rules, rebuilt here with the rest of what the root decides rather
         // than on every access (see their declarations).
         canvasStore = vault.root.map { CanvasStore(root: $0) }
-        let boards = canvasStore?.allBoards() ?? []
-        folders = canvasStore?.allFolders() ?? []
+        // One call, not `allBoards()` then `allFolders()`: those two are the same walk
+        // (`CanvasStore.walk()`'s own header says so), and asking each in turn enumerated
+        // the whole vault twice per scan for a pair the walk already returns together.
+        let contents = canvasStore?.foldersAndBoards() ?? (folders: [], boards: [])
+        let boards = contents.boards
+        folders = contents.folders
         // Folders and boards, two lists and two kinds of row (ADR-0025 §D2). No naming
         // rule is asked any more: a board is a row because it is a file, not because a
         // folder is named after it. With no vault open both lists are empty and the

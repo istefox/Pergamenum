@@ -19,7 +19,7 @@ extension VaultController {
     /// Not `private`, since ADR-0026 §D10: "a folder move reuses `canOperateOnFolder`,
     /// whose guard is already written for exactly this".
     func canOperateOnFolder(_ relativePath: String) -> Bool {
-        let folder = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let folder = relativePath.trimmingCharacters(in: .pathSlashes)
         guard let note = openNote, note.hasUnsavedChanges,
               note.relativePath == folder || note.relativePath.hasPrefix("\(folder)/")
         else { return true }

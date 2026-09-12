@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// A drawn embed's resize handle: where it is, and the drag that starts on it (ADR-0019:
 /// "A drawn embed is resized by dragging it, and the size is written into the note"). Plan
@@ -7,7 +6,7 @@ import SwiftUI
 /// Tasks 5, 6 and 7.
 ///
 /// A `Coordinator` extension beside `NoteTextView+EmbedCaret.swift`, sharing its shape:
-/// `decoration(at:in:claimedBy:)` for the fragment walk,
+/// `decoration(in:claimedBy:)` for the fragment walk,
 /// `decorations.drawnEmbedRange(atParagraphStart:in:)` as the single "is a picture actually
 /// on screen right now" guard plus `guard case .drawn`, and
 /// `Coordinator.drawnPictureFrame(at:in:)` + `textContainerOrigin` to bring the picture and
@@ -58,7 +57,7 @@ extension NoteTextView.Coordinator {
         let text = textView.string as NSString
         let origin = textView.textContainerOrigin
         var grabbed: GrabbedEmbed?
-        _ = decoration(at: point, in: textView) { (fragment: NSTextLayoutFragment) in
+        _ = decoration(in: textView) { (fragment: NSTextLayoutFragment) in
             let paragraphStart = content.offset(
                 from: content.documentRange.location, to: fragment.rangeInElement.location
             )
