@@ -1,13 +1,16 @@
-<!-- project-tasks: prefix=PG lastId=149 -->
+<!-- project-tasks: prefix=PG lastId=151 -->
 # PROJECT TASKS
 
-Updated: 2026-09-12 · Open: 45 (P1: 3) · In progress: 0
+Updated: 2026-09-13 · Open: 47 (P1: 4) · In progress: 0
 
 ## GitHub Issues
 - [ ] `#188` Editor: clicking a wikilink/link never opens it (only .toolTip is set, never .link) <!-- src:github state:OPEN labels:bug,editor -->
 - [ ] `#191` Editor: a single click on a wikilink's visible target text needs a second click to reveal-on-caret <!-- src:github state:OPEN labels: -->
 ## Open Issues
 
+- [ ] `PG-150` **P1** [correctness, chain "vault write ordering"] ADR-0043 (follow-up to ADR-0041, decision only, not yet implemented) — the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload → `docs/adr/0043-vault-write-ordering-concurrency-races.md` <!-- src:session opened:2026-09-13 kind:feature runs:0 adr:0043 -->
+  - Found by an independent post-implementation review of the ADR-0041 chain (PR #254, merged 2026-09-13). Needs its own GitHub issue and, eventually, a dedicated `concept-to-code` chain — acceptance criteria per §D9 are forced-interleaving tests, never a green suite alone.
+- [ ] `PG-151` **P3** [architecture] Operator decision pending: add `Sources/Core/Vault/VaultBoundary.swift:VaultBoundary.url(for:)` to `.claude/protected-interfaces` — proposed by ADR-0041, deliberately deferred to "after this chain merges" (now true as of PR #254, 2026-09-13). The architect agent cannot write this entry itself; it is a manual operator action if wanted <!-- src:session opened:2026-09-13 kind:chore runs:0 adr:0041 -->
 - [ ] `PG-149` **P2** ADR-0042 (Pratiche inline image placeholders) merged to `main` via PR #250 (`f9dc424`) — implementation and full unit suite (2900/2900) verified green in-session; `scripts/uitests.sh` run (118 tests, 3 failures, all pre-existing and unrelated — see `PG-108` and `testACornerGripCanStillBeGrabbedWhenZoomedOut`, no Pratiche/inline-image test among them) <!-- src:session opened:2026-09-12 kind:fix runs:1 gh:#250 -->
   - Merged first, manual hand-check deferred deliberately to a Sparkle-updated real build (a DerivedData Debug build never keeps Full Disk Access for Apple Mail across rebuilds — TCC ties the grant to the app's on-disk code identity, which changes every rebuild). Still to do once the release lands: the ADR-0042 section of `Pergamenum - checklist verifica Pratiche allegati (ADR-0040).txt` (10 items, none yet run — take a backup of the pratica folder first).
 - [ ] `PG-120` **P3** `MailStoreReaderTests.publishReportsMailIsWritingOnATornCopyAfterOneRetry` failed once during the full `PergamenumTests` suite (Stop-hook run), not reproduced in isolation — `Tests/MailStoreReaderTests.swift:139` <!-- src:session opened:2026-09-11 kind:fix runs:2 gh:#204 -->
