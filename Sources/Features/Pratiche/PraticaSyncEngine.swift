@@ -442,6 +442,10 @@ actor PraticaSyncEngine {
         /// records (ADR §D23.1). `conversationID` is `nil` for a row Mail did not thread.
         var rowID: Int
         var conversationID: Int?
+        /// What this decode judged for every inline image it resolved this sync
+        /// (ADR-0042 §D8) - `commit` hands it to `MessageInlineImagePatch` when the
+        /// on-disk note is still waiting on some of these ids.
+        var inlineResolutions: [String: MessageInlineImagePatch.Resolution]
     }
 
     /// Reads and decodes one message. Writes nothing, and answers `nil` for every
@@ -481,9 +485,11 @@ actor PraticaSyncEngine {
             // rather than removing it: every other message stays untouched.
             let isRequestedRegeneration = request.regenerating == messageID
             let hasPendingAttachments = !existing.document.frontmatter.pendingAttachmentNames.isEmpty
+            let hasPendingInlineImages = !existing.document.frontmatter.pendingInlineImages.isEmpty
             guard isRequestedRegeneration
                 || (existing.document.frontmatter.body == .pending && !isPending)
                 || hasPendingAttachments
+                || hasPendingInlineImages
             else { return nil }
         }
 
@@ -505,10 +511,16 @@ actor PraticaSyncEngine {
         // ADR-0040 §D3: placed names for parts `AttachmentIntegrity` rejected -
         // never hashed, never written, never handed to `place`.
         var pendingAttachmentNames: [String] = []
+        var pendingInlineImages: [String] = []
         var storeReferences: [MessageDocument.StoreReference] = []
         var newText: String
         var quotedHistory: String?
         var signature: String?
+        // ADR-0042 §D1/§D6: an inline image never becomes a pending *attachment* -
+        // `contentIDByOrdinal` records what a deferral token (planted in the body below)
+        // resolves back to, once render order is known after `QuoteSplitter.split`.
+        var inlineContentIDByOrdinal: [Int: String] = [:]
+        var inlineResolutions: [String: MessageInlineImagePatch.Resolution] = [:]
 
         if isPending {
             // R-15: a placeholder, never an empty body - a file with nothing in it
@@ -563,18 +575,22 @@ actor PraticaSyncEngine {
                         of: bytes, named: name, contentType: part.contentType
                     )
                     guard verdict == .usable else {
-                        pendingAttachmentNames.append(
-                            PraticaNaming.attachmentFileName(date: calendarDate, name: name)
-                        )
-                        // Same removal the decorative branch below performs, so the body
-                        // never ends up with an embed pointing nowhere.
-                        body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
+                        // ADR-0042 §D5 (R-03): a body that never mentions this id (most
+                        // often the `text/plain` alternative, which the HTML alternative's
+                        // `cid:` embeds never appear in) gets no placeholder, no pending
+                        // entry, no retry state at all - never a phantom "In attesa" pill
+                        // for a picture nobody will ever miss reading the note.
+                        guard MessageInlineImage.referencesContentID(contentID, in: body) else { continue }
+                        let token = MessageInlineImage.deferralToken(forPart: ordinal)
+                        body = MessageInlineImage.replacingReferences(to: contentID, in: body, with: token)
+                        inlineContentIDByOrdinal[ordinal] = contentID
                         continue
                     }
                     guard !InlineImageClassifier.isDecorative(bytes) else {
                         // R-10: a signature logo is not an attachment. The reference
                         // goes with it, or the body keeps a `cid:` pointing nowhere.
-                        body = body.replacingOccurrences(of: "cid:\(contentID)", with: "")
+                        body = MessageInlineImage.replacingReferences(to: contentID, in: body, with: "")
+                        inlineResolutions[contentID] = .dropped
                         continue
                     }
                     let placed = Self.place(
@@ -583,33 +599,29 @@ actor PraticaSyncEngine {
                     )
                     if let write = placed.write { writes.append(write) }
                     // Embedded rather than listed: an inline image belongs where the
-                    // sender put it (SPEC "Edge cases"). The whole Markdown image
-                    // construct `HTMLTextReducer.appendImage` wrote - `![alt](cid:…)`,
-                    // brackets and parens included - is replaced, not just the `cid:`
-                    // reference inside it: replacing the reference alone left the
-                    // image syntax around it in place, so the wikilink embed landed
-                    // wrapped in `![alt](…)` instead of standing on its own.
-                    let escapedContentID = NSRegularExpression.escapedPattern(for: contentID)
-                    while let range = body.range(
-                        of: #"!\[[^\]]*\]\(cid:\#(escapedContentID)\)"#,
-                        options: .regularExpression
-                    ) {
-                        body.replaceSubrange(range, with: "![[\(placed.fileName)]]")
-                    }
-                    // A bare `cid:` reference outside the Markdown image construct (a second
-                    // mention, or one the HTML reducer emitted unwrapped) still names the same
-                    // placed attachment - point it there too, or the embed above is replaced
-                    // while this one is silently dropped from the rendered note.
-                    body = body.replacingOccurrences(of: "cid:\(contentID)", with: "![[\(placed.fileName)]]")
+                    // sender put it (SPEC "Edge cases").
+                    body = MessageInlineImage.replacingReferences(
+                        to: contentID, in: body, with: "![[\(placed.fileName)]]"
+                    )
+                    inlineResolutions[contentID] = .embedded(fileName: placed.fileName)
 
                 case .textPlain, .textHTML:
                     continue
                 }
             }
             let split = QuoteSplitter.split(body)
-            newText = split.newText
-            quotedHistory = split.quotedHistory
-            signature = split.signature
+            // ADR-0042 §D6: `QuoteSplitter.split` reorders the body relative to MIME
+            // decode order, so deferral tokens are resolved AFTER the split, over the
+            // texts in their real render order - new text, then quoted history, then
+            // signature - never over the decode loop's own ordinal order.
+            let resolved = MessageInlineImage.resolvingDeferralTokens(
+                in: [split.newText, split.quotedHistory ?? "", split.signature ?? ""],
+                contentIDByOrdinal: inlineContentIDByOrdinal
+            )
+            newText = resolved.texts[0]
+            quotedHistory = resolved.texts[1].isEmpty ? nil : resolved.texts[1]
+            signature = resolved.texts[2].isEmpty ? nil : resolved.texts[2]
+            pendingInlineImages = resolved.pending
         }
 
         let fileName: String
@@ -651,6 +663,7 @@ actor PraticaSyncEngine {
                 attachments: links.map(MessageDocument.attachmentEntry(linking:))
                     + pendingAttachmentNames.map(MessageDocument.attachmentEntry(pending:)),
                 storeReferences: storeReferences,
+                pendingInlineImages: pendingInlineImages,
                 body: isPending ? .pending : .complete,
                 original: keepsOriginal ? "\(baseName).eml" : nil
             ),
@@ -670,7 +683,8 @@ actor PraticaSyncEngine {
             takenAttachmentNames: takenAttachmentNames,
             isRegeneration: existing != nil,
             rowID: row.rowID,
-            conversationID: row.conversationID
+            conversationID: row.conversationID,
+            inlineResolutions: inlineResolutions
         )
     }
 
@@ -838,21 +852,38 @@ actor PraticaSyncEngine {
 
         guard mustFullyRender else {
             // Row 4: an existing, non-`pending`, non-regenerating note - only its
-            // `pergamenum-mail-attachments` line may change. The `.eml` sidecar is
-            // never rewritten in this mode: its bytes have not changed (§D18).
-            guard let existingOnDisk,
-                  let patchedText = MessageAttachmentPatch.applying(
-                      entries: prepared.document.frontmatter.attachments, to: existingOnDisk.text
-                  )
-            else { return }
+            // `pergamenum-mail-attachments` line, its inline-image placeholders and its
+            // `pergamenum-mail-inline-pending` line may change (ADR-0042 §D8). The `.eml`
+            // sidecar is never rewritten in this mode: its bytes have not changed (§D18).
+            guard let existingOnDisk else { return }
+
+            let pendingIDs = existingOnDisk.document.frontmatter.pendingInlineImages
+            guard let inlineOutcome = MessageInlineImagePatch.applying(
+                resolved: prepared.inlineResolutions, pending: pendingIDs, to: existingOnDisk.text
+            ) else { return }
+
+            // A resolved image the placeholder count could not place (a count mismatch -
+            // somebody edited the prose) is not lost: it is linked as an ordinary
+            // attachment instead, appended after every already-linked entry.
+            let attachmentEntries = prepared.document.frontmatter.attachments
+                + inlineOutcome.unplaceable.map(MessageDocument.attachmentEntry(linking:))
+            guard let patchedText = MessageAttachmentPatch.applying(
+                entries: attachmentEntries, to: inlineOutcome.text
+            ) else { return }
+
             // §D6: a patch identical to the file already on disk is never written -
             // this is what makes the unresolved retry free.
             guard patchedText != existingOnDisk.text else { return }
 
             try await write(patchedText, notePath)
 
+            var patchedFrontmatter = prepared.document.frontmatter
+            patchedFrontmatter.attachments = attachmentEntries
+            patchedFrontmatter.pendingInlineImages = inlineOutcome.remaining
+            var patchedDocument = prepared.document
+            patchedDocument.frontmatter = patchedFrontmatter
             folder.messagesByID[prepared.messageID] = ExistingMessage(
-                fileName: prepared.fileName, document: prepared.document, text: patchedText
+                fileName: prepared.fileName, document: patchedDocument, text: patchedText
             )
             outcome.resolvedAttachmentFiles.append(notePath)
             if let conversationID = prepared.conversationID {
@@ -907,7 +938,9 @@ actor PraticaSyncEngine {
         for row in request.candidates {
             guard let messageID = row.messageID, request.onDisk.contains(messageID) else { continue }
             let frontmatter = folder.messagesByID[messageID]?.document.frontmatter
-            guard frontmatter?.body == .pending || !(frontmatter?.pendingAttachmentNames.isEmpty ?? true)
+            guard frontmatter?.body == .pending
+                || !(frontmatter?.pendingAttachmentNames.isEmpty ?? true)
+                || !(frontmatter?.pendingInlineImages.isEmpty ?? true)
             else { continue }
             guard let prepared = prepare(row, request: request, reader: reader, folder: folder)
             else { continue }

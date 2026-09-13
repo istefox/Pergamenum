@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=148 -->
+<!-- project-tasks: prefix=PG lastId=149 -->
 # PROJECT TASKS
 
 Updated: 2026-09-12 · Open: 45 (P1: 3) · In progress: 0
@@ -8,6 +8,8 @@ Updated: 2026-09-12 · Open: 45 (P1: 3) · In progress: 0
 - [ ] `#191` Editor: a single click on a wikilink's visible target text needs a second click to reveal-on-caret <!-- src:github state:OPEN labels: -->
 ## Open Issues
 
+- [ ] `PG-149` **P2** ADR-0042 (Pratiche inline image placeholders) merged to `main` via PR #250 (`f9dc424`) — implementation and full unit suite (2900/2900) verified green in-session; `scripts/uitests.sh` run (118 tests, 3 failures, all pre-existing and unrelated — see `PG-108` and `testACornerGripCanStillBeGrabbedWhenZoomedOut`, no Pratiche/inline-image test among them) <!-- src:session opened:2026-09-12 kind:fix runs:1 gh:#250 -->
+  - Merged first, manual hand-check deferred deliberately to a Sparkle-updated real build (a DerivedData Debug build never keeps Full Disk Access for Apple Mail across rebuilds — TCC ties the grant to the app's on-disk code identity, which changes every rebuild). Still to do once the release lands: the ADR-0042 section of `Pergamenum - checklist verifica Pratiche allegati (ADR-0040).txt` (10 items, none yet run — take a backup of the pratica folder first).
 - [ ] `PG-120` **P3** `MailStoreReaderTests.publishReportsMailIsWritingOnATornCopyAfterOneRetry` failed once during the full `PergamenumTests` suite (Stop-hook run), not reproduced in isolation — `Tests/MailStoreReaderTests.swift:139` <!-- src:session opened:2026-09-11 kind:fix runs:2 gh:#204 -->
   - Seen at the tail end of the 2026-09-11 Pergamenum 1.4 release session, on the final Stop-hook full-suite run (the one that hit `STOP_GATE_MAX_REENTRY=3` and disarmed). No file this session touched (`Project.swift` marketing-version bump, `TODO.md`) is anywhere near `MailStoreReaderTests`/`MailStoreReader`. Same suite-context-only shape as `PG-110` (fails inside the full suite, not investigated in isolation yet) — possibly related, not confirmed.
 - [ ] `PG-108` **P3** Two pre-existing UI test failures found during issue #188's final full-suite run, unrelated to any file this chain touched — `UITests/DayViewUITests.swift` (`testTheMonthFollowsTheDividerAndHasNoGripOfItsOwn`, `XCTAssertGreaterThan` "460.0" not greater than "460.0") and `UITests/WorkspaceBoardUITests.swift` (`testAZoomedOutCardStillHasAReadableAccessibilityLabel`, `XCTAssertEqual` "" not equal to "CARD A") <!-- src:session opened:2026-09-09 kind:fix runs:2 gh:#205 -->
