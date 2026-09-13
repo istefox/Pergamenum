@@ -206,6 +206,14 @@ final class ComposerUITests: XCTestCase {
         let day = app.descendants(matching: .any).matching(identifier: "day-\(target)").firstMatch
         XCTAssertTrue(day.waitForExistence(timeout: 5), "il calendario non mostra il giorno \(target)")
         day.click()
+        // Picking a day dismisses the popover (DuePanel's onDone), and clicking "Crea"
+        // while it is still animating out can land on the closing popover instead of
+        // the button underneath, silently dropping the click (PG-072). Wait for the
+        // panel to actually be gone first.
+        XCTAssertTrue(
+            app.textFields["due-panel-field"].waitForNonExistence(timeout: 5),
+            "il pannello Scadenza non si è chiuso dopo aver scelto il giorno"
+        )
         app.buttons["task-composer-create"].click()
 
         let written = captured(containing: "Task con scadenza")
