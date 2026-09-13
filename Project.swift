@@ -40,8 +40,16 @@ let baseSettings: SettingsDictionary = [
 // team - which is exactly what a test bundle is. Enabling it everywhere builds an app that
 // ships correctly and cannot run its own tests. Debug therefore stays unhardened, and
 // nothing is ever distributed from Debug.
+// Debug gets its own bundle id, distinct from Release's. TCC keys a privacy grant to the pair
+// (bundle id, signing identity) - see CODE_SIGN_IDENTITY above for the first incident this caused.
+// Debug builds with "Apple Development" and the notarized Release app is re-signed with
+// "Developer ID Application" after export; sharing one bundle id meant they contended for the
+// same Full Disk Access row in TCC.db, and a Debug build running (even from an unrelated worktree)
+// could flip the Release app's grant. AppInfo.bundleIdentifier (Sources/Core/AppInfo.swift) stays
+// "it.stefer.pergamenum" for both - it drives logging, the UserDefaults suite and the Application
+// Support state path, none of which should differ by configuration.
 let appConfigurations: [Configuration] = [
-    .debug(name: "Debug"),
+    .debug(name: "Debug", settings: ["PRODUCT_BUNDLE_IDENTIFIER": "\(bundleId).debug"]),
     .release(name: "Release", settings: ["ENABLE_HARDENED_RUNTIME": "YES"]),
 ]
 
