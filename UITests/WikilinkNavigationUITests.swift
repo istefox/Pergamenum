@@ -81,19 +81,23 @@ final class WikilinkNavigationUITests: XCTestCase {
         return editor
     }
 
-    /// The wikilink's whole line is the first (and only) line of the note body - a point
-    /// near its top-left, inside the editor's readable-width text column, always lands on
-    /// the link's own characters regardless of concealment (ADR-0018 §D3).
-    private func wikilinkPoint(in editor: XCUIElement) -> XCUICoordinate {
-        // Absolute pixel offset from the editor's own top-left corner, not a fraction of its
-        // total (often mostly-blank) height - a normalized offset shifts with window size,
-        // an absolute one from the readable-width inset (ADR-0030 §D7) does not. The wikilink
-        // is the 7th source line (5 frontmatter lines, a blank line, then itself).
-        let leftInset = max(24.0, (editor.frame.width - 720.0) / 2.0)
-        let topInset = 24.0
-        let lineHeight = 22.4
-        let origin = editor.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        return origin.withOffset(CGVector(dx: leftInset + 12, dy: topInset + 6.5 * lineHeight))
+    /// A concealed `[[Destinazione]]` still surfaces as a real `AXLink` element titled after
+    /// the note it targets (confirmed via `xcrun xcresulttool export attachments` on a failed
+    /// run's UI-hierarchy dump) - clicking it directly is immune to window size, word-wrap and
+    /// paragraph position, unlike the hardcoded-pixel-offset approach this replaced, which
+    /// missed the link's actual left edge by a couple of points regardless of window width
+    /// (confirmed by widening the window well past the 720pt readable-width cap and seeing the
+    /// same 3 failures). The link's title is the note's own name, the same identifier
+    /// `openOriginAndReturnEditor()` already uses for `app.staticTexts["Origine"]` - not prose
+    /// that can grow and break the lookup (CLAUDE.md's "must not find a control by the words on
+    /// it" is about UI copy, not a note's own stable title).
+    /// The link's own `AXTitle` carries the raw markdown target text, bold markers and all -
+    /// confirmed via the same attachment export: `[[**Destinazione**]]` surfaces as a link
+    /// titled `**Destinazione**`, not the concealed "Destinazione" the plain case uses.
+    private func wikilinkElement(title: String = "Destinazione") -> XCUIElement {
+        let link = app.links[title]
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "il link '\(title)' non è nell'editor")
+        return link
     }
 
     /// Issue #188 follow-up: a wikilink whose visible text was selected and made bold
@@ -101,8 +105,7 @@ final class WikilinkNavigationUITests: XCTestCase {
     /// which looked for a note literally titled "**Prova**", found none, and silently did
     /// nothing on Cmd+click. Overwrites "Origine" with a bold-wrapped wikilink before opening
     /// it - the bold markers are concealed the same as the brackets (hidesMarkup, ADR-0018),
-    /// so the visible text and its pixel position match `wikilinkPoint(in:)`'s existing plain
-    /// case exactly.
+    /// so the link's title stays "Destinazione" exactly as in the plain case.
     func testCommandClickOnABoldWikilinkStillNavigatesToTheLinkedNote() throws {
         try """
         ---
@@ -118,8 +121,8 @@ final class WikilinkNavigationUITests: XCTestCase {
         )
 
         let editor = openOriginAndReturnEditor()
-        let point = wikilinkPoint(in: editor)
-        XCUIElement.perform(withKeyModifiers: .command) { point.click() }
+        let link = wikilinkElement(title: "**Destinazione**")
+        XCUIElement.perform(withKeyModifiers: .command) { link.click() }
 
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline, !((editor.value as? String ?? "").contains("Nota di arrivo")) {
@@ -134,8 +137,8 @@ final class WikilinkNavigationUITests: XCTestCase {
     func testCommandClickOnAWikilinkNavigatesToTheLinkedNote() throws {
         let editor = openOriginAndReturnEditor()
 
-        let point = wikilinkPoint(in: editor)
-        XCUIElement.perform(withKeyModifiers: .command) { point.click() }
+        let link = wikilinkElement()
+        XCUIElement.perform(withKeyModifiers: .command) { link.click() }
 
         // "Destinazione" alone is not a usable navigation signal: its sidebar row exists
         // whether or not the note is open. The editor's own content switching to its body
@@ -165,7 +168,7 @@ final class WikilinkNavigationUITests: XCTestCase {
         let origin = editor.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         origin.withOffset(CGVector(dx: 40, dy: 30)).click()
 
-        wikilinkPoint(in: editor).click()
+        wikilinkElement().click()
 
         let source = editor.value as? String ?? ""
         XCTAssertFalse(
@@ -177,7 +180,7 @@ final class WikilinkNavigationUITests: XCTestCase {
     func testAPlainClickOnAWikilinkPlacesTheCaretAndDoesNotNavigate() throws {
         let editor = openOriginAndReturnEditor()
 
-        wikilinkPoint(in: editor).click()
+        wikilinkElement().click()
 
         // ADR-0029: the editor stays always-editable, so a plain click on link text is an
         // ordinary caret placement, never a navigation - typing right after the click must
@@ -206,7 +209,7 @@ final class WikilinkNavigationUITests: XCTestCase {
     func testRightClickApriCollegamentoStillNavigatesAfterTheRightMouseDownFix() throws {
         let editor = openOriginAndReturnEditor()
 
-        wikilinkPoint(in: editor).rightClick()
+        wikilinkElement().rightClick()
         let menuItem = app.menuItems["Apri collegamento"]
         XCTAssertTrue(menuItem.waitForExistence(timeout: 5), "«Apri collegamento» non è nel menu contestuale")
         menuItem.click()
