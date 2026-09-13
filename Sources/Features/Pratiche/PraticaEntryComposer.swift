@@ -22,19 +22,26 @@ struct PraticaEntryComposer {
 
     /// «Nota» / «Telefonata» at the bottom of the timeline: now, which is what the two
     /// buttons in the counts bar mean.
+    ///
+    /// `insert(_:at:)` is `async` (ADR-0041 Task 8); this stays synchronous and wraps it
+    /// in `Task { }`, so `PratichePane`'s plain `() -> Void` callbacks need no change.
     func append(_ kind: PraticaEntry.Kind) {
-        insert(kind, at: Date())
+        Task { await insert(kind, at: Date()) }
     }
 
     /// «Inserisci qui» (R-28): the midpoint between the two rows the gap sits between,
     /// so the entry reads back in the place a person put it. `PraticaEntry.midpoint`
     /// owns the arithmetic; this only says which two rows are the neighbours.
     func insertBetween(_ first: PraticaTimelineEntry, and second: PraticaTimelineEntry, kind: PraticaEntry.Kind) {
-        insert(kind, at: PraticaEntry.midpoint(between: first.date, and: second.date))
+        Task { await insert(kind, at: PraticaEntry.midpoint(between: first.date, and: second.date)) }
     }
 
     /// The one write path both of the above go through.
-    func insert(_ kind: PraticaEntry.Kind, at timestamp: Date) {
+    ///
+    /// `async` since ADR-0041 Task 8: both writes below go through `VaultSession.write`'s
+    /// actor-hop overload, and the order (insertion, then the diary mirror, then the
+    /// reload and hand-off) is preserved exactly as it was.
+    func insert(_ kind: PraticaEntry.Kind, at timestamp: Date) async {
         guard let praticaPath = pratiche.selection,
               let pratica = pratiche.selectedPratica,
               let session = vault.session
@@ -51,8 +58,8 @@ struct PraticaEntryComposer {
             let insertion = PraticaEntry.insert(
                 kind: kind, at: timestamp, counterpart: counterpart, in: source
             )
-            try session.write(insertion.text, to: notePath)
-            mirror(kind, of: pratica, counterpart: counterpart, on: timestamp, session: session)
+            try await session.write(insertion.text, to: notePath)
+            await mirror(kind, of: pratica, counterpart: counterpart, on: timestamp, session: session)
             pratiche.reloadTimeline(from: vault)
             handOff(insertion, notePath: notePath)
         } catch {
@@ -70,7 +77,7 @@ struct PraticaEntryComposer {
     private func mirror(
         _ kind: PraticaEntry.Kind, of pratica: PraticaListItem, counterpart: String,
         on timestamp: Date, session: VaultSession
-    ) {
+    ) async {
         guard vault.settings.pratiche.mirrorsToDailyNote else { return }
         let entry = DailyNoteMirror.Entry(
             praticaTitle: pratica.title, kind: kind, counterpart: counterpart
@@ -81,7 +88,7 @@ struct PraticaEntryComposer {
             guard let updated = DailyNoteMirror.appending(
                 entry, to: existing, isEnabled: vault.settings.pratiche.mirrorsToDailyNote
             ) else { return }
-            try session.write(updated, to: path)
+            try await session.write(updated, to: path)
         } catch {
             // The heading is already on disk and that is the entry: a diary line that
             // could not be written is reported, never rolled back into a lost entry.

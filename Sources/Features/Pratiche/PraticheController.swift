@@ -747,7 +747,15 @@ extension PraticheController {
         in folder: URL, praticaPath: String, notInStore: Set<String>, into read: inout TimelineRead
     ) {
         let messages = folder.appending(path: messagesDirectoryName, directoryHint: .isDirectory)
-        let attachments = folder.appending(path: attachmentsDirectoryName, directoryHint: .isDirectory)
+        // ADR-0041 §D2: an attachment entry is a *name* out of a message note's
+        // frontmatter, which is generated from an `.emlx` whose file name Apple Mail
+        // chose - not trusted input. The boundary is rooted at `allegati/` rather than at
+        // the vault, and deliberately so: `<pratica>/allegati/../../../secret.pdf`
+        // standardises back to a path *inside* the vault root, so a vault-level check
+        // would wave it through while it names a file this pratica does not own.
+        let attachments = VaultBoundary(
+            root: folder.appending(path: attachmentsDirectoryName, directoryHint: .isDirectory)
+        )
         let names = (try? FileManager.default.contentsOfDirectory(
             atPath: messages.path(percentEncoded: false)
         )) ?? []
@@ -784,11 +792,12 @@ extension PraticheController {
                 body: document.newText,
                 quotedHistory: document.quotedHistory,
                 signature: document.signature,
-                attachments: document.frontmatter.linkedAttachmentNames.map { fileName in
-                    PraticaAttachmentRef(
-                        name: fileName,
-                        url: attachments.appending(path: fileName, directoryHint: .notDirectory)
-                    )
+                // A name the boundary refuses is omitted from the row rather than failing
+                // the whole read: the other attachments, and the message itself, are
+                // still worth showing.
+                attachments: document.frontmatter.linkedAttachmentNames.compactMap { fileName in
+                    guard let url = try? attachments.url(for: fileName) else { return nil }
+                    return PraticaAttachmentRef(name: fileName, url: url)
                 },
                 storeReferences: document.frontmatter.storeReferences,
                 isPending: document.frontmatter.body == .pending,
@@ -1244,7 +1253,13 @@ final class PraticaLiveSync {
                     updated.conversations = updated.conversations.filter { seen.insert($0).inserted }
                     document.frontmatter.foreignKeys = Dossier.merging(updated, into: document.frontmatter.foreignKeys)
                     if document != before {
-                        try session.write(document.serialized(), to: notePath)
+                        // ADR-0041 Task 8: `VaultSession.write` gained an async overload
+                        // this dispatch declares; `runExclusive` was already `async` for
+                        // unrelated reasons, so Swift's overload resolution now requires
+                        // this call to be awaited. Mechanical only - no behaviour change,
+                        // the awaited overload's stub body is today's synchronous write
+                        // called as-is.
+                        try await session.write(document.serialized(), to: notePath)
                     }
                     effectiveDossier = updated
                 }
@@ -1281,7 +1296,7 @@ final class PraticaLiveSync {
             )
         }
         let engine = PraticaSyncEngine(mailStoreURL: prepared.indexURL, vaultRoot: root) { text, path in
-            _ = try session.write(text, to: path)
+            _ = try await session.write(text, to: path)
         }
         // Kept for the duration of this one sync and cleared after it: «Annulla» has
         // an engine to reach only while there is a sync to stop.
@@ -1371,7 +1386,7 @@ final class PraticaLiveSync {
         let indexURL = generation.appending(path: "Envelope Index", directoryHint: .notDirectory)
 
         let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path in
-            _ = try session.write(text, to: path)
+            _ = try await session.write(text, to: path)
         }
         regenerationEngine = engine
 
@@ -1535,10 +1550,38 @@ private final class MailStoreEventStream: @unchecked Sendable {
     /// appear on screen, and Mail writes in long bursts while it fetches.
     private static let latency: CFTimeInterval = 2
 
+    /// `VaultWatcher.Sink`'s counterpart, and for the same reason: this stream was handed
+    /// `self` as a bare, non-owning pointer, which ties the callback's context to nothing
+    /// and leaves a callback arriving after teardown reading freed memory. That is the
+    /// use-after-free the vault watcher was crashing on, copied here when this type was
+    /// written in its shape. Same fix: an explicit `+1` on a separate context object,
+    /// given up from `queue` after invalidation. See `VaultWatcher.Sink` for the evidence.
+    private final class Sink: @unchecked Sendable {
+        private let lock = NSLock()
+        private var onChange: (@Sendable () -> Void)?
+
+        init(onChange: @escaping @Sendable () -> Void) { self.onChange = onChange }
+
+        func cancel() {
+            lock.lock()
+            onChange = nil
+            lock.unlock()
+        }
+
+        func fire() {
+            lock.lock()
+            let deliver = onChange
+            lock.unlock()
+            deliver?()
+        }
+    }
+
     private let root: URL
     private let queue = DispatchQueue(label: "it.stefer.pergamenum.pratiche-mailstore")
     private let onChange: @Sendable () -> Void
     private var stream: FSEventStreamRef?
+    /// The `+1` on the live `Sink`, given up in `stop()` from `queue`.
+    private var sinkInfo: UnsafeMutableRawPointer?
 
     init(root: URL, onChange: @escaping @Sendable () -> Void) {
         self.root = root
@@ -1552,9 +1595,10 @@ private final class MailStoreEventStream: @unchecked Sendable {
     func start() {
         guard stream == nil else { return }
 
+        let info = Unmanaged.passRetained(Sink(onChange: onChange)).toOpaque()
         var context = FSEventStreamContext(
             version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
+            info: info,
             retain: nil,
             release: nil,
             copyDescription: nil
@@ -1562,7 +1606,7 @@ private final class MailStoreEventStream: @unchecked Sendable {
 
         let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
             guard let info else { return }
-            Unmanaged<MailStoreEventStream>.fromOpaque(info).takeUnretainedValue().onChange()
+            Unmanaged<Sink>.fromOpaque(info).takeUnretainedValue().fire()
         }
 
         let created = FSEventStreamCreate(
@@ -1574,11 +1618,15 @@ private final class MailStoreEventStream: @unchecked Sendable {
             Self.latency,
             UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagWatchRoot)
         )
-        guard let created else { return }
+        guard let created else {
+            Unmanaged<Sink>.fromOpaque(info).release()
+            return
+        }
 
         FSEventStreamSetDispatchQueue(created, queue)
         FSEventStreamStart(created)
         stream = created
+        sinkInfo = info
     }
 
     func stop() {
@@ -1587,5 +1635,12 @@ private final class MailStoreEventStream: @unchecked Sendable {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         self.stream = nil
+
+        guard let info = sinkInfo else { return }
+        sinkInfo = nil
+        Unmanaged<Sink>.fromOpaque(info).takeUnretainedValue().cancel()
+        // Serial queue, FIFO: every callback already running or enqueued has returned
+        // before this gives up the last reference.
+        queue.async { Unmanaged<Sink>.fromOpaque(info).release() }
     }
 }

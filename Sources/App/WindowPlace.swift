@@ -61,13 +61,12 @@ struct WindowPlace {
     func isReachable(_ destination: Destination) -> Bool {
         switch destination {
         case .note(let path):
-            guard let store else { return false }
-            return FileManager.default.fileExists(atPath: store.url(for: path).path(percentEncoded: false))
+            guard let store, let url = try? store.url(for: path) else { return false }
+            return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
         case .workspaceBoard(let path):
-            guard let root = vault.root else { return false }
-            return FileManager.default.fileExists(
-                atPath: CanvasStore(root: root).url(forBoard: path).path(percentEncoded: false)
-            )
+            guard let root = vault.root,
+                  let url = try? CanvasStore(root: root).url(forBoard: path) else { return false }
+            return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
         default:
             return true
         }

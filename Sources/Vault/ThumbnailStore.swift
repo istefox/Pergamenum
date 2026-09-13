@@ -15,7 +15,9 @@ import QuickLookThumbnailing
 /// directory (ADR-0017), and is disposable like the index: deleting it costs a
 /// re-render, never data.
 actor ThumbnailStore {
-    private let root: URL
+    /// The only way this store turns a `.canvas` node's `file` property - ordinary JSON
+    /// anybody can edit - into a URL it will read (ADR-0041 §D2).
+    private let boundary: VaultBoundary
     private let directory: URL
     /// In-flight and completed renders, so a board with the same PDF on ten cards
     /// renders it once per size rather than ten times.
@@ -25,7 +27,7 @@ actor ThumbnailStore {
     /// rendered cache lives and is resolved by the caller from `VaultState.thumbnails`
     /// - only the cache moved out of the vault, not the files it renders.
     init(root: URL, directory: URL) {
-        self.root = root
+        self.boundary = VaultBoundary(root: root)
         self.directory = directory
     }
 
@@ -40,7 +42,14 @@ actor ThumbnailStore {
 
         if let existing = tasks[key] { return existing }
 
-        let fileURL = root.appending(path: relativePath, directoryHint: .notDirectory)
+        // `nil` rather than a thrown error, per ADR-0041 §D2's decision for this site: a
+        // thumbnail that cannot be drawn is not worth unwinding a view for, and a card
+        // drawing its generic icon is the same outcome as a missing file. The refusal is
+        // taken *before* the render task is built, so a path escaping the vault is never
+        // read, never rendered and never memoised under a cache key.
+        guard let fileURL = try? boundary.url(for: relativePath) else {
+            return Task<NSImage?, Never> { nil }
+        }
         let cacheURL = directory.appending(path: "\(key).png", directoryHint: .notDirectory)
         let task = Task<NSImage?, Never>.detached(priority: .utility) {
             await Self.render(fileURL: fileURL, cacheURL: cacheURL, width: CGFloat(bucket))

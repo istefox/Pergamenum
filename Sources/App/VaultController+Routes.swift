@@ -39,9 +39,9 @@ extension VaultController {
 
         switch route {
         case .note(let path):
-            guard FileManager.default.fileExists(
-                atPath: store.url(for: path).path(percentEncoded: false)
-            ) else {
+            guard let url = try? store.url(for: path),
+                  FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+            else {
                 recordProblem("il link punta a una nota che non esiste: \(path)")
                 return false
             }

@@ -11,6 +11,16 @@ import Foundation
 struct FolderFileOperations {
     let store: NoteStore
 
+    /// Test-only observability: called once per pass this type makes over
+    /// `canvas.allBoards()` while computing a repoint - never once per node, never once per
+    /// file it decides to rewrite. A no-op default costs one branch and changes no
+    /// production behaviour; nothing outside a test ever sets it, and each test constructs
+    /// its own `FolderFileOperations` value, so there is no shared state for two tests to
+    /// race on. Exists so `Tests/VaultBatchMoveTests.swift` can assert R-05's "one walk for
+    /// the whole batch" claim exactly, rather than inferring it from output shape alone
+    /// (ADR-0041 §D8, Task 7).
+    var onBoardsWalk: () -> Void = {}
+
     /// Built here rather than injected: `CanvasStore` is a value over the same root, and
     /// what this file needs from it - `allBoards()`, "every board in the vault" (F4) -
     /// is a walk with exclusion rules that would be a second spelling of an enumeration
@@ -75,10 +85,12 @@ struct FolderFileOperations {
     /// of it: which notes are inside (so their tabs and their stars can follow) and how
     /// many subfolders there are (so the delete confirmation can say).
     ///
-    /// The walk mirrors `CanvasStore.allBoards()`: an enumerator that skips the
-    /// descendants of an excluded directory outright rather than filtering its files
-    /// one at a time, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are
-    /// never entered - and, more to the point here, never counted.
+    /// The walk no longer *mirrors* `CanvasStore.allBoards()`, it is the same one:
+    /// `VaultWalk` (ADR-0041 §D3) skips the descendants of an excluded directory outright
+    /// rather than filtering its files one at a time, so `.obsidian`, `.git`, `.trash` and
+    /// our own `.pergamenum` are never entered - and, more to the point here, never
+    /// counted. Two doc comments claiming to mirror each other is how the three copies
+    /// drifted in the first place.
     ///
     /// `nil` when `folder` does not exist or its enumerator could not be built (PG-048) -
     /// never silently folded into "nothing here", which is the answer for a folder that
@@ -89,41 +101,44 @@ struct FolderFileOperations {
     /// Same reason as `repointBoardsPlan` above, which `BoardFileOperations` already
     /// reaches from outside this file.
     func walk(_ folder: String) -> (notePaths: [String], subfolders: Int)? {
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
+        let boundary = VaultBoundary(root: store.root)
+        let directory: URL
+        if folder.isEmpty {
+            directory = boundary.root
+        } else {
+            // A folder path that leaves the vault is not a folder this can count, and the
+            // `nil` this signature already returns says so (ADR-0041 §D1/§D3).
+            guard let resolved = try? boundary.url(for: folder) else { return nil }
+            directory = resolved
+        }
 
+        // The existence check stays here rather than moving into the walk: an enumerator
+        // over a directory that is not there is not `nil`, it is empty - measured - so
+        // this is the only thing that still tells "gone" from "empty" (PG-048).
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
             return nil
         }
 
-        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory, includingPropertiesForKeys: keys, options: [.skipsPackageDescendants]
+        // Same two keys as before the unification, for `CanvasStore.walk()`'s reason: a
+        // symlink to a directory is one to `.isDirectoryKey` and not to the URL's own
+        // trailing separator, and what a delete dialog counts should not change here.
+        guard let walk = try? VaultWalk(
+            boundary: boundary, subfolder: folder, keys: [.isDirectoryKey, .nameKey]
         ) else {
             return nil
         }
 
         var notePaths: [String] = []
         var subfolders = 0
-        // Built once, not per entry: the walk asks for the same two keys every time.
-        let keySet = Set(keys)
-        while let url = enumerator.nextObject() as? URL {
-            let values = try? url.resourceValues(forKeys: keySet)
-            let name = values?.name ?? url.lastPathComponent
-
-            if values?.isDirectory == true {
-                if VaultLayout.isExcludedDirectory(name) {
-                    enumerator.skipDescendants()
-                    continue
-                }
+        walk.forEach { file in
+            if file.isDirectory {
                 subfolders += 1
-                continue
+                return
             }
-            guard url.pathExtension.lowercased() == "md" else { continue }
-            notePaths.append(VaultScanner.relativePath(of: url, under: store.root))
+            guard file.url.pathExtension.lowercased() == "md" else { return }
+            notePaths.append(file.relativePath)
         }
         return (notePaths, subfolders)
     }
@@ -139,8 +154,8 @@ struct FolderFileOperations {
     /// writes through is one a future planner can break loudly rather than silently.
     struct FolderRenamePlan: Equatable, Sendable {
         var newPath: String
-        var noteChanges: [NoteFileOperations.FileChange] = []
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var noteChanges: [VaultFileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -199,14 +214,15 @@ struct FolderFileOperations {
     func repointBoardsPlan(
         from oldPath: String,
         to newPath: String
-    ) -> (changes: [NoteFileOperations.FileChange], failures: [String]) {
+    ) -> (changes: [VaultFileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
-        var changes: [NoteFileOperations.FileChange] = []
+        onBoardsWalk()
+        var changes: [VaultFileChange] = []
         var failures: [String] = []
 
         for boardPath in canvas.allBoards() {
-            let url = store.url(for: boardPath)
-            guard let data = try? Data(contentsOf: url),
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
                   var document = try? CanvasDocument(data: data)
             else { continue }
 
@@ -237,9 +253,79 @@ struct FolderFileOperations {
                     failures.append("\(boardPath): non codificabile come testo")
                     continue
                 }
-                changes.append(NoteFileOperations.FileChange(
+                changes.append(VaultFileChange(
                     path: writePath, before: before, after: after
                 ))
+            } catch {
+                failures.append("\(boardPath): \(error)")
+            }
+        }
+        return (changes, failures)
+    }
+
+    /// Real batched form of `repointBoardsPlan(from:to:)` above (ADR-0041 §D8, Task 7):
+    /// every path a batch moved, repointed together in **one** pass over
+    /// `canvas.allBoards()` rather than one pass per move.
+    ///
+    /// Two moves that touch the same board merge into **one** `VaultFileChange` for that
+    /// board, every node it repoints carried in the same re-encoded document - not one
+    /// change per move, which would each read the board's original, still-unwritten bytes
+    /// and have the later one silently discard the earlier one's repoint once a caller fed
+    /// both into `VaultPlanApplication.apply` in order (the exact drift ADR-0041 names).
+    /// `onBoardsWalk()` fires exactly once for the whole call; an empty batch (after
+    /// dropping any no-op `from == to` pair) returns without walking at all, matching the
+    /// single-pair form's own early-out.
+    ///
+    /// `failures` here still names a board, same as the single-pair form, but a caller
+    /// should read an entry as the **batch's** failure rather than any one move's: several
+    /// of the batch's moves can all repoint a node on the same board, so there is no single
+    /// move it would be correct to blame that board's encode failure on.
+    func repointBoardsPlan(
+        moves: [(from: String, to: String)]
+    ) -> (changes: [VaultFileChange], failures: [String]) {
+        let moves = moves.filter { $0.from != $0.to }
+        guard !moves.isEmpty else { return ([], []) }
+        onBoardsWalk()
+        var changes: [VaultFileChange] = []
+        var failures: [String] = []
+
+        for boardPath in canvas.allBoards() {
+            guard let url = try? store.url(for: boardPath),
+                  let data = try? Data(contentsOf: url),
+                  var document = try? CanvasDocument(data: data)
+            else { continue }
+
+            var changed = false
+            for index in document.nodes.indices {
+                guard case .file(let path, let subpath) = document.nodes[index].kind,
+                      let move = moves.first(where: { path == $0.from || path.hasPrefix("\($0.from)/") })
+                else { continue }
+                document.nodes[index].kind = .file(
+                    path: Self.repointing(path, from: move.from, to: move.to), subpath: subpath
+                )
+                changed = true
+            }
+            guard changed else { continue }
+
+            // Where this board itself lands, the same substitution a node's does: a board
+            // that is itself one of the batch's moved paths (a board move riding along in
+            // the same batch) writes to its own new location; every other board stays
+            // exactly where it is.
+            let writePath = moves.reduce(boardPath) { path, move in
+                Self.repointing(path, from: move.from, to: move.to)
+            }
+
+            guard let before = String(bytes: data, encoding: .utf8) else {
+                failures.append("\(boardPath): non leggibile come testo")
+                continue
+            }
+            do {
+                let encoded = try document.encoded()
+                guard let after = String(bytes: encoded, encoding: .utf8) else {
+                    failures.append("\(boardPath): non codificabile come testo")
+                    continue
+                }
+                changes.append(VaultFileChange(path: writePath, before: before, after: after))
             } catch {
                 failures.append("\(boardPath): \(error)")
             }
@@ -309,22 +395,17 @@ struct FolderFileOperations {
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
 
-        for change in plan.noteChanges {
-            do {
-                try store.write(change.after, to: change.path)
-                outcome.rewrittenPaths.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let notes = VaultPlanApplication.apply(plan.noteChanges) {
+            try store.write($0.after, to: $0.path)
         }
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
-                outcome.rewrittenPaths.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a note and
+        // the planned text is already the encoded document - which is why `apply` takes the
+        // writer rather than assuming one (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
+        outcome.failures.append(contentsOf: notes.failures + boards.failures)
         return outcome
     }
 
@@ -387,14 +468,18 @@ struct FolderFileOperations {
         return newFolder + String(path.dropFirst(oldFolder.count))
     }
 
+    /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
+    /// `Bool`-returning sites), matching `VaultSession.exists`.
     func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     func isDirectory(_ relativePath: String) -> Bool {
+        guard let url = try? store.url(for: relativePath) else { return false }
         var flag: ObjCBool = false
         let found = FileManager.default.fileExists(
-            atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag
+            atPath: url.path(percentEncoded: false), isDirectory: &flag
         )
         return found && flag.boolValue
     }

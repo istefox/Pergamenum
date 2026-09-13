@@ -151,7 +151,8 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
 
     // Somebody, or something, writes over one of them afterwards.
-    try session.write(note(tags: ["type-note", "topic-fune"], body: "Riscritta a mano."), to: "Due.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write(note(tags: ["type-note", "topic-fune"], body: "Riscritta a mano."), to: "Due.md")
 
     let undone = session.undoJournalledWrites(outcome.journalIDs)
 

@@ -248,8 +248,20 @@ extension VaultAPI {
     /// a single entry, and this is the exact behaviour `undo` had before ADR-0016 - refuses
     /// when the file has moved on since, because undoing onto somebody else's later edit is
     /// worse than declining to undo at all.
+    /// ADR-0041 Task 9 (R-08): the one place in this file that calls `session.write(_:to:)`
+    /// directly rather than through one of `VaultSession`'s still-synchronous wrappers
+    /// (`createNote`, `append`, `renameNote`, `moveNote`, `trashNote`, `captureTask`,
+    /// `apply`, `addTimeBlock` - untouched by this task, see `VaultSession.write`'s doc
+    /// comment) - so this is the one VaultWrites function that actually reaches the async
+    /// disk-actor door Task 8 built. The other eleven functions in this file have nothing
+    /// to `await`: they call those synchronous wrappers and gain no correctness or
+    /// behaviour change from becoming `async` themselves, at the cost of forcing `await`
+    /// onto every CLI, MCP and test call site that uses them (`Tests/ConnectorTests.swift`,
+    /// `Tests/CaptureTests.swift`, `Sources/Connector/VaultCapture.swift`,
+    /// `Sources/CLI/Commands/WriteCommands.swift` and more), none of which SPEC.md's R-08
+    /// text names. Left synchronous, deliberately - see this task's tester report.
     @MainActor
-    static func undo(_ session: VaultSession, id: String) throws -> UndoOutcome {
+    static func undo(_ session: VaultSession, id: String) async throws -> UndoOutcome {
         let journal = session.journalOnDisk
         guard journal.entries(operation: id).isEmpty else {
             let outcome = session.undo(operation: id)
@@ -282,7 +294,7 @@ extension VaultAPI {
             )
         }
 
-        return .single(summarise(try session.write(textBefore, to: entry.path), session: session))
+        return .single(summarise(try await session.write(textBefore, to: entry.path), session: session))
     }
 
     /// The journal read straight off disk: no session, because listing what was written

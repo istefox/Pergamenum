@@ -35,8 +35,8 @@ struct BoardFileOperations {
     /// board's file name is ambiguous (ADR-0025 §D6).
     struct BoardRenamePlan {
         var newPath: String
-        var noteChanges: [NoteFileOperations.FileChange] = []
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var noteChanges: [VaultFileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -105,7 +105,7 @@ struct BoardFileOperations {
                 ) else { continue }
                 // No path substitution: renaming a board moves one file and no note
                 // with it, so every note is still where it was read from.
-                plan.noteChanges.append(NoteFileOperations.FileChange(
+                plan.noteChanges.append(VaultFileChange(
                     path: path, before: text, after: updated
                 ))
             }
@@ -149,7 +149,7 @@ struct BoardFileOperations {
         if plan.newPath != oldPath {
             do {
                 try FileManager.default.moveItem(
-                    at: store.url(for: oldPath), to: store.url(for: plan.newPath)
+                    at: try store.url(for: oldPath), to: try store.url(for: plan.newPath)
                 )
             } catch {
                 throw FileOperationError.failed("rinomina board: \(error)")
@@ -157,23 +157,19 @@ struct BoardFileOperations {
         }
 
         var outcome = RenameOutcome(newPath: plan.newPath, failures: plan.failures)
-        for change in plan.noteChanges {
-            do {
-                try store.write(change.after, to: change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let notes = VaultPlanApplication.apply(plan.noteChanges) {
+            try store.write($0.after, to: $0.path)
         }
         // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a
         // note and the planned text is already the encoded document
-        // (`FolderFileOperations.renameFolder` writes its own the same way).
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        // (`FolderFileOperations.renameFolder` writes its own the same way) - the split
+        // `apply` keeps at the call site by taking the writer (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        // `RenameOutcome` has no `rewrittenPaths` field, so only the failures are carried
+        // over - exactly what the two loops this replaced recorded.
+        outcome.failures.append(contentsOf: notes.failures + boards.failures)
         return outcome
     }
 
@@ -190,7 +186,7 @@ struct BoardFileOperations {
         var resulting: NSURL?
         do {
             try FileManager.default.trashItem(
-                at: store.url(for: board), resultingItemURL: &resulting
+                at: try store.url(for: board), resultingItemURL: &resulting
             )
         } catch {
             throw FileOperationError.failed("eliminazione board: \(error)")
@@ -205,7 +201,7 @@ struct BoardFileOperations {
     /// the name (ADR-0026 §D1).
     struct MovePlan: Equatable, Sendable {
         var newPath: String
-        var boardChanges: [NoteFileOperations.FileChange] = []
+        var boardChanges: [VaultFileChange] = []
         var failures: [String] = []
     }
 
@@ -266,11 +262,11 @@ struct BoardFileOperations {
 
         if plan.newPath != oldPath {
             do {
-                let destination = store.url(for: plan.newPath)
+                let destination = try store.url(for: plan.newPath)
                 try FileManager.default.createDirectory(
                     at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
                 )
-                try FileManager.default.moveItem(at: store.url(for: oldPath), to: destination)
+                try FileManager.default.moveItem(at: try store.url(for: oldPath), to: destination)
             } catch {
                 throw FileOperationError.failed("spostamento board: \(error)")
             }
@@ -281,13 +277,11 @@ struct BoardFileOperations {
         // reason: a `.canvas` is not a note and the planned text is already the encoded
         // document. The board that moved is written at its **new** path, which is what
         // `repointBoardsPlan`'s `writePath` substitution already computed.
-        for change in plan.boardChanges {
-            do {
-                try Data(change.after.utf8).write(to: store.url(for: change.path), options: .atomic)
-            } catch {
-                outcome.failures.append("\(change.path): \(error)")
-            }
+        let boards = VaultPlanApplication.apply(plan.boardChanges) {
+            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
         }
+        // `MoveOutcome` has no `rewrittenPaths` field, so only the failures are carried over.
+        outcome.failures.append(contentsOf: boards.failures)
         return outcome
     }
 
@@ -300,17 +294,21 @@ struct BoardFileOperations {
         relativePath.trimmingCharacters(in: .pathSlashes)
     }
 
+    /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
+    /// `Bool`-returning sites).
     private func exists(_ relativePath: String) -> Bool {
-        FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
+        guard let url = try? store.url(for: relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// There, and not a directory: a folder may share a name with a `.canvas` beside it
     /// (`CanvasStore.createBoard`), so "the file exists" is not the same question as
-    /// "something with this path exists".
+    /// "something with this path exists". A boundary violation answers `false` here too.
     private func isFile(_ relativePath: String) -> Bool {
+        guard let url = try? store.url(for: relativePath) else { return false }
         var flag: ObjCBool = false
         let found = FileManager.default.fileExists(
-            atPath: store.url(for: relativePath).path(percentEncoded: false), isDirectory: &flag
+            atPath: url.path(percentEncoded: false), isDirectory: &flag
         )
         return found && !flag.boolValue
     }

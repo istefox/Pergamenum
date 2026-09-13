@@ -236,7 +236,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     try vault.write(note + "\n\nScritto da qualcun altro\n", to: "Nota.md")
     await session.rescan()
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
-    #expect(throws: ConnectorError.self) { try VaultAPI.undo(session, id: id) }
+    await #expect(throws: ConnectorError.self) { try await VaultAPI.undo(session, id: id) }
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
     #expect(onDisk.contains("Scritto da qualcun altro"), "un undo rifiutato non tocca niente")
@@ -253,7 +253,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
-    _ = try VaultAPI.undo(session, id: id)
+    _ = try await VaultAPI.undo(session, id: id)
 
     #expect(try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8) == before)
 }
@@ -269,7 +269,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
     // This command does not delete. Saying so beats removing a file on a model's say-so.
-    #expect(throws: ConnectorError.self) { try VaultAPI.undo(session, id: id) }
+    await #expect(throws: ConnectorError.self) { try await VaultAPI.undo(session, id: id) }
     #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Nuova.md").path))
 }
 

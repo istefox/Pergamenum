@@ -9,6 +9,14 @@ import Foundation
 /// the buffer under the editor survives the move.
 extension VaultController {
     /// Writes the open note.
+    ///
+    /// **Deliberately still synchronous, on `VaultSession.write`'s sync door, not the
+    /// ADR-0041 Task 8 actor hop.** `Tests/VaultTests.swift`,
+    /// `Tests/NoteHistoryTests.swift` and `Tests/NoteTabTests.swift` all call this and
+    /// read the file straight back off disk with no `await` and no `Task` in between -
+    /// outside this task's edit scope (ADR-0049) and unambiguous that the write has to
+    /// be visible on disk before this returns, not merely queued. Converting this to
+    /// the async overload was tried and reverted for exactly that reason.
     func saveOpenNote() {
         guard let session, var note = openNote, note.hasUnsavedChanges else { return }
         do {
@@ -31,6 +39,8 @@ extension VaultController {
     /// puts the buffer in the history, and the restore's own write adds itself on the
     /// way past - so the sheet's promise that restoring keeps the current version is
     /// literally true, in the one case where it would otherwise be a lie.
+    ///
+    /// Synchronous for the same reason `saveOpenNote()` above is (same three test files).
     func restoreVersion(_ text: String) {
         guard let session, openNote != nil else { return }
         saveOpenNote()

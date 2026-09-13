@@ -75,15 +75,13 @@ extension VaultSession {
             journalCommand = previousCommand
         }
 
-        var outcome = TagRenameOutcome()
-        for change in changes {
-            do {
-                try write(change.after, to: change.path)
-                outcome.changed.append(change.path)
-            } catch {
-                outcome.failures.append("\(change.path): \(error.localizedDescription)")
-            }
+        let fileChanges = changes.map {
+            VaultFileChange(path: $0.path, before: $0.before, after: $0.after)
         }
+        let result = VaultPlanApplication.apply(fileChanges) {
+            try write($0.after, to: $0.path)
+        }
+        var outcome = TagRenameOutcome(changed: result.rewrittenPaths, failures: result.failures)
         // Read back rather than remembered as they were written: `write` records through the
         // journal itself, and asking the journal what it now holds is the only account of the
         // group that cannot disagree with the file.

@@ -44,7 +44,7 @@ final class VaultHost {
     func call(_ parameters: CallTool.Parameters) async -> CallTool.Result {
         await session.rescan()
         do {
-            return try perform(parameters.name, ToolArguments(parameters.arguments))
+            return try await perform(parameters.name, ToolArguments(parameters.arguments))
         } catch let refusal as ConnectorError {
             return CallTool.Result(content: [.text(refusal.description)], isError: true)
         } catch {
@@ -55,11 +55,17 @@ final class VaultHost {
     /// Four dispatch tables rather than two, split the way the CLI's groups are: a single
     /// switch over twenty names is past what SwiftLint allows and, more to the point,
     /// past what anyone scans without losing their place.
-    private func perform(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result {
+    ///
+    /// `async` since ADR-0041 Task 9: `write` awaits `VaultAPI.undo`'s now-async door
+    /// (the one `VaultWrites` function that reaches Task 8's disk actor - see its own
+    /// doc comment). `readNotes`/`readWork`/`readPratiche` stay synchronous `throws`,
+    /// unchanged: none of them has anything to await, and marking them `async` too
+    /// would be structural churn with no correctness gain.
+    private func perform(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result {
         if let result = try readNotes(name, arguments) { return result }
         if let result = try readWork(name, arguments) { return result }
         if let result = try readPratiche(name, arguments) { return result }
-        if let result = try write(name, arguments) { return result }
+        if let result = try await write(name, arguments) { return result }
         throw ConnectorError("«\(name)» non è uno strumento di questo server", usage: true)
     }
 
@@ -142,7 +148,7 @@ final class VaultHost {
     /// The `allowsWriting` check is a second lock on a door that was never shown: the
     /// writing tools are absent from `tools/list` without `--allow-write`, and a client
     /// that calls one anyway is told no rather than obeyed.
-    private func write(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result? {
+    private func write(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result? {
         guard ToolCatalogue.writing.contains(where: { $0.name == name }) else { return nil }
         guard allowsWriting else {
             throw ConnectorError(
@@ -192,12 +198,12 @@ final class VaultHost {
                 due: arguments.string("due")
             ))
         default:
-            return try writeWork(name, arguments)
+            return try await writeWork(name, arguments)
         }
     }
 
     /// The writes that act on a task or on a day, plus the one that puts a file back.
-    private func writeWork(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result? {
+    private func writeWork(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result? {
         switch name {
         case "add_task":
             return reply(try VaultAPI.addTask(
@@ -230,7 +236,7 @@ final class VaultHost {
                 on: arguments.string("day")
             ))
         case "undo_write":
-            switch try VaultAPI.undo(session, id: try arguments.required("id")) {
+            switch try await VaultAPI.undo(session, id: try arguments.required("id")) {
             case .single(let summary): return reply(summary)
             case .operation(let summary): return reply(summary)
             }

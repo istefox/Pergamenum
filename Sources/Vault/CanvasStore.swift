@@ -16,14 +16,33 @@ struct CanvasStore: Sendable {
     /// Resolved at construction for the same reason as `NoteStore.root`.
     let root: URL
 
+    /// The only way this store turns a caller's board path into a `URL` it will read or
+    /// write (ADR-0041 §D2). A board path reaches here from a `^[[…]]` marker, which is
+    /// typed text, so it is no more trusted than a wikilink.
+    ///
+    /// Not `private`, unlike `NoteStore.boundary`: `WorkspaceController.fileURL(for:)`
+    /// resolves a `.canvas` node's `file` against this same store and must go through the
+    /// same guard rather than build a second one beside it.
+    let boundary: VaultBoundary
+
     init(root: URL) {
-        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        let boundary = VaultBoundary(root: root)
+        self.boundary = boundary
+        self.root = boundary.root
     }
 
     static let fileExtension = "canvas"
 
-    func url(forBoard board: String) -> URL {
-        root.appending(path: board, directoryHint: .notDirectory)
+    /// Where a board's file *would* be, for a caller that only asks whether something is
+    /// there.
+    ///
+    /// It delegates to `boundary` rather than resolving the path itself (ADR-0041 §D2),
+    /// so it answers about exactly the file `load`, `save` and `createBoard` would touch
+    /// and refuses exactly what they refuse. A "does this exist" that resolves a board
+    /// path more permissively than the read does is a question answered about a different
+    /// file than the one the caller is about to open.
+    func url(forBoard board: String) throws -> URL {
+        try boundary.url(for: board)
     }
 
     /// Reads the board at a vault-relative path, failing when the file is not there.
@@ -32,7 +51,7 @@ struct CanvasStore: Sendable {
     /// if it exists" asks which board a folder means and gets an answer that can be
     /// "none" (§D5) - it does not name a path and hope.
     func load(board: String) throws -> CanvasDocument {
-        let fileURL = url(forBoard: board)
+        let fileURL = try boundary.url(for: board)
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             throw StoreError.missing(board)
         }
@@ -41,7 +60,7 @@ struct CanvasStore: Sendable {
 
     @discardableResult
     func save(_ document: CanvasDocument, board: String) throws -> String {
-        let fileURL = url(forBoard: board)
+        let fileURL = try boundary.url(for: board)
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
@@ -119,7 +138,7 @@ struct CanvasStore: Sendable {
     /// name in one directory.
     func createBoard(named name: String, in parent: String) throws -> String {
         let relativePath = Self.boardFilePath(named: name, in: parent)
-        let fileURL = url(forBoard: relativePath)
+        let fileURL = try boundary.url(for: relativePath)
         guard !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             throw StoreError.alreadyExists(relativePath)
         }
@@ -132,10 +151,13 @@ struct CanvasStore: Sendable {
     /// `createFolder` (ADR-0022 §D11), so the creation sheet can refuse a taken name
     /// before the verb runs.
     func boardNameIsAvailable(_ name: String, in parent: String) -> Bool {
-        !FileManager.default.fileExists(
-            atPath: url(forBoard: Self.boardFilePath(named: name, in: parent))
-                .path(percentEncoded: false)
-        )
+        // A name whose path leaves the vault is not a name `createBoard` would write, so
+        // the sheet refuses it exactly as it refuses a taken one - the `Bool` this
+        // signature already returns says "no" for both reasons.
+        guard let fileURL = try? url(forBoard: Self.boardFilePath(named: name, in: parent)) else {
+            return false
+        }
+        return !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
     }
 
     /// The single spelling of "the file a board called `name` in `parent` would be", so
@@ -184,46 +206,35 @@ struct CanvasStore: Sendable {
     /// `allFolders()` needs. A second enumerator would be a second exclusion rule to
     /// keep in step with this one.
     ///
-    /// The walk mirrors `VaultScanner.scan()`: an enumerator that skips the descendants
-    /// of an excluded directory outright rather than filtering its files one at a time,
-    /// so `.obsidian`, `.git`, `.trash` and our own `.pergamenum` are never entered.
+    /// The walk itself is `VaultWalk` since ADR-0041 §D3: it is built from this store's own
+    /// `boundary`, and it - not this method - consults `VaultLayout.isExcludedDirectory` and
+    /// calls `skipDescendants()`, so `.obsidian`, `.git`, `.trash` and our own `.pergamenum`
+    /// are never entered. What is left here is only what this caller wanted: two lists.
     private func walk() -> (folders: [String], boards: [String]) {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsPackageDescendants]
+        // The two keys this caller used before the unification, kept rather than dropped to
+        // the walk's `[]` default: `.isDirectoryKey` follows a symlink to a directory where
+        // the URL's own trailing separator does not, and a folder row appearing or
+        // disappearing from the Workspace tree is not a change this task is making.
+        guard let walk = try? VaultWalk(
+            boundary: boundary, keys: [.isDirectoryKey, .nameKey]
         ) else {
             return (folders: [], boards: [])
         }
 
         var folders: [String] = []
         var boards: [String] = []
-        // Built once, not per entry: the walk asks for the same two keys every time.
-        let keySet = Set(keys)
-        while let url = enumerator.nextObject() as? URL {
-            // Deliberate fallback (PG-039): resourceValues can fail on a transient race
-            // with the file system, and the URL's own last path component is the same
-            // display name the volume would have reported anyway - display only, no
-            // write depends on this value.
-            let values = try? url.resourceValues(forKeys: keySet)
-            let name = values?.name ?? url.lastPathComponent
-
-            if values?.isDirectory == true {
-                if VaultLayout.isExcludedDirectory(name) {
-                    enumerator.skipDescendants()
-                    continue
-                }
+        walk.forEach { file in
+            if file.isDirectory {
                 // The enumerator hands back a *directory* URL, whose path ends in "/",
-                // and `VaultScanner.relativePath` preserves that faithfully - so this
+                // and `VaultWalk.Entry.relativePath` preserves that faithfully - so this
                 // would yield "01 Progetti/" where every other folder path in the app,
                 // the tree's ids and the selection included, is spelled without one.
-                let path = VaultScanner.relativePath(of: url, under: root)
+                let path = file.relativePath
                 folders.append(path.hasSuffix("/") ? String(path.dropLast()) : path)
-                continue
+                return
             }
-            guard url.pathExtension.lowercased() == Self.fileExtension else { continue }
-            boards.append(VaultScanner.relativePath(of: url, under: root))
+            guard file.url.pathExtension.lowercased() == Self.fileExtension else { return }
+            boards.append(file.relativePath)
         }
         return (folders: Self.sorted(folders), boards: Self.sorted(boards))
     }

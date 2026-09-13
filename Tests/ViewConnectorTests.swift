@@ -163,7 +163,8 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 
     // Edited by hand, and then offered again: the file stays as it was.
     let path = try #require(first.created.first)
-    try session.write("---\ndate: 2026-08-20\ntags:\n  - type-note\n---\n\nMio.\n", to: path)
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("---\ndate: 2026-08-20\ntags:\n  - type-note\n---\n\nMio.\n", to: path)
 
     let second = session.installSampleViews()
     #expect(second.created.isEmpty)

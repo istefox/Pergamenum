@@ -45,60 +45,86 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
 /// half-written note, and "file over app" is worthless if the file can be corrupted
 /// by the app that promises to protect it.
 struct NoteStore: Sendable {
-    /// The vault root, with symlinks resolved once at construction.
-    ///
-    /// Resolving here rather than at each comparison is what makes the boundary check
-    /// sound: `resolvingSymlinksInPath` does nothing for a path that does not exist
-    /// yet, so a not-yet-created note under a symlinked vault kept the unresolved
-    /// spelling while the root had the resolved one, and every write was refused as
-    /// "outside the vault". Building every path from the resolved root removes the
-    /// mismatch instead of trying to undo it later.
+    /// The vault root, with symlinks resolved once at construction - see
+    /// `VaultBoundary.root` for why that resolution happens here and not per comparison.
     let root: URL
 
+    /// The only way this type turns a caller's relative path into a `URL` on disk
+    /// (ADR-0041 §D1).
+    private let boundary: VaultBoundary
+
     init(root: URL) {
-        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        let boundary = VaultBoundary(root: root)
+        self.boundary = boundary
+        self.root = boundary.root
     }
 
     enum StoreError: Error, CustomStringConvertible {
         case notUTF8(String)
-        case outsideVault(String)
 
         var description: String {
             switch self {
             case .notUTF8(let path): "\(path) is not valid UTF-8"
-            case .outsideVault(let path): "\(path) is outside the vault"
             }
         }
     }
 
-    func url(for relativePath: String) -> URL {
-        root.appending(path: relativePath, directoryHint: .notDirectory)
+    /// The door thirty-one call sites use to get a `URL` on disk, and therefore the one
+    /// that has to carry the guard (ADR-0041 §D2).
+    ///
+    /// It is `throws` for the reason the ADR gives: making the accessor throwing is what
+    /// converts «nine call sites forgot the check» into «nine call sites will not compile
+    /// until they handle it». `read` and `write` below resolve through `boundary`
+    /// directly rather than through this accessor, because they already did.
+    func url(for relativePath: String) throws -> URL {
+        try boundary.url(for: relativePath)
     }
 
     /// Reads a note and derives its record.
+    ///
+    /// Parses `NoteDocument.parse(text)` exactly once (ADR-0041 §D7) and hands the parsed
+    /// document to `makeRecord`, which both this and `record(from:attributes:at:)`
+    /// (`NoteStore+ReadSurface.swift`) go through - the field-building logic is shared, the
+    /// parse is not, because each of those two entry points starts from a different thing
+    /// it already has (a `URL` here, raw `Data` there) and would otherwise have to parse
+    /// again to call the other.
     func read(_ relativePath: String) throws -> (record: NoteRecord, text: String) {
-        let fileURL = url(for: relativePath)
-        try assertInsideVault(fileURL, relativePath)
+        let fileURL = try boundary.url(for: relativePath)
 
         let data = try Data(contentsOf: fileURL)
         guard let text = String(data: data, encoding: .utf8) else {
             throw StoreError.notUTF8(relativePath)
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
+        let document = NoteDocument.parse(text)
 
         return (
-            NoteRecord(
-                relativePath: relativePath,
-                title: NoteName.title(fromFileName: fileURL.lastPathComponent),
-                frontmatter: NoteDocument.parse(text).frontmatter,
-                linkTargets: Self.linkTargets(in: text),
-                embedTargets: Transclusion.embeddedFiles(in: text),
-                tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
-                modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
-                byteSize: data.count,
-                contentHash: Self.hash(data)
-            ),
+            Self.makeRecord(from: data, text: text, document: document, attributes: attributes, at: relativePath),
             text
+        )
+    }
+
+    /// The fields a read derives, given a document already parsed once by the caller.
+    /// Shared by `read` above and `record(from:attributes:at:)`
+    /// (`NoteStore+ReadSurface.swift`, ADR-0041 §D7) so the two do not drift onto two
+    /// copies of the same field list.
+    static func makeRecord(
+        from data: Data,
+        text: String,
+        document: NoteDocument,
+        attributes: [FileAttributeKey: Any],
+        at relativePath: String
+    ) -> NoteRecord {
+        NoteRecord(
+            relativePath: relativePath,
+            title: NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent),
+            frontmatter: document.frontmatter,
+            linkTargets: linkTargets(in: document),
+            embedTargets: Transclusion.embeddedFiles(in: text),
+            tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
+            modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
+            byteSize: data.count,
+            contentHash: hash(data)
         )
     }
 
@@ -106,8 +132,7 @@ struct NoteStore: Sendable {
     /// watcher to recognise as its own.
     @discardableResult
     func write(_ text: String, to relativePath: String) throws -> String {
-        let fileURL = url(for: relativePath)
-        try assertInsideVault(fileURL, relativePath)
+        let fileURL = try boundary.url(for: relativePath)
 
         let parent = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -115,24 +140,6 @@ struct NoteStore: Sendable {
         let data = Data(text.utf8)
         try data.write(to: fileURL, options: .atomic)
         return Self.hash(data)
-    }
-
-    /// Guards against a relative path escaping the vault through `..`.
-    ///
-    /// Paths reach this layer from wikilinks and from the URL scheme, both of which
-    /// are user-supplied text; without the check, `pergamenum://note?file=../../…`
-    /// would write outside the vault.
-    private func assertInsideVault(_ fileURL: URL, _ relativePath: String) throws {
-        // Both sides start from the already-resolved root, so this compares like with
-        // like; `standardized` still collapses any `..` the relative path smuggled in,
-        // which is what the guard is actually for.
-        let resolvedRoot = root.path(percentEncoded: false)
-        let resolved = fileURL.standardizedFileURL.path(percentEncoded: false)
-
-        let rootWithSeparator = resolvedRoot.hasSuffix("/") ? resolvedRoot : resolvedRoot + "/"
-        guard resolved.hasPrefix(rootWithSeparator) else {
-            throw StoreError.outsideVault(relativePath)
-        }
     }
 
     static func hash(_ data: Data) -> String {
@@ -161,14 +168,11 @@ struct NoteStore: Sendable {
     /// it names shows the backlink and a transclusion pointing nowhere turns up among the
     /// unresolved links. A file embed is still not one - `![[foto.png]]` stays invisible
     /// here, which is what leaves `embedTargets` free for M11's gallery (ADR-0009 §D2).
+    ///
+    /// A thin wrapper over `linkTargets(in document:)` (`NoteStore+ReadSurface.swift`) for
+    /// the two callers (`Tests/TransclusionTests.swift:182`, `:221`) that only have text,
+    /// not an already-parsed document (ADR-0041 §D7).
     static func linkTargets(in text: String) -> [String] {
-        let document = NoteDocument.parse(text)
-        var seen = Set<String>()
-        var ordered: [String] = []
-        for link in WikilinkParser.links(in: document.body)
-        where !link.isEmbed || Transclusion.isNoteReference(link.target) {
-            if seen.insert(link.target).inserted { ordered.append(link.target) }
-        }
-        return ordered
+        linkTargets(in: NoteDocument.parse(text))
     }
 }

@@ -144,7 +144,8 @@ import Testing
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
-    try session.write("contenuto\n", to: "N.md")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("contenuto\n", to: "N.md")
 
     #expect(session.history.snapshots(for: "N.md").count == 1)
 }
@@ -157,7 +158,8 @@ import Testing
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
-    try session.write("{\"nodes\":[],\"edges\":[]}", to: "Board.canvas")
+    // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
+    try await session.write("{\"nodes\":[],\"edges\":[]}", to: "Board.canvas")
 
     #expect(session.history.snapshots(for: "Board.canvas").isEmpty)
 }

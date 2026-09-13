@@ -194,9 +194,9 @@ extension WorkspaceView {
         // folder's contents and redraws the breadcrumb.
         let fileName = (workspace.board as NSString).lastPathComponent
         let moved = destination.isEmpty ? fileName : "\(destination)/\(fileName)"
-        guard let store = workspace.store, FileManager.default.fileExists(
-            atPath: store.url(forBoard: moved).path(percentEncoded: false)
-        ) else {
+        guard let store = workspace.store,
+              let movedURL = try? store.url(forBoard: moved),
+              FileManager.default.fileExists(atPath: movedURL.path(percentEncoded: false)) else {
             // Nothing followed: a delete put the board in the Trash, so the surviving
             // parent is selected and no board is drawn - the answer §D5 gives a folder
             // that has no board, rather than a reopen that would only report a miss.

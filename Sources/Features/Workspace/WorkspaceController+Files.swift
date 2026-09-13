@@ -7,9 +7,14 @@ import Foundation
 /// writer.
 extension WorkspaceController {
     /// Absolute URL of the file a node points at, when it points at one.
+    ///
+    /// A node's `file` is ordinary JSON a person, Obsidian or a pasteboard drop can
+    /// write, so it goes through the store's own boundary (ADR-0041 §D2). A path escaping
+    /// the vault answers `nil`, which this signature already meant: "this node points at
+    /// nothing I can show you".
     func fileURL(for node: CanvasNode) -> URL? {
         guard let store, case .file(let path, _) = node.kind else { return nil }
-        return store.root.appending(path: path, directoryHint: .notDirectory)
+        return try? store.boundary.url(for: path)
     }
 
     /// URLs of the selected file cards, for the Quick Look panel (SPEC §6.6).
@@ -34,9 +39,14 @@ extension WorkspaceController {
     /// Only the header block is read (SPEC §14 excludes body rendering), so this stays
     /// cheap even for a message with a large attachment: the file is mapped rather than
     /// copied, and only the bytes before the blank line are decoded.
+    ///
+    /// The path is a node's `file`, the same untrusted JSON `fileURL(for:)` above resolves
+    /// through the store's boundary (ADR-0041 §D2), so it is resolved the same way here. A
+    /// path escaping the vault memoises nothing and leaves the card's header block empty -
+    /// which is what this method already did for a file it could not read.
     func loadEmailHeaders(for relativePath: String) {
         guard let store, emailHeaders[relativePath] == nil else { return }
-        let fileURL = store.root.appending(path: relativePath, directoryHint: .notDirectory)
+        guard let fileURL = try? store.boundary.url(for: relativePath) else { return }
         guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return }
         let headerBytes = Self.headerBlock(of: data)
 
