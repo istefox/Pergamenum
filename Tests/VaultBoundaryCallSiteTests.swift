@@ -297,10 +297,15 @@ private struct CallSiteFixture: ~Copyable {
             dateReceived: Date(timeIntervalSince1970: 1000), emlxBody: EmailFixtureCorpus.completeMessageRFC822
         )]
     )
-    let vaultRoot = FileManager.default.temporaryDirectory
-        .appending(path: "pergamenum-sync-callsite-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
+    // Both `vaultRoot` and the `../evil` sibling this test plants below live inside one
+    // UUID-named container, so the traversal fixture's own escape - and its cleanup - never
+    // reaches outside a directory this test run alone owns (a bare `temporaryDirectory/evil`
+    // sibling would collide with, and delete, another concurrent run's own fixture).
+    let container = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-sync-callsite-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let vaultRoot = container.appending(path: "vault", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: vaultRoot, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: vaultRoot) }
+    defer { try? FileManager.default.removeItem(at: container) }
     let engine = PraticaSyncEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot) { text, relativePath in
         let url = vaultRoot.appending(path: relativePath, directoryHint: .notDirectory)
         try FileManager.default.createDirectory(
@@ -332,11 +337,10 @@ private struct CallSiteFixture: ~Copyable {
     // is true), which is how `prepared.fileName` becomes deterministic without duplicating
     // `PraticaNaming`'s slug/date logic in this test - and it is what makes today's read
     // actually succeed, reading the sentinel straight out of the escaped location.
+    // `../evil` resolves to a sibling of `vault` inside `container` - the `defer` above
+    // already owns and removes it, so no second cleanup is needed here.
     let escapedEmailDirectory = vaultRoot.appending(path: "../evil/email", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: escapedEmailDirectory, withIntermediateDirectories: true)
-    defer {
-        try? FileManager.default.removeItem(at: vaultRoot.appending(path: "../evil", directoryHint: .isDirectory))
-    }
     let escapedDocument = MessageDocument(
         frontmatter: MessageDocument.MailFrontmatter(
             schemaVersion: 1, messageID: "<abc123@rossi-spa.it>", conversationID: 112_409, direction: .received,

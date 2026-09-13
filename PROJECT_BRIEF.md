@@ -87,6 +87,27 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-13: **Vault layer consistency and security (ADR-0041) — all 10 plan tasks implemented on
+  `feat/vault-layer-consistency-and-security-cha`.** Closes four Tier-1/2 findings from the
+  deep-refactor security pass: `PG-122` (the vault-boundary check was private and skippable,
+  reachable from only two of eleven disk-touching call sites — it becomes
+  `VaultBoundary.url(for:) throws -> URL`, the only door to a usable vault-relative `URL`, in
+  `Sources/Core/Vault/`), `PG-140`/`PG-145` (three drifted vault-walk copies and six drifted
+  apply-plan copies collapse into one shared helper apiece; `rename` calls `renamePlan` instead of
+  re-implementing it; `VaultController` and its seventeen extensions relocate from `Sources/Vault`
+  to `Sources/App`), and `PG-137` (the write path's disk I/O moves onto a `VaultDisk` actor, the
+  hash computed on the main actor *before* the hop so `selfWrittenHashes` cannot race an FSEvents
+  batch, and a per-path sequence number — not await-ordering alone — guards two rapid writes to the
+  same file against landing out of order; the tail call sites in `VaultWrites`, `VaultHost` and
+  `ReleasePipelineTests`' own process-wait helper adopt the same `async` pattern). `NoteStore.read`
+  now parses once instead of twice, and a batch `moveItems` computes one plan (one vault walk, one
+  board-repoint pass, one `starred.json` save) instead of one apiece per note. Unit suite green in
+  full: **2925 tests, 0 failures**; `perg` and `pergamenum-mcp` both build; `scripts/mcp-smoke.py`
+  green, including `undo_write` against the now-async write path; `scripts/uitests.sh` green, 117
+  tests, 0 failures. `VaultSession.read` deliberately stays synchronous (25 call sites are
+  synchronous `@Observable` computed properties SwiftUI evaluates from `body`). Not yet merged to
+  `main` — Stefano's manual CLI pass (R-11: `note rename`/`note move`/`journal undo` and their
+  `--dry-run` forms against a scratch vault) is the remaining gate.
 - 2026-09-10: **Pratiche follow-up (PG-116…PG-119) — all four closed on `feat/pratiche`.**
   `docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md`, six tasks. ADR-0036 gains three
   sections: §D23 (the ledger now records a message/ROWID/conversation-id bridge per import and
