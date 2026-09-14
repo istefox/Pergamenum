@@ -69,7 +69,6 @@ build/
 Derived/
 *.xcodeproj
 *.xcworkspace
-.tuist-version
 Tuist/.build/
 
 # macOS
