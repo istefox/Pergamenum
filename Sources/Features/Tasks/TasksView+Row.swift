@@ -11,7 +11,7 @@ extension TasksView {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
                 Image(systemName: task.state == .done ? "checkmark.square" : "square")
                     .foregroundStyle(theme.color(task.isOverdue(on: today) ? .taskOverdue : .taskOpen))
-                    .onTapGesture { vault.toggle(task) }
+                    .onTapGesture { Task { await vault.toggle(task) } }
 
                 // A minimal marker in both densities (R-05): the assignment itself is worth
                 // knowing about even in the one-line row that has no room for which board.
@@ -39,7 +39,7 @@ extension TasksView {
                 if isRolledOver, let scheduled = task.scheduled {
                     Text(RolloverMarker.text(for: scheduled))
                         .themedText(.caption, color: .taskOverdue)
-                    Button("Porta a oggi") { vault.apply(.schedule(today), to: task) }
+                    Button("Porta a oggi") { Task { await vault.apply(.schedule(today), to: task) } }
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.color(.accentPrimary))
                         .help("Riscrive «>data» nella nota di origine (\(moveKey) sul task selezionato)")
@@ -140,7 +140,7 @@ extension TasksView {
 
     @ViewBuilder
     func contextMenu(_ task: TaskItem) -> some View {
-        Button(task.state == .done ? "Riapri" : "Completa") { vault.toggle(task) }
+        Button(task.state == .done ? "Riapri" : "Completa") { Task { await vault.toggle(task) } }
         Divider()
         // The Task menu's own entry, on the row it is about (ADR-0023 §D6, R-05). The
         // title comes from the shortcut catalogue rather than from a second literal, so
@@ -156,18 +156,20 @@ extension TasksView {
             vault.taskDraft = .subtask(of: task)
         }
         // The quick reschedule of SPEC §7.3.
-        Button("Pianifica oggi") { vault.apply(.schedule(today), to: task) }
-        Button("Domani") { vault.apply(.schedule(today.adding(days: 1)), to: task) }
-        Button("+2 giorni") { vault.apply(.schedule(today.adding(days: 2)), to: task) }
-        Button("Settimana prossima") { vault.apply(.schedule(today.adding(days: 7)), to: task) }
-        Button("Togli la data") { vault.apply(.schedule(nil), to: task) }
+        Button("Pianifica oggi") { Task { await vault.apply(.schedule(today), to: task) } }
+        Button("Domani") { Task { await vault.apply(.schedule(today.adding(days: 1)), to: task) } }
+        Button("+2 giorni") { Task { await vault.apply(.schedule(today.adding(days: 2)), to: task) } }
+        Button("Settimana prossima") {
+            Task { await vault.apply(.schedule(today.adding(days: 7)), to: task) }
+        }
+        Button("Togli la data") { Task { await vault.apply(.schedule(nil), to: task) } }
         Button("Aggiungi scadenza…") { addingDueFor = task }
         Divider()
         ForEach(TaskCommand.available(for: task), id: \.self) { command in
             Button(command.title) { actions.run(command, on: task) }
         }
         Divider()
-        Button("Annulla task") { vault.apply(.state(.cancelled), to: task) }
+        Button("Annulla task") { Task { await vault.apply(.state(.cancelled), to: task) } }
     }
 
     /// The date picker for "Aggiungi scadenza…" (SPEC §7.1 `!YYYY-MM-DD`).
@@ -177,15 +179,19 @@ extension TasksView {
             MonthCalendar(
                 selection: .constant(task.due),
                 onPick: { date in
-                    vault.apply(.due(date), to: task)
-                    addingDueFor = nil
+                    Task { @MainActor in
+                        await vault.apply(.due(date), to: task)
+                        addingDueFor = nil
+                    }
                 }
             )
             HStack {
                 if task.due != nil {
                     Button("Rimuovi scadenza") {
-                        vault.apply(.due(nil), to: task)
-                        addingDueFor = nil
+                        Task { @MainActor in
+                            await vault.apply(.due(nil), to: task)
+                            addingDueFor = nil
+                        }
                     }
                 }
                 Spacer()

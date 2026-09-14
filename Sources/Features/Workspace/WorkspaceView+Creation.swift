@@ -70,13 +70,18 @@ extension WorkspaceView {
         case .link:
             _ = workspace.addLink(value, at: point)
         case .note:
-            do {
-                let path = try vault.createNote(
-                    title: value, in: workspace.folder, date: .today
-                )
-                _ = workspace.placeFile(path, at: point, creatingOnDisk: path)
-            } catch {
-                workspace.recordProblem(ConformanceText.creationFailure(error))
+            // The hop, and both branches inside it: creating the note now goes through the
+            // one asynchronous write door (ADR-0043 §D2), and placing the card on the board
+            // has to wait for the file it points at to exist.
+            Task { @MainActor in
+                do {
+                    let path = try await vault.createNote(
+                        title: value, in: workspace.folder, date: .today
+                    )
+                    _ = workspace.placeFile(path, at: point, creatingOnDisk: path)
+                } catch {
+                    workspace.recordProblem(ConformanceText.creationFailure(error))
+                }
             }
         }
     }

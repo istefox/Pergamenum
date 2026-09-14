@@ -58,7 +58,7 @@ extension VaultAPI {
     @MainActor
     static func createNote(
         _ session: VaultSession, title: String, folder: String?, topic: String?, date: String?
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         guard !title.isEmpty else {
             throw ConnectorError("serve un titolo per la nota", usage: true)
         }
@@ -70,7 +70,7 @@ extension VaultAPI {
         } ?? []
 
         do {
-            let result = try session.createNote(
+            let result = try await session.createNote(
                 title: title, in: folder ?? "", date: try day(date), topics: topics
             )
             return summarise(result, session: session)
@@ -82,13 +82,13 @@ extension VaultAPI {
     @MainActor
     static func appendToNote(
         _ session: VaultSession, at path: String, text: String
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         guard !text.isEmpty else {
             throw ConnectorError("serve il testo da aggiungere", usage: true)
         }
         guard session.exists(path) else { throw ConnectorError("«\(path)» non esiste") }
 
-        guard case .written(let result) = session.append(text: text, to: path) else {
+        guard case .written(let result) = await session.append(text: text, to: path) else {
             throw ConnectorError("non scritto: \(session.problems.last ?? "motivo sconosciuto")")
         }
         return summarise(result, session: session)
@@ -99,7 +99,7 @@ extension VaultAPI {
     @MainActor
     static func renameNote(
         _ session: VaultSession, at path: String, to newTitle: String
-    ) throws -> FileMoveSummary {
+    ) async throws -> FileMoveSummary {
         guard !path.isEmpty else {
             throw ConnectorError("serve il percorso della nota", usage: true)
         }
@@ -107,7 +107,7 @@ extension VaultAPI {
             throw ConnectorError("serve il nuovo titolo", usage: true)
         }
         do {
-            let outcome = try session.renameNote(at: path, to: newTitle)
+            let outcome = try await session.renameNote(at: path, to: newTitle)
             return FileMoveSummary(
                 newPath: outcome.newPath,
                 applied: !session.isDryRun,
@@ -122,12 +122,12 @@ extension VaultAPI {
     @MainActor
     static func moveNote(
         _ session: VaultSession, at path: String, toFolder folder: String
-    ) throws -> FileMoveSummary {
+    ) async throws -> FileMoveSummary {
         guard !path.isEmpty else {
             throw ConnectorError("serve il percorso della nota", usage: true)
         }
         do {
-            let outcome = try session.moveNote(at: path, toFolder: folder)
+            let outcome = try await session.moveNote(at: path, toFolder: folder)
             return FileMoveSummary(
                 newPath: outcome.newPath,
                 applied: !session.isDryRun,
@@ -140,12 +140,12 @@ extension VaultAPI {
     }
 
     @MainActor
-    static func trashNote(_ session: VaultSession, at path: String) throws -> TrashSummary {
+    static func trashNote(_ session: VaultSession, at path: String) async throws -> TrashSummary {
         guard !path.isEmpty else {
             throw ConnectorError("serve il percorso della nota", usage: true)
         }
         do {
-            let orphaned = try session.trashNote(at: path)
+            let orphaned = try await session.trashNote(at: path)
             return TrashSummary(path: path, applied: !session.isDryRun, orphaned: orphaned)
         } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")
@@ -157,7 +157,7 @@ extension VaultAPI {
     @MainActor
     static func addTask(
         _ session: VaultSession, text: String, scheduled: String?, due: String?, note: String?
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         guard !text.isEmpty else {
             throw ConnectorError("serve il testo del task", usage: true)
         }
@@ -175,7 +175,7 @@ extension VaultAPI {
             draft.destination = .note(note)
         }
 
-        guard let result = session.captureTask(draft) else {
+        guard let result = await session.captureTask(draft) else {
             throw ConnectorError("non scritto: \(session.problems.last ?? "motivo sconosciuto")")
         }
         return summarise(result, session: session)
@@ -184,7 +184,7 @@ extension VaultAPI {
     @MainActor
     static func changeTask(
         _ session: VaultSession, matching needle: String, _ request: TaskChangeRequest
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         guard !needle.isEmpty else {
             throw ConnectorError("serve il testo del task, oppure percorso:riga", usage: true)
         }
@@ -197,7 +197,7 @@ extension VaultAPI {
         case .reschedule(let to): change = .schedule(to == "none" ? nil : try day(to))
         }
 
-        switch session.apply(change, to: target) {
+        switch await session.apply(change, to: target) {
         case .written(let result):
             return summarise(result, session: session)
         case .stale:
@@ -214,13 +214,13 @@ extension VaultAPI {
     @MainActor
     static func addTimeBlock(
         _ session: VaultSession, title: String, at time: String, minutes: Int?, on rawDay: String?
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         guard !title.isEmpty else {
             throw ConnectorError("serve un titolo per il blocco", usage: true)
         }
         let requested = try minutesFromMidnight(time)
 
-        guard let placed = session.addTimeBlock(
+        guard let placed = await session.addTimeBlock(
             title: title, on: try day(rawDay), startMinutes: requested, durationMinutes: minutes
         ) else {
             throw ConnectorError("non scritto: \(session.problems.last ?? "nessuno spazio libero")")
@@ -248,23 +248,19 @@ extension VaultAPI {
     /// a single entry, and this is the exact behaviour `undo` had before ADR-0016 - refuses
     /// when the file has moved on since, because undoing onto somebody else's later edit is
     /// worse than declining to undo at all.
-    /// ADR-0041 Task 9 (R-08): the one place in this file that calls `session.write(_:to:)`
-    /// directly rather than through one of `VaultSession`'s still-synchronous wrappers
-    /// (`createNote`, `append`, `renameNote`, `moveNote`, `trashNote`, `captureTask`,
-    /// `apply`, `addTimeBlock` - untouched by this task, see `VaultSession.write`'s doc
-    /// comment) - so this is the one VaultWrites function that actually reaches the async
-    /// disk-actor door Task 8 built. The other eleven functions in this file have nothing
-    /// to `await`: they call those synchronous wrappers and gain no correctness or
-    /// behaviour change from becoming `async` themselves, at the cost of forcing `await`
-    /// onto every CLI, MCP and test call site that uses them (`Tests/ConnectorTests.swift`,
-    /// `Tests/CaptureTests.swift`, `Sources/Connector/VaultCapture.swift`,
-    /// `Sources/CLI/Commands/WriteCommands.swift` and more), none of which SPEC.md's R-08
-    /// text names. Left synchronous, deliberately - see this task's tester report.
+    /// ADR-0041 Task 9 (R-08) made this the first `async` function in this file, because it
+    /// was the only one calling `session.write(_:to:)` directly instead of through one of
+    /// `VaultSession`'s then-synchronous wrappers. ADR-0043 §D2 deleted that synchronous
+    /// door, so every wrapper this file calls - `createNote`, `append`, `renameNote`,
+    /// `moveNote`, `trashNote`, `captureTask`, `apply`, `addTimeBlock`, `undo` - is `async`
+    /// now, and so is every function here. The cost ADR-0041 declined to pay (an `await` at
+    /// every CLI, MCP and test call site) is what this chain paid on purpose: one write
+    /// door, no second ordering regime beside it.
     @MainActor
     static func undo(_ session: VaultSession, id: String) async throws -> UndoOutcome {
         let journal = session.journalOnDisk
         guard journal.entries(operation: id).isEmpty else {
-            let outcome = session.undo(operation: id)
+            let outcome = await session.undo(operation: id)
             guard outcome.failures.isEmpty else {
                 throw ConnectorError(outcome.failures.joined(separator: "\n"))
             }

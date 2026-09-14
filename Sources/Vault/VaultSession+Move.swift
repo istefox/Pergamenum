@@ -78,7 +78,7 @@ extension VaultSession {
     /// `extractStarForBatchedMove`/`commitBatchedStarMoves` below, instead of once per
     /// starred note the way `moveNote`'s own internal `moveStar` call used to trigger on
     /// its own.
-    func moveItems(_ items: [VaultItemRef], into destination: String) -> MoveBatchOutcome {
+    func moveItems(_ items: [VaultItemRef], into destination: String) async -> MoveBatchOutcome {
         var outcome = MoveBatchOutcome()
 
         switch VaultMoveBatch.plan(items, into: destination, exists: { exists($0) }) {
@@ -109,7 +109,7 @@ extension VaultSession {
                         if extractStarForBatchedMove(move.item.path) {
                             extractedStarPath = move.item.path
                         }
-                        let note = try moveNote(at: move.item.path, toFolder: move.to)
+                        let note = try await moveNote(at: move.item.path, toFolder: move.to)
                         outcome.movedNotes.append(MovedNote(old: move.item.path, new: note.newPath))
                         if extractedStarPath != nil {
                             pendingNewStarredPaths.append(note.newPath)

@@ -1290,7 +1290,7 @@ final class PraticaLiveSync {
             for conversation in candidates.autoFollowedConversations {
                 effectiveDossier = PraticaTrayModel.following(conversationID: conversation, in: effectiveDossier)
             }
-            DossierWriter.update(at: praticaPath, session: session) { $0 = effectiveDossier }
+            await DossierWriter.update(at: praticaPath, session: session) { $0 = effectiveDossier }
             candidates = MembershipRule.candidates(
                 dossier: effectiveDossier, store: prepared.snapshot, onDisk: onDisk
             )

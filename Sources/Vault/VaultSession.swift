@@ -209,86 +209,6 @@ final class VaultSession {
     /// and stops one line short of the disk.
     @ObservationIgnored var isDryRun = false
 
-    /// Writes a note, records the hash so the watcher knows it as ours, and re-reads
-    /// it into the index.
-    ///
-    /// Files first, index second: a crash between the two must leave the file correct,
-    /// never the cache (ADR-0001 §D2.3).
-    ///
-    /// A thin wrapper over `writeSynchronously(_:to:)` (ADR-0041 Task 8): the body used to
-    /// live here directly, and moved out under its own name so the async overload at the
-    /// bottom of this file can exist as a second declaration without recursing into
-    /// itself - Swift's overload resolution prefers an async candidate over a sync one of
-    /// the same name once the caller is itself async, `await` or not, which made `try
-    /// write(text, to: relativePath)` inside the async overload call itself instead of
-    /// this one (confirmed against the installed toolchain, not assumed).
-    ///
-    /// **Deliberately still synchronous, and does not go through `VaultDisk`.** The ~20
-    /// call sites inside `VaultSession`'s own extensions (`+Notes`, `+Tasks`,
-    /// `+TimeBlocks`, `+Journal`, `+Watching`, `+TagRename`, `+SampleViews`, `+Files`,
-    /// `+EventNotes`, `+Diary`, `+BoardDrop`) call `write` from plain, synchronous
-    /// functions with no suspension point of their own - there is no continuation-
-    /// ordering hazard (§D11) to close for a call that cannot itself be interleaved by
-    /// another `Task`. Existing tests that call these wrapper functions synchronously
-    /// (`Tests/VaultSessionTests.swift`, `Tests/GuardrailTests.swift`,
-    /// `Tests/NoteTemplateTests.swift`, `Tests/RelatedLinkTests.swift`,
-    /// `Tests/VaultTests.swift`, `Tests/NoteTabGestureTests.swift`,
-    /// `Tests/ConnectorTests.swift`) are outside this task's edit scope (ADR-0049's
-    /// test-authoring restriction) and confirm this: none of them awaits `createNote`,
-    /// `dailyNote` or `addStructuralLink`, so those - and every other synchronous wrapper
-    /// in the files above - keep calling this synchronous door, unchanged in behaviour.
-    /// The actor hop is for the genuinely async entry points: the async overload below,
-    /// which the qualified outside call sites (`PraticaEntryComposer`,
-    /// `NuovaPraticaWizard`, `PraticheController`, `RecordingsController`) now `await`.
-    /// `VaultController+Editing`'s `saveOpenNote()`/`restoreVersion(_:)` stay on this
-    /// synchronous door instead, despite being an "outside" call site - not for lack of
-    /// a suspension point, but because `Tests/VaultTests.swift`,
-    /// `Tests/NoteHistoryTests.swift` and `Tests/NoteTabTests.swift` (none editable
-    /// under ADR-0049) call them synchronously and read the file straight back off
-    /// disk, which only the sync door's same-thread-before-return guarantee satisfies.
-    /// `DossierWriter`, `PraticaCommandActions` and `VaultWrites`/`VaultHost` are out of
-    /// this task's scope entirely (see the two files' own notes).
-    @discardableResult
-    func write(_ text: String, to relativePath: String) throws -> WriteResult {
-        try writeSynchronously(text, to: relativePath)
-    }
-
-    private func writeSynchronously(_ text: String, to relativePath: String) throws -> WriteResult {
-        // Read first, and only when somebody is going to use it: the journal needs what
-        // was there, and a dry run needs nothing at all.
-        let existing = (journal != nil && !isDryRun) ? try? read(relativePath) : nil
-
-        guard !isDryRun else { return WriteResult(path: relativePath, text: text) }
-
-        let hash = try store.write(text, to: relativePath)
-        selfWrittenHashes[relativePath] = hash
-        index.update(try store.read(relativePath).record, at: relativePath)
-
-        if let journal {
-            let now = Date()
-            let problem = journal.record(WriteJournal.Entry(
-                id: WriteJournal.makeID(at: now),
-                timestamp: now,
-                path: relativePath,
-                hashBefore: existing?.record.contentHash,
-                hashAfter: hash,
-                textBefore: existing?.text,
-                command: journalCommand,
-                operation: currentOperation
-            ))
-            // The write happened; the net did not. Say so rather than pretending the
-            // change can be undone.
-            if let problem { recordProblem(problem) }
-        }
-
-        // Unconditional and scoped to notes (ADR-0011 D2): every `.md` write gets a
-        // browsable version, app or connector alike, not only a connector's.
-        if relativePath.hasSuffix(".md") {
-            history.record(text, for: relativePath)
-        }
-        return WriteResult(path: relativePath, text: text)
-    }
-
     /// Applies a record the caller has already read, for the watcher's reconciliation.
     func updateIndex(_ record: NoteRecord?, at relativePath: String) {
         index.update(record, at: relativePath)
@@ -464,16 +384,14 @@ final class VaultSession {
     }
 }
 
-// MARK: - ADR-0041 Task 8 - the real actor-hop write
+// MARK: - ADR-0041 Task 8 / ADR-0043 §D2 - the one write door
 //
-// `write(_:to:)` above stays exactly as it was: still synchronous, still bypassing
-// `disk`, still what every wrapper inside `Sources/Vault` that has no suspension point of
-// its own calls (see the doc comment on it for the full list and why). This extension adds
-// the **async** overload ADR-0041 §D9 describes, as a second declaration - Swift resolves
-// the two by whether the call site says `await` - rather than a rewrite of the first,
-// which would have forced every one of those ~20 purely-synchronous internal call sites to
-// become `async` too, for no correctness gain: nothing can interleave with a call that
-// never suspends.
+// ADR-0041 §D9 added this as the **async** overload beside a synchronous `write(_:to:)`,
+// the two resolved by whether the call site said `await`. ADR-0043 §D2 deleted the
+// synchronous one: two doors onto the same file meant two ordering regimes, and the
+// sequence guard below can only be relied on if every write comes through the actor. The
+// cost is the cascade that deletion forced - `async` all the way out to the SwiftUI
+// actions and the connectors' front ends - which is this chain's Tasks 1 to 3.
 extension VaultSession {
     /// The async door onto the write ADR-0041 §D9 describes: the disk work - the boundary
     /// check, the atomic write, the stat, the record derivation, the history write and the

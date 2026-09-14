@@ -106,13 +106,15 @@ struct DayTimeline: View {
         // midnight, and «00:00–00:00 · Ferragosto» is worse than saying it lasts all day.
         let start = event.isAllDay ? nil : time(at: minutes(from: event.start))
         let end = event.isAllDay ? nil : time(at: minutes(from: event.end))
-        vault.openEventNote(
-            for: event.title,
-            on: controller.day,
-            start: start,
-            end: end,
-            attendees: event.attendees
-        )
+        Task { @MainActor in
+            await vault.openEventNote(
+                for: event.title,
+                on: controller.day,
+                start: start,
+                end: end,
+                attendees: event.attendees
+            )
+        }
     }
 
     /// The hours, and the hour a dragged task lands on (ADR-0013 §D5).
@@ -126,7 +128,7 @@ struct DayTimeline: View {
                 TaskDropTarget(
                     cornerRadius: theme.radius(.control),
                     onDrop: { payload in
-                        controller.drop(payload, on: controller.day, at: TaskTime(hour: hour, minute: 0))
+                        await controller.drop(payload, on: controller.day, at: TaskTime(hour: hour, minute: 0))
                     },
                     content: {
                         HStack(alignment: .top, spacing: theme.spacing(.s)) {

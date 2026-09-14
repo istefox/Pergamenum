@@ -188,12 +188,17 @@ struct AddToPraticaSheet: View {
         let actions = PraticaCommandActions(
             pratiche: pratiche, vault: vault, navigation: navigation, undoManager: undoManager
         )
-        actions.updateDossier(at: praticaPath) { dossier in
-            if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
+        // One hop for the whole tail rather than one per write (ADR-0043 §D2): the order
+        // here is the point, since the sync asked for at the end reads from disk the
+        // dossier key written at the start.
+        Task { @MainActor in
+            await actions.updateDossier(at: praticaPath) { dossier in
+                if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
+            }
+            onClose()
+            navigation.pane = .pratiche
+            pratiche.select(praticaPath, in: vault)
+            await pratiche.refreshNow(praticaPath, in: vault)
         }
-        onClose()
-        navigation.pane = .pratiche
-        pratiche.select(praticaPath, in: vault)
-        Task { await pratiche.refreshNow(praticaPath, in: vault) }
     }
 }

@@ -150,13 +150,21 @@ extension WorkspaceBrowser {
     /// arithmetic that already declined to light the row up and says nothing more, while a
     /// collision is named in a dialog because R-07 requires the conflicting name to be
     /// shown and a row that stayed dark shows nothing.
+    ///
+    /// Since ADR-0043 §D2 that `false` answers the *drag* and not the batch: the move goes
+    /// through the one asynchronous write door, `.dropDestination`'s action does not wait,
+    /// so the cycle - pure string arithmetic over the payload, safe on this side of the
+    /// suspension (§D7) - still refuses here, and the collision arrives a moment later in
+    /// the dialog R-07 asks for, which is where it was always shown.
     func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
         dragging = []
         guard !items.isEmpty, Self.canDrop(items, onFolder: destination) else { return false }
-        let refusals = actions.move(items, FolderPath(destination))
-        guard refusals.isEmpty else {
-            moveConflict = WorkspaceMoveConflict(reasons: refusals)
-            return false
+        Task { @MainActor in
+            let refusals = await actions.move(items, FolderPath(destination))
+            guard refusals.isEmpty else {
+                moveConflict = WorkspaceMoveConflict(reasons: refusals)
+                return
+            }
         }
         return true
     }

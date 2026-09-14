@@ -80,7 +80,7 @@ struct TasksView: View {
 
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
-                if let task = selected { vault.toggle(task) }
+                if let task = selected { Task { await vault.toggle(task) } }
             } label: {
                 Label("Completa o riapri", systemImage: "checkmark.circle")
             }
@@ -88,7 +88,7 @@ struct TasksView: View {
             .disabled(selected == nil)
 
             Button {
-                if let task = selected { vault.apply(.schedule(today), to: task) }
+                if let task = selected { Task { await vault.apply(.schedule(today), to: task) } }
             } label: {
                 Label("Pianifica oggi", systemImage: "calendar.badge.clock")
             }

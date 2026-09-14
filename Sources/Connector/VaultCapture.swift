@@ -76,7 +76,7 @@ extension VaultAPI {
         text: String,
         scheduled: String? = nil,
         due: String? = nil
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else {
             throw ConnectorError("serve il testo da catturare", usage: true)
@@ -90,13 +90,13 @@ extension VaultAPI {
 
         switch destination {
         case .task(let note):
-            return try addTask(session, text: body, scheduled: scheduled, due: due, note: note)
+            return try await addTask(session, text: body, scheduled: scheduled, due: due, note: note)
         case .today:
-            return try captureIntoDay(session, text: body)
+            return try await captureIntoDay(session, text: body)
         case .note(let path):
-            return try appendToNote(session, at: path, text: body)
+            return try await appendToNote(session, at: path, text: body)
         case .newNote(let folder):
-            return try captureAsNote(session, text: body, folder: folder)
+            return try await captureAsNote(session, text: body, folder: folder)
         }
     }
 
@@ -111,10 +111,10 @@ extension VaultAPI {
     @MainActor
     private static func captureIntoDay(
         _ session: VaultSession, text: String
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         let path: String
         do {
-            path = try session.dailyNote(for: .today)
+            path = try await session.dailyNote(for: .today)
         } catch let refusal as VaultSession.CreationError {
             throw ConnectorError("\(refusal)")
         }
@@ -130,7 +130,7 @@ extension VaultAPI {
                 note: "la nota del giorno verrebbe creata prima"
             )
         }
-        return try appendToNote(session, at: path, text: text)
+        return try await appendToNote(session, at: path, text: text)
     }
 
     // MARK: A new note
@@ -144,12 +144,12 @@ extension VaultAPI {
     @MainActor
     private static func captureAsNote(
         _ session: VaultSession, text: String, folder: String?
-    ) throws -> WriteSummary {
+    ) async throws -> WriteSummary {
         var lines = text.components(separatedBy: "\n")
         let title = lines.removeFirst().trimmingCharacters(in: .whitespaces)
         let rest = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let created = try createNote(
+        let created = try await createNote(
             session,
             title: title,
             folder: folder ?? CaptureDestination.defaultFolder,
@@ -169,6 +169,6 @@ extension VaultAPI {
                 note: "il corpo verrebbe aggiunto dopo la creazione"
             )
         }
-        return try appendToNote(session, at: created.path, text: rest)
+        return try await appendToNote(session, at: created.path, text: rest)
     }
 }

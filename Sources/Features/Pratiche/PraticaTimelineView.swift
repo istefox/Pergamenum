@@ -102,7 +102,10 @@ struct PraticaTimelineView: View {
               let entry = entries.first(where: { $0.id == id }),
               entry.kind == .message
         else { return false }
-        actions.exclude(entry, detail: pratiche.details[entry.id])
+        // The `true` answers the *key*, not the exclusion: the command has been accepted
+        // and goes through the one asynchronous write door (ADR-0043 §D2), and its own
+        // failures were always reported on `pratiche.report` rather than through here.
+        Task { @MainActor in await actions.exclude(entry, detail: pratiche.details[entry.id]) }
         return true
     }
 

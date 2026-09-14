@@ -162,7 +162,7 @@ final class VaultHost {
 
         switch name {
         case "create_note":
-            return reply(try VaultAPI.createNote(
+            return reply(try await VaultAPI.createNote(
                 session,
                 title: try arguments.required("title"),
                 folder: arguments.string("folder"),
@@ -170,24 +170,24 @@ final class VaultHost {
                 date: arguments.string("date")
             ))
         case "append_to_note":
-            return reply(try VaultAPI.appendToNote(
+            return reply(try await VaultAPI.appendToNote(
                 session, at: try arguments.required("path"), text: try arguments.required("text")
             ))
         case "rename_note":
-            return reply(try VaultAPI.renameNote(
+            return reply(try await VaultAPI.renameNote(
                 session, at: try arguments.required("path"), to: try arguments.required("title")
             ))
         case "move_note":
-            return reply(try VaultAPI.moveNote(
+            return reply(try await VaultAPI.moveNote(
                 session, at: try arguments.required("path"), toFolder: arguments.string("folder") ?? ""
             ))
         case "trash_note":
-            return reply(try VaultAPI.trashNote(session, at: try arguments.required("path")))
+            return reply(try await VaultAPI.trashNote(session, at: try arguments.required("path")))
         case "capture":
             // "note" when the model says nothing, the same default `perg capture` uses.
             // The URL route's default is "today" and lives at its own call site, so the
             // two cannot drift into each other (ADR-0008 §D5).
-            return reply(try VaultAPI.capture(
+            return reply(try await VaultAPI.capture(
                 session,
                 to: try VaultAPI.CaptureDestination.named(
                     arguments.string("destination") ?? "note",
@@ -206,7 +206,7 @@ final class VaultHost {
     private func writeWork(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result? {
         switch name {
         case "add_task":
-            return reply(try VaultAPI.addTask(
+            return reply(try await VaultAPI.addTask(
                 session,
                 text: try arguments.required("text"),
                 scheduled: arguments.string("scheduled"),
@@ -214,21 +214,21 @@ final class VaultHost {
                 note: arguments.string("note")
             ))
         case "complete_task":
-            return reply(try VaultAPI.changeTask(
+            return reply(try await VaultAPI.changeTask(
                 session, matching: try arguments.required("task"), .done
             ))
         case "reopen_task":
-            return reply(try VaultAPI.changeTask(
+            return reply(try await VaultAPI.changeTask(
                 session, matching: try arguments.required("task"), .reopen
             ))
         case "reschedule_task":
-            return reply(try VaultAPI.changeTask(
+            return reply(try await VaultAPI.changeTask(
                 session,
                 matching: try arguments.required("task"),
                 .reschedule(to: try arguments.required("to"))
             ))
         case "add_time_block":
-            return reply(try VaultAPI.addTimeBlock(
+            return reply(try await VaultAPI.addTimeBlock(
                 session,
                 title: try arguments.required("title"),
                 at: try arguments.required("at"),

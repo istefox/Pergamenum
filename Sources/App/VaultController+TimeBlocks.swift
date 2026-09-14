@@ -32,9 +32,9 @@ extension VaultController {
 
     /// Replaces a day's blocks, creating the daily note when it is missing.
     @discardableResult
-    func setTimeBlocks(_ blocks: [TimeBlock], on day: CalendarDate) -> Bool {
+    func setTimeBlocks(_ blocks: [TimeBlock], on day: CalendarDate) async -> Bool {
         guard let session else { return false }
-        let outcome = session.setTimeBlocks(
+        let outcome = await session.setTimeBlocks(
             blocks, on: day, preferring: bufferText(for: dailyNotePath(for: day))
         )
         if let result = outcome.result { syncOpenNote(with: result) }
@@ -48,9 +48,9 @@ extension VaultController {
         on day: CalendarDate,
         startMinutes: Int,
         durationMinutes: Int? = nil
-    ) -> TimeBlock? {
+    ) async -> TimeBlock? {
         guard let session else { return nil }
-        guard let placed = session.addTimeBlock(
+        guard let placed = await session.addTimeBlock(
             title: title,
             on: day,
             startMinutes: startMinutes,
@@ -88,9 +88,9 @@ extension VaultController {
         start: TaskTime? = nil,
         end: TaskTime? = nil,
         attendees: [String] = []
-    ) -> String? {
+    ) async -> String? {
         guard let session else { return nil }
-        guard let created = session.eventNote(
+        guard let created = await session.eventNote(
             for: eventTitle, on: day, start: start, end: end, attendees: attendees
         ) else { return nil }
         // The day's note gained a line, and it may be the one the editor is showing.

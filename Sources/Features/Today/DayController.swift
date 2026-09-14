@@ -149,12 +149,14 @@ final class DayController {
     /// Opens the daily note for the day shown, creating it from the template when it
     /// does not exist yet.
     func openDailyNote() {
-        do {
-            _ = try vault.openDailyNote(for: day)
-        } catch {
-            report("nota del giorno: \(error)")
+        Task { @MainActor in
+            do {
+                _ = try await vault.openDailyNote(for: day)
+            } catch {
+                report("nota del giorno: \(error)")
+            }
+            reload()
         }
-        reload()
     }
 
     // MARK: Blocks
@@ -260,11 +262,15 @@ final class DayController {
     /// the block itself.
     private func write(_ newBlocks: [TimeBlock]) {
         let sorted = newBlocks.sorted { $0.startMinutes < $1.startMinutes }
-        guard vault.setTimeBlocks(sorted, on: day) else {
-            report("blocchi tempo del \(day.compactForm): scrittura non riuscita")
-            return
+        // The refusal branch moves inside the hop rather than being dropped (ADR-0043
+        // §D2): `blocks` must only take the new value once the file actually holds it.
+        Task { @MainActor in
+            guard await vault.setTimeBlocks(sorted, on: day) else {
+                report("blocchi tempo del \(day.compactForm): scrittura non riuscita")
+                return
+            }
+            blocks = sorted
         }
-        blocks = sorted
     }
 
     /// Records a failure both here, where a test can see it, and on the vault, which is

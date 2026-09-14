@@ -41,7 +41,7 @@ extension VaultSession {
         category: NoteCategory = .note,
         topics: [Tag] = [],
         body: String = ""
-    ) throws -> WriteResult {
+    ) async throws -> WriteResult {
         let violations = category == .daily
             ? NoteName.validateDaily(title)
             : NoteName.validate(title)
@@ -59,7 +59,7 @@ extension VaultSession {
         // note has had between its frontmatter and its text. With `body` empty - which is
         // every caller that does not pass a template - the bytes are exactly what this
         // wrote before templates existed, and a test pins that rather than trusting it.
-        return try write(
+        return try await write(
             FrontmatterSerializer.render(frontmatter) + "\n" + body, to: relativePath
         )
     }
@@ -75,10 +75,10 @@ extension VaultSession {
     /// The path of a day's note, created from the template when it is not there yet
     /// (SPEC §8.1).
     @discardableResult
-    func dailyNote(for date: CalendarDate) throws -> String {
+    func dailyNote(for date: CalendarDate) async throws -> String {
         let relativePath = dailyNotePath(for: date)
         if exists(relativePath) { return relativePath }
-        return try createNote(
+        return try await createNote(
             title: date.compactForm,
             in: settings.dailyFolder,
             date: date,
@@ -164,7 +164,7 @@ extension VaultSession {
         to targetTitle: String,
         reason: String,
         reverseReason: String
-    ) -> Bool {
+    ) async -> Bool {
         guard let targetPath = index.resolve(title: targetTitle).first else {
             recordProblem("nessuna nota si chiama «\(targetTitle)»")
             return false
@@ -188,8 +188,8 @@ extension VaultSession {
                 to: target.text, selfTitle: target.record.title
             )
 
-            try write(updatedSource, to: sourcePath)
-            try write(updatedTarget, to: targetPath)
+            try await write(updatedSource, to: sourcePath)
+            try await write(updatedTarget, to: targetPath)
             return true
         } catch {
             recordProblem("legame strutturale: \(error)")

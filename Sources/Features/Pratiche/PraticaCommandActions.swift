@@ -62,9 +62,9 @@ struct PraticaCommandActions {
         case .rename:
             pratiche.renameRequest = pratica
         case .close:
-            setStatus("archived", on: pratica)
+            Task { @MainActor in await setStatus("archived", on: pratica) }
         case .reopen:
-            setStatus("active", on: pratica)
+            Task { @MainActor in await setStatus("active", on: pratica) }
         case .refresh:
             Task { await pratiche.refreshNow(pratica.id, in: vault) }
         case .revealInFinder:
@@ -79,9 +79,9 @@ struct PraticaCommandActions {
 
     /// R-34: the status tag swaps in `pratica.md` and **no file moves** - a closed
     /// pratica is where it always was, it is only told apart by its tag.
-    private func setStatus(_ value: String, on pratica: PraticaListItem) {
+    private func setStatus(_ value: String, on pratica: PraticaListItem) async {
         let path = Self.praticaNotePath(of: pratica.id)
-        updateNote(at: path) { document in
+        await updateNote(at: path) { document in
             var tags = document.frontmatter.tags.filter { $0.namespace != .status }
             if let tag = Tag("status-\(value)") { tags.append(tag) }
             document.frontmatter.tags = TagRules.ordered(tags)
@@ -136,7 +136,7 @@ struct PraticaCommandActions {
             guard let url = detail?.attachments.first?.url else { return }
             onQuickLook?(url)
         case .exclude:
-            exclude(entry, detail: detail)
+            Task { @MainActor in await exclude(entry, detail: detail) }
         case .regenerate:
             requestRegeneration(of: entry, detail: detail)
         case .moveTo, .alsoAddTo:
@@ -152,7 +152,7 @@ struct PraticaCommandActions {
     /// sync stores one copy of an attachment per digest (`attachmentNameByDigest`), so
     /// a file in `allegati/` is very often somebody else's attachment too, and trashing
     /// it would break a message nobody asked to touch.
-    func exclude(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?) {
+    func exclude(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?) async {
         guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID,
               let detail
@@ -160,19 +160,19 @@ struct PraticaCommandActions {
 
         let trashed = trash(filesOf: detail.notePath)
         guard !trashed.isEmpty else { return }
-        updateDossier(at: praticaPath) { dossier in
+        await updateDossier(at: praticaPath) { dossier in
             if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
         }
         reload()
 
         register(undoName: "Escludi") { actions in
             actions.restore(trashed)
-            actions.updateDossier(at: praticaPath) { dossier in
+            await actions.updateDossier(at: praticaPath) { dossier in
                 dossier.excluded.removeAll { $0 == messageID }
             }
             actions.reload()
             actions.register(undoName: "Escludi") { redo in
-                redo.exclude(entry, detail: detail)
+                await redo.exclude(entry, detail: detail)
             }
         }
     }
@@ -180,7 +180,9 @@ struct PraticaCommandActions {
     /// R-31: the files move, and both dossiers are told - the source excludes the id
     /// (so its own sync never writes it back) and the destination includes it (so its
     /// own sync knows the message belongs there even outside a followed conversation).
-    func move(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem) {
+    func move(
+        _ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem
+    ) async {
         guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID,
               let detail
@@ -188,10 +190,10 @@ struct PraticaCommandActions {
 
         let (moved, rewrites) = moveFiles(of: detail, to: destination.id)
         guard !moved.isEmpty else { return }
-        updateDossier(at: praticaPath) { dossier in
+        await updateDossier(at: praticaPath) { dossier in
             if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
         }
-        updateDossier(at: destination.id) { dossier in
+        await updateDossier(at: destination.id) { dossier in
             if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
         }
         reload()
@@ -202,11 +204,11 @@ struct PraticaCommandActions {
                restored.contains(root.appending(path: detail.notePath, directoryHint: .notDirectory)) {
                 actions.reverseContentRewrites(rewrites, notePath: detail.notePath)
             }
-            actions.updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
-            actions.updateDossier(at: destination.id) { $0.included.removeAll { $0 == messageID } }
+            await actions.updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
+            await actions.updateDossier(at: destination.id) { $0.included.removeAll { $0 == messageID } }
             actions.reload()
             actions.register(undoName: "Sposta") { redo in
-                redo.move(entry, detail: detail, to: destination)
+                await redo.move(entry, detail: detail, to: destination)
             }
         }
     }
@@ -217,10 +219,12 @@ struct PraticaCommandActions {
     /// No undo block: this adds a file and changes nothing that was there, and
     /// «Escludi» on the copy is the way back. `UndoManager` would otherwise be carrying
     /// a step whose inverse is a deletion nobody asked for.
-    func alsoAdd(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem) {
+    func alsoAdd(
+        _ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem
+    ) async {
         guard let messageID = entry.messageID, let detail else { return }
         guard !copyFiles(of: detail, to: destination.id).isEmpty else { return }
-        updateDossier(at: destination.id) { dossier in
+        await updateDossier(at: destination.id) { dossier in
             if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
         }
         reload()
@@ -263,20 +267,20 @@ struct PraticaCommandActions {
     /// «Aggiungi»: the conversation is followed from now on, and the sync that runs
     /// straight after imports it - "follows and imports", in that order, because the
     /// import reads the dossier from disk.
-    func follow(_ proposal: PraticaTrayModel.PraticaTrayProposal) {
+    func follow(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
         guard let praticaPath = pratiche.selection else { return }
-        updateDossier(at: praticaPath) { dossier in
+        await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.following(conversationID: proposal.conversationID, in: dossier)
         }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
-        Task { await pratiche.refreshNow(praticaPath, in: vault) }
+        await pratiche.refreshNow(praticaPath, in: vault)
     }
 
     /// «Ignora»: one key of this pratica's own dossier, and nothing else - another
     /// pratica following the same counterpart still gets to propose it.
-    func ignore(_ proposal: PraticaTrayModel.PraticaTrayProposal) {
+    func ignore(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
         guard let praticaPath = pratiche.selection else { return }
-        updateDossier(at: praticaPath) { dossier in
+        await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.ignoring(conversationID: proposal.conversationID, in: dossier)
         }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
@@ -287,9 +291,14 @@ struct PraticaCommandActions {
     /// `pratica.md`'s dossier keys, read from the file and written back through
     /// `VaultSession.write`. Byte-preserving on every key it does not own
     /// (`Dossier.merging`, §D12).
-    func updateDossier(at praticaPath: String, _ change: (inout Dossier) -> Void) {
+    ///
+    /// `async` rather than a hop of its own (ADR-0043 §D2), and that is load-bearing for
+    /// `follow(_:)` just below: "follows and imports, in that order, because the import
+    /// reads the dossier from disk". A wrapper that returned before its write landed would
+    /// let the sync read the file the follow had not written yet.
+    func updateDossier(at praticaPath: String, _ change: (inout Dossier) -> Void) async {
         guard let session = vault.session else { return }
-        if let message = DossierWriter.update(at: praticaPath, session: session, change) {
+        if let message = await DossierWriter.update(at: praticaPath, session: session, change) {
             pratiche.report(message)
         }
     }
@@ -297,14 +306,14 @@ struct PraticaCommandActions {
     /// One read-modify-write of a note, through the session so the index and the
     /// watcher stay in step - never `String.write(to:)`, which would leave the app
     /// looking at its own file as an external change.
-    private func updateNote(at relativePath: String, _ change: (inout NoteDocument) -> Void) {
+    private func updateNote(at relativePath: String, _ change: (inout NoteDocument) -> Void) async {
         guard let session = vault.session else { return }
         do {
             var document = NoteDocument.parse(try session.read(relativePath).text)
             let before = document
             change(&document)
             guard document != before else { return }
-            try session.write(document.serialized(), to: relativePath)
+            try await session.write(document.serialized(), to: relativePath)
         } catch {
             pratiche.report("«\(relativePath)» non è stato aggiornato: \(error.localizedDescription)")
         }
@@ -690,7 +699,13 @@ struct PraticaCommandActions {
 
     /// One block on the window's undo stack, or a reported refusal - never a silent
     /// degradation (ADR-0026 §D8's own rule, applied here).
-    private func register(undoName: String, _ body: @escaping @MainActor (PraticaCommandActions) -> Void) {
+    ///
+    /// The body is `async` since ADR-0043 §D2 and the hop is here, once, rather than inside
+    /// each body: `registerUndo`'s handler is synchronous, and an undo that put its files
+    /// back before writing the dossier they belong to has an order of its own to keep.
+    private func register(
+        undoName: String, _ body: @escaping @MainActor (PraticaCommandActions) async -> Void
+    ) {
         guard let undoManager else {
             pratiche.report("operazione non annullabile: nessun gestore di undo disponibile")
             return
@@ -698,10 +713,14 @@ struct PraticaCommandActions {
         undoManager.setActionName(undoName)
         undoManager.registerUndo(withTarget: pratiche) { [vault, navigation, undoManager, onQuickLook] _ in
             MainActor.assumeIsolated {
-                body(PraticaCommandActions(
+                // Bound first rather than built inside the `Task`: a single-expression
+                // `assumeIsolated` closure whose one expression is a `Task` leaves the
+                // task's own result type to infer, and the initializer goes ambiguous.
+                let actions = PraticaCommandActions(
                     pratiche: pratiche, vault: vault, navigation: navigation,
                     undoManager: undoManager, onQuickLook: onQuickLook
-                ))
+                )
+                Task { @MainActor in await body(actions) }
             }
         }
     }
@@ -773,10 +792,12 @@ enum MessageMenuItems {
         } else {
             ForEach(others) { destination in
                 Button("\(destination.client) › \(destination.title)") {
-                    switch command {
-                    case .moveTo: actions.move(entry, detail: detail, to: destination)
-                    case .alsoAddTo: actions.alsoAdd(entry, detail: detail, to: destination)
-                    default: break
+                    Task { @MainActor in
+                        switch command {
+                        case .moveTo: await actions.move(entry, detail: detail, to: destination)
+                        case .alsoAddTo: await actions.alsoAdd(entry, detail: detail, to: destination)
+                        default: break
+                        }
                     }
                 }
             }

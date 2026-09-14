@@ -60,7 +60,11 @@ struct WorkspaceFolderActions {
     ///
     /// One closure for both surfaces - a folder row's drop and «Sposta in» in every row's
     /// context menu - because they are two renderings of one command (ADR-0023 §D1).
-    let move: (_ items: [VaultItemRef], _ destination: FolderPath) -> [String]
+    ///
+    /// `async` since ADR-0043 §D2, and still answering its refusals rather than reporting
+    /// them from inside: the batch goes through the one asynchronous write door, and R-07
+    /// still needs the conflicting name on the browser's side to put in its dialog.
+    let move: (_ items: [VaultItemRef], _ destination: FolderPath) async -> [String]
 
     /// Records a non-modal problem the browser found on its own, the same visible channel
     /// `WorkspaceController.recordProblem` already gives rename/delete (ADR-0022 §F-note) -

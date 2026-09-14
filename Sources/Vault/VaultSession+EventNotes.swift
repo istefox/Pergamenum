@@ -37,7 +37,7 @@ extension VaultSession {
         start: TaskTime? = nil,
         end: TaskTime? = nil,
         attendees: [String] = []
-    ) -> CreatedEventNote? {
+    ) async -> CreatedEventNote? {
         let relativePath = eventNotePath(for: eventTitle, on: day)
         guard !exists(relativePath) else {
             return CreatedEventNote(path: relativePath, dailyNote: nil)
@@ -45,7 +45,7 @@ extension VaultSession {
 
         let title = EventNote.title(for: eventTitle, on: day)
         do {
-            try createNote(
+            try await createNote(
                 title: title,
                 in: settings.dailyFolder,
                 date: day,
@@ -61,7 +61,7 @@ extension VaultSession {
         }
 
         return CreatedEventNote(
-            path: relativePath, dailyNote: linkFromDailyNote(to: title, on: day)
+            path: relativePath, dailyNote: await linkFromDailyNote(to: title, on: day)
         )
     }
 
@@ -70,13 +70,13 @@ extension VaultSession {
     /// A failure here is reported and swallowed rather than thrown back: the note the user
     /// asked for exists, and refusing the whole gesture because the day's index line could not
     /// be written would destroy the thing that succeeded to report the thing that did not.
-    private func linkFromDailyNote(to title: String, on day: CalendarDate) -> WriteResult? {
+    private func linkFromDailyNote(to title: String, on day: CalendarDate) async -> WriteResult? {
         do {
-            let relativePath = try dailyNote(for: day)
+            let relativePath = try await dailyNote(for: day)
             let text = try read(relativePath).text
             let updated = EventNoteSection.adding(title, to: text)
             guard updated != text else { return nil }
-            return try write(updated, to: relativePath)
+            return try await write(updated, to: relativePath)
         } catch {
             recordProblem("collegamento dalla nota del giorno: \(error)")
             return nil

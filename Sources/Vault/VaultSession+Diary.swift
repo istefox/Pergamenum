@@ -37,10 +37,10 @@ extension VaultSession {
 
     /// Writes a day's diary, creating the file and its folder when they are missing.
     @discardableResult
-    func writeDiary(prose: String, entries: [DiaryEntry], on day: CalendarDate) -> WriteOutcome {
+    func writeDiary(prose: String, entries: [DiaryEntry], on day: CalendarDate) async -> WriteOutcome {
         let relativePath = diaryNotePath(for: day)
         do {
-            return .written(try write(DiarySection.write(entries, into: prose), to: relativePath))
+            return .written(try await write(DiarySection.write(entries, into: prose), to: relativePath))
         } catch {
             recordProblem("diario del \(day.compactForm): \(error)")
             return .failed

@@ -190,7 +190,7 @@ final class VaultController {
 
         if let route = routeState.pending {
             routeState.pending = nil
-            handle(route)
+            await handle(route)
         }
     }
 

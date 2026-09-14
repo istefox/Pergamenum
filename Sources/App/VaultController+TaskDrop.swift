@@ -19,7 +19,7 @@ extension VaultController {
     @discardableResult
     func dropTask(
         sourcePath: String, lineIndex: Int, on day: CalendarDate, at time: TaskTime? = nil
-    ) -> VaultSession.TaskDropOutcome {
+    ) async -> VaultSession.TaskDropOutcome {
         var outcome = VaultSession.TaskDropOutcome(path: sourcePath)
         guard let session else { return outcome }
         guard let task = task(at: sourcePath, line: lineIndex) else {
@@ -27,7 +27,7 @@ extension VaultController {
             return outcome
         }
 
-        outcome = session.moveTask(task, to: day, at: time)
+        outcome = await session.moveTask(task, to: day, at: time)
         guard outcome.didWrite else { return outcome }
 
         if let result = outcome.result { syncOpenNote(with: result) }

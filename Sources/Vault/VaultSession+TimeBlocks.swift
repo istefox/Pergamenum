@@ -29,18 +29,18 @@ extension VaultSession {
     @discardableResult
     func setTimeBlocks(
         _ blocks: [TimeBlock], on day: CalendarDate, preferring text: String? = nil
-    ) -> WriteOutcome {
+    ) async -> WriteOutcome {
         let relativePath = dailyNotePath(for: day)
         // Nothing to write and nothing to write it into: a day with no blocks and no
         // note is a day this app has no business creating a file for.
         if blocks.isEmpty, text ?? dailyNoteText(for: day) == nil { return .unchanged }
 
         do {
-            let body = try dailyNoteBody(for: day)
+            let body = try await dailyNoteBody(for: day)
             let updated = TimeBlockSection.write(
                 blocks.sorted { $0.startMinutes < $1.startMinutes }, into: body
             )
-            return .written(try write(updated, to: relativePath))
+            return .written(try await write(updated, to: relativePath))
         } catch {
             recordProblem("blocchi tempo: \(error)")
             return .failed
@@ -63,7 +63,7 @@ extension VaultSession {
         startMinutes: Int,
         durationMinutes: Int? = nil,
         preferring text: String? = nil
-    ) -> PlacedBlock? {
+    ) async -> PlacedBlock? {
         let duration = durationMinutes ?? settings.blockMinutes
         let existing = timeBlocks(on: day, preferring: text)
         guard let start = TimeBlock.freeStart(from: startMinutes, in: existing, duration: duration)
@@ -80,14 +80,14 @@ extension VaultSession {
             sourceTaskID: nil,
             isPublished: false
         )
-        let outcome = setTimeBlocks(existing + [block], on: day, preferring: text)
+        let outcome = await setTimeBlocks(existing + [block], on: day, preferring: text)
         return outcome.succeeded ? PlacedBlock(block: block, write: outcome) : nil
     }
 
     /// The daily note's text, written from the template first when the file is not
     /// there. Same frontmatter `createNote` would give it (SPEC §4.3), so a note born
     /// this way is indistinguishable from one opened with Cmd+T.
-    private func dailyNoteBody(for day: CalendarDate) throws -> String {
+    private func dailyNoteBody(for day: CalendarDate) async throws -> String {
         let relativePath = dailyNotePath(for: day)
         if let existing = try? read(relativePath) { return existing.text }
 
@@ -95,7 +95,7 @@ extension VaultSession {
         frontmatter.date = day
         frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")])
         let text = FrontmatterSerializer.render(frontmatter) + "\n"
-        try write(text, to: relativePath)
+        try await write(text, to: relativePath)
         return text
     }
 }

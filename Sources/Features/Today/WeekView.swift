@@ -72,7 +72,7 @@ struct WeekView: View {
         // day would be aiming at what is already there (ADR-0013 §D5).
         return TaskDropTarget(
             cornerRadius: theme.radius(.control),
-            onDrop: { controller.drop($0, on: column.day) },
+            onDrop: { await controller.drop($0, on: column.day) },
             content: { body }
         )
     }

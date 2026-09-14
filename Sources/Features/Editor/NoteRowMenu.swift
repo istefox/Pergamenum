@@ -33,14 +33,18 @@ struct NoteRowMenu: View {
         Button("Rinomina…") { renaming = note }
         Menu("Sposta in") {
             Button("(radice)") {
-                if !vault.moveNote(at: note.relativePath, toFolder: "") {
-                    moveRefused = vault.problems.last
+                Task { @MainActor in
+                    if !(await vault.moveNote(at: note.relativePath, toFolder: "")) {
+                        moveRefused = vault.problems.last
+                    }
                 }
             }
             ForEach(vault.folders, id: \.self) { folder in
                 Button(folder) {
-                    if !vault.moveNote(at: note.relativePath, toFolder: folder) {
-                        moveRefused = vault.problems.last
+                    Task { @MainActor in
+                        if !(await vault.moveNote(at: note.relativePath, toFolder: folder)) {
+                            moveRefused = vault.problems.last
+                        }
                     }
                 }
                 .disabled(folder == note.folder)

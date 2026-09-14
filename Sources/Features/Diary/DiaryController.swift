@@ -110,11 +110,15 @@ final class DiaryController {
             isDirty = false
             return
         }
-        guard vault.writeDiary(prose: prose, entries: entries, on: day) else {
-            problems.append("diario del \(day.compactForm): scrittura non riuscita")
-            return
+        // The failure branch and the flag both move inside the hop (ADR-0043 §D2): a diary
+        // marked clean before its file holds the text is a diary the next save skips.
+        Task { @MainActor in
+            guard await vault.writeDiary(prose: prose, entries: entries, on: day) else {
+                problems.append("diario del \(day.compactForm): scrittura non riuscita")
+                return
+            }
+            isDirty = false
         }
-        isDirty = false
     }
 
     /// Whether the day holds anything at all, frontmatter aside.

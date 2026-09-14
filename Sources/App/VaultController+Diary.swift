@@ -23,9 +23,9 @@ extension VaultController {
 
     /// Writes a day's diary, creating the file and its folder when they are missing.
     @discardableResult
-    func writeDiary(prose: String, entries: [DiaryEntry], on day: CalendarDate) -> Bool {
+    func writeDiary(prose: String, entries: [DiaryEntry], on day: CalendarDate) async -> Bool {
         guard let session else { return false }
-        let outcome = session.writeDiary(prose: prose, entries: entries, on: day)
+        let outcome = await session.writeDiary(prose: prose, entries: entries, on: day)
         if let result = outcome.result { syncOpenNote(with: result) }
         return outcome.succeeded
     }

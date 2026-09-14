@@ -252,8 +252,12 @@ struct CapturePanelView: View {
     }
 
     private func submit() {
-        // Stays open on a refusal: the text that was refused is the only copy of it.
-        if controller.capture(into: session) { onClose() }
+        // Stays open on a refusal: the text that was refused is the only copy of it. The
+        // branch is inside the hop for that reason (ADR-0043 §D2) - closing the panel
+        // before the write answered would throw away the one copy on a refusal.
+        Task { @MainActor in
+            if await controller.capture(into: session) { onClose() }
+        }
     }
 }
 

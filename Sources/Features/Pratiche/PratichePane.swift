@@ -253,8 +253,8 @@ struct PratichePane: View {
                 // "never below the tray" rule expects it.
                 PraticaTrayStrip(
                     proposals: pratiche.selectedTray,
-                    onFollow: { actions.follow($0) },
-                    onIgnore: { actions.ignore($0) }
+                    onFollow: { proposal in Task { @MainActor in await actions.follow(proposal) } },
+                    onIgnore: { proposal in Task { @MainActor in await actions.ignore(proposal) } }
                 )
                 if let dropReport {
                     Text("\(dropReport.summary) Per ora usa «Aggiungi a pratica da Mail…» (Cmd+Shift+P).")

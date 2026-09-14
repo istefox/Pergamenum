@@ -165,17 +165,19 @@ final class CommandActions {
         case .dailyNote:
             // Reported rather than swallowed: the command doing nothing at all, with no
             // reason given, is the worst outcome when the daily note cannot be created.
-            do {
-                _ = try vault.openDailyNote(for: .today)
-            } catch {
-                vault.recordProblem("nota del giorno: \(error)")
+            Task { @MainActor in
+                do {
+                    _ = try await vault.openDailyNote(for: .today)
+                } catch {
+                    vault.recordProblem("nota del giorno: \(error)")
+                }
             }
         case .quickTask:
             vault.beginTaskCapture()
         case .globalCapture:
             capturePanel.toggle()
         case .save:
-            vault.saveOpenNote()
+            Task { await vault.saveOpenNote() }
         case .openVault:
             VaultOpenPanel.chooseVault(into: vault)
         case .newPratica:
@@ -297,15 +299,15 @@ final class CommandActions {
     private func runTask(_ command: ShortcutCommand) {
         switch command {
         case .taskToggle:
-            if let task = vault.selectedTask { vault.toggle(task) }
+            if let task = vault.selectedTask { Task { await vault.toggle(task) } }
         case .taskToday:
-            vault.rescheduleSelectedTask(daysFromToday: 0)
+            Task { await vault.rescheduleSelectedTask(daysFromToday: 0) }
         case .taskTomorrow:
-            vault.rescheduleSelectedTask(daysFromToday: 1)
+            Task { await vault.rescheduleSelectedTask(daysFromToday: 1) }
         case .taskPlusTwo:
-            vault.rescheduleSelectedTask(daysFromToday: 2)
+            Task { await vault.rescheduleSelectedTask(daysFromToday: 2) }
         case .taskNextWeek:
-            vault.rescheduleSelectedTask(daysFromToday: 7)
+            Task { await vault.rescheduleSelectedTask(daysFromToday: 7) }
         case .taskAddSubtask:
             addSubtaskToSelectedTask()
         default:

@@ -56,8 +56,10 @@ struct HistorySheetPresentation: ViewModifier {
                 noteTitle: vault.openNote?.title ?? "",
                 snapshots: snapshots,
                 onRestore: { text in
-                    vault.restoreVersion(text)
-                    vault.isShowingHistory = false
+                    Task { @MainActor in
+                        await vault.restoreVersion(text)
+                        vault.isShowingHistory = false
+                    }
                 },
                 onClose: { vault.isShowingHistory = false }
             )

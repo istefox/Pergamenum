@@ -83,7 +83,7 @@ struct PraticaEntryComposer {
             praticaTitle: pratica.title, kind: kind, counterpart: counterpart
         )
         do {
-            let path = try session.dailyNote(for: CalendarDate(timestamp))
+            let path = try await session.dailyNote(for: CalendarDate(timestamp))
             let existing = try session.read(path).text
             guard let updated = DailyNoteMirror.appending(
                 entry, to: existing, isEnabled: vault.settings.pratiche.mirrorsToDailyNote

@@ -28,7 +28,7 @@ extension VaultController {
     @discardableResult
     func moveItems(
         _ items: [VaultItemRef], into destination: String, undo: UndoManager?
-    ) -> VaultSession.MoveBatchOutcome {
+    ) async -> VaultSession.MoveBatchOutcome {
         guard let session else {
             var outcome = VaultSession.MoveBatchOutcome()
             outcome.refusals = ["nessun vault aperto"]
@@ -40,7 +40,7 @@ extension VaultController {
             return outcome
         }
 
-        let outcome = session.moveItems(items, into: destination)
+        let outcome = await session.moveItems(items, into: destination)
 
         for refusal in outcome.refusals {
             recordProblem("spostamento rifiutato - \(refusal)")
@@ -59,8 +59,13 @@ extension VaultController {
             return outcome
         }
         undo.setActionName("Sposta")
+        // `registerUndo`'s handler is synchronous and `moveInverse` is not any more
+        // (ADR-0043 §D2): the hop is the only way in, and nothing here depends on the
+        // inverse having finished by the time the handler returns.
         undo.registerUndo(withTarget: self) { controller in
-            controller.moveInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
+            Task { @MainActor in
+                await controller.moveInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
+            }
         }
         return outcome
     }
@@ -73,7 +78,7 @@ extension VaultController {
     /// Called from inside an `UndoManager` handler, so the registration it makes lands on
     /// the redo stack; called again from that redo's handler, so the recursion alternates
     /// for as long as Cmd+Z and Cmd+Shift+Z do.
-    func moveInverse(_ moves: [VaultMove], undo: UndoManager?) {
+    func moveInverse(_ moves: [VaultMove], undo: UndoManager?) async {
         guard let session, !moves.isEmpty else { return }
 
         // Where each item sits *now*: inside `from`, under its own name, because a move
@@ -108,7 +113,7 @@ extension VaultController {
         var failures: [String] = []
         for destination in destinations {
             let group = current.filter { $0.destination == destination }.map(\.ref)
-            let outcome = session.moveItems(group, into: destination)
+            let outcome = await session.moveItems(group, into: destination)
             failures.append(contentsOf: outcome.refusals)
             failures.append(contentsOf: outcome.failures)
             if outcome.moves.count != group.count && outcome.refusals.isEmpty && outcome.failures.isEmpty {
@@ -130,7 +135,9 @@ extension VaultController {
 
         undo?.setActionName("Sposta")
         undo?.registerUndo(withTarget: self) { controller in
-            controller.moveInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
+            Task { @MainActor in
+                await controller.moveInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
+            }
         }
     }
 

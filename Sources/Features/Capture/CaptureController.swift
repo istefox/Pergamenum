@@ -124,7 +124,7 @@ final class CaptureController {
     /// Returns whether the panel should close: it stays open on a refusal, because the
     /// text that was refused is still the only copy of it.
     @discardableResult
-    func capture(into session: VaultSession?) -> Bool {
+    func capture(into session: VaultSession?) async -> Bool {
         // Deferred rather than written at each `return`: there are five ways out of this
         // function and the one that would get forgotten is a failure path.
         defer { log(outcome) }
@@ -136,7 +136,7 @@ final class CaptureController {
         guard !isEmpty else { return false }
 
         do {
-            let summary = try VaultAPI.capture(
+            let summary = try await VaultAPI.capture(
                 session,
                 to: try target(),
                 text: text,

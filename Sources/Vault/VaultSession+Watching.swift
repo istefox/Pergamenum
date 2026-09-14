@@ -48,12 +48,12 @@ extension VaultSession {
     /// swallowed into the last time block instead of standing on its own, and lands
     /// inside a section this app rewrites.
     @discardableResult
-    func append(text: String, to relativePath: String) -> WriteOutcome {
+    func append(text: String, to relativePath: String) async -> WriteOutcome {
         do {
             var body = try read(relativePath).text
             while body.hasSuffix("\n") { body.removeLast() }
             let separator = body.isEmpty ? "" : "\n\n"
-            return .written(try write(body + separator + text + "\n", to: relativePath))
+            return .written(try await write(body + separator + text + "\n", to: relativePath))
         } catch {
             recordProblem("capture: \(error)")
             return .failed

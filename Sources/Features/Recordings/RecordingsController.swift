@@ -404,12 +404,12 @@ final class RecordingsController {
     /// (`VaultController+Files.swift:70`) and marks the ledger entry deleted - no service
     /// method is called at all, per the contract having no delete endpoint (ADR §D9's
     /// "asking the service" rejection).
-    func delete(recordingID: String) {
+    func delete(recordingID: String) async {
         guard !isIsolated else { return isolate() }
         guard var entry = ledger.recordings[recordingID] else { return }
 
         if let path = entry.notePath {
-            guard vault.trashNote(at: path) else {
+            guard await vault.trashNote(at: path) else {
                 // `trashNote` already recorded why (an unsaved note, a failed move): the
                 // ledger must not say deleted while the note is still there.
                 rowErrors[recordingID] = "Nota non eliminata: \(path)"

@@ -13,12 +13,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var vault: VaultController?
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            guard let route = PergamenumRoute(url) else { continue }
-            // No explicit `NSApp.activate` here: opening the URL already brings the
-            // app forward when it should, and calling it from a non-user-triggered
-            // path is exactly the case the AppKit guidance warns about.
-            vault?.handle(route)
+        let routes = urls.compactMap(PergamenumRoute.init)
+        guard !routes.isEmpty else { return }
+        // One task for the whole batch rather than one per link (ADR-0043 §D2): the
+        // delegate method is synchronous and routing is not any more, and six links
+        // handed to six tasks would race each other into the same window.
+        //
+        // No explicit `NSApp.activate` here: opening the URL already brings the app
+        // forward when it should, and calling it from a non-user-triggered path is
+        // exactly the case the AppKit guidance warns about.
+        Task { @MainActor [vault] in
+            for route in routes { await vault?.handle(route) }
         }
     }
 }
@@ -134,8 +139,12 @@ struct PergamenumApp: App {
         // know how to do that from any state, including a vault still opening.
         menuBarItem = MenuBarItem(
             onCapture: { panel.toggle() },
-            onToday: { vault.handle(.today) },
-            onInbox: { vault.handle(.note(path: VaultSession.TaskDestination.inboxPath)) }
+            onToday: { Task { @MainActor in await vault.handle(.today) } },
+            onInbox: {
+                Task { @MainActor in
+                    await vault.handle(.note(path: VaultSession.TaskDestination.inboxPath))
+                }
+            }
         )
         commandActions = CommandActions(
             navigation: navigation,
@@ -225,7 +234,7 @@ struct PergamenumApp: App {
                 // that arrives before any window exists.
                 .onOpenURL { url in
                     guard let route = PergamenumRoute(url) else { return }
-                    vault.handle(route)
+                    Task { @MainActor in await vault.handle(route) }
                 }
         }
         .windowResizability(.contentMinSize)
@@ -316,7 +325,9 @@ struct TaskCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .taskPlusTwo))
             Button("Settimana prossima") { actions.run(.taskNextWeek) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskNextWeek))
-            Button("Togli la data") { vault.rescheduleSelectedTask(daysFromToday: nil) }
+            Button("Togli la data") {
+                Task { @MainActor in await vault.rescheduleSelectedTask(daysFromToday: nil) }
+            }
                 .disabled(vault.selectedTask == nil)
 
             Divider()

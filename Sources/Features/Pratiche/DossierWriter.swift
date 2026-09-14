@@ -20,7 +20,7 @@ enum DossierWriter {
     @discardableResult
     static func update(
         at praticaPath: String, session: VaultSession, _ change: (inout Dossier) -> Void
-    ) -> String? {
+    ) async -> String? {
         let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
         do {
             var document = NoteDocument.parse(try session.read(notePath).text)
@@ -29,7 +29,7 @@ enum DossierWriter {
             change(&dossier)
             document.frontmatter.foreignKeys = Dossier.merging(dossier, into: document.frontmatter.foreignKeys)
             guard document != before else { return nil }
-            try session.write(document.serialized(), to: notePath)
+            try await session.write(document.serialized(), to: notePath)
             return nil
         } catch {
             return "«\(notePath)» non è stato aggiornato: \(error.localizedDescription)"
