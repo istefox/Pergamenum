@@ -273,7 +273,7 @@ private func task(_ line: String, in path: String = "Nota.md", at index: Int = 0
     #expect(children.count == 2)
 
     for child in children {
-        guard case .written = session.apply(.state(.done), to: child) else {
+        guard case .written = await session.apply(.state(.done), to: child) else {
             Issue.record("la scrittura del figlio non è avvenuta: \(session.problems)")
             return
         }

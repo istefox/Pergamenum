@@ -410,7 +410,7 @@ private func makeRecord(
     controller.updateOpenNoteText(sampleNote + "\n\nRiga aggiunta.")
     #expect(controller.openNote?.hasUnsavedChanges == true)
 
-    controller.saveOpenNote()
+    await controller.saveOpenNote()
     #expect(controller.openNote?.hasUnsavedChanges == false)
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Uno.md"), encoding: .utf8)
@@ -516,7 +516,7 @@ private func makeRecord(
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    let path = try controller.createNote(
+    let path = try await controller.createNote(
         title: "Nota nuova",
         in: "01 Progetti",
         date: CalendarDate(iso: "2026-08-11")!,
@@ -541,7 +541,7 @@ private func makeRecord(
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    let path = try controller.createNote(
+    let path = try await controller.createNote(
         title: "Capture", date: CalendarDate(iso: "2026-08-11")!, category: .capture
     )
     let text = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)
@@ -558,11 +558,11 @@ private func makeRecord(
     await controller.open(vault.root)
 
     // Sanitising silently is how a vault fills with titles nobody chose.
-    #expect(throws: VaultController.CreationError.self) {
-        try controller.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
+    await #expect(throws: VaultController.CreationError.self) {
+        try await controller.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
     }
-    #expect(throws: VaultController.CreationError.self) {
-        try controller.createNote(title: "Relazione v2", date: CalendarDate(iso: "2026-08-11")!)
+    await #expect(throws: VaultController.CreationError.self) {
+        try await controller.createNote(title: "Relazione v2", date: CalendarDate(iso: "2026-08-11")!)
     }
     controller.close()
 }
@@ -574,8 +574,8 @@ private func makeRecord(
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(throws: VaultController.CreationError.self) {
-        try controller.createNote(title: "Esistente", date: CalendarDate(iso: "2026-08-11")!)
+    await #expect(throws: VaultController.CreationError.self) {
+        try await controller.createNote(title: "Esistente", date: CalendarDate(iso: "2026-08-11")!)
     }
     // The original is untouched.
     let onDisk = try String(contentsOf: vault.root.appending(path: "Esistente.md"), encoding: .utf8)
@@ -590,7 +590,7 @@ private func makeRecord(
     await controller.open(vault.root)
 
     let date = CalendarDate(iso: "2026-08-11")!
-    let path = try controller.openDailyNote(for: date)
+    let path = try await controller.openDailyNote(for: date)
     // naming.md 4.6: the compact form, never the hyphenated one.
     #expect(path == "Calendar/20260811.md")
 
@@ -599,7 +599,7 @@ private func makeRecord(
     #expect(!text.contains("topic-"))
 
     // Calling again opens the same note rather than failing or making a second one.
-    #expect(try controller.openDailyNote(for: date) == path)
+    #expect(try await controller.openDailyNote(for: date) == path)
     #expect(controller.index.count == 1)
     controller.close()
 }

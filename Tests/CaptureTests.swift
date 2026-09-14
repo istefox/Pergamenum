@@ -54,7 +54,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    let summary = try VaultAPI.capture(session, to: .today, text: "Deciso il fornitore")
+    let summary = try await VaultAPI.capture(session, to: .today, text: "Deciso il fornitore")
 
     #expect(summary.applied)
     let path = session.dailyNotePath(for: .today)
@@ -74,7 +74,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    let summary = try VaultAPI.capture(
+    let summary = try await VaultAPI.capture(
         session,
         to: .newNote(folder: nil),
         text: "Mescola per il distretto\n\nProvata a 60 shore, tiene."
@@ -98,13 +98,13 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     // Capture is a faster way to write a note, not a way around SPEC §4.2: the first
     // line goes through `NoteName.validate` like any other title.
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(
             session, to: .newNote(folder: nil), text: "questo/non va\ncorpo qualsiasi"
         )
     }
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(session, to: .newNote(folder: nil), text: "Relazione v2")
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(session, to: .newNote(folder: nil), text: "Relazione v2")
     }
     #expect(!session.exists("00 Inbox/Relazione v2.md"))
 }
@@ -118,7 +118,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     // A panel that has just been opened often carries a newline the user did not mean.
     // Trimming first means the first *written* line titles the note, which is what
     // somebody typing into a box believes will happen.
-    let summary = try VaultAPI.capture(
+    let summary = try await VaultAPI.capture(
         session, to: .newNote(folder: nil), text: "\n\n  Mescola per il distretto\nCorpo."
     )
     #expect(summary.path == "00 Inbox/Mescola per il distretto.md")
@@ -131,16 +131,16 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
     // Silently ignoring it would leave the caller believing the deadline is there.
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(session, to: .today, text: "Nota", due: "2026-08-25")
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(session, to: .today, text: "Nota", due: "2026-08-25")
     }
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(
             session, to: .newNote(folder: nil), text: "Titolo", scheduled: "2026-08-25"
         )
     }
     // On a task they are exactly what they say.
-    let summary = try VaultAPI.capture(
+    let summary = try await VaultAPI.capture(
         session, to: .task(note: nil), text: "Richiamare Rossi", scheduled: "2026-08-20", due: "2026-08-25"
     )
     let onDisk = try String(
@@ -155,7 +155,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    let summary = try VaultAPI.capture(
+    let summary = try await VaultAPI.capture(
         session, to: .task(note: "Nota.md"), text: "Ricontrollare la curva"
     )
     #expect(summary.path == "Nota.md")
@@ -169,8 +169,8 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(session, to: .note("Mai/Esistita.md"), text: "x")
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(session, to: .note("Mai/Esistita.md"), text: "x")
     }
     #expect(!session.exists("Mai/Esistita.md"))
 }
@@ -181,8 +181,8 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.capture(session, to: .today, text: "   \n  \n")
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.capture(session, to: .today, text: "   \n  \n")
     }
     // Nothing was created on the way to finding out.
     #expect(!session.exists(session.dailyNotePath(for: .today)))
@@ -194,7 +194,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: true)
 
-    let summary = try VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
+    let summary = try await VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
 
     #expect(!summary.applied)
     #expect(try #require(summary.diff).contains("+Aggiunta"))
@@ -213,7 +213,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     // a rehearsal creates nothing, so `dailyNote(for:)` hands back the path of a file
     // that is not there and the append refused it. Every other test here happened to
     // use a day that already had a note.
-    let summary = try VaultAPI.capture(session, to: .today, text: "Appunto")
+    let summary = try await VaultAPI.capture(session, to: .today, text: "Appunto")
 
     #expect(!summary.applied)
     #expect(summary.path == session.dailyNotePath(for: .today))
@@ -228,7 +228,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    _ = try VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
+    _ = try await VaultAPI.capture(session, to: .note("Nota.md"), text: "Aggiunta")
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
     _ = try await VaultAPI.undo(session, id: id)
 

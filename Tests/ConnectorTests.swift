@@ -191,7 +191,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(session.journal == nil)
     #expect(session.isDryRun)
 
-    let summary = try VaultAPI.addTask(
+    let summary = try await VaultAPI.addTask(
         session, text: "Delta", scheduled: nil, due: nil, note: "Nota.md"
     )
     #expect(!summary.applied)
@@ -207,7 +207,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
 
     VaultAPI.arm(session, command: "add_task", dryRun: false)
-    let summary = try VaultAPI.addTask(
+    let summary = try await VaultAPI.addTask(
         session, text: "Delta", scheduled: "2026-08-22", due: nil, note: "Nota.md"
     )
     #expect(summary.applied)
@@ -229,7 +229,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
-    _ = try VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
+    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     // Somebody else edits the file after that write.
@@ -249,7 +249,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let before = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
-    _ = try VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
+    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
@@ -264,7 +264,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
 
     VaultAPI.arm(session, command: "create_note", dryRun: false)
-    _ = try VaultAPI.createNote(session, title: "Nuova", folder: nil, topic: nil, date: nil)
+    _ = try await VaultAPI.createNote(session, title: "Nuova", folder: nil, topic: nil, date: nil)
     let id = try #require(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).last?.id)
 
     VaultAPI.arm(session, command: "undo_write", dryRun: false)
@@ -279,13 +279,13 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "create_note", dryRun: false)
 
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     }
     // And the sentence is one a person can read: interpolating the array of violations
     // would put the module name in it.
     do {
-        _ = try VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
+        _ = try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     } catch let refusal as ConnectorError {
         #expect(!refusal.description.contains("Pergamenum.NoteName"))
         #expect(refusal.description.contains("containsForbiddenCharacter"))
@@ -299,8 +299,8 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     VaultAPI.arm(session, command: "add_task", dryRun: false)
 
     // Inventing a note from a task is how a vault fills with files nobody meant to make.
-    #expect(throws: ConnectorError.self) {
-        try VaultAPI.addTask(session, text: "Delta", scheduled: nil, due: nil, note: "Assente.md")
+    await #expect(throws: ConnectorError.self) {
+        try await VaultAPI.addTask(session, text: "Delta", scheduled: nil, due: nil, note: "Assente.md")
     }
 }
 
@@ -310,10 +310,10 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "add_time_block", dryRun: false)
 
-    _ = try VaultAPI.addTimeBlock(
+    _ = try await VaultAPI.addTimeBlock(
         session, title: "Primo", at: "09:00", minutes: 60, on: "2026-08-20"
     )
-    let second = try VaultAPI.addTimeBlock(
+    let second = try await VaultAPI.addTimeBlock(
         session, title: "Secondo", at: "09:00", minutes: 30, on: "2026-08-20"
     )
 

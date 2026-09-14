@@ -2,6 +2,27 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
+/// Waits for a fire-and-forget handler's observable result without blocking the main actor.
+/// Throwing after recording the timeout also prevents dependent array subscripts from crashing.
+@MainActor
+func waitUntil(
+    timeout: Duration = .seconds(2), sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: () -> Bool
+) async throws {
+    let deadline = ContinuousClock.now + timeout
+    while !condition() {
+        if ContinuousClock.now >= deadline {
+            Issue.record("condition never became true within \(timeout)", sourceLocation: sourceLocation)
+            throw FireAndForgetWaitError.timedOut
+        }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+}
+
+private enum FireAndForgetWaitError: Error {
+    case timedOut
+}
+
 /// The diary's controller against a real vault on disk: what it writes, when it writes
 /// it, and the days it leaves alone.
 @MainActor
@@ -28,6 +49,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
     diary.add(title: "Sopralluogo pressa 4", startMinutes: 9 * 60, durationMinutes: 150)
 
+    try await waitUntil { diaryOnDisk(root)?.contains("- 09:00-11:30 Sopralluogo pressa 4") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("## Diario"))
     #expect(onDisk.contains("- 09:00-11:30 Sopralluogo pressa 4"))
@@ -62,6 +84,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
     diary.prose += "Giornata in reparto.\n"
     diary.flush()
 
+    try await waitUntil { diaryOnDisk(root)?.contains("Giornata in reparto.") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("Giornata in reparto."))
     controller.close()
@@ -77,9 +100,15 @@ private func diaryOnDisk(_ root: URL) -> String? {
     diary.add(title: "Riunione", note: "Presenti Marco e Anna.", startMinutes: 600, durationMinutes: 60, colour: .verde)
     diary.flush()
 
+    try await waitUntil {
+        diaryOnDisk(root)?.contains("Presenti Marco e Anna.") == true
+            && diaryOnDisk(root)?.contains("Prosa.") == true
+    }
+
     diary.move(by: 1)
     diary.move(by: -1)
 
+    try await waitUntil { diary.entries.count == 1 }
     #expect(diary.entries.count == 1)
     #expect(diary.entries[0].title == "Riunione")
     #expect(diary.entries[0].note == "Presenti Marco e Anna.")
@@ -99,6 +128,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
     diary.prose += "Ultima frase.\n"
     diary.move(by: 1)
 
+    try await waitUntil { diaryOnDisk(root)?.contains("Ultima frase.") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("Ultima frase."))
     // And the new day starts empty rather than showing the previous one's text.
@@ -117,6 +147,11 @@ private func diaryOnDisk(_ root: URL) -> String? {
     diary.prose += "Frase in sospeso.\n"
     diary.load()
 
+    // Do not reload again here: that would hide a load that discarded the pending prose.
+    try await waitUntil {
+        diary.prose.contains("Frase in sospeso.")
+            && diaryOnDisk(root)?.contains("Frase in sospeso.") == true
+    }
     #expect(diary.prose.contains("Frase in sospeso."))
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("Frase in sospeso."))
@@ -161,6 +196,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
     #expect(diary.entries[0].startMinutes == 14 * 60 + 30)
     #expect(diary.entries[0].durationMinutes == 180)
+    try await waitUntil { diaryOnDisk(root)?.contains("- 14:30-17:30 Riunione") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("- 14:30-17:30 Riunione"))
     controller.close()
@@ -175,9 +211,11 @@ private func diaryOnDisk(_ root: URL) -> String? {
     let (diary, controller) = try await makeDiary(vault)
 
     diary.add(title: "Trasferta", startMinutes: 14 * 60, durationMinutes: 180)
+    try await waitUntil { diaryOnDisk(root)?.contains("- 14:00-17:00 Trasferta") == true }
     diary.move(by: 1)
     diary.move(by: -1)
 
+    try await waitUntil { diary.entries.count == 1 }
     #expect(diary.entries[0].durationMinutes == 180)
     #expect(diary.entries[0].timeText == "14:00-17:00")
     controller.close()
@@ -207,6 +245,10 @@ private func diaryOnDisk(_ root: URL) -> String? {
     let entry = diary.add(title: "Riunione", startMinutes: 600, durationMinutes: 60)
     diary.remove(entry)
 
+    try await waitUntil {
+        guard let text = diaryOnDisk(root) else { return false }
+        return text.contains("Prosa che resta.") && !text.contains("## Diario")
+    }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("Prosa che resta."))
     #expect(!onDisk.contains("## Diario"))
@@ -327,10 +369,12 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
     // And it survives the file: written as 23:00-00:00 it would read as ending before
     // it starts, and the last hour of the day would lose everything written in it.
+    try await waitUntil { diaryOnDisk(root)?.contains("- 23:00-24:00 Chiusura") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("- 23:00-24:00 Chiusura"))
     diary.move(by: 1)
     diary.move(by: -1)
+    try await waitUntil { diary.entries.count == 1 }
     #expect(diary.entries.count == 1)
     #expect(diary.entries[0].endMinutes == DiaryGrid.dayMinutes)
     controller.close()

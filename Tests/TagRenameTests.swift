@@ -117,7 +117,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
+    let outcome = await session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
 
     #expect(outcome.changed.sorted() == ["Due.md", "Uno.md"])
     #expect(outcome.failures.isEmpty)
@@ -134,9 +134,9 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
     let before = try session.read("Due.md").text
-    let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
+    let outcome = await session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
 
-    let undone = session.undoJournalledWrites(outcome.journalIDs)
+    let undone = await session.undoJournalledWrites(outcome.journalIDs)
 
     #expect(undone.changed.count == 2)
     #expect(undone.failures.isEmpty)
@@ -148,13 +148,13 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 @Test func aNoteEditedAfterTheRenameMakesTheWholeUndoRefuse() async throws {
     let vault = try TemporaryVault()
     let session = try await session(vault)
-    let outcome = session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
+    let outcome = await session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
 
     // Somebody, or something, writes over one of them afterwards.
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
     try await session.write(note(tags: ["type-note", "topic-fune"], body: "Riscritta a mano."), to: "Due.md")
 
-    let undone = session.undoJournalledWrites(outcome.journalIDs)
+    let undone = await session.undoJournalledWrites(outcome.journalIDs)
 
     // All-or-nothing (ADR-0016 §D5): one note that moved on refuses the whole group rather than
     // restoring eleven of twelve and reporting the twelfth.
@@ -171,7 +171,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.renameTag(try tag("topic-ceramica"), to: try tag("topic-fune"))
+    let outcome = await session.renameTag(try tag("topic-ceramica"), to: try tag("topic-fune"))
 
     #expect(outcome.changed.isEmpty)
     #expect(outcome.journalIDs.isEmpty)

@@ -38,7 +38,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(board, to: "Labs.canvas")
     let session = try await armedSession(vault)
 
-    let outcome = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
 
     #expect(outcome.newPath == "Nuovo titolo.md")
     #expect(outcome.failures.isEmpty)
@@ -71,7 +71,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.isDryRun = true
 
-    let renameOutcome = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let renameOutcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
     #expect(renameOutcome.newPath == "Nuovo titolo.md")
     #expect(session.exists("Vecchio titolo.md"))
     #expect(!session.exists("Nuovo titolo.md"))
@@ -80,11 +80,11 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let canvas = try String(contentsOf: vault.root.appending(path: "Labs.canvas"), encoding: .utf8)
     #expect(canvas.contains("Vecchio titolo.md"), "la lavagna è stata ripuntata lo stesso")
 
-    _ = try session.moveNote(at: "Da spostare.md", toFolder: "Archivio")
+    _ = try await session.moveNote(at: "Da spostare.md", toFolder: "Archivio")
     #expect(session.exists("Da spostare.md"))
     #expect(!session.exists("Archivio/Da spostare.md"))
 
-    _ = try session.trashNote(at: "Da eliminare.md")
+    _ = try await session.trashNote(at: "Da eliminare.md")
     #expect(session.exists("Da eliminare.md"))
 
     #expect(
@@ -102,7 +102,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note("Vedi [[Sparita]]."), to: "Rimasta.md")
     let session = try await armedSession(vault)
 
-    let dangling = try session.trashNote(at: "Sparita.md")
+    let dangling = try await session.trashNote(at: "Sparita.md")
 
     #expect(dangling == ["Rimasta.md"])
     #expect(!session.exists("Sparita.md"))
@@ -121,10 +121,10 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(board, to: "Labs.canvas")
     let session = try await armedSession(vault)
 
-    _ = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    _ = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
     let operationID = try #require(session.journalOnDisk.entries().first?.operation)
 
-    let undone = session.undo(operation: operationID)
+    let undone = await session.undo(operation: operationID)
 
     #expect(undone.failures.isEmpty)
     #expect(session.exists("Vecchio titolo.md"))
@@ -143,14 +143,14 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
     let session = try await armedSession(vault)
 
-    let outcome = try session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
     let operationID = try #require(session.journalOnDisk.entries().first?.operation)
 
     // Somebody edits the rewritten link afterwards.
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
     try await session.write(note("Vedi [[Nuovo titolo]]. Aggiunta a mano."), to: "Altra.md")
 
-    let undone = session.undo(operation: operationID)
+    let undone = await session.undo(operation: operationID)
 
     #expect(undone.changed.isEmpty)
     #expect(undone.failures.contains { $0.contains("Altra.md") })
@@ -166,7 +166,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note(), to: "Sparita.md")
     let session = try await armedSession(vault)
 
-    _ = try session.trashNote(at: "Sparita.md")
+    _ = try await session.trashNote(at: "Sparita.md")
     let operationID = try #require(
         session.journalOnDisk.entries().last { $0.kind == .removal }?.operation
     )
@@ -176,7 +176,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
     try await session.write(note("Nota nuova, non quella di prima."), to: "Sparita.md")
 
-    let undone = session.undo(operation: operationID)
+    let undone = await session.undo(operation: operationID)
 
     #expect(undone.changed.isEmpty)
     #expect(undone.failures.contains { $0.contains("Sparita.md") })

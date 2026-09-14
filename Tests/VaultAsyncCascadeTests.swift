@@ -93,8 +93,8 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
 @Test func cascadeEmptyTimeBlocksDoNotCreateADailyNote() async throws {
     let vault = try TemporaryVault()
     let session = await cascadeSession(vault)
-    let setBlocks = try cascadeAsync({ (blocks: [TimeBlock], day: CalendarDate) in
-        session.setTimeBlocks(blocks, on: day)
+    let setBlocks = try cascadeAsync({ (blocks: [TimeBlock], day: CalendarDate) async in
+        await session.setTimeBlocks(blocks, on: day)
     })
     let day = try #require(CalendarDate(iso: "2026-09-13"))
 
@@ -130,8 +130,8 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
 @Test func cascadeNoteCreationReturnsPersistedAndIndexedContent() async throws {
     let vault = try TemporaryVault()
     let session = await cascadeSession(vault)
-    _ = try cascadeAsync({ (title: String, folder: String, date: CalendarDate, category: NoteCategory, topics: [Pergamenum.Tag], body: String) in
-        try session.createNote(title: title, in: folder, date: date, category: category, topics: topics, body: body)
+    _ = try cascadeAsync({ (title: String, folder: String, date: CalendarDate, category: NoteCategory, topics: [Pergamenum.Tag], body: String) async throws in
+        try await session.createNote(title: title, in: folder, date: date, category: category, topics: topics, body: body)
     })
     let day = try #require(CalendarDate(iso: "2026-09-13"))
 
@@ -147,8 +147,8 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
 @Test func cascadeInvalidNoteTitleLeavesDiskIndexAndJournalAlone() async throws {
     let vault = try TemporaryVault()
     let session = await cascadeSession(vault)
-    _ = try cascadeAsync({ (title: String, folder: String, date: CalendarDate, category: NoteCategory, topics: [Pergamenum.Tag], body: String) in
-        try session.createNote(title: title, in: folder, date: date, category: category, topics: topics, body: body)
+    _ = try cascadeAsync({ (title: String, folder: String, date: CalendarDate, category: NoteCategory, topics: [Pergamenum.Tag], body: String) async throws in
+        try await session.createNote(title: title, in: folder, date: date, category: category, topics: topics, body: body)
     })
     let day = try #require(CalendarDate(iso: "2026-09-13"))
     let before = session.index.allNotes.map(\.relativePath)

@@ -264,11 +264,11 @@ Prima versione.
     let original = try #require(controller.openNote?.text)
 
     controller.updateOpenNoteText(original + "\n\nSeconda versione.")
-    controller.saveOpenNote()
+    await controller.saveOpenNote()
 
     let versions = try #require(controller.session).history.snapshots(for: "Uno.md")
     let oldest = try #require(versions.last)
-    controller.restoreVersion(oldest.text)
+    await controller.restoreVersion(oldest.text)
 
     #expect(controller.openNote?.text == oldest.text)
     #expect(controller.openNote?.hasUnsavedChanges == false)
@@ -290,7 +290,7 @@ Prima versione.
     let original = try #require(controller.openNote?.text)
 
     controller.updateOpenNoteText(original + "\n\nSalvata.")
-    controller.saveOpenNote()
+    await controller.saveOpenNote()
 
     // Typed but never saved: this is the text that has no snapshot yet.
     let unsaved = original + "\n\nMai salvata, e da non perdere."
@@ -299,7 +299,7 @@ Prima versione.
 
     let session = try #require(controller.session)
     let before = session.history.snapshots(for: "Uno.md")
-    controller.restoreVersion(original)
+    await controller.restoreVersion(original)
 
     let after = session.history.snapshots(for: "Uno.md")
     #expect(controller.openNote?.text == original)

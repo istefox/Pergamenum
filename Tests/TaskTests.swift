@@ -308,7 +308,7 @@ tags:
     await controller.open(vault.root)
     let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
-    #expect(controller.toggle(task))
+    #expect(await controller.toggle(task))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(onDisk.contains("- [x] Oggi >2026-08-11 @done("))
@@ -327,7 +327,7 @@ tags:
     await controller.open(vault.root)
     let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
-    #expect(controller.apply(.schedule(CalendarDate(iso: "2026-08-20")!), to: task))
+    #expect(await controller.apply(.schedule(CalendarDate(iso: "2026-08-20")!), to: task))
     let onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(onDisk.contains("- [ ] Oggi >2026-08-20"))
     #expect(!onDisk.contains(">2026-08-11\n"))
@@ -343,12 +343,12 @@ tags:
     await controller.open(vault.root)
     let task = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
 
-    #expect(controller.apply(.due(CalendarDate(iso: "2026-08-25")!), to: task))
+    #expect(await controller.apply(.due(CalendarDate(iso: "2026-08-25")!), to: task))
     var onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(onDisk.contains("!2026-08-25"))
 
     let updated = try #require(controller.index.allTasks.first { $0.text == "Oggi" })
-    #expect(controller.apply(.due(nil), to: updated))
+    #expect(await controller.apply(.due(nil), to: updated))
     onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(!onDisk.contains("!2026-08-25"))
     controller.close()
@@ -365,7 +365,7 @@ tags:
 
     // Simulate a stale index entry: the line number is right, the content is not.
     task.rawLine = "- [ ] Qualcosa di completamente diverso"
-    #expect(!controller.apply(.state(.done), to: task))
+    #expect(await !controller.apply(.state(.done), to: task))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
     #expect(onDisk == taskNote)
@@ -378,8 +378,8 @@ tags:
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.captureTask("Richiamare Rossi"))
-    #expect(controller.captureTask("Ordinare i supporti"))
+    #expect(await controller.captureTask("Richiamare Rossi"))
+    #expect(await controller.captureTask("Ordinare i supporti"))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "00 Inbox/Capture.md"), encoding: .utf8)
     #expect(onDisk.contains("- [ ] Richiamare Rossi"))
@@ -398,7 +398,7 @@ tags:
     let vault = try TaskVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
-    #expect(!controller.captureTask("   "))
+    #expect(await !controller.captureTask("   "))
     controller.close()
 }
 

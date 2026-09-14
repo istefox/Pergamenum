@@ -103,7 +103,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let session = try await session(vault)
     session.toggleStar("Nexion.md")
 
-    let outcome = try session.renameNote(at: "Nexion.md", to: "Nexion 2026")
+    let outcome = try await session.renameNote(at: "Nexion.md", to: "Nexion 2026")
 
     #expect(!session.isStarred("Nexion.md"))
     #expect(session.isStarred(outcome.newPath))
@@ -117,7 +117,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let session = try await session(vault)
     session.toggleStar("Nexion.md")
 
-    let outcome = try session.moveNote(at: "Nexion.md", toFolder: "Clienti")
+    let outcome = try await session.moveNote(at: "Nexion.md", toFolder: "Clienti")
 
     #expect(session.isStarred(outcome.newPath))
     #expect(!session.isStarred("Nexion.md"))
@@ -129,7 +129,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let session = try await session(vault)
     session.toggleStar("Progetti/Sospensione.md")
 
-    _ = try session.trashNote(at: "Progetti/Sospensione.md")
+    _ = try await session.trashNote(at: "Progetti/Sospensione.md")
 
     #expect(!session.isStarred("Progetti/Sospensione.md"))
     #expect(StarredStore(root: vault.root).load().isEmpty)

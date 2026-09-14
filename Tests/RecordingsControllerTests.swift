@@ -76,7 +76,7 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
     await sut.process("rec-1")
     await sut.importAccepted(recordingID: "rec-1", proposal: proposal, acceptedTaskIDs: [], speakerRenames: [:])
     await sut.retryConfirmation(recordingID: "rec-1")
-    sut.delete(recordingID: "rec-1")
+    await sut.delete(recordingID: "rec-1")
 
     #expect(await fake.totalCallCount == 0)
     if case .unavailable = sut.health {
@@ -292,7 +292,7 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
     // that `delete` on its own adds no call on top of that.
     let callCountBeforeDelete = await fake.totalCallCount
 
-    sut.delete(recordingID: "rec-1")
+    await sut.delete(recordingID: "rec-1")
 
     let stillExists = FileManager.default.fileExists(
         atPath: vault.root.appending(path: notePath, directoryHint: .notDirectory).path(percentEncoded: false)

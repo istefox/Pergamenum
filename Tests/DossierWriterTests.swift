@@ -23,12 +23,12 @@ Corpo della pratica, non toccato.
 """
 
 @MainActor
-@Test func dossierWriterUpdatePreservesAForeignKeyItDoesNotOwnByteForByte() throws {
+@Test func dossierWriterUpdatePreservesAForeignKeyItDoesNotOwnByteForByte() async throws {
     let vault = try TemporaryVault()
     try vault.write(praticaNote, to: "Rossi/pratica.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
 
-    let failure = DossierWriter.update(at: "Rossi", session: session) { dossier in
+    let failure = await DossierWriter.update(at: "Rossi", session: session) { dossier in
         dossier.excluded.append("<new@rossi-spa.it>")
     }
     #expect(failure == nil)

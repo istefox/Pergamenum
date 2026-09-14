@@ -220,7 +220,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     session.toggleStar("A/n5.md")
     session.testOnlyStarredSaveCount = 0
 
-    let outcome = session.moveItems(
+    let outcome = await session.moveItems(
         (1...5).map { VaultItemRef(path: "A/n\($0).md", kind: .note) }, into: "B"
     )
 
@@ -250,7 +250,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     // here in the middle of three rather than second of two.
     let session = try await session(vault)
 
-    let outcome = session.moveItems(
+    let outcome = await session.moveItems(
         [
             VaultItemRef(path: "A/first.md", kind: .note),
             VaultItemRef(path: "A/ghost.md", kind: .note),

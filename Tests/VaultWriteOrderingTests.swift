@@ -8,15 +8,11 @@ import Testing
 // the hop) and the two regressions §D9's own text calls out (ADR-0007 §D6's dry-run
 // guardrail, ADR-0001 §D2.3's files-first-index-second invariant).
 //
-// These tests exercise `VaultSession.write(_:to:)`'s new **async** overload - a stub that
-// calls the untouched synchronous implementation (see `VaultSession.swift`'s Task 8
-// block) - and the test-only `apply(_:at:)` seam (`VaultSession+WriteOrdering.swift`), not
-// `VaultDisk` directly; `VaultDiskTests` is where the actor itself is exercised. Because
-// this stub has no actor hop of its own, a normal two-awaited-writes scenario cannot
-// demonstrate a real inversion - it can only ever observe program order - so the
-// inversion half of R-07 is manufactured directly through `apply(_:at:)` instead of
-// through timing, exactly as the brief asks for ("assert on the drop, not only on the end
-// state, or the test passes by accident when the guard is missing").
+// These tests exercise the single async `VaultSession.write(_:to:)` door, which awaits
+// `VaultDisk.write`, and the test-only `apply(_:at:)` seam. Two sequential awaited
+// writes observe program order; they do not force inverted actor completions. The
+// inversion half of R-07 is therefore manufactured directly through `apply(_:at:)`,
+// asserting on the rejected outcome as well as the final index state.
 
 private func note(_ body: String = "Corpo.") -> String {
     "---\ndate: 2026-08-21\ntags:\n  - type-note\n---\n\n\(body)\n"
@@ -101,23 +97,14 @@ private func openSession(_ vault: borrowing TemporaryVault) async -> VaultSessio
     #expect(session.selfWrittenHashes["N.md"] == NoteStore.hash(onDisk))
 }
 
-// The stronger form the brief asks for - a task scheduled between the hash assignment and
-// the actor's completion already sees the hash recorded - is NOT written here, and that
-// gap is deliberate rather than an oversight.
-//
-// `VaultSession.write`'s async overload is, right now, a stub with no suspension point of
-// its own (`try writeSynchronously(text, to: relativePath)`, a synchronous call from an
-// async function): there is no `await` inside it for a second task to interleave with, so
-// any attempt to observe "does another task see the hash before completion" against this
-// stub would either pass vacuously (nothing ever suspends, so there is nothing to race)
-// or would have to fabricate a suspension point (e.g. an inserted `Task.yield()`) purely
-// for the test's benefit - which is exactly the kind of timing-dependent, non-deterministic
-// test this task's own brief rules out ("must be deterministic rather than timed"). Once
-// the coder's real `await disk.write(...)` hop exists, this file is the place to add a
-// deterministic version of the stronger test - most cleanly with a test-controlled gate
-// inside `VaultDisk` that the test resumes explicitly, rather than a race against
-// `Task.yield()`. Documented here per the brief's own instruction rather than silently
-// left out.
+// ADR-0043 §D2, Tasks 1-3 (R-03): `VaultSession.write(_:to:)` now has a single
+// async throws signature and awaits `disk.write`. The assertion above checks the
+// recorded hash after that actor call returns; it does not observe the suspension
+// itself or prove that the hash was visible before the actor completed.
+// A deterministic interleaving check remains absent here. It needs a test-controlled
+// gate at the actor boundary, resumed explicitly by the test, rather than a sleep or
+// a race against `Task.yield()`. This mechanical conversion preserves the existing
+// assertions and does not claim that they cover that stronger timing guarantee.
 
 // MARK: - ADR-0007 §D6 regression: a dry run never reaches disk, history or the journal
 
