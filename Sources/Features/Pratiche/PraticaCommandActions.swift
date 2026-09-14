@@ -306,14 +306,20 @@ struct PraticaCommandActions {
     /// One read-modify-write of a note, through the session so the index and the
     /// watcher stay in step - never `String.write(to:)`, which would leave the app
     /// looking at its own file as an external change.
+    ///
+    /// `expecting:` (ADR-0043 §D8, Task 9): identical shape to `DossierWriter.update`,
+    /// identical reason.
     private func updateNote(at relativePath: String, _ change: (inout NoteDocument) -> Void) async {
         guard let session = vault.session else { return }
         do {
-            var document = NoteDocument.parse(try session.read(relativePath).text)
+            let (record, text) = try session.read(relativePath)
+            var document = NoteDocument.parse(text)
             let before = document
             change(&document)
             guard document != before else { return }
-            try await session.write(document.serialized(), to: relativePath)
+            try await session.write(document.serialized(), to: relativePath, expecting: record.contentHash)
+        } catch let refusal as VaultSession.WriteRefusal {
+            pratiche.report("«\(relativePath)» non è stato aggiornato: \(refusal.description)")
         } catch {
             pratiche.report("«\(relativePath)» non è stato aggiornato: \(error.localizedDescription)")
         }

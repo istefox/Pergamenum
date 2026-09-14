@@ -17,20 +17,27 @@ enum DossierWriter {
     /// re-renders and writes back only if something actually changed. Returns the
     /// Italian sentence to report on failure, `nil` on success - including "nothing
     /// changed", which is a success with no write.
+    ///
+    /// `expecting:` (ADR-0043 §D8, Task 9): the read above and the write below straddle
+    /// `change`'s synchronous work but, being `async`, still straddle the actor hop the
+    /// write itself makes - the same read-modify-write shape as `insert`'s race.
     @discardableResult
     static func update(
         at praticaPath: String, session: VaultSession, _ change: (inout Dossier) -> Void
     ) async -> String? {
         let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
         do {
-            var document = NoteDocument.parse(try session.read(notePath).text)
+            let (record, text) = try session.read(notePath)
+            var document = NoteDocument.parse(text)
             let before = document
             guard var dossier = Dossier.parse(document.frontmatter.foreignKeys) else { return nil }
             change(&dossier)
             document.frontmatter.foreignKeys = Dossier.merging(dossier, into: document.frontmatter.foreignKeys)
             guard document != before else { return nil }
-            try await session.write(document.serialized(), to: notePath)
+            try await session.write(document.serialized(), to: notePath, expecting: record.contentHash)
             return nil
+        } catch let refusal as VaultSession.WriteRefusal {
+            return "«\(notePath)» non è stato aggiornato: \(refusal.description)"
         } catch {
             return "«\(notePath)» non è stato aggiornato: \(error.localizedDescription)"
         }

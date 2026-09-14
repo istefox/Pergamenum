@@ -68,16 +68,24 @@ extension VaultController {
     /// file, records the hash and updates the index, and then this decides whether the
     /// editor should notice.
     ///
-    /// A buffer with unsaved changes is left alone. It is the user's work, and
-    /// ADR-0001 §D3.4 says to ask rather than to merge; the watcher will raise the
-    /// question when the write comes back round.
+    /// **A buffer with unsaved changes raises the conflict prompt (ADR-0043 §D7).** The
+    /// dirty buffer is the user's work, and ADR-0001 §D3.4 says never to merge and never
+    /// to discard it - ask. This used to leave the buffer alone on the theory that "the
+    /// watcher will raise the question when the write comes back round", which is false:
+    /// `reconcile` drops this session's own writes by matching their hash
+    /// (`VaultSession+Watching.swift`), which is §D3.3 working correctly, so a write
+    /// this session made itself never reaches the watcher as an external change and the
+    /// question would never have been asked at all.
     func syncOpenNote(with result: VaultSession.WriteResult) {
-        guard var note = openNote,
-              note.relativePath == result.path,
-              !note.hasUnsavedChanges
-        else { return }
-        note.text = result.text
-        note.savedText = result.text
+        guard var note = openNote, note.relativePath == result.path else { return }
+        if note.hasUnsavedChanges {
+            // Never merge, never discard: ask (ADR-0001 §D3.4), with this write's own
+            // text as the incoming side of the prompt.
+            note.externalChangePending = result.text
+        } else {
+            note.text = result.text
+            note.savedText = result.text
+        }
         replaceOpenNote(note)
     }
 

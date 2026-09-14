@@ -290,7 +290,21 @@ extension VaultAPI {
             )
         }
 
-        return .single(summarise(try await session.write(textBefore, to: entry.path), session: session))
+        // `expecting:` (ADR-0043 §D8, Task 9) is the backstop for the window the
+        // pre-check above cannot cover - between that read and this write. The pre-check
+        // stays: its Italian message is the one the user should see for the common case,
+        // and a refusal here reports the same sentence rather than a different one.
+        do {
+            let result = try await session.write(textBefore, to: entry.path, expecting: entry.hashAfter)
+            return .single(summarise(result, session: session))
+        } catch is VaultSession.WriteRefusal {
+            throw ConnectorError(
+                """
+                «\(entry.path)» è cambiato dopo quella scrittura: non lo tocco. \
+                Il journal ripristina solo ciò che ha scritto lui.
+                """
+            )
+        }
     }
 
     /// The journal read straight off disk: no session, because listing what was written

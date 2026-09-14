@@ -189,17 +189,28 @@ extension VaultDisk {
     /// `isDryRun` and the "is a journal even armed" decision both stay on the main actor,
     /// travelling with `journalDescriptor` (`nil` when there is nothing to journal) rather
     /// than being re-derived here - the actor never reads a file nobody is going to journal.
+    ///
+    /// `expecting` (ADR-0043 §D8, Task 9) is compared against `hashBefore` below - the read
+    /// this overload already performs for the journal, so the precondition is free. A
+    /// mismatch throws `VaultSession.WriteRefusal` before `store.write` is ever called: no
+    /// byte moves, no history entry, no journal entry, no index mutation.
     func write(
         _ text: String, to relativePath: String,
         precomputedHash: String,
+        expecting: String? = nil,
         journalDescriptor: JournalDescriptor?,
         journal: WriteJournal?,
         recordsHistory: Bool
     ) async throws -> DiskWriteOutcome {
         // Read before write, in the same isolation: this is the "before" a journal entry
-        // for this write can honestly claim (§D5).
+        // for this write can honestly claim (§D5), and now also what `expecting` is
+        // checked against.
         let textBefore = try? store.text(relativePath)
         let hashBefore = textBefore.map { NoteStore.hash(Data($0.utf8)) }
+
+        if let expecting, hashBefore != expecting {
+            throw VaultSession.WriteRefusal.movedOn(relativePath)
+        }
 
         let hash = try store.write(text, to: relativePath)
 

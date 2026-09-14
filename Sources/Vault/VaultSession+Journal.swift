@@ -78,8 +78,12 @@ extension VaultSession {
         }
         apply(mutations)
 
-        let hash = mutations.first { $0.path == newPath }?.record?.contentHash ?? ""
-        selfWrittenHashes[newPath] = hash
+        let newMutation = mutations.first { $0.path == newPath }
+        let hash = newMutation?.record?.contentHash ?? ""
+        // Task 7: same sequence-tagged shape as `write(_:to:expecting:)` - the mutation
+        // is already real by this point (the actor hop already resumed), so this is the
+        // sequence itself rather than a provisional one to correct later.
+        selfWrittenHashes[newPath, default: []].append((sequence: newMutation?.sequence ?? 0, hash: hash))
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),
@@ -155,18 +159,19 @@ extension VaultSession {
             : nil
         guard !isDryRun else { return }
 
-        // ADR-0043 §D1: the byte write moves inside `VaultDisk` too. The mutation it
-        // returns is deliberately discarded - a board is not a note, and this is what
-        // keeps it from ever reaching the index (unchanged from before this task).
+        // ADR-0043 §D1: the byte write moves inside `VaultDisk` too. Its sequence is kept
+        // for `selfWrittenHashes` below (Task 7) but the mutation itself is never applied
+        // to the index - a board is not a note, unchanged from before this task.
+        let mutation: VaultDisk.IndexMutation
         do {
-            _ = try await disk.writeFile(text, to: relativePath)
+            mutation = try await disk.writeFile(text, to: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "scrittura: \(error.localizedDescription)"
             )
         }
         let hash = NoteStore.hash(Data(text.utf8))
-        selfWrittenHashes[relativePath] = hash
+        selfWrittenHashes[relativePath, default: []].append((sequence: mutation.sequence, hash: hash))
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),

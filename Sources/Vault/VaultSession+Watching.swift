@@ -25,19 +25,28 @@ extension VaultSession {
     /// path's clock and hands back the mutation - applied through `apply(_:)` (§D1) - plus
     /// the `ExternalChange` to report, when there is one.
     ///
-    /// `disk.reconcile` is called with `selfWritten: []` (§D6, a later task in this chain,
-    /// widens `selfWrittenHashes` to a pruned per-path list the actor can match against
-    /// directly); the session still recognises its own write by content hash here, and
-    /// skips applying the mutation at all when it does - a self-write reconciliation
-    /// changes nothing the write itself did not already apply.
+    /// `disk.reconcile` is called with this path's own `selfWrittenHashes` list (§D6):
+    /// the actor matches the file's current content hash against every entry still
+    /// queued for this path, not only the most recent one, so a write whose bytes were
+    /// coalesced away by FSEvents before this session's watcher fired is still
+    /// recognised as its own. A match prunes every entry at or below the matched
+    /// sequence (Task 7 point 2) - the file has moved at least that far, so nothing
+    /// older than that can still be waiting to be observed - and never applies the
+    /// mutation: a self-write reconciliation changes nothing the write itself did not
+    /// already apply.
     func reconcile(_ paths: [String]) async -> [ExternalChange] {
         var changes: [ExternalChange] = []
 
         for path in paths {
-            let result = await disk.reconcile(path, selfWritten: [])
+            let result = await disk.reconcile(path, selfWritten: selfWrittenHashes[path] ?? [])
 
-            if let selfHash = selfWrittenHashes[path], selfHash == result.mutation.record?.contentHash {
-                selfWrittenHashes.removeValue(forKey: path)
+            if let matched = result.matchedSequence {
+                let remaining = (selfWrittenHashes[path] ?? []).filter { $0.sequence > matched }
+                if remaining.isEmpty {
+                    selfWrittenHashes.removeValue(forKey: path)
+                } else {
+                    selfWrittenHashes[path] = remaining
+                }
                 continue
             }
 
