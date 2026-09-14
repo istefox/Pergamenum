@@ -1,0 +1,128 @@
+name: CI
+
+# ADR-0044: this job checks exactly one thing on every PR and on main —
+# that the project generates and all three targets (Pergamenum, perg,
+# pergamenum-mcp) compile, and that PergamenumTests passes. It is
+# deliberately advisory, never a required check (ADR-0044 §D11): main
+# stays unprotected, and CLAUDE.md's "discipline is the only guard"
+# sentence stays true.
+#
+# What this does NOT run, on purpose (ADR-0044 §D6/§D7): the UI suite
+# (scripts/uitests.sh — still run by hand before every merge), SwiftLint
+# (currently failing by design on seven types, see .swiftlint.yml), and
+# anything from scripts/release.sh (no signing/notarization secret ever
+# touches this workflow).
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'TODO.md'
+      - '*.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'TODO.md'
+      - '*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    # Never macos-latest (ADR-0044 §D2): this app has no fallback below
+    # macOS 26, and "latest" is the one label guaranteed to eventually
+    # point at a platform it does not target. Never -large/-xlarge:
+    # included minutes cannot be spent on larger runners.
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select Xcode
+        # Pinned explicitly (ADR-0044 §D3), not the runner's default —
+        # a moving default under Swift 6 strict concurrency is a build
+        # that breaks on a day nobody changed anything. Keep in sync
+        # with the Xcode version installed locally (`xcodebuild -version`).
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Cache SPM resolution
+        # ADR-0044 §D9: cache the SPM graph only, never DerivedData — a
+        # stale module cache fails in ways that look like code defects.
+        uses: actions/cache@v4
+        with:
+          path: Tuist/.build
+          key: tuist-spm-${{ hashFiles('Tuist/Package.resolved') }}
+
+      - name: Install Tuist (pinned)
+        # Read from .tuist-version explicitly (ADR-0044 §D10) rather than
+        # relying on any tool's auto-detection of that file — none of
+        # Tuist's current documented install paths (Homebrew, mise)
+        # confirm they read .tuist-version automatically.
+        # Homebrew 6.0 (2026-06) refuses to load a versioned formula from a
+        # third-party tap until it is explicitly trusted (docs.brew.sh/Tap-Trust);
+        # `brew trust --formula` on the exact pinned formula, not the whole tap,
+        # is the documented minimal grant.
+        run: |
+          TUIST_VERSION="$(cat .tuist-version)"
+          echo "Pinned Tuist version: ${TUIST_VERSION}"
+          brew tap tuist/tuist
+          brew trust --formula "tuist/tuist/tuist@${TUIST_VERSION}"
+          brew install --formula "tuist@${TUIST_VERSION}"
+
+      - name: tuist install
+        run: tuist install
+
+      - name: tuist generate
+        run: tuist generate --no-open
+
+      - name: Build all targets and run PergamenumTests
+        # Pergamenum-Workspace (not the Pergamenum scheme .claude/test-cmd
+        # uses) is what builds perg and pergamenum-mcp too — ADR-0044 §D4.
+        # CODE_SIGNING_ALLOWED=NO: the runner has no certificate for team
+        # T7H24G7BFW, and Debug's hardened-runtime-off setting already
+        # makes this safe for hosting the test bundle (§D8). Do NOT "fix"
+        # a signing failure here by editing Project.swift.
+        run: |
+          xcodebuild \
+            -workspace Pergamenum.xcworkspace \
+            -scheme Pergamenum-Workspace \
+            -destination 'platform=macOS' \
+            -only-testing:PergamenumTests \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Assert both connectors were built
+        # ADR-0044 §D4: the workspace scheme is Tuist-generated, gitignored,
+        # and not something a diff in this repo can show changing. A Tuist
+        # upgrade that silently stopped building the connectors under the
+        # test action would leave this job green while checking less — so
+        # this is a door, not a step someone can forget (same shape as
+        # ADR-0041 §D1's VaultBoundary resolver).
+        run: |
+          PRODUCTS_DIR="${RUNNER_TEMP}/DerivedData/Build/Products/Debug"
+          missing=""
+          for tool in perg pergamenum-mcp; do
+            if [ ! -x "${PRODUCTS_DIR}/${tool}" ]; then
+              missing="${missing} ${tool}"
+            fi
+          done
+          if [ -n "${missing}" ]; then
+            echo "ADR-0044 §D4: connector binary missing from build products:${missing}" >&2
+            echo "The Pergamenum-Workspace scheme is expected to build perg and pergamenum-mcp" >&2
+            echo "alongside the app. This check exists so a Tuist regeneration that silently" >&2
+            echo "stops building the connectors is caught, rather than leaving this job green" >&2
+            echo "while it verifies less than it did before." >&2
+            exit 1
+          fi
+          echo "Both connectors present: perg, pergamenum-mcp"
