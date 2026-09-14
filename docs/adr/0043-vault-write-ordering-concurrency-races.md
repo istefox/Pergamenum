@@ -1,6 +1,6 @@
 # ADR-0043: The ordering guard has to cover every writer, not the one that asked for it
 
-- Status: proposed — **decided, not implemented** (see §D9)
+- Status: accepted — implemented via PR #265
 - Date: 2026-09-13. Written after reading every file it names, at the line, on the working tree at
   `8b554b1` (`feat/vault-layer-consistency-and-security-cha`, ADR-0041 implemented on the branch,
   PR #254 not yet merged to `main`). Every claim below about this repo's code was read out of
