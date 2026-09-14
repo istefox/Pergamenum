@@ -335,7 +335,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNote(at: "Nexion.md")
     #expect(controller.focusedTab?.isPreview == true)
 
-    _ = try controller.createNote(title: "Curva di trasmissibilità", date: .today)
+    _ = try await controller.createNote(title: "Curva di trasmissibilità", date: .today)
 
     #expect(controller.tabs.count == 2)
     #expect(controller.focusedTab?.isPreview == false)

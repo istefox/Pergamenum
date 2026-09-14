@@ -18,7 +18,13 @@ struct ViewQuerySource {
     /// Nil where the surface cannot write, and then the board does not offer the gesture at
     /// all - §D5 is explicit that a renderer which quietly did nothing on drop would be worse
     /// than one that never invited the drag.
-    var move: (@MainActor (String, Tag?, Tag?) -> VaultSession.BoardDropOutcome)?
+    ///
+    /// `async` since ADR-0043 §D2: the write behind it goes through the one asynchronous
+    /// write door. A SwiftUI drop handler is synchronous and returns `Bool`, so the handler
+    /// hops and answers `true` straight away, reporting any failure through the banner it
+    /// already had rather than through the return value (§D2's named decision for this
+    /// call site).
+    var move: (@MainActor (String, Tag?, Tag?) async -> VaultSession.BoardDropOutcome)?
     /// Puts one journalled write back, by its id.
-    var undo: (@MainActor (String) -> Bool)?
+    var undo: (@MainActor (String) async -> Bool)?
 }

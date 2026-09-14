@@ -59,7 +59,7 @@ import Testing
     session.isDryRun = true
 
     let task = try #require(session.index.allTasks.first)
-    guard case .written(let result) = session.apply(.state(.done), to: task) else {
+    guard case .written(let result) = await session.apply(.state(.done), to: task) else {
         Issue.record("una prova deve comunque calcolare la scrittura")
         return
     }
@@ -80,7 +80,7 @@ import Testing
     await session.rescan()
     session.isDryRun = true
 
-    let result = try session.createNote(title: "Nota nuova", date: CalendarDate(iso: "2026-08-11")!)
+    let result = try await session.createNote(title: "Nota nuova", date: CalendarDate(iso: "2026-08-11")!)
     #expect(result.text.contains("type-note"))
     #expect(!session.exists("Nota nuova.md"))
     #expect(!FileManager.default.fileExists(

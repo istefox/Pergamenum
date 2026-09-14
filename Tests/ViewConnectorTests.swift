@@ -157,7 +157,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let first = session.installSampleViews()
+    let first = await session.installSampleViews()
     #expect(first.created.count == SampleViews.all.count)
     #expect(first.failures.isEmpty)
 
@@ -166,7 +166,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload.
     try await session.write("---\ndate: 2026-08-20\ntags:\n  - type-note\n---\n\nMio.\n", to: path)
 
-    let second = session.installSampleViews()
+    let second = await session.installSampleViews()
     #expect(second.created.isEmpty)
     #expect(second.alreadyThere.count == SampleViews.all.count)
     #expect(try session.read(path).text.contains("Mio."))

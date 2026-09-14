@@ -41,7 +41,7 @@ extension VaultSession {
     /// armed for exactly this write and disarmed after, the narrowing of ADR-0007 §D6 that
     /// ADR-0012 D7 already took for the tag rename: a person editing the note in front of them
     /// needs no undo log, and a note rewritten by a gesture on a card is not that.
-    func moveOnBoard(_ path: String, from old: Tag?, to new: Tag?) -> BoardDropOutcome {
+    func moveOnBoard(_ path: String, from old: Tag?, to new: Tag?) async -> BoardDropOutcome {
         var outcome = BoardDropOutcome(path: path)
         guard old != new else { return outcome }
 
@@ -75,7 +75,7 @@ extension VaultSession {
         }
 
         do {
-            try write(rewritten, to: path)
+            try await write(rewritten, to: path)
         } catch {
             outcome.problem = error.localizedDescription
             return outcome

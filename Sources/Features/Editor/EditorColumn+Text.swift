@@ -137,7 +137,9 @@ extension EditorColumnView {
         pendingReplacements = nil
         guard pendingReplacementsIsMove else { return }
         pendingReplacementsIsMove = false
-        vault.saveOpenNote()
+        // The save is awaited rather than fired and forgotten (ADR-0043 §D2): it has to
+        // complete before anything else touches the buffer, or the move is written over.
+        Task { @MainActor in await vault.saveOpenNote() }
     }
 
     /// The slash menu's catalogue, filtered to what can run right now.
@@ -222,8 +224,8 @@ extension EditorColumnView {
             // The one write a view makes (§D5). Offered here, where there is a vault and a
             // person looking at it; a note card on the canvas passes no source and its board
             // never invites the drag.
-            move: { path, old, new in vault.moveOnBoard(path, from: old, to: new) },
-            undo: { id in vault.undoJournalledWrites([id]).failures.isEmpty }
+            move: { path, old, new in await vault.moveOnBoard(path, from: old, to: new) },
+            undo: { id in await vault.undoJournalledWrites([id]).failures.isEmpty }
         )
     }
 

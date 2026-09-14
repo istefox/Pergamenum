@@ -219,11 +219,11 @@ import Testing
 }
 
 @MainActor
-@Test func capturingWithNoVaultOpenIsARefusalAndNotASilentNothing() {
+@Test func capturingWithNoVaultOpenIsARefusalAndNotASilentNothing() async {
     let controller = CaptureController()
     controller.text = "Appunto"
 
-    #expect(!controller.capture(into: nil))
+    #expect(await !controller.capture(into: nil))
     #expect(controller.outcome == .refused("nessuna cartella note aperta"))
 }
 
@@ -239,12 +239,12 @@ import Testing
     controller.text = "Riga"
 
     // Refused, and the panel stays open holding the text: it is the only copy of it.
-    #expect(!controller.capture(into: session))
+    #expect(await !controller.capture(into: session))
     #expect(controller.outcome != nil)
     #expect(controller.text == "Riga")
 
     controller.notePath = "Nota.md"
-    #expect(controller.capture(into: session))
+    #expect(await controller.capture(into: session))
     #expect(controller.outcome == .wrote(path: "Nota.md"))
     // Cleared only once it went through.
     #expect(controller.text.isEmpty)
@@ -260,7 +260,7 @@ import Testing
     controller.destination = .today
     controller.text = "Deciso il fornitore"
 
-    #expect(controller.capture(into: session))
+    #expect(await controller.capture(into: session))
     let path = session.dailyNotePath(for: .today)
     let onDisk = try String(contentsOf: vault.root.appending(path: path), encoding: .utf8)
     #expect(onDisk.contains("Deciso il fornitore"))
@@ -281,7 +281,7 @@ import Testing
     controller.scheduled = CalendarDate(iso: "2026-08-20")
     controller.due = CalendarDate(iso: "2026-08-25")
 
-    #expect(controller.capture(into: session))
+    #expect(await controller.capture(into: session))
     let onDisk = try String(
         contentsOf: vault.root.appending(path: VaultSession.TaskDestination.inboxPath),
         encoding: .utf8

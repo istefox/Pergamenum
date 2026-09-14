@@ -158,7 +158,7 @@ private struct LinkVault: ~Copyable {
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.addStructuralLink(
+    #expect(await controller.addStructuralLink(
         from: "Origine.md", to: "Destinazione",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     ))
@@ -187,7 +187,7 @@ private struct LinkVault: ~Copyable {
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
-    #expect(!controller.addStructuralLink(
+    #expect(await !controller.addStructuralLink(
         from: "Origine.md", to: "Pieno", reason: "a", reverseReason: "b"
     ))
 
@@ -204,7 +204,7 @@ private struct LinkVault: ~Copyable {
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
-    #expect(!controller.addStructuralLink(
+    #expect(await !controller.addStructuralLink(
         from: "Origine.md", to: "Inesistente", reason: "a", reverseReason: "b"
     ))
     #expect(controller.problems.contains { $0.contains("Inesistente") })

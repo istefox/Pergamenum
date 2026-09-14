@@ -74,7 +74,7 @@ struct NoteTabBar: View {
                     // Filled with the accent, same language `BoardToolbar` uses for its
                     // selected tool (`BoardChrome.swift`): a solid chip reads as "there is
                     // an action here" rather than a bare glyph easy to lose in the strip.
-                    Button { focus { vault.saveOpenNote() } } label: {
+                    Button { focus { Task { await vault.saveOpenNote() } } } label: {
                         Label("Salva", systemImage: "arrow.down.doc")
                             .labelStyle(.iconOnly)
                             .foregroundStyle(theme.color(.onAccent))

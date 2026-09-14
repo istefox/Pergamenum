@@ -207,17 +207,19 @@ struct NewNoteComposer: View {
             error = "«\(topic)» non è un tag conforme (namespace-valore, minuscolo)"
             return
         }
-        do {
-            let path = try vault.createNote(
-                title: trimmedTitle,
-                in: folder.trimmingCharacters(in: .whitespaces),
-                date: .today,
-                topics: topics,
-                body: templateBody
-            )
-            onCreated(path)
-        } catch {
-            self.error = ConformanceText.creationFailure(error)
+        Task { @MainActor in
+            do {
+                let path = try await vault.createNote(
+                    title: trimmedTitle,
+                    in: folder.trimmingCharacters(in: .whitespaces),
+                    date: .today,
+                    topics: topics,
+                    body: templateBody
+                )
+                onCreated(path)
+            } catch {
+                self.error = ConformanceText.creationFailure(error)
+            }
         }
     }
 }

@@ -87,6 +87,25 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-14: **Vault write ordering (ADR-0043, follow-up to ADR-0041) — all 10 plan tasks
+  implemented on `feat/vault-write-ordering-adr-0043`.** Closes `PG-150`: one clock stamped inside
+  `VaultDisk` with `VaultSession.apply(_:)` as the sole index door (`updateIndex(_:at:)` and the
+  synchronous write door deleted, an async cascade of ~210 call sites across 46 files and 25 test
+  files, 3-4x the ADR's own estimate); the journal's "before" (`hashBefore`/`textBefore`) now read
+  inside the actor instead of on the main actor beforehand; `selfWrittenHashes` becomes a per-path,
+  sequence-tagged list pruned by matched reconciliation; the Pratiche hand-off threads the write's
+  own result through `syncOpenNote` instead of reloading from disk, and a dirty buffer now raises
+  ADR-0001 §D3.4's conflict prompt at all nine `syncOpenNote` call sites instead of silently doing
+  nothing; `write` gains an opt-in `expecting: String?` hash precondition adopted at 13 named
+  read-modify-write call sites. Acceptance is the five deterministic interleaving tests ADR-0043
+  §D9 names (`R-11`–`R-15`), asserted by a new harness, `scripts/adr-0043-interleaving-check.sh`,
+  never a green suite alone. Full unit suite green throughout (2995/2995 at the final checkpoint);
+  both connector targets and `scripts/mcp-smoke.py` verified unmodified; a manual `perg` pass
+  confirmed all three ADR-0007 §D6 write guardrails still hold. `scripts/uitests.sh` deliberately
+  deferred to just before the merge to `main`, per the standing pre-merge rule — not yet run.
+  One known residual hazard (`transaction`'s `currentOperation` spanning a suspension) and two
+  further follow-ups (the `readDiary`/`writeDiary` window, the tag/note-rename batch window) filed
+  as `PG-152`/`PG-153`/`PG-154`, deliberately left open rather than patched blind.
 - 2026-09-13: **CI adopted (ADR-0044), narrowly.** `.github/workflows/ci.yml`, one job on
   `pull_request` and `push: main`: generates the project with Tuist, builds all three targets
   (`Pergamenum`, `perg`, `pergamenum-mcp` via the `Pergamenum-Workspace` scheme) and runs

@@ -66,7 +66,7 @@ struct TaskPanelRow: View {
                 .foregroundStyle(theme.color(
                     task.isOverdue(on: .today) ? .taskOverdue : (task.state == .done ? .taskDone : .taskOpen)
                 ))
-                .onTapGesture { vault.toggle(task) }
+                .onTapGesture { Task { await vault.toggle(task) } }
                 .help("Completa o riapri: scrive nella nota di origine")
 
             VStack(alignment: .leading, spacing: 1) {
@@ -94,9 +94,11 @@ struct TaskPanelRow: View {
             }
         }
         .contextMenu {
-            Button(task.state == .done ? "Riapri" : "Completa") { vault.toggle(task) }
-            Button("Pianifica oggi") { vault.apply(.schedule(.today), to: task) }
-            Button("Domani") { vault.apply(.schedule(CalendarDate.today.adding(days: 1)), to: task) }
+            Button(task.state == .done ? "Riapri" : "Completa") { Task { await vault.toggle(task) } }
+            Button("Pianifica oggi") { Task { await vault.apply(.schedule(.today), to: task) } }
+            Button("Domani") {
+                Task { await vault.apply(.schedule(CalendarDate.today.adding(days: 1)), to: task) }
+            }
             Divider()
             ForEach(TaskCommand.available(for: task), id: \.self) { command in
                 Button(command.title) { actions.run(command, on: task) }

@@ -101,7 +101,7 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
-    let result = try session.createNote(title: "Semplice", date: sampleDate)
+    let result = try await session.createNote(title: "Semplice", date: sampleDate)
 
     #expect(result.text == "---\ndate: 2026-08-18\ntags:\n  - type-note\n---\n\n")
 }
@@ -118,7 +118,7 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
         date: sampleDate,
         in: NoteTemplate.body(of: templateWithFrontmatter)
     )
-    let result = try session.createNote(title: "Riunione con Rossi", date: sampleDate, body: body)
+    let result = try await session.createNote(title: "Riunione con Rossi", date: sampleDate, body: body)
 
     #expect(result.text == """
     ---

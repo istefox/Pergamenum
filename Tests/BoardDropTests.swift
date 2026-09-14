@@ -120,7 +120,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-forni"))
+    let outcome = await session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-forni"))
 
     #expect(outcome.didWrite)
     #expect(outcome.introduced.isEmpty)
@@ -136,9 +136,9 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
     let before = try session.read("Due.md").text
-    let outcome = session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-forni"))
+    let outcome = await session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-forni"))
 
-    let undone = session.undoJournalledWrites([try #require(outcome.journalID)])
+    let undone = await session.undoJournalledWrites([try #require(outcome.journalID)])
 
     #expect(undone.failures.isEmpty)
     #expect(try session.read("Due.md").text == before)
@@ -153,7 +153,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.moveOnBoard("Uno.md", from: nil, to: try tag("status-final"))
+    let outcome = await session.moveOnBoard("Uno.md", from: nil, to: try tag("status-final"))
 
     #expect(!outcome.didWrite)
     #expect(outcome.introduced.contains(.statusNotAllowedOnNote(try tag("status-final"))))
@@ -169,7 +169,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.moveOnBoard("Uno.md", from: nil, to: try tag("status-active"))
+    let outcome = await session.moveOnBoard("Uno.md", from: nil, to: try tag("status-active"))
 
     #expect(outcome.didWrite)
     #expect(outcome.introduced.isEmpty)
@@ -186,7 +186,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
 
     // `Tre.md` has no `type-note` and no `topic-*`: two violations before the drop, and the
     // same two after it.
-    let outcome = session.moveOnBoard("Tre.md", from: try tag("project-presse"), to: try tag("project-forni"))
+    let outcome = await session.moveOnBoard("Tre.md", from: try tag("project-presse"), to: try tag("project-forni"))
 
     #expect(outcome.didWrite)
     #expect(try session.read("Tre.md").text.contains("  - project-forni"))
@@ -197,7 +197,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let vault = try TemporaryVault()
     let session = try await session(vault)
 
-    let outcome = session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-presse"))
+    let outcome = await session.moveOnBoard("Due.md", from: try tag("project-presse"), to: try tag("project-presse"))
 
     #expect(!outcome.didWrite)
     #expect(outcome.problem == nil)

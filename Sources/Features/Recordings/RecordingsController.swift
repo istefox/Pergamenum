@@ -314,7 +314,8 @@ final class RecordingsController {
         var entry = ledger.recordings[recordingID] ?? PlaudVaultStore.Entry(status: "new")
         // The note is the source of truth (principle 1): what it already holds suppresses a
         // task just as the ledger does, and it is read here rather than remembered.
-        let existingText = entry.notePath.flatMap { try? session.read($0).text }
+        let existing = entry.notePath.flatMap { try? session.read($0) }
+        let existingText = existing?.text
         let text = TranscriptNote.render(
             proposal: proposal,
             acceptedTaskIDs: acceptedTaskIDs,
@@ -326,13 +327,19 @@ final class RecordingsController {
 
         // Phase 1: the file first. A failure here means nothing was imported at all, so
         // nothing is recorded and no confirmation is owed.
+        //
+        // `expecting:` (ADR-0043 §D8, Task 9) - nil for a brand-new note (nothing to
+        // expect), the record's own hash for a re-import: `text` is a merge of the
+        // proposal with `existingText` (ADR-0032 §D9's dedup suppression set), so a note
+        // that moved on between the read above and this write would make the merge
+        // stale and re-import quotes it already suppressed. The two-phase shape below
+        // makes the refusal clean: phase 2's `POST` only runs after phase 1 succeeds, so
+        // a refusal here aborts before anything leaves the machine.
         do {
-            // ADR-0041 Task 8: `importAccepted` was already `async` for unrelated reasons
-            // (the loopback confirmation phase below); `VaultSession.write`'s new async
-            // overload now wins overload resolution here too, so this needs `await`.
-            // Mechanical only - the awaited overload's stub body is today's synchronous
-            // write called as-is.
-            try await session.write(text, to: path)
+            try await session.write(text, to: path, expecting: existing?.record.contentHash)
+        } catch let refusal as VaultSession.WriteRefusal {
+            rowErrors[recordingID] = "Scrittura della nota non riuscita: \(refusal.description)"
+            return
         } catch {
             rowErrors[recordingID] = "Scrittura della nota non riuscita: \(path)"
             return
@@ -404,12 +411,12 @@ final class RecordingsController {
     /// (`VaultController+Files.swift:70`) and marks the ledger entry deleted - no service
     /// method is called at all, per the contract having no delete endpoint (ADR §D9's
     /// "asking the service" rejection).
-    func delete(recordingID: String) {
+    func delete(recordingID: String) async {
         guard !isIsolated else { return isolate() }
         guard var entry = ledger.recordings[recordingID] else { return }
 
         if let path = entry.notePath {
-            guard vault.trashNote(at: path) else {
+            guard await vault.trashNote(at: path) else {
                 // `trashNote` already recorded why (an unsaved note, a failed move): the
                 // ledger must not say deleted while the note is still there.
                 rowErrors[recordingID] = "Nota non eliminata: \(path)"

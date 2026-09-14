@@ -81,7 +81,7 @@ struct MonthView: View {
 
         return TaskDropTarget(
             cornerRadius: theme.radius(.control),
-            onDrop: { controller.drop($0, on: column.day) },
+            onDrop: { await controller.drop($0, on: column.day) },
             content: { body }
         )
     }

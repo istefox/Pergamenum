@@ -198,7 +198,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
     controller.updateOpenNoteText(second + "\n\nAggiunta alla Sospensione.\n")
 
-    controller.saveOpenNote()
+    await controller.saveOpenNote()
 
     let written = try String(contentsOf: vault.root.appending(path: "Progetti/Sospensione.md"), encoding: .utf8)
     #expect(written.contains("Aggiunta alla Sospensione."))

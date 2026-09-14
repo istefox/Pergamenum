@@ -198,10 +198,12 @@ struct NoteListPane: View {
         }
         .sheet(item: $renaming) { note in
             RenameNoteSheet(note: note) { newTitle in
-                if !vault.renameNote(at: note.relativePath, to: newTitle) {
-                    renameRefused = vault.problems.last
+                Task { @MainActor in
+                    if !(await vault.renameNote(at: note.relativePath, to: newTitle)) {
+                        renameRefused = vault.problems.last
+                    }
+                    renaming = nil
                 }
-                renaming = nil
             } onCancel: {
                 renaming = nil
             }
@@ -212,10 +214,12 @@ struct NoteListPane: View {
             titleVisibility: .visible
         ) {
             Button("Sposta nel Cestino", role: .destructive) {
-                if let note = deleting, !vault.trashNote(at: note.relativePath) {
-                    trashRefused = vault.problems.last
+                Task { @MainActor in
+                    if let note = deleting, !(await vault.trashNote(at: note.relativePath)) {
+                        trashRefused = vault.problems.last
+                    }
+                    deleting = nil
                 }
-                deleting = nil
             }
             Button("Annulla", role: .cancel) { deleting = nil }
         } message: {
@@ -591,15 +595,24 @@ struct NoteListPane: View {
     /// `undoManager` is the **window's**, handed down as an argument rather than reached
     /// for (§D8). Nil is not silently tolerated: `moveItems` records that the move cannot
     /// be taken back.
+    ///
+    /// The `Bool` now answers the *drag*, not the move: `.dropDestination`'s action is
+    /// synchronous and the move goes through the one asynchronous write door (ADR-0043
+    /// §D2), so a drop that got past the two pure guards is accepted straight away and
+    /// whatever disk decides arrives a moment later on the alert this pane already shows.
+    /// The guards stay on this side of the hop because they are pure string arithmetic
+    /// over the payload, not state that the suspension could invalidate (§D7).
     private func performMove(_ items: [VaultItemRef], into destination: String) -> Bool {
         dragging = []
         guard !items.isEmpty,
               WorkspaceBrowser.canDrop(items, onFolder: destination) else { return false }
-        let outcome = vault.moveItems(items, into: destination, undo: undoManager)
-        guard outcome.didMove else {
-            let reasons = outcome.refusals + outcome.failures
-            moveRefused = reasons.isEmpty ? nil : reasons.joined(separator: "\n")
-            return false
+        Task { @MainActor in
+            let outcome = await vault.moveItems(items, into: destination, undo: undoManager)
+            guard outcome.didMove else {
+                let reasons = outcome.refusals + outcome.failures
+                moveRefused = reasons.isEmpty ? nil : reasons.joined(separator: "\n")
+                return
+            }
         }
         return true
     }

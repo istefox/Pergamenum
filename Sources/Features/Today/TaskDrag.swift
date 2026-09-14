@@ -59,7 +59,9 @@ struct TaskDropTarget<Content: View>: View {
     @Environment(\.theme) private var theme
 
     var cornerRadius: CGFloat?
-    let onDrop: (TaskDragPayload) -> Bool
+    /// `async` since ADR-0043 §D2: the drop rewrites the task's own line, and that goes
+    /// through the one asynchronous write door.
+    let onDrop: (TaskDragPayload) async -> Bool
     @ViewBuilder let content: Content
 
     @State private var isTargeted = false
@@ -72,7 +74,13 @@ struct TaskDropTarget<Content: View>: View {
             )
             .dropDestination(for: String.self) { payloads, _ in
                 guard let payload = payloads.first.flatMap(TaskDragPayload.init(text:)) else { return false }
-                return onDrop(payload)
+                // The hop lives here rather than at the three call sites, so the decision is
+                // taken once: `dropDestination` is synchronous and answers `Bool`, so a drop
+                // that reached a real payload is accepted straight away and whatever the
+                // write decides arrives a moment later on the drop banner - the channel it
+                // already reported through (ADR-0043 §D2's decision for this shape).
+                Task { @MainActor in _ = await onDrop(payload) }
+                return true
             } isTargeted: { isTargeted = $0 }
     }
 }

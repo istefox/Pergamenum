@@ -9,7 +9,7 @@ enum WriteCommands {
     @MainActor
     static func noteNew(_ arguments: Arguments) async throws -> ExitCode {
         let session = try await Writing.session(arguments, command: "note new")
-        let summary = try VaultAPI.createNote(
+        let summary = try await VaultAPI.createNote(
             session,
             title: arguments.rest(from: 2),
             folder: arguments["folder"],
@@ -24,7 +24,7 @@ enum WriteCommands {
     static func noteAppend(_ arguments: Arguments) async throws -> ExitCode {
         let path = try NoteCommands.requirePath(arguments, "note append <percorso> <testo>")
         let session = try await Writing.session(arguments, command: "note append")
-        let summary = try VaultAPI.appendToNote(session, at: path, text: arguments.rest(from: 3))
+        let summary = try await VaultAPI.appendToNote(session, at: path, text: arguments.rest(from: 3))
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
@@ -35,7 +35,7 @@ enum WriteCommands {
     static func noteRename(_ arguments: Arguments) async throws -> ExitCode {
         let path = try NoteCommands.requirePath(arguments, "note rename <percorso> <nuovo-titolo>")
         let session = try await Writing.session(arguments, command: "note rename")
-        let summary = try VaultAPI.renameNote(session, at: path, to: arguments.rest(from: 3))
+        let summary = try await VaultAPI.renameNote(session, at: path, to: arguments.rest(from: 3))
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
@@ -44,7 +44,7 @@ enum WriteCommands {
     static func noteMove(_ arguments: Arguments) async throws -> ExitCode {
         let path = try NoteCommands.requirePath(arguments, "note move <percorso> <cartella>")
         let session = try await Writing.session(arguments, command: "note move")
-        let summary = try VaultAPI.moveNote(session, at: path, toFolder: arguments.rest(from: 3))
+        let summary = try await VaultAPI.moveNote(session, at: path, toFolder: arguments.rest(from: 3))
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
@@ -53,7 +53,7 @@ enum WriteCommands {
     static func noteTrash(_ arguments: Arguments) async throws -> ExitCode {
         let path = try NoteCommands.requirePath(arguments, "note trash <percorso>")
         let session = try await Writing.session(arguments, command: "note trash")
-        let summary = try VaultAPI.trashNote(session, at: path)
+        let summary = try await VaultAPI.trashNote(session, at: path)
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
@@ -73,7 +73,7 @@ enum WriteCommands {
         let destination = try VaultAPI.CaptureDestination.named(
             arguments["dest"] ?? "note", folder: arguments["folder"]
         )
-        let summary = try VaultAPI.capture(
+        let summary = try await VaultAPI.capture(
             session,
             to: destination,
             text: arguments.rest(from: 1),
@@ -89,7 +89,7 @@ enum WriteCommands {
     @MainActor
     static func taskAdd(_ arguments: Arguments) async throws -> ExitCode {
         let session = try await Writing.session(arguments, command: "task add")
-        let summary = try VaultAPI.addTask(
+        let summary = try await VaultAPI.addTask(
             session,
             text: arguments.rest(from: 2),
             scheduled: arguments["scheduled"],
@@ -105,7 +105,7 @@ enum WriteCommands {
         _ arguments: Arguments, _ change: VaultAPI.TaskChangeRequest
     ) async throws -> ExitCode {
         let session = try await Writing.session(arguments, command: "task \(change.verb)")
-        let summary = try VaultAPI.changeTask(session, matching: arguments.rest(from: 2), change)
+        let summary = try await VaultAPI.changeTask(session, matching: arguments.rest(from: 2), change)
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
@@ -130,7 +130,7 @@ enum WriteCommands {
             )
         }
         let session = try await Writing.session(arguments, command: "day block add")
-        let summary = try VaultAPI.addTimeBlock(
+        let summary = try await VaultAPI.addTimeBlock(
             session,
             title: arguments.rest(from: 3),
             at: time,

@@ -17,9 +17,11 @@ extension DayController {
     /// day an hour can be dropped on. A week column has no hours, so a drop there moves
     /// the task and blocks out nothing.
     @discardableResult
-    func drop(_ payload: TaskDragPayload, on target: CalendarDate, at time: TaskTime? = nil) -> Bool {
+    func drop(
+        _ payload: TaskDragPayload, on target: CalendarDate, at time: TaskTime? = nil
+    ) async -> Bool {
         let task = vault.task(at: payload.path, line: payload.lineIndex)
-        let outcome = vault.dropTask(
+        let outcome = await vault.dropTask(
             sourcePath: payload.path, lineIndex: payload.lineIndex, on: target, at: time
         )
 
@@ -58,9 +60,9 @@ extension DayController {
     /// Puts back what the last drop wrote. The block an hour drop added stays: it is a
     /// thing on a day now, and removing it silently would undo more than the move.
     @discardableResult
-    func undoLastDrop() -> Bool {
+    func undoLastDrop() async -> Bool {
         guard let id = lastDrop?.journalID else { return false }
-        let undone = vault.undoJournalledWrites([id]).failures.isEmpty
+        let undone = await vault.undoJournalledWrites([id]).failures.isEmpty
         lastDrop = nil
         if undone { reload() }
         return undone

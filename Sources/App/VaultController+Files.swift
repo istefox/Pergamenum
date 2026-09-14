@@ -35,10 +35,10 @@ extension VaultController {
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
     @discardableResult
-    func renameNote(at relativePath: String, to newTitle: String) -> Bool {
+    func renameNote(at relativePath: String, to newTitle: String) async -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
         do {
-            let outcome = try session.renameNote(at: relativePath, to: newTitle)
+            let outcome = try await session.renameNote(at: relativePath, to: newTitle)
             for failure in outcome.failures {
                 recordProblem("link non aggiornato in \(failure)")
             }
@@ -54,10 +54,10 @@ extension VaultController {
     }
 
     @discardableResult
-    func moveNote(at relativePath: String, toFolder folder: String) -> Bool {
+    func moveNote(at relativePath: String, toFolder folder: String) async -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
         do {
-            let outcome = try session.moveNote(at: relativePath, toFolder: folder)
+            let outcome = try await session.moveNote(at: relativePath, toFolder: folder)
             Task {
                 await rescan()
                 movedNote(from: relativePath, to: outcome.newPath)
@@ -73,11 +73,11 @@ extension VaultController {
     ///
     /// The caller confirms first: this method does the deleting, it does not ask.
     @discardableResult
-    func trashNote(at relativePath: String) -> Bool {
+    func trashNote(at relativePath: String) async -> Bool {
         guard let session, canOperate(on: relativePath) else { return false }
 
         do {
-            let dangling = try session.trashNote(at: relativePath)
+            let dangling = try await session.trashNote(at: relativePath)
             if !dangling.isEmpty {
                 // Not rewritten: the links are now broken, and silently deleting them
                 // from other people's notes would destroy the only record that
@@ -146,25 +146,29 @@ extension VaultController {
     }
 
     @discardableResult
-    func renameTag(_ old: Tag, to new: Tag) -> VaultSession.TagRenameOutcome {
-        session?.renameTag(old, to: new) ?? .init()
+    func renameTag(_ old: Tag, to new: Tag) async -> VaultSession.TagRenameOutcome {
+        guard let session else { return .init() }
+        return await session.renameTag(old, to: new)
     }
 
     @discardableResult
-    func undoJournalledWrites(_ ids: [String]) -> VaultSession.TagRenameOutcome {
-        session?.undoJournalledWrites(ids) ?? .init()
+    func undoJournalledWrites(_ ids: [String]) async -> VaultSession.TagRenameOutcome {
+        guard let session else { return .init() }
+        return await session.undoJournalledWrites(ids)
     }
 
     /// Writes the shipped views into `Templates/`, skipping any that are already there.
     @discardableResult
-    func installSampleViews() -> VaultSession.SampleViewsOutcome {
-        session?.installSampleViews() ?? .init()
+    func installSampleViews() async -> VaultSession.SampleViewsOutcome {
+        guard let session else { return .init() }
+        return await session.installSampleViews()
     }
 
     /// A card dropped between two columns of a board (ADR-0009 §D5). The rescan the write
     /// triggers is the watcher's, as for every other write the app makes.
     @discardableResult
-    func moveOnBoard(_ path: String, from old: Tag?, to new: Tag?) -> VaultSession.BoardDropOutcome {
-        session?.moveOnBoard(path, from: old, to: new) ?? .init(path: path)
+    func moveOnBoard(_ path: String, from old: Tag?, to new: Tag?) async -> VaultSession.BoardDropOutcome {
+        guard let session else { return .init(path: path) }
+        return await session.moveOnBoard(path, from: old, to: new)
     }
 }

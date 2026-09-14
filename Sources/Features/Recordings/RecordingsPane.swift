@@ -77,7 +77,9 @@ struct RecordingsPane: View {
             titleVisibility: .visible
         ) {
             Button("Sposta nel Cestino", role: .destructive) {
-                if let recording = pendingDeletion { recordings.delete(recordingID: recording.id) }
+                if let recording = pendingDeletion {
+                    Task { @MainActor in await recordings.delete(recordingID: recording.id) }
+                }
                 pendingDeletion = nil
             }
             Button("Annulla", role: .cancel) { pendingDeletion = nil }

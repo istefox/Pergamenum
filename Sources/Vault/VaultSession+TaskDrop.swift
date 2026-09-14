@@ -42,7 +42,7 @@ extension VaultSession {
     /// the rule `TaskParser.line(for:scheduledOn:)` already carries. The block an hour drop
     /// needs is not written here - it belongs to the daily note rather than to the task's own
     /// file, and one write per gesture is the point of §D5.
-    func moveTask(_ task: TaskItem, to day: CalendarDate, at time: TaskTime? = nil) -> TaskDropOutcome {
+    func moveTask(_ task: TaskItem, to day: CalendarDate, at time: TaskTime? = nil) async -> TaskDropOutcome {
         var outcome = TaskDropOutcome(path: task.sourcePath)
         guard task.scheduled != day || task.scheduledTime != time else { return outcome }
 
@@ -83,7 +83,7 @@ extension VaultSession {
         }
 
         let change: TaskChange = time.map { .scheduleAt(day, $0) } ?? .schedule(day)
-        switch apply(change, to: task) {
+        switch await apply(change, to: task) {
         case .written(let result):
             outcome.result = result
             outcome.journalID = journal.entries().first { !entriesBefore.contains($0.id) }?.id

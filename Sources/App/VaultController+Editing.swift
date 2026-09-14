@@ -10,17 +10,19 @@ import Foundation
 extension VaultController {
     /// Writes the open note.
     ///
-    /// **Deliberately still synchronous, on `VaultSession.write`'s sync door, not the
-    /// ADR-0041 Task 8 actor hop.** `Tests/VaultTests.swift`,
-    /// `Tests/NoteHistoryTests.swift` and `Tests/NoteTabTests.swift` all call this and
-    /// read the file straight back off disk with no `await` and no `Task` in between -
-    /// outside this task's edit scope (ADR-0049) and unambiguous that the write has to
-    /// be visible on disk before this returns, not merely queued. Converting this to
-    /// the async overload was tried and reverted for exactly that reason.
-    func saveOpenNote() {
+    /// **`async`, on the one write door left (ADR-0043 §D2).** ADR-0041 Task 8 tried this
+    /// conversion and reverted it, because `Tests/VaultTests.swift`,
+    /// `Tests/NoteHistoryTests.swift` and `Tests/NoteTabTests.swift` called it
+    /// synchronously and read the file straight back off disk, and test files were outside
+    /// that task's edit scope. What that comment recorded was not a property of the save but
+    /// the shape of the work: the conversion fails unless the tests move with it. They moved
+    /// with it here, so the caller awaits the write instead of the write pretending to be
+    /// instantaneous - and an `await` is exactly the guarantee those tests were relying on,
+    /// now stated rather than inferred from the thread.
+    func saveOpenNote() async {
         guard let session, var note = openNote, note.hasUnsavedChanges else { return }
         do {
-            try session.write(note.text, to: note.relativePath)
+            try await session.write(note.text, to: note.relativePath)
             note.savedText = note.text
             note.externalChangePending = nil
             replaceOpenNote(note)
@@ -40,14 +42,16 @@ extension VaultController {
     /// way past - so the sheet's promise that restoring keeps the current version is
     /// literally true, in the one case where it would otherwise be a lie.
     ///
-    /// Synchronous for the same reason `saveOpenNote()` above is (same three test files).
-    func restoreVersion(_ text: String) {
+    /// `async` for the same reason `saveOpenNote()` above is, and the ordering matters here
+    /// more than anywhere: the buffer's save must have *finished* before the restore writes
+    /// over it, or the snapshot the sheet promised to keep is the one the restore overwrote.
+    func restoreVersion(_ text: String) async {
         guard let session, openNote != nil else { return }
-        saveOpenNote()
+        await saveOpenNote()
         // Re-read: the save above replaced `openNote` wholesale.
         guard var note = openNote else { return }
         do {
-            let result = try session.write(text, to: note.relativePath)
+            let result = try await session.write(text, to: note.relativePath)
             note.text = result.text
             note.savedText = result.text
             note.externalChangePending = nil
@@ -64,16 +68,24 @@ extension VaultController {
     /// file, records the hash and updates the index, and then this decides whether the
     /// editor should notice.
     ///
-    /// A buffer with unsaved changes is left alone. It is the user's work, and
-    /// ADR-0001 §D3.4 says to ask rather than to merge; the watcher will raise the
-    /// question when the write comes back round.
+    /// **A buffer with unsaved changes raises the conflict prompt (ADR-0043 §D7).** The
+    /// dirty buffer is the user's work, and ADR-0001 §D3.4 says never to merge and never
+    /// to discard it - ask. This used to leave the buffer alone on the theory that "the
+    /// watcher will raise the question when the write comes back round", which is false:
+    /// `reconcile` drops this session's own writes by matching their hash
+    /// (`VaultSession+Watching.swift`), which is §D3.3 working correctly, so a write
+    /// this session made itself never reaches the watcher as an external change and the
+    /// question would never have been asked at all.
     func syncOpenNote(with result: VaultSession.WriteResult) {
-        guard var note = openNote,
-              note.relativePath == result.path,
-              !note.hasUnsavedChanges
-        else { return }
-        note.text = result.text
-        note.savedText = result.text
+        guard var note = openNote, note.relativePath == result.path else { return }
+        if note.hasUnsavedChanges {
+            // Never merge, never discard: ask (ADR-0001 §D3.4), with this write's own
+            // text as the incoming side of the prompt.
+            note.externalChangePending = result.text
+        } else {
+            note.text = result.text
+            note.savedText = result.text
+        }
         replaceOpenNote(note)
     }
 

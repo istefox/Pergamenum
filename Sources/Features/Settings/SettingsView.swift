@@ -49,12 +49,14 @@ struct SettingsView: View {
     }
 
     private func installSamples() {
-        let outcome = vault.installSampleViews()
-        var parts: [String] = []
-        if !outcome.created.isEmpty { parts.append("\(outcome.created.count) scritte") }
-        if !outcome.alreadyThere.isEmpty { parts.append("\(outcome.alreadyThere.count) c'erano già") }
-        parts.append(contentsOf: outcome.failures)
-        sampleViews = parts.joined(separator: ", ")
+        Task { @MainActor in
+            let outcome = await vault.installSampleViews()
+            var parts: [String] = []
+            if !outcome.created.isEmpty { parts.append("\(outcome.created.count) scritte") }
+            if !outcome.alreadyThere.isEmpty { parts.append("\(outcome.alreadyThere.count) c'erano già") }
+            parts.append(contentsOf: outcome.failures)
+            sampleViews = parts.joined(separator: ", ")
+        }
     }
 
     // MARK: Generali

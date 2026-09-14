@@ -98,7 +98,7 @@ struct TodayView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             if drop.journalID != nil {
-                Button("Annulla") { controller.undoLastDrop() }
+                Button("Annulla") { Task { @MainActor in await controller.undoLastDrop() } }
                     .accessibilityIdentifier("undo-task-drop")
             }
             Button("Chiudi") { controller.lastDrop = nil }

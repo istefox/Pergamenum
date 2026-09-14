@@ -37,9 +37,9 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     // therefore keep resolving to the untouched synchronous `write(_:to:)` overload,
     // exactly as before ADR-0041 Task 8 added the async one; only a call site directly
     // inside an `async` function or closure needs `await` added (see below).
-    session.transaction("note rename") {
-        try? session.write(note("Uno, riscritta."), to: "Uno.md")
-        try? session.write(note("Due, riscritta."), to: "Due.md")
+    await session.transaction("note rename") {
+        try? await session.write(note("Uno, riscritta."), to: "Uno.md")
+        try? await session.write(note("Due, riscritta."), to: "Due.md")
     }
 
     let entries = session.journalOnDisk.entries()
@@ -69,7 +69,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.journalCommand = "quello di prima"
 
-    session.transaction("note rename") {
+    await session.transaction("note rename") {
         #expect(session.journalCommand == "note rename")
     }
 
@@ -86,7 +86,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.journalCommand = "note move"
 
-    try session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
+    try await session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
 
     #expect(!session.exists("Uno.md"))
     #expect(session.exists("Archivio/Uno.md"))
@@ -105,7 +105,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let vault = try TemporaryVault()
     let session = try await armedSession(vault)
 
-    try session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
+    try await session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
 
     let paths = session.index.allNotes.map(\.relativePath)
     #expect(!paths.contains("Uno.md"), "l'indice tiene ancora il percorso vecchio")
@@ -117,8 +117,8 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let vault = try TemporaryVault()
     let session = try await armedSession(vault)
 
-    #expect(throws: FileOperationError.self) {
-        try session.moveFile(from: "Uno.md", to: "Due.md")
+    await #expect(throws: FileOperationError.self) {
+        try await session.moveFile(from: "Uno.md", to: "Due.md")
     }
     #expect(session.exists("Uno.md"), "il rifiuto ha spostato il file lo stesso")
 }
@@ -131,7 +131,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.journalCommand = "note trash"
 
-    try session.trashFile(at: "Uno.md")
+    try await session.trashFile(at: "Uno.md")
 
     #expect(!session.exists("Uno.md"))
     let entry = try #require(session.journalOnDisk.entries().last)
@@ -150,10 +150,10 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let session = try await armedSession(vault)
     session.isDryRun = true
 
-    session.transaction("note rename") {
-        try? session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
-        try? session.trashFile(at: "Due.md")
-        try? session.write(note("Non deve arrivare su disco."), to: "Due.md")
+    await session.transaction("note rename") {
+        try? await session.moveFile(from: "Uno.md", to: "Archivio/Uno.md")
+        try? await session.trashFile(at: "Due.md")
+        try? await session.write(note("Non deve arrivare su disco."), to: "Due.md")
     }
 
     // The whole claim of §D6 in three lines: a rehearsal that really moved the file would be
@@ -172,11 +172,11 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
 
     // Stops one line short of the disk, not one line short of the rules: a rehearsal that said
     // yes to a move the real thing would refuse is a rehearsal of a different operation.
-    #expect(throws: FileOperationError.self) {
-        try session.moveFile(from: "Uno.md", to: "Due.md")
+    await #expect(throws: FileOperationError.self) {
+        try await session.moveFile(from: "Uno.md", to: "Due.md")
     }
-    #expect(throws: FileOperationError.self) {
-        try session.trashFile(at: "Mai-esistita.md")
+    await #expect(throws: FileOperationError.self) {
+        try await session.trashFile(at: "Mai-esistita.md")
     }
 }
 
@@ -189,7 +189,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write("{\"nodes\":[],\"edges\":[]}", to: "Lavagna.canvas")
     session.journalCommand = "note rename"
 
-    try session.writeFile("{\"nodes\":[],\"edges\":[],\"x\":1}", to: "Lavagna.canvas")
+    try await session.writeFile("{\"nodes\":[],\"edges\":[],\"x\":1}", to: "Lavagna.canvas")
 
     let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.path == "Lavagna.canvas")

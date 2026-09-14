@@ -79,7 +79,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     let moved = try task(session, containing: "Collaudo")
     let thursday = try #require(CalendarDate(iso: "2026-08-20"))
 
-    let outcome = session.moveTask(moved, to: thursday)
+    let outcome = await session.moveTask(moved, to: thursday)
 
     #expect(outcome.didWrite)
     #expect(outcome.problem == nil)
@@ -98,7 +98,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     let moved = try task(session, containing: "Calcolo")
     let thursday = try #require(CalendarDate(iso: "2026-08-20"))
 
-    let outcome = session.moveTask(moved, to: thursday, at: TaskTime(hour: 15, minute: 0))
+    let outcome = await session.moveTask(moved, to: thursday, at: TaskTime(hour: 15, minute: 0))
 
     #expect(outcome.didWrite)
     #expect(try session.read("Lavoro.md").text.contains("- [ ] Calcolo trasmissibilità >2026-08-20 15:00"))
@@ -110,9 +110,9 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     let session = try await session(vault)
     let before = try session.read("Lavoro.md").text
     let moved = try task(session, containing: "Collaudo")
-    let outcome = session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
+    let outcome = await session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
 
-    let undone = session.undoJournalledWrites([try #require(outcome.journalID)])
+    let undone = await session.undoJournalledWrites([try #require(outcome.journalID)])
 
     #expect(undone.failures.isEmpty)
     #expect(try session.read("Lavoro.md").text == before)
@@ -126,7 +126,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     let session = try await session(vault)
     let moved = try task(session, containing: "Calcolo")
 
-    let outcome = session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-17")))
+    let outcome = await session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-17")))
 
     #expect(!outcome.didWrite)
     #expect(outcome.problem == nil)
@@ -141,7 +141,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     var moved = try task(session, containing: "Collaudo")
     moved.lineIndex += 3
 
-    let outcome = session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
+    let outcome = await session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
 
     #expect(!outcome.didWrite)
     #expect(outcome.problem?.contains("non è più dove risultava") == true)
@@ -158,7 +158,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     let session = try await session(vault)
     let moved = try #require(session.index.allTasks.first { $0.sourcePath == "Sciolto.md" })
 
-    let outcome = session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
+    let outcome = await session.moveTask(moved, to: try #require(CalendarDate(iso: "2026-08-20")))
 
     #expect(outcome.didWrite)
     #expect(outcome.introduced.isEmpty)

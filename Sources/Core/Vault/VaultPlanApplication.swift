@@ -35,4 +35,38 @@ enum VaultPlanApplication {
         }
         return outcome
     }
+
+    /// The same loop for a writer that has to be awaited (ADR-0043 §D2): `VaultSession`'s
+    /// writers go through the one `async` write door, and a caller cannot hand an `await`
+    /// to the synchronous overload above.
+    ///
+    /// A second declaration rather than a rewrite of the first, resolved by whether the
+    /// call site says `await` - the mechanism ADR-0041 §D9 already used for `write`. Unlike
+    /// that case this is **not** a second door in §D1's sense: `apply` owns no state, stamps
+    /// no clock and touches no index. It is a `for` loop that collects failures, and the
+    /// synchronous overload keeps the eight `store.write`/raw-`Data.write` call sites in the
+    /// three file-operations types, which are not vault-session writers.
+    ///
+    /// `isolation: isolated (any Actor)? = #isolation` is what makes it compile under strict
+    /// concurrency: without it the writer closure - which captures a `@MainActor VaultSession`
+    /// - would be *sent* from the caller's actor into a non-isolated function, which Swift 6
+    /// refuses by name («sending value of non-Sendable type ... risks causing data races»).
+    /// Inheriting the caller's isolation means the loop runs where the caller already is, so
+    /// nothing crosses a boundary and the writes keep their existing order.
+    static func apply(
+        _ changes: [VaultFileChange],
+        isolation: isolated (any Actor)? = #isolation,
+        writing: (VaultFileChange) async throws -> Void
+    ) async -> Outcome {
+        var outcome = Outcome()
+        for change in changes {
+            do {
+                try await writing(change)
+                outcome.rewrittenPaths.append(change.path)
+            } catch {
+                outcome.failures.append("\(change.path): \(error)")
+            }
+        }
+        return outcome
+    }
 }

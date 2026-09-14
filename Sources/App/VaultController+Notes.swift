@@ -20,9 +20,9 @@ extension VaultController {
         category: NoteCategory = .note,
         topics: [Tag] = [],
         body: String = ""
-    ) throws -> String {
+    ) async throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessuna cartella note aperta") }
-        let relativePath = try session.createNote(
+        let relativePath = try await session.createNote(
             title: title, in: folder, date: date, category: category, topics: topics, body: body
         ).path
         // A tab of its own, and never the preview: making a note is as deliberate an act as
@@ -72,9 +72,9 @@ extension VaultController {
         to targetTitle: String,
         reason: String,
         reverseReason: String
-    ) -> Bool {
+    ) async -> Bool {
         guard let session else { return false }
-        let created = session.addStructuralLink(
+        let created = await session.addStructuralLink(
             from: sourcePath, to: targetTitle, reason: reason, reverseReason: reverseReason
         )
         // `reloadFocusedNote` and not `openNote(at:)`: this is a re-read of a note that is
@@ -88,10 +88,10 @@ extension VaultController {
 
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
     @discardableResult
-    func openDailyNote(for date: CalendarDate) throws -> String {
+    func openDailyNote(for date: CalendarDate) async throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
         let existedAlready = session.exists(dailyNotePath(for: date))
-        let relativePath = try session.dailyNote(for: date)
+        let relativePath = try await session.dailyNote(for: date)
         openNote(at: relativePath)
         // Only when this call is the one that created the file (PG-095) - re-opening an
         // existing daily note changes nothing the sidebar tree needs to know about.

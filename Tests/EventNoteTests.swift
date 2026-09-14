@@ -115,7 +115,7 @@ private let thursday = CalendarDate(iso: "2026-08-20")!
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
-    let created = session.eventNote(
+    let created = await session.eventNote(
         for: "Riunione tecnica",
         on: thursday,
         start: TaskTime(hour: 15, minute: 30),
@@ -145,8 +145,8 @@ private let thursday = CalendarDate(iso: "2026-08-20")!
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
 
-    let first = session.eventNote(for: "Riunione tecnica", on: thursday)
-    let second = session.eventNote(for: "Riunione tecnica", on: thursday)
+    let first = await session.eventNote(for: "Riunione tecnica", on: thursday)
+    let second = await session.eventNote(for: "Riunione tecnica", on: thursday)
 
     #expect(first?.path == second?.path)
     // The second call wrote nothing at all, which is what the nil says.

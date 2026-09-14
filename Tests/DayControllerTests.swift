@@ -11,6 +11,7 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo pressa 4", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
 
     #expect(block.startMinutes == 9 * 60)
     #expect(block.durationMinutes == TimeBlock.defaultDuration)
@@ -34,7 +35,10 @@ import Testing
     let first = TaskParser.parse(line: "- [ ] Primo", sourcePath: "x.md", lineIndex: 0)!
     let second = TaskParser.parse(line: "- [ ] Secondo", sourcePath: "x.md", lineIndex: 1)!
     _ = dayController.addBlock(from: first)
+    try await waitUntil { dayController.blocks.count == 1 }
     let block = try #require(dayController.addBlock(from: second))
+
+    try await waitUntil { dayController.blocks.count == 2 }
 
     // Two blocks at the same time say nothing about what the day looks like.
     #expect(block.startMinutes == 9 * 60 + TimeBlock.defaultDuration)
@@ -51,12 +55,16 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Calcolo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
 
     #expect(dayController.publish(block, toCalendarTitled: "Pergamenum"))
     #expect(store.createdEvents.count == 1)
     #expect(store.createdEvents[0].title == "Calcolo")
     #expect(store.createdEvents[0].calendarTitle == "Pergamenum")
 
+    try await waitUntil {
+        dayController.blocks.first { $0.id == block.id }?.isPublished == true
+    }
     let onDisk = try String(contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8)
     #expect(onDisk.contains("[published]"))
     vaultController.close()
@@ -71,6 +79,7 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Calcolo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
 
     store.failure = .noWritableCalendar
     #expect(!dayController.publish(block))
@@ -92,8 +101,12 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Calcolo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     #expect(dayController.publish(block))
 
+    try await waitUntil {
+        dayController.blocks.first { $0.id == block.id }?.isPublished == true
+    }
     let republished = try #require(dayController.blocks.first)
     #expect(!dayController.publish(republished))
     #expect(store.createdEvents.count == 1)
@@ -109,7 +122,9 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Da togliere", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     dayController.remove(block)
+    try await waitUntil { dayController.blocks.isEmpty }
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8)
     #expect(!onDisk.contains("Da togliere"))
@@ -219,9 +234,13 @@ import Testing
     for (index, name) in ["Uno", "Due", "Tre"].enumerated() {
         let task = TaskParser.parse(line: "- [ ] \(name)", sourcePath: "x.md", lineIndex: index)!
         _ = dayController.addBlock(from: task)
+        try await waitUntil { dayController.blocks.count == index + 1 }
     }
     #expect(dayController.publishAllBlocks() == 3)
     #expect(store.createdEvents.count == 3)
+    try await waitUntil {
+        dayController.blocks.count == 3 && dayController.blocks.allSatisfy(\.isPublished)
+    }
     // A second run has nothing left to do rather than duplicating the three events.
     #expect(dayController.publishAllBlocks() == 0)
     #expect(store.createdEvents.count == 3)
@@ -242,6 +261,7 @@ import Testing
         line: "- [ ] Collaudo !2026-08-11 15:00", sourcePath: "x.md", lineIndex: 0
     )!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     #expect(block.startMinutes == 15 * 60)
     #expect(block.durationMinutes == 45)
 
@@ -261,7 +281,9 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     dayController.remove(block)
+    try await waitUntil { dayController.blocks.isEmpty }
 
     #expect(dayController.blocks.isEmpty)
     let onDisk = try String(
@@ -292,6 +314,7 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     #expect(vaultController.openNote == nil, "il blocco ha aperto la nota nell'editor")
     #expect(dayController.blocks.map(\.id) == [block.id])
 
@@ -301,6 +324,7 @@ import Testing
     #expect(written.contains("- 09:00-09:30 Sopralluogo"), "il blocco non è finito nel file")
 
     dayController.remove(block)
+    try await waitUntil { dayController.blocks.isEmpty }
     #expect(dayController.blocks.isEmpty)
     #expect(vaultController.openNote == nil)
     let afterwards = try String(
@@ -330,6 +354,7 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo", sourcePath: "x.md", lineIndex: 0)!
     #expect(dayController.addBlock(from: task) != nil)
+    try await waitUntil { dayController.blocks.count == 1 }
     #expect(FileManager.default.fileExists(atPath: path.path(percentEncoded: false)))
     #expect(vaultController.openNote == nil, "la nota creata è stata anche aperta")
     vaultController.close()
@@ -356,7 +381,9 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Sopralluogo >2026-08-11", sourcePath: "Attivita.md", lineIndex: 6)!
     let block = try #require(dayController.addBlock(from: task))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
     dayController.remove(block)
+    try await waitUntil { dayController.blocks.isEmpty }
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Attivita.md"), encoding: .utf8)
     #expect(onDisk == source, "la nota del task è cambiata")

@@ -27,11 +27,20 @@ extension VaultSession {
     /// second `undo` would then complete. An `assertionFailure` says so on the first Debug run;
     /// in Release the body still runs, under the gesture already open, because refusing to
     /// perform a write the user asked for would be the worse of the two wrongs.
+    ///
+    /// **Known hazard, recorded rather than silently absorbed (ADR-0043 §D2, `PG-152`).**
+    /// `currentOperation` is scoped state on a `@MainActor` object, and an `async` body means
+    /// two transactions started from two `Task { }`s can now interleave: the second trips the
+    /// assertion above in Debug and, in Release, joins the wrong gesture. That is a
+    /// pre-existing consequence of ADR-0041 §D9 - the async write door already existed - which
+    /// this conversion makes reachable from more call sites. It is **not** decided by ADR-0043
+    /// and is **not** fixed here: closing it properly means an actor-owned operation stack,
+    /// which is a design decision and belongs in its own ADR.
     @discardableResult
-    func transaction<T>(_ command: String, _ body: () throws -> T) rethrows -> T {
+    func transaction<T>(_ command: String, _ body: () async throws -> T) async rethrows -> T {
         guard currentOperation == nil else {
             assertionFailure("transazione annidata: «\(command)» dentro «\(journalCommand)»")
-            return try body()
+            return try await body()
         }
         let previousCommand = journalCommand
         journalCommand = command
@@ -40,7 +49,7 @@ extension VaultSession {
             currentOperation = nil
             journalCommand = previousCommand
         }
-        return try body()
+        return try await body()
     }
 
     // MARK: The two shape changes
@@ -49,7 +58,7 @@ extension VaultSession {
     ///
     /// The bytes do not change, so both hashes are the file's own: what makes this reversible is
     /// `pathBefore`, not the text. There is no `textBefore` - a move has nothing to restore.
-    func moveFile(from oldPath: String, to newPath: String) throws {
+    func moveFile(from oldPath: String, to newPath: String) async throws {
         guard oldPath != newPath else { return }
         guard exists(oldPath) else { throw FileOperationError.missing(oldPath) }
         guard !exists(newPath) else {
@@ -57,33 +66,24 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
-        let destination = try store.url(for: newPath)
+        // ADR-0043 §D1: the `FileManager.moveItem` and the record derivation on the far
+        // side both move inside `VaultDisk`, stamped from that path's own clock.
+        let mutations: [VaultDisk.IndexMutation]
         do {
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try FileManager.default.moveItem(at: try store.url(for: oldPath), to: destination)
+            mutations = try await disk.moveFile(from: oldPath, to: newPath)
         } catch {
             throw FileOperationError.failed(
                 "spostamento: \(error.localizedDescription)"
             )
         }
+        apply(mutations)
 
-        // One read of the moved file, not two (ADR-0041 §D7): the same bytes are hashed
-        // for the watcher and handed to `record(from:attributes:at:)` for the index, rather
-        // than hashing here and re-reading the file through `store.read(newPath)` after.
-        let movedData = try? Data(contentsOf: destination)
-        let hash = movedData.map(NoteStore.hash) ?? ""
-        selfWrittenHashes[newPath] = hash
-        updateIndex(nil, at: oldPath)
-
-        let movedAttributes = try? FileManager.default.attributesOfItem(
-            atPath: destination.path(percentEncoded: false)
-        )
-        let movedRecord = movedData.flatMap { bytes in
-            try? store.record(from: bytes, attributes: movedAttributes ?? [:], at: newPath)
-        }
-        updateIndex(movedRecord, at: newPath)
+        let newMutation = mutations.first { $0.path == newPath }
+        let hash = newMutation?.record?.contentHash ?? ""
+        // Task 7: same sequence-tagged shape as `write(_:to:expecting:)` - the mutation
+        // is already real by this point (the actor hop already resumed), so this is the
+        // sequence itself rather than a provisional one to correct later.
+        selfWrittenHashes[newPath, default: []].append((sequence: newMutation?.sequence ?? 0, hash: hash))
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),
@@ -108,7 +108,7 @@ extension VaultSession {
     /// emptied - a net that depends on it is a net this app cannot promise.
     ///
     /// `hashAfter` is empty, and that is the honest value: there is no file after this.
-    func trashFile(at relativePath: String) throws {
+    func trashFile(at relativePath: String) async throws {
         guard exists(relativePath) else {
             throw FileOperationError.missing(relativePath)
         }
@@ -118,17 +118,17 @@ extension VaultSession {
         let data = (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
         guard !isDryRun else { return }
 
+        // ADR-0043 §D1: the `trashItem` call moves inside `VaultDisk`, stamped from this
+        // path's own clock.
+        let mutation: VaultDisk.IndexMutation
         do {
-            try FileManager.default.trashItem(
-                at: try store.url(for: relativePath), resultingItemURL: nil
-            )
+            mutation = try await disk.trashFile(at: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "eliminazione: \(error.localizedDescription)"
             )
         }
-
-        updateIndex(nil, at: relativePath)
+        apply([mutation])
         selfWrittenHashes.removeValue(forKey: relativePath)
 
         record(WriteJournal.Entry(
@@ -153,23 +153,25 @@ extension VaultSession {
     /// would re-read a `NoteRecord` that is not there. Everything else about it is the same,
     /// including the journal entry, which is what stops a board card from being the one part of
     /// a rename that cannot be undone.
-    func writeFile(_ text: String, to relativePath: String) throws {
+    func writeFile(_ text: String, to relativePath: String) async throws {
         let existing = (journal != nil && !isDryRun)
             ? (try? store.url(for: relativePath)).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
             : nil
         guard !isDryRun else { return }
 
-        let url = try store.url(for: relativePath)
-        let data = Data(text.utf8)
+        // ADR-0043 §D1: the byte write moves inside `VaultDisk` too. Its sequence is kept
+        // for `selfWrittenHashes` below (Task 7) but the mutation itself is never applied
+        // to the index - a board is not a note, unchanged from before this task.
+        let mutation: VaultDisk.IndexMutation
         do {
-            try data.write(to: url, options: .atomic)
+            mutation = try await disk.writeFile(text, to: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "scrittura: \(error.localizedDescription)"
             )
         }
-        let hash = NoteStore.hash(data)
-        selfWrittenHashes[relativePath] = hash
+        let hash = NoteStore.hash(Data(text.utf8))
+        selfWrittenHashes[relativePath, default: []].append((sequence: mutation.sequence, hash: hash))
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),
@@ -196,7 +198,7 @@ extension VaultSession {
     /// Newest first once every check has passed: a rename writes the move and then the link
     /// texts, so reversing it has to put the texts back before the file moves back.
     @discardableResult
-    func undo(operation id: String) -> TagRenameOutcome {
+    func undo(operation id: String) async -> TagRenameOutcome {
         let members = journalOnDisk.entries(operation: id)
         guard !members.isEmpty else {
             return TagRenameOutcome(failures: ["\(id): non è un'operazione nel journal"])
@@ -205,7 +207,7 @@ extension VaultSession {
         let failures = preflightUndo(members)
         guard failures.isEmpty else { return TagRenameOutcome(failures: failures) }
 
-        let (changed, runtimeFailures) = performUndo(members)
+        let (changed, runtimeFailures) = await performUndo(members)
         return TagRenameOutcome(changed: changed, failures: runtimeFailures)
     }
 
@@ -264,7 +266,7 @@ extension VaultSession {
     /// The individual writes can still fail here - the disk between the check and the write is
     /// the same narrow window D4 already accepts for a gesture going forward - so a failure is
     /// reported rather than assumed impossible.
-    func performUndo(_ entries: [WriteJournal.Entry]) -> (changed: [String], failures: [String]) {
+    func performUndo(_ entries: [WriteJournal.Entry]) async -> (changed: [String], failures: [String]) {
         var changed: [String] = []
         var failures: [String] = []
         for entry in entries.reversed() {
@@ -279,9 +281,9 @@ extension VaultSession {
                     // move originally repointed it: reversing it through `write` would read the
                     // JSON back as a note and leave a bogus record in the index.
                     if entry.path.hasSuffix(".\(CanvasStore.fileExtension)") {
-                        try writeFile(textBefore, to: entry.path)
+                        try await writeFile(textBefore, to: entry.path)
                     } else {
-                        try write(textBefore, to: entry.path)
+                        try await write(textBefore, to: entry.path)
                     }
                     changed.append(entry.path)
                 case .removal:
@@ -289,14 +291,14 @@ extension VaultSession {
                         failures.append("\(entry.path): il journal non ha il testo da ripristinare")
                         continue
                     }
-                    try write(textBefore, to: entry.path)
+                    try await write(textBefore, to: entry.path)
                     changed.append(entry.path)
                 case .move:
                     guard let pathBefore = entry.pathBefore else {
                         failures.append("\(entry.path): il journal non sa da dove veniva")
                         continue
                     }
-                    try moveFile(from: entry.path, to: pathBefore)
+                    try await moveFile(from: entry.path, to: pathBefore)
                     changed.append(pathBefore)
                 }
             } catch {

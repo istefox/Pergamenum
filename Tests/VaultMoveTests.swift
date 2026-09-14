@@ -49,7 +49,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note(), to: "A/x.md")
     let session = try await armedSession(vault)
 
-    let outcome = session.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B")
+    let outcome = await session.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B")
 
     #expect(outcome.moves.count == 1)
     #expect(session.exists("B/x.md"))
@@ -70,7 +70,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note(), to: "F/inside.md")
     let session = try await armedSession(vault)
 
-    let outcome = session.moveItems(
+    let outcome = await session.moveItems(
         [
             VaultItemRef(path: "X.canvas", kind: .board),
             VaultItemRef(path: "F", kind: .folder),
@@ -96,7 +96,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     try vault.write(note(), to: "C/keep/y.md")
     let session = try await armedSession(vault)
 
-    let outcome = session.moveItems(
+    let outcome = await session.moveItems(
         [
             VaultItemRef(path: "A/x.md", kind: .note),
             VaultItemRef(path: "C/keep", kind: .folder),
@@ -137,7 +137,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     // Second in the batch, and it is not on disk: `plan` only checks that «B/ghost.canvas»
     // is free, so this reaches `BoardFileOperations.movePlan` and throws `.missing` there -
     // after «A/x.md» has already been written to its new path.
-    let outcome = session.moveItems(
+    let outcome = await session.moveItems(
         [
             VaultItemRef(path: "A/x.md", kind: .note),
             VaultItemRef(path: "A/ghost.canvas", kind: .board),
@@ -171,7 +171,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     await controller.open(root)
     let manager = UndoManager()
 
-    let outcome = controller.moveItems(
+    let outcome = await controller.moveItems(
         [
             VaultItemRef(path: "A/x.md", kind: .note),
             VaultItemRef(path: "A/ghost.canvas", kind: .board),
@@ -192,6 +192,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     )
 
     manager.undo()
+    try await waitUntil { exists("A/x.md", at: root) && !exists("B/x.md", at: root) }
 
     #expect(exists("A/x.md", at: root), "l'undo deve riportare indietro ciò che si era spostato")
     #expect(!exists("B/x.md", at: root))
@@ -215,7 +216,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
         VaultItemRef(path: "A/y.canvas", kind: .board),
     ]
 
-    let outcome = controller.moveItems(items, into: "B", undo: manager)
+    let outcome = await controller.moveItems(items, into: "B", undo: manager)
 
     #expect(outcome.didMove)
     #expect(exists("B/x.md", at: root))
@@ -223,6 +224,11 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(manager.canUndo, "una mossa completata deve registrarsi sull'UndoManager")
 
     manager.undo()
+    try await waitUntil {
+        exists("A/x.md", at: root) && exists("A/y.canvas", at: root)
+            && !exists("B/x.md", at: root) && !exists("B/y.canvas", at: root)
+            && manager.canRedo
+    }
 
     #expect(exists("A/x.md", at: root))
     #expect(exists("A/y.canvas", at: root))
@@ -231,6 +237,9 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(manager.canRedo, "l'undo deve registrarsi di nuovo con gli argomenti scambiati")
 
     manager.redo()
+    try await waitUntil {
+        exists("B/x.md", at: root) && exists("B/y.canvas", at: root) && manager.canUndo
+    }
 
     #expect(exists("B/x.md", at: root))
     #expect(exists("B/y.canvas", at: root))
@@ -247,14 +256,16 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     await controller.open(root)
     let manager = UndoManager()
 
-    let outcome = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: manager)
+    let outcome = await controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: manager)
     #expect(outcome.didMove)
 
     // The moved note is renamed out from under the undo before Cmd+Z ever runs - the
     // exact race ADR-0026 §D8 names ("a later rename moved it").
-    _ = controller.renameNote(at: "B/x.md", to: "y")
+    _ = await controller.renameNote(at: "B/x.md", to: "y")
 
+    let problemsBeforeUndo = controller.problems.count
     manager.undo()
+    try await waitUntil { controller.problems.count > problemsBeforeUndo }
 
     #expect(!exists("A/x.md", at: root), "l'undo non deve scrivere nulla se il target si è spostato")
     #expect(exists("B/y.md", at: root), "il file rinominato deve restare dov'è, non essere toccato")
@@ -280,7 +291,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(root)
 
-    let outcome = controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil)
+    let outcome = await controller.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil)
 
     #expect(outcome.didMove)
     #expect(exists("B/x.md", at: root))
@@ -307,7 +318,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(root)
 
-    let outcome = controller.moveItems(
+    let outcome = await controller.moveItems(
         [
             VaultItemRef(path: "A/x.md", kind: .note),
             VaultItemRef(path: "A/ghost1.canvas", kind: .board),
@@ -336,7 +347,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(root)
 
-    let outcome = controller.moveItems(
+    let outcome = await controller.moveItems(
         [VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil
     )
 
@@ -359,7 +370,7 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     controller.openNote(at: "A/x.md")
     controller.updateOpenNoteText("modificato, mai salvato")
 
-    let outcome = controller.moveItems(
+    let outcome = await controller.moveItems(
         [VaultItemRef(path: "A/x.md", kind: .note)], into: "B", undo: nil
     )
 

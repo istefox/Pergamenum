@@ -18,7 +18,7 @@ extension VaultSession {
     }
 
     @discardableResult
-    func installSampleViews() -> SampleViewsOutcome {
+    func installSampleViews() async -> SampleViewsOutcome {
         var outcome = SampleViewsOutcome()
         for sample in SampleViews.all {
             if (try? read(sample.relativePath)) != nil {
@@ -26,7 +26,7 @@ extension VaultSession {
                 continue
             }
             do {
-                try write(sample.text, to: sample.relativePath)
+                try await write(sample.text, to: sample.relativePath)
                 outcome.created.append(sample.relativePath)
             } catch {
                 outcome.failures.append("\(sample.relativePath): \(error.localizedDescription)")

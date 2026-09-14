@@ -19,23 +19,41 @@ extension VaultSession {
     /// A path this session wrote itself is recognised by content hash rather than by a
     /// time window, so a real external edit is never mistaken for it, and is not
     /// reported: the caller already knows about its own writes.
-    func reconcile(_ paths: [String]) -> [ExternalChange] {
+    ///
+    /// The door `VaultController.reconcile` actually calls (ADR-0043 §D3): the per-path
+    /// read moves off the main actor and into `VaultDisk`, which reads, advances that
+    /// path's clock and hands back the mutation - applied through `apply(_:)` (§D1) - plus
+    /// the `ExternalChange` to report, when there is one.
+    ///
+    /// `disk.reconcile` is called with this path's own `selfWrittenHashes` list (§D6):
+    /// the actor matches the file's current content hash against every entry still
+    /// queued for this path, not only the most recent one, so a write whose bytes were
+    /// coalesced away by FSEvents before this session's watcher fired is still
+    /// recognised as its own. A match prunes every entry at or below the matched
+    /// sequence (Task 7 point 2) - the file has moved at least that far, so nothing
+    /// older than that can still be waiting to be observed - and never applies the
+    /// mutation: a self-write reconciliation changes nothing the write itself did not
+    /// already apply.
+    func reconcile(_ paths: [String]) async -> [ExternalChange] {
         var changes: [ExternalChange] = []
 
         for path in paths {
-            guard exists(path) else {
-                updateIndex(nil, at: path)
+            let result = await disk.reconcile(path, selfWritten: selfWrittenHashes[path] ?? [])
+
+            if let matched = result.matchedSequence {
+                let remaining = (selfWrittenHashes[path] ?? []).filter { $0.sequence > matched }
+                if remaining.isEmpty {
+                    selfWrittenHashes.removeValue(forKey: path)
+                } else {
+                    selfWrittenHashes[path] = remaining
+                }
                 continue
             }
-            guard let (record, text) = try? read(path) else { continue }
 
-            if selfWrittenHashes[path] == record.contentHash {
-                selfWrittenHashes.removeValue(forKey: path)
-                continue
+            apply([result.mutation])
+            if let change = result.change {
+                changes.append(change)
             }
-
-            updateIndex(record, at: path)
-            changes.append(ExternalChange(path: path, text: text))
         }
         return changes
     }
@@ -48,12 +66,12 @@ extension VaultSession {
     /// swallowed into the last time block instead of standing on its own, and lands
     /// inside a section this app rewrites.
     @discardableResult
-    func append(text: String, to relativePath: String) -> WriteOutcome {
+    func append(text: String, to relativePath: String) async -> WriteOutcome {
         do {
             var body = try read(relativePath).text
             while body.hasSuffix("\n") { body.removeLast() }
             let separator = body.isEmpty ? "" : "\n\n"
-            return .written(try write(body + separator + text + "\n", to: relativePath))
+            return .written(try await write(body + separator + text + "\n", to: relativePath))
         } catch {
             recordProblem("capture: \(error)")
             return .failed

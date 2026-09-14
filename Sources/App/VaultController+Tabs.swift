@@ -347,16 +347,24 @@ extension VaultController {
         isComposingNote = false
     }
 
-    /// Reads a note for the editor and puts the index back in step, or reports why not.
+    /// Reads a note for the editor, or reports why not.
     ///
     /// Split out of `openNote(at:)` so opening in place and opening in a new tab cannot
     /// drift: they differ in where the note lands and in nothing else. Internal because the
     /// session restore in `VaultController.swift` reads through it too.
+    ///
+    /// **No longer refreshes the index row (ADR-0043 §D4).** It used to, with an unstamped
+    /// call into the old single-record index-refresh door that ADR-0043 §D1 found reachable
+    /// from five unguarded places - this being one of them. After §D1 every real change has
+    /// a stamped writer of its own
+    /// (the write path, a move, a trash, the watcher); a row that disagrees with the file
+    /// got that way from one of those, and the index is disposable by construction
+    /// (ADR-0001 §D2.1) - the cold scan or the watcher's reconciliation is what keeps it in
+    /// step, not this read.
     func readForEditing(_ relativePath: String) -> OpenNote? {
         guard let session else { return nil }
         do {
             let (record, text) = try session.read(relativePath)
-            session.updateIndex(record, at: relativePath)
             return OpenNote(
                 relativePath: relativePath,
                 title: record.title,

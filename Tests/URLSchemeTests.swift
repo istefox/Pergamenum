@@ -138,7 +138,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.note(path: "01 Progetti/Nota.md")))
+    #expect(await controller.handle(.note(path: "01 Progetti/Nota.md")))
     #expect(controller.openNote?.relativePath == "01 Progetti/Nota.md")
     controller.close()
 }
@@ -151,7 +151,7 @@ Corpo.
 
     // A link from DEVONthink that quietly does nothing is worse than one that says
     // the note has moved.
-    #expect(!controller.handle(.note(path: "Sparita.md")))
+    #expect(await !controller.handle(.note(path: "Sparita.md")))
     #expect(controller.problems.contains { $0.contains("Sparita.md") })
     controller.close()
 }
@@ -162,7 +162,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.day(CalendarDate(iso: "2026-08-11")!)))
+    #expect(await controller.handle(.day(CalendarDate(iso: "2026-08-11")!)))
     #expect(controller.openNote?.relativePath == "Calendar/20260811.md")
     controller.close()
 }
@@ -175,7 +175,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.capture(
+    #expect(await controller.handle(.capture(
         text: "appunto veloce", destination: "note:Destinazione.md", scheduled: nil, due: nil
     )))
     let onDisk = try String(contentsOf: vault.root.appending(path: "Destinazione.md"), encoding: .utf8)
@@ -195,7 +195,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.addTask("Richiamare Rossi")))
+    #expect(await controller.handle(.addTask("Richiamare Rossi")))
     let onDisk = try String(contentsOf: vault.root.appending(path: "00 Inbox/Capture.md"), encoding: .utf8)
     #expect(onDisk.contains("- [ ] Richiamare Rossi"))
     controller.close()
@@ -207,7 +207,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.search("trasmissibilità")))
+    #expect(await controller.handle(.search("trasmissibilità")))
     #expect(controller.isShowingQuickSwitcher)
     #expect(controller.consumePendingSearch() == "trasmissibilità")
     // Consumed once: reopening the switcher later must not re-apply an old query.
@@ -221,7 +221,7 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.canvas(path: "Area/Area.canvas", nodeID: "7a1f")))
+    #expect(await controller.handle(.canvas(path: "Area/Area.canvas", nodeID: "7a1f")))
     let pending = controller.consumePendingCanvasRoute()
     #expect(pending?.path == "Area/Area.canvas")
     #expect(pending?.nodeID == "7a1f")
@@ -331,7 +331,7 @@ Corpo.
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
-    #expect(controller.handle(.capture(
+    #expect(await controller.handle(.capture(
         text: "Riga catturata", destination: "note:Giorno.md", scheduled: nil, due: nil
     )))
 
@@ -347,10 +347,10 @@ Corpo.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
-    #expect(controller.handle(.capture(
+    #expect(await controller.handle(.capture(
         text: "primo", destination: "note:Destinazione.md", scheduled: nil, due: nil
     )))
-    #expect(controller.handle(.capture(
+    #expect(await controller.handle(.capture(
         text: "secondo", destination: "note:Destinazione.md", scheduled: nil, due: nil
     )))
 

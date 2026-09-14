@@ -82,7 +82,7 @@ import Testing
         scheduled: CalendarDate(iso: "2026-08-15"),
         due: CalendarDate(iso: "2026-08-20")
     )
-    #expect(controller.captureTask(draft))
+    #expect(await controller.captureTask(draft))
 
     let onDisk = try String(
         contentsOf: vault.root.appending(path: "01 Progetti/Nexion.md"), encoding: .utf8
@@ -111,7 +111,7 @@ import Testing
         text: "Chiamare Daniela",
         reminder: TaskReminder(date: CalendarDate(iso: "2026-08-15")!, hour: 14, minute: 30)
     )
-    #expect(controller.captureTask(draft))
+    #expect(await controller.captureTask(draft))
 
     let task = try #require(controller.index.allTasks.first { $0.text.contains("Daniela") })
     #expect(task.reminder == TaskReminder(date: CalendarDate(iso: "2026-08-15")!, hour: 14, minute: 30))
@@ -131,7 +131,7 @@ import Testing
         text: "Non deve creare niente",
         destination: .note("01 Progetti/Inesistente.md")
     )
-    #expect(!controller.captureTask(draft))
+    #expect(await !controller.captureTask(draft))
     #expect(!FileManager.default.fileExists(
         atPath: vault.root.appending(path: "01 Progetti/Inesistente.md").path(percentEncoded: false)
     ))
@@ -146,7 +146,7 @@ import Testing
     await controller.open(vault.root)
 
     #expect(controller.consumeLastCapture() == nil)
-    #expect(controller.captureTask(VaultController.TaskDraft(text: "Senza data")))
+    #expect(await controller.captureTask(VaultController.TaskDraft(text: "Senza data")))
 
     let capture = try #require(controller.consumeLastCapture())
     #expect(capture.scheduled == nil)
@@ -229,7 +229,7 @@ import Testing
     draft.due = CalendarDate(iso: "2026-08-20")
     draft.dueTime = TaskTime(hour: 15, minute: 0)
     draft.blocksTheDay = true
-    #expect(controller.captureTask(draft))
+    #expect(await controller.captureTask(draft))
 
     // The task line, in the note it was captured into.
     let inbox = try String(
@@ -257,7 +257,7 @@ import Testing
     var draft = VaultController.TaskDraft(text: "Solo il task")
     draft.due = CalendarDate(iso: "2026-08-20")
     draft.dueTime = TaskTime(hour: 15, minute: 0)
-    #expect(controller.captureTask(draft))
+    #expect(await controller.captureTask(draft))
 
     #expect(!FileManager.default.fileExists(
         atPath: vault.root.appending(path: "Calendar/20260820.md").path(percentEncoded: false)
@@ -272,8 +272,8 @@ import Testing
     await controller.open(vault.root)
 
     let day = CalendarDate(iso: "2026-08-20")!
-    #expect(controller.addTimeBlock(title: "Primo", on: day, startMinutes: 15 * 60) != nil)
-    let second = try #require(controller.addTimeBlock(title: "Secondo", on: day, startMinutes: 15 * 60))
+    #expect(await controller.addTimeBlock(title: "Primo", on: day, startMinutes: 15 * 60) != nil)
+    let second = try #require(await controller.addTimeBlock(title: "Secondo", on: day, startMinutes: 15 * 60))
 
     #expect(second.startMinutes == 15 * 60 + 30)
     let daily = try String(
@@ -319,7 +319,7 @@ import Testing
         text: "Sotto-task uno", destination: .note(parent.sourcePath)
     )
     firstSubtask.parent = controller.selectedTask
-    #expect(controller.captureTask(firstSubtask))
+    #expect(await controller.captureTask(firstSubtask))
 
     let parentAfterFirstWrite = try #require(controller.index.allTasks.first { $0.localID == 1 })
     #expect(parentAfterFirstWrite.text == "Progetto padre")
@@ -339,7 +339,7 @@ import Testing
     )
     secondSubtask.parent = controller.selectedTask
     #expect(
-        controller.captureTask(secondSubtask),
+        await controller.captureTask(secondSubtask),
         "il secondo sotto-task è stato scartato silenziosamente: \(controller.problems)"
     )
 

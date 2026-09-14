@@ -29,18 +29,23 @@ extension VaultSession {
     @discardableResult
     func setTimeBlocks(
         _ blocks: [TimeBlock], on day: CalendarDate, preferring text: String? = nil
-    ) -> WriteOutcome {
+    ) async -> WriteOutcome {
         let relativePath = dailyNotePath(for: day)
         // Nothing to write and nothing to write it into: a day with no blocks and no
         // note is a day this app has no business creating a file for.
         if blocks.isEmpty, text ?? dailyNoteText(for: day) == nil { return .unchanged }
 
         do {
-            let body = try dailyNoteBody(for: day)
+            let (body, expecting) = try await dailyNoteBody(for: day)
             let updated = TimeBlockSection.write(
                 blocks.sorted { $0.startMinutes < $1.startMinutes }, into: body
             )
-            return .written(try write(updated, to: relativePath))
+            // `expecting:` (ADR-0043 §D8, Task 9): `body` was read (or just created) by
+            // `dailyNoteBody` before this write, straddling the `await` above.
+            return .written(try await write(updated, to: relativePath, expecting: expecting))
+        } catch is VaultSession.WriteRefusal {
+            recordProblem("il giorno non è più dove risultava: \(relativePath)")
+            return .stale
         } catch {
             recordProblem("blocchi tempo: \(error)")
             return .failed
@@ -63,7 +68,7 @@ extension VaultSession {
         startMinutes: Int,
         durationMinutes: Int? = nil,
         preferring text: String? = nil
-    ) -> PlacedBlock? {
+    ) async -> PlacedBlock? {
         let duration = durationMinutes ?? settings.blockMinutes
         let existing = timeBlocks(on: day, preferring: text)
         guard let start = TimeBlock.freeStart(from: startMinutes, in: existing, duration: duration)
@@ -80,22 +85,27 @@ extension VaultSession {
             sourceTaskID: nil,
             isPublished: false
         )
-        let outcome = setTimeBlocks(existing + [block], on: day, preferring: text)
+        let outcome = await setTimeBlocks(existing + [block], on: day, preferring: text)
         return outcome.succeeded ? PlacedBlock(block: block, write: outcome) : nil
     }
 
     /// The daily note's text, written from the template first when the file is not
     /// there. Same frontmatter `createNote` would give it (SPEC §4.3), so a note born
     /// this way is indistinguishable from one opened with Cmd+T.
-    private func dailyNoteBody(for day: CalendarDate) throws -> String {
+    ///
+    /// Returns the hash `setTimeBlocks` above should `expecting:` on its own write
+    /// (ADR-0043 §D8, Task 9): the existing note's own hash when there was one, or the
+    /// hash of the template this call just wrote when there was not - never nil in the
+    /// creation case, since by the time this returns the file is no longer new.
+    private func dailyNoteBody(for day: CalendarDate) async throws -> (text: String, expecting: String?) {
         let relativePath = dailyNotePath(for: day)
-        if let existing = try? read(relativePath) { return existing.text }
+        if let existing = try? read(relativePath) { return (existing.text, existing.record.contentHash) }
 
         var frontmatter = Frontmatter.empty
         frontmatter.date = day
         frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")])
         let text = FrontmatterSerializer.render(frontmatter) + "\n"
-        try write(text, to: relativePath)
-        return text
+        try await write(text, to: relativePath)
+        return (text, NoteStore.hash(Data(text.utf8)))
     }
 }

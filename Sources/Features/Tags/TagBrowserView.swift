@@ -301,30 +301,35 @@ struct TagBrowserView: View {
     /// no notes at all, which reads as "the rename lost them".
     private func perform(renameOf old: Tag, to new: Tag) {
         renaming = nil
-        let outcome = vault.renameTag(old, to: new)
-        guard !outcome.journalIDs.isEmpty || !outcome.failures.isEmpty else { return }
-        if chosen.remove(old) != nil { chosen.insert(new) }
-        if vault.isPinned(old) {
-            vault.togglePin(old)
-            vault.togglePin(new)
+        Task { @MainActor in
+            let outcome = await vault.renameTag(old, to: new)
+            guard !outcome.journalIDs.isEmpty || !outcome.failures.isEmpty else { return }
+            if chosen.remove(old) != nil { chosen.insert(new) }
+            if vault.isPinned(old) {
+                vault.togglePin(old)
+                vault.togglePin(new)
+            }
+            lastRename = FinishedRename(
+                old: old, new: new, journalIDs: outcome.journalIDs, failures: outcome.failures
+            )
         }
-        lastRename = FinishedRename(
-            old: old, new: new, journalIDs: outcome.journalIDs, failures: outcome.failures
-        )
     }
 
     private func undoLastRename() {
         guard let done = lastRename else { return }
-        let outcome = vault.undoJournalledWrites(done.journalIDs)
-        lastRename = nil
-        if chosen.remove(done.new) != nil { chosen.insert(done.old) }
-        if vault.isPinned(done.new) {
-            vault.togglePin(done.new)
-            vault.togglePin(done.old)
-        }
-        // A note that had moved on keeps its own text and is named here rather than swallowed.
-        if !outcome.failures.isEmpty {
-            vault.recordProblem(outcome.failures.joined(separator: "; "))
+        Task { @MainActor in
+            let outcome = await vault.undoJournalledWrites(done.journalIDs)
+            lastRename = nil
+            if chosen.remove(done.new) != nil { chosen.insert(done.old) }
+            if vault.isPinned(done.new) {
+                vault.togglePin(done.new)
+                vault.togglePin(done.old)
+            }
+            // A note that had moved on keeps its own text and is named here rather than
+            // swallowed.
+            if !outcome.failures.isEmpty {
+                vault.recordProblem(outcome.failures.joined(separator: "; "))
+            }
         }
     }
 

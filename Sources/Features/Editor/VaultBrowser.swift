@@ -69,12 +69,16 @@ struct VaultBrowser: View {
         case .note(let path):
             vault.openChosenNote(at: path)
         case .dailyNote:
-            do { try vault.openDailyNote(for: .today) } catch {
-                vault.recordProblem(ConformanceText.creationFailure(error))
+            Task { @MainActor in
+                do { try await vault.openDailyNote(for: .today) } catch {
+                    vault.recordProblem(ConformanceText.creationFailure(error))
+                }
             }
         case .createNote(let title):
-            do { try vault.createNote(title: title, date: .today) } catch {
-                vault.recordProblem(ConformanceText.creationFailure(error))
+            Task { @MainActor in
+                do { try await vault.createNote(title: title, date: .today) } catch {
+                    vault.recordProblem(ConformanceText.creationFailure(error))
+                }
             }
         case .heading(let path, let range, let ordinal):
             vault.openChosenNote(at: path)

@@ -103,7 +103,7 @@ extension VaultSession {
     /// Returns what was written, so a caller with an editor open on that note can put
     /// it back in step.
     @discardableResult
-    func apply(_ change: TaskChange, to task: TaskItem) -> WriteOutcome {
+    func apply(_ change: TaskChange, to task: TaskItem) async -> WriteOutcome {
         do {
             let text = try taskSourceText(for: task)
             let newLine: String = switch change {
@@ -131,7 +131,16 @@ extension VaultSession {
                 return .stale
             }
 
-            return .written(try writeTaskSource(updated, for: task))
+            // `expecting:` (ADR-0043 §D8, Task 9): `text` was read before this `await`
+            // chain started, so a second writer landing in between - another task edit,
+            // a capture - gets the same refusal `TaskParser.rewrite`'s own line-match
+            // guard already gives a moved line, folded into the same `.stale` outcome.
+            return .written(
+                try await writeTaskSource(updated, for: task, expecting: NoteStore.hash(Data(text.utf8)))
+            )
+        } catch is VaultSession.WriteRefusal {
+            recordProblem("il task non è più dove risultava: \(task.sourcePath)")
+            return .stale
         } catch {
             recordProblem("\(task.sourcePath): \(error)")
             return .failed
@@ -162,9 +171,13 @@ extension VaultSession {
     /// Writes a rewritten task line back to its owning file: `write(_:to:)` for a note,
     /// or the owning node inside its `.canvas` board for a board-sourced task - the one
     /// resolution point the plan asks for, so every caller of `apply` gets it for free.
-    private func writeTaskSource(_ updated: String, for task: TaskItem) throws -> WriteResult {
+    ///
+    /// `expecting` only matters for the note branch - a board write goes through
+    /// `CanvasStore`, never `write(_:to:)`, so the precondition has nothing to attach to
+    /// there and is simply unused.
+    private func writeTaskSource(_ updated: String, for task: TaskItem, expecting: String? = nil) async throws -> WriteResult {
         guard task.sourcePath.hasSuffix(".\(CanvasStore.fileExtension)") else {
-            return try write(updated, to: task.sourcePath)
+            return try await write(updated, to: task.sourcePath, expecting: expecting)
         }
         guard let nodeID = task.nodeID else {
             throw TaskSourceError.missingNodeID(task.sourcePath)
@@ -191,9 +204,9 @@ extension VaultSession {
     /// is inserted below that parent, in the parent's own note, through the same
     /// `read` → rewrite → atomic `write` path.
     @discardableResult
-    func captureTask(_ draft: TaskDraft) -> WriteResult? {
+    func captureTask(_ draft: TaskDraft) async -> WriteResult? {
         guard !draft.isEmpty else { return nil }
-        if let parent = draft.parent { return captureSubtask(draft, below: parent) }
+        if let parent = draft.parent { return await captureSubtask(draft, below: parent) }
         let relativePath = draft.destination.relativePath
 
         do {
@@ -213,7 +226,15 @@ extension VaultSession {
                 recurrence: draft.recurrence
             )
             let separator = body.hasSuffix("\n") ? "" : "\n"
-            return try write(body + separator + line + "\n", to: relativePath)
+            // `expecting:` (ADR-0043 §D8, Task 9): nil when `existing` is nil - a brand
+            // new inbox note has no "before" to expect (§D8 excludes creation by name) -
+            // the existing note's own hash otherwise.
+            return try await write(
+                body + separator + line + "\n", to: relativePath, expecting: existing?.record.contentHash
+            )
+        } catch is VaultSession.WriteRefusal {
+            recordProblem("cattura rapida: «\(relativePath)» è cambiato nel frattempo")
+            return nil
         } catch {
             recordProblem("cattura rapida: \(error)")
             return nil
@@ -226,9 +247,9 @@ extension VaultSession {
     /// same refusal `apply(_:to:)` gives for the same reason: inserting against a line
     /// index that no longer holds the line it was read from would file the sub-task
     /// under whatever now sits there.
-    private func captureSubtask(_ draft: TaskDraft, below parent: TaskItem) -> WriteResult? {
+    private func captureSubtask(_ draft: TaskDraft, below parent: TaskItem) async -> WriteResult? {
         do {
-            let (_, text) = try read(parent.sourcePath)
+            let (record, text) = try read(parent.sourcePath)
             let draft = TaskParser.SubtaskDraft(
                 text: draft.text,
                 scheduled: draft.scheduled,
@@ -242,7 +263,13 @@ extension VaultSession {
                 recordProblem("il task non è più dove risultava: \(parent.sourcePath)")
                 return nil
             }
-            return try write(updated, to: parent.sourcePath)
+            // `expecting:` (ADR-0043 §D8, Task 9): `text` above is read before this
+            // `await`, same as `TaskParser.insertingSubtask`'s own line-match guard, and
+            // has the same defect - a second writer landing in between is caught here.
+            return try await write(updated, to: parent.sourcePath, expecting: record.contentHash)
+        } catch is VaultSession.WriteRefusal {
+            recordProblem("il task non è più dove risultava: \(parent.sourcePath)")
+            return nil
         } catch {
             recordProblem("sotto-task: \(error)")
             return nil

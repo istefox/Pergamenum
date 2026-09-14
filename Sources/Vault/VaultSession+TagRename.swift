@@ -60,7 +60,7 @@ extension VaultSession {
     /// the vault split between two spellings of the same tag with no record of where the line
     /// fell.
     @discardableResult
-    func renameTag(_ old: Tag, to new: Tag) -> TagRenameOutcome {
+    func renameTag(_ old: Tag, to new: Tag) async -> TagRenameOutcome {
         let changes = tagRenamePreview(old, to: new)
         guard !changes.isEmpty else { return TagRenameOutcome() }
 
@@ -78,8 +78,8 @@ extension VaultSession {
         let fileChanges = changes.map {
             VaultFileChange(path: $0.path, before: $0.before, after: $0.after)
         }
-        let result = VaultPlanApplication.apply(fileChanges) {
-            try write($0.after, to: $0.path)
+        let result = await VaultPlanApplication.apply(fileChanges) {
+            try await write($0.after, to: $0.path)
         }
         var outcome = TagRenameOutcome(changed: result.rewrittenPaths, failures: result.failures)
         // Read back rather than remembered as they were written: `write` records through the
@@ -105,7 +105,7 @@ extension VaultSession {
     /// the shared reversal, so this and `undo(operation:)` cannot drift onto two different rules
     /// for the same three kinds.
     @discardableResult
-    func undoJournalledWrites(_ ids: [String]) -> TagRenameOutcome {
+    func undoJournalledWrites(_ ids: [String]) async -> TagRenameOutcome {
         let journal = journalOnDisk
         // `entry(id:)` re-reads and re-decodes the whole file per id. One read, keyed by
         // id, answers the same thing: `uniquingKeysWith: { _, last in last }` keeps the
@@ -126,7 +126,7 @@ extension VaultSession {
         let failures = missing + preflightUndo(entries)
         guard failures.isEmpty else { return TagRenameOutcome(failures: failures) }
 
-        let (changed, runtimeFailures) = performUndo(entries)
+        let (changed, runtimeFailures) = await performUndo(entries)
         return TagRenameOutcome(changed: changed, failures: runtimeFailures)
     }
 }

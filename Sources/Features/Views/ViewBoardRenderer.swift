@@ -117,36 +117,46 @@ struct ViewBoardRenderer: View {
 
     // MARK: Il drop
 
+    /// **Answers `true` before the write has landed, on purpose** (ADR-0043 §D2). A SwiftUI
+    /// drop handler is synchronous and the write is not any more, so the only two honest
+    /// options were this or refusing a drop while a write is in flight - which ADR-0043
+    /// rejects by name, «the second caller is usually the user pressing Cmd+S». Every
+    /// refusal still reaches the person: it arrives on the banner below, which is the
+    /// channel the drop already reported through, a moment later than it used to.
     private func drop(_ payload: String, into destination: String?) -> Bool {
         guard let move = queries?.move, let parsed = BoardDragPayload(text: payload) else { return false }
         guard parsed.column != destination else { return false }
 
-        let outcome = move(parsed.path, parsed.column.flatMap(Tag.init), destination.flatMap(Tag.init))
-        if let problem = outcome.problem {
-            lastDrop = Drop(summary: problem, journalID: nil, isRefusal: true)
-            return false
-        }
-        if !outcome.introduced.isEmpty {
-            let reasons = ConformanceText.lines(
-                NoteViolations(
-                    name: [], frontmatter: [], tags: outcome.introduced,
-                    relatedMissingInSection: [], relatedMissingInFrontmatter: []
+        Task { @MainActor in
+            let outcome = await move(
+                parsed.path, parsed.column.flatMap(Tag.init), destination.flatMap(Tag.init)
+            )
+            if let problem = outcome.problem {
+                lastDrop = Drop(summary: problem, journalID: nil, isRefusal: true)
+                return
+            }
+            if !outcome.introduced.isEmpty {
+                let reasons = ConformanceText.lines(
+                    NoteViolations(
+                        name: [], frontmatter: [], tags: outcome.introduced,
+                        relatedMissingInSection: [], relatedMissingInFrontmatter: []
+                    )
                 )
-            )
+                lastDrop = Drop(
+                    summary: "Non scritto: \(reasons.joined(separator: ", "))",
+                    journalID: nil,
+                    isRefusal: true
+                )
+                return
+            }
+            guard outcome.didWrite else { return }
             lastDrop = Drop(
-                summary: "Non scritto: \(reasons.joined(separator: ", "))",
-                journalID: nil,
-                isRefusal: true
+                summary: "\(parsed.column ?? "—") → \(destination ?? "—")",
+                journalID: outcome.journalID,
+                isRefusal: false
             )
-            return false
+            onWrite()
         }
-        guard outcome.didWrite else { return false }
-        lastDrop = Drop(
-            summary: "\(parsed.column ?? "—") → \(destination ?? "—")",
-            journalID: outcome.journalID,
-            isRefusal: false
-        )
-        onWrite()
         return true
     }
 
@@ -162,9 +172,11 @@ struct ViewBoardRenderer: View {
             Spacer()
             if let id = drop.journalID, let undo = queries?.undo {
                 Button("Annulla") {
-                    _ = undo(id)
-                    lastDrop = nil
-                    onWrite()
+                    Task { @MainActor in
+                        _ = await undo(id)
+                        lastDrop = nil
+                        onWrite()
+                    }
                 }
                 .accessibilityIdentifier("undo-board-drop")
             }

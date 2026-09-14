@@ -20,14 +20,14 @@ extension VaultController {
     private static let routeLog = Logger(subsystem: AppInfo.bundleIdentifier, category: "url-scheme")
 
     @discardableResult
-    func handle(_ route: PergamenumRoute) -> Bool {
+    func handle(_ route: PergamenumRoute) async -> Bool {
         Self.routeLog.notice("route ricevuta: \(String(describing: route), privacy: .public)")
-        let outcome = perform(route)
+        let outcome = await perform(route)
         Self.routeLog.notice("route esito: \(outcome, privacy: .public)")
         return outcome
     }
 
-    private func perform(_ route: PergamenumRoute) -> Bool {
+    private func perform(_ route: PergamenumRoute) async -> Bool {
         // A link can arrive before the vault has finished opening - the app may have
         // been launched *by* the link. Holding the route and replaying it is the
         // difference between a link that works from cold and one that only works when
@@ -63,10 +63,10 @@ extension VaultController {
             return true
 
         case .day(let date):
-            return openDaily(date)
+            return await openDaily(date)
 
         case .today:
-            return openDaily(.today)
+            return await openDaily(.today)
 
         case .search(let query):
             routeState.pendingSearch = query
@@ -74,10 +74,10 @@ extension VaultController {
             return true
 
         case .capture(let text, let destination, let scheduled, let due):
-            return capture(text: text, to: destination, scheduled: scheduled, due: due)
+            return await capture(text: text, to: destination, scheduled: scheduled, due: due)
 
         case .addTask(let text):
-            return captureTask(text)
+            return await captureTask(text)
         }
     }
 
@@ -85,9 +85,9 @@ extension VaultController {
     ///
     /// `try?` here swallowed the reason and left a link that did nothing with no way
     /// to find out why.
-    private func openDaily(_ date: CalendarDate) -> Bool {
+    private func openDaily(_ date: CalendarDate) async -> Bool {
         do {
-            _ = try openDailyNote(for: date)
+            _ = try await openDailyNote(for: date)
             return true
         } catch {
             Self.routeLog.error("daily note fallita: \(String(describing: error), privacy: .public)")
@@ -118,13 +118,13 @@ extension VaultController {
     /// not need an undo log, and the session's `isDryRun` stays false.
     private func capture(
         text: String, to destination: String?, scheduled: String?, due: String?
-    ) -> Bool {
+    ) async -> Bool {
         guard let session else { return false }
         do {
             let target = try VaultAPI.CaptureDestination.named(
                 destination ?? "today", folder: nil
             )
-            let summary = try VaultAPI.capture(
+            let summary = try await VaultAPI.capture(
                 session, to: target, text: text, scheduled: scheduled, due: due
             )
             // The editor may be holding the note that just grew: re-read it, or the

@@ -83,16 +83,18 @@ struct RelatedLinkSheet: View {
 
     private func create() {
         guard let selectedTitle, let source = vault.openNote else { return }
-        let created = vault.addStructuralLink(
-            from: source.relativePath,
-            to: selectedTitle,
-            reason: reason,
-            reverseReason: reverseReason
-        )
-        if created {
-            dismiss()
-        } else {
-            error = vault.problems.last ?? "il legame non è stato creato"
+        Task { @MainActor in
+            let created = await vault.addStructuralLink(
+                from: source.relativePath,
+                to: selectedTitle,
+                reason: reason,
+                reverseReason: reverseReason
+            )
+            if created {
+                dismiss()
+            } else {
+                error = vault.problems.last ?? "il legame non è stato creato"
+            }
         }
     }
 }

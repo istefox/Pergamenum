@@ -168,7 +168,7 @@ private func note(_ body: String) -> String {
     #expect(violations.taskMarkers.count == 2)
 
     let task = try #require(s.index.allTasks.first { $0.text == "Verifica" })
-    guard case .written = s.apply(.state(.done), to: task) else {
+    guard case .written = await s.apply(.state(.done), to: task) else {
         Issue.record("il task non è stato scritto nonostante il linter avesse due segnalazioni avanzate: \(s.problems)")
         return
     }

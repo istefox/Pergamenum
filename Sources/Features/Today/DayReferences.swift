@@ -76,7 +76,7 @@ struct DayReferences: View {
         let row = HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
             Image(systemName: task.state == .done ? "checkmark.square" : "square")
                 .foregroundStyle(theme.color(task.isOverdue(on: day) ? .taskOverdue : .taskOpen))
-                .onTapGesture { vault.toggle(task) }
+                .onTapGesture { Task { await vault.toggle(task) } }
             Text(task.text)
                 .themedText(.body, color: task.state == .done ? .taskDone : .textPrimary)
             if let time = task.scheduledTime ?? task.dueTime {
@@ -116,14 +116,14 @@ struct DayReferences: View {
         HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.xs)) {
             Image(systemName: "square")
                 .foregroundStyle(theme.color(.taskOverdue))
-                .onTapGesture { vault.toggle(task) }
+                .onTapGesture { Task { await vault.toggle(task) } }
             Text(task.text).themedText(.body)
             if let scheduled = task.scheduled {
                 Text(RolloverMarker.text(for: scheduled))
                     .themedText(.caption, color: .taskOverdue)
             }
             Spacer()
-            Button("Porta a oggi") { vault.apply(.schedule(.today), to: task) }
+            Button("Porta a oggi") { Task { await vault.apply(.schedule(.today), to: task) } }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.color(.accentPrimary))
                 .help("Riscrive «>data» nella nota di origine")

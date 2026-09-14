@@ -673,3 +673,82 @@ PR #254 merges and has not been yet.
 - Review of 2026-09-13 (Codex, `gpt-6-astra`, effort high, via `review-triage-fix`): three CONFIRMED
   findings, all routed REPORT-ONLY by the skill's Swift-concurrency circuit breaker, each verified
   against the code by the orchestrator before acceptance.
+
+## Implementation notes (chain 2026-09-13)
+
+Appended by the implementation chain whose plan is
+`docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md`. **Nothing above is altered.**
+Three things the plan measured and this ADR asked to have recorded back.
+
+### 1. §D8's adoption list, resolved by the grep §D8 asked the plan to own
+
+`session.read(` followed by `session.write(` in the same function, across `Sources/App`,
+`Sources/Features` and `Sources/Connector`, run on the working tree at
+`emdash/strict-steaks-argue-n6z2c`. Thirteen call sites adopt `expecting:`.
+
+**Adopt, in the ADR's stated grep scope (9):** `PraticaEntryComposer.insert` (`:57`→`:61`) and
+`.mirror` (`:87`→`:91`); `DossierWriter.update` (`:26`→`:32`); `PraticaCommandActions` (`:303`→`:307`);
+`PraticheController`'s conversation remap inside `runExclusive` (`:1241`→`:1262`);
+`PraticaSyncEngine`'s two patch writes (`:779`→`:878`, `:308`→`:398`) — both need the engine's
+injected `write` closure to carry `expecting:`; `RecordingsController.importAccepted`
+(`:317`→`:335`); `VaultWrites.undo` (`:277`→`:297`), which keeps its existing pre-`await`
+`hashAfter` check for its Italian message and gains `expecting:` as the backstop for the window
+that check cannot cover.
+
+`RecordingsController.importAccepted` is **beyond the ADR's named list** and is adopted on merits:
+its composed text merges the proposal with `existingNoteText` (ADR-0032 §D9's suppression set), so a
+stale read re-imports quotes the note already suppressed, and the two-phase import makes a refusal
+clean — phase 2 only runs after phase 1 succeeds, so nothing leaves the machine.
+
+**Adopt inside `Sources/Vault` (4), named in §D8's prose but outside its grep scope:**
+`VaultSession+Tasks.apply(_:to:)`, `.captureTask`, `.captureSubtask`, and
+`VaultSession+TimeBlocks.setTimeBlocks`/`addTimeBlock`. A refusal at these sites maps onto the
+existing `WriteOutcome.stale` case rather than propagating.
+
+**Declined, with reasons, so the next reader does not re-litigate them:** pure reads
+(`VaultWrites.summarise`, `VaultController+Routes:132`, `readForEditing:358`, `noteText(at:)`,
+`ViewsPane`, `EditorColumn+Text`, `VaultReads`, `VaultViews`); writes that create a file and so
+have no «before» (`TemplateSheet`/`NewNoteComposer` → `createNote`, `NuovaPraticaWizard:465`,
+`PraticaSyncEngine`'s full render at `:906` — all «make the file say this», which §D8 excludes by
+name); and three genuine windows that are **wider** than §D8 can close and are filed as follow-ups
+rather than absorbed: `readDiary` → user gesture → `writeDiary`, and the tag-rename and note-rename
+batch appliers, whose refusal granularity is a half-renamed vault.
+
+### 2. §D2's cascade is larger than the seven test files §D2 names
+
+§D2's list of seven is correct for what it measured — the files calling `saveOpenNote`,
+`restoreVersion` or `write` directly. Once the ~18 internal wrappers become `async`, the transitive
+closure is **25 test files and roughly 210 call sites across 46 files**: `BoardDropTests`,
+`CapturePanelTests`, `CaptureTests`, `ConnectorTests`, `EventNoteTests`, `GuardrailTests`,
+`NoteHistoryTests`, `NoteTabTests`, `NoteTemplateTests`, `PraticheConnectorTests`,
+`RelatedLinkTests`, `StarredTests`, `TagRenameTests`, `TaskComposerTests`, `TaskDropTests`,
+`TaskMarkerLintTests`, `TaskTests`, `VaultBoundaryCallSiteTests`, `VaultMoveTests`,
+`VaultSessionFileOperationsTests`, `VaultSessionJournalTests`, `VaultSessionTests`, `VaultTests`,
+`VaultWriteOrderingTests`, `ViewConnectorTests`.
+
+Four second-order surfaces the ADR did not name, all forced by §D2 and none of them a new decision:
+
+- `VaultSession.transaction(_:_:) rethrows` must take an `async` body (6 call sites).
+- `VaultPlanApplication.apply(_:writing:)` needs an `async` overload for its four session-level
+  callers; the eight `store.write`-level callers keep the synchronous one.
+- `ViewQuerySource.move` and `.undo` are **synchronous closure types** (`ViewQuerySource.swift:25`,
+  `:27`) and must become `async`, which makes a SwiftUI `.dropDestination` optimistic.
+- `EditorColumn+Closing.closeAfterSaving()` and `EditorColumn+Text.replacementsApplied()` sequence
+  a save against a tab close and a buffer edit respectively; both must `await` the save before the
+  next step or this chain introduces the data loss it exists to prevent.
+
+§D2's scope claim — «this is not new scope; it is ADR-0041's own scope, finished» — still holds.
+The measurement was simply short.
+
+### 3. One hazard this chain surfaces and deliberately does not decide
+
+`transaction(_:_:)` sets `currentOperation` on a `@MainActor` object for the duration of its body.
+With an `async` body that scope now spans a suspension, so two transactions started from two
+`Task { }`s can interleave: the second trips the existing `assertionFailure("transazione
+annidata…")` in Debug and, in Release, joins the wrong journal gesture. This is a consequence of
+ADR-0041 §D9 rather than of anything decided here, and this chain widens the set of call sites it is
+reachable from without closing it. Closing it properly means an actor-owned operation stack, which
+is a design decision and belongs in its own ADR. Recorded here, filed as a `TODO.md` follow-up,
+**not** fixed in this chain — because a journal gesture that groups the wrong writes is the same
+class of defect as Race 2 and deserves the same treatment this ADR gave those four: written down
+with a decided shape, not patched blind.

@@ -11,7 +11,7 @@ extension WorkspaceView {
             delete: { folder in deleteWorkspace(folder.value) },
             renameBoard: { board, newName in renameBoard(board.value, to: newName.value) },
             deleteBoard: { board in deleteBoard(board.value) },
-            move: { items, destination in moveItems(items, into: destination.value) },
+            move: { items, destination in await moveItems(items, into: destination.value) },
             recordDesync: { message in workspace.recordProblem(message) }
         )
     }
@@ -36,14 +36,14 @@ extension WorkspaceView {
     /// The unsaved-note guard (ADR-0026 §D10) now runs *inside* `vault.moveItems`, before
     /// the plan: a batch that both trips it and collides on a name reports the unsaved
     /// note, not the collision. That guard has to be cleared before disk either way.
-    private func moveItems(_ items: [VaultItemRef], into destination: String) -> [String] {
+    private func moveItems(_ items: [VaultItemRef], into destination: String) async -> [String] {
         flushBoard()
         // `undoManager` is the **window's**, read from the environment and handed down as
         // an argument (ADR-0026 §D8) - the same stack `NSTextView` registers text edits
         // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
         // focus. Nil is not silently tolerated: `moveItems` records that the move cannot
         // be taken back.
-        let outcome = vault.moveItems(items, into: destination, undo: undoManager)
+        let outcome = await vault.moveItems(items, into: destination, undo: undoManager)
         guard outcome.didMove else { return outcome.refusals + outcome.failures }
         // Landing somewhere only means something if a board is actually open - moving a
         // row that is merely selected in the tree moves no document on screen.

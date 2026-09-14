@@ -120,7 +120,7 @@ private struct CallSiteFixture: ~Copyable {
 
     var threw = false
     do {
-        try session.moveFile(from: "../outside-source.md", to: "inside.md")
+        try await session.moveFile(from: "../outside-source.md", to: "inside.md")
     } catch {
         threw = true
     }
@@ -141,7 +141,7 @@ private struct CallSiteFixture: ~Copyable {
 
     var threw = false
     do {
-        try session.moveFile(from: "inside.md", to: "../outside-destination.md")
+        try await session.moveFile(from: "inside.md", to: "../outside-destination.md")
     } catch {
         threw = true
     }
@@ -164,7 +164,7 @@ private struct CallSiteFixture: ~Copyable {
 
     var threw = false
     do {
-        try session.trashFile(at: "../x.md")
+        try await session.trashFile(at: "../x.md")
     } catch {
         threw = true
     }

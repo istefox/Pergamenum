@@ -215,6 +215,13 @@ move the previous copy aside rather than deleting it.
   it instead as the only way to obtain the value callers need (`VaultBoundary.url(for:) throws ->
   URL`, not `assertInsideVault(url)`) — a resolver a caller cannot route around, rather than a step
   a caller can forget.
+- **A precondition evaluated before an `await` is a filter, not a guard.** Swift hands the main
+  actor back to the run loop at every suspension point, so the state the precondition checked can
+  change before the code it was meant to protect runs. `PraticaEntryComposer.insert`'s
+  `canOperate(on:)` check, read once before two `await`s, is exactly this shape (ADR-0043 §D7) — by
+  the time the write and its hand-off ran, the tab it refused to find dirty had become dirty. The
+  guard belongs on the same side of the suspension as the action it protects: ask again after the
+  `await`, or act on state read after it, never on a check made before it.
 - Verify every change against `docs/20260811_Pergamenum_SpecApp.md`. If the spec and
   an instruction disagree, say so before writing code.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
@@ -393,7 +400,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0040** — Fixes Pratiche attachment reliability: an unvalidated `part.decodedData ?? Data()` wrote empty/corrupt bytes straight to `allegati/`; a magic-byte `AttachmentIntegrity` check now gates every write, a pending entry patches the message's attachment line in place rather than re-rendering, and a `.complete` message with a pending entry is now automatically retried every sync; a corrupt file already on disk is moved to the Trash. Amends ADR-0036 §D6 → `docs/adr/0040-pratiche-attachment-reliability-bugs.md`
 - **ADR-0041** — Vault layer consistency and security: the vault-boundary check becomes a resolver (`VaultBoundary.url(for:) throws -> URL`, not a skippable assert) used by all 11 call sites that touch the disk with a caller-supplied path; three drifted vault-walk copies and six drifted apply-plan copies become one shared helper in `Sources/Core`; `VaultController*` (18 files) moves out of `Sources/Vault` into `Sources/App`; the write path's disk work moves to a background actor with the hash computed before the hop and a per-path sequence number guarding update order, preserving ADR-0001's index-immediately-after-write invariant. Extends ADR-0001 and ADR-0007, amends neither → `docs/adr/0041-vault-layer-consistency-and-security-cha.md`
 - **ADR-0042** — An inline (`cid:`) image Mail hasn't downloaded yet stops being counted as a pending attachment: a per-image body placeholder plus a dedicated `pergamenum-mail-inline-pending` frontmatter key replace the old chip, resolved every sync with no retry cap, and dropped entirely when the body never references the image. Amends ADR-0040 §D9, widens ADR-0036 §D6 → `docs/adr/0042-pratiche-inline-image-placeholders.md`
-- **ADR-0043** — Follow-up to ADR-0041, found by an independent post-implementation review: the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload. Extends ADR-0041 §D9/§D10/§D11, amends none. **Decision only, not yet implemented** → `docs/adr/0043-vault-write-ordering-concurrency-races.md`
+- **ADR-0043** — Follow-up to ADR-0041, found by an independent post-implementation review: the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload. The implementation chain measured the async cascade at 3-4x the ADR's own estimate (~210 call sites, 46 files, 25 test files) and named 13 call sites adopting the §D8 opt-in `expecting:` hash precondition. Extends ADR-0041 §D9/§D10/§D11, amends none → `docs/adr/0043-vault-write-ordering-concurrency-races.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 
@@ -508,5 +515,20 @@ already lives in the Chain decision index above.
   placeholder), widening ADR-0036 §D6's automatic-rewrite exceptions by one clause, same no-cap
   retry policy as ADR-0040 §D5. No protected interface touched; no new frontmatter schema key
   outside the one sanctioned prefixed addition (ADR-0020's precedent).
+- **ADR-0043 (vault write ordering, follow-up to ADR-0041 §D9/§D10/§D11):** `VaultDisk.IndexMutation`
+  is the one currency every file-touching actor operation returns; `VaultSession.apply` becomes the
+  sole door onto the index and `updateIndex(_:at:)` is deleted. The synchronous write door
+  (`write(_:to:) throws`, `writeSynchronously`) is deleted — the async cascade this forces turned
+  out to be ~210 call sites across 46 files and 25 test files, not the seven ADR-0043 itself
+  measured, because the transitive closure runs through ~18 internal wrappers the ADR's own grep
+  did not reach. The journal's "before" (`hashBefore`/`textBefore`) is read inside the actor, where
+  the bytes it describes are written, not on the main actor beforehand. `selfWrittenHashes` becomes
+  a per-path, sequence-tagged list pruned by the clock. `syncOpenNote`'s dirty-buffer branch now
+  raises ADR-0001 §D3.4's conflict prompt instead of silently doing nothing, at all nine call sites.
+  `write` gains an opt-in `expecting: String?` hash precondition, adopted at 13 named call sites. A
+  known residual hazard — `transaction(_:_:)`'s `currentOperation` now spans a suspension once its
+  body is `async`, so two `Task {}`-started transactions can interleave — is deliberately left open,
+  tracked as `PG-152`, for its own future ADR rather than patched blind. Acceptance for this chain
+  is five deterministic interleaving tests (ADR-0043 §D9), never a green suite alone.
 
 Detail: see each ADR under `docs/adr/`.

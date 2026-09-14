@@ -1238,7 +1238,8 @@ final class PraticaLiveSync {
             controller.remapLedgerConversations(prepared.conversationRemap, of: praticaPath, in: vault)
             let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
             do {
-                var document = NoteDocument.parse(try session.read(notePath).text)
+                let (record, text) = try session.read(notePath)
+                var document = NoteDocument.parse(text)
                 let before = document
                 if var updated = Dossier.parse(document.frontmatter.foreignKeys) {
                     for index in updated.conversations.indices {
@@ -1253,16 +1254,15 @@ final class PraticaLiveSync {
                     updated.conversations = updated.conversations.filter { seen.insert($0).inserted }
                     document.frontmatter.foreignKeys = Dossier.merging(updated, into: document.frontmatter.foreignKeys)
                     if document != before {
-                        // ADR-0041 Task 8: `VaultSession.write` gained an async overload
-                        // this dispatch declares; `runExclusive` was already `async` for
-                        // unrelated reasons, so Swift's overload resolution now requires
-                        // this call to be awaited. Mechanical only - no behaviour change,
-                        // the awaited overload's stub body is today's synchronous write
-                        // called as-is.
-                        try await session.write(document.serialized(), to: notePath)
+                        // ADR-0043 §D8, Task 9: `expecting:` closes the window between the
+                        // read above and this write - a remap landing over a concurrent
+                        // dossier edit would otherwise silently discard it.
+                        try await session.write(document.serialized(), to: notePath, expecting: record.contentHash)
                     }
                     effectiveDossier = updated
                 }
+            } catch let refusal as VaultSession.WriteRefusal {
+                controller.report("«\(notePath)» non è stato aggiornato: \(refusal.description)")
             } catch {
                 controller.report("«\(notePath)» non è stato aggiornato: \(error.localizedDescription)")
             }
@@ -1290,13 +1290,13 @@ final class PraticaLiveSync {
             for conversation in candidates.autoFollowedConversations {
                 effectiveDossier = PraticaTrayModel.following(conversationID: conversation, in: effectiveDossier)
             }
-            DossierWriter.update(at: praticaPath, session: session) { $0 = effectiveDossier }
+            await DossierWriter.update(at: praticaPath, session: session) { $0 = effectiveDossier }
             candidates = MembershipRule.candidates(
                 dossier: effectiveDossier, store: prepared.snapshot, onDisk: onDisk
             )
         }
-        let engine = PraticaSyncEngine(mailStoreURL: prepared.indexURL, vaultRoot: root) { text, path in
-            _ = try await session.write(text, to: path)
+        let engine = PraticaSyncEngine(mailStoreURL: prepared.indexURL, vaultRoot: root) { text, path, expecting in
+            _ = try await session.write(text, to: path, expecting: expecting)
         }
         // Kept for the duration of this one sync and cleared after it: «Annulla» has
         // an engine to reach only while there is a sync to stop.
@@ -1325,6 +1325,9 @@ final class PraticaLiveSync {
             controller.recordSyncOutcome(
                 result, for: praticaPath, session: session, isCurrentVault: vault.session === session
             )
+        } catch let refusal as VaultSession.WriteRefusal {
+            guard vault.session === session else { return }
+            controller.report("Sincronizzazione non riuscita: \(refusal.description)")
         } catch {
             guard vault.session === session else { return }
             controller.report("Sincronizzazione non riuscita: \(error.localizedDescription)")
@@ -1385,8 +1388,8 @@ final class PraticaLiveSync {
         }
         let indexURL = generation.appending(path: "Envelope Index", directoryHint: .notDirectory)
 
-        let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path in
-            _ = try await session.write(text, to: path)
+        let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path, expecting in
+            _ = try await session.write(text, to: path, expecting: expecting)
         }
         regenerationEngine = engine
 

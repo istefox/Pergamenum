@@ -4,18 +4,26 @@ import Foundation
 // docs/superpowers/plans/2026-09-12-vault-layer-consistency-and-security-cha.md, Task 8 -
 // R-07: the disk work of a write moves to one actor, and ordering stops being an accident.
 //
+// ADR-0043 (vault write ordering), Tasks 4-6 widen this from "the disk work of a write" to
+// "the disk work" (§D1): every operation that changes a file in the vault - the note write,
+// the non-note `writeFile`, the `FileManager.moveItem` inside `moveFile`, the `trashItem`
+// inside `trashFile` - moves inside this actor, and each returns its index consequence in
+// one currency, `IndexMutation`, stamped from the same per-path clock `nextSequence(for:)`
+// already used for the note write.
+//
 // One actor hop performs, in order (§D9): the boundary check, the atomic byte write, the
 // stat, the record derivation (§D7's shared helper), the version-history write and the
 // journal append. Five disk operations that used to be five separate synchronous
 // main-actor calls become one suspension. `VaultSession.write` (`VaultSession.swift`)
 // computes the hash and records it into `selfWrittenHashes` *before* this hop (§D10), and
-// applies the returned `DiskWriteOutcome` through the per-path sequence guard in
-// `VaultSession+WriteOrdering.swift` (§D11) once it resumes.
+// applies the returned `DiskWriteOutcome` through `VaultSession.apply(_:)` (ADR-0043 §D1,
+// `VaultSession.swift`) once it resumes.
 actor VaultDisk {
     private let store: NoteStore
     private let history: NoteHistory
 
-    /// This path's next write sequence, stamped per call (§D11). An `actor` serialises
+    /// This path's next write sequence, stamped per call (§D11, widened by ADR-0043 §D1 to
+    /// every operation that touches a path, not only a text write). An `actor` serialises
     /// its own state but not the order its callers' continuations resume in, so this is
     /// what lets `VaultSession` tell an in-order outcome from a stale one - never the
     /// order `await`s happen to return in.
@@ -26,28 +34,88 @@ actor VaultDisk {
         self.history = history
     }
 
+    private func nextSequence(for relativePath: String) -> UInt64 {
+        let next = (sequences[relativePath] ?? 0) + 1
+        sequences[relativePath] = next
+        return next
+    }
+}
+
+// MARK: - ADR-0043 §D1 - one currency for what one path's index row must become
+
+extension VaultDisk {
+    /// What one path's index row must become, and when that was decided (§D11's clock).
+    struct IndexMutation: Sendable {
+        let path: String
+        /// Nil means there is no file at this path any more (a trash, or the far side of
+        /// a move's removal).
+        let record: NoteRecord?
+        let sequence: UInt64
+    }
+
     /// What one write did, once it made it through the actor (§D9).
     ///
     /// Named `DiskWriteOutcome` rather than `WriteOutcome`, per the task brief: `VaultSession`
     /// already has an unrelated `WriteOutcome` enum (`VaultSession.swift`, `.written`/
     /// `.unchanged`/`.stale`/`.failed`) that this must not collide with or be mistaken for.
     struct DiskWriteOutcome: Sendable {
-        let record: NoteRecord
+        /// This write's index consequence (ADR-0043 §D1), replacing the loose
+        /// `record`/`sequence` pair `DiskWriteOutcome` carried before this task.
+        let mutation: IndexMutation
         /// The hash the actor itself computed from the bytes it wrote. `VaultSession`
         /// asserts this equals the `precomputedHash` it handed in (§D10) rather than
         /// trusting the main actor's copy blindly - a mismatch would mean the text
         /// changed crossing the boundary, which should be impossible and is worth
         /// knowing about if it ever is not.
         let hash: String
-        /// This path's write sequence, strictly increasing per path (§D11).
-        let sequence: UInt64
         /// Set when the journal could not be written, or when the hash the actor computed
         /// disagreed with `precomputedHash` - the write itself still happened either way,
         /// and this is reported rather than thrown for the same reason
         /// `WriteJournal.record` already returns a problem instead of throwing one.
         let journalProblem: String?
-    }
 
+        init(mutation: IndexMutation, hash: String, journalProblem: String?) {
+            self.mutation = mutation
+            self.hash = hash
+            self.journalProblem = journalProblem
+        }
+
+        /// Back-compat shape for the outcome-based constructor ADR-0041 §D11 introduced.
+        /// `Tests/VaultWriteOrderingTests.swift`'s batch-1
+        /// `theOlderOutcomeIsDroppedWhenSequencesArriveInverted` (untouched by this task,
+        /// test-authoring scope forbids it) still builds an outcome this way to force an
+        /// inversion without a real actor write. A write's own record is never nil, so this
+        /// flat shape and the nested `IndexMutation` above describe exactly the same thing.
+        init(record: NoteRecord, hash: String, sequence: UInt64, journalProblem: String?) {
+            self.init(
+                mutation: IndexMutation(path: record.relativePath, record: record, sequence: sequence),
+                hash: hash, journalProblem: journalProblem
+            )
+        }
+
+        var record: NoteRecord? { mutation.record }
+        var sequence: UInt64 { mutation.sequence }
+    }
+}
+
+// MARK: - ADR-0043 §D5 - what only the main actor knows about a journal entry
+
+extension VaultDisk {
+    /// What only the main actor knows about a journal entry before this write happens. The
+    /// parts that describe the file - `hashBefore`, `textBefore` - are filled in inside the
+    /// actor instead (§D5): a claim about a disk transition can only be made where the
+    /// transition is serialized.
+    struct JournalDescriptor: Sendable {
+        let entryID: String
+        let timestamp: Date
+        let command: String
+        let operation: String?
+    }
+}
+
+// MARK: - The note write
+
+extension VaultDisk {
     /// Writes `text` to `relativePath`, derives its record from the bytes just written,
     /// records history and the journal entry when asked, and stamps the outcome with this
     /// path's next sequence number.
@@ -56,6 +124,14 @@ actor VaultDisk {
     /// writing it (ADR-0001 §D2.3): a second writer touching the same path between this
     /// actor's write and a later read must never retroactively change what this write's
     /// own outcome says it wrote.
+    ///
+    /// **Pre-ADR-0043 shape, kept for `Tests/VaultDiskTests.swift`.** That file is a
+    /// tester-owned fixture from ADR-0041 Task 8, not touched by this task's tester
+    /// dispatch, and it hands in a complete `WriteJournal.Entry` (its own `hashBefore`
+    /// included) rather than the descriptor below. The overload below - distinguished by
+    /// its `journalDescriptor:` label, never ambiguous with this one - is what
+    /// `VaultSession.write` actually calls (§D5); this one journals exactly the entry it
+    /// is given and is otherwise unused in production.
     func write(
         _ text: String, to relativePath: String,
         precomputedHash: String,
@@ -95,16 +171,173 @@ actor VaultDisk {
         }
 
         return DiskWriteOutcome(
-            record: record,
+            mutation: IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath)),
             hash: hash,
-            sequence: nextSequence(for: relativePath),
             journalProblem: journalProblem
         )
     }
 
-    private func nextSequence(for relativePath: String) -> UInt64 {
-        let next = (sequences[relativePath] ?? 0) + 1
-        sequences[relativePath] = next
-        return next
+    /// The door `VaultSession.write` actually calls (ADR-0043 §D5). Unlike the overload
+    /// above, this one reads the file's current bytes itself - `store.text(_:)`
+    /// (`NoteStore+ReadSurface.swift`, ADR-0041 §D7), not the full `store.read` - and hashes
+    /// them, immediately before writing the new ones, inside the same isolation the write
+    /// itself runs in: a journal entry is a claim about a disk transition, and a claim
+    /// about a transition can only be made where the transition is serialized. A path that
+    /// does not exist yet yields `nil` for both `hashBefore` and `textBefore`, which is
+    /// what a creation means.
+    ///
+    /// `isDryRun` and the "is a journal even armed" decision both stay on the main actor,
+    /// travelling with `journalDescriptor` (`nil` when there is nothing to journal) rather
+    /// than being re-derived here - the actor never reads a file nobody is going to journal.
+    ///
+    /// `expecting` (ADR-0043 §D8, Task 9) is compared against `hashBefore` below - the read
+    /// this overload already performs for the journal, so the precondition is free. A
+    /// mismatch throws `VaultSession.WriteRefusal` before `store.write` is ever called: no
+    /// byte moves, no history entry, no journal entry, no index mutation.
+    func write(
+        _ text: String, to relativePath: String,
+        precomputedHash: String,
+        expecting: String? = nil,
+        journalDescriptor: JournalDescriptor?,
+        journal: WriteJournal?,
+        recordsHistory: Bool
+    ) async throws -> DiskWriteOutcome {
+        // Read before write, in the same isolation: this is the "before" a journal entry
+        // for this write can honestly claim (§D5), and now also what `expecting` is
+        // checked against.
+        let textBefore = try? store.text(relativePath)
+        let hashBefore = textBefore.map { NoteStore.hash(Data($0.utf8)) }
+
+        if let expecting, hashBefore != expecting {
+            throw VaultSession.WriteRefusal.movedOn(relativePath)
+        }
+
+        let hash = try store.write(text, to: relativePath)
+
+        let fileURL = try store.url(for: relativePath)
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
+        let record = try store.record(from: Data(text.utf8), attributes: attributes, at: relativePath)
+
+        if recordsHistory {
+            history.record(text, for: relativePath)
+        }
+
+        var journalProblem: String?
+        if let journal, let descriptor = journalDescriptor {
+            let entry = WriteJournal.Entry(
+                id: descriptor.entryID,
+                timestamp: descriptor.timestamp,
+                path: relativePath,
+                hashBefore: hashBefore,
+                hashAfter: hash,
+                textBefore: textBefore,
+                command: descriptor.command,
+                operation: descriptor.operation
+            )
+            journalProblem = journal.record(entry)
+        }
+
+        if hash != precomputedHash {
+            let mismatch = "write to \(relativePath): computed hash \(hash) does not match precomputed \(precomputedHash)"
+            journalProblem = journalProblem.map { "\($0); \(mismatch)" } ?? mismatch
+        }
+
+        return DiskWriteOutcome(
+            mutation: IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath)),
+            hash: hash,
+            journalProblem: journalProblem
+        )
+    }
+}
+
+// MARK: - The non-note byte write, the move and the trash (ADR-0043 §D1)
+
+extension VaultDisk {
+    /// Writes any file in the vault - a `.canvas` board, most often - without touching the
+    /// index or the per-note history. The caller decides whether the mutation this returns
+    /// is worth applying at all; `VaultSession.writeFile` (`VaultSession+Journal.swift`)
+    /// never does, because a board is not a note (ADR-0016 §D6).
+    func writeFile(_ text: String, to relativePath: String) async throws -> IndexMutation {
+        let data = Data(text.utf8)
+        try store.write(text, to: relativePath)
+        let fileURL = try store.url(for: relativePath)
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
+        let record = try? store.record(from: data, attributes: attributes, at: relativePath)
+        return IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
+    }
+
+    /// Moves a file and returns both endpoints' mutations, each stamped from its own
+    /// path's clock (§D1) - the removal and the insertion are two different rows and must
+    /// be orderable against a concurrent write to either one independently.
+    func moveFile(from oldPath: String, to newPath: String) async throws -> [IndexMutation] {
+        // Both resolved before any disk touch, so a boundary violation on either end
+        // refuses before a single byte moves.
+        let destination = try store.url(for: newPath)
+        let source = try store.url(for: oldPath)
+
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try FileManager.default.moveItem(at: source, to: destination)
+
+        let removal = IndexMutation(path: oldPath, record: nil, sequence: nextSequence(for: oldPath))
+
+        // One read of the moved file, not two (ADR-0041 §D7): the same bytes are hashed
+        // for the watcher and handed to `record(from:attributes:at:)` for the index, rather
+        // than hashing here and re-reading the file after.
+        let movedData = try? Data(contentsOf: destination)
+        let movedAttributes = try? FileManager.default.attributesOfItem(
+            atPath: destination.path(percentEncoded: false)
+        )
+        let movedRecord = movedData.flatMap { bytes in
+            try? store.record(from: bytes, attributes: movedAttributes ?? [:], at: newPath)
+        }
+        let insertion = IndexMutation(path: newPath, record: movedRecord, sequence: nextSequence(for: newPath))
+
+        return [removal, insertion]
+    }
+
+    /// Moves a file to the Finder's trash and returns the removal (§D1). The trash rather
+    /// than an unlink, as it always was: a note deleted by a misclick is recoverable there.
+    func trashFile(at relativePath: String) async throws -> IndexMutation {
+        let url = try store.url(for: relativePath)
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        return IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath))
+    }
+}
+
+// MARK: - The watcher's reconciliation (ADR-0043 §D3)
+
+extension VaultDisk {
+    /// Reads one changed path, compares against the hashes the session recorded for it,
+    /// advances that path's clock and says both what the index must become and whether
+    /// anybody outside this process wrote it.
+    ///
+    /// Advancing the clock on a read, found or missing, is deliberate and is what makes
+    /// the guard total (§D3): the mutation describes the file as this actor saw it at the
+    /// moment it looked, on the same per-path clock every write, move and trash share - a
+    /// write that lands afterwards is newer and must win, one that already landed before is
+    /// older and must lose.
+    ///
+    /// `selfWritten`/the returned `matchedSequence` are for a later task in this chain
+    /// (ADR-0043 §D6's pruned, sequence-tagged list); this task's caller passes `[]` and
+    /// ignores `matchedSequence`, and the signature is final so that later task is a body
+    /// change here, not a second signature migration.
+    func reconcile(
+        _ relativePath: String, selfWritten: [(sequence: UInt64, hash: String)]
+    ) async -> (mutation: IndexMutation, change: VaultSession.ExternalChange?, matchedSequence: UInt64?) {
+        guard let (record, text) = try? store.read(relativePath) else {
+            // Missing, or unreadable for a reason other than absence (e.g. invalid UTF-8):
+            // either way there is nothing usable to index, and the previous behaviour of
+            // skipping an unreadable path is preserved by nothing ever applying this
+            // mutation's `record: nil` over a real one it did not observe.
+            return (IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath)), nil, nil)
+        }
+
+        let mutation = IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
+        if let matched = selfWritten.last(where: { $0.hash == record.contentHash }) {
+            return (mutation, nil, matched.sequence)
+        }
+        return (mutation, VaultSession.ExternalChange(path: relativePath, text: text), nil)
     }
 }

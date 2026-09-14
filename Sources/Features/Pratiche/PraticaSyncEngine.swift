@@ -113,15 +113,38 @@ actor PraticaSyncEngine {
     /// directly under it (they are not notes, so they never go through `write`).
     /// `write` is the single `@MainActor` hop to `VaultSession.write` every finished
     /// message's `.md` note goes through (ADR §D14).
+    ///
+    /// `expecting` (ADR-0043 §D8, Task 9) carries the hash the two read-modify-write
+    /// patches below (`repairCorruptAttachments`, `commit`'s row-4 branch) read before
+    /// composing their patch, or `nil` for a full render composed from Mail rather than
+    /// from the file on disk (§D8 excludes that case by name).
     init(
         mailStoreURL: URL,
         vaultRoot: URL,
-        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
+        write: @escaping @Sendable @MainActor (
+            _ text: String, _ relativePath: String, _ expecting: String?
+        ) async throws -> Void
     ) {
         self.mailStoreURL = mailStoreURL
         self.vaultRoot = vaultRoot
         self.boundary = VaultBoundary(root: vaultRoot)
         self.write = write
+    }
+
+    /// Back-compat overload for a caller with no "before" to compare, or one that
+    /// predates the `expecting:` precondition and wants every write unconditional -
+    /// `expecting` is `nil` on every call this engine makes through it. Kept so a
+    /// pre-existing two-argument `write` closure (this engine's own test doubles
+    /// included) keeps compiling unchanged; the engine's own internals always call the
+    /// three-argument `write` above.
+    init(
+        mailStoreURL: URL,
+        vaultRoot: URL,
+        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
+    ) {
+        self.init(mailStoreURL: mailStoreURL, vaultRoot: vaultRoot) { text, relativePath, _ in
+            try await write(text, relativePath)
+        }
     }
 
     private let mailStoreURL: URL
@@ -133,8 +156,11 @@ actor PraticaSyncEngine {
     /// `async` since ADR-0041 Task 8: the closure's body calls `VaultSession.write`'s
     /// actor-hop overload. Every call site already says `await` regardless - crossing
     /// from this actor to the closure's `@MainActor` isolation required it before this
-    /// change too - so nothing at the three call sites (`:394`, `:848`, `:871`) changes.
-    private let write: @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
+    /// change too - so nothing at the three call sites (`:398`, `:878`, `:906`) changes
+    /// shape, only their third argument.
+    private let write: @Sendable @MainActor (
+        _ text: String, _ relativePath: String, _ expecting: String?
+    ) async throws -> Void
     private var cancelled = false
     private var progressChannel: (
         stream: AsyncStream<Progress>,
@@ -395,7 +421,7 @@ actor PraticaSyncEngine {
             guard patchedText != existing.text else { continue }
 
             let notePath = "\(request.praticaFolder)/email/\(existing.fileName)"
-            try await write(patchedText, notePath)
+            try await write(patchedText, notePath, NoteStore.hash(Data(existing.text.utf8)))
 
             var updatedDocument = existing.document
             updatedDocument.frontmatter.attachments = entries
@@ -875,7 +901,7 @@ actor PraticaSyncEngine {
             // this is what makes the unresolved retry free.
             guard patchedText != existingOnDisk.text else { return }
 
-            try await write(patchedText, notePath)
+            try await write(patchedText, notePath, NoteStore.hash(Data(existingOnDisk.text.utf8)))
 
             var patchedFrontmatter = prepared.document.frontmatter
             patchedFrontmatter.attachments = attachmentEntries
@@ -903,7 +929,10 @@ actor PraticaSyncEngine {
             )
         }
 
-        try await write(prepared.noteText, notePath)
+        // §D8 excludes this by name: `prepared.noteText` is composed from Mail, not from
+        // the file on disk - there is no "before" to expect, whether this note is being
+        // created for the first time or fully re-rendered.
+        try await write(prepared.noteText, notePath, nil)
 
         if !prepared.isRegeneration {
             folder.takenNoteNames.append((prepared.fileName, prepared.messageID))

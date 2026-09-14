@@ -125,8 +125,10 @@ struct WorkspacePicker: View {
     // MARK: Writing
 
     private func assign(_ name: String?) {
-        vault.apply(.workspace(name), to: task)
-        onClose()
+        Task { @MainActor in
+            await vault.apply(.workspace(name), to: task)
+            onClose()
+        }
     }
 
     /// What the row reads: the file name without `.canvas`, which is how the Workspace

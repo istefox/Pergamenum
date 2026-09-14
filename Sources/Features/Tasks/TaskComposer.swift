@@ -165,21 +165,26 @@ struct TaskComposer: View {
     func create() { create(opening: false) }
 
     func create(opening: Bool = false, keepingOpen: Bool = false) {
-        guard canCreate, vault.captureTask(draft) else { return }
-        if opening {
-            // The pane too, or the note opens behind whatever section is showing and
-            // "apri la nota" appears to have done nothing.
-            navigation.pane = .notes
-            vault.openNote(at: draft.destination.relativePath)
-        }
+        // Everything after the capture stays *inside* the hop, in the same order it had
+        // (ADR-0043 §D2): opening the note or clearing the field before the line is
+        // written would show the composer's result before there is one.
+        Task { @MainActor in
+            guard canCreate, await vault.captureTask(draft) else { return }
+            if opening {
+                // The pane too, or the note opens behind whatever section is showing and
+                // "apri la nota" appears to have done nothing.
+                navigation.pane = .notes
+                vault.openNote(at: draft.destination.relativePath)
+            }
 
-        if keepingOpen {
-            // Same destination and same dates, empty text: capturing a list of tasks is
-            // the case where reopening the composer three times is the friction.
-            draft.text = ""
-            focusRequest += 1
-        } else {
-            onClose()
+            if keepingOpen {
+                // Same destination and same dates, empty text: capturing a list of tasks is
+                // the case where reopening the composer three times is the friction.
+                draft.text = ""
+                focusRequest += 1
+            } else {
+                onClose()
+            }
         }
     }
 }

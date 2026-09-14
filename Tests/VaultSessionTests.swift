@@ -27,7 +27,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let vault = try TemporaryVault()
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
-    let path = try session.createNote(
+    let path = try await session.createNote(
         title: "Nota nuova",
         in: "01 Progetti",
         date: CalendarDate(iso: "2026-08-11")!,
@@ -52,11 +52,11 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let vault = try TemporaryVault()
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
-    #expect(throws: VaultSession.CreationError.self) {
-        try session.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
+    await #expect(throws: VaultSession.CreationError.self) {
+        try await session.createNote(title: "Nota/con/slash", date: CalendarDate(iso: "2026-08-11")!)
     }
-    #expect(throws: VaultSession.CreationError.self) {
-        try session.createNote(title: "Relazione v2", date: CalendarDate(iso: "2026-08-11")!)
+    await #expect(throws: VaultSession.CreationError.self) {
+        try await session.createNote(title: "Relazione v2", date: CalendarDate(iso: "2026-08-11")!)
     }
 }
 
@@ -67,7 +67,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n", to: "Beta.md")
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
-    let outcome = try session.renameNote(at: "Beta.md", to: "Gamma")
+    let outcome = try await session.renameNote(at: "Beta.md", to: "Gamma")
     #expect(outcome.newPath == "Gamma.md")
 
     let alfa = try String(contentsOf: vault.root.appending(path: "Alfa.md"), encoding: .utf8)
@@ -81,7 +81,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let vault = try TemporaryVault()
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
-    let result = try #require(session.captureTask(
+    let result = try #require(await session.captureTask(
         VaultSession.TaskDraft(text: "Consegnare la relazione", due: CalendarDate(iso: "2026-08-20"))
     ))
     #expect(result.path == VaultSession.TaskDestination.inboxPath)
@@ -106,7 +106,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let task = try #require(session.index.allTasks.first)
-    guard case .written(let result) = session.apply(.state(.done), to: task) else {
+    guard case .written(let result) = await session.apply(.state(.done), to: task) else {
         Issue.record("la scrittura non è avvenuta: \(session.problems)")
         return
     }
@@ -127,7 +127,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     // Someone else edits the file: the line the index remembers is now a different one.
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n- [ ] Beta\n", to: "T.md")
 
-    guard case .stale = session.apply(.state(.done), to: task) else {
+    guard case .stale = await session.apply(.state(.done), to: task) else {
         Issue.record("una riga cambiata sotto deve dare .stale, non una riscrittura")
         return
     }
@@ -147,7 +147,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let session = await openSession(vault.root, stateBase: vault.stateBase)
 
     let task = try #require(session.index.allTasks.first { $0.sourcePath == "Lavagna.canvas" })
-    guard case .written(let result) = session.apply(.state(.done), to: task) else {
+    guard case .written(let result) = await session.apply(.state(.done), to: task) else {
         Issue.record("la scrittura non è avvenuta: \(session.problems)")
         return
     }
@@ -176,7 +176,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     document.nodes[0].kind = .text("- [ ] Beta")
     try canvasStore.save(document, board: "Lavagna.canvas")
 
-    guard case .stale = session.apply(.state(.done), to: task) else {
+    guard case .stale = await session.apply(.state(.done), to: task) else {
         Issue.record("una riga cambiata sotto deve dare .stale, non una riscrittura")
         return
     }
@@ -196,7 +196,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let session = await openSession(vault.root, stateBase: vault.stateBase)
     let day = CalendarDate(iso: "2026-08-11")!
 
-    let placed = try #require(session.addTimeBlock(title: "Collaudo", on: day, startMinutes: 9 * 60))
+    let placed = try #require(await session.addTimeBlock(title: "Collaudo", on: day, startMinutes: 9 * 60))
     #expect(placed.block.startMinutes == 9 * 60)
 
     // Read back through the parser rather than by string matching, so the test says
@@ -204,7 +204,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     #expect(session.timeBlocks(on: day).map(\.title) == ["Collaudo"])
 
     // A second block at the same hour moves on rather than overlapping.
-    let second = try #require(session.addTimeBlock(title: "Riunione", on: day, startMinutes: 9 * 60))
+    let second = try #require(await session.addTimeBlock(title: "Riunione", on: day, startMinutes: 9 * 60))
     #expect(second.block.startMinutes > placed.block.startMinutes)
 }
 
@@ -215,7 +215,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let day = CalendarDate(iso: "2026-08-11")!
 
     // No blocks and no note: `unchanged` rather than a file created for nothing.
-    guard case .unchanged = session.setTimeBlocks([], on: day) else {
+    guard case .unchanged = await session.setTimeBlocks([], on: day) else {
         Issue.record("un giorno vuoto senza nota non deve creare un file")
         return
     }
@@ -229,7 +229,7 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let day = CalendarDate(iso: "2026-08-11")!
 
     let entry = DiaryEntry(startMinutes: 10 * 60, durationMinutes: 45, title: "Sopralluogo")
-    guard case .written = session.writeDiary(prose: session.emptyDiaryNote(for: day), entries: [entry], on: day) else {
+    guard case .written = await session.writeDiary(prose: session.emptyDiaryNote(for: day), entries: [entry], on: day) else {
         Issue.record("il diario non è stato scritto: \(session.problems)")
         return
     }
@@ -332,16 +332,16 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload; this call is
     // already inside an `async throws` test, so it now resolves there.
     try await session.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nDue.\n", to: "N.md")
-    #expect(session.reconcile(["N.md"]).isEmpty)
+    #expect(await session.reconcile(["N.md"]).isEmpty)
 
     // A second writer in the vault - which ADR-0007 puts there - is reported.
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nTre.\n", to: "N.md")
-    let changes = session.reconcile(["N.md"])
+    let changes = await session.reconcile(["N.md"])
     #expect(changes.map(\.path) == ["N.md"])
     #expect(changes.first?.text.contains("Tre.") == true)
 
     // A file that went away leaves the index rather than lingering in it.
     try FileManager.default.removeItem(at: vault.root.appending(path: "N.md"))
-    #expect(session.reconcile(["N.md"]).isEmpty)
+    #expect(await session.reconcile(["N.md"]).isEmpty)
     #expect(session.index.note(at: "N.md") == nil)
 }

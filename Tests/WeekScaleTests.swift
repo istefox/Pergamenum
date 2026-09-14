@@ -53,6 +53,7 @@ import Testing
 
     let task = TaskParser.parse(line: "- [ ] Calcolo trasmissibilità", sourcePath: "x.md", lineIndex: 0)!
     _ = dayController.addBlock(from: task)
+    try await waitUntil { dayController.blocks.count == 1 }
     dayController.scale = .week
 
     let tuesday = try #require(dayController.columns.first { $0.day == testDay })

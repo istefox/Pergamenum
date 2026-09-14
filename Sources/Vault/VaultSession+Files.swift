@@ -13,24 +13,24 @@ extension VaultSession {
     private var operations: NoteFileOperations { NoteFileOperations(store: store) }
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
-    func renameNote(at relativePath: String, to newTitle: String) throws -> NoteFileOperations.Outcome {
+    func renameNote(at relativePath: String, to newTitle: String) async throws -> NoteFileOperations.Outcome {
         let plan = try operations.renamePlan(
             relativePath, to: newTitle, knownPaths: index.allNotes.map(\.relativePath)
         )
         var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
 
-        try transaction("note rename") {
+        try await transaction("note rename") {
             if plan.newPath != relativePath {
-                try moveFile(from: relativePath, to: plan.newPath)
+                try await moveFile(from: relativePath, to: plan.newPath)
             }
-            let notes = VaultPlanApplication.apply(plan.noteChanges) {
-                try write($0.after, to: $0.path)
+            let notes = await VaultPlanApplication.apply(plan.noteChanges) {
+                try await write($0.after, to: $0.path)
             }
             // A `.canvas` goes through `writeFile` rather than `write`: it is journalled like a
             // note but leaves the index and the per-note history alone, because a board is not a
             // note - the reason `apply` takes the writer instead of assuming it (ADR-0041 §D4).
-            let boards = VaultPlanApplication.apply(plan.boardChanges) {
-                try writeFile($0.after, to: $0.path)
+            let boards = await VaultPlanApplication.apply(plan.boardChanges) {
+                try await writeFile($0.after, to: $0.path)
             }
             outcome.rewrittenPaths.append(contentsOf: notes.rewrittenPaths + boards.rewrittenPaths)
             outcome.failures.append(contentsOf: notes.failures + boards.failures)
@@ -45,16 +45,16 @@ extension VaultSession {
         return outcome
     }
 
-    func moveNote(at relativePath: String, toFolder folder: String) throws -> NoteFileOperations.Outcome {
+    func moveNote(at relativePath: String, toFolder folder: String) async throws -> NoteFileOperations.Outcome {
         let plan = try operations.movePlan(relativePath, toFolder: folder)
         var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
 
-        try transaction("note move") {
+        try await transaction("note move") {
             if plan.newPath != relativePath {
-                try moveFile(from: relativePath, to: plan.newPath)
+                try await moveFile(from: relativePath, to: plan.newPath)
             }
-            let boards = VaultPlanApplication.apply(plan.boardChanges) {
-                try writeFile($0.after, to: $0.path)
+            let boards = await VaultPlanApplication.apply(plan.boardChanges) {
+                try await writeFile($0.after, to: $0.path)
             }
             outcome.rewrittenPaths.append(contentsOf: boards.rewrittenPaths)
             outcome.failures.append(contentsOf: boards.failures)
@@ -69,10 +69,10 @@ extension VaultSession {
     /// Moves a note to the Finder's trash and returns the notes now linking to nothing.
     ///
     /// The caller confirms first: this does the deleting, it does not ask.
-    func trashNote(at relativePath: String) throws -> [String] {
+    func trashNote(at relativePath: String) async throws -> [String] {
         let knownPaths = index.allNotes.map(\.relativePath)
-        try transaction("note trash") {
-            try trashFile(at: relativePath)
+        try await transaction("note trash") {
+            try await trashFile(at: relativePath)
         }
         let orphaned = operations.danglingLinks(for: relativePath, knownPaths: knownPaths)
         if !isDryRun {
