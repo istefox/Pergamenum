@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // ADR-0036 §D16/§D18 (over-threshold attachments stay in Mail's own store and are recorded
 // as `MessageDocument.StoreReference` rather than copied - R-10), plan
@@ -58,10 +59,35 @@ enum AttachmentChipModel {
     /// The default-app / double-click target (R-27): the local copy for a file
     /// reference when usable, or the file at `storePath` for a store reference when it
     /// is still there and usable. `nil` for `.pending` without ever probing anything
-    /// (R-08).
+    /// (R-08), and `nil` for a usable file `refusesToOpen` rejects (PG-123) - that one
+    /// keeps its `revealURL`.
     static func openURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
-        targetURL(for: content, state: state)
+        guard let url = targetURL(for: content, state: state), !refusesToOpen(url) else { return nil }
+        return url
     }
+
+    /// PG-123: whether `url` is something «Apri»/double-click must never hand to
+    /// `NSWorkspace.open` - an executable, an application or installer bundle, a disk
+    /// image, a shell or other script. Such a file is still revealed in the Finder
+    /// (`revealURL`), where Gatekeeper's own prompt stands between the person and it.
+    ///
+    /// Judged on both the name's extension and the type the filesystem reports: the
+    /// second catches an extensionless file with its execute bit set, which no
+    /// extension lookup would. This is the half of the fix that survives a stripped
+    /// `com.apple.quarantine` (`AttachmentQuarantine` is the other half).
+    static func refusesToOpen(_ url: URL) -> Bool {
+        var types: [UTType] = []
+        if let byExtension = UTType(filenameExtension: url.pathExtension) { types.append(byExtension) }
+        if let onDisk = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType { types.append(onDisk) }
+        return types.contains { type in refusedTypes.contains { type.conforms(to: $0) } }
+    }
+
+    /// The UTIs `refusesToOpen` rejects. `.executable` covers Mach-O and Windows
+    /// executables, `.script` covers `.sh`/`.command`/AppleScript/Python and the rest of
+    /// `public.script`; the installer-package identifier has no `UTType` static.
+    static let refusedTypes: [UTType] = [
+        .executable, .applicationBundle, .diskImage, .shellScript, .script,
+    ] + [UTType("com.apple.installer-package-archive")].compactMap { $0 }
 
     /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`.
     static func revealURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
