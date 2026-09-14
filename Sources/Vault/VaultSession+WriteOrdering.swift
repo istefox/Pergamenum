@@ -5,23 +5,21 @@ import Foundation
 // R-07: ordering is a per-path sequence number the actor stamps, not an assumption about
 // continuation scheduling (§D11).
 //
-// **In `sharedSources` (ADR-0007 §D2), alongside `VaultDisk.swift`.** `apply(_:at:)`
-// below is called from `VaultSession.write`'s real async implementation
-// (`VaultSession.swift`, itself already shared) - not only from tests - so `perg` and
-// `pergamenum-mcp` fail to link without this file too, the same failure CLAUDE.md's "a
-// file outside those globs that a tool needs must be added by hand" predicts.
+// ADR-0043 §D1 moved the real, guarded index door to `apply(_ mutations:)`
+// (`VaultSession.swift`, the file `index`'s setter is `private` to). What is left here is
+// the outcome-shaped convenience `apply(_:at:)` ADR-0041 §D11 introduced, kept only because
+// `Tests/VaultWriteOrderingTests.swift`'s batch-1 `theOlderOutcomeIsDroppedWhenSequencesArriveInverted`
+// (test-authoring scope forbids touching it in this task) still calls it directly to force
+// an inversion without a real actor write.
+//
+// **Still in `sharedSources` (ADR-0007 §D2), alongside `VaultDisk.swift`.** This file
+// keeps real code for that reason: an empty file left in `sharedSources` for a chain of
+// tasks would be a stranger thing to explain than the one convenience below.
 extension VaultSession {
-    /// Applies a `VaultDisk.DiskWriteOutcome` to the index, guarded by §D11's per-path
-    /// sequence: an outcome whose sequence is not strictly greater than the one already
-    /// applied for that path is dropped - nothing is written to the index and `false` is
-    /// returned - rather than letting an out-of-order continuation move the index
-    /// backwards. `VaultWriteOrderingTests` also calls this directly to force an inversion
-    /// deterministically, independent of any real write.
+    /// Back-compat wrapper over `apply(_ mutations:)`: applies one outcome's mutation and
+    /// answers whether it was newer than what this path already had.
     @discardableResult
     func apply(_ outcome: VaultDisk.DiskWriteOutcome, at relativePath: String) -> Bool {
-        guard outcome.sequence > appliedSequence[relativePath, default: 0] else { return false }
-        appliedSequence[relativePath] = outcome.sequence
-        updateIndex(outcome.record, at: relativePath)
-        return true
+        apply([outcome.mutation]) == 1
     }
 }

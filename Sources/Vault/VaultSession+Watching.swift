@@ -19,23 +19,32 @@ extension VaultSession {
     /// A path this session wrote itself is recognised by content hash rather than by a
     /// time window, so a real external edit is never mistaken for it, and is not
     /// reported: the caller already knows about its own writes.
-    func reconcile(_ paths: [String]) -> [ExternalChange] {
+    ///
+    /// The door `VaultController.reconcile` actually calls (ADR-0043 §D3): the per-path
+    /// read moves off the main actor and into `VaultDisk`, which reads, advances that
+    /// path's clock and hands back the mutation - applied through `apply(_:)` (§D1) - plus
+    /// the `ExternalChange` to report, when there is one.
+    ///
+    /// `disk.reconcile` is called with `selfWritten: []` (§D6, a later task in this chain,
+    /// widens `selfWrittenHashes` to a pruned per-path list the actor can match against
+    /// directly); the session still recognises its own write by content hash here, and
+    /// skips applying the mutation at all when it does - a self-write reconciliation
+    /// changes nothing the write itself did not already apply.
+    func reconcile(_ paths: [String]) async -> [ExternalChange] {
         var changes: [ExternalChange] = []
 
         for path in paths {
-            guard exists(path) else {
-                updateIndex(nil, at: path)
-                continue
-            }
-            guard let (record, text) = try? read(path) else { continue }
+            let result = await disk.reconcile(path, selfWritten: [])
 
-            if selfWrittenHashes[path] == record.contentHash {
+            if let selfHash = selfWrittenHashes[path], selfHash == result.mutation.record?.contentHash {
                 selfWrittenHashes.removeValue(forKey: path)
                 continue
             }
 
-            updateIndex(record, at: path)
-            changes.append(ExternalChange(path: path, text: text))
+            apply([result.mutation])
+            if let change = result.change {
+                changes.append(change)
+            }
         }
         return changes
     }

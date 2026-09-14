@@ -34,11 +34,16 @@ final class VaultSession {
     /// Every note write's own history, always on (ADR-0011 D2) - unlike `journal`
     /// below, which a connector opts into for its own reason.
     @ObservationIgnored let history: NoteHistory
-    /// Where a write's disk work happens now (ADR-0041 §D9, Task 8): the boundary check,
-    /// the atomic byte write, the stat, the record derivation, the history write and the
+    /// Where a file's disk work happens now (ADR-0041 §D9, widened by ADR-0043 §D1 from
+    /// "the disk work of a write" to "the disk work"): the boundary check, the atomic byte
+    /// write or move or trash, the stat, the record derivation, the history write and the
     /// journal append, all in one actor hop. Built once in `init`, over the same `store`
     /// and `history` this session already owns.
-    @ObservationIgnored private let disk: VaultDisk
+    ///
+    /// Not `private`: §D1 moved the move/trash/non-note-write primitives onto the actor
+    /// too, and `VaultSession+Journal.swift`/`VaultSession+Watching.swift` call them
+    /// directly, from a different file than this one.
+    @ObservationIgnored let disk: VaultDisk
     /// Where the starred paths are read from and written back to (ADR-0012 D6).
     @ObservationIgnored let starredStore: StarredStore
 
@@ -208,11 +213,6 @@ final class VaultSession {
     /// same arithmetic, the same conventions and the same refusals as the real thing,
     /// and stops one line short of the disk.
     @ObservationIgnored var isDryRun = false
-
-    /// Applies a record the caller has already read, for the watcher's reconciliation.
-    func updateIndex(_ record: NoteRecord?, at relativePath: String) {
-        index.update(record, at: relativePath)
-    }
 
     /// Records a problem for the UI to show without interrupting what the user is
     /// doing. Used where the failure is recoverable by retrying.
@@ -384,7 +384,33 @@ final class VaultSession {
     }
 }
 
-// MARK: - ADR-0041 Task 8 / ADR-0043 §D2 - the one write door
+// MARK: - ADR-0043 §D1 - the one door onto the index
+//
+// The old single-record index-refresh helper used to be this door and was reachable,
+// unguarded, from five call sites (§D1's own count). Deleted rather than kept as a
+// forwarder, for the reason ADR-0041
+// §D1 already gave about the vault boundary: a guard a caller may route around is a guard
+// the next call site will route around, not out of malice but by omission. `apply` lives
+// here - the same file `index` is declared in - because `index`'s setter is `private`, and
+// this is the one function anywhere in the module allowed to call it.
+extension VaultSession {
+    /// Applies every mutation whose sequence is strictly newer than what this path already
+    /// has, dropping the rest rather than letting an out-of-order continuation move a row
+    /// backwards (§D11, widened to every writer by §D1). Returns how many were newer.
+    @discardableResult
+    func apply(_ mutations: [VaultDisk.IndexMutation]) -> Int {
+        var applied = 0
+        for mutation in mutations {
+            guard mutation.sequence > appliedSequence[mutation.path, default: 0] else { continue }
+            appliedSequence[mutation.path] = mutation.sequence
+            index.update(mutation.record, at: mutation.path)
+            applied += 1
+        }
+        return applied
+    }
+}
+
+// MARK: - ADR-0041 Task 8 / ADR-0043 §D2, §D5 - the one write door
 //
 // ADR-0041 §D9 added this as the **async** overload beside a synchronous `write(_:to:)`,
 // the two resolved by whether the call site said `await`. ADR-0043 §D2 deleted the
@@ -396,21 +422,20 @@ extension VaultSession {
     /// The async door onto the write ADR-0041 §D9 describes: the disk work - the boundary
     /// check, the atomic write, the stat, the record derivation, the history write and the
     /// journal append - happens in one hop on `disk`, an actor. Everything that has to
-    /// happen on the main actor *before* that hop still does, in the same order the
-    /// synchronous implementation above always had: the pre-write journal read, the
-    /// dry-run short-circuit (ADR-0007 §D6), and the hash recorded into
-    /// `selfWrittenHashes` (§D10 - before the file can exist, so a watcher callback can
-    /// never observe a write whose hash this session has not already recorded). The
-    /// outcome the actor returns is applied through `apply(_:at:)`
-    /// (`VaultSession+WriteOrdering.swift`), which drops it - rather than moving the index
-    /// backwards - when its sequence is not newer than what this path already has (§D11).
+    /// happen on the main actor *before* that hop still does: the dry-run short-circuit
+    /// (ADR-0007 §D6), and the hash recorded into `selfWrittenHashes` (§D10 - before the
+    /// file can exist, so a watcher callback can never observe a write whose hash this
+    /// session has not already recorded).
+    ///
+    /// **§D5:** this door no longer reads `existing` on the main actor before the hop - that
+    /// read and the suspension after it is exactly Race 2 (ADR-0043 §"Race 2"), two
+    /// overlapping writes recording the same journal "before". Only what the main actor
+    /// alone knows - the command, the operation id, the entry id and timestamp - travels
+    /// across, as a `JournalDescriptor`, built only when a journal is armed (the actor
+    /// never reads a file nobody is going to journal). `VaultDisk.write` reads the current
+    /// bytes itself, immediately before writing the new ones, inside the same isolation.
     @discardableResult
     func write(_ text: String, to relativePath: String) async throws -> WriteResult {
-        // Read first, and only when somebody is going to use it: the journal needs what
-        // was there, and a dry run needs nothing at all. Unchanged from the synchronous
-        // implementation.
-        let existing = (journal != nil && !isDryRun) ? try? read(relativePath) : nil
-
         // ADR-0007 §D6's first guardrail: a dry run must never reach the actor.
         guard !isDryRun else { return WriteResult(path: relativePath, text: text) }
 
@@ -420,16 +445,12 @@ extension VaultSession {
         let hash = NoteStore.hash(Data(text.utf8))
         selfWrittenHashes[relativePath] = hash
 
-        var journalEntry: WriteJournal.Entry?
+        var journalDescriptor: VaultDisk.JournalDescriptor?
         if journal != nil {
             let now = Date()
-            journalEntry = WriteJournal.Entry(
-                id: WriteJournal.makeID(at: now),
+            journalDescriptor = VaultDisk.JournalDescriptor(
+                entryID: WriteJournal.makeID(at: now),
                 timestamp: now,
-                path: relativePath,
-                hashBefore: existing?.record.contentHash,
-                hashAfter: hash,
-                textBefore: existing?.text,
                 command: journalCommand,
                 operation: currentOperation
             )
@@ -442,14 +463,14 @@ extension VaultSession {
         let outcome = try await disk.write(
             text, to: relativePath,
             precomputedHash: hash,
-            journalEntry: journalEntry,
+            journalDescriptor: journalDescriptor,
             journal: journal,
             recordsHistory: recordsHistory
         )
 
-        // §D11: an outcome whose sequence is not newer than what this session already
+        // §D11/§D1: an outcome whose sequence is not newer than what this session already
         // applied for this path is dropped rather than moving the index backwards.
-        apply(outcome, at: relativePath)
+        apply([outcome.mutation])
         // The write happened; the net or the hash agreement did not. Say so rather than
         // pretending otherwise.
         if let problem = outcome.journalProblem { recordProblem(problem) }

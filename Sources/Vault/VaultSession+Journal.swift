@@ -66,33 +66,20 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
-        let destination = try store.url(for: newPath)
+        // ADR-0043 §D1: the `FileManager.moveItem` and the record derivation on the far
+        // side both move inside `VaultDisk`, stamped from that path's own clock.
+        let mutations: [VaultDisk.IndexMutation]
         do {
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try FileManager.default.moveItem(at: try store.url(for: oldPath), to: destination)
+            mutations = try await disk.moveFile(from: oldPath, to: newPath)
         } catch {
             throw FileOperationError.failed(
                 "spostamento: \(error.localizedDescription)"
             )
         }
+        apply(mutations)
 
-        // One read of the moved file, not two (ADR-0041 §D7): the same bytes are hashed
-        // for the watcher and handed to `record(from:attributes:at:)` for the index, rather
-        // than hashing here and re-reading the file through `store.read(newPath)` after.
-        let movedData = try? Data(contentsOf: destination)
-        let hash = movedData.map(NoteStore.hash) ?? ""
+        let hash = mutations.first { $0.path == newPath }?.record?.contentHash ?? ""
         selfWrittenHashes[newPath] = hash
-        updateIndex(nil, at: oldPath)
-
-        let movedAttributes = try? FileManager.default.attributesOfItem(
-            atPath: destination.path(percentEncoded: false)
-        )
-        let movedRecord = movedData.flatMap { bytes in
-            try? store.record(from: bytes, attributes: movedAttributes ?? [:], at: newPath)
-        }
-        updateIndex(movedRecord, at: newPath)
 
         record(WriteJournal.Entry(
             id: WriteJournal.makeID(at: Date()),
@@ -127,17 +114,17 @@ extension VaultSession {
         let data = (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
         guard !isDryRun else { return }
 
+        // ADR-0043 §D1: the `trashItem` call moves inside `VaultDisk`, stamped from this
+        // path's own clock.
+        let mutation: VaultDisk.IndexMutation
         do {
-            try FileManager.default.trashItem(
-                at: try store.url(for: relativePath), resultingItemURL: nil
-            )
+            mutation = try await disk.trashFile(at: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "eliminazione: \(error.localizedDescription)"
             )
         }
-
-        updateIndex(nil, at: relativePath)
+        apply([mutation])
         selfWrittenHashes.removeValue(forKey: relativePath)
 
         record(WriteJournal.Entry(
@@ -168,16 +155,17 @@ extension VaultSession {
             : nil
         guard !isDryRun else { return }
 
-        let url = try store.url(for: relativePath)
-        let data = Data(text.utf8)
+        // ADR-0043 §D1: the byte write moves inside `VaultDisk` too. The mutation it
+        // returns is deliberately discarded - a board is not a note, and this is what
+        // keeps it from ever reaching the index (unchanged from before this task).
         do {
-            try data.write(to: url, options: .atomic)
+            _ = try await disk.writeFile(text, to: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "scrittura: \(error.localizedDescription)"
             )
         }
-        let hash = NoteStore.hash(data)
+        let hash = NoteStore.hash(Data(text.utf8))
         selfWrittenHashes[relativePath] = hash
 
         record(WriteJournal.Entry(

@@ -9,7 +9,7 @@ extension VaultController {
     func startWatching(_ url: URL) {
         let watcher = VaultWatcher(root: url) { [weak self] paths in
             Task { @MainActor [weak self] in
-                self?.reconcile(paths)
+                await self?.reconcile(paths)
             }
         }
         watcher.start()
@@ -17,10 +17,14 @@ extension VaultController {
     }
 
     /// Applies external changes, and puts the editor in front of the ones it is showing.
-    func reconcile(_ paths: [String]) {
+    ///
+    /// ADR-0043 §D3: `session.reconcile` moved its per-path read off the main actor and
+    /// into `VaultDisk`, so this is `async` now. The call above is already inside
+    /// `Task { @MainActor … }`, so this costs no new asynchrony at that call site.
+    func reconcile(_ paths: [String]) async {
         guard let session else { return }
 
-        for change in session.reconcile(paths) {
+        for change in await session.reconcile(paths) {
             guard var note = openNote, note.relativePath == change.path else { continue }
             if note.hasUnsavedChanges {
                 // Never merge, never discard: ask.
