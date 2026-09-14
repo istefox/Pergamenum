@@ -72,6 +72,7 @@ enum HistoryGrouping {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "EEEE d MMMM"
         return formatter.string(from: day)
     }
