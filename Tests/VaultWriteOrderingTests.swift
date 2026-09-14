@@ -39,7 +39,7 @@ private func openSession(_ vault: borrowing TemporaryVault) async -> VaultSessio
     let onDisk = try String(contentsOf: vault.root.appending(path: "N.md"), encoding: .utf8)
     #expect(onDisk == second)
     #expect(session.index.note(at: "N.md")?.contentHash == NoteStore.hash(Data(second.utf8)))
-    #expect(session.selfWrittenHashes["N.md"] == NoteStore.hash(Data(second.utf8)))
+    #expect(session.selfWrittenHashes["N.md"]?.last?.hash == NoteStore.hash(Data(second.utf8)))
 }
 
 // MARK: - The inversion, forced through the seam (the half that actually needs the guard)
@@ -94,7 +94,7 @@ private func openSession(_ vault: borrowing TemporaryVault) async -> VaultSessio
     try await session.write(text, to: "N.md")
 
     let onDisk = try Data(contentsOf: vault.root.appending(path: "N.md"))
-    #expect(session.selfWrittenHashes["N.md"] == NoteStore.hash(onDisk))
+    #expect(session.selfWrittenHashes["N.md"]?.last?.hash == NoteStore.hash(onDisk))
 }
 
 // ADR-0043 §D2, Tasks 1-3 (R-03): `VaultSession.write(_:to:)` now has a single
