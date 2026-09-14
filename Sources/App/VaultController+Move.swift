@@ -58,27 +58,37 @@ extension VaultController {
             recordProblem("spostamento non annullabile: nessun gestore di undo disponibile")
             return outcome
         }
-        undo.setActionName("Sposta")
-        // `registerUndo`'s handler is synchronous and `moveInverse` is not any more
-        // (ADR-0043 §D2): the hop is the only way in, and nothing here depends on the
-        // inverse having finished by the time the handler returns.
-        undo.registerUndo(withTarget: self) { controller in
-            Task { @MainActor in
-                await controller.moveInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
-            }
-        }
+        registerInverse(VaultMoveBatch.inverse(of: outcome.moves), undo: undo)
         return outcome
     }
 
-    /// Performs `moves` and, only if all of them landed, re-registers their own inverse -
-    /// which is the redo, and the whole of it (ADR-0026 §D8: "the handler performs the
-    /// inverse batch and re-registers itself with the arguments swapped, which is how
-    /// `NSUndoManager` produces redo - there is no custom redo code").
+    /// Registers `moves` as the batch's next undo/redo step: `NSUndoManager` calls the
+    /// handler below synchronously for the matching `undo()`/`redo()`, and everything
+    /// that handler needs to decide *whether* to register the swap - the missing-item and
+    /// refusal checks - is itself synchronous, so it runs before anything is registered or
+    /// touches disk (ADR-0043 follow-up, preserving ADR-0026 §D8: a redo of an undo that
+    /// never happened must never be offered).
+    private func registerInverse(_ moves: [VaultMove], undo: UndoManager) {
+        undo.setActionName("Sposta")
+        undo.registerUndo(withTarget: self) { controller in
+            controller.attemptInverse(moves, undo: undo)
+        }
+    }
+
+    /// The handler `registerInverse` installs, run synchronously by `NSUndoManager` for
+    /// the `undo()`/`redo()` that consumes this step.
     ///
-    /// Called from inside an `UndoManager` handler, so the registration it makes lands on
-    /// the redo stack; called again from that redo's handler, so the recursion alternates
-    /// for as long as Cmd+Z and Cmd+Shift+Z do.
-    func moveInverse(_ moves: [VaultMove], undo: UndoManager?) async {
+    /// Resolves where each item sits now and refuses the whole batch, recording why,
+    /// before registering anything - the race §D8 names, "a later rename moved it", asked
+    /// for the whole batch before one item is dispatched: a partial inverse is an undo
+    /// step that puts back some of what the user sees and not the rest (§D6). Only once
+    /// every item in the batch is confirmed still where the previous step left it does
+    /// this register the *next* swap - synchronously, inside the same `undo()`/`redo()`
+    /// extent that invoked this handler, which is what lands it on the correct stack
+    /// (ADR-0043 follow-up: registering it any later, once `performInverse`'s `await`
+    /// has returned, always landed back on the undo stack instead of flipping to redo) -
+    /// and hands the actual moves to `performInverse`.
+    private func attemptInverse(_ moves: [VaultMove], undo: UndoManager) {
         guard let session, !moves.isEmpty else { return }
 
         // Where each item sits *now*: inside `from`, under its own name, because a move
@@ -89,10 +99,6 @@ extension VaultController {
             (destination: $0.to, ref: VaultItemRef(path: Self.path(of: $0.item.path, in: $0.from), kind: $0.item.kind))
         }
 
-        // The race §D8 names, "a later rename moved it", asked for the whole batch before
-        // one item is dispatched: a partial inverse is an undo step that puts back some of
-        // what the user sees and not the rest (§D6). Nothing is written and nothing is
-        // re-registered - a redo of an undo that did not happen is worse than no redo.
         let missing = current.filter { !session.exists($0.ref.path) }
         guard missing.isEmpty else {
             recordProblem(
@@ -101,6 +107,19 @@ extension VaultController {
             return
         }
         guard refusal(forAll: current.map(\.ref)) == nil else { return }
+
+        registerInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
+        Task { @MainActor in
+            await performInverse(current)
+        }
+    }
+
+    /// The actual disk work: `session.moveItems` per landing folder, following moved
+    /// notes into tabs and RECENTI, and reporting any failure. `attemptInverse` has
+    /// already resolved and cleared every item and already registered this step's redo/
+    /// undo swap by the time this runs.
+    private func performInverse(_ current: [(destination: String, ref: VaultItemRef)]) async {
+        guard let session else { return }
 
         // One call per landing folder, because an inverse is the only batch whose items
         // can be going to different places: they return to wherever each came from.
@@ -121,8 +140,9 @@ extension VaultController {
             }
             // Outside the `failures.isEmpty` guard below on purpose: a group that came back
             // half-moved still moved half, and those notes are in tabs and in an index that
-            // both now name a path nothing is at. What the failure costs is the redo
-            // registration, not the follow-up.
+            // both now name a path nothing is at. The redo/undo swap for this step was
+            // already registered by `attemptInverse` before this ran, so a failure here
+            // cannot cost it - only the failure report is at stake.
             follow(outcome)
         }
 
@@ -131,13 +151,6 @@ extension VaultController {
                 recordProblem("annulla spostamento: \(failure)")
             }
             return
-        }
-
-        undo?.setActionName("Sposta")
-        undo?.registerUndo(withTarget: self) { controller in
-            Task { @MainActor in
-                await controller.moveInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
-            }
         }
     }
 

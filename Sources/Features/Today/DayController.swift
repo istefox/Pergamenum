@@ -65,6 +65,12 @@ final class DayController {
     /// and a `private` here is file-scoped, which would have kept it in this file for
     /// no reason but the keyword.
     let vault: VaultController
+    /// The tail of `write`'s own write Tasks, chained so a new one always waits for the
+    /// previous to finish before it applies its own value to `blocks` (ADR-0043
+    /// follow-up): overlapping writes used to complete out of order, and whichever
+    /// finished last won, silently dropping an earlier-issued write - `publishAllBlocks`
+    /// looping over several `publish` calls in a row hit this every time.
+    private var pendingWrite: Task<Void, Never>?
 
     init(store: any CalendarStore, vault: VaultController) {
         self.store = store
@@ -184,7 +190,7 @@ final class DayController {
             sourceTaskID: task.id,
             isPublished: false
         )
-        write(blocks + [block])
+        write { $0 + [block] }
         return block
     }
 
@@ -204,7 +210,7 @@ final class DayController {
             return false
         }
         guard moved.startMinutes != block.startMinutes else { return false }
-        write(others + [moved])
+        write { $0.filter { $0.id != block.id } + [moved] }
         return true
     }
 
@@ -214,12 +220,12 @@ final class DayController {
         let others = blocks.filter { $0.id != block.id }
         let resized = TimeBlock.resized(block, toDuration: duration, among: others)
         guard resized.durationMinutes != block.durationMinutes else { return false }
-        write(others + [resized])
+        write { $0.filter { $0.id != block.id } + [resized] }
         return true
     }
 
     func remove(_ block: TimeBlock) {
-        write(blocks.filter { $0.id != block.id })
+        write { $0.filter { $0.id != block.id } }
     }
 
     /// Writes a block to the Apple calendar and marks it published in the note.
@@ -247,7 +253,7 @@ final class DayController {
 
         var published = block
         published.isPublished = true
-        write(blocks.filter { $0.id != block.id } + [published])
+        write { $0.filter { $0.id != block.id } + [published] }
         events = store.events(on: day)
         return true
     }
@@ -260,11 +266,26 @@ final class DayController {
     /// to go through the editor: the day view opened the daily note to edit its buffer,
     /// which left an editor pane on screen that nobody had asked for and that outlived
     /// the block itself.
-    private func write(_ newBlocks: [TimeBlock]) {
-        let sorted = newBlocks.sorted { $0.startMinutes < $1.startMinutes }
-        // The refusal branch moves inside the hop rather than being dropped (ADR-0043
-        // §D2): `blocks` must only take the new value once the file actually holds it.
-        Task { @MainActor in
+    ///
+    /// `change` computes the array actually written from `blocks` as it stands right
+    /// before *this* write's own turn comes up, not from whatever `blocks` held back
+    /// when the caller made the call (ADR-0043 follow-up).
+    ///
+    /// The refusal branch moves inside the hop rather than being dropped (ADR-0043
+    /// §D2): `blocks` must only take the new value once the file actually holds it.
+    ///
+    /// Chained onto `pendingWrite` rather than fired independently: several calls to
+    /// `write` in a row - `publishAllBlocks` looping over `publish` is the case that
+    /// surfaced it - used to each start their own detached Task computing its merge
+    /// against the same stale `blocks`, so whichever finished last silently reverted
+    /// every publish flag the others had just set. Awaiting `previous` first, then
+    /// reading `blocks` fresh inside the Task, makes each write see every write ahead
+    /// of it in the queue - not just complete after them.
+    private func write(_ change: @escaping ([TimeBlock]) -> [TimeBlock]) {
+        let previous = pendingWrite
+        pendingWrite = Task { @MainActor in
+            await previous?.value
+            let sorted = change(blocks).sorted { $0.startMinutes < $1.startMinutes }
             guard await vault.setTimeBlocks(sorted, on: day) else {
                 report("blocchi tempo del \(day.compactForm): scrittura non riuscita")
                 return

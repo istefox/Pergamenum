@@ -57,13 +57,46 @@ final class DiaryController {
         // Anything still owed to the day being left is written before it is replaced.
         // Cancelling the pending save instead - which is what this did - threw away the
         // last sentence typed whenever the pane was reopened quickly enough.
+        //
+        // `wasDirty` is read before `flush()` starts that write asynchronously
+        // (ADR-0043 follow-up): `load()` re-reading `day`'s own file right after
+        // flushing it races that write, and very likely wins the race, reading back
+        // whatever was on disk *before* it landed and discarding the very sentence the
+        // flush is about to persist. When the day being reloaded is the one just
+        // flushed, `prose`/`entries` already hold what the write will make the file
+        // say, so `reload` leaves them alone instead of overwriting them with a stale
+        // read.
+        let wasDirty = isDirty
         flush()
+        reload(skipDiskReadBecauseJustFlushed: wasDirty)
+    }
+
+    func show(_ newDay: CalendarDate) {
+        guard newDay != day else { return }
+        flush()
+        day = newDay
+        // Not `load()`: its own `flush()` would re-fire here, and since the async write
+        // `flush()` just started above has not completed yet, `isDirty` is often still
+        // true - re-entering `save()` would snapshot the *old* day's leftover prose
+        // against `self.day`, which is already `newDay`, and write it to the wrong
+        // file. The flush above already owns whatever was pending for the day being
+        // left; the day being shown was never dirty to begin with.
+        reload(skipDiskReadBecauseJustFlushed: false)
+    }
+
+    /// The read half of `load()`: never called before a matching `flush()` for the day
+    /// it is about to (maybe) read, and never on a day it might race.
+    private func reload(skipDiskReadBecauseJustFlushed wasDirty: Bool) {
         isLoaded = false
         defer { isLoaded = true }
 
         guard vault.root != nil else {
             prose = ""
             entries = []
+            return
+        }
+        guard !wasDirty else {
+            isDirty = false
             return
         }
         if let diary = vault.readDiary(on: day) {
@@ -74,13 +107,6 @@ final class DiaryController {
             entries = []
         }
         isDirty = false
-    }
-
-    func show(_ newDay: CalendarDate) {
-        guard newDay != day else { return }
-        flush()
-        day = newDay
-        load()
     }
 
     func move(by days: Int) { show(day.adding(days: days)) }
@@ -112,6 +138,14 @@ final class DiaryController {
         }
         // The failure branch and the flag both move inside the hop (ADR-0043 §D2): a diary
         // marked clean before its file holds the text is a diary the next save skips.
+        //
+        // Snapshotted before the Task starts, not read from `self` inside it: `show(_:)`
+        // calls `flush()` (which lands here) and then overwrites `day`/`prose`/`entries`
+        // with the new day's values *synchronously*, before this Task's body ever runs -
+        // so reading `self.…` inside the closure would write the wrong day's content.
+        let day = day
+        let prose = prose
+        let entries = entries
         Task { @MainActor in
             guard await vault.writeDiary(prose: prose, entries: entries, on: day) else {
                 problems.append("diario del \(day.compactForm): scrittura non riuscita")
