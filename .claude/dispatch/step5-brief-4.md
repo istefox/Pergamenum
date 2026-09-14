@@ -1,82 +1,141 @@
-<!-- step5-brief: plan=/Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md tasks=5,6 lines=267-319 -->
-# Step 5 Batch Brief -- 2026-09-09-pratiche.md -- tasks 5-6
+<!-- step5-brief: plan=/Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md tasks=10 lines=778-888 -->
+# Step 5 Batch Brief -- 2026-09-13-vault-write-ordering-adr-0043.md -- tasks 10-10
 
-## Task text (verbatim, plan lines 267-319)
+## Task text (verbatim, plan lines 778-888)
 
-### Task 5 — controller, triggers, Full Disk Access, and the isolation guarantees (R-17, R-18, R-19, R-38)
+## Task 10 — The acceptance harness, the verification sweep, and this chain's own record (R-16, R-17, R-18, R-19, R-20)
 
-- Budget: `Sources/Features/Pratiche/PraticheController.swift`, `PraticaWatcher.swift`,
-  `FullDiskAccessProbe.swift`, `Sources/App/PergamenumApp.swift` (one `@State` + two
-  `.environment`), `Tests/PraticheControllerTests.swift`, `Tests/PraticheIsolationTests.swift`,
-  `Tests/SharedSourcesPurityTests.swift` (one case), `UITests/**` (19 files) (~700 lines)
-- Tester writes: `PraticheController` (`@Observable`: list, selection, timeline, tray, sync
-  progress, expansion set, banner state), `PraticaWatcher` (FSEvents + window-key + vault-open
-  triggers), `FullDiskAccessProbe.state()`.
-- Tests (red): sync runs for `status-active`/`status-waiting` on vault open, on window-key throttled
-  to one per 60 s, and on an FSEvents pulse debounced 10 s, and a closed pratica syncs **only**
-  through «Aggiorna ora» (R-17); the probe reads `EPERM` as not-granted and the controller exposes
-  the banner state, and a later grant clears it on the next trigger with no restart (R-18);
-  `MailStoreLocation` honours `-mailStoreRoot` and returns the fixture under xctest regardless
-  (R-19); **no file under `Sources/Core` or `Sources/Connector` added by this chain imports AppKit
-  or SwiftUI**, and no file under `Sources/Connector`, `Sources/CLI` or `Sources/MCPServer` names
-  `MailStore`, `EMLXReader` or `SQLite3` (R-38, ADR §D19).
-- **The 19 UI-test files** gain `-mailStoreRoot`, `<fixture>` beside their existing
-  `-disableCalendar YES -disableUpdater YES`.
-- Coder: bodies. Then build **both** connectors deliberately (`xcodebuild -scheme perg` and
-  `-scheme pergamenum-mcp`), because `.claude/test-cmd` builds neither.
-- `tuist generate --no-open`; full unit suite; both connector builds.
+Cross-refs: ADR-0043 §D9 («the acceptance criterion is a test that forces the interleaving, never a
+green suite»); ADR-0043 §D10 (what this must **not** have changed); CLAUDE.md's pre-merge rules.
+Budget: `scripts/adr-0043-interleaving-check.sh`, `docs/adr/0043-vault-write-ordering-concurrency-races.md`,
+`TODO.md`, `PROJECT_BRIEF.md` (~200 lines)
 
-### Task 6 — the pane, the timeline, the lanes, the tokens (R-23, R-24, R-25, R-26, R-27, R-32, R-33, R-39; screens 1a, 1b, 1c, 1g)
+1. **Create `scripts/adr-0043-interleaving-check.sh`** — **bash 3.2-clean** (macOS ships 3.2: no
+   `mapfile`, no associative arrays, no `${var^^}`; collect with
+   `arr=(); while IFS= read -r x; do arr+=("$x"); done < <(cmd)`). Its header comment names
+   `docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md` and `ADR-0043`, so the
+   anchor resolves to this feature. It asserts, exiting non-zero with a named failure on each:
+   - the five `@Test` function names of `R-11`–`R-15` exist in `Tests/`;
+   - `grep -c "index\.update" Sources/` is exactly `1`, and that line is inside
+     `VaultSession+WriteOrdering.swift`'s `apply` (R-02);
+   - `grep -rn "writeSynchronously\|updateIndex" Sources/ Tests/` returns nothing (R-02, R-03);
+   - `grep -rn "reloadFocusedNote" Sources/Features/Pratiche/` returns nothing (R-08);
+   - the five tests are reported as **passed** in the most recent result bundle, read with
+     `xcrun xcresulttool get test-results tests --path <bundle>` — a test that exists but did not
+     run is not acceptance. If a bundle path is not supplied the script says so and exits non-zero
+     rather than silently skipping the check.
+2. **Full unit suite** via `.claude/test-cmd`, unmodified (R-17).
+3. **Both connector targets build:**
+   `xcodebuild -workspace Pergamenum.xcworkspace -scheme perg -destination 'platform=macOS' build`
+   and the same for `pergamenum-mcp`. A file added under `Sources/Core` that imports SwiftUI breaks
+   both, which is ADR-0001 §D1 enforcing itself.
+4. **`python3 scripts/mcp-smoke.py <binary>` passes, with `scripts/mcp-smoke.py` unmodified** (R-16).
+   The MCP tool surface does not change: `tools/list` answers the same names with the same schemas
+   (§D10). If the smoke test needs an edit, something in scope was got wrong — stop and report,
+   do not edit the smoke test.
+5. **Manual `perg` pass**: a `--dry-run` write, a real write, a `journal log`, an `undo`. ADR-0007
+   §D6's three guardrails must all still hold: `--allow-write` gating, `dryRun` defaulting to true,
+   the journal recording path/hash-before/hash-after/previous-text — §D5 makes the third *more*
+   accurate, not different.
+6. **`scripts/uitests.sh`** before the merge to `main`, per CLAUDE.md's standing rule. Kill stale
+   instances first; read the per-test seconds beside each failure before believing a red run
+   (60.2 s names the launch timeout, not the app).
+7. **R-18: update ADR-0043's header status line** from «proposed — **decided, not implemented**
+   (see §D9)» to record implementation, with the PR number, once R-01–R-17 hold. Nothing else in
+   the ADR's decisions changes. Add the release-note line Task 8 step 6 owes: ADR-0001 §D3.4's
+   conflict prompt now fires when the app writes a note out from under a dirty buffer, at nine
+   call sites, previously silent.
+8. **File the three follow-ups this chain surfaced and deliberately did not fix**, as `TODO.md`
+   entries with GitHub issues, each naming ADR-0043 and this plan: (a) `transaction`'s
+   `currentOperation` is scoped state that now spans a suspension, so two concurrent transactions
+   can join the wrong gesture (Task 3 step 1); (b) `readDiary` → user gesture → `writeDiary` is a
+   read-modify-write window wider than §D8 can close (Task 9, declined); (c) the tag-rename and
+   note-rename batch appliers have the same window at batch scope. None is a regression this chain
+   introduces except (a), which ADR-0041 §D9 introduced and this chain widens the reach of.
+9. **R-19: close GitHub issue #259** once this chain's PR merges, with `state_reason` set.
+10. **R-20: update `TODO.md`'s `PG-150`** (line 11) to reflect completion, in the same shape
+    `PG-149` uses — implementation verified in-session, suite counts, `scripts/uitests.sh` result
+    with pre-existing failures named. Update `PROJECT_BRIEF.md`'s Status section if the milestone
+    line moves.
 
-- Budget: `Sources/DesignSystem/TokenKeys.swift` (3 cases), `Resources/Themes/pergamenum-light.json`,
-  `pergamenum-dark.json`, `Sources/Features/Pratiche/PratichePane.swift`,
-  `PraticheListColumn.swift`, `PraticaTopBar.swift`, `PraticaTimelineView.swift`,
-  `PraticaMessageRow.swift`, `PraticaEntryRow.swift`, `AttachmentChip.swift`,
-  `FullDiskAccessBanner.swift`, `Sources/App/Navigation.swift`, `Sources/App/SidebarItem.swift`,
-  `Sources/App/RootView.swift`, `Tests/PraticaTimelineTests.swift`, `Tests/SidebarTests.swift`,
-  `Tests/DesignSystemTests.swift` (~1100 lines)
-- Tester writes: the timeline model's ordering function, the filter function, the lane/direction
-  function, and the three `ColorToken` cases; view declarations with their accessibility
-  identifiers.
-- Tests (red): entries sort by `pergamenum-mail-date` with the received date as fallback,
-  interleaved with manual entries by heading timestamp, ascending, grouped into day sections (R-23);
-  a row is collapsed by default and its expansion state is per-window and not persisted, and
-  Opt+click expands or collapses all (R-24); direction decides lane and is carried by glyph and
-  label as well as colour (R-25, R-39); the subject resolves to a `message://` URL through the one
-  builder, and to plain text plus «non più in Mail» when the ledger says so (R-26); the three new
-  tokens exist in **both** theme JSONs and the completeness check passes (R-39); the text/sender/
-  attachments filters narrow messages and hide manual entries **only** under the text filter (R-32);
-  the sidebar row sits in LAVORO immediately before «Registrazioni», the pane list groups by client
-  with flat rows, badges count messages since `lastOpenedAt`, a dot marks a non-empty tray, and
-  «Chiuse» collapses `archived`/`final` (R-33, C3).
-- Coder: bodies, composed as `VaultBrowser` is — top bar above an `HSplitView` of list · timeline ·
-  inspector (ADR §D13). **`.badge` before `.tag`**, client rows carry no `.tag`, no
-  `DisclosureGroup` anywhere. Attachment chips call the existing `QuickLookPresenter`; expanded
-  bodies render with `MarkdownBlocksView` (R-27).
-- Screens: 1a (light), 1b (dark), 1c (banner + inspector), 1g (empty state).
-- `tuist generate --no-open`; full unit suite.
+**Done when:** the harness exits zero; the full unit suite is green; both connectors build;
+`scripts/mcp-smoke.py` passes unmodified; `scripts/uitests.sh` shows no new failure; the ADR,
+`TODO.md` and issue #259 are updated.
 
-## File map (from Budget: declarations, tasks 5-6)
+---
+
+## Risks, dependencies and HITL gates
+
+**Risks, highest first:**
+
+1. **The mechanical cascade is three to four times what ADR-0043 measured.** 25 test files, ~210
+   call sites, 46 files. Tasks 1–3 are large diffs in which almost every line is uninteresting and
+   a handful are not. The mitigation is the vertical split and the rule that no assertion is
+   re-sequenced without a stated reason — not speed.
+2. **`closeAfterSaving()` and `replacementsApplied()` are data-loss shaped.** An `async`
+   `saveOpenNote` whose `closeTab`/next-edit is not sequenced after it writes the wrong buffer or
+   closes before the write lands. Called out at Task 3 step 5; it is the single most likely way
+   this chain introduces a defect worse than the four it fixes.
+3. **`ViewQuerySource.move`/`.undo` becoming `async` changes a SwiftUI closure type.** A
+   `.dropDestination` returns `Bool` synchronously; the decided answer (fire a `Task`, return
+   `true`, report failures through the problem channel) makes a drop optimistic where it was
+   authoritative. It is the right trade under ADR-0043's own rejection of in-flight refusal, and it
+   is a behaviour change a reviewer should see named rather than discover.
+4. **`transaction`'s `currentOperation` now spans a suspension.** Two overlapping transactions can
+   join the wrong journal gesture. Not decided by ADR-0043, not fixed here, filed at Task 10 step 8.
+   Flagged rather than absorbed because a journal gesture that groups the wrong writes is the same
+   class of defect as Race 2.
+5. **§D7 changes behaviour at nine call sites at once.** A prompt that never appeared starts
+   appearing, and it will read as a regression the first time it happens. Release note, not only a
+   test (ADR-0043's Negative consequences say so explicitly).
+6. **§D8's refusals are new failure paths at thirteen call sites.** Each must handle
+   `WriteRefusal.movedOn` — a `try?` that swallows it turns a guard into a silent no-op, which is
+   the failure mode ADR-0007 §D6 exists to prevent.
+7. **A green suite is not acceptance here.** ADR-0043 §D9 is explicit and the review that raised it
+   routed all three findings REPORT-ONLY for this reason. If R-11–R-15 are weak — if any of them
+   relies on `Task.yield()`, a sleep, or real scheduling — the chain has demonstrated nothing.
+8. **Three UI tests are already red on `main`** (`PG-108` and
+   `testACornerGripCanStillBeGrabbedWhenZoomedOut`, per `TODO.md` `PG-149`). Do not read them as
+   this chain's damage; do not let them hide a fourth.
+
+**Dependencies:** ADR-0041 fully merged (`main`, PR #254 / `42e25ae`) — every file this chain
+touches only exists in this shape because of it. No external dependency, no new package, no network.
+
+**HITL gates — human approval required before each:**
+
+- **Commit** of each of Tasks 1–10. Ten commits, one logical change each.
+- **Push** of the branch, and **opening the PR**.
+- **Merge to `main`** — and `scripts/uitests.sh` must have run first, per CLAUDE.md.
+- **Closing GitHub issue #259** (Task 10 step 9).
+- **Editing `docs/adr/0043-…md`'s status line** (Task 10 step 7): an ADR edit is a record change.
+- **Any deletion beyond the two named functions** (`write(_:to:) throws`, `writeSynchronously`) and
+  the three named lines (`updateIndex`, `VaultController+Tabs.swift:359`, the composer's
+  `reloadFocusedNote()`). Nothing else in this chain deletes anything.
+- **No schema change and no migration exists in this chain** — if one appears to be needed, stop:
+  §D10 says `IndexCache.schemaVersion` does not move, and a migration would mean the design was
+  misread.
+
+## File map (from Budget: declarations, tasks 10-10)
 
 - (none declared -- no task in this range carries a parseable Budget:)
 
-No parseable Budget: for task(s): 5 6 (absent is not zero -- consult the task text above)
+No parseable Budget: for task(s): 10 (absent is not zero -- consult the task text above)
 
 ## Excluded tasks (not in this batch)
 
-- Task 1 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 2 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 3 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 4 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 7 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 8 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 9 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
-- Task 10 -- see /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+- Task 1 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 2 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 3 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 4 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 5 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 6 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 7 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 8 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
+- Task 9 -- see /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
 
-Full plan: /Users/stefer/Developer/Pergamenum/docs/superpowers/plans/2026-09-09-pratiche.md
+Full plan: /Users/stefer/emdash/worktrees/Pergamenum-b0385e05/emdash-strict-steaks-argue-n6z2c/docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md
 
 ## Context documents (open only for the reason stated -- not read unconditionally)
 
-- ADR: docs/adr/0036-pratiche.md -- D8 (MailStoreLocation test-awareness, -mailStoreRoot in all 19 UITests files), D10 (Full Disk Access probed per trigger with open(2), never at launch), D11/D12 (connector isolation, SharedSourcesPurityTests case), D13 (pratica.md edited only in the inspector, timeline rows read-only), D16/D17 (two-lane timeline, tokens) and all three Follow-up sections bind Task 5's controller/triggers/isolation and Task 6's pane/timeline
-- SPEC: SPEC.md -- requirement IDs R-17, R-18, R-19, R-38 (Task 5) and R-23..R-27, R-32, R-33, R-39 (Task 6), plus screens 1a, 1b, 1c, 1g
-- CLAUDE.md: CLAUDE.md -- design-token binding rule (no hardcoded colors or fonts in views), List(selection:) vs DisclosureGroup trap (ADR-0024), UI tests find controls by accessibilityIdentifier only, every UITests file passes -disableCalendar/-disableUpdater (and now -mailStoreRoot), sharedSources rule, tuist generate after adding files
+- ADR: docs/adr/0043-vault-write-ordering-concurrency-races.md -- governing ADR for this chain
+- SPEC: docs/superpowers/plans/2026-09-13-vault-write-ordering-adr-0043.md -- task detail lives in the plan itself
