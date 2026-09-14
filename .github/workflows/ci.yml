@@ -68,10 +68,15 @@ jobs:
         # relying on any tool's auto-detection of that file — none of
         # Tuist's current documented install paths (Homebrew, mise)
         # confirm they read .tuist-version automatically.
+        # Homebrew 6.0 (2026-06) refuses to load a versioned formula from a
+        # third-party tap until it is explicitly trusted (docs.brew.sh/Tap-Trust);
+        # `brew trust --formula` on the exact pinned formula, not the whole tap,
+        # is the documented minimal grant.
         run: |
           TUIST_VERSION="$(cat .tuist-version)"
           echo "Pinned Tuist version: ${TUIST_VERSION}"
           brew tap tuist/tuist
+          brew trust --formula "tuist/tuist/tuist@${TUIST_VERSION}"
           brew install --formula "tuist@${TUIST_VERSION}"
 
       - name: tuist install
