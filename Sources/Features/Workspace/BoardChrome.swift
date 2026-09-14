@@ -127,9 +127,12 @@ struct BoardZoomControls: View {
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
             Button { workspace.zoom(by: 1 / 1.25, in: viewportSize) } label: { Image(systemName: "minus") }
+                .accessibilityIdentifier("board-zoom-out")
             Button { workspace.resetZoom() } label: {
                 Text("\(Int(workspace.zoom * 100))%").themedText(.caption)
             }
+            .accessibilityIdentifier("board-zoom-level")
+            .accessibilityValue("\(Int(workspace.zoom * 100))")
             Button { workspace.zoom(by: 1.25, in: viewportSize) } label: { Image(systemName: "plus") }
             Divider().frame(height: 12)
             Button { workspace.zoomToFit(in: viewportSize) } label: {

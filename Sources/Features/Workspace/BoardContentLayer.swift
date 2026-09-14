@@ -1,5 +1,22 @@
 import SwiftUI
 
+/// Wraps a card as one accessibility element carrying `summary`, except for a group,
+/// which is left untouched - see the call site in `nodeView(_:)` for why.
+private struct NodeAccessibility: ViewModifier {
+    let summary: String
+    let isGroup: Bool
+
+    func body(content: Content) -> some View {
+        if isGroup {
+            content
+        } else {
+            content
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(summary)
+        }
+    }
+}
+
 /// The board's own content: the cards, over the connector layer.
 ///
 /// A view of its own rather than a section of `WorkspaceView`, which now holds the
@@ -42,11 +59,27 @@ struct BoardContentLayer: View {
         let frame = workspace.displayFrame(for: node)
 
         cardBody(node)
+            .frame(width: frame.width, height: frame.height)
+            // After `.frame`, not before: `.accessibilityElement` can freeze the
+            // container's frame at its unsized content rather than the card's laid-out
+            // rectangle, and four board tests aim corner drags by normalized offset
+            // against this element (PG-108). `.contain`, not `.combine` - `.combine`
+            // would flatten NodeCard's own `Text` out of the tree and
+            // `element(labelled: "CARD A")` would stop resolving.
+            //
+            // Skipped entirely for a group: wrapping the whole card as one
+            // `.accessibilityElement` reparents `groupCard(_:)`'s own small header
+            // `Text("GRUPPO")` under it, and SwiftUI/AX then reports that child at the
+            // *container's* frame instead of its own - a "middle of the group" coordinate
+            // stopped landing in the header and started landing dead center of the card,
+            // inside the band-only hit area (`hitShape(for:)`) it was meant to miss
+            // (testDraggingTheMiddleOfAGroupLeavesItWhereItIs). A group already has its
+            // own readable label from that header `Text`; it does not need this one.
+            .modifier(NodeAccessibility(summary: accessibilitySummary(for: node), isGroup: node.isGroup))
             // Stable regardless of render state: the placeholder branch below carries
             // no Text, so a UI test that only knows the node's title cannot find a card
             // once `drawsPlaceholder` switches it in at low zoom.
             .accessibilityIdentifier("canvas-node-\(node.id)")
-            .frame(width: frame.width, height: frame.height)
             .overlay(
                 RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                     .strokeBorder(
@@ -189,7 +222,6 @@ struct BoardContentLayer: View {
                     RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                         .strokeBorder(theme.color(.borderSubtle), lineWidth: 1)
                 )
-                .accessibilityLabel(accessibilitySummary(for: node))
         } else {
             NodeCard(
                 node: node, subfolder: workspace.subfolder(for: node), workspace: workspace,
@@ -198,10 +230,12 @@ struct BoardContentLayer: View {
         }
     }
 
-    /// A short accessible description of what a node holds, for the placeholder branch
-    /// above - which draws no Text of its own below `BoardGeometry.placeholderZoom` (PG-041).
-    /// Approximates what `NodeCard` shows without any of its async state (email headers,
-    /// thumbnails): enough to identify the card, not a mirror of every visual detail.
+    /// A short accessible description of what a node holds, applied once for every zoom
+    /// level at the call site in `body` (PG-108) - not only for the placeholder branch
+    /// above, which draws no Text of its own below `BoardGeometry.placeholderZoom`
+    /// (PG-041). Approximates what `NodeCard` shows without any of its async state (email
+    /// headers, thumbnails): enough to identify the card, not a mirror of every visual
+    /// detail.
     private func accessibilitySummary(for node: CanvasNode) -> String {
         switch node.kind {
         case .text(let text):

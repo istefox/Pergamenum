@@ -85,7 +85,7 @@ final class WorkspaceBoardUITests: XCTestCase {
     /// used to be sized in board units, so at a small zoom it was two points across
     /// and the pointer could not land on it.
     func testACornerGripCanStillBeGrabbedWhenZoomedOut() throws {
-        zoomOutWithTheControl(times: 6)
+        zoomOutBelowPlaceholder()
 
         // Below `BoardGeometry.placeholderZoom` the card draws no Text at all (perf:
         // see `BoardContentLayer.cardBody`), so it can no longer be found by its label.
@@ -104,7 +104,10 @@ final class WorkspaceBoardUITests: XCTestCase {
     /// PG-041: below `BoardGeometry.placeholderZoom` the card draws no Text, but its
     /// accessibility label must still say what the card holds.
     func testAZoomedOutCardStillHasAReadableAccessibilityLabel() throws {
-        zoomOutWithTheControl(times: 6)
+        zoomOutBelowPlaceholder()
+        // Proves the test actually reached the placeholder branch it names, rather than
+        // passing trivially because the card still rendered its own Text (PG-108).
+        XCTAssertFalse(app.staticTexts["CARD A"].exists, "il ramo placeholder non è stato raggiunto")
         let card = try element(nodeID: "aaaa000000000001")
         XCTAssertEqual(card.label, "CARD A", "la card senza testo non ha una label accessibile")
     }
@@ -266,17 +269,36 @@ final class WorkspaceBoardUITests: XCTestCase {
     // every drag at a NaN offset and nothing moves - which reads exactly like the
     // defect under test still being there.
 
-    private func zoomOutWithTheControl(times: Int) {
-        // The zoom controls sit at the bottom right of the board; the minus button is
-        // the leftmost of the three. Found by position rather than by label because
-        // the controls are icons.
-        let window = app.windows.firstMatch
-        let bottom = window.frame.maxY - 80
-        let buttons = app.buttons.allElementsBoundByIndex
-            .filter { $0.exists && $0.frame.minY > bottom }
-            .sorted { $0.frame.minX < $1.frame.minX }
-        guard let minus = buttons.first else { return }
-        for _ in 0..<times { minus.click() }
+    /// Clicks «riduci» until the board is below `BoardGeometry.placeholderZoom`, whatever
+    /// zoom `zoomToFit` picked for this window (PG-108: `times: 6` only worked when the
+    /// window happened to be wide enough that `zoomToFit` landed near 1.0). Fails loudly
+    /// instead of the old helper's silent `guard … return` - that silence is how this
+    /// regression hid.
+    @discardableResult
+    private func zoomOutBelowPlaceholder(cap: Int = 24) -> Int {
+        let minus = app.buttons["board-zoom-out"]
+        let readout = app.buttons["board-zoom-level"]
+        XCTAssertTrue(minus.waitForExistence(timeout: 10), "il controllo dello zoom non è sulla board")
+        XCTAssertTrue(readout.waitForExistence(timeout: 5), "manca la percentuale dello zoom")
+
+        var lastPercent = -1
+        for click in 0..<cap {
+            guard let percent = Int(readout.value as? String ?? "") else {
+                XCTFail("la percentuale dello zoom non è leggibile: \(String(describing: readout.value))")
+                return click
+            }
+            // `Int(zoom * 100)` truncates, so a displayed value below 25 guarantees
+            // zoom < 0.25 - the same boundary `BoardGeometry.drawsPlaceholder(at:)` uses.
+            if percent < 25 { return click }
+            if percent == lastPercent {
+                XCTFail("lo zoom è fermo a \(percent)% dopo \(click) click - il pulsante non risponde")
+                return click
+            }
+            lastPercent = percent
+            minus.click()
+        }
+        XCTFail("lo zoom non è sceso sotto il 25% in \(cap) click (fermo a \(lastPercent)%)")
+        return cap
     }
 
     // MARK: Reading the result off disk
