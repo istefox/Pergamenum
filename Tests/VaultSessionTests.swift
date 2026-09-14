@@ -332,16 +332,16 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     // ADR-0041 Task 8: `VaultSession.write` gained an async overload; this call is
     // already inside an `async throws` test, so it now resolves there.
     try await session.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nDue.\n", to: "N.md")
-    #expect(session.reconcile(["N.md"]).isEmpty)
+    #expect(await session.reconcile(["N.md"]).isEmpty)
 
     // A second writer in the vault - which ADR-0007 puts there - is reported.
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nTre.\n", to: "N.md")
-    let changes = session.reconcile(["N.md"])
+    let changes = await session.reconcile(["N.md"])
     #expect(changes.map(\.path) == ["N.md"])
     #expect(changes.first?.text.contains("Tre.") == true)
 
     // A file that went away leaves the index rather than lingering in it.
     try FileManager.default.removeItem(at: vault.root.appending(path: "N.md"))
-    #expect(session.reconcile(["N.md"]).isEmpty)
+    #expect(await session.reconcile(["N.md"]).isEmpty)
     #expect(session.index.note(at: "N.md") == nil)
 }
