@@ -844,10 +844,12 @@ actor PraticaSyncEngine {
         // (ADR-0040 §D4).
         let allegatiDirectory = try directory("allegati", of: request)
         for attachment in prepared.attachments {
-            try Self.writeAtomically(
-                attachment.bytes,
-                to: allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
-            )
+            let target = allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
+            try Self.writeAtomically(attachment.bytes, to: target)
+            // PG-123: the bytes came out of a mail store, so the copy is a download as far
+            // as Gatekeeper is concerned - stamped after the rename, or the xattr would
+            // land on the temporary sibling `.atomic` throws away.
+            try AttachmentQuarantine.apply(to: target)
         }
         folder.attachmentNameByDigest = prepared.attachmentNameByDigest
         folder.takenAttachmentNames = prepared.takenAttachmentNames

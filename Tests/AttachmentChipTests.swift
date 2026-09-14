@@ -46,6 +46,61 @@ import Testing
         }
     }
 
+    // MARK: - PG-123: executables, bundles, disk images and scripts never open from the chip
+
+    @Test(arguments: ["script.command", "install.sh", "image.dmg", "tool.exe", "setup.pkg", "run.scpt"])
+    func aUsableFileOfARefusedTypeRevealsAndCopiesButHasNoOpenTarget(fileName: String) throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: fileName, directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: fileName, url: url))
+
+            #expect(AttachmentChipModel.refusesToOpen(url))
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil, "\(fileName) must never reach NSWorkspace.open")
+            #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == url, "the Finder is where it goes instead")
+            #expect(AttachmentChipModel.copyItems(for: content, state: Self.state) == [url])
+            #expect(AttachmentChipModel.symbol(for: content, state: Self.state) == "paperclip", "the refusal is about opening, not about the file's integrity")
+        }
+    }
+
+    @Test func anExtensionlessFileWithItsExecuteBitSetIsRefusedByTheTypeTheFilesystemReports() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "payload", directoryHint: .notDirectory)
+            try Data("#!/bin/sh\n".utf8).write(to: url)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path(percentEncoded: false))
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "payload", url: url))
+
+            #expect(AttachmentChipModel.refusesToOpen(url))
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil)
+            #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == url)
+        }
+    }
+
+    @Test(arguments: ["offerta.pdf", "disegno.dwg", "foto.jpg", "listino.xlsx", "note.txt"])
+    func anOrdinaryDocumentStillOpens(fileName: String) throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: fileName, directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: fileName, url: url))
+
+            #expect(!AttachmentChipModel.refusesToOpen(url))
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == url)
+        }
+    }
+
+    @Test func aStoreReferenceToARefusedTypeHasNoOpenTargetEither() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "grande.dmg", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.storeReference(
+                MessageDocument.StoreReference(name: "grande.dmg", size: 500 * 1024 * 1024, storePath: url.path(percentEncoded: false))
+            )
+
+            #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil)
+            #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == url)
+        }
+    }
+
     // MARK: - R-27: a copied, usable file present on disk
 
     @Test func aLocalUsableFileOnDiskGetsThePaperclipSymbolAndPreviewsOpensAndReveals() throws {

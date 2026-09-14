@@ -122,9 +122,13 @@ struct AttachmentChip: View {
     private var helpText: String {
         switch content {
         case .file:
-            previewURL == nil
-                ? "\(name) — il file non è in allegati/"
-                : name
+            if previewURL == nil {
+                "\(name) — il file non è in allegati/"
+            } else if openURL == nil {
+                "\(name) — file eseguibile: si apre solo dal Finder"
+            } else {
+                name
+            }
         case .storeReference(let reference):
             "\(name) — \(Self.megabytes(reference.size)) MB, resta nell'archivio di Mail: \(reference.storePath)"
         case .pending:
@@ -160,9 +164,15 @@ struct AttachmentChip: View {
         onQuickLook(previewURL)
     }
 
+    /// «Apri» and double-click. A usable file `AttachmentChipModel.refusesToOpen`
+    /// rejects (PG-123: executable, bundle, disk image, script) has no `openURL` and is
+    /// revealed in the Finder instead, where Gatekeeper's own prompt applies.
     private func openWithDefaultApp() {
-        guard let openURL else { return }
-        NSWorkspace.shared.open(openURL)
+        if let openURL {
+            NSWorkspace.shared.open(openURL)
+        } else if revealURL != nil {
+            showInFinder()
+        }
     }
 
     /// R-27's «Copia»: the file itself when a copy is on disk (or the store path still

@@ -377,6 +377,9 @@ private func row(
 
         let files = Self.allegatiFiles(under: vaultRoot)
         #expect(files == ["20260610_offerta.pdf"], "identical content must produce exactly one copy, linked twice")
+        // PG-123: the copy is a download as far as Gatekeeper is concerned.
+        let copy = vaultRoot.appending(path: "\(Self.praticaFolder)/allegati/20260610_offerta.pdf", directoryHint: .notDirectory)
+        #expect(AttachmentQuarantine.isApplied(to: copy), "every attachment placed in allegati/ carries com.apple.quarantine")
     }
 
     @Test func aDifferentContentAttachmentWithTheSameNameCollidesToDash2() async throws {
