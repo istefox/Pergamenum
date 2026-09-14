@@ -43,6 +43,21 @@ fail() {
     exit 1
 }
 
+# Sends SIGTERM and waits for the process to actually be gone rather than assuming `kill`
+# returning means it already is - measured up to two seconds after the signal here. Anything
+# still alive after this script hands control back can hold the global hot key into the next
+# invocation, which is what let a run started right after this one fail on its first launches
+# instead of never seeing the leftover at all (PG-076).
+kill_and_wait() {
+    local pid="$1"
+    kill "$pid" 2>/dev/null || return 0
+    for _ in $(seq 1 10); do
+        ps -p "$pid" >/dev/null 2>&1 || return 0
+        sleep 1
+    done
+    kill -9 "$pid" 2>/dev/null || true
+}
+
 # MARK: instances
 
 # Every running copy of the app, as `pid<TAB>path`.
@@ -73,9 +88,8 @@ fi
 if [ -n "$debris" ]; then
     printf 'uitests: istanze rimaste da un giro precedente, le chiudo:\n%s\n' "$debris"
     printf '%s' "$debris" | while IFS='	' read -r pid _; do
-        [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+        [ -n "$pid" ] && kill_and_wait "$pid"
     done
-    sleep 2
 fi
 
 # MARK: run
@@ -136,7 +150,7 @@ leftovers=$(running_instances)
 if [ -n "$leftovers" ]; then
     printf '\nuitests: istanze sopravvissute al giro, le chiudo:\n%s\n' "$leftovers"
     printf '%s' "$leftovers" | while IFS='	' read -r pid _; do
-        [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+        [ -n "$pid" ] && kill_and_wait "$pid"
     done
 fi
 

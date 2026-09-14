@@ -159,6 +159,13 @@ final class DayViewUITests: XCTestCase {
         )
 
         let before = month.frame.width
+        // PG-108: `DayMonthSection.calendarWidth` clamps at `widest = 460` once the note
+        // column exceeds 920pt. A window wide enough to start there makes the drag below
+        // prove nothing - this turns that silent no-op into a named diagnosis.
+        XCTAssertLessThan(
+            before, 460,
+            "il mese è già al massimo (finestra \(app.windows.firstMatch.frame.width)pt) - la misura non prova nulla"
+        )
 
         // The splitter picked by where it is, not by index: `app.splitGroups.firstMatch`
         // is the window's own sidebar split, and dragging that collapsed the sidebar -
@@ -168,19 +175,15 @@ final class DayViewUITests: XCTestCase {
             return XCTFail("non trovo il divisorio fra colonna e timeline")
         }
 
-        // Rightwards: the timeline opens at its widest, so there is only room the other
-        // way, and a drag that cannot move anything proves nothing.
+        // Rightwards, never leftwards: `TodayView.daySplit`'s note column has
+        // `minWidth: 420`, and 420 * 0.5 == `DayMonthSection.narrowest` exactly, so a
+        // leftward drag that runs out of room saturates the clamp from below and produces
+        // the mirror-image failure this test exists to catch.
         let grab = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         grab.press(forDuration: 0.2, thenDragTo: grab.withOffset(CGVector(dx: 160, dy: 0)))
 
         XCTAssertGreaterThan(month.frame.width, before, "allargando la colonna il mese non è cresciuto")
         XCTAssertTrue(app.staticTexts["Note"].exists, "la trascinata ha preso il divisorio sbagliato")
-
-        // Put it back, so the next test starts where this one did.
-        let moved = app.descendants(matching: .splitter).allElementsBoundByIndex
-            .first { $0.frame.minX > 400 } ?? divider
-        let back = moved.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        back.press(forDuration: 0.2, thenDragTo: back.withOffset(CGVector(dx: -160, dy: 0)))
     }
 
     /// The header showed `20260813`, which is the file name, not a date.

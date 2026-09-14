@@ -106,6 +106,13 @@ Binding order, each yielding a usable app (SPEC §13):
   One known residual hazard (`transaction`'s `currentOperation` spanning a suspension) and two
   further follow-ups (the `readDiary`/`writeDiary` window, the tag/note-rename batch window) filed
   as `PG-152`/`PG-153`/`PG-154`, deliberately left open rather than patched blind.
+- 2026-09-13: **CI adopted (ADR-0044), narrowly.** `.github/workflows/ci.yml`, one job on
+  `pull_request` and `push: main`: generates the project with Tuist, builds all three targets
+  (`Pergamenum`, `perg`, `pergamenum-mcp` via the `Pergamenum-Workspace` scheme) and runs
+  `PergamenumTests` only. Advisory, not a required check — `main` stays unprotected. The UI suite,
+  SwiftLint and the release remain manual, unchanged (`scripts/uitests.sh` before every merge,
+  `.claude/test-cmd` every turn). Earlier entries below that say "nessuna CI configurata" or
+  similar describe the state truthfully as of their own date and are left as written.
 - 2026-09-13: **Vault layer consistency and security (ADR-0041) — all 10 plan tasks implemented on
   `feat/vault-layer-consistency-and-security-cha`.** Closes four Tier-1/2 findings from the
   deep-refactor security pass: `PG-122` (the vault-boundary check was private and skippable,

@@ -83,6 +83,14 @@ final class TaskTimeUITests: XCTestCase {
         let day = app.descendants(matching: .any).matching(identifier: "day-\(target)").firstMatch
         XCTAssertTrue(day.waitForExistence(timeout: 5), "il calendario non mostra \(target)")
         day.click()
+        // Picking a day dismisses the popover (DuePanel's onDone), and reopening it
+        // while it is still animating out can land the click on the closing popover
+        // instead of the button underneath, silently dropping it (PG-072). Wait for
+        // the panel to actually be gone first.
+        XCTAssertTrue(
+            app.textFields["due-panel-field"].waitForNonExistence(timeout: 5),
+            "il pannello Scadenza non si è chiuso dopo aver scelto il giorno"
+        )
 
         // The hour, by reopening the chip: the row is live now that there is a date.
         app.buttons["task-composer-due"].click()

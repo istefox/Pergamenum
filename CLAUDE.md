@@ -112,6 +112,12 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
   followed by a short kebab-case description.
 - Default branch: `main`. Never commit directly to it, never force-push.
 - No branch protection is configured: the discipline above is the only guard.
+- **CI (ADR-0044, `.github/workflows/ci.yml`) builds `Pergamenum`, `perg` and `pergamenum-mcp` from a
+  clean checkout and runs `PergamenumTests`, on every PR and on push to `main`.** It is advisory, not
+  a required check, and it verifies nothing else: the UI suite (`scripts/uitests.sh`, still by hand
+  before every merge), SwiftLint and the release pipeline are not on it. A green CI badge means those
+  three targets build and the unit suite passes — nothing about the UI suite, which is where the last
+  several merges' real regressions were.
 
 ## Commands
 
