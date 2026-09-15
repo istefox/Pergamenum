@@ -282,6 +282,63 @@ private func row(
         }
     }
 
+    // MARK: PG-123 - every written attachment and .eml sidecar is quarantined, the note never is
+
+    @Test func writtenAttachmentsAndTheEmlSidecarAreQuarantinedButTheNoteItselfIsNot() async throws {
+        let bytes = EmailFixtureCorpus.pdfBytes(pages: 1)
+        let message = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "abc123@rossi-spa.it", attachmentFilename: "offerta.pdf", attachmentBytes: bytes
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Con allegato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        var settings = PraticheSettings.default
+        settings.keepOriginalEML = true
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [row(rowID: 1, messageID: "<abc123@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170))],
+            onDisk: [], settings: settings
+        )
+        _ = try await engine.sync(request)
+
+        func isQuarantined(_ url: URL) throws -> Bool {
+            let values = try url.resourceValues(forKeys: [.quarantinePropertiesKey])
+            return values.quarantineProperties != nil
+        }
+
+        let allegatiDir = vaultRoot.appending(path: "\(Self.praticaFolder)/allegati", directoryHint: .isDirectory)
+        let attachmentFiles = Self.allegatiFiles(under: vaultRoot)
+        #expect(!attachmentFiles.isEmpty, "the attachment must actually have been written")
+        for name in attachmentFiles {
+            #expect(
+                try isQuarantined(allegatiDir.appending(path: name, directoryHint: .notDirectory)),
+                "an attachment written from an untrusted external origin must carry com.apple.quarantine (PG-123)"
+            )
+        }
+
+        let emailDir = vaultRoot.appending(path: "\(Self.praticaFolder)/email", directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: emailDir.path(percentEncoded: false))) ?? []
+        let emlName = try #require(names.first { $0.hasSuffix(".eml") }, "no .eml sidecar was written")
+        #expect(
+            try isQuarantined(emailDir.appending(path: emlName, directoryHint: .notDirectory)),
+            "the .eml sidecar must carry com.apple.quarantine like any other attachment bytes (PG-123)"
+        )
+
+        let mdName = try #require(names.first { $0.hasSuffix(".md") }, "no .md note was written")
+        #expect(
+            try isQuarantined(emailDir.appending(path: mdName, directoryHint: .notDirectory)) == false,
+            "a pratica's own note is a first-class file, not a download, and must never be quarantined (PG-123)"
+        )
+    }
+
     @Test func writesNoEmlWhenRetentionIsOff() async throws {
         let fixture = try MailStoreFixture.build(
             mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],

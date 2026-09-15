@@ -168,4 +168,49 @@ import Testing
             "a pending attachment has no file to probe - the state closure must never be invoked (R-08)"
         )
     }
+
+    // MARK: - PG-123: refused types are opened by neither gesture, but reveal is unaffected
+
+    @Test(
+        "openSafety refuses Gatekeeper-relevant extensions while revealURL stays reachable",
+        arguments: ["app", "sh", "dmg", "pdf"]
+    )
+    func refusedExtensionsCannotBeOpenedButCanStillBeRevealed(extension pathExtension: String) throws {
+        let isRefused = pathExtension != "pdf"
+
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "allegato.\(pathExtension)", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let fileContent = AttachmentChip.Content.file(PraticaAttachmentRef(name: url.lastPathComponent, url: url))
+
+            if isRefused {
+                #expect(AttachmentChipModel.openSafety(for: fileContent, state: Self.state) != .allowed)
+            } else {
+                #expect(AttachmentChipModel.openSafety(for: fileContent, state: Self.state) == .allowed)
+            }
+            #expect(AttachmentChipModel.openURL(for: fileContent, state: Self.state) == (isRefused ? nil : url))
+            #expect(
+                AttachmentChipModel.revealURL(for: fileContent, state: Self.state) == url,
+                "reveal-in-Finder must stay reachable regardless of refused type (PG-123)"
+            )
+
+            let storeURL = root.appending(path: "store-allegato.\(pathExtension)", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: storeURL)
+            let reference = MessageDocument.StoreReference(
+                name: storeURL.lastPathComponent, size: 400_000_000, storePath: storeURL.path(percentEncoded: false)
+            )
+            let storeContent = AttachmentChip.Content.storeReference(reference)
+
+            if isRefused {
+                #expect(AttachmentChipModel.openSafety(for: storeContent, state: Self.state) != .allowed)
+            } else {
+                #expect(AttachmentChipModel.openSafety(for: storeContent, state: Self.state) == .allowed)
+            }
+            #expect(AttachmentChipModel.openURL(for: storeContent, state: Self.state) == (isRefused ? nil : storeURL))
+            #expect(
+                AttachmentChipModel.revealURL(for: storeContent, state: Self.state) == storeURL,
+                "reveal-in-Finder must stay reachable regardless of refused type (PG-123)"
+            )
+        }
+    }
 }

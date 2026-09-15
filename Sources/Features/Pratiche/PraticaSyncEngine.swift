@@ -962,6 +962,26 @@ actor PraticaSyncEngine {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         try data.write(to: url, options: .atomic)
+        quarantine(url)
+    }
+
+    /// PG-123: every byte this function writes came from Mail, an untrusted external
+    /// origin exactly like a browser download - so the file gets `com.apple.quarantine`
+    /// immediately after landing, the same xattr Finder/Mail/Safari already set on a
+    /// download, restoring Gatekeeper's first-run check for a later double-click from
+    /// outside the app. Best-effort and silent on failure: a volume that rejects the xattr
+    /// must not fail the sync - the attachment is still correctly written and usable, it
+    /// only loses this one layer, and the open-time UTI gate below is the second layer for
+    /// exactly that case.
+    private static func quarantine(_ url: URL) {
+        var mutableURL = url
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentBundleIdentifierKey as String: AppInfo.bundleIdentifier,
+            kLSQuarantineAgentNameKey as String: AppInfo.name,
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload,
+        ]
+        try? mutableURL.setResourceValues(values)
     }
 
     // MARK: - Attachment placement (R-10)

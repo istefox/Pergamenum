@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // ADR-0036 §D16/§D18 (over-threshold attachments stay in Mail's own store and are recorded
 // as `MessageDocument.StoreReference` rather than copied - R-10), plan
@@ -60,12 +61,48 @@ enum AttachmentChipModel {
     /// is still there and usable. `nil` for `.pending` without ever probing anything
     /// (R-08).
     static func openURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
+        guard case .allowed = openSafety(for: content, state: state) else { return nil }
+        return targetURL(for: content, state: state)
+    }
+
+    /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`. PG-123:
+    /// deliberately NOT run through `openSafety` - reveal is the safe fallback for a
+    /// refused type and must keep working for every usable file regardless of type.
+    static func revealURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
         targetURL(for: content, state: state)
     }
 
-    /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`.
-    static func revealURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
-        targetURL(for: content, state: state)
+    /// PG-123: whether `openURL`'s target may be handed to `NSWorkspace.shared.open`
+    /// directly. Not folded into `FileState`: that enum answers "is there a usable file
+    /// here", this answers a different question, "is this usable file safe to launch" -
+    /// collapsing them would make a caller unable to tell a missing file from a refused one.
+    enum OpenSafety: Equatable {
+        case allowed
+        case refused(UTType)
+    }
+
+    /// PG-123: the exact class the finding names - a Gatekeeper-relevant executable
+    /// class, not a general blocklist. `.diskImage`/`.applicationBundle` are checked via
+    /// `conforms(to:)` rather than equality so a more specific installer/app subtype is
+    /// still caught; their broader sibling trees (`.package`, `.bundle`) are deliberately
+    /// not used here since those also contain ordinary documents (`.pages`, `.key`).
+    private static let refusedTypes: Set<UTType> = [
+        .executable, .applicationBundle, .diskImage, .shellScript,
+    ]
+
+    /// Classifies by filename extension alone via `UTType(filenameExtension:)`, not by
+    /// reading the file's on-disk content type. Deliberate: `AttachmentIntegrity`
+    /// (`Sources/Core/Email/`) already classifies this feature's attachments by extension
+    /// for corruption detection, so this keeps the two schemes symmetric; extension-only
+    /// also keeps this function pure Foundation-only I/O beyond the injected `state`
+    /// closure, matching this file's existing no-AppKit, closure-injected testing
+    /// boundary. An extension-less or renamed-to-hide-extension attack is a distinct,
+    /// unaddressed threat this fix does not claim to cover.
+    static func openSafety(for content: AttachmentChip.Content, state: (URL) -> FileState) -> OpenSafety {
+        guard let url = targetURL(for: content, state: state) else { return .allowed }
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return .allowed }
+        guard let refused = refusedTypes.first(where: type.conforms(to:)) else { return .allowed }
+        return .refused(refused)
     }
 
     /// What "Copia" puts on the pasteboard (R-27): the resolved file URL, when there is
