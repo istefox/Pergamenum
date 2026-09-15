@@ -532,6 +532,28 @@ func rejectsVersionSuffixes(_ title: String) {
     }
 }
 
+@Test func aSingleWordLongerThanTheBudgetLeavesTheBareStemWithNoSlugAtAll() throws {
+    // ADR §D5 rule 2's own edge, spelled out in `ImportNaming.recordingNoteTitle`'s doc
+    // comment: cutting inside the one word a slug is made of is what rule 2 forbids, so
+    // a slug that is a single word already over budget keeps no slug at all - not a
+    // truncated fragment of it.
+    let recordedAt = try #require(PlaudTimestamp.parse("2026-09-04T11:48:07"))
+    let oneHugeWord = String(repeating: "a", count: 80)
+
+    let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: oneHugeWord)
+
+    #expect(title == "20260904_Registrazione")
+}
+
+@Test func truncatedAtWordBoundaryReturnsEmptyForANonPositiveBudget() {
+    // ADR-0045 §D5: the shared truncator's own guard, pinned directly - neither
+    // protected caller's budget arithmetic can reach it (`recordingNoteTitle`'s and
+    // `PraticaNaming.messageFileName`'s budgets are both fixed and always positive),
+    // so this edge needs its own assertion rather than one reached through a caller.
+    #expect(ImportNaming.truncatedAtWordBoundary("qualcosa", toFit: 0).isEmpty)
+    #expect(ImportNaming.truncatedAtWordBoundary("qualcosa", toFit: -5).isEmpty)
+}
+
 @Test func usesTheRecordingsOwnLocalDateNotTodays() throws {
     // ADR §D5 rule 4: a recording imported a week later is filed under the day it
     // happened, not the day somebody pressed "Elabora". The expected prefix is computed

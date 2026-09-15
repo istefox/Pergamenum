@@ -159,7 +159,14 @@ enum ImportNaming {
     /// Rule 2: whole words only, so the title never ends mid-word and never ends in the
     /// hyphen that joined one - `NoteName.maximumLength` is the budget the caller has
     /// already subtracted its own prefix from.
-    private static func truncatedAtWordBoundary(_ slug: String, toFit budget: Int) -> String {
+    ///
+    /// Not `private`: this is now the one word-boundary truncator, held here and
+    /// pinned by the two protected names' existing tests (ADR-0045 §D5). It feeds
+    /// `recordingNoteTitle` above, in this same file, and `PraticaNaming.messageFileName`
+    /// (`Sources/Core/Pratiche/PraticaNaming.swift`), which used to keep its own
+    /// identical copy - an edit here now turns both `Tests/ConventionsTests.swift` and
+    /// `Tests/PraticaNamingTests.swift` red.
+    static func truncatedAtWordBoundary(_ slug: String, toFit budget: Int) -> String {
         guard budget > 0 else { return "" }
         guard slug.count > budget else { return slug }
 

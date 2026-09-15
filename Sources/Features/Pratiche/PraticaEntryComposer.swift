@@ -53,7 +53,7 @@ struct PraticaEntryComposer {
               let session = vault.session
         else { return }
 
-        let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
+        let notePath = PraticaNaming.praticaNotePath(of: praticaPath)
         // The same refusal every file operation makes (`VaultController+Files`): a
         // tab holding unsaved edits to this note is asked to save first, never
         // merged with and never discarded - `handOff` below catches that tab up.

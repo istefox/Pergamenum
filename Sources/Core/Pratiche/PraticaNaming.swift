@@ -33,7 +33,9 @@ enum PraticaNaming {
         let party = ImportNaming.canonicalCounterparty(counterpart)
         let clock = String(format: "%02d%02d", time.hour, time.minute)
         let stem = "\(date.compactForm)_\(clock)_\(party)"
-        let slug = truncated(ImportNaming.kebabCase(strippingReplyPrefixes(subject)), toFit: slugLimit)
+        let slug = ImportNaming.truncatedAtWordBoundary(
+            ImportNaming.kebabCase(strippingReplyPrefixes(subject)), toFit: slugLimit
+        )
         return slug.isEmpty ? "\(stem).md" : "\(stem)_\(slug).md"
     }
 
@@ -56,24 +58,6 @@ enum PraticaNaming {
             changed = true
         }
         return text
-    }
-
-    /// Whole words only, the same rule `ImportNaming.recordingNoteTitle` already
-    /// applies: a name cut mid-word reads as a typo, and a name ending in the hyphen
-    /// that joined one reads as damage.
-    private static func truncated(_ slug: String, toFit budget: Int) -> String {
-        guard budget > 0 else { return "" }
-        guard slug.count > budget else { return slug }
-
-        var kept: [Substring] = []
-        var length = 0
-        for word in slug.split(separator: "-") {
-            let addition = kept.isEmpty ? word.count : word.count + 1
-            guard length + addition <= budget else { break }
-            kept.append(word)
-            length += addition
-        }
-        return kept.joined(separator: "-")
     }
 
     /// R-08's collision rule: a file that already carries the name `messageFileName`
@@ -148,5 +132,18 @@ enum PraticaNaming {
     static func clientTag(forPraticaAt relativePath: String, root: String) -> Tag? {
         guard let client = client(forPraticaAt: relativePath, root: root) else { return nil }
         return Tag("client-\(ImportNaming.kebabCase(client))")
+    }
+
+    /// ADR-0045 §D7 (PG-143 structure refactor): `PraticheController.praticaFileName`
+    /// spells the same literal on the app side, where it also names the sync engine's
+    /// own writes; this is the copy `Sources/Core`, and therefore both connectors, can
+    /// see.
+    static let praticaFileName = "pratica.md"
+
+    /// Moved verbatim from `PraticaCommandActions.praticaNotePath(of:)` (ADR-0045 §D7)
+    /// - the same arithmetic, now reachable from `Sources/Core` without a call back up
+    /// into `Sources/Features/Pratiche`.
+    static func praticaNotePath(of praticaPath: String) -> String {
+        "\(praticaPath)/\(praticaFileName)"
     }
 }

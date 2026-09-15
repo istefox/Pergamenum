@@ -27,21 +27,31 @@ final class RecordingsController {
         case unavailable(message: String)
     }
 
+    /// ADR-0045 §D3 (PG-143 structure refactor): `recordings`, `entries`, `health`,
+    /// `confirmationFailures`, `pollExpired`, `bannerMessage` and `rowErrors` below drop
+    /// `private(set)` for a plain `var` - `RecordingsController+Ledger.swift`'s
+    /// `reloadLedger`/`record`/`isolate` write every one of them from a separate file,
+    /// `RecordingsController+Interface.swift` adds a second writer for `bannerMessage`
+    /// (`updateDays`) and `rowErrors` (`loadProposal`, `saveDraft`), and
+    /// `RecordingsController+Import.swift` adds a third for `rowErrors` (`importAccepted`)
+    /// and `confirmationFailures` (`confirm`). `pollingRecordingIDs` and `pollSteps` keep
+    /// `private(set)`: every write to either stays in this file.
+    ///
     /// The current vault's recordings, wire state as last fetched by `refresh()`.
-    private(set) var recordings: [PlaudRecording] = []
+    var recordings: [PlaudRecording] = []
     /// The local ledger (`plaud.json`, ADR §D12), keyed by recording id - reloaded whenever
     /// `vault.session` changes identity (R-12), never merged across vaults.
-    private(set) var entries: [String: PlaudVaultStore.Entry] = [:]
-    private(set) var health: HealthStatus = .unknown
+    var entries: [String: PlaudVaultStore.Entry] = [:]
+    var health: HealthStatus = .unknown
     /// Recording ids whose two-phase import (ADR §D13) wrote the note but whose
     /// `confirmImported` call has not yet succeeded, with the readable message from the
     /// failed attempt (R-13). Cleared on a successful `retryConfirmation`.
-    private(set) var confirmationFailures: [String: String] = [:]
+    var confirmationFailures: [String: String] = [:]
     /// Recording ids a poll `Task` is currently sleeping/asking `job(id:)` for (ADR §D4).
     private(set) var pollingRecordingIDs: Set<String> = []
     /// Recording ids whose poll hit the 30-minute bound and stopped itself (ADR §D4); the
     /// row is expected to say so and offer «Aggiorna» instead of resuming automatically.
-    private(set) var pollExpired: Set<String> = []
+    var pollExpired: Set<String> = []
     /// The step the last polled job reported (`transcript`/`extract`/`cleanup`), by
     /// recording id - what a `processing` row shows beside its progress indicator. The
     /// service's own word, never a translation: it is a stage name, not a sentence, and a
@@ -49,20 +59,23 @@ final class RecordingsController {
     private(set) var pollSteps: [String: String] = [:]
     /// The last error surfaced at pane scope (health checks, list refresh) rather than on
     /// one row - never a raw `Error` interpolation (R-13).
-    private(set) var bannerMessage: String?
+    var bannerMessage: String?
     /// A per-recording readable error (R-13, R-07's general case): a failed `process()`
     /// call, or a job that ended with `error` non-nil, mapped through
     /// `PlaudError.readableLastError`/`.message` - never a raw `Error` interpolation.
     /// Distinct from `confirmationFailures`, which is specifically the two-phase import's
     /// own owed-confirmation state.
-    private(set) var rowErrors: [String: String] = [:]
+    var rowErrors: [String: String] = [:]
 
     /// Not private, following `DayController.vault`'s own reasoning: Impostazioni' Giorni
     /// field (Task 8) writes through this controller, not through `vault.updateSettings`
     /// (ADR §D12), and needs to reach it from outside this file.
     let vault: VaultController
 
-    private let service: any PlaudService
+    /// Not `private`: `RecordingsController+Interface.swift`'s `loadProposal` and
+    /// `RecordingsController+Import.swift`'s `confirm` are this controller's extensions in
+    /// separate files, and both call it directly (ADR-0045 §D3).
+    let service: any PlaudService
     /// Injected so a test can shorten both without a real 3-second/30-minute wait (ADR §D4
     /// names the production values; the brief asks tests not to sleep for real).
     private let pollInterval: Duration
@@ -81,13 +94,22 @@ final class RecordingsController {
     /// through `@testable import`, since `private` is file-scoped in Swift.
     let isIsolated: Bool
 
+    /// ADR-0045 §D3 (PG-143 structure refactor): `store` and `ledger` below widen from
+    /// `private` to a plain `var` - `RecordingsController+Ledger.swift` (`reloadLedger`,
+    /// `record`, `notePath`), `RecordingsController+Interface.swift` (`draft`, `saveDraft`,
+    /// `clearDraft`, `updateDays`, `ensureStore`) and `RecordingsController+Import.swift`
+    /// (`importAccepted`, `confirm`) all read and write them from their own file.
+    /// `storeIdentity` widens the same way, for `RecordingsController+Ledger.swift`'s
+    /// `reloadLedger` alone. `pollTasks`, right after, keeps its `private`: nothing outside
+    /// this file ever touches it.
+    ///
     /// The local files this vault's ledger and drafts live in (ADR §D12), `nil` until a
     /// vault is open. Rebuilt, never merged, when `vault.session` changes identity (R-12).
-    private var store: PlaudVaultStore?
+    var store: PlaudVaultStore?
     /// Which session `store` was built for, as its own state directory - the identity
     /// ADR-0017 gives a vault, rather than the root path a rename would change.
-    private var storeIdentity: String?
-    private var ledger: PlaudVaultStore.Ledger = .empty
+    var storeIdentity: String?
+    var ledger: PlaudVaultStore.Ledger = .empty
     private var pollTasks: [String: Task<Void, Never>] = [:]
 
     /// Shown verbatim by the pane's banner while `-disablePlaud YES` (or a test host) is in
@@ -280,131 +302,6 @@ final class RecordingsController {
         if expired { pollExpired.insert(recordingID) }
     }
 
-    // MARK: - Two-phase import (ADR §D13)
-
-    /// Phase 1: renders the note through `TranscriptNote.render` and writes it via
-    /// `vault.session?.write(_:to:)`, recording the new fingerprints and
-    /// `pendingConfirmation` in the ledger. Phase 2: `POST /proposals/{id}/imported` with
-    /// exactly `acceptedTaskIDs` (R-06 - the rejected ids are never sent). If phase 2
-    /// throws, the note stays written, `confirmationFailures[recordingID]` is set to the
-    /// readable message (R-13), and `pendingConfirmation` stays owed for `retryConfirmation`
-    /// to retry - the note is never re-written and no fingerprint is ever added twice.
-    func importAccepted(
-        recordingID: String,
-        proposal: PlaudProposal,
-        acceptedTaskIDs: Set<String>,
-        speakerRenames: [String: String]
-    ) async {
-        guard !isIsolated else { return isolate() }
-        reloadLedger()
-        guard let session = vault.session, store != nil else {
-            rowErrors[recordingID] = Self.noVaultMessage
-            return
-        }
-        // An unparseable `recorded_at` used to fall through silently to today's date, both
-        // in the note's frontmatter and in its file name (`notePath`/`TranscriptNote.render`
-        // each default to "now" when parsing fails) - filing a malformed recording under the
-        // wrong date instead of surfacing it (RTF review finding, 2026-09-06). Rejected here,
-        // before either fallback is ever reached.
-        guard PlaudTimestamp.parse(proposal.recording.recordedAt) != nil else {
-            rowErrors[recordingID] = "Data di registrazione non valida: \"\(proposal.recording.recordedAt)\""
-            return
-        }
-
-        var entry = ledger.recordings[recordingID] ?? PlaudVaultStore.Entry(status: "new")
-        // The note is the source of truth (principle 1): what it already holds suppresses a
-        // task just as the ledger does, and it is read here rather than remembered.
-        let existing = entry.notePath.flatMap { try? session.read($0) }
-        let existingText = existing?.text
-        let text = TranscriptNote.render(
-            proposal: proposal,
-            acceptedTaskIDs: acceptedTaskIDs,
-            speakerRenames: speakerRenames,
-            ledgerFingerprints: entry.quoteFingerprints,
-            existingNoteText: existingText
-        )
-        let path = entry.notePath ?? notePath(for: proposal, in: session)
-
-        // Phase 1: the file first. A failure here means nothing was imported at all, so
-        // nothing is recorded and no confirmation is owed.
-        //
-        // `expecting:` (ADR-0043 §D8, Task 9) - nil for a brand-new note (nothing to
-        // expect), the record's own hash for a re-import: `text` is a merge of the
-        // proposal with `existingText` (ADR-0032 §D9's dedup suppression set), so a note
-        // that moved on between the read above and this write would make the merge
-        // stale and re-import quotes it already suppressed. The two-phase shape below
-        // makes the refusal clean: phase 2's `POST` only runs after phase 1 succeeds, so
-        // a refusal here aborts before anything leaves the machine.
-        do {
-            try await session.write(text, to: path, expecting: existing?.record.contentHash)
-        } catch let refusal as VaultSession.WriteRefusal {
-            rowErrors[recordingID] = "Scrittura della nota non riuscita: \(refusal.description)"
-            return
-        } catch {
-            rowErrors[recordingID] = "Scrittura della nota non riuscita: \(path)"
-            return
-        }
-
-        entry.status = "imported"
-        entry.notePath = path
-        entry.quoteFingerprints = fingerprints(
-            ofAccepted: acceptedTaskIDs, in: proposal, added: entry.quoteFingerprints
-        )
-        entry.pendingConfirmation = acceptedTaskIDs.sorted()
-        entry.lastImportedAt = Date.now.ISO8601Format()
-        guard record(entry, for: recordingID) else {
-            // The ledger write failed: the pending-confirmation debt never reached disk, so
-            // telling the service "imported" now would leave nothing to retry it from
-            // (ADR §D13). `rowErrors[recordingID]` is already set by `record`.
-            return
-        }
-
-        // Phase 2, and only now: a confirmation the vault cannot honour would mark the
-        // recording imported service-side with nothing to show for it (ADR §D13).
-        await confirm(recordingID: recordingID, taskIDs: entry.pendingConfirmation)
-    }
-
-    /// Re-issues only phase 2 of `importAccepted` for the ids already recorded as
-    /// `pendingConfirmation` - no note write, no proposal re-fetch, one `confirmImported`
-    /// call.
-    func retryConfirmation(recordingID: String) async {
-        guard !isIsolated else { return isolate() }
-        guard let entry = entries[recordingID], !entry.pendingConfirmation.isEmpty else { return }
-        await confirm(recordingID: recordingID, taskIDs: entry.pendingConfirmation)
-    }
-
-    /// `POST /proposals/{id}/imported` with exactly the accepted ids and nothing else
-    /// (R-06). On success the debt is cleared; on failure the note stays written and the
-    /// debt stays owed, which is the whole point of recording it before asking (ADR §D13).
-    private func confirm(recordingID: String, taskIDs: [String]) async {
-        do {
-            try await service.confirmImported(recordingID: recordingID, taskIDs: taskIDs)
-            confirmationFailures[recordingID] = nil
-            guard var entry = ledger.recordings[recordingID] else { return }
-            entry.pendingConfirmation = []
-            record(entry, for: recordingID)
-        } catch {
-            confirmationFailures[recordingID] = readableMessage(error)
-        }
-    }
-
-    /// Every accepted task's quote fingerprint, added to the ones already recorded. The
-    /// ledger only ever grows (ADR §D9): that is what makes a task the person deleted from
-    /// the note stay deleted instead of returning on the next forced re-run.
-    private func fingerprints(
-        ofAccepted acceptedTaskIDs: Set<String>, in proposal: PlaudProposal, added existing: [String]
-    ) -> [String] {
-        var known = existing
-        for theme in proposal.themes {
-            for task in theme.tasks where acceptedTaskIDs.contains(task.id) {
-                let fingerprint = PlaudQuote.fingerprint(task.quote)
-                guard !known.contains(fingerprint) else { continue }
-                known.append(fingerprint)
-            }
-        }
-        return known
-    }
-
     // MARK: - Delete (R-09)
 
     /// Confirmation is the caller's job. Calls `vault.trashNote(at:)`
@@ -431,194 +328,5 @@ final class RecordingsController {
         // suppression set is what keeps it (ADR §D9).
         entry.pendingConfirmation = []
         record(entry, for: recordingID)
-    }
-}
-
-// MARK: - Ledger, vault scoping (R-12) and readable failure (R-13)
-
-// In an extension purely for length: the class body above is already at SwiftLint's
-// `type_body_length` limit, and nothing here is part of what the pane calls.
-extension RecordingsController {
-    static let noVaultMessage = "Nessun vault aperto: apri un vault prima di importare una registrazione."
-
-    /// Rebuilds the store when `vault.session` has changed identity and rereads the ledger
-    /// from disk, which is where every other writer of these files leaves its state.
-    private func reloadLedger() {
-        guard let session = vault.session else {
-            store = nil
-            storeIdentity = nil
-            ledger = .empty
-            entries = [:]
-            recordings = []
-            stop()
-            return
-        }
-
-        let identity = session.state.directory.path(percentEncoded: false)
-        if identity != storeIdentity {
-            // A poll belongs to the vault that started it, and so does everything a row
-            // was saying about it (R-12).
-            stop()
-            storeIdentity = identity
-            store = PlaudVaultStore(directory: session.state.directory)
-            recordings = []
-            rowErrors = [:]
-            confirmationFailures = [:]
-            pollExpired = []
-        }
-        ledger = store?.loadLedger() ?? .empty
-        entries = ledger.recordings
-    }
-
-    /// Writes one entry through, disk first: `pendingConfirmation` that never reached the
-    /// file is a debt nothing would retry after a relaunch (ADR §D13). Returns whether the
-    /// write actually reached disk, so a caller about to tell the service "imported" can
-    /// refuse to when it did not (`importAccepted`).
-    @discardableResult
-    private func record(_ entry: PlaudVaultStore.Entry, for recordingID: String) -> Bool {
-        ledger.recordings[recordingID] = entry
-        entries = ledger.recordings
-        do {
-            try store?.saveLedger(ledger)
-            return true
-        } catch {
-            rowErrors[recordingID] = "Stato locale non salvato: la conferma non verrà ritentata dopo la chiusura."
-            return false
-        }
-    }
-
-    /// Where a recording's note goes the first time it is imported: `<notes folder>/` at the
-    /// vault root, named by `ImportNaming.recordingNoteTitle` (ADR §D5) and made unique the
-    /// way every other import already is.
-    private func notePath(for proposal: PlaudProposal, in session: VaultSession) -> String {
-        let recordedAt = PlaudTimestamp.parse(proposal.recording.recordedAt) ?? Date.now
-        let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: proposal.recording.name)
-        let folder = ledger.notesFolder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        let directory = folder.isEmpty
-            ? session.root
-            : session.root.appending(path: folder, directoryHint: .isDirectory)
-        let fileName = ImportNaming.uniqueFileName(NoteName.fileName(for: title), in: directory)
-        return folder.isEmpty ? fileName : "\(folder)/\(fileName)"
-    }
-
-    /// The one state an isolated launch ever reports, set on every entry point rather than
-    /// once: a method that returned silently would leave a banner from before the flag.
-    private func isolate() {
-        health = .unavailable(message: Self.isolatedMessage)
-        bannerMessage = Self.isolatedMessage
-    }
-
-    /// R-13: a readable sentence for anything thrown, never `"\(error)"`. `PlaudError` owns
-    /// its own wording; anything else is reported through the transport case, which is what
-    /// a failure that never reached the mapping table actually was.
-    private func readableMessage(_ error: any Error) -> String {
-        if let plaud = error as? PlaudError { return plaud.message }
-        return PlaudError.transportFailure(error.localizedDescription).message
-    }
-}
-
-// MARK: - What the interface asks for (Task 7's sheet, Task 8's Impostazioni field)
-
-// ADR-0032 (Plaud recording import into Pergamenum), plan
-// docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Tasks 7-8 -
-// R-04, R-10, R-11; ADR §D9, §D12.
-//
-// Four reads and two writes the pane cannot perform for itself, because they need the
-// service, the session or the store - all three private to this file. Kept here rather than
-// spread into the views for the reason the whole controller exists: a view that fetched its
-// own proposal, or resolved its own state directory, would be a second place the isolation
-// flag (`isIsolated`) and the vault scoping (R-12) have to be remembered.
-extension RecordingsController {
-    /// `GET /proposals/{id}` for the review sheet (R-04). `nil` on any failure, with the
-    /// readable reason left on the row (R-13) rather than thrown at a view that has no way
-    /// to say it.
-    func loadProposal(recordingID: String) async -> PlaudProposal? {
-        guard !isIsolated else {
-            isolate()
-            return nil
-        }
-        do {
-            let proposal = try await service.proposal(recordingID: recordingID)
-            rowErrors[recordingID] = nil
-            return proposal
-        } catch {
-            rowErrors[recordingID] = readableMessage(error)
-            return nil
-        }
-    }
-
-    /// ADR §D9's suppression set for one recording: the union of the ledger's fingerprints
-    /// and the ones the note itself already carries. Read from the file every time rather
-    /// than cached - the note is the source of truth and the person may have edited it since.
-    func suppressedFingerprints(recordingID: String) -> Set<String> {
-        ensureStore()
-        guard let entry = ledger.recordings[recordingID] else { return [] }
-        var existingText: String?
-        if let path = entry.notePath, let session = vault.session {
-            existingText = try? session.read(path).text
-        }
-        return TranscriptNote.suppressionSet(
-            existingNoteText: existingText, ledgerFingerprints: entry.quoteFingerprints
-        )
-    }
-
-    /// The pending review for a recording, or `nil` when there is none or when the one on
-    /// disk was taken against a different `generated_at` (R-10's boundary, ADR §D12).
-    func draft(recordingID: String, generatedAt: String) -> PlaudVaultStore.Draft? {
-        ensureStore()
-        return store?.draft(for: recordingID, currentGeneratedAt: generatedAt)
-    }
-
-    /// R-10: called on every checkbox and every rename field as it changes, so a sheet
-    /// dismissed by accident - or an app quit mid-review - comes back to the same decisions.
-    func saveDraft(_ draft: PlaudVaultStore.Draft, for recordingID: String) {
-        ensureStore()
-        guard let store else { return }
-        var drafts = store.loadDrafts()
-        drafts[recordingID] = draft
-        do {
-            try store.saveDrafts(drafts)
-        } catch {
-            rowErrors[recordingID] = "Bozza di revisione non salvata: le scelte non verranno "
-                + "ripristinate dopo la chiusura."
-        }
-    }
-
-    /// Dropped once its decisions have been acted on: keeping it would restore them over a
-    /// later, different proposal for the same recording.
-    func clearDraft(for recordingID: String) {
-        ensureStore()
-        guard let store else { return }
-        var drafts = store.loadDrafts()
-        guard drafts.removeValue(forKey: recordingID) != nil else { return }
-        try? store.saveDrafts(drafts)
-    }
-
-    /// R-11's «Giorni registrazioni Plaud», read straight off the ledger.
-    ///
-    /// A vault-scoped operational setting living in `plaud.json` and **not** in
-    /// `VaultSettings` (ADR §D12): Impostazioni writes it through `updateDays(_:)` below, so
-    /// looking for a `VaultSettings` key for it is looking for something that does not exist.
-    var days: Int { ledger.days }
-
-    /// Clamped to what the service accepts, on the way in: outside 1…3650 it answers 400
-    /// `invalid_days`, and a setting that can only fail is not a setting.
-    func updateDays(_ requested: Int) {
-        ensureStore()
-        guard store != nil else { return }
-        ledger.days = min(max(requested, PlaudVaultStore.minimumDays), PlaudVaultStore.maximumDays)
-        do {
-            try store?.saveLedger(ledger)
-        } catch {
-            bannerMessage = "Intervallo di giorni non salvato: la cartella di stato del vault non è scrivibile."
-        }
-    }
-
-    /// Reads the ledger once for a caller that arrives before the pane has (Impostazioni is
-    /// its own scene and may be opened first). Not on every call: `saveDraft` runs on every
-    /// keystroke of a rename field, and a disk read per keystroke is a cost with no answer.
-    private func ensureStore() {
-        guard store == nil else { return }
-        reloadLedger()
     }
 }
