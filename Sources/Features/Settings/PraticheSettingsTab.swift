@@ -180,16 +180,17 @@ struct PraticheSettingsTab: View {
         vault.updateSettings { $0.pratiche.ownAddresses = addresses }
     }
 
-    /// Off the main actor's own state on purpose - `MailSeedPicker.reader(mailRoot:
+    /// Off the main actor's own state on purpose - `MailStorePreparation.reader(mailRoot:
     /// stateDirectory:)`'s own shape, kept `nonisolated` so a slow copy of the
-    /// Envelope Index never blocks Settings from redrawing.
+    /// Envelope Index never blocks Settings from redrawing. Both failure cases (a store
+    /// mid-write, and a store that failed to open) fold into the same empty result here,
+    /// same as before this routed through the shared helper - a pre-fill is a courtesy,
+    /// not something worth surfacing a banner for.
     private nonisolated static func sentSenderAddresses(mailRoot: URL, stateDirectory: URL) -> [String] {
-        switch MailStoreCopy.publish(from: mailRoot, into: stateDirectory) {
-        case .published(let url), .unchanged(let url):
-            let indexURL = url.appending(path: "Envelope Index", directoryHint: .notDirectory)
-            guard let reader = try? MailStoreReader(storeURL: indexURL) else { return [] }
+        switch MailStorePreparation.reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
+        case .ready(let reader, _):
             return reader.sentSenderAddresses()
-        case .mailIsWriting, .storeMissing:
+        case .failed:
             return []
         }
     }

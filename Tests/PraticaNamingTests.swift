@@ -49,6 +49,27 @@ import Testing
         #expect(slug.count <= 40)
     }
 
+    @Test func aSingleWordSubjectLongerThanTheLimitLeavesNoSlugAtAll() {
+        // The same edge `ImportNaming.recordingNoteTitle` pins (`Tests/ConventionsTests.swift`):
+        // a subject that slugs to one word already over the 40-character limit keeps no
+        // slug at all, rather than a truncated fragment of that one word.
+        let name = PraticaNaming.messageFileName(
+            date: CalendarDate(iso: "2026-06-10")!,
+            time: TaskTime(hour: 14, minute: 6),
+            counterpart: "Rossi",
+            subject: String(repeating: "a", count: 80)
+        )
+        #expect(name == "20260610_1406_Rossi.md")
+    }
+
+    @Test func truncatedAtWordBoundaryReturnsEmptyForANonPositiveBudget() {
+        // ADR-0045 §D5: the shared truncator's own guard, pinned directly here too -
+        // `messageFileName`'s own `slugLimit` is a fixed positive constant and can never
+        // reach this edge on its own.
+        #expect(ImportNaming.truncatedAtWordBoundary("qualcosa", toFit: 0).isEmpty)
+        #expect(ImportNaming.truncatedAtWordBoundary("qualcosa", toFit: -5).isEmpty)
+    }
+
     @Test func collidesToANumericSuffixOnlyWhenTheMessageIDDiffers() {
         let date = CalendarDate(iso: "2026-06-10")!
         let time = TaskTime(hour: 14, minute: 6)

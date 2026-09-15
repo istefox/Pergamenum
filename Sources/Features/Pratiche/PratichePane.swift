@@ -12,10 +12,14 @@ import SwiftUI
 // Column widths from DESIGN.md "Binding decisions": list 260, timeline minimum 360,
 // inspector 280, all inside UX-BLUEPRINT's 190-320 ranges.
 struct PratichePane: View {
-    @Environment(\.theme) private var theme
-    @Environment(PraticheController.self) private var pratiche
-    @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
+    /// Not `private`, on this property and `pratiche`, `vault` and `navigation` below:
+    /// `PratichePane+Sheets.swift`'s sheets read `theme` and `pratiche`,
+    /// `PratichePane+Inspector.swift`'s members read one or more of all four - both are
+    /// extensions of this same struct in separate files.
+    @Environment(\.theme) var theme
+    @Environment(PraticheController.self) var pratiche
+    @Environment(VaultController.self) var vault
+    @Environment(Navigation.self) var navigation
 
     /// The window's own, handed to `PraticaCommandActions` so «Escludi» and «Sposta
     /// in…» register on the stack `NSTextView` already uses (ADR-0026 §D5) rather than
@@ -25,10 +29,15 @@ struct PratichePane: View {
     @FocusState private var isFilterFocused: Bool
     /// `pratica.md` as the inspector shows it, re-read when the chosen pratica changes
     /// rather than on every draw.
-    @State private var inspectorBody = ""
+    ///
+    /// Not `private`, on this property and `typedName` below: `PratichePane+
+    /// Inspector.swift`'s `inspector` and `loadInspector` read/write this one, and
+    /// `PratichePane+Sheets.swift`'s `renameSheet` reads/writes `typedName` - both are
+    /// extensions of this same struct in separate files.
+    @State var inspectorBody = ""
     /// «Rinomina…»'s typed name, held by the pane and not by the row: the row is culled
     /// by its `List` the moment it scrolls out of view, taking a half-typed name with it.
-    @State private var typedName = ""
+    @State var typedName = ""
     /// R-22's tracer bullet, as it last answered - shown, never acted on.
     @State private var dropReport: MailDropReport?
 
@@ -112,7 +121,11 @@ struct PratichePane: View {
     /// The one `PraticaCommandActions` every surface of this pane shares, so the list
     /// column's context menu, the timeline's row menus and the top bar's status pill
     /// all run the same bodies (ADR-0023 §D1).
-    private var actions: PraticaCommandActions {
+    ///
+    /// Not `private`: `PratichePane+Sheets.swift`'s `renameSheet` and
+    /// `regenerationReadySheet` are extensions of this same struct in a separate file,
+    /// and read it.
+    var actions: PraticaCommandActions {
         PraticaCommandActions(
             pratiche: pratiche, vault: vault, navigation: navigation, undoManager: undoManager
         )
@@ -122,124 +135,10 @@ struct PratichePane: View {
         PraticaEntryComposer(pratiche: pratiche, vault: vault, navigation: navigation)
     }
 
-    private func newPratica() {
+    /// Not `private`: `PratichePane+Inspector.swift`'s `emptyState` is an extension of
+    /// this same struct in a separate file, and calls it.
+    func newPratica() {
         navigation.isShowingNuovaPratica = true
-    }
-
-    private var deletionAlert: Binding<Bool> {
-        Binding(
-            get: { pratiche.deletionRequest != nil },
-            set: { if !$0 { pratiche.deletionRequest = nil } }
-        )
-    }
-
-    private var renameRequest: Binding<PraticaListItem?> {
-        Binding(
-            get: { pratiche.renameRequest },
-            set: { pratiche.renameRequest = $0 }
-        )
-    }
-
-    private var regenerationBinding: Binding<PraticheController.RegenerationState?> {
-        Binding(
-            get: { pratiche.regeneration },
-            set: { pratiche.regeneration = $0 }
-        )
-    }
-
-    private func renameSheet(_ pratica: PraticaListItem) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rinomina la pratica").themedText(.title)
-            TextField("Nome", text: $typedName)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { actions.confirmRename(of: pratica, to: typedName) }
-                .accessibilityIdentifier("pratiche-rename-field")
-            HStack {
-                Spacer()
-                Button("Annulla") { pratiche.renameRequest = nil }
-                    .keyboardShortcut(.cancelAction)
-                Button("Rinomina") { actions.confirmRename(of: pratica, to: typedName) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(typedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("pratiche-rename-confirm")
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 420)
-        .onAppear { typedName = pratica.title }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-rename")
-    }
-
-    /// «Rigenera…» (§D6's second exception, §D21): shows the diff *before* anything is
-    /// trashed or rewritten. `pratiche.regeneration` drives every state this sheet can
-    /// be in - acquiring the replacement (`.preparing`), showing it (`.ready`, with a
-    /// diff or, when nothing changed, a plain notice) - so re-reading it here rather
-    /// than switching on a captured parameter is what lets the sheet update itself
-    /// while it is already on screen (§D21.4).
-    @ViewBuilder
-    private func regenerationSheet() -> some View {
-        switch pratiche.regeneration {
-        case .preparing(_, let subject):
-            regenerationPreparingSheet(subject: subject)
-        case .ready(let plan):
-            regenerationReadySheet(plan)
-        case nil:
-            EmptyView()
-        }
-    }
-
-    private func regenerationPreparingSheet(subject: String) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rigenerare «\(subject)»?").themedText(.title)
-            HStack(spacing: theme.spacing(.s)) {
-                ProgressView().controlSize(.small)
-                Text("Sto leggendo il messaggio da Mail…").themedText(.caption, color: .textSecondary)
-            }
-            HStack {
-                Spacer()
-                Button("Annulla") { pratiche.regeneration = nil }
-                    .keyboardShortcut(.cancelAction)
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 440)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-regenerate")
-    }
-
-    private func regenerationReadySheet(_ plan: PraticaSyncEngine.RegenerationPlan) -> some View {
-        let fileName = (plan.notePath as NSString).lastPathComponent
-        return VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text("Rigenerare «\(fileName)»?").themedText(.title)
-            if let diff = plan.diff {
-                Text("Le modifiche fatte a mano in «\(plan.notePath)» vanno perse.")
-                    .themedText(.caption, color: .textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                DiffView(path: plan.notePath, diff: diff)
-            } else {
-                Text("Il file è già identico al messaggio in Mail: non c'è nulla da rigenerare.")
-                    .themedText(.caption, color: .textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                Spacer()
-                if plan.diff != nil {
-                    Button("Annulla") { pratiche.regeneration = nil }
-                        .keyboardShortcut(.cancelAction)
-                    Button("Rigenera") { actions.confirmRegeneration(plan) }
-                        .keyboardShortcut(.defaultAction)
-                        .accessibilityIdentifier("pratiche-regenerate-confirm")
-                } else {
-                    Button("Chiudi") { pratiche.regeneration = nil }
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 440)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-regenerate")
     }
 
     @ViewBuilder
@@ -277,106 +176,5 @@ struct PratichePane: View {
                 .mailDropReceiver { dropReport = $0 }
             }
         }
-    }
-
-    /// Screen 1g: text plus the two buttons, no illustration. Both are a second
-    /// rendering of a command declared once - `ShortcutCommand.newPratica` and
-    /// `.addToPraticaFromMail`, reached here through the same `Navigation` flags the
-    /// menu bar and the two keys set (ADR-0023 §D1).
-    private var emptyState: some View {
-        VStack(spacing: theme.spacing(.m)) {
-            Text("Scegli una pratica o creane una nuova").themedText(.title)
-            HStack(spacing: theme.spacing(.s)) {
-                Button("Nuova pratica…", action: newPratica)
-                    .disabled(vault.root == nil)
-                    .accessibilityIdentifier("pratiche-empty-new")
-                Button("Aggiungi da Mail…") { navigation.isShowingAddToPratica = true }
-                    .disabled(vault.root == nil)
-                    .accessibilityIdentifier("pratiche-empty-add-from-mail")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-empty")
-    }
-
-    /// A thin bar with «12 di 80 · Annulla» (DESIGN.md "Binding decisions").
-    private func syncProgress(_ progress: PraticaSyncEngine.Progress) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ProgressView(value: Double(progress.completed), total: Double(max(progress.total, 1)))
-                .progressViewStyle(.linear)
-            HStack(spacing: theme.spacing(.s)) {
-                Text("\(progress.completed) di \(progress.total)")
-                    .themedText(.caption, color: .textSecondary)
-                Button("Annulla") { pratiche.cancelSync() }
-                    .buttonStyle(.plain)
-                    .themedText(.caption, color: .accentPrimary)
-                    .disabled(pratiche.requestSyncCancellation == nil)
-                    .accessibilityIdentifier("pratiche-sync-cancel")
-                Spacer()
-            }
-        }
-        .padding(.horizontal, theme.spacing(.m))
-        .padding(.bottom, theme.spacing(.xs))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-sync-progress")
-    }
-
-    /// `pratica.md` as it is on disk, read-only here. **The inspector is the one place
-    /// that file is edited** (ADR §D13), and this column opens it in the real editor
-    /// rather than growing a second text view bound to the same bytes - the shape of
-    /// every text-loss defect this repo has documented.
-    private var inspector: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-                HStack {
-                    Text("Nota della pratica").themedText(.heading)
-                    Spacer()
-                    Button("Apri nell'editor", action: openPraticaNote)
-                        .buttonStyle(.plain)
-                        .themedText(.caption, color: .accentPrimary)
-                        .disabled(pratiche.selection == nil)
-                        .accessibilityIdentifier("pratiche-inspector-open")
-                }
-                if inspectorBody.isEmpty {
-                    Text("Nessuna pratica scelta.").themedText(.caption, color: .textTertiary)
-                } else {
-                    MarkdownBlocksView(
-                        blocks: MarkdownBlockParser.blocks(in: inspectorBody),
-                        notePath: praticaNotePath ?? "",
-                        vaultRoot: vault.root,
-                        expandsTransclusions: false
-                    )
-                }
-            }
-            .padding(theme.spacing(.m))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(theme.color(.backgroundSecondary))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-inspector")
-    }
-
-    private var praticaNotePath: String? {
-        pratiche.selection.map { "\($0)/\(PraticheController.praticaFileName)" }
-    }
-
-    /// One small file, read when the selection changes and never per draw.
-    private func loadInspector() {
-        guard let path = praticaNotePath, let root = vault.root else {
-            inspectorBody = ""
-            return
-        }
-        let url = root.appending(path: path, directoryHint: .notDirectory)
-        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        inspectorBody = NoteDocument.parse(text).body
-    }
-
-    /// The editing path (ADR §D13): the note opens in the Note pane's editor, which is
-    /// the only editor this app has for a vault file.
-    private func openPraticaNote() {
-        guard let path = praticaNotePath else { return }
-        vault.openChosenNote(at: path)
-        navigation.pane = .notes
     }
 }

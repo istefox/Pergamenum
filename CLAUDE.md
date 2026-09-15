@@ -401,6 +401,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0041** — Vault layer consistency and security: the vault-boundary check becomes a resolver (`VaultBoundary.url(for:) throws -> URL`, not a skippable assert) used by all 11 call sites that touch the disk with a caller-supplied path; three drifted vault-walk copies and six drifted apply-plan copies become one shared helper in `Sources/Core`; `VaultController*` (18 files) moves out of `Sources/Vault` into `Sources/App`; the write path's disk work moves to a background actor with the hash computed before the hop and a per-path sequence number guarding update order, preserving ADR-0001's index-immediately-after-write invariant. Extends ADR-0001 and ADR-0007, amends neither → `docs/adr/0041-vault-layer-consistency-and-security-cha.md`
 - **ADR-0042** — An inline (`cid:`) image Mail hasn't downloaded yet stops being counted as a pending attachment: a per-image body placeholder plus a dedicated `pergamenum-mail-inline-pending` frontmatter key replace the old chip, resolved every sync with no retry cap, and dropped entirely when the body never references the image. Amends ADR-0040 §D9, widens ADR-0036 §D6 → `docs/adr/0042-pratiche-inline-image-placeholders.md`
 - **ADR-0043** — Follow-up to ADR-0041, found by an independent post-implementation review: the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload. The implementation chain measured the async cascade at 3-4x the ADR's own estimate (~210 call sites, 46 files, 25 test files) and named 13 call sites adopting the §D8 opt-in `expecting:` hash precondition. Extends ADR-0041 §D9/§D10/§D11, amends none → `docs/adr/0043-vault-write-ordering-concurrency-races.md`
+- **ADR-0045** — PG-143 pratiche structure refactor: SwiftLint's error-level `file_length`/`type_body_length` debt across eleven pratiche files resolved by pure `Type+Aspect.swift` extension splits (signatures untouched), `private` widening to `internal` only where a split requires it with one comment per widened member naming the file that reads it, and `PraticaSyncEngine+Messages.swift`'s `fileprivate` regeneration-plan cluster kept whole to preserve ADR-0036 §D21's opacity guarantee. Reopens nothing → `docs/adr/0045-pratiche-structure-refactor.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 
@@ -530,5 +531,23 @@ already lives in the Chain decision index above.
   body is `async`, so two `Task {}`-started transactions can interleave — is deliberately left open,
   tracked as `PG-152`, for its own future ADR rather than patched blind. Acceptance for this chain
   is five deterministic interleaving tests (ADR-0043 §D9), never a green suite alone.
+- **ADR-0045 (PG-143 pratiche structure refactor):** SwiftLint's error-level
+  `file_length`/`type_body_length` debt across eleven pratiche files becomes a pure move into
+  `Type+Aspect.swift` extensions of the same type, signatures untouched — the shape forty files
+  in this codebase already use. `private` widens to `internal` only where a split actually
+  requires it, one comment per widened member (or contiguous run) naming the file that reads it
+  (`NoteListPane.swift`'s convention, made general); a member whose callers move with it does not
+  widen. Two genuine second-responsibility extractions get new types instead of plain extensions:
+  `PraticaFileOperations` (the filesystem half of `PraticaCommandActions`) and
+  `MailStorePreparation` (the Envelope-Index publish-and-open block, now one home for all four
+  call sites). `PraticaSyncEngine+Messages.swift`'s `fileprivate` regeneration-plan cluster
+  (`PreparedMessage`, `PreparedAttachment`, `RegenerationPlan.prepared`) stays whole and stays
+  `fileprivate` even at ~560 lines, because splitting it would repeal ADR-0036 §D21's opacity
+  guarantee that the diff shown is the bytes written. `ImportNaming.truncatedAtWordBoundary(_:toFit:)`
+  becomes the one word-boundary truncator behind both `PraticaNaming.messageFileName` and
+  `ImportNaming.recordingNoteTitle`, pinned by both protected names' existing regression tests.
+  `Tests/PraticaSyncTests.swift` (the same two violations) is explicitly out of scope, filed
+  separately rather than left unmentioned. No SPEC decision, on-disk format, frontmatter key,
+  protected-interface signature or user-visible behaviour reopened.
 
 Detail: see each ADR under `docs/adr/`.

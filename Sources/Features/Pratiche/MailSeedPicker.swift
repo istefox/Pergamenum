@@ -44,10 +44,10 @@ enum MailSeedLoader {
             .filter { !$0.isEmpty }
         guard !addresses.isEmpty else { return .empty }
 
-        switch reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
+        switch MailStorePreparation.reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
         case .failed(let message):
             return MailSeedResult(proposals: [], problem: message)
-        case .ready(let reader):
+        case .ready(let reader, _):
             var conversations: [Int: [MailMessageRow]] = [:]
             for address in addresses {
                 for conversation in reader.conversations(counterpart: address, within: window) {
@@ -70,10 +70,10 @@ enum MailSeedLoader {
     nonisolated static func seed(
         messageID: String, mailRoot: URL, stateDirectory: URL, ownAddresses: Set<String> = []
     ) -> MailSeedResult {
-        switch reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
+        switch MailStorePreparation.reader(mailRoot: mailRoot, stateDirectory: stateDirectory) {
         case .failed(let message):
             return MailSeedResult(proposals: [], problem: message)
-        case .ready(let reader):
+        case .ready(let reader, _):
             guard case .found(let row) = reader.row(forMessageID: messageID),
                   let conversationID = row.conversationID
             else {
@@ -133,33 +133,6 @@ enum MailSeedLoader {
         // dictionary above has none, and the id order is Mail's own arrival order.
         .sorted { $0.dateRange.upperBound > $1.dateRange.upperBound }
         return (proposals, conversations)
-    }
-
-    /// Not a `Result`: the failure side is the Italian sentence the sheet shows, and a
-    /// `String` is not an `Error` - `PraticaLiveSync.Preparation` answers the same
-    /// question the same way, for the same reason.
-    private enum ReaderOutcome {
-        case ready(MailStoreReader)
-        case failed(String)
-    }
-
-    private nonisolated static func reader(
-        mailRoot: URL, stateDirectory: URL
-    ) -> ReaderOutcome {
-        let generation: URL
-        switch MailStoreCopy.publish(from: mailRoot, into: stateDirectory) {
-        case .published(let url), .unchanged(let url):
-            generation = url
-        case .mailIsWriting:
-            return .failed("Mail sta scrivendo nel suo archivio: riprova fra qualche secondo.")
-        case .storeMissing:
-            return .failed("Nessun archivio di Mail trovato in \(mailRoot.path(percentEncoded: false)).")
-        }
-        let indexURL = generation.appending(path: "Envelope Index", directoryHint: .notDirectory)
-        guard let reader = try? MailStoreReader(storeURL: indexURL) else {
-            return .failed("La copia dell'indice di Mail non si è aperta.")
-        }
-        return .ready(reader)
     }
 }
 
