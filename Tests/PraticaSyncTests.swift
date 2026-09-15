@@ -1119,6 +1119,12 @@ private func row(
 
     // MARK: R-15 - pending body, and the one file a later sync rewrites unasked
 
+    /// This test's second `sync(request)` reuses the first request unchanged -
+    /// `onDisk: []` on both calls - so the regeneration below comes from the MAIN
+    /// LOOP's `prepare()`, not from `regeneratePending`.
+    /// `aPendingBodyRegeneratesOnAnOrdinarySyncOnceTheMessageIsOnDisk` (Regression
+    /// section, below) is what exercises `regeneratePending` with the shape
+    /// `MembershipRule` actually produces once this message is on disk.
     @Test func aHeadersOnlyMessageIsWrittenPendingAndRegeneratedOnceTheBodyArrives() async throws {
         let fixture = try MailStoreFixture.build(
             mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
@@ -1267,6 +1273,14 @@ private func row(
         #expect(entry.conversationID == 112_409)
     }
 
+    /// Its own concern is narrow and deliberate: does the bridge triple get replaced
+    /// (not merely appended to) when a regeneration corrects a stale ROWID. Its second
+    /// `SyncRequest` puts the same Message-ID in both `candidates` and `onDisk` - the
+    /// one combination `MembershipRule.candidates` never actually produces - purely so
+    /// `regeneratePending` (now scanning `folder.messagesByID`, so `candidates` plays
+    /// no part in reaching it) still finds the message pending and re-decodes it. The
+    /// general "does the automatic retry even run" question belongs to the Regression
+    /// tests above, not here.
     @Test func aRegenerationOfAPendingMessageRecordsItsBridgeTripleToo() async throws {
         let fixture = try MailStoreFixture.build(
             mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
@@ -1301,13 +1315,19 @@ private func row(
             )],
             in: fixture.root
         )
-        var regenerated = row(rowID: 99, messageID: "<pending123@rossi-spa.it>")
-        regenerated.conversationID = 112_409
+        // `regeneratePending` now resolves the row itself via `reader.row(forMessageID:)`
+        // rather than through `candidates` - and `PraticaSyncEngine.openedReader()`
+        // caches its `MailStoreReader` for the actor's lifetime, so the rebuild above
+        // (same index path) is invisible to `engine`'s already-open reader. A fresh
+        // engine on the same (now rebuilt) path is what
+        // `aMessageWhoseRowDisappearsKeepsItsFilesLosesItsLinkAndIsNeverDeleted` already
+        // does for the same reason.
+        let secondEngine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let secondRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
-            candidates: [regenerated], onDisk: ["<pending123@rossi-spa.it>"], settings: .default
+            candidates: [], onDisk: ["<pending123@rossi-spa.it>"], settings: .default
         )
-        let secondOutcome = try await engine.sync(secondRequest)
+        let secondOutcome = try await secondEngine.sync(secondRequest)
 
         #expect(secondOutcome.regeneratedPendingFiles.count == 1)
         #expect(secondOutcome.bridge.count == 1, "the regeneration's own run records exactly its own triple")
@@ -1434,6 +1454,12 @@ private func row(
         #expect(secondOutcome.regeneratedPendingFiles.isEmpty, "a patch is never counted as a full regeneration")
     }
 
+    /// This test's second `sync(request)` reuses the *first* request unchanged -
+    /// `onDisk: []` on both calls - so the message never leaves `candidates` and the
+    /// resolution below comes from the MAIN LOOP's `prepare()` re-processing it, not
+    /// from `regeneratePending`. `aResolvedAttachmentResolvesOnAnOrdinarySyncOnceTheMessageIsOnDisk`
+    /// below is what exercises `regeneratePending` with the shape `MembershipRule`
+    /// actually produces in production (`candidates: []`, `onDisk: [messageID]`).
     @Test func aResolvedAttachmentPatchesTheAttachmentsLineAndPreservesAHandEditedBody() async throws {
         let firstMessage = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
             messageID: "resolve@rossi-spa.it", filename: "offerta.pdf"
@@ -1494,6 +1520,184 @@ private func row(
         #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_offerta.pdf"])
         #expect(secondOutcome.resolvedAttachmentFiles.count == 1, "one note amended in one line")
         #expect(secondOutcome.regeneratedPendingFiles.isEmpty, "a patch is never a full regeneration")
+    }
+
+    // MARK: Regression - `regeneratePending` must run on the request shape production
+    // actually sends it, not the shape a hand-built test can get away with.
+    //
+    // `PraticheController.runExclusive` builds `candidates` from
+    // `MembershipRule.candidates(dossier:store:onDisk:)`, which subtracts `onDisk` from
+    // its result by design (rule 5, "minus what is already on disk"). So the SECOND
+    // sync below never repeats the message in `candidates` - exactly what production
+    // sends, and exactly the shape the bug above made `regeneratePending` silently do
+    // nothing with.
+    //
+    // Each second sync below opens a FRESH engine on the rebuilt index, never the
+    // first sync's own `engine` - `regeneratePending` now calls `reader.row(forMessageID:)`,
+    // and `PraticaSyncEngine.openedReader()` caches its `MailStoreReader` for the
+    // actor's whole lifetime, so a rebuild "in place" at the same path is invisible to
+    // an already-open engine (the same reason `aMessageWhoseRowDisappearsKeepsItsFilesLosesItsLinkAndIsNeverDeleted`
+    // above opens a second engine). Production never hits this: `MailStoreCopy.publish`
+    // gives every sync its own fresh generation directory, never an in-place rewrite.
+
+    @Test func aResolvedAttachmentResolvesOnAnOrdinarySyncOnceTheMessageIsOnDisk() async throws {
+        let firstMessage = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "resolve2@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: firstMessage
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let firstRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<resolve2@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        let firstOutcome = try await engine.sync(firstRequest)
+        #expect(firstOutcome.importedMessageIDs == ["<resolve2@rossi-spa.it>"])
+
+        let secondMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "resolve2@rossi-spa.it", attachmentFilename: "offerta.pdf",
+            attachmentBytes: EmailFixtureCorpus.pdfBytes()
+        )
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Con allegato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: secondMessage
+            )],
+            in: fixture.root
+        )
+
+        // The production shape: the message is no longer in `candidates` (it is
+        // already on disk), but it is in `onDisk` - the same pair
+        // `MembershipRule.candidates` and `PraticheController.runExclusive` actually
+        // hand the engine on every sync after the first.
+        let secondEngine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let secondRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [], onDisk: ["<resolve2@rossi-spa.it>"], settings: .default
+        )
+        let secondOutcome = try await secondEngine.sync(secondRequest)
+
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.linkedAttachmentNames == ["20260610_offerta.pdf"])
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty, "the pending entry must be gone once bytes resolve")
+        #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_offerta.pdf"])
+        #expect(secondOutcome.resolvedAttachmentFiles.count == 1, "one note amended in one line")
+    }
+
+    @Test func aPendingBodyRegeneratesOnAnOrdinarySyncOnceTheMessageIsOnDisk() async throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta (corpo in arrivo)", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.headersOnlyMessageRFC822
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let firstRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [row(rowID: 1, messageID: "<pendingbody2@rossi-spa.it>")],
+            onDisk: [], settings: .default
+        )
+        let firstOutcome = try await engine.sync(firstRequest)
+        #expect(firstOutcome.writtenFiles.count == 1, "the pending message is still written once, as a placeholder")
+
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+                    .replacingOccurrences(of: "abc123@rossi-spa.it", with: "pendingbody2@rossi-spa.it")
+            )],
+            in: fixture.root
+        )
+
+        let secondEngine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let secondRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [], onDisk: ["<pendingbody2@rossi-spa.it>"], settings: .default
+        )
+        let secondOutcome = try await secondEngine.sync(secondRequest)
+        #expect(secondOutcome.regeneratedPendingFiles.count == 1, "the pending file is rewritten unasked")
+
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.body == .complete, "the body arrived; the file is no longer pending")
+    }
+
+    @Test func aNotResolvableRowIDFallsBackToTheLedgerEntry() async throws {
+        let firstMessage = EmailFixtureCorpus.truncatedAttachmentMessageRFC822(
+            messageID: "ledgerfallback@rossi-spa.it", filename: "offerta.pdf"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Allegato troncato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: firstMessage
+            )]
+        )
+        let vaultRoot = try Self.makeVaultRoot()
+        let engine = Self.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let firstRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [
+                row(rowID: 1, messageID: "<ledgerfallback@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(firstRequest)
+
+        // Mail renumbers the ROWID on reindex - the index can no longer resolve this
+        // Message-ID to the row it actually needs, so `regeneratePending` must fall
+        // back to the ledger's own bridge triple, exactly as `regenerationPreview`
+        // already does for the manual «Rigenera» path.
+        let secondMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(
+            messageID: "ledgerfallback@rossi-spa.it", attachmentFilename: "offerta.pdf",
+            attachmentBytes: EmailFixtureCorpus.pdfBytes()
+        )
+        let secondFixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 99, subject: "Con allegato", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: secondMessage
+            )]
+        )
+        // Forces `reader.row(forMessageID:)` to answer `.notResolvableFromIndex`, so
+        // this test actually exercises the ledger `rowID` fallback rather than the
+        // index's own header lookup (which would otherwise just resolve rowID 99
+        // directly, the same as every other resolution test above).
+        try MailStoreFixture.dropMessageGlobalDataTable(indexURL: secondFixture.indexURL)
+        let secondEngine = Self.makeEngine(mailStoreURL: secondFixture.indexURL, vaultRoot: vaultRoot)
+        let secondRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Self.praticaFolder, dossier: sampleDossier(),
+            candidates: [], onDisk: ["<ledgerfallback@rossi-spa.it>"], settings: .default,
+            ledgerEntries: [
+                PraticaLedger.Entry(messageID: "<ledgerfallback@rossi-spa.it>", rowID: 99, conversationID: 112_409),
+            ]
+        )
+        let secondOutcome = try await secondEngine.sync(secondRequest)
+
+        let doc = try Self.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.linkedAttachmentNames == ["20260610_offerta.pdf"])
+        #expect(Self.allegatiFiles(under: vaultRoot) == ["20260610_offerta.pdf"])
+        #expect(secondOutcome.resolvedAttachmentFiles.count == 1)
     }
 
     @Test func onlyTheResolvingAttachmentMovesWhileASecondStaysPendingAndAThirdLinkedOneIsUntouched() async throws {

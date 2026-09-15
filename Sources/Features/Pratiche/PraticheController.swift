@@ -1313,7 +1313,8 @@ final class PraticaLiveSync {
                 dossier: effectiveDossier,
                 candidates: candidates.messages,
                 onDisk: onDisk,
-                settings: settings
+                settings: settings,
+                ledgerEntries: state.entries
             ))
             // The vault open when this run started may no longer be the one open now
             // (a person can switch vaults mid-sync): the files above were written
