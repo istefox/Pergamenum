@@ -25,7 +25,7 @@ enum DossierWriter {
     static func update(
         at praticaPath: String, session: VaultSession, _ change: (inout Dossier) -> Void
     ) async -> String? {
-        let notePath = PraticaCommandActions.praticaNotePath(of: praticaPath)
+        let notePath = PraticaNaming.praticaNotePath(of: praticaPath)
         do {
             let (record, text) = try session.read(notePath)
             var document = NoteDocument.parse(text)

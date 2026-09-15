@@ -283,43 +283,8 @@ struct MessageDocument: Equatable, Sendable {
         guard let raw = scalar(key, lines), raw.hasPrefix("["), raw.hasSuffix("]") else { return [] }
         let inner = raw.dropFirst().dropLast().trimmingCharacters(in: .whitespaces)
         guard !inner.isEmpty else { return [] }
-        return splitTopLevel(String(inner))
+        return splitOutsideQuotes(String(inner), on: ",")
             .map { unquoted($0.trimmingCharacters(in: .whitespaces)) }
-    }
-
-    /// Splits on commas outside double-quoted spans, so a quoted value containing its own
-    /// comma (e.g. `"Rossi, Mario"`) survives as one element. Mirrors `quoted(_:)`'s escaping:
-    /// a backslash always escapes the following character inside quotes.
-    private static func splitTopLevel(_ value: String) -> [String] {
-        var fields: [String] = []
-        var current = ""
-        var inQuotes = false
-        var escaped = false
-        for char in value {
-            if escaped {
-                current.append(char)
-                escaped = false
-                continue
-            }
-            if char == "\\", inQuotes {
-                current.append(char)
-                escaped = true
-                continue
-            }
-            if char == "\"" {
-                inQuotes.toggle()
-                current.append(char)
-                continue
-            }
-            if char == "," && !inQuotes {
-                fields.append(current)
-                current = ""
-                continue
-            }
-            current.append(char)
-        }
-        fields.append(current)
-        return fields
     }
 
     /// Reads the `pergamenum-mail-store-references` block back: the key line, then one
