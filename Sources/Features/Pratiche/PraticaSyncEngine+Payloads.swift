@@ -25,6 +25,11 @@ extension PraticaSyncEngine {
         /// Defaulted, and declared last, so every existing `SyncRequest(...)` call
         /// site (production and test) keeps compiling unchanged.
         var regenerating: String? = nil
+        /// The ledger's §D3 bridge triples for this pratica - `regeneratePending`'s
+        /// `rowID` fallback for a message the index cannot resolve by `Message-ID`
+        /// alone, the same fallback `regenerationPreview` already has via its own
+        /// `rowID` parameter. Defaulted for the same reason as `regenerating` above.
+        var ledgerEntries: [PraticaLedger.Entry] = []
     }
 
     /// What one `sync(_:)` call did, for the caller that records it in the ledger and

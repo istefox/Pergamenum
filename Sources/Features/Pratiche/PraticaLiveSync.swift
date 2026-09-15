@@ -287,7 +287,7 @@ final class PraticaLiveSync {
 
         guard await runEngine(
             dossier: effectiveDossier, candidates: evaluated.candidates.messages, onDisk: onDisk,
-            indexURL: prepared.indexURL, context: context
+            ledgerEntries: state.entries, indexURL: prepared.indexURL, context: context
         ) else { return }
 
         refreshTray(effectiveDossier: effectiveDossier, prepared: prepared, window: window, claimed: claimed, context: context)
@@ -378,7 +378,8 @@ final class PraticaLiveSync {
     /// longer the one live now, which means every step after this one must stop - the
     /// same check `runExclusive` used to make right after this block, inline.
     private func runEngine(
-        dossier: Dossier, candidates: [MailMessageRow], onDisk: Set<String>, indexURL: URL, context: RunContext
+        dossier: Dossier, candidates: [MailMessageRow], onDisk: Set<String>,
+        ledgerEntries: [PraticaLedger.Entry], indexURL: URL, context: RunContext
     ) async -> Bool {
         let session = context.session
         let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: context.root) { text, path, expecting in
@@ -400,7 +401,8 @@ final class PraticaLiveSync {
                 dossier: dossier,
                 candidates: candidates,
                 onDisk: onDisk,
-                settings: context.settings
+                settings: context.settings,
+                ledgerEntries: ledgerEntries
             ))
             // The vault open when this run started may no longer be the one open now
             // (a person can switch vaults mid-sync): the files above were written

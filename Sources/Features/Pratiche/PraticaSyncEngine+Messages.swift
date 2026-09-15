@@ -693,6 +693,12 @@ extension PraticaSyncEngine {
     /// it), so the one file §D6 allows a sync to rewrite would otherwise stay pending
     /// forever - widened by ADR-0040 §D5 to also revisit a `.complete` message that
     /// still carries a pending attachment entry, for the same reason.
+    ///
+    /// Scans the pratica's own files on disk, not `request.candidates`:
+    /// `MembershipRule.candidates(dossier:store:onDisk:)` subtracts `onDisk` from its
+    /// result by design (rule 5), so a message already on disk can never appear in
+    /// `candidates` - looking for pending work there, as this used to, made the scan
+    /// structurally empty on every sync after the message's first import.
     /// Not `private`: `PraticaSyncEngine.swift`'s `sync(_:)` is an extension of this
     /// actor in a separate file, and is this member's only caller.
     func regeneratePending(
@@ -701,15 +707,34 @@ extension PraticaSyncEngine {
         folder: inout FolderContext,
         outcome: inout SyncOutcome
     ) async throws {
-        for row in request.candidates {
-            guard let messageID = row.messageID, request.onDisk.contains(messageID) else { continue }
+        let rowIDByMessageID = Dictionary(
+            request.ledgerEntries.map { ($0.messageID, $0.rowID) }, uniquingKeysWith: { first, _ in first }
+        )
+        for messageID in folder.messagesByID.keys.sorted() {
             let frontmatter = folder.messagesByID[messageID]?.document.frontmatter
-            guard frontmatter?.body == .pending
+            let isPending = frontmatter?.body == .pending
                 || !(frontmatter?.pendingAttachmentNames.isEmpty ?? true)
                 || !(frontmatter?.pendingInlineImages.isEmpty ?? true)
-            else { continue }
-            guard let prepared = prepare(row, request: request, reader: reader, folder: folder)
-            else { continue }
+            guard isPending else { continue }
+
+            let row: MailMessageRow
+            switch reader.row(forMessageID: messageID) {
+            case .found(let found):
+                row = found
+            case .notResolvableFromIndex:
+                // The same fallback `regenerationPreview` uses: the ledger's own
+                // bridge, for the ~3% of messages the index cannot resolve by
+                // `Message-ID` alone. Neither answering means this message simply
+                // waits for a later sync - no write, so the retry stays free.
+                guard let rowID = rowIDByMessageID[messageID], let found = reader.row(rowID: rowID) else {
+                    continue
+                }
+                row = found
+            }
+
+            guard let prepared = prepare(row, request: request, reader: reader, folder: folder) else {
+                continue
+            }
             await Task.yield()
             if cancelled {
                 outcome.cancelled = true

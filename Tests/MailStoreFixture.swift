@@ -106,6 +106,16 @@ enum MailStoreFixture {
         try runSQLite3(script: statement, databasePath: indexURL)
     }
 
+    /// Removes `message_global_data` from an already-built fixture's index, in place -
+    /// what forces `MailStoreReader.row(forMessageID:)` to answer `.notResolvableFromIndex`
+    /// (its own doc comment: "a store without that table ... fails to prepare the
+    /// statement") for a test that needs the ledger's `rowID` fallback exercised
+    /// rather than the index's own 96.9%-case lookup.
+    static func dropMessageGlobalDataTable(indexURL: URL) throws {
+        let statement = ["DROP", "TABLE message_global_data;"].joined(separator: " ")
+        try runSQLite3(script: statement, databasePath: indexURL)
+    }
+
     // MARK: - Directory scaffolding
 
     private static func freshRoot() throws -> URL {
