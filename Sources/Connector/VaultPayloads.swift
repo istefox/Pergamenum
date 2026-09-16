@@ -135,6 +135,8 @@ extension VaultAPI {
         let relatedMissingInFrontmatter: [String]
         /// The two advisory task-marker findings of ADR-0021 §D11 (R-11, R-12).
         let taskMarkers: [String]
+        /// The two advisory `pergamenum-category` findings of ADR-0047 §D10 (R-10).
+        let categories: [String]
         let count: Int
 
         init(path: String, _ violations: NoteViolations) {
@@ -145,6 +147,7 @@ extension VaultAPI {
             relatedMissingInSection = violations.relatedMissingInSection
             relatedMissingInFrontmatter = violations.relatedMissingInFrontmatter
             taskMarkers = violations.taskMarkers.map { "\($0)" }
+            categories = violations.categories.map { "\($0)" }
             count = violations.count
         }
     }

@@ -79,6 +79,54 @@ extension VaultSession {
         return createCategory(Category(slug: slug, name: name ?? slug, color: color, order: nextOrder))
     }
 
+    /// Writes `pergamenum-category: <slug>` into a note's frontmatter (SPEC "Note ↔
+    /// category", ADR-0047 §D10) - the linked-note half of a category's "home". A note
+    /// carries at most one such key (SPEC "Note ↔ category": "one slug per note"), so
+    /// linking replaces whichever key was already there rather than adding a second
+    /// line, and nothing else in the note is touched.
+    @discardableResult
+    func linkCategory(_ slug: String, toNoteAt relativePath: String) async -> WriteOutcome {
+        await rewriteCategoryKey(at: relativePath) { keys in
+            var updated = keys.filter { $0.name != CategoryFrontmatter.key }
+            updated.append(.init(name: CategoryFrontmatter.key, lines: ["\(CategoryFrontmatter.key): \(slug)"]))
+            return updated
+        }
+    }
+
+    /// Removes the `pergamenum-category` key (the note inspector's unlink affordance,
+    /// SPEC "UI flows: Linked note"). The note's own `#project-*` task tags, if any,
+    /// are untouched and keep counting as usual (SPEC "Task ↔ category").
+    @discardableResult
+    func unlinkCategory(fromNoteAt relativePath: String) async -> WriteOutcome {
+        await rewriteCategoryKey(at: relativePath) { keys in
+            keys.filter { $0.name != CategoryFrontmatter.key }
+        }
+    }
+
+    /// The one write `linkCategory`/`unlinkCategory` funnel through: rewrite the
+    /// frontmatter's foreign keys, re-serialize, and write through the door with
+    /// `expecting:` (ADR-0043 §D8) - the same shape `apply(_:to:)` uses for a task line
+    /// (`VaultSession+Tasks.swift`).
+    private func rewriteCategoryKey(
+        at relativePath: String,
+        _ transform: ([Frontmatter.ForeignKey]) -> [Frontmatter.ForeignKey]
+    ) async -> WriteOutcome {
+        do {
+            let (_, text) = try read(relativePath)
+            var document = NoteDocument.parse(text)
+            document.frontmatter.foreignKeys = transform(document.frontmatter.foreignKeys)
+            let updated = document.serialized()
+            guard updated != text else { return .unchanged }
+            return .written(try await write(updated, to: relativePath, expecting: NoteStore.hash(Data(text.utf8))))
+        } catch is VaultSession.WriteRefusal {
+            recordProblem("la nota è cambiata nel frattempo: \(relativePath)")
+            return .stale
+        } catch {
+            recordProblem("\(relativePath): \(error)")
+            return .failed
+        }
+    }
+
     /// Applies `archived` to `slug` and its children, then handles the child-unarchives-
     /// parent edge case (SPEC edge cases). Shared by `archiveCategory`/`unarchiveCategory`
     /// so the cascade cannot drift between the two directions.

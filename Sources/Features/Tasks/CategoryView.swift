@@ -30,6 +30,7 @@ import SwiftUI
 struct CategoryView<Row: View>: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
 
     let category: Category
     let isRegistered: Bool
@@ -115,7 +116,27 @@ struct CategoryView<Row: View>: View {
                     .themedText(.caption, color: .taskOverdue)
                     .accessibilityIdentifier("category-view-deadline")
             }
+
+            if let home = homeNote(of: category.slug) {
+                Button("Vai alla nota") {
+                    vault.openNote(at: home.relativePath)
+                    navigation.pane = .notes
+                }
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .accentPrimary)
+                .accessibilityIdentifier("category-view-go-to-note")
+            }
         }
+    }
+
+    /// The category's "home" (SPEC "Note ↔ category"): the note carrying
+    /// `pergamenum-category: <slug>`, or nil when none does. First in vault order,
+    /// deterministically, on the rare chance more than one claims the slug - the same
+    /// tie-break `VaultSession.categoryViolations` reports as `duplicateHome`.
+    private func homeNote(of slug: String) -> NoteRecord? {
+        vault.index.allNotes
+            .filter { $0.categorySlug == slug }
+            .min { $0.relativePath < $1.relativePath }
     }
 
     // MARK: Children (SPEC: "then one group per child")

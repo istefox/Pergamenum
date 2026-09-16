@@ -39,4 +39,38 @@ extension VaultController {
     func promoteImplicitCategory(_ slug: String, color: String) -> CategoryRegistry.RefusalReason? {
         session?.promoteImplicitCategory(slug, color: color)
     }
+
+    /// Links a note to a category by writing its `pergamenum-category` key (SPEC "UI
+    /// flows: Linked note", ADR-0047 §D10). Follows `apply(_:to:)`'s own shape
+    /// (`VaultController+Tasks.swift`): a write puts an open editor back in step, a
+    /// stale hash asks for a rescan rather than guessing, and the caller only needs a
+    /// `Bool`.
+    @discardableResult
+    func linkCategory(_ slug: String, toNoteAt relativePath: String) async -> Bool {
+        guard let session else { return false }
+        return handle(await session.linkCategory(slug, toNoteAt: relativePath))
+    }
+
+    /// The note inspector's unlink affordance (SPEC "UI flows: Linked note").
+    @discardableResult
+    func unlinkCategory(fromNoteAt relativePath: String) async -> Bool {
+        guard let session else { return false }
+        return handle(await session.unlinkCategory(fromNoteAt: relativePath))
+    }
+
+    /// `linkCategory`/`unlinkCategory`'s shared outcome handling.
+    private func handle(_ outcome: VaultSession.WriteOutcome) -> Bool {
+        switch outcome {
+        case .written(let result):
+            syncOpenNote(with: result)
+            return true
+        case .unchanged:
+            return true
+        case .stale:
+            Task { await rescan() }
+            return false
+        case .failed:
+            return false
+        }
+    }
 }

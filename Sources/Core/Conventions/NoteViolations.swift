@@ -16,17 +16,20 @@ struct NoteViolations: Equatable, Sendable {
     /// the six existing construction sites, all passing the same five labelled
     /// arguments above, keep compiling untouched.
     var taskMarkers: [TaskMarkerViolation] = []
+    /// The two advisory `pergamenum-category` rules of ADR-0047 (R-10). Defaulted so
+    /// the seven existing construction sites keep compiling untouched.
+    var categories: [CategoryViolation] = []
 
     var isEmpty: Bool {
         name.isEmpty && frontmatter.isEmpty && tags.isEmpty
             && relatedMissingInSection.isEmpty && relatedMissingInFrontmatter.isEmpty
-            && taskMarkers.isEmpty
+            && taskMarkers.isEmpty && categories.isEmpty
     }
 
     var count: Int {
         name.count + frontmatter.count + tags.count
             + relatedMissingInSection.count + relatedMissingInFrontmatter.count
-            + taskMarkers.count
+            + taskMarkers.count + categories.count
     }
 }
 
@@ -44,4 +47,20 @@ enum TaskMarkerViolation: Equatable, Sendable {
     /// note-local (ADR-0021 §D2), so a matching id in a *different* note does not
     /// clear this finding.
     case orphanedParent(line: Int, parent: Int)
+}
+
+/// The two advisory `pergamenum-category` rules of ADR-0047 §D10 (R-10). Both need the
+/// registry and the index - neither is a fact about the note's own text alone - which is
+/// why they are produced by `VaultSession.violations(path:title:text:)` itself rather
+/// than by a pure function like `taskMarkerViolations` above.
+enum CategoryViolation: Equatable, Sendable {
+    /// `pergamenum-category` names a slug the registry does not have. Fires even when
+    /// the slug is already an *implicit* category from some task's own `#project-*` tag
+    /// (SPEC edge case): inheritance still works, but a note-level link naming an
+    /// unregistered slug is still a note-level finding, not a task-level one.
+    case unknownSlug(String)
+    /// A second note claims a slug an earlier one already claims. `home` is that
+    /// earlier note's own path - the first in vault order, deterministically (SPEC
+    /// "Nota collegata") - never this note's own path.
+    case duplicateHome(String, home: String)
 }

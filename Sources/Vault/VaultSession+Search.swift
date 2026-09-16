@@ -127,8 +127,34 @@ extension VaultSession {
             tags: TagRules.validate(document.frontmatter.tags, category: category, vocabulary: vocabulary),
             relatedMissingInSection: discrepancies.missingInSection,
             relatedMissingInFrontmatter: discrepancies.missingInFrontmatter,
-            taskMarkers: taskMarkerViolations(path: path, text: text)
+            taskMarkers: taskMarkerViolations(path: path, text: text),
+            categories: categoryViolations(path: path, document: document)
         )
+    }
+
+    /// The two advisory `pergamenum-category` rules of ADR-0047 §D10 (R-10).
+    ///
+    /// Unlike `taskMarkerViolations`, this reads `self.categories` (the registry) and
+    /// `self.index` (every other note's own linked slug) - the one place in the lint
+    /// path that can see both, since `violations(path:title:text:)` is a method on
+    /// `VaultSession` rather than a pure function of the three arguments it takes. The
+    /// note under test is included among the claimants by its own `path` even when the
+    /// index does not know it yet (a brand new, unsaved note): otherwise the very first
+    /// note to claim a slug would report itself as its own duplicate.
+    private func categoryViolations(path: String, document: NoteDocument) -> [CategoryViolation] {
+        guard let slug = CategoryFrontmatter.slug(in: document.frontmatter.foreignKeys) else { return [] }
+
+        var findings: [CategoryViolation] = []
+        if !categories.entries.contains(where: { $0.slug == slug }) {
+            findings.append(.unknownSlug(slug))
+        }
+
+        var claimants = Set(index.allNotes.filter { $0.categorySlug == slug }.map(\.relativePath))
+        claimants.insert(path)
+        if let home = claimants.sorted().first, home != path {
+            findings.append(.duplicateHome(slug, home: home))
+        }
+        return findings
     }
 
     /// The two advisory task-marker rules of ADR-0021 §D11 (R-11, R-12).
