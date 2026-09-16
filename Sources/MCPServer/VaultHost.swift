@@ -52,19 +52,20 @@ final class VaultHost {
         }
     }
 
-    /// Four dispatch tables rather than two, split the way the CLI's groups are: a single
+    /// Five dispatch tables rather than two, split the way the CLI's groups are: a single
     /// switch over twenty names is past what SwiftLint allows and, more to the point,
     /// past what anyone scans without losing their place.
     ///
     /// `async` since ADR-0041 Task 9: `write` awaits `VaultAPI.undo`'s now-async door
     /// (the one `VaultWrites` function that reaches Task 8's disk actor - see its own
-    /// doc comment). `readNotes`/`readWork`/`readPratiche` stay synchronous `throws`,
-    /// unchanged: none of them has anything to await, and marking them `async` too
-    /// would be structural churn with no correctness gain.
+    /// doc comment). `readNotes`/`readWork`/`readPratiche`/`readCategories` stay
+    /// synchronous `throws`, unchanged: none of them has anything to await, and marking
+    /// them `async` too would be structural churn with no correctness gain.
     private func perform(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result {
         if let result = try readNotes(name, arguments) { return result }
         if let result = try readWork(name, arguments) { return result }
         if let result = try readPratiche(name, arguments) { return result }
+        if let result = try readCategories(name, arguments) { return result }
         if let result = try await write(name, arguments) { return result }
         throw ConnectorError("«\(name)» non è uno strumento di questo server", usage: true)
     }
@@ -136,6 +137,20 @@ final class VaultHost {
             return reply(VaultAPI.pratiche(session))
         case "pratica":
             return reply(try VaultAPI.pratica(session, try arguments.required("pratica")))
+        default:
+            return nil
+        }
+    }
+
+    /// The category registry and one category's rolled-up tasks (ADR-0047 §D9, R-09).
+    /// A table of its own for the same reason `readPratiche` is: `readWork`'s switch was
+    /// already at the branching SwiftLint allows, and two more cases pushed it over.
+    private func readCategories(_ name: String, _ arguments: ToolArguments) throws -> CallTool.Result? {
+        switch name {
+        case "list_categories":
+            return reply(VaultAPI.categories(session))
+        case "category_tasks":
+            return reply(try VaultAPI.categoryTasks(session, slug: try arguments.required("slug")))
         default:
             return nil
         }
