@@ -98,6 +98,10 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Calendar/TimeBlock.swift",
     "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",
+    // The category registry's vault-side store and lifecycle (ADR-0047 §D2/§D3), named
+    // by hand per ADR-0007 §D2 the same way every other `Sources/Vault/**` file here is:
+    // the glob only covers `Sources/Core/**` and `Sources/Connector/**`.
+    "Sources/Vault/CategoryRegistryStore.swift",
     "Sources/Vault/NoteFileOperations.swift",
     "Sources/Vault/NoteHistory.swift",
     "Sources/Vault/NoteStore.swift",
@@ -118,6 +122,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultDisk.swift",
     "Sources/Vault/VaultScanner.swift",
     "Sources/Vault/VaultSession.swift",
+    "Sources/Vault/VaultSession+Categories.swift",
     "Sources/Vault/VaultSession+Diary.swift",
     "Sources/Vault/VaultSession+Files.swift",
     "Sources/Vault/VaultSession+Identity.swift",

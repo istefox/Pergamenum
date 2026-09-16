@@ -36,7 +36,11 @@ struct Tag: Hashable, Sendable, Comparable, CustomStringConvertible {
 
     /// `[a-z0-9]+(-[a-z0-9]+)*`: lowercase alphanumeric segments joined by single
     /// hyphens, with no leading, trailing or doubled hyphen.
-    private static func isWellFormedValue(_ value: String) -> Bool {
+    ///
+    /// Not `private`: `CategoryRegistry.validating(_:version:)`
+    /// (`Sources/Core/Categories/CategoryRegistry.swift`) reads it too, for the same
+    /// slug grammar (ADR-0047 §D3) rather than a second regex.
+    static func isWellFormedValue(_ value: String) -> Bool {
         guard !value.isEmpty else { return false }
         let segments = value.split(separator: "-", omittingEmptySubsequences: false)
         guard segments.count >= 1 else { return false }
