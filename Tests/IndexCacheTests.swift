@@ -229,9 +229,12 @@ private let taskMarkerNote = """
     #expect(tasks[1].localID == nil)
     #expect(tasks[1].parentLocalID == 1)
 
-    // Literal, so a coder who bumps the schema to carry this feature turns this test
-    // red (ADR-0021 D4: "There is no schema change, no version bump").
-    #expect(IndexCache.schemaVersion == 3)
+    // Literal, so a coder who bumps the schema to carry *this* feature turns this test
+    // red (ADR-0021 D4: "There is no schema change, no version bump"). The value itself
+    // moved to 4 for an unrelated reason (ADR-0047 §D5, `categorySlug`) - this pin is
+    // about ADR-0021 spending no bump of its own, not about the version staying 3
+    // forever.
+    #expect(IndexCache.schemaVersion == 4)
 }
 
 @Test func deletingCacheDbAndRescanningReDerivesTheSameRelationships() throws {

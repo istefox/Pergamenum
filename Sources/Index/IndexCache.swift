@@ -201,15 +201,15 @@ struct IndexCache {
     /// is dropped rather than migrated: it is rebuilt from the vault in a fraction of a
     /// second, and principle 3 says nothing is lost by discarding it.
     ///
-    /// 2 (ADR-0010 §D7): the shape is unchanged, but `linkTargets` now counts transcluded
-    /// notes, so every row written by version 1 understates a note's links. A field
-    /// addition could not have repaired that - the rows are not wrong about a column, they
-    /// are wrong about what a column means. M11's `embedTargets` bump is therefore 3.
+    /// 2 (ADR-0010 §D7): `linkTargets` now counts transcluded notes, so version 1 rows
+    /// understate a note's links - wrong about what a column means, not repairable by a
+    /// field addition. 3 (ADR-0009 §D2): adds `embedTargets`, for M11's gallery - the only
+    /// schema change that milestone was permitted, spent once.
     ///
-    /// 3 (ADR-0009 §D2): `embedTargets`, so a gallery can ask which files a note carries.
-    /// Named in the ADR before it was written and spent here once - it is the only schema
-    /// change M11 is permitted, and the milestone has now used it.
-    static let schemaVersion: Int32 = 3
+    /// 4 (ADR-0047 §D5): adds `StoredRecord.categorySlug`, since `StoredFrontmatter` keeps
+    /// none of `foreignKeys` and a reused record would otherwise lose `pergamenum-category`
+    /// from the second scan onward. This chain gets no second bump (ADR-0047 "Risks").
+    static let schemaVersion: Int32 = 4
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -267,6 +267,9 @@ struct StoredRecord: Codable, Sendable {
     /// refused would make the guard the only thing standing between a shape change and
     /// an empty index.
     var embedTargets: [String] = []
+    /// Added by schema 4 (ADR-0047 §D5). Defaulted for the reason `embedTargets` is: a
+    /// row this field is missing from decodes rather than taking the whole cache down.
+    var categorySlug: String?
     var tasks: [StoredTask]
     var modifiedAt: Date
     var byteSize: Int
@@ -278,6 +281,7 @@ struct StoredRecord: Codable, Sendable {
         frontmatter = StoredFrontmatter(record.frontmatter)
         linkTargets = record.linkTargets
         embedTargets = record.embedTargets
+        categorySlug = record.categorySlug
         tasks = record.tasks.map(StoredTask.init)
         modifiedAt = record.modifiedAt
         byteSize = record.byteSize
@@ -291,6 +295,7 @@ struct StoredRecord: Codable, Sendable {
             frontmatter: frontmatter.frontmatter,
             linkTargets: linkTargets,
             embedTargets: embedTargets,
+            categorySlug: categorySlug,
             tasks: tasks.compactMap(\.task),
             modifiedAt: modifiedAt,
             byteSize: byteSize,

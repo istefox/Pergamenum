@@ -90,6 +90,10 @@ let sharedSources: [SourceFileGlob] = [
     .glob("Sources/Connector/**"),
     "Sources/Index/IndexCache.swift",
     "Sources/Index/IndexSnapshot.swift",
+    // The category derivations of ADR-0047 §D4 (`effectiveCategory(of:)`,
+    // `implicitCategories`, `tasks(inCategory:registry:rolledUp:)`, `progress(ofCategory:)`),
+    // named by hand because `Sources/Index/**` is not a glob (three files listed here already).
+    "Sources/Index/IndexSnapshot+Categories.swift",
     // Not optional beside the file above: it carries `tagUsage()` and the snapshot's own
     // `ViewCorpus` conformance, both of which `Sources/Vault` and `Sources/Connector` call.
     // Its absence broke `perg` and `pergamenum-mcp` outright - the failure CLAUDE.md's
