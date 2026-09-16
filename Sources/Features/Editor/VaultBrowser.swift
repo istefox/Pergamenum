@@ -253,6 +253,12 @@ struct VaultBrowser: View {
                         .fill(theme.color(category?.colorToken ?? .textTertiary))
                         .frame(width: 8, height: 8)
                     Button(category?.name ?? slug) {
+                        // `pendingCategorySelection` set before the pane switch, not
+                        // after: `TasksView`'s `.task` reads it once the view is created,
+                        // and creation happens as part of the same `pane` change
+                        // (`RootView.tasksPane`, ADR-0039 §D3's "bring the destination
+                        // pane forward" shape applied to a category instead of a note).
+                        navigation.pendingCategorySelection = slug
                         navigation.pane = .tasks
                     }
                     .buttonStyle(.plain)

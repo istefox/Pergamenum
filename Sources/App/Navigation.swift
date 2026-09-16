@@ -230,6 +230,17 @@ final class Navigation {
     /// is the one place a sheet reaches every surface from.
     var categoryEditorTarget: CategoryEditor.Target?
 
+    /// A category slug the Attività pane should select once it is on screen, the
+    /// `pendingCanvas`-style shape (`VaultController+Routes.swift:151`) applied to a
+    /// destination that lives in `Navigation` rather than `VaultController.routeState`:
+    /// the inspector's "Vai alla categoria" (`VaultBrowser.swift`'s `categoryLink`) only
+    /// used to set `pane = .tasks`, landing on whatever `TasksView`'s own `@State
+    /// selection` already held rather than on the linked category. `TasksView` consumes
+    /// this the same double-registered way `WorkspaceView` consumes `pendingCanvas`
+    /// (`.task` for the case it is already the pane on screen, `.onChange` for the case
+    /// it becomes one) — the view that acts on it only exists once its pane is shown.
+    var pendingCategorySelection: String?
+
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false

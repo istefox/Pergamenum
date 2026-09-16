@@ -53,6 +53,14 @@ struct TasksView: View {
         // section and the capture usually happens while this view does not exist.
         .task { followLastCapture() }
         .onChange(of: vault.taskGeneration) { _, _ in followLastCapture() }
+        // The inspector's "Vai alla categoria" (`VaultBrowser.swift`'s `categoryLink`)
+        // only switches `navigation.pane`; this is what actually lands on the linked
+        // category, the same double registration `openPendingCanvas` needs and for the
+        // same reason - this view is recreated each time the pane switches to `.tasks`
+        // (`RootView.tasksPane`), so a value already set before it existed needs the
+        // `.task` and one set while it is already on screen needs the `.onChange`.
+        .task { followPendingCategorySelection() }
+        .onChange(of: navigation.pendingCategorySelection) { _, _ in followPendingCategorySelection() }
     }
 
     private func followLastCapture() {
@@ -63,6 +71,12 @@ struct TasksView: View {
         default: .upcoming
         }
         selection = .view(view)
+    }
+
+    private func followPendingCategorySelection() {
+        guard let slug = navigation.pendingCategorySelection else { return }
+        navigation.pendingCategorySelection = nil
+        selection = .category(slug)
     }
 
     /// Capture, and the Task menu's actions on whatever is selected.
