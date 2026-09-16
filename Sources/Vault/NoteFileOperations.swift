@@ -46,6 +46,13 @@ struct NoteFileOperations {
         /// Notes that point at this one but could not be rewritten, with the reason.
         /// Reported rather than swallowed: a link left behind is a broken link.
         var failures: [String] = []
+        /// Paths (a note or a board) whose bytes moved on since the plan was computed, so
+        /// nothing was written for them (ADR-0046 §D1/§D6). Unlike a tag rename this is
+        /// **not** recoverable by repeating the gesture: once the note has moved, `rename`'s
+        /// own `oldTitle` is derived from the *new* file name, so a second call rewrites
+        /// nothing and a refused link stays stale - reported as a problem naming the note,
+        /// not as a count.
+        var refusals: [String] = []
     }
 
     // MARK: - Computing what would change (ADR-0016 §D6)

@@ -182,3 +182,109 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(undone.failures.contains { $0.contains("Sparita.md") })
     #expect(try session.read("Sparita.md").text.contains("Nota nuova, non quella di prima."))
 }
+
+// MARK: - Task 4 (R-01, R-03, R-05, R-08): `renameNote`/`moveNote` adopt the guard
+//
+// `renamePlan`'s own read is synchronous and immediately followed by the write with no
+// controllable in-process window (ADR-0046 §D2's own Context), so a refusal is forced the way
+// §D11 prescribes: at the writer seam, by driving `session.writeGuarded`/`writeFileGuarded`
+// directly with a hand-built `VaultFileChange`, composed with the same real primitives
+// (`moveFile`, `moveStar`) `renameNote` itself calls - not a re-spelling of it, the production
+// writer under test.
+
+@MainActor
+@Test func aLinkRewriteNoteWhoseBytesMovedOnIsRefusedButTheRenameStillMovesTheFile() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
+    try vault.write(note("Vedi anche [[Vecchio titolo]]."), to: "Terza.md")
+    let session = try await armedSession(vault)
+
+    let plan = try NoteFileOperations(store: session.store).renamePlan(
+        "Vecchio titolo.md", to: "Nuovo titolo", knownPaths: session.index.allNotes.map(\.relativePath)
+    )
+    // "Altra.md"'s `before` deliberately disagrees with what is really on disk.
+    let changes = plan.noteChanges.map { change in
+        change.path == "Altra.md"
+            ? VaultFileChange(path: change.path, before: "questo non è quello che c'è su disco", after: change.after)
+            : change
+    }
+
+    try await session.moveFile(from: "Vecchio titolo.md", to: plan.newPath)
+    let result = await VaultPlanApplication.apply(changes, writing: session.writeGuarded)
+
+    #expect(result.refusals == ["Altra.md"])
+    #expect(result.rewrittenPaths == ["Terza.md"])
+    #expect(session.exists("Nuovo titolo.md"))
+    #expect(!session.exists("Vecchio titolo.md"))
+    // The refused note keeps its own text.
+    #expect(try session.read("Altra.md").text.contains("[[Vecchio titolo]]"))
+    // Every other link was rewritten.
+    #expect(try session.read("Terza.md").text.contains("[[Nuovo titolo]]"))
+}
+
+@MainActor
+@Test func aBoardWhoseBytesMovedOnIsRefusedThroughWriteFileGuarded() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(board, to: "Labs.canvas")
+    let session = try await armedSession(vault)
+
+    let plan = try NoteFileOperations(store: session.store).renamePlan(
+        "Vecchio titolo.md", to: "Nuovo titolo", knownPaths: session.index.allNotes.map(\.relativePath)
+    )
+    let staleChanges = plan.boardChanges.map {
+        VaultFileChange(path: $0.path, before: "{\"nodes\":[],\"stale\":true}", after: $0.after)
+    }
+    let originalBoard = try String(contentsOf: vault.root.appending(path: "Labs.canvas"), encoding: .utf8)
+
+    let result = await VaultPlanApplication.apply(staleChanges, writing: session.writeFileGuarded)
+
+    #expect(result.refusals == ["Labs.canvas"])
+    #expect(result.rewrittenPaths.isEmpty)
+    // Byte-identical: this is Task 2's parameter reaching its real caller.
+    let canvas = try String(contentsOf: vault.root.appending(path: "Labs.canvas"), encoding: .utf8)
+    #expect(canvas == originalBoard)
+}
+
+@MainActor
+@Test func renameNoteWithNothingConcurrentLeavesRefusalsEmpty() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
+    try vault.write(board, to: "Labs.canvas")
+    let session = try await armedSession(vault)
+
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+
+    #expect(outcome.newPath == "Nuovo titolo.md")
+    #expect(outcome.rewrittenPaths.sorted() == ["Altra.md", "Labs.canvas"])
+    #expect(outcome.failures.isEmpty)
+    #expect(outcome.refusals.isEmpty)
+}
+
+@MainActor
+@Test func theStarStillFollowsTheNoteOnAPartiallyRefusedRename() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    try vault.write(note("Vedi [[Vecchio titolo]]."), to: "Altra.md")
+    let session = try await armedSession(vault)
+    session.toggleStar("Vecchio titolo.md")
+
+    let plan = try NoteFileOperations(store: session.store).renamePlan(
+        "Vecchio titolo.md", to: "Nuovo titolo", knownPaths: session.index.allNotes.map(\.relativePath)
+    )
+    let changes = plan.noteChanges.map { change in
+        VaultFileChange(path: change.path, before: "questo non è quello che c'è su disco", after: change.after)
+    }
+
+    try await session.moveFile(from: "Vecchio titolo.md", to: plan.newPath)
+    let result = await VaultPlanApplication.apply(changes, writing: session.writeGuarded)
+    // `moveStar` runs off `plan.newPath`, exactly as `renameNote` calls it - a refusal among
+    // the link rewrites does not change what path the star follows to.
+    session.moveStar(from: "Vecchio titolo.md", to: plan.newPath)
+
+    #expect(result.refusals == ["Altra.md"])
+    #expect(!session.isStarred("Vecchio titolo.md"))
+    #expect(session.isStarred(plan.newPath))
+}

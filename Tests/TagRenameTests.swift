@@ -177,3 +177,88 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     #expect(outcome.journalIDs.isEmpty)
     #expect(outcome.failures.isEmpty)
 }
+
+// MARK: - Task 3 (R-01, R-02, R-04, R-05, R-08): the batch-scope write guard
+
+@MainActor
+@Test func aNoteWhoseBytesMovedOnIsRefusedWhileTheOthersAreStillWritten() async throws {
+    let vault = try TemporaryVault()
+    let session = try await session(vault)
+    // Deliberately disagrees with what is on disk for "Due.md" only - the acceptance test
+    // ADR-0046 §D11 asks for, driven straight at the writer seam rather than through
+    // `renameTag`'s own fresh preview (which cannot be made stale in-process, ADR-0046 §D2's
+    // own Context).
+    let changes = [
+        VaultFileChange(path: "Uno.md", before: try session.read("Uno.md").text, after: "Uno riscritta."),
+        VaultFileChange(path: "Due.md", before: "questo prima non c'era", after: "Non deve arrivare."),
+        VaultFileChange(path: "Tre.md", before: try session.read("Tre.md").text, after: "Tre riscritta."),
+    ]
+    let dueBefore = try session.read("Due.md").text
+
+    let outcome = await VaultPlanApplication.apply(changes, writing: session.writeGuarded)
+
+    #expect(outcome.rewrittenPaths.sorted() == ["Tre.md", "Uno.md"])
+    #expect(outcome.refusals == ["Due.md"])
+    #expect(outcome.failures.isEmpty)
+    #expect(try session.read("Uno.md").text == "Uno riscritta.")
+    #expect(try session.read("Tre.md").text == "Tre riscritta.")
+    // The refused note keeps its own bytes, untouched.
+    #expect(try session.read("Due.md").text == dueBefore)
+}
+
+@MainActor
+@Test func renameTagEndToEndWithNothingConcurrentLeavesRefusalsEmpty() async throws {
+    let vault = try TemporaryVault()
+    let session = try await session(vault)
+
+    let outcome = await session.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
+
+    #expect(outcome.changed.sorted() == ["Due.md", "Uno.md"])
+    #expect(outcome.failures.isEmpty)
+    #expect(outcome.refusals.isEmpty)
+    #expect(outcome.journalIDs.count == 2)
+}
+
+@MainActor
+@Test func aNoteDeletedBetweenThePreviewAndTheWriteIsRefusedNotRecreated() async throws {
+    let vault = try TemporaryVault()
+    let session = try await session(vault)
+    // "Sparita.md" is in the plan (its `before` was read while the file still existed) but is
+    // gone by the time the writer runs - `VaultDisk.write`'s `hashBefore` reads `nil`, which
+    // never equals a non-nil `expecting` (§D8).
+    let changes = [
+        VaultFileChange(path: "Sparita.md", before: "testo che c'era", after: "Non deve tornare."),
+    ]
+
+    let outcome = await VaultPlanApplication.apply(changes, writing: session.writeGuarded)
+
+    #expect(outcome.refusals == ["Sparita.md"])
+    #expect(outcome.rewrittenPaths.isEmpty)
+    #expect(!session.exists("Sparita.md"))
+}
+
+@MainActor
+@Test func theJournalHoldsNoEntryForARefusedPathSoUndoPutsBackOnlyWhatWasWritten() async throws {
+    let vault = try TemporaryVault()
+    let session = try await session(vault)
+    session.journal = session.journalOnDisk
+    let entriesBefore = Set(session.journalOnDisk.entries().map(\.id))
+    let changes = [
+        VaultFileChange(path: "Uno.md", before: try session.read("Uno.md").text, after: "Uno riscritta."),
+        VaultFileChange(path: "Due.md", before: "non è quello che c'è su disco", after: "Non deve arrivare."),
+    ]
+
+    let result = await VaultPlanApplication.apply(changes, writing: session.writeGuarded)
+    let journalIDs = session.journalOnDisk.entries()
+        .filter { !entriesBefore.contains($0.id) }
+        .map(\.id)
+
+    #expect(result.refusals == ["Due.md"])
+    #expect(journalIDs.count == 1, "solo la scrittura riuscita deve finire nel journal")
+
+    let undone = await session.undoJournalledWrites(journalIDs)
+
+    #expect(undone.changed == ["Uno.md"])
+    #expect(undone.failures.isEmpty)
+    #expect(try session.read("Uno.md").text.contains("topic-gomma"))
+}

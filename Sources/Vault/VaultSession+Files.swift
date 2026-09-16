@@ -13,6 +13,10 @@ extension VaultSession {
     private var operations: NoteFileOperations { NoteFileOperations(store: store) }
 
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
+    ///
+    /// A refusal here (ADR-0046 §D1/§D6) is a stale wikilink that re-running the rename cannot
+    /// repair, unlike the tag path: once the file has moved, `oldTitle` is derived from the
+    /// *new* file name, so a second call computes `from: X, to: X` and rewrites nothing.
     func renameNote(at relativePath: String, to newTitle: String) async throws -> NoteFileOperations.Outcome {
         let plan = try operations.renamePlan(
             relativePath, to: newTitle, knownPaths: index.allNotes.map(\.relativePath)
@@ -23,17 +27,14 @@ extension VaultSession {
             if plan.newPath != relativePath {
                 try await moveFile(from: relativePath, to: plan.newPath)
             }
-            let notes = await VaultPlanApplication.apply(plan.noteChanges) {
-                try await write($0.after, to: $0.path)
-            }
+            let notes = await VaultPlanApplication.apply(plan.noteChanges, writing: writeGuarded)
             // A `.canvas` goes through `writeFile` rather than `write`: it is journalled like a
             // note but leaves the index and the per-note history alone, because a board is not a
             // note - the reason `apply` takes the writer instead of assuming it (ADR-0041 §D4).
-            let boards = await VaultPlanApplication.apply(plan.boardChanges) {
-                try await writeFile($0.after, to: $0.path)
-            }
+            let boards = await VaultPlanApplication.apply(plan.boardChanges, writing: writeFileGuarded)
             outcome.rewrittenPaths.append(contentsOf: notes.rewrittenPaths + boards.rewrittenPaths)
             outcome.failures.append(contentsOf: notes.failures + boards.failures)
+            outcome.refusals.append(contentsOf: notes.refusals + boards.refusals)
         }
 
         // The star is a path, so it moves with the file or it points at nothing (ADR-0012 D6).
@@ -45,6 +46,9 @@ extension VaultSession {
         return outcome
     }
 
+    /// Moves a note between folders. Boards only: a wikilink names a note by title, not by
+    /// path, so a move touches no note text (wikilink.md W-01) and a refusal here (ADR-0046
+    /// §D6) is a `.canvas` card left pointing at the old path.
     func moveNote(at relativePath: String, toFolder folder: String) async throws -> NoteFileOperations.Outcome {
         let plan = try operations.movePlan(relativePath, toFolder: folder)
         var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
@@ -53,11 +57,10 @@ extension VaultSession {
             if plan.newPath != relativePath {
                 try await moveFile(from: relativePath, to: plan.newPath)
             }
-            let boards = await VaultPlanApplication.apply(plan.boardChanges) {
-                try await writeFile($0.after, to: $0.path)
-            }
+            let boards = await VaultPlanApplication.apply(plan.boardChanges, writing: writeFileGuarded)
             outcome.rewrittenPaths.append(contentsOf: boards.rewrittenPaths)
             outcome.failures.append(contentsOf: boards.failures)
+            outcome.refusals.append(contentsOf: boards.refusals)
         }
 
         if !isDryRun {

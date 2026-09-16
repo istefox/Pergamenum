@@ -44,6 +44,10 @@ struct TagBrowserView: View {
         let new: Tag
         let journalIDs: [String]
         let failures: [String]
+        /// Notes whose bytes moved on since the preview, so nothing was written for them
+        /// (ADR-0046 §D1/§D6) - re-running the rename finishes them, since `renameTag` is
+        /// idempotent, unlike the note path.
+        let refusals: [String]
     }
 
     var body: some View {
@@ -73,6 +77,8 @@ struct TagBrowserView: View {
             TagRenameBanner(
                 summary: "«\(done.old)» è diventato «\(done.new)» in \(count) note",
                 failures: done.failures,
+                refusals: done.refusals,
+                canUndo: !done.journalIDs.isEmpty,
                 onUndo: undoLastRename,
                 onDismiss: { lastRename = nil }
             )
@@ -303,14 +309,18 @@ struct TagBrowserView: View {
         renaming = nil
         Task { @MainActor in
             let outcome = await vault.renameTag(old, to: new)
-            guard !outcome.journalIDs.isEmpty || !outcome.failures.isEmpty else { return }
+            // A wholly refused rename (every note's bytes had moved on) would otherwise show
+            // nothing at all - `refusals` admits it here alongside `failures` (ADR-0046 §D7).
+            guard !outcome.journalIDs.isEmpty || !outcome.failures.isEmpty || !outcome.refusals.isEmpty
+            else { return }
             if chosen.remove(old) != nil { chosen.insert(new) }
             if vault.isPinned(old) {
                 vault.togglePin(old)
                 vault.togglePin(new)
             }
             lastRename = FinishedRename(
-                old: old, new: new, journalIDs: outcome.journalIDs, failures: outcome.failures
+                old: old, new: new, journalIDs: outcome.journalIDs,
+                failures: outcome.failures, refusals: outcome.refusals
             )
         }
     }
@@ -349,6 +359,12 @@ private struct TagRenameBanner: View {
     @Environment(\.theme) private var theme
     let summary: String
     let failures: [String]
+    /// Notes refused because their bytes moved on since the preview (ADR-0046 §D1) - a
+    /// different reason from `failures` and so its own count, not folded into it.
+    let refusals: [String]
+    /// Whether the rename wrote anything at all. False when every note was refused: offering
+    /// to undo nothing would be offering an undo that does nothing (this task's own fix).
+    let canUndo: Bool
     let onUndo: () -> Void
     let onDismiss: () -> Void
 
@@ -360,9 +376,16 @@ private struct TagRenameBanner: View {
                     .themedText(.caption, color: .taskOverdue)
                     .help(failures.joined(separator: "\n"))
             }
+            if !refusals.isEmpty {
+                Text("\(refusals.count) rifiutate")
+                    .themedText(.caption, color: .taskOverdue)
+                    .help(refusals.joined(separator: "\n"))
+            }
             Spacer()
-            Button("Annulla la rinomina", action: onUndo)
-                .accessibilityIdentifier("undo-tag-rename")
+            if canUndo {
+                Button("Annulla la rinomina", action: onUndo)
+                    .accessibilityIdentifier("undo-tag-rename")
+            }
             Button("Chiudi", action: onDismiss)
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .textTertiary)

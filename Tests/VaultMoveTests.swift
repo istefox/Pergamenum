@@ -380,6 +380,37 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     controller.close()
 }
 
+// MARK: - A stale-write refusal during a batched note move gets its own sentence (ADR-0046 §D4)
+//
+// `VaultSession.moveItems`'s `.note` case used to fold `note.refusals` through the same
+// `report(_:)` helper as `note.failures`, so a stale-write refusal read as
+// "riferimento non aggiornato: …" - indistinguishable from an ordinary disk failure. A
+// genuine race cannot be forced deterministically through the full batch (the same
+// plan-then-write window `Tests/VaultSessionFileOperationsTests.swift`'s Task 4 and
+// `Tests/ConnectorTests.swift`'s `aRefusalFoldsIntoFailuresWithItsOwnSentenceRatherThanANewKey`
+// both name), so this drives `reportRefusals` directly - `writeGuarded`/`writeFileGuarded`'s
+// own reason for being `internal` rather than `private`.
+
+@MainActor
+@Test func aStaleWriteRefusalGetsItsOwnSentenceNotTheFailureWording() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+
+    let problemsBefore = session.problems.count
+
+    session.reportRefusals(["Altra.md"])
+
+    // Only the new line, not asserted as the whole array: `armedSession`'s vault has no
+    // `.pergamenum/vocabolari.json`, so `rescan()` already recorded its own, unrelated
+    // problem about that before this call.
+    #expect(session.problems.count == problemsBefore + 1)
+    #expect(session.problems.last == VaultWriteRefusal.movedOn("Altra.md").description)
+    #expect(
+        !session.problems.contains { $0.contains("riferimento non aggiornato") },
+        "un rifiuto non è un fallimento ordinario: non deve riusare quella dicitura"
+    )
+}
+
 // MARK: - Support
 
 // `TemporaryVault` is `~Copyable`, and `#expect`'s macro expansion needs to capture its

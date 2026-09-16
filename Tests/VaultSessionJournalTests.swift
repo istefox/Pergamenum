@@ -198,3 +198,69 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     // A board is not a note: it is journalled like any write and it never reaches the index.
     #expect(!session.index.allNotes.map(\.relativePath).contains("Lavagna.canvas"))
 }
+
+// MARK: - Task 2 (R-03, R-08): `writeFile` gains the same opt-in precondition as `write`
+
+private func boardText(_ vault: borrowing TemporaryVault, _ relativePath: String) throws -> String {
+    try String(contentsOf: vault.root.appending(path: relativePath), encoding: .utf8)
+}
+
+@MainActor
+@Test func writeFileWithTheCurrentExpectingHashWritesAndJournalsAsBefore() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    try vault.write("{\"nodes\":[]}", to: "Lavagna.canvas")
+    session.journalCommand = "note rename"
+    let currentHash = NoteStore.hash(Data("{\"nodes\":[]}".utf8))
+
+    try await session.writeFile("{\"nodes\":[],\"x\":1}", to: "Lavagna.canvas", expecting: currentHash)
+
+    #expect(try boardText(vault, "Lavagna.canvas") == "{\"nodes\":[],\"x\":1}")
+    let entry = try #require(session.journalOnDisk.entries().last)
+    #expect(entry.path == "Lavagna.canvas")
+    #expect(entry.textBefore == "{\"nodes\":[]}")
+}
+
+@MainActor
+@Test func writeFileWithAStaleExpectingHashRefusesAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    try vault.write("{\"nodes\":[]}", to: "Lavagna.canvas")
+    session.journalCommand = "note rename"
+    let journalBefore = session.journalOnDisk.entries().map(\.id)
+
+    await #expect(throws: VaultSession.WriteRefusal.movedOn("Lavagna.canvas")) {
+        try await session.writeFile("{\"nodes\":[],\"x\":1}", to: "Lavagna.canvas", expecting: "stale-hash")
+    }
+
+    #expect(try boardText(vault, "Lavagna.canvas") == "{\"nodes\":[]}")
+    #expect(session.journalOnDisk.entries().map(\.id) == journalBefore)
+}
+
+@MainActor
+@Test func writeFileWithAnyExpectingHashOnAMissingPathRefusesRatherThanCreatingIt() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    session.journalCommand = "note rename"
+
+    await #expect(throws: VaultSession.WriteRefusal.movedOn("Nuova.canvas")) {
+        try await session.writeFile("{\"nodes\":[]}", to: "Nuova.canvas", expecting: "any-hash")
+    }
+
+    #expect(!session.exists("Nuova.canvas"))
+}
+
+@MainActor
+@Test func writeFileWithNoExpectingArgumentIsUnchangedInEveryRespect() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    try vault.write("{\"nodes\":[]}", to: "Lavagna.canvas")
+    session.journalCommand = "note rename"
+
+    // No `expecting:` at all - one of the three pre-existing call sites' own shape.
+    try await session.writeFile("{\"nodes\":[],\"x\":1}", to: "Lavagna.canvas")
+
+    #expect(try boardText(vault, "Lavagna.canvas") == "{\"nodes\":[],\"x\":1}")
+    let entry = try #require(session.journalOnDisk.entries().last)
+    #expect(entry.textBefore == "{\"nodes\":[]}")
+}

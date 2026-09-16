@@ -149,3 +149,33 @@ private func tag(_ raw: String) throws -> VaultTag {
     reopened.close()
     controller.close()
 }
+
+// MARK: - Task 6 (R-07): what `TagBrowserView` reads from the controller
+
+// `FinishedRename`/`TagRenameBanner`/`perform(renameOf:to:)` are private to the view and stay
+// unreachable here (`@testable import` widens `internal`, not `private`) - the pane itself is
+// UI-test territory (this file's own header), and standing rule 8 adds none in this task. What
+// is reachable, and is the view's only source for `refusals`, is `VaultController.renameTag`/
+// `undoJournalledWrites`: both are a bare pass-through of `VaultSession.TagRenameOutcome`
+// (`Sources/App/VaultController+Files.swift`), never a second construction of it, so this pins
+// that the new field survives the controller layer rather than re-testing `VaultSession.renameTag`
+// itself (`Tests/TagRenameTests.swift`'s Task 3 tests already own that).
+@MainActor
+@Test func renameTagThroughTheControllerCarriesRefusalsThroughUnchanged() async throws {
+    let vault = try TemporaryVault()
+    _ = try await session(vault)
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+
+    let outcome = await controller.renameTag(try tag("topic-gomma"), to: try tag("topic-fune"))
+
+    #expect(outcome.changed.sorted() == ["Curva.md", "Nexion.md"])
+    #expect(outcome.refusals.isEmpty)
+
+    let undone = await controller.undoJournalledWrites(outcome.journalIDs)
+
+    #expect(undone.changed.count == 2)
+    #expect(undone.refusals.isEmpty)
+
+    controller.close()
+}

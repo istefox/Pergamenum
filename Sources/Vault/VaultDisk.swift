@@ -257,7 +257,23 @@ extension VaultDisk {
     /// index or the per-note history. The caller decides whether the mutation this returns
     /// is worth applying at all; `VaultSession.writeFile` (`VaultSession+Journal.swift`)
     /// never does, because a board is not a note (ADR-0016 §D6).
-    func writeFile(_ text: String, to relativePath: String) async throws -> IndexMutation {
+    ///
+    /// `expecting` (ADR-0046 §D5) is compared against the file's current bytes, read here for
+    /// that purpose - unlike `write(_:to:precomputedHash:...)` above, this overload performed
+    /// no read at all before this, so a guarded board write costs one extra read. The
+    /// comparison happens inside the actor, immediately before `store.write`, so no suspension
+    /// can separate the read from the write. A path with no file reads as `nil`, which never
+    /// equals a non-nil `expecting`, so a vanished board is refused rather than re-created
+    /// (§D8).
+    func writeFile(_ text: String, to relativePath: String, expecting: String? = nil) async throws -> IndexMutation {
+        if let expecting {
+            let existing = try? store.text(relativePath)
+            let existingHash = existing.map { NoteStore.hash(Data($0.utf8)) }
+            guard existingHash == expecting else {
+                throw VaultWriteRefusal.movedOn(relativePath)
+            }
+        }
+
         let data = Data(text.utf8)
         try store.write(text, to: relativePath)
         let fileURL = try store.url(for: relativePath)
