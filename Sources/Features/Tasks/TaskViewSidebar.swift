@@ -12,7 +12,7 @@ struct TaskViewSidebar: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
-    @Binding var selection: IndexSnapshot.TaskView
+    @Binding var selection: TaskPaneSelection
 
     var body: some View {
         // The rollover window is passed in so the badge counts what the list draws: with it on
@@ -24,9 +24,10 @@ struct TaskViewSidebar: View {
             Text("ATTIVITÀ").themedText(.caption, color: .textTertiary)
 
             ForEach(IndexSnapshot.TaskView.allCases) { item in
+                let isSelected = selection.taskView == item
                 HStack {
                     Text(item.title)
-                        .themedText(.body, color: item == selection ? .textPrimary : .textSecondary)
+                        .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
                     Spacer()
                     if let count = counts[item], count > 0 {
                         Text("\(count)").themedText(.caption, color: .textTertiary)
@@ -34,11 +35,14 @@ struct TaskViewSidebar: View {
                 }
                 .padding(.horizontal, theme.spacing(.s))
                 .padding(.vertical, theme.spacing(.xs))
-                .background(item == selection ? theme.color(.accentMuted) : .clear)
+                .background(isSelected ? theme.color(.accentMuted) : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
                 .contentShape(Rectangle())
-                .onTapGesture { selection = item }
+                .onTapGesture { selection = .view(item) }
             }
+
+            Divider()
+            CategorySidebarSection(selection: $selection)
 
             Spacer()
 

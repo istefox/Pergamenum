@@ -224,6 +224,12 @@ final class Navigation {
     /// share.
     var taskPickingCategory: TaskItem?
 
+    /// The category `CategoryEditor` is creating or editing (ADR-0047 §D6, R-01), held the
+    /// same way and for the same reason as `taskPickingCategory` above: the section's "+"
+    /// and a row's "Modifica…" both live inside `CategorySidebarSection`, and `RootView`
+    /// is the one place a sheet reaches every surface from.
+    var categoryEditorTarget: CategoryEditor.Target?
+
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false

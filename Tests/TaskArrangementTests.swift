@@ -401,6 +401,29 @@ private func indexed(_ body: String, path: String = "01 Progetti/Pergamenum.md")
     #expect(restored == map)
 }
 
+/// A category's own key (`TasksView+List.swift`'s `category:<slug>` namespace, ADR-0047
+/// §D6) is just another string key to this map - it round-trips beside the five view
+/// keys without disturbing them, the same guarantee `theStoredControlsSurviveTheRoundTrip`
+/// already holds for those five alone.
+@Test func categoryControlsRoundTripUnderTheirOwnKeyWithoutDisturbingTheFiveViews() {
+    let map = [
+        IndexSnapshot.TaskView.today.rawValue:
+            TaskListOptions(grouping: .none, sorting: .schedule),
+        "category:collaudi":
+            TaskListOptions(grouping: .deadline, sorting: .text, density: .compact),
+    ]
+
+    let restored = TaskListOptions.map(fromJSON: TaskListOptions.json(of: map))
+
+    #expect(restored == map)
+    // `TaskGrouping.none` explicitly, not the bare `.none` literal: against an
+    // `Optional<TaskGrouping>`, `.none` reads as `Optional.none` (nil) rather than the
+    // wrapped case of the same name, and this is exactly the pair of values that trap
+    // would compare equal for the wrong reason.
+    #expect(restored[IndexSnapshot.TaskView.today.rawValue]?.grouping == TaskGrouping.none)
+    #expect(restored["category:collaudi"]?.density == .compact)
+}
+
 @Test func aStoredControlWrittenByAnOlderVersionKeepsWhatItHas() {
     // One key missing, the other two set: the decoder falls back per key rather than throwing
     // the whole entry away, which is the contract `VaultSettings` keeps for the same reason.
