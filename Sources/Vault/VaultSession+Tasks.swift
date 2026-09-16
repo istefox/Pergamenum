@@ -16,6 +16,10 @@ extension VaultSession {
         /// Assigns or clears the task's Workspace marker `^[[<canvas>.canvas]]`
         /// (ADR-0021 D9). Replaces any existing marker rather than appending a second.
         case workspace(String?)
+        /// Assigns or clears the task's `#project-<slug>` category tag (ADR-0047 §D5,
+        /// R-03's write half). Replaces every existing one rather than appending a
+        /// second, the same "exactly one" shape as `workspace` above.
+        case category(String?)
     }
 
     /// Where a captured task is written (SPEC §7.4).
@@ -119,6 +123,8 @@ extension VaultSession {
                 TaskParser.line(for: task, addingLinkTo: target)
             case .workspace(let path):
                 TaskParser.line(for: task, assigningWorkspace: path)
+            case .category(let slug):
+                TaskParser.line(for: task, assigningCategory: slug)
             }
 
             guard let updated = TaskParser.rewrite(

@@ -156,6 +156,48 @@ extension TaskParser {
         return line.index(before: entry.link.range.lowerBound)..<entry.link.range.upperBound
     }
 
+    // MARK: - Category assignment (ADR-0047 §D5)
+
+    /// Assigns or clears the task's category tag (SPEC "Task ↔ category", "exactly
+    /// one" like the Workspace marker above): removes **every** existing
+    /// `#project-*` tag first - the SPEC edge case of a line carrying two is
+    /// normalized down to the one just chosen - then appends the new one; `nil`
+    /// removes without appending anything.
+    static func line(for task: TaskItem, assigningCategory slug: String?) -> String {
+        var line = task.rawLine
+        while let existing = projectTagRange(in: line) {
+            line.removeSubrange(withPrecedingSpace(existing, in: line))
+        }
+        guard let slug else { return line.trimmingTrailingWhitespace() }
+        return line.trimmingTrailingWhitespace() + " #project-\(slug)"
+    }
+
+    /// The range of the first `#project-*` tag in `line`, found with the same
+    /// boundary check `tags(in:)` (`TaskParser.swift`) uses - preceded by the line
+    /// start or a space, so a stray `#` mid-word is never mistaken for one.
+    private static func projectTagRange(in line: String) -> Range<String.Index>? {
+        let characters = Array(line)
+        var index = 0
+        while index < characters.count {
+            guard characters[index] == "#", index == 0 || characters[index - 1] == " " else {
+                index += 1
+                continue
+            }
+            var end = index + 1
+            while end < characters.count,
+                  characters[end].isLetter || characters[end].isNumber || characters[end] == "-" {
+                end += 1
+            }
+            if let tag = Tag(String(characters[index..<end])), tag.namespace == .project {
+                let start = line.index(line.startIndex, offsetBy: index)
+                let stop = line.index(line.startIndex, offsetBy: end)
+                return start..<stop
+            }
+            index = end
+        }
+        return nil
+    }
+
     /// Inserts a sub-task line immediately below `parent`, allocating `^id`/`^parent`
     /// from one `nextLocalID` scan (ADR-0021 D9, A9; R-07). Returns nil when the line
     /// at `parent.lineIndex` is no longer `parent.rawLine` - the same staleness guard
