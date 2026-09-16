@@ -42,4 +42,22 @@ extension VaultController {
     func task(at sourcePath: String, line lineIndex: Int) -> TaskItem? {
         index.allTasks.first { $0.sourcePath == sourcePath && $0.lineIndex == lineIndex }
     }
+
+    /// A task dragged onto a category row (ADR-0047 §D5, R-03's other assignment
+    /// gesture): resolves the dragged `TaskDragPayload` back to a task through the index,
+    /// the same refuse-by-name shape `dropTask(sourcePath:lineIndex:on:at:)` above uses
+    /// for a day, then writes `slug` through the ordinary `TaskChange.category` Task 3
+    /// built - no journal, no batch, since a category assignment carries no undo
+    /// requirement of its own (SPEC "Edge cases" names none, unlike the day-drop's
+    /// journalled move).
+    ///
+    /// The row's own `TaskDropTarget` wraps this as its `onDrop` closure (Task 5).
+    @discardableResult
+    func dropTask(sourcePath: String, lineIndex: Int, onCategory slug: String) async -> Bool {
+        guard let task = task(at: sourcePath, line: lineIndex) else {
+            recordProblem("il task non è più dove risultava: \(sourcePath)")
+            return false
+        }
+        return await apply(.category(slug), to: task)
+    }
 }

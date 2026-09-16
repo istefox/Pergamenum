@@ -62,6 +62,11 @@ extension VaultSession {
         var reminder: TaskReminder?
         /// `@repeat(n/N)`, the finite recurrence of SPEC §7.1.
         var recurrence: TaskRecurrence?
+        /// The `#project-<slug>` category chosen in the composer (ADR-0047 §D5, R-03).
+        /// Composed here rather than concatenated into `text`: `captureTask` appends it
+        /// through `TaskParser.line(for:assigningCategory:)`, the same writer an already
+        /// captured task's assignment uses (Task 3), never a second append shape.
+        var category: String?
         /// The task this draft becomes a sub-task of (ADR-0021 D9, A9). Nil composes an
         /// ordinary top-level task exactly as before; set, `captureTask` routes through
         /// `TaskParser.insertingSubtask(in:below:draft:)` and writes into the parent's
@@ -222,7 +227,7 @@ extension VaultSession {
                 return nil
             }
 
-            let line = TaskParser.line(
+            var line = TaskParser.line(
                 forNewTask: draft.text,
                 scheduled: draft.scheduled,
                 scheduledTime: draft.scheduledTime,
@@ -231,6 +236,14 @@ extension VaultSession {
                 reminder: draft.reminder,
                 recurrence: draft.recurrence
             )
+            // Task 3's writer, not a second append shape: the line just built parses
+            // back into an ordinary `TaskItem`, and the same function that replaces an
+            // existing `#project-*` tag on an already captured task builds the first
+            // one here too.
+            if let category = draft.category,
+               let freshTask = TaskParser.parse(line: line, sourcePath: relativePath, lineIndex: 0) {
+                line = TaskParser.line(for: freshTask, assigningCategory: category)
+            }
             let separator = body.hasSuffix("\n") ? "" : "\n"
             // `expecting:` (ADR-0043 §D8, Task 9): nil when `existing` is nil - a brand
             // new inbox note has no "before" to expect (§D8 excludes creation by name) -

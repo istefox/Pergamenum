@@ -345,3 +345,30 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     #expect(await session.reconcile(["N.md"]).isEmpty)
     #expect(session.index.note(at: "N.md") == nil)
 }
+
+// MARK: - Tag suggestions (ADR-0047 §D5)
+
+/// SPEC "UI flows": "typing `#project-` in the editor on a task line offers the
+/// registered slugs" - a category nobody has tagged a task with yet is absent from
+/// `index.tagUsage()`, so it needs its own source in `tagSuggestions` rather than
+/// riding along with it.
+@MainActor
+@Test func tagSuggestionsOffersARegisteredCategoryThatAppearsOnNoTask() async throws {
+    let vault = try TemporaryVault()
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    session.createCategory(Category(slug: "vibrofer", name: "Vibrofer", color: "rosso"))
+
+    #expect(session.tagSuggestions.contains("#project-vibrofer"))
+}
+
+/// The same edge case the picker and the assign command refuse: an archived category
+/// is never offered (SPEC "Edge cases").
+@MainActor
+@Test func tagSuggestionsExcludesAnArchivedCategory() async throws {
+    let vault = try TemporaryVault()
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    session.createCategory(Category(slug: "vibrofer", name: "Vibrofer", color: "rosso"))
+    session.archiveCategory("vibrofer")
+
+    #expect(!session.tagSuggestions.contains("#project-vibrofer"))
+}

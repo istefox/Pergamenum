@@ -33,6 +33,7 @@ extension TaskComposer {
                     .themedText(.caption, color: .textSecondary)
                     .accessibilityIdentifier("task-composer-repeat-badge")
             }
+            categoryChip
 
             Spacer()
 
@@ -123,6 +124,56 @@ extension TaskComposer {
         ) {
             popoverContent(for: popover)
         }
+    }
+
+    // MARK: - Category (ADR-0047 §D5, R-03)
+
+    /// The composer's category chip: a menu of registered, non-archived categories
+    /// grouped parent → child (`CategoryRegistry.assignableGroups`, the same shape
+    /// `CategoryPicker` uses), setting `draft.category` rather than writing anything -
+    /// the tag is appended to the drafted line only once `create()` actually captures
+    /// it, through Task 3's `TaskParser.line(for:assigningCategory:)`
+    /// (`VaultSession+Tasks.swift`'s `captureTask`), never string concatenation here.
+    var categoryChip: some View {
+        Menu {
+            ForEach(vault.categories.assignableGroups, id: \.parent.slug) { group in
+                if group.children.isEmpty {
+                    categoryMenuButton(group.parent)
+                } else {
+                    Menu(group.parent.name) {
+                        categoryMenuButton(group.parent)
+                        ForEach(group.children) { child in categoryMenuButton(child) }
+                    }
+                }
+            }
+            if draft.category != nil {
+                Divider()
+                Button("Togli la categoria") { draft.category = nil }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "tag")
+                Text(categoryName ?? "Categoria")
+                    .themedText(.caption, color: draft.category == nil ? .textTertiary : .textPrimary)
+            }
+            .foregroundStyle(theme.color(draft.category == nil ? .textTertiary : .accentPrimary))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityIdentifier("task-composer-category")
+    }
+
+    private func categoryMenuButton(_ category: Category) -> some View {
+        Button(category.name) { draft.category = category.slug }
+    }
+
+    /// The chosen category's display name, or the bare slug when the registry no
+    /// longer names it (deleted or archived while the composer was open) - shown
+    /// rather than silently dropped, since `create()` still writes whatever slug is
+    /// held.
+    private var categoryName: String? {
+        guard let slug = draft.category else { return nil }
+        return vault.categories.entries.first { $0.slug == slug }?.name ?? slug
     }
 
     @ViewBuilder

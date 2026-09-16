@@ -77,4 +77,16 @@ struct CategoryRegistry: Codable, Equatable, Sendable {
     func subtreeSlugs(of slug: String) -> Set<String> {
         Set([slug] + children(of: slug).map(\.slug))
     }
+
+    /// Registered, non-archived categories, grouped top level → child, each level
+    /// ordered by `Category.order` (SPEC "UI flows": "grouped parent → child" - the
+    /// shape the assignment picker and the composer's category chip both need, and
+    /// never offer an archived category, SPEC "Edge cases").
+    var assignableGroups: [(parent: Category, children: [Category])] {
+        let registered = entries.filter { !$0.archived }
+        let topLevel = registered.filter { $0.parent == nil }.sorted { $0.order < $1.order }
+        return topLevel.map { parent in
+            (parent, registered.filter { $0.parent == parent.slug }.sorted { $0.order < $1.order })
+        }
+    }
 }

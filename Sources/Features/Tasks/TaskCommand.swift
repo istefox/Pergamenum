@@ -21,12 +21,20 @@ enum TaskCommand: String, CaseIterable, Sendable {
     case goToNote
     /// Opens the board the task is assigned to.
     case goToBoard
+    /// Assigns the task's `#project-<slug>` category tag via `CategoryPicker`
+    /// (ADR-0047 §D5, R-03).
+    case assignCategory
+    /// Clears the task's category tag. Never appended twice with `.assignCategory`'s
+    /// picker - offered only when the task actually carries one, `.goToBoard`'s shape.
+    case removeCategory
 
     var title: String {
         switch self {
         case .linkBoard: "Collega una board…"
         case .goToNote: "Vai alla nota di origine"
         case .goToBoard: "Vai alla board collegata"
+        case .assignCategory: "Assegna categoria…"
+        case .removeCategory: "Togli la categoria"
         }
     }
 
@@ -35,6 +43,8 @@ enum TaskCommand: String, CaseIterable, Sendable {
         case .linkBoard: "rectangle.3.group"
         case .goToNote: "doc.text.magnifyingglass"
         case .goToBoard: "arrow.up.forward.square"
+        case .assignCategory: "tag"
+        case .removeCategory: "tag.slash"
         }
     }
 
@@ -47,12 +57,17 @@ enum TaskCommand: String, CaseIterable, Sendable {
 
     /// `task`'s own commands, in menu order. `.goToBoard` only when a board is actually
     /// assigned — offering it unconditionally would be the same "promises what it cannot
-    /// do" defect this catalogue replaces. `.linkBoard` and `.goToNote` are always offered:
-    /// a task with no board yet can still gain one, and a task always has a source note.
+    /// do" defect this catalogue replaces. `.linkBoard`, `.goToNote` and `.assignCategory`
+    /// are always offered: a task with no board or category yet can still gain one, and a
+    /// task always has a source note. `.removeCategory` only when the task already carries
+    /// a `#project-*` tag, the same shape `.goToBoard` takes above.
     static func available(for task: TaskItem) -> [TaskCommand] {
-        var commands: [TaskCommand] = [.linkBoard, .goToNote]
+        var commands: [TaskCommand] = [.linkBoard, .goToNote, .assignCategory]
         if task.workspacePath != nil {
             commands.append(.goToBoard)
+        }
+        if task.project != nil {
+            commands.append(.removeCategory)
         }
         return commands
     }

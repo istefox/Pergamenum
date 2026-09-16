@@ -218,6 +218,12 @@ final class Navigation {
     /// place every surface shares.
     var taskPickingBoard: TaskItem?
 
+    /// The task `TaskCommand.assignCategory` opened `CategoryPicker` for (ADR-0047 §D5),
+    /// held the same way and for the same reason as `taskPickingBoard` above: the command
+    /// is reachable from more than one surface, and `RootView` is the one place they all
+    /// share.
+    var taskPickingCategory: TaskItem?
+
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false

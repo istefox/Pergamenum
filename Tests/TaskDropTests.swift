@@ -164,3 +164,42 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
     #expect(outcome.introduced.isEmpty)
     #expect(try session.read("Sciolto.md").text.contains(">2026-08-20"))
 }
+
+// MARK: - Drop onto a category row (ADR-0047 §D5, R-03's other assignment gesture)
+
+@MainActor
+private func controller(_ vault: borrowing TemporaryVault) async throws -> VaultController {
+    try vault.write(taskNote, to: "Lavoro.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    return controller
+}
+
+@MainActor
+@Test func aDropOnACategoryRowWritesTheSameTagTask3sWriterProduces() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    let dropped = try #require(controller.index.allTasks.first { $0.text.contains("Collaudo") })
+
+    let didWrite = await controller.dropTask(
+        sourcePath: dropped.sourcePath, lineIndex: dropped.lineIndex, onCategory: "vibrofer"
+    )
+
+    #expect(didWrite)
+    let text = try controller.session?.read("Lavoro.md").text
+    #expect(text?.contains("#project-vibrofer") == true)
+}
+
+/// A row drawn from a scan the index has since moved on from - the same refusal
+/// `dropTask(sourcePath:lineIndex:on:at:)` gives for a day drop, exercised here for the
+/// category door.
+@MainActor
+@Test func aCategoryDropWhosePayloadNoLongerResolvesToATaskIsRefused() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+
+    let didWrite = await controller.dropTask(sourcePath: "Lavoro.md", lineIndex: 99, onCategory: "vibrofer")
+
+    #expect(!didWrite)
+    #expect(controller.problems.contains { $0.contains("non è più dove risultava") })
+}

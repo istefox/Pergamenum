@@ -19,19 +19,25 @@ extension CommandActions {
             navigation.pane = .notes
         case .goToBoard:
             goToBoard(assignedTo: task)
+        case .assignCategory:
+            navigation.taskPickingCategory = task
+        case .removeCategory:
+            Task { @MainActor in await vault.apply(.category(nil), to: task) }
         }
     }
 
     /// Whether `command` does anything useful for `task` right now — `.goToBoard` needs a
-    /// board that actually resolves; `.linkBoard`/`.goToNote` are always available, the same
-    /// as `TaskCommand.available(for:)` already decides for which commands are offered at
-    /// all.
+    /// board that actually resolves, `.removeCategory` needs a category actually assigned;
+    /// `.linkBoard`/`.goToNote`/`.assignCategory` are always available, the same as
+    /// `TaskCommand.available(for:)` already decides for which commands are offered at all.
     func canRun(_ command: TaskCommand, on task: TaskItem) -> Bool {
         switch command {
-        case .linkBoard, .goToNote:
+        case .linkBoard, .goToNote, .assignCategory:
             true
         case .goToBoard:
             task.workspacePath != nil
+        case .removeCategory:
+            task.project != nil
         }
     }
 

@@ -147,6 +147,12 @@ struct RootView: View {
             .sheet(item: Bindable(navigation).taskPickingBoard) { task in
                 WorkspacePicker(task: task) { navigation.taskPickingBoard = nil }
             }
+            // `TaskCommand.assignCategory`'s picker (ADR-0047 §D5), hosted here for the
+            // same reason as the board picker above: it opens from every surface that
+            // offers the command.
+            .sheet(item: Bindable(navigation).taskPickingCategory) { task in
+                CategoryPicker(task: task) { navigation.taskPickingCategory = nil }
+            }
     }
 
     private var content: some View {

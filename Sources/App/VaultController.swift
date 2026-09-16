@@ -19,6 +19,10 @@ final class VaultController {
     var settings: VaultSettings { session?.settings ?? .default }
     var vocabulary: Vocabulary { session?.vocabulary ?? .empty }
     var index: IndexSnapshot { session?.index ?? IndexSnapshot() }
+    /// The vault's category registry (ADR-0047 §D2), read straight through the same way
+    /// `index` is - `CategoryPicker` and Task 5's sidebar/editor/view read it live, never
+    /// a copy captured once.
+    var categories: CategoryRegistry { session?.categories ?? .empty }
     /// Renders and caches previews of the vault's files: the Workspace's cards, and the
     /// pictures reading mode draws inside a note. Nil while no vault is open.
     private(set) var thumbnails: ThumbnailStore?

@@ -147,8 +147,13 @@ extension VaultSession {
             + vocabulary.status.map { "#status-\($0)" }
             + vocabulary.area.map { "#area-\($0)" }
             + vocabulary.source.map { "#source-\($0)" }
+        // Registered, non-archived categories (ADR-0047 §D5, SPEC "UI flows": "typing
+        // `#project-` in the editor offers the registered slugs") - a category with no
+        // task tagged yet is still absent from `used`, so it needs its own source
+        // rather than riding along with it.
+        let registeredCategories = categories.entries.filter { !$0.archived }.map { "#project-\($0.slug)" }
         var seen = Set<String>()
-        return (used + closed.sorted()).filter { seen.insert($0).inserted }
+        return (used + closed.sorted() + registeredCategories.sorted()).filter { seen.insert($0).inserted }
     }
 
     // MARK: Structural links
