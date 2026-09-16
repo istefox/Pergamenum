@@ -402,6 +402,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0042** — An inline (`cid:`) image Mail hasn't downloaded yet stops being counted as a pending attachment: a per-image body placeholder plus a dedicated `pergamenum-mail-inline-pending` frontmatter key replace the old chip, resolved every sync with no retry cap, and dropped entirely when the body never references the image. Amends ADR-0040 §D9, widens ADR-0036 §D6 → `docs/adr/0042-pratiche-inline-image-placeholders.md`
 - **ADR-0043** — Follow-up to ADR-0041, found by an independent post-implementation review: the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload. The implementation chain measured the async cascade at 3-4x the ADR's own estimate (~210 call sites, 46 files, 25 test files) and named 13 call sites adopting the §D8 opt-in `expecting:` hash precondition. Extends ADR-0041 §D9/§D10/§D11, amends none → `docs/adr/0043-vault-write-ordering-concurrency-races.md`
 - **ADR-0045** — PG-143 pratiche structure refactor: SwiftLint's error-level `file_length`/`type_body_length` debt across eleven pratiche files resolved by pure `Type+Aspect.swift` extension splits (signatures untouched), `private` widening to `internal` only where a split requires it with one comment per widened member naming the file that reads it, and `PraticaSyncEngine+Messages.swift`'s `fileprivate` regeneration-plan cluster kept whole to preserve ADR-0036 §D21's opacity guarantee. Reopens nothing → `docs/adr/0045-pratiche-structure-refactor.md`
+- **ADR-0046** — Batch rename/move write guard, follow-up to ADR-0043 §D8: `VaultPlanApplication.Outcome`/`TagRenameOutcome`/`NoteFileOperations.Outcome` gain a `refusals` channel distinct from `failures`, driven by the existing opt-in `expecting:` hash precondition at all four batch writer closures; no preflight pass, the loop never stops on a refusal → `docs/adr/0046-batch-rename-stale-write-refusals.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 
@@ -549,5 +550,27 @@ already lives in the Chain decision index above.
   `Tests/PraticaSyncTests.swift` (the same two violations) is explicitly out of scope, filed
   separately rather than left unmentioned. No SPEC decision, on-disk format, frontmatter key,
   protected-interface signature or user-visible behaviour reopened.
+- **ADR-0046 (batch rename/move write guard, follow-up to ADR-0043 §D8):** `VaultPlanApplication
+  .Outcome` gains a third collection, `refusals`, classified apart from `failures` in both `apply`
+  overloads. `VaultWriteRefusal` (was `VaultSession.WriteRefusal`) moves to a top-level
+  `Sources/Core/Vault/VaultWriteRefusal.swift`, since `apply` lives in `Sources/Core` and cannot
+  catch a type declared in `Sources/Vault`; `VaultSession.WriteRefusal` stays as an **unqualified**
+  `typealias` so `perg`/`pergamenum-mcp`, which compile the same files under a different module
+  name, keep compiling. All four batch writer closures — `renameTag`'s note writer, `renameNote`'s
+  note and board writers, `moveNote`'s board writer — adopt the existing `expecting:` precondition
+  through two new named seams, `VaultSession.writeGuarded`/`writeFileGuarded`, added specifically so
+  a test can drive them directly: no timing-based interleaving test is ever written, since the
+  plan-to-first-write window is empty in-process and the real race window opens only inside the
+  loop, which a single-threaded test cannot observe without racing a concurrent `Task` (§D2, §D11).
+  A refusal never stops the loop and nothing already written is rolled back — all-or-nothing in the
+  batch's *decision*, best-effort in its *execution*, ADR-0026 §D6's rule applied to the other batch
+  verb (§D3). `renameTag` is idempotent and re-runnable; `renameNote`/`moveNote` are not, since
+  `oldTitle` derives from the file's *new* name once it has moved, so the two appliers report a
+  refusal differently on purpose — a count for the tag path, a named problem for the note path
+  (§D6). `writeFile` gains the same opt-in precondition as `write`, guarding the board half of a
+  note rename that §D1 would otherwise leave half done (§D5); `VaultSession.writeFile`'s own
+  pre-hop journal-«before» read (ADR-0043 §D5's Race 2 shape, on this one door only) is deliberately
+  left unfixed and filed as `PG-161`. The connectors' JSON is unchanged: refusals fold into
+  `FileMoveSummary.failures` with their own sentence rather than a new key.
 
 Detail: see each ADR under `docs/adr/`.

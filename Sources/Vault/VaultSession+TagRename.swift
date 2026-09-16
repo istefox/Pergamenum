@@ -30,6 +30,11 @@ extension VaultSession {
         var changed: [String] = []
         var journalIDs: [String] = []
         var failures: [String] = []
+        /// Notes whose bytes moved on since the preview was read, so nothing was written for
+        /// them (ADR-0046 §D1/§D6). Re-running the rename finishes them: `renameTag` is
+        /// idempotent, so a repeated gesture recomputes a fresh preview and touches only the
+        /// remainder.
+        var refusals: [String] = []
     }
 
     /// The notes carrying the tag, with the text each would get. Reads files; writes nothing.
@@ -58,7 +63,11 @@ extension VaultSession {
     ///
     /// A note that fails is reported and the rest go on: stopping half way through would leave
     /// the vault split between two spellings of the same tag with no record of where the line
-    /// fell.
+    /// fell. **No preflight pass is added** (ADR-0046 §D2): a note whose bytes moved on between
+    /// this preview and its own turn in the loop below is refused, in `refusals`, and named in
+    /// the doc comment for `TagRenameOutcome.refusals` above - not read, compared and refused
+    /// again before a byte is written. Re-running the rename on a partially renamed vault
+    /// finishes the job, because the preview above is recomputed fresh every call.
     @discardableResult
     func renameTag(_ old: Tag, to new: Tag) async -> TagRenameOutcome {
         let changes = tagRenamePreview(old, to: new)
@@ -78,13 +87,15 @@ extension VaultSession {
         let fileChanges = changes.map {
             VaultFileChange(path: $0.path, before: $0.before, after: $0.after)
         }
-        let result = await VaultPlanApplication.apply(fileChanges) {
-            try await write($0.after, to: $0.path)
-        }
-        var outcome = TagRenameOutcome(changed: result.rewrittenPaths, failures: result.failures)
+        let result = await VaultPlanApplication.apply(fileChanges, writing: writeGuarded)
+        var outcome = TagRenameOutcome(
+            changed: result.rewrittenPaths, failures: result.failures, refusals: result.refusals
+        )
         // Read back rather than remembered as they were written: `write` records through the
         // journal itself, and asking the journal what it now holds is the only account of the
-        // group that cannot disagree with the file.
+        // group that cannot disagree with the file. A refused write appends nothing to the
+        // journal, so this stays correct by construction and must not be changed to remember
+        // what was written instead.
         outcome.journalIDs = journal.entries()
             .filter { !entriesBefore.contains($0.id) }
             .map(\.id)

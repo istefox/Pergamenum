@@ -553,19 +553,33 @@ extension VaultSession {
 // MARK: - ADR-0043 §D8 - the optional expected-hash precondition
 
 extension VaultSession {
-    /// Thrown by `write(_:to:expecting:)` when the caller's `expecting` hash no longer
-    /// matches the file's current bytes: the read that produced `text` straddled a
-    /// suspension, somebody else wrote in between, and this write refuses rather than
-    /// silently discarding that edit.
-    enum WriteRefusal: Error, CustomStringConvertible, Equatable {
-        case movedOn(String)
+    /// `VaultWriteRefusal` (`Sources/Core/Vault/VaultWriteRefusal.swift`), kept under its
+    /// original name so all fifteen existing `VaultSession.WriteRefusal` references keep
+    /// compiling (ADR-0046 §D4). Unqualified on purpose: a module-qualified
+    /// `Pergamenum.WriteRefusal` would not compile in the `perg`/`pergamenum-mcp` targets,
+    /// which compile this file under a different module name.
+    typealias WriteRefusal = VaultWriteRefusal
+}
 
-        var description: String {
-            switch self {
-            case .movedOn(let path):
-                "«\(path)» è cambiato da quando questa scrittura è partita, non lo tocco"
-            }
-        }
+// MARK: - ADR-0046 §D1 - the guarded batch writer, named so a test can drive it directly
+
+extension VaultSession {
+    /// The note writer `renameTag` and `renameNote` each hand to `VaultPlanApplication.apply`:
+    /// `expecting` is the hash `change.after` was derived from (`VaultFileChange.expectedHash`),
+    /// so a note whose bytes moved on since is refused rather than overwritten.
+    ///
+    /// A named internal function rather than an anonymous closure repeated at each call site, so
+    /// `Tests/TagRenameTests.swift` and `Tests/VaultSessionFileOperationsTests.swift` can drive
+    /// the production writer directly (ADR-0046 §D11) instead of a re-spelling of it. Internal,
+    /// not `private`: the tests reach it through `@testable import` from another file.
+    func writeGuarded(_ change: VaultFileChange) async throws {
+        try await write(change.after, to: change.path, expecting: change.expectedHash)
+    }
+
+    /// The board half of the same guard, for `renameNote`'s and `moveNote`'s `.canvas` repoints
+    /// (ADR-0046 §D5).
+    func writeFileGuarded(_ change: VaultFileChange) async throws {
+        try await writeFile(change.after, to: change.path, expecting: change.expectedHash)
     }
 }
 

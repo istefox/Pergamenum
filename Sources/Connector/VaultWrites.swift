@@ -96,6 +96,17 @@ extension VaultAPI {
 
     // MARK: Renaming, moving, trashing (ADR-0016)
 
+    /// Where a rename or a move's refusals become part of `failures` rather than a new JSON
+    /// key (ADR-0046 §D4): `FileMoveSummary` is the wire shape both connectors answer with,
+    /// and the distinct channel the ADR asks for lives in Swift, not on the wire. One function
+    /// for both `renameNote` and `moveNote` below, so the sentence cannot drift between the
+    /// two - and one seam `Tests/ConnectorTests.swift` can call directly with a hand-built
+    /// `NoteFileOperations.Outcome`, since a genuine refusal cannot be forced deterministically
+    /// through either async call above (ADR-0046 §D11, same constraint Task 4's tests name).
+    static func foldedFailures(_ outcome: NoteFileOperations.Outcome) -> [String] {
+        outcome.failures + outcome.refusals.map { VaultWriteRefusal.movedOn($0).description }
+    }
+
     @MainActor
     static func renameNote(
         _ session: VaultSession, at path: String, to newTitle: String
@@ -112,7 +123,7 @@ extension VaultAPI {
                 newPath: outcome.newPath,
                 applied: !session.isDryRun,
                 rewrittenPaths: outcome.rewrittenPaths,
-                failures: outcome.failures
+                failures: foldedFailures(outcome)
             )
         } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")
@@ -132,7 +143,7 @@ extension VaultAPI {
                 newPath: outcome.newPath,
                 applied: !session.isDryRun,
                 rewrittenPaths: outcome.rewrittenPaths,
-                failures: outcome.failures
+                failures: foldedFailures(outcome)
             )
         } catch let refusal as FileOperationError {
             throw ConnectorError("\(refusal)")

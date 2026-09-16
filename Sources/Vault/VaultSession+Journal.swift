@@ -153,7 +153,13 @@ extension VaultSession {
     /// would re-read a `NoteRecord` that is not there. Everything else about it is the same,
     /// including the journal entry, which is what stops a board card from being the one part of
     /// a rename that cannot be undone.
-    func writeFile(_ text: String, to relativePath: String) async throws {
+    ///
+    /// `expecting` (ADR-0046 §D5) forwards straight to `VaultDisk.writeFile`. **Deliberately
+    /// left as it is:** the journal's own «before» just above is still read on the main actor,
+    /// ahead of the actor hop - ADR-0043 §D5's Race 2 shape, surviving here because closing it
+    /// would change what the journal records for every board write in the app, a decision about
+    /// the journal and not about batch renames (filed, not fixed, Task 7).
+    func writeFile(_ text: String, to relativePath: String, expecting: String? = nil) async throws {
         let existing = (journal != nil && !isDryRun)
             ? (try? store.url(for: relativePath)).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
             : nil
@@ -164,7 +170,12 @@ extension VaultSession {
         // to the index - a board is not a note, unchanged from before this task.
         let mutation: VaultDisk.IndexMutation
         do {
-            mutation = try await disk.writeFile(text, to: relativePath)
+            mutation = try await disk.writeFile(text, to: relativePath, expecting: expecting)
+        } catch let refusal as VaultWriteRefusal {
+            // Rethrown as-is, not wrapped: a refusal is its own channel
+            // (`VaultPlanApplication.apply` classifies it apart from `failures`, ADR-0046 §D4),
+            // the same shape `VaultSession.write`'s own catch-all already keeps.
+            throw refusal
         } catch {
             throw FileOperationError.failed(
                 "scrittura: \(error.localizedDescription)"

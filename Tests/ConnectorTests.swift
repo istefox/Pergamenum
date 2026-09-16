@@ -273,6 +273,35 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Nuova.md").path))
 }
 
+// MARK: - Task 5 (R-02, R-05, R-06): a refusal folds into `failures`, with its own sentence
+
+@Test func aRefusalFoldsIntoFailuresWithItsOwnSentenceRatherThanANewKey() {
+    // `foldedFailures` is the one seam `VaultAPI.renameNote`/`moveNote` share (ADR-0046 §D4).
+    // A genuine refusal cannot be forced through either deterministically (§D11 - the same
+    // synchronous-plan-then-write constraint `Tests/VaultSessionFileOperationsTests.swift`'s
+    // Task 4 tests name), so this drives the fold directly with a hand-built
+    // `NoteFileOperations.Outcome` rather than racing a concurrent write.
+    let outcome = NoteFileOperations.Outcome(
+        newPath: "Nuovo titolo.md",
+        rewrittenPaths: ["Altra.md"],
+        failures: ["Board.canvas: non leggibile come testo"],
+        refusals: ["Terza.md"]
+    )
+
+    let failures = VaultAPI.foldedFailures(outcome)
+
+    #expect(failures == [
+        "Board.canvas: non leggibile come testo",
+        VaultWriteRefusal.movedOn("Terza.md").description,
+    ])
+}
+
+@Test func aCleanOutcomeWithNoRefusalsFoldsToExactlyItsOwnFailures() {
+    let outcome = NoteFileOperations.Outcome(newPath: "Nuovo titolo.md", failures: ["Board.canvas: errore"])
+
+    #expect(VaultAPI.foldedFailures(outcome) == outcome.failures)
+}
+
 @MainActor
 @Test func aTitleTheRulesRejectIsRefusedAndNotCorrected() async throws {
     let vault = try TemporaryVault()

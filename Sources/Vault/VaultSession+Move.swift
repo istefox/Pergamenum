@@ -115,6 +115,14 @@ extension VaultSession {
                             pendingNewStarredPaths.append(note.newPath)
                         }
                         report(note.failures)
+                        // A refusal (ADR-0046 §D1) here is a note whose bytes moved on since
+                        // `VaultMoveBatch.plan` was computed - a different thing from this
+                        // outcome's own `refusals` above (§D7), which is about the batch not
+                        // committing at all. Its own sentence (§D4: "different causes,
+                        // different Italian sentences"), the same one
+                        // `VaultController+Files.swift`'s `renameNote`/`moveNote` already use,
+                        // not `report`'s failure wording.
+                        reportRefusals(note.refusals)
 
                     case .board:
                         // No star and no moved note: a `.canvas` is neither (the reason
@@ -167,6 +175,24 @@ extension VaultSession {
     private func report(_ failures: [String]) {
         for failure in failures {
             recordProblem("riferimento non aggiornato: \(failure)")
+        }
+    }
+
+    /// Says a stale-write refusal in its own sentence, not `report`'s failure wording
+    /// (ADR-0046 §D4): "this note could not be written" and "this note changed under me,
+    /// so I did not write it" have different causes and different severities, and
+    /// `VaultWriteRefusal.movedOn(_).description` is the one Italian sentence for the
+    /// second - the same one `VaultController+Files.swift`'s `renameNote`/`moveNote`
+    /// already reuse rather than writing a second wording of it here.
+    ///
+    /// Internal, not `private`: `Tests/VaultMoveTests.swift` drives it directly, the same
+    /// `writeGuarded`/`writeFileGuarded` reason (`VaultSession.swift`) - a genuine stale
+    /// write cannot be forced deterministically through the full `moveItems` batch (the
+    /// plan-then-write window has no controllable suspension point), so the wording is
+    /// exercised this way rather than raced.
+    func reportRefusals(_ refusals: [String]) {
+        for refusal in refusals {
+            recordProblem(VaultWriteRefusal.movedOn(refusal).description)
         }
     }
 }

@@ -11,15 +11,24 @@ enum VaultPlanApplication {
     struct Outcome: Equatable, Sendable {
         var rewrittenPaths: [String] = []
         var failures: [String] = []
+        /// Paths whose bytes moved on since the change's `before` was read, so nothing was
+        /// written - a `VaultWriteRefusal` caught and classified apart from `failures`
+        /// (ADR-0046 §D4). Declared after `failures` so every existing memberwise call stays
+        /// valid. The eight `store.write`-level callers of the synchronous overload below can
+        /// never populate this: `store.write` cannot throw `VaultWriteRefusal`.
+        var refusals: [String] = []
     }
 
-    /// Each change in order: on success its path joins `rewrittenPaths`, on a throw the
-    /// interpolation `"\(change.path): \(error)"` joins `failures` - the format all six copies
-    /// this replaces already wrote, so no caller's assertion changes when it switches over.
+    /// Each change in order: on success its path joins `rewrittenPaths`, a caught
+    /// `VaultWriteRefusal` joins `refusals` with the bare path, and every other throw joins
+    /// `failures` with the interpolation `"\(change.path): \(error)"` - the format all six
+    /// copies this replaces already wrote, so no caller's assertion changes when it switches
+    /// over.
     ///
-    /// A throw never stops the loop. The changes are independent files and a rename that gave up
-    /// halfway would leave the vault half-rewritten with nothing said about the rest; every one of
-    /// the six originals continued too, and R-06 (Task 7) leans on it.
+    /// A throw never stops the loop, in either branch (ADR-0046 §D3). The changes are
+    /// independent files and a rename that gave up halfway would leave the vault
+    /// half-rewritten with nothing said about the rest; every one of the six originals
+    /// continued too, and R-06 (Task 7) leans on it.
     static func apply(
         _ changes: [VaultFileChange],
         writing: (VaultFileChange) throws -> Void
@@ -29,6 +38,8 @@ enum VaultPlanApplication {
             do {
                 try writing(change)
                 outcome.rewrittenPaths.append(change.path)
+            } catch is VaultWriteRefusal {
+                outcome.refusals.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }
@@ -63,6 +74,8 @@ enum VaultPlanApplication {
             do {
                 try await writing(change)
                 outcome.rewrittenPaths.append(change.path)
+            } catch is VaultWriteRefusal {
+                outcome.refusals.append(change.path)
             } catch {
                 outcome.failures.append("\(change.path): \(error)")
             }

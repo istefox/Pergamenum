@@ -105,6 +105,10 @@ let sharedSources: [SourceFileGlob] = [
     // `NoteStore.swift` itself (ADR-0041 §D7 / Task 6) - without this line the connectors
     // would fail to link on a symbol only the app target could see.
     "Sources/Vault/NoteStore+ReadSurface.swift",
+    // `expectedHash` (ADR-0046 §D1) calls `NoteStore.hash`, so this reaches `NoteStore` the
+    // same way the line above does - without it the connectors would fail to link on a symbol
+    // only the app target could see.
+    "Sources/Vault/VaultFileChange+ExpectedHash.swift",
     "Sources/Vault/NoteTree.swift",
     "Sources/Vault/PinnedTagsStore.swift",
     "Sources/Vault/RecentVaults.swift",

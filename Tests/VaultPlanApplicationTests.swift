@@ -81,3 +81,83 @@ private struct WriterFailure: Error, CustomStringConvertible {
     #expect(outcome.rewrittenPaths.isEmpty)
     #expect(outcome.failures == ["A.md: scrittura fallita", "B.md: scrittura fallita"])
 }
+
+// MARK: - Task 1 (R-01, R-02, R-04, R-08): a `VaultWriteRefusal` is its own channel
+//
+// `VaultWriteRefusal` (`Sources/Core/Vault/VaultWriteRefusal.swift`) is the type both loops
+// below classify apart from an ordinary `failures` entry (ADR-0046 §D4).
+
+@Test func aRefusalPutsTheBarePathInRefusalsAndNothingElsewhere() {
+    let changes = [VaultFileChange(path: "Stale.md", before: "a", after: "A")]
+
+    let outcome = VaultPlanApplication.apply(changes) { _ in throw VaultWriteRefusal.movedOn("Stale.md") }
+
+    #expect(outcome.refusals == ["Stale.md"])
+    #expect(outcome.failures.isEmpty)
+    #expect(outcome.rewrittenPaths.isEmpty)
+}
+
+@Test func theChangeAfterARefusalIsStillAttempted() {
+    var attempted: [String] = []
+    let changes = [
+        VaultFileChange(path: "A.md", before: "a", after: "A"),
+        VaultFileChange(path: "Stale.md", before: "b", after: "B"),
+        VaultFileChange(path: "C.md", before: "c", after: "C"),
+    ]
+
+    let outcome = VaultPlanApplication.apply(changes) { change in
+        attempted.append(change.path)
+        if change.path == "Stale.md" { throw VaultWriteRefusal.movedOn("Stale.md") }
+    }
+
+    #expect(outcome.rewrittenPaths == ["A.md", "C.md"])
+    #expect(outcome.refusals == ["Stale.md"])
+    #expect(attempted == ["A.md", "Stale.md", "C.md"])
+}
+
+@Test func aRefusalAndADiskFailureLandInTheirOwnCollectionsInEncounterOrder() {
+    let changes = [
+        VaultFileChange(path: "Stale.md", before: "a", after: "A"),
+        VaultFileChange(path: "Broken.md", before: "b", after: "B"),
+        VaultFileChange(path: "Fine.md", before: "c", after: "C"),
+    ]
+
+    let outcome = VaultPlanApplication.apply(changes) { change in
+        switch change.path {
+        case "Stale.md": throw VaultWriteRefusal.movedOn("Stale.md")
+        case "Broken.md": throw WriterFailure()
+        default: break
+        }
+    }
+
+    #expect(outcome.rewrittenPaths == ["Fine.md"])
+    #expect(outcome.refusals == ["Stale.md"])
+    #expect(outcome.failures == ["Broken.md: scrittura fallita"])
+}
+
+@Test func theDefaultedOutcomeStillCompilesAndCompares() {
+    #expect(VaultPlanApplication.Outcome() == VaultPlanApplication.Outcome(rewrittenPaths: [], failures: []))
+}
+
+@Test func theAsynchronousOverloadClassifiesARefusalIdentically() async {
+    var attempted: [String] = []
+    let changes = [
+        VaultFileChange(path: "A.md", before: "a", after: "A"),
+        VaultFileChange(path: "Stale.md", before: "b", after: "B"),
+        VaultFileChange(path: "Broken.md", before: "c", after: "C"),
+    ]
+
+    let outcome = await VaultPlanApplication.apply(changes) { change in
+        attempted.append(change.path)
+        switch change.path {
+        case "Stale.md": throw VaultWriteRefusal.movedOn("Stale.md")
+        case "Broken.md": throw WriterFailure()
+        default: break
+        }
+    }
+
+    #expect(outcome.rewrittenPaths == ["A.md"])
+    #expect(outcome.refusals == ["Stale.md"])
+    #expect(outcome.failures == ["Broken.md: scrittura fallita"])
+    #expect(attempted == ["A.md", "Stale.md", "Broken.md"])
+}

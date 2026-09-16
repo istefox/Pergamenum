@@ -42,6 +42,13 @@ extension VaultController {
             for failure in outcome.failures {
                 recordProblem("link non aggiornato in \(failure)")
             }
+            // A refusal (ADR-0046 §D1/§D6) is not recoverable by trying again: once the
+            // file has moved, `renameNote`'s own `oldTitle` is derived from its *new* name,
+            // so a second call would rewrite nothing here either. Reused verbatim rather
+            // than a second sentence for the same condition (`VaultWriteRefusal.description`).
+            for refusal in outcome.refusals {
+                recordProblem(VaultWriteRefusal.movedOn(refusal).description)
+            }
             Task {
                 await rescan()
                 movedNote(from: relativePath, to: outcome.newPath)
@@ -58,6 +65,15 @@ extension VaultController {
         guard let session, canOperate(on: relativePath) else { return false }
         do {
             let outcome = try await session.moveNote(at: relativePath, toFolder: folder)
+            // Board-repoint failures and refusals were dropped on the floor here before
+            // ADR-0046 (§D7): a move touches no note text, only `.canvas` cards, so both
+            // channels are this pair of loops rather than `renameNote`'s "link" wording.
+            for failure in outcome.failures {
+                recordProblem("riferimento non aggiornato: \(failure)")
+            }
+            for refusal in outcome.refusals {
+                recordProblem(VaultWriteRefusal.movedOn(refusal).description)
+            }
             Task {
                 await rescan()
                 movedNote(from: relativePath, to: outcome.newPath)
