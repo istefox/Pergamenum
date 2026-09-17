@@ -93,6 +93,18 @@ readonly BUILD="$(git rev-list --count HEAD)"
 [ -n "$BUILD" ] && [ "$BUILD" -gt 0 ] || fail "numero di build non calcolabile da git"
 readonly SHA="$(git rev-parse --short HEAD)"
 
+# PG-163 / #292. La collisione veniva scoperta solo al `gh release create` finale, dopo
+# aver già pagato dieci minuti di archiviazione e notarizzazione. `marketingVersion` è un
+# letterale in Project.swift, quindi il tag è calcolabile prima di generare qualunque
+# cosa: se esiste già su UPDATES_REPO, la release si fermerebbe comunque - meglio adesso.
+readonly UPDATES_REPO="istefox/pergamenum-updates"
+version="$(sed -n 's/^let marketingVersion = "\(.*\)"$/\1/p' Project.swift)"
+[ -n "$version" ] || fail "marketingVersion non trovato in Project.swift"
+readonly TAG="v$version-$BUILD"
+
+gh release view "$TAG" --repo "$UPDATES_REPO" >/dev/null 2>&1 \
+    && fail "la release $TAG esiste già su $UPDATES_REPO (vedi https://github.com/$UPDATES_REPO/releases/tag/$TAG)"
+
 step "Pergamenum build $BUILD, da $SHA"
 
 # --- Generate, archive, export ---------------------------------------------------
@@ -178,7 +190,8 @@ verdict="$(spctl -a -t exec -vvv "$BUNDLE" 2>&1)"
 grep -q 'source=Notarized Developer ID' <<<"$verdict" \
     || fail "Gatekeeper non la riconosce come notarizzata"
 
-version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
+bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
+[ "$bundle_version" = "$version" ] || fail "il bundle dice versione $bundle_version, il preflight aveva letto $version da Project.swift"
 
 # --- The distributable -----------------------------------------------------------
 #
@@ -202,9 +215,6 @@ ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$DIST"
 # è l'Info.plist del bundle. Nessun secondo worktree e nessun checkout: :46 rifiuta un
 # albero sporco, e questo script non può essere la cosa che ne crea uno. L'appcast
 # viene scritto in build/release/ (gitignorata) e pubblicato via API.
-
-readonly UPDATES_REPO="istefox/pergamenum-updates"
-readonly TAG="v$version-$BUILD"
 
 step "Firmo $DIST"
 # Sparkle 2.9.6, sign_update/main.swift:287: per un archivio stampa esattamente una
