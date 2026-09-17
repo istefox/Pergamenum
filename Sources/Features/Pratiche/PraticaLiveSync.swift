@@ -117,6 +117,18 @@ final class PraticaLiveSync {
     /// Held between `prepareRegeneration` and `commitRegeneration` (ADR §D21.2):
     /// `PraticaSyncEngine.commitRegeneration(_:)` only writes, it never re-opens the
     /// reader, so the same actor instance that produced the plan is what commits it.
+    ///
+    /// Review round 3: also this attempt's own identity token. `prepareRegeneration`
+    /// creates a fresh instance and assigns it here before its only `await` - so once
+    /// that `await` returns, comparing the local `engine` against this property answers
+    /// "is my attempt still the current one, or has a newer `prepareRegeneration` call
+    /// already overwritten it". `dismissRegeneration` ("Annulla") releases a claim
+    /// without cancelling the in-flight `Task` behind it (cooperative cancellation, the
+    /// same shape as `cancel()` above, has nothing to cancel here - `regenerationPreview`
+    /// has no internal cancellation checkpoint); an abandoned attempt's own completion
+    /// finds this property already pointing at the newer attempt's engine and drops its
+    /// result instead of clobbering `controller.regeneration` or double-releasing a claim
+    /// `dismissRegeneration` already ended.
     private var regenerationEngine: PraticaSyncEngine?
 
     /// «Annulla» (R-11). Cooperative and asynchronous by nature: the engine observes
@@ -232,10 +244,15 @@ final class PraticaLiveSync {
     /// one thing that must not be re-derived between preview and commit.
     func prepareRegeneration(praticaPath: String, messageID: String) async {
         guard let controller, let session = vault.session, let root = vault.root else { return }
+        // Review round 2, MINOR 1: claimed from here, before the first `await` below,
+        // so a relocation racing this attempt still leaves `moveLedgerState` a
+        // `praticaPathRedirects` entry to redirect `plan.praticaFolder` through later.
+        controller.beginRegeneration(praticaPath)
         let settings = vault.settings.pratiche
         guard let dossier = PraticheController.dossier(at: praticaPath, vaultRoot: root) else {
             controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
             controller.regeneration = nil
+            controller.endRegeneration(praticaPath)
             return
         }
         let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
@@ -253,6 +270,7 @@ final class PraticaLiveSync {
         case .failed(let message):
             controller.report(message)
             controller.regeneration = nil
+            controller.endRegeneration(praticaPath)
             return
         }
 
@@ -266,11 +284,33 @@ final class PraticaLiveSync {
         )
         do {
             let plan = try await engine.regenerationPreview(request, messageID: messageID, rowID: rowID)
-            guard vault.session === session else { return }
+            guard regenerationEngine === engine else {
+                // Review round 3: superseded. «Annulla» already released this attempt's
+                // claim (`dismissRegeneration`), and a later `prepareRegeneration` call
+                // has since overwritten `regenerationEngine` with its own - dropping
+                // silently must not touch `controller.regeneration` (it now belongs to
+                // that later attempt) nor call `endRegeneration` again (nothing left to
+                // release; the claim this attempt held is either already gone or, if the
+                // pratica path is the same, now the later attempt's own).
+                return
+            }
+            guard vault.session === session else {
+                controller.endRegeneration(praticaPath)
+                return
+            }
             controller.regeneration = .ready(plan)
+            // Stays claimed: `.ready` still needs the claim through however long the
+            // sheet sits on screen, and through the commit that follows it.
         } catch {
-            guard vault.session === session else { return }
+            guard regenerationEngine === engine else {
+                return
+            }
+            guard vault.session === session else {
+                controller.endRegeneration(praticaPath)
+                return
+            }
             controller.regeneration = nil
+            controller.endRegeneration(praticaPath)
             controller.report(Self.regenerationFailureMessage(error))
         }
     }
@@ -283,6 +323,7 @@ final class PraticaLiveSync {
     func commitRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) async -> Bool {
         guard let controller, let session = vault.session, let engine = regenerationEngine else {
             controller?.report("Rigenerazione non riuscita: il motore di sincronizzazione non è più disponibile.")
+            controller?.endRegeneration(plan.praticaFolder)
             return false
         }
         do {
@@ -290,10 +331,15 @@ final class PraticaLiveSync {
             controller.recordSyncOutcome(
                 outcome, for: plan.praticaFolder, session: session, isCurrentVault: vault.session === session
             )
+            controller.endRegeneration(plan.praticaFolder)
             return true
         } catch {
-            guard vault.session === session else { return false }
+            guard vault.session === session else {
+                controller.endRegeneration(plan.praticaFolder)
+                return false
+            }
             controller.report(Self.regenerationFailureMessage(error))
+            controller.endRegeneration(plan.praticaFolder)
             return false
         }
     }

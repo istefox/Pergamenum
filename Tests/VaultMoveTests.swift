@@ -411,6 +411,33 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     )
 }
 
+// MARK: - `movedFolders` (ADR-0026 §D7): what a folder relocation hands to path-keyed
+// feature state (Pratiche's ledger, `Tests/PraticheControllerTests.swift`'s own tests
+// for the receiving side).
+
+@MainActor
+@Test func movingAFolderNamesItsOldAndNewPathInMovedFolders() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "F/inside.md")
+    let session = try await armedSession(vault)
+
+    let outcome = await session.moveItems([VaultItemRef(path: "F", kind: .folder)], into: "Dest")
+
+    #expect(outcome.movedFolders == [MovedNote(old: "F", new: "Dest/F")])
+}
+
+@MainActor
+@Test func movingOnlyANoteLeavesMovedFoldersEmpty() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "A/x.md")
+    let session = try await armedSession(vault)
+
+    let outcome = await session.moveItems([VaultItemRef(path: "A/x.md", kind: .note)], into: "B")
+
+    #expect(outcome.moves.count == 1)
+    #expect(outcome.movedFolders.isEmpty, "moving a note alone must not report any folder as relocated")
+}
+
 // MARK: - Support
 
 // `TemporaryVault` is `~Copyable`, and `#expect`'s macro expansion needs to capture its

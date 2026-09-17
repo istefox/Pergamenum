@@ -120,7 +120,16 @@ struct PergamenumApp: App {
         _day = State(initialValue: day)
         _diary = State(initialValue: DiaryController(vault: vault))
         _recordings = State(initialValue: recordings)
-        _pratiche = State(initialValue: PraticheController.live(vault: vault))
+
+        let pratiche = PraticheController.live(vault: vault)
+        // ADR-0026 §D7: the choke point for every folder move and rename, forward and
+        // through undo/redo, hands its relocations here so the ledger (and the other
+        // path-keyed state `followFolderRelocations` covers) never orphans - `weak` since
+        // the controller, not this closure, owns the lifetime.
+        vault.didRelocateFolders = { [weak pratiche] moved in
+            pratiche?.followFolderRelocations(moved, in: vault)
+        }
+        _pratiche = State(initialValue: pratiche)
 
         let panel = CapturePanel(
             controller: capture,

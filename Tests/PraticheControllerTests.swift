@@ -402,6 +402,452 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 // unconditionally, so a pending entry there produces a `PraticaAttachmentRef` exactly
 // like a linked one instead of landing in the new `pendingAttachments` list.
 
+// MARK: - PG "allegati non si scaricano": a folder relocation must not orphan the ledger
+//
+// `PraticheController.moveLedgerState(from:to:in:)` (`PraticheController+Ledger.swift`)
+// used to be an exact-key swap, reachable only from the pratica's own «Rinomina…». It is
+// now subtree-aware and reachable from the generic ADR-0026 batch move/rename path too,
+// via `VaultController.didRelocateFolders` → `followFolderRelocations(_:in:)`. The bug
+// this fixes: a pratica that is a *descendant* of a moved or renamed ancestor folder
+// never had its ledger key move, so `PraticaSyncEngine.regeneratePending`'s ledger
+// fallback silently found nothing there forever.
+
+@MainActor
+@Suite(.serialized) struct PraticaLedgerFolderRelocationTests {
+    @Test func moveLedgerStateRemapsExactKey() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+        let vault = VaultController()
+
+        controller.moveLedgerState(from: "01 Progetti/Tifone/X", to: "Calendar/01 Progetti/Tifone/X", in: vault)
+
+        #expect(controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] == nil)
+        #expect(controller.ledger.byPraticaPath["Calendar/01 Progetti/Tifone/X"] != nil)
+    }
+
+    @Test func moveLedgerStateRemapsDescendantPraticheUnderMovedAncestor() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        var state = PraticaLedger.PraticaState.empty
+        state.importedMessageIDs = ["<a@rossi-spa.it>"]
+        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = state
+        let vault = VaultController()
+
+        // The actual bug shape: the pratica itself is not the moved item, an ANCESTOR of
+        // it is.
+        controller.moveLedgerState(from: "01 Progetti", to: "Calendar/01 Progetti", in: vault)
+
+        #expect(
+            controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] == nil,
+            "the orphaned old key must not linger once the remap has run"
+        )
+        let moved = controller.ledger.byPraticaPath["Calendar/01 Progetti/Tifone/X"]
+        #expect(
+            moved?.importedMessageIDs == ["<a@rossi-spa.it>"],
+            "the pratica's own state - not just an empty key - must travel with the remap"
+        )
+    }
+
+    @Test func moveLedgerStateLeavesSiblingPrefixAlone() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        controller.ledger.byPraticaPath["01 Progetti-altro"] = .empty
+        let vault = VaultController()
+
+        controller.moveLedgerState(from: "01 Progetti", to: "Calendar/01 Progetti", in: vault)
+
+        #expect(
+            controller.ledger.byPraticaPath["01 Progetti-altro"] != nil,
+            "a sibling whose name merely starts with the same characters is not a descendant"
+        )
+        #expect(controller.ledger.byPraticaPath["Calendar/01 Progetti-altro"] == nil)
+    }
+
+    @Test func moveLedgerStateCarriesTrayCountsSelectionWatchersAndSyncingPath() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.trayCounts[oldPath] = 3
+        controller.trayProposals[oldPath] = []
+        controller.watchersByPraticaPath[oldPath] = PraticaWatcher()
+        controller.selection = oldPath
+        controller.syncingPraticaPath = oldPath
+        let vault = VaultController()
+
+        controller.moveLedgerState(from: oldPath, to: newPath, in: vault)
+
+        #expect(controller.trayCounts[newPath] == 3)
+        #expect(controller.trayCounts[oldPath] == nil, "the old key must not linger once its count travelled")
+        #expect(controller.trayProposals[newPath] != nil)
+        #expect(controller.watchersByPraticaPath[newPath] != nil, "a stale watcher never fires for the new path")
+        #expect(controller.watchersByPraticaPath[oldPath] == nil)
+        #expect(controller.selection == newPath, "the open pratica must stay selected across its own relocation")
+        #expect(
+            controller.syncingPraticaPath == newPath,
+            "an in-flight sync's completion must land on the new path, not resurrect the orphaned key"
+        )
+    }
+
+    @Test func moveLedgerStatePersistsToDisk() async throws {
+        let vault = try TemporaryVault()
+        let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+        await vaultController.open(vault.root)
+        let session = try #require(vaultController.session)
+
+        let pratiche = PraticheController.live(vault: vaultController)
+        pratiche.ledger.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+
+        pratiche.moveLedgerState(
+            from: "01 Progetti/Tifone/X", to: "Calendar/01 Progetti/Tifone/X", in: vaultController
+        )
+
+        let onDisk = PraticaLedger.load(from: PraticheController.ledgerURL(for: session))
+        #expect(onDisk.byPraticaPath["01 Progetti/Tifone/X"] == nil)
+        #expect(
+            onDisk.byPraticaPath["Calendar/01 Progetti/Tifone/X"] != nil,
+            "the remap must be saved, not only held in memory"
+        )
+
+        vaultController.close()
+    }
+
+    @Test func undoOfFolderMoveRestoresLedgerKey() async throws {
+        let vault = try TemporaryVault()
+        let root = vault.root
+        try vault.write(
+            "---\ndate: 2026-09-17\ntags:\n  - type-note\n---\n\nCorpo.\n", to: "F/pratica.md"
+        )
+        let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+        await vaultController.open(root)
+        // `PergamenumApp.init`'s own wiring (this plan's own note): not going through
+        // `PergamenumApp` in a test, so the hook is set by hand.
+        let pratiche = PraticheController.live(vault: vaultController)
+        vaultController.didRelocateFolders = { [weak pratiche] moved in
+            pratiche?.followFolderRelocations(moved, in: vaultController)
+        }
+        pratiche.ledger.byPraticaPath["F"] = .empty
+        let manager = UndoManager()
+
+        let outcome = await vaultController.moveItems(
+            [VaultItemRef(path: "F", kind: .folder)], into: "Dest", undo: manager
+        )
+
+        #expect(outcome.didMove)
+        #expect(pratiche.ledger.byPraticaPath["F"] == nil, "the forward move must not leave the old key behind")
+        #expect(
+            pratiche.ledger.byPraticaPath["Dest/F"] != nil,
+            "the forward move must carry the ledger key to the new path"
+        )
+
+        manager.undo()
+        try await waitUntil { pratiche.ledger.byPraticaPath["F"] != nil }
+
+        #expect(pratiche.ledger.byPraticaPath["F"] != nil, "the undo must carry the ledger key back")
+        #expect(pratiche.ledger.byPraticaPath["Dest/F"] == nil)
+
+        vaultController.close()
+    }
+
+    @Test func renameOfAncestorFolderRemapsLedgerKey() async throws {
+        let vault = try TemporaryVault()
+        let root = vault.root
+        try vault.write(
+            "---\ndate: 2026-09-17\ntags:\n  - type-note\n---\n\nCorpo.\n", to: "01 Progetti/Tifone/pratica.md"
+        )
+        let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+        await vaultController.open(root)
+        let pratiche = PraticheController.live(vault: vaultController)
+        vaultController.didRelocateFolders = { [weak pratiche] moved in
+            pratiche?.followFolderRelocations(moved, in: vaultController)
+        }
+        pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = .empty
+
+        let newPath = vaultController.renameFolder(at: "01 Progetti", to: "Calendar")
+
+        #expect(newPath == "Calendar")
+        #expect(
+            pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] == nil,
+            "renaming the ancestor must not leave the descendant pratica's key behind"
+        )
+        #expect(
+            pratiche.ledger.byPraticaPath["Calendar/Tifone"] != nil,
+            "renaming an ancestor folder orphans a descendant pratica the same way a move does"
+        )
+
+        vaultController.close()
+    }
+
+    /// The actual race, not just the redirect map's own bookkeeping (that is what
+    /// `moveLedgerStateCarriesTrayCountsSelectionWatchersAndSyncingPath` above already
+    /// covers): a sync captures `praticaPath` before its own `await`s
+    /// (`PraticaLiveSync+Run.swift`'s `runExclusive`), a relocation runs on the main
+    /// actor while that sync is still in flight, and only THEN does the sync's outcome
+    /// arrive, still carrying the pre-move path. `recordSyncOutcome` must fold it into
+    /// wherever the ledger key now actually lives, never resurrect the orphaned one.
+    @Test func recordSyncOutcomeFoldsIntoRelocatedPathAndNeverResurrectsTheOldKey() throws {
+        let vault = try TemporaryVault()
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.ledger.byPraticaPath[oldPath] = .empty
+        // Mirrors `beginSync(praticaPath)`, called before `runExclusive`'s own `await`s.
+        controller.beginSync(oldPath)
+        let vaultController = VaultController()
+
+        // The relocation - drag-and-drop, or a rename of an ancestor - runs on the main
+        // actor while the sync above is still in flight (ADR-0043 §D7's window).
+        controller.followFolderRelocations([MovedNote(old: oldPath, new: newPath)], in: vaultController)
+        #expect(controller.ledger.byPraticaPath[oldPath] == nil, "the relocation itself must not leave the old key behind")
+
+        // The in-flight sync's own outcome lands afterwards, still keyed by the path it
+        // captured before the relocation ran.
+        let outcome = PraticaSyncEngine.SyncOutcome(
+            writtenFiles: [], importedMessageIDs: ["<a@rossi-spa.it>"],
+            noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false, bridge: []
+        )
+        controller.recordSyncOutcome(outcome, for: oldPath, session: session, isCurrentVault: true)
+
+        #expect(
+            controller.ledger.byPraticaPath[oldPath] == nil,
+            "a sync outcome arriving after the relocation must not resurrect the orphaned key"
+        )
+        #expect(
+            controller.ledger.byPraticaPath[newPath]?.importedMessageIDs == ["<a@rossi-spa.it>"],
+            "the outcome must fold into wherever the pratica's ledger now actually lives"
+        )
+    }
+
+    // MARK: - Review round 2: two MINORs in `praticaPathRedirects` itself
+
+    /// MINOR 1: the old `remapKeys` inserted a `praticaPathRedirects` entry for EVERY
+    /// relocated key unconditionally, even when nothing was mid-sync/mid-regeneration
+    /// for it - and nothing ever pruned an entry nobody was ever going to read. Fixed
+    /// by gating the insert on `syncingPraticaPath`/`regeneratingPraticaPaths`: a
+    /// relocation with nothing in flight for this pratica must leave no redirect at
+    /// all, not just an eventually-pruned one.
+    @Test func moveLedgerStateLeavesNoRedirectWhenNothingIsInFlight() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.ledger.byPraticaPath[oldPath] = .empty
+        let vault = VaultController()
+
+        controller.moveLedgerState(from: oldPath, to: newPath, in: vault)
+
+        #expect(controller.ledger.byPraticaPath[newPath] != nil, "the remap itself must still happen")
+        #expect(
+            controller.praticaPathRedirects.isEmpty,
+            "nothing was syncing or regenerating this pratica, so the relocation must not leave a redirect entry nothing will ever read"
+        )
+    }
+
+    /// MINOR 2's exact shape: an ordinary sync AND a "Rigenera…" commit both captured
+    /// `oldPath` before the SAME relocation ran - `PraticaLiveSync`'s `SyncRunQueue`
+    /// only serializes ordinary syncs against each other, never against a
+    /// regeneration for the same pratica. The old `resolveAndConsumePraticaPathRedirect`
+    /// destructively removed the entry on its first read, so the first of the two
+    /// callers to land would consume it and the second fell through to the stale key,
+    /// resurrecting it exactly as before the whole fix. Both must now resolve to the
+    /// relocated path, and neither may resurrect `oldPath`.
+    @Test func recordSyncOutcomeResolvesForTwoConcurrentInFlightCallersOfTheSamePath() throws {
+        let vault = try TemporaryVault()
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.ledger.byPraticaPath[oldPath] = .empty
+        // Both callers captured `oldPath` before the relocation below, exactly like
+        // `beginSync` (`runExclusive`) and `beginRegeneration` (`prepareRegeneration`)
+        // do in production, before either one's own `await`s.
+        controller.beginSync(oldPath)
+        controller.beginRegeneration(oldPath)
+        let vaultController = VaultController()
+
+        controller.followFolderRelocations([MovedNote(old: oldPath, new: newPath)], in: vaultController)
+        #expect(controller.ledger.byPraticaPath[oldPath] == nil, "the relocation itself must not leave the old key behind")
+        #expect(
+            controller.praticaPathRedirects[oldPath] == newPath,
+            "with two in-flight callers claiming this path, the relocation must leave a redirect for it (MINOR 1's other side)"
+        )
+
+        // The ordinary sync's own outcome lands first, still keyed by the pre-move path.
+        controller.recordSyncOutcome(
+            PraticaSyncEngine.SyncOutcome(
+                writtenFiles: [], importedMessageIDs: ["<a@rossi-spa.it>"],
+                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false, bridge: []
+            ),
+            for: oldPath, session: session, isCurrentVault: true
+        )
+        #expect(
+            controller.ledger.byPraticaPath[oldPath] == nil,
+            "the first of two concurrent callers must not resurrect the old key"
+        )
+        #expect(controller.ledger.byPraticaPath[newPath]?.importedMessageIDs == ["<a@rossi-spa.it>"])
+
+        // The regeneration's own outcome lands second, carrying the SAME pre-move path -
+        // MINOR 2's actual race, since the old code would have already consumed the
+        // redirect above and left nothing for this second caller to resolve through.
+        controller.recordSyncOutcome(
+            PraticaSyncEngine.SyncOutcome(
+                writtenFiles: [], importedMessageIDs: ["<b@rossi-spa.it>"],
+                noLongerInMail: [], regeneratedPendingFiles: ["<b@rossi-spa.it>"], cancelled: false, bridge: []
+            ),
+            for: oldPath, session: session, isCurrentVault: true
+        )
+
+        #expect(
+            controller.ledger.byPraticaPath[oldPath] == nil,
+            "the second of two concurrent callers must not resurrect the old key either"
+        )
+        #expect(
+            controller.ledger.byPraticaPath[newPath]?.importedMessageIDs.sorted() == ["<a@rossi-spa.it>", "<b@rossi-spa.it>"],
+            "both callers' outcomes must fold into the SAME relocated key"
+        )
+
+        // Once both callers actually finish (their own `defer`/completion path in
+        // production), the redirect this relocation left is safe to drop - proving the
+        // chosen "prune once idle" design, not just that resolution itself is safe.
+        controller.endSync()
+        #expect(
+            controller.praticaPathRedirects[oldPath] != nil,
+            "the regeneration is still claimed, so the redirect must not be pruned yet"
+        )
+        controller.endRegeneration(oldPath)
+        #expect(
+            controller.praticaPathRedirects.isEmpty,
+            "once nothing anywhere is still in flight, the redirect this relocation left must be pruned"
+        )
+    }
+}
+
+// MARK: - Review round 3: a stale «Rigenera…» preview must never clobber a superseding one
+
+@MainActor
+@Suite(.serialized) struct PraticaRegenerationSupersededPreviewTests {
+    private typealias Fixtures = PraticaSyncFixtures
+
+    /// A second, distinct message for the same pratica - `EmailFixtureCorpus` has no
+    /// builder taking an arbitrary `Message-Id`, and this suite needs one message the
+    /// index resolves as something other than the one `completeMessageRFC822` already
+    /// is (`PraticaSyncRegressionRetryTests.threeAttachmentMessageRFC822`'s own reason
+    /// for authoring its own body inline rather than reusing a fixed one).
+    private static func secondMessageRFC822(messageID: String) -> String {
+        """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: Conferma ordine\r
+        Message-Id: \(messageID)\r
+        Date: Thu, 11 Jun 2026 15:30:00 +0200\r
+        \r
+        Confermiamo la ricezione del suo ordine.\r
+        """
+    }
+
+    /// Review round 3's MAJOR, introduced by round 2's own fix: `prepareRegeneration`
+    /// captured `praticaPath` before its only `await` (`engine.regenerationPreview`), but
+    /// nothing stopped an attempt abandoned by «Annulla» from resuming later and writing
+    /// `.ready` over a DIFFERENT, still-current attempt's own state once dismissing the
+    /// first no longer canceled anything in flight.
+    ///
+    /// End-to-end through `PraticheController.live(vault:)` + `PraticaLiveSync`, the
+    /// same production wiring `PergamenumApp` uses - unlike the analogous `runExclusive`
+    /// race `Tests/PraticaLiveSyncRecordOutcomeTests.swift` found unreproducible
+    /// end-to-end (no controllable suspension point reachable from outside),
+    /// `prepareRegeneration` has exactly one: the single `await
+    /// engine.regenerationPreview(...)` call, with nothing before it in the function
+    /// ever suspending. `waitUntil` on `regeneratingPraticaPaths` - set by the very first
+    /// line of that unbroken synchronous prefix - therefore pins task A at that exact
+    /// boundary deterministically, no sleep-against-the-actor guess needed.
+    @Test func anAbandonedRegenerationPreviewNeverClobbersASupersedingOne() async throws {
+        let praticaPath = Fixtures.praticaFolder
+        let messageIDA = "<abc123@rossi-spa.it>"
+        let messageIDB = "<def456@rossi-spa.it>"
+        let dateA = Date(timeIntervalSince1970: 1_749_557_170)
+        let dateB = Date(timeIntervalSince1970: 1_749_643_570)
+
+        let vault = try TemporaryVault()
+        try vault.write(dossierNote(conversations: [112_409]), to: "\(praticaPath)/pratica.md")
+
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [
+                .init(
+                    rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: dateA, dateReceived: dateA,
+                    emlxBody: EmailFixtureCorpus.completeMessageRFC822
+                ),
+                .init(
+                    rowID: 2, subject: "Conferma ordine", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: dateB, dateReceived: dateB,
+                    emlxBody: Self.secondMessageRFC822(messageID: messageIDB)
+                ),
+            ]
+        )
+        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+
+        // Both notes seeded directly (`PraticaRegenerationTests`'s own pattern) - a real
+        // membership-rule sync is not what this race is about.
+        let seedEngine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vault.root)
+        let seedRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: praticaPath, dossier: Fixtures.sampleDossier(),
+            candidates: [
+                Fixtures.row(rowID: 1, messageID: messageIDA, date: dateA),
+                Fixtures.row(rowID: 2, messageID: messageIDB, date: dateB),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await seedEngine.sync(seedRequest)
+
+        let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+        await vaultController.open(vault.root)
+        let pratiche = PraticheController.live(vault: vaultController)
+
+        // «Rigenera…» on A - `PraticaCommandActions.requestRegeneration`'s own shape:
+        // the sheet opens to `.preparing` before the async preview is even started.
+        pratiche.regeneration = .preparing(notePath: "A", subject: "A", praticaPath: praticaPath)
+        let taskA = Task { @MainActor in
+            await pratiche.prepareRegeneration?(praticaPath, messageIDA)
+        }
+        try await waitUntil { pratiche.regeneratingPraticaPaths.contains(praticaPath) }
+
+        // «Annulla», before A's own preview has resolved.
+        pratiche.dismissRegeneration()
+        #expect(pratiche.regeneration == nil)
+        #expect(!pratiche.regeneratingPraticaPaths.contains(praticaPath), "dismissing A must release its claim")
+
+        // «Rigenera…» on B, a different message in the same pratica - runs to completion
+        // before A's abandoned preview ever resolves.
+        pratiche.regeneration = .preparing(notePath: "B", subject: "B", praticaPath: praticaPath)
+        await pratiche.prepareRegeneration?(praticaPath, messageIDB)
+
+        guard case .ready(let planB) = pratiche.regeneration else {
+            Issue.record("expected B's own preview to resolve to .ready, got \(String(describing: pratiche.regeneration))")
+            vaultController.close()
+            return
+        }
+        #expect(planB.messageID == messageIDB)
+
+        // A's stale, abandoned preview actually resolves only now.
+        _ = await taskA.value
+
+        guard case .ready(let planAfter) = pratiche.regeneration else {
+            Issue.record(
+                "A's resurfaced, superseded preview must never clobber B's - got \(String(describing: pratiche.regeneration))"
+            )
+            vaultController.close()
+            return
+        }
+        #expect(planAfter.messageID == messageIDB, "A's stale preview must never resurface once B has superseded it")
+        #expect(
+            pratiche.regeneratingPraticaPaths.contains(praticaPath),
+            "B's own claim must still be held - A's stale completion must not double-release it"
+        )
+
+        vaultController.close()
+    }
+}
+
 @Suite struct PraticaReadTimelinePendingAttachmentsTests {
     @Test func readTimelineSplitsOneLinkedAndOnePendingAttachmentIntoTheirOwnLists() throws {
         let root = FileManager.default.temporaryDirectory

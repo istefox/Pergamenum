@@ -128,6 +128,7 @@ extension PraticheController {
     func endSync() {
         syncingPraticaPath = nil
         syncProgress = nil
+        pruneRedirectsIfIdle()
     }
 
     func report(_ message: String) {
@@ -150,8 +151,13 @@ extension PraticheController {
         isCurrentVault: Bool
     ) {
         let url = Self.ledgerURL(for: session)
+        // A relocation that ran on the main actor while this outcome's own sync was
+        // still in flight has already moved the ledger key out from under
+        // `praticaPath` (`moveLedgerState`, below) - only meaningful against `self`
+        // when this outcome belongs to the vault that redirect map describes.
+        let currentPath = isCurrentVault ? resolvePraticaPathRedirect(praticaPath) : praticaPath
         var sessionLedger = isCurrentVault ? ledger : PraticaLedger.load(from: url)
-        var state = sessionLedger.byPraticaPath[praticaPath] ?? .empty
+        var state = sessionLedger.byPraticaPath[currentPath] ?? .empty
         state.lastSyncAt = Date()
         var imported = Set(state.importedMessageIDs)
         imported.formUnion(outcome.importedMessageIDs)
@@ -173,7 +179,7 @@ extension PraticheController {
         )
         for entry in outcome.bridge { entriesByID[entry.messageID] = entry }
         state.entries = entriesByID.values.sorted { $0.messageID < $1.messageID }
-        sessionLedger.byPraticaPath[praticaPath] = state
+        sessionLedger.byPraticaPath[currentPath] = state
         do {
             try sessionLedger.save(to: url)
         } catch {
@@ -196,28 +202,195 @@ extension PraticheController {
         }
     }
 
-    /// «Rinomina» (R-34) moves the folder, and the ledger is keyed by the folder's
-    /// path: without this the renamed pratica reads as one nobody has ever synced,
-    /// and the next sync re-imports every message it already has on disk.
+    /// A folder move or rename (R-34's «Rinomina», or the generic ADR-0026 batch move/
+    /// rename path) orphans every path-keyed piece of Pratiche state unless it follows:
+    /// the ledger is keyed by the pratica folder's own path, and a pratica does not
+    /// have to be the moved item itself to be carried along - it can be a descendant of
+    /// a moved or renamed *ancestor* folder (the actual bug this fixes, PG "allegati non
+    /// si scaricano"). Subtree-aware for exactly that reason: every key equal to
+    /// `oldPath` OR nested inside it moves to the same relative position under
+    /// `newPath`, one call covering both the pratica-itself and the
+    /// pratica-is-a-descendant shapes.
     ///
-    /// The tray counts travel too, or the dot on the row goes out for no reason a
-    /// person could name (R-33).
+    /// The tray counts, the selection, the per-pratica watcher and an in-flight sync's
+    /// or regeneration's own path all travel too, or each detaches from the moved
+    /// pratica on its own: a stale watcher never fires for the new path. Remapping
+    /// `syncingPraticaPath`/`regeneratingPraticaPaths` only keeps what the UI shows in
+    /// step with reality, though - it is `praticaPathRedirects` that actually stops an
+    /// in-flight sync's or regeneration's completion from resurrecting the orphaned key:
+    /// `recordSyncOutcome` was found (by review) to write unconditionally under the path
+    /// it was called with, captured before its own `await`s and never re-read from
+    /// `syncingPraticaPath` (ADR-0026 §D7, ADR-0043 §D7's shape again).
+    ///
+    /// Review round 2 found two MINORs in that redirect map and both are fixed here:
+    /// a redirect entry is now recorded only for a key `isInFlight` finds actually
+    /// claimed by `syncingPraticaPath` or `regeneratingPraticaPaths` at this exact
+    /// moment (MINOR 1 - most relocations run with nothing syncing or regenerating and
+    /// now add zero entries, closing the unconditional per-relocation growth); and
+    /// `resolvePraticaPathRedirect` (below) no longer removes what it reads, so two
+    /// concurrent in-flight callers sharing the same pre-move path both resolve
+    /// correctly instead of the first consuming the entry out from under the second
+    /// (MINOR 2). Nothing here needs a `selection` redirect: `recordSyncOutcome` only
+    /// ever resolves a path a sync or regeneration itself captured, never the UI's own
+    /// selection.
     func moveLedgerState(from oldPath: String, to newPath: String, in vault: VaultController) {
         guard oldPath != newPath else { return }
-        if let state = ledger.byPraticaPath.removeValue(forKey: oldPath) {
-            ledger.byPraticaPath[newPath] = state
+        // Snapshotted before any of the remaps below touch `syncingPraticaPath`/
+        // `regeneratingPraticaPaths` themselves, so this still reads their PRE-move
+        // values while every one of the following calls is still relocating `oldPath`.
+        let isInFlight: (String) -> Bool = { [syncingPraticaPath, regeneratingPraticaPaths] path in
+            path == syncingPraticaPath || regeneratingPraticaPaths.contains(path)
         }
-        if let proposals = trayProposals.removeValue(forKey: oldPath) {
-            trayProposals[newPath] = proposals
+        Self.remapKeys(&ledger.byPraticaPath, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
+        Self.remapKeys(&trayProposals, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
+        Self.remapKeys(&trayCounts, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
+        Self.remapKeys(&watchersByPraticaPath, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
+        if let selection, let remapped = Self.remappedPath(selection, from: oldPath, to: newPath) {
+            self.selection = remapped
         }
-        if let count = trayCounts.removeValue(forKey: oldPath) {
-            trayCounts[newPath] = count
+        if let syncingPraticaPath, let remapped = Self.remappedPath(syncingPraticaPath, from: oldPath, to: newPath) {
+            self.syncingPraticaPath = remapped
+            // Independent of the `ledger.byPraticaPath` remap above: a pratica's very
+            // first sync has no ledger entry yet (`state ... ?? .empty` never inserts
+            // one), so that remap alone would not have seen this key.
+            praticaPathRedirects[syncingPraticaPath] = remapped
         }
-        if selection == oldPath { selection = newPath }
+        if !regeneratingPraticaPaths.isEmpty {
+            var remappedRegenerations: Set<String> = []
+            for path in regeneratingPraticaPaths {
+                if let remapped = Self.remappedPath(path, from: oldPath, to: newPath) {
+                    praticaPathRedirects[path] = remapped
+                    remappedRegenerations.insert(remapped)
+                } else {
+                    remappedRegenerations.insert(path)
+                }
+            }
+            regeneratingPraticaPaths = remappedRegenerations
+        }
         guard let session = vault.session else { return }
         do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
+    }
+
+    /// The one place `VaultController.didRelocateFolders` calls into (ADR-0026 §D7,
+    /// wired by `PergamenumApp.init`): one call per folder the batch moved or renamed,
+    /// covering forward moves, renames of an ancestor folder, and undo/redo alike,
+    /// since all three fold into the same `MovedNote` shape upstream.
+    func followFolderRelocations(_ moved: [MovedNote], in vault: VaultController) {
+        for relocation in moved {
+            moveLedgerState(from: relocation.old, to: relocation.new, in: vault)
+        }
+    }
+
+    /// `path` itself, or `path` remapped to sit under `newPath` when it was nested
+    /// inside `oldPath` - `nil` when `path` is neither, meaning it is untouched by this
+    /// relocation. The prefix is `"\(oldPath)/"` and never the bare path,
+    /// `VaultMoveBatch.plan`'s own convention (`VaultMoveBatch.swift:63-70`) to avoid
+    /// mistaking `a-altro` for a descendant of `a`.
+    private static func remappedPath(_ path: String, from oldPath: String, to newPath: String) -> String? {
+        if path == oldPath { return newPath }
+        if path.hasPrefix("\(oldPath)/") { return newPath + path.dropFirst(oldPath.count) }
+        return nil
+    }
+
+    /// The dictionary-keyed twin of `remappedPath`: every key equal to or nested inside
+    /// `oldPath` moves to its equivalent key under `newPath`, same value, everything
+    /// else untouched. Records the move into `redirects[key] = remapped` only when
+    /// `isInFlight(key)` says something could still present `key` as its own captured
+    /// pre-move path (review round 2, MINOR 1) - a relocation with nothing syncing or
+    /// regenerating for `key` leaves no redirect at all, since nothing will ever read it.
+    ///
+    /// The `dict[remapped] = value` assignment overwrites rather than merges whatever
+    /// already sat at `remapped` (MINOR flagged by review) - left as-is on purpose: a
+    /// real relocation lands `remapped` on a path the move just vacated, so a
+    /// collision here would mean two distinct folders resolved to the same key, a
+    /// state this generic helper has no `Value`-specific way to merge or even detect.
+    private static func remapKeys<Value>(
+        _ dict: inout [String: Value], from oldPath: String, to newPath: String,
+        redirects: inout [String: String], isInFlight: (String) -> Bool
+    ) {
+        for key in Array(dict.keys) {
+            guard let remapped = remappedPath(key, from: oldPath, to: newPath) else { continue }
+            guard let value = dict.removeValue(forKey: key) else { continue }
+            dict[remapped] = value
+            if isInFlight(key) { redirects[key] = remapped }
+        }
+    }
+
+    /// `praticaPath` as some in-flight caller captured it, resolved to wherever a
+    /// relocation moved its ledger key by the time the caller's own outcome arrives -
+    /// itself when no relocation ever touched it. Walks more than one hop only when the
+    /// same pratica was relocated twice before that outcome landed.
+    ///
+    /// Never mutates `praticaPathRedirects` (review round 2, MINOR 2): the old
+    /// `removeValue` read let the FIRST of two concurrent in-flight callers sharing the
+    /// same pre-move path (an ordinary sync and a "Rigenera…" commit can race each
+    /// other for the same pratica - `PraticaLiveSync`'s `SyncRunQueue` only serializes
+    /// ordinary syncs against each other) consume the entry, leaving the second to fall
+    /// through to the stale key and resurrect it. `endSync`/`endRegeneration` are what
+    /// eventually drop an entry, once nothing anywhere is still in flight to need it
+    /// (`pruneRedirectsIfIdle`, below) - never a single read.
+    private func resolvePraticaPathRedirect(_ praticaPath: String) -> String {
+        var current = praticaPath
+        var visited: Set<String> = [praticaPath]
+        while let next = praticaPathRedirects[current], visited.insert(next).inserted {
+            current = next
+        }
+        return current
+    }
+
+    // MARK: - «Rigenera…»'s own in-flight marker (review round 2)
+
+    /// Claims `praticaPath` for a «Rigenera…» attempt (ADR §D21) - called once, from
+    /// `PraticaLiveSync.prepareRegeneration`, before its first `await`. Matched by
+    /// exactly one `endRegeneration` call on every exit that will not itself call
+    /// `recordSyncOutcome`, or the claim never releases.
+    ///
+    /// Review round 3's one exception: an attempt `prepareRegeneration` finds superseded
+    /// on resuming from its `await` (`regenerationEngine` now points at a *later*
+    /// attempt's engine) drops its result WITHOUT calling `endRegeneration` - not a
+    /// leaked claim, since a supersession only happens after «Annulla» already released
+    /// this attempt's own claim through `dismissRegeneration` below, and the shared
+    /// `praticaPath` key it briefly held may by then belong to that later attempt.
+    func beginRegeneration(_ praticaPath: String) {
+        regeneratingPraticaPaths.insert(praticaPath)
+    }
+
+    /// Releases a claim `beginRegeneration` made. Resolves `praticaPath` (the caller's
+    /// own, possibly stale, captured value) through the same redirect chain
+    /// `recordSyncOutcome` reads, since a relocation mid-regeneration keeps
+    /// `regeneratingPraticaPaths` itself live-updated to the CURRENT path
+    /// (`moveLedgerState`, above), not the value this call was made with.
+    func endRegeneration(_ praticaPath: String) {
+        regeneratingPraticaPaths.remove(resolvePraticaPathRedirect(praticaPath))
+        pruneRedirectsIfIdle()
+    }
+
+    /// «Annulla»/«Chiudi» on the «Rigenera…» sheet (`PratichePane+Sheets.swift`),
+    /// before any commit runs: releases whichever pratica this attempt claimed, then
+    /// dismisses the sheet - the one UI-facing caller of `endRegeneration`, since every
+    /// other exit already has its own praticaPath in scope directly.
+    func dismissRegeneration() {
+        switch regeneration {
+        case .preparing(_, _, let praticaPath): endRegeneration(praticaPath)
+        case .ready(let plan): endRegeneration(plan.praticaFolder)
+        case nil: break
+        }
+        regeneration = nil
+    }
+
+    /// Review round 2, MINOR 2's other half: since `resolvePraticaPathRedirect` never
+    /// removes what it reads, nothing prunes `praticaPathRedirects` on a per-entry
+    /// basis. The whole map is safe to drop in one go the moment NOTHING is in flight
+    /// anywhere - `syncingPraticaPath == nil && regeneratingPraticaPaths.isEmpty` -
+    /// since every entry in it exists only because `moveLedgerState` found something in
+    /// flight for that key at the time (MINOR 1), and nothing left running means every
+    /// caller that could have needed one has already resolved through it. Called from
+    /// `endSync` and `endRegeneration`, the two places that can make this true.
+    private func pruneRedirectsIfIdle() {
+        guard syncingPraticaPath == nil, regeneratingPraticaPaths.isEmpty else { return }
+        praticaPathRedirects.removeAll()
     }
 
     /// §D23.4: Mail renumbered a followed conversation Mail's own way (a new
