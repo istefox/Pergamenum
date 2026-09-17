@@ -5,8 +5,10 @@ import Foundation
 
 /// One row of the index's `attachments` table (probed schema, Task 1 PROBE 1:
 /// `ROWID`, `message INTEGER NOT NULL`, `attachment_id TEXT`, `name TEXT`) - a name
-/// recorded against a message, before any file is located or copied. The bytes
-/// themselves come from `EMLXReader`'s sibling `Attachments/` walk (Task 2, R-04).
+/// recorded against a message, before any file is located or copied. `EMLXReader`
+/// only computes the sibling `Attachments/` directory's path (Task 2, R-04); the
+/// bytes themselves, when the inline MIME payload is empty, are read from it by
+/// `PraticaSyncEngine+Messages.swift`'s `resolveExternalized` (ADR-0048).
 struct MailAttachmentRef: Equatable, Sendable {
     var messageRowID: Int
     var attachmentID: String?

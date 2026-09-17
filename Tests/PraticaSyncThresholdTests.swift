@@ -163,4 +163,89 @@ import Testing
         #expect(doc.frontmatter.pendingAttachmentNames.isEmpty, "the pending entry must go once bytes resolve")
         #expect(Fixtures.allegatiFiles(under: vaultRoot).isEmpty, "still over threshold - never copied")
     }
+
+    // MARK: ADR-0048 - `storePath`'s own pre-existing over-threshold branch (real,
+    // non-empty inline bytes, never `resolveExternalized`) also switched from
+    // `ordinal + 1` to `part.partNumber`. The two tests above never actually exercise
+    // that switch, because their fixture is a flat `multipart/mixed` where the
+    // attachment is the array's second element either way - `ordinal + 1` and
+    // `partNumber` agree by coincidence. This one nests a `multipart/alternative`
+    // ahead of the attachment so the two schemes disagree ("3" vs the real "2"), and
+    // seeds a sibling file at the real number, so a wrong guess would silently
+    // fall back to the `.emlx` path (`storePath`'s own not-found fallback,
+    // `PraticaSyncEngine+Attachments.swift:39`) instead of failing loudly.
+
+    @Test func anOverThresholdInlineAttachmentBehindANestedAlternativeUsesItsRealPartNumber() async throws {
+        var bytes = Data("%PDF-1.7\n".utf8)
+        bytes.append(Data(repeating: 0x41, count: 2 * 1024 * 1024))
+        bytes.append(Data("\n%%EOF\n".utf8))
+        let boundary = "----=_Pergamenum_ThresholdNested_Mixed"
+        let altBoundary = "----=_Pergamenum_ThresholdNested_Alt"
+        let message = """
+        From: Mario Rossi <m.rossi@rossi-spa.it>\r
+        To: Stefano Ferri <stefano@stefer.it>\r
+        Subject: Offerta grande con alternativa\r
+        Message-Id: <bignestedalt@rossi-spa.it>\r
+        Date: Wed, 10 Jun 2026 14:06:10 +0200\r
+        Content-Type: multipart/mixed; boundary="\(boundary)"\r
+        \r
+        --\(boundary)\r
+        Content-Type: multipart/alternative; boundary="\(altBoundary)"\r
+        \r
+        --\(altBoundary)\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Buongiorno, in allegato la nostra offerta.\r
+        --\(altBoundary)\r
+        Content-Type: text/html; charset=utf-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        <p>Buongiorno, in allegato la nostra offerta.</p>\r
+        --\(altBoundary)--\r
+        --\(boundary)\r
+        Content-Type: application/pdf\r
+        Content-Transfer-Encoding: base64\r
+        Content-Disposition: attachment; filename="offerta-grande.pdf"\r
+        \r
+        \(bytes.base64EncodedString())\r
+        --\(boundary)--\r
+        """
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta grande con alternativa", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        // Seeded at the alternative-aware "2" - the old `ordinal + 1` scheme would
+        // have looked for this attachment at "3" (plain, html, attachment counted
+        // flat) and, finding nothing there, silently fallen back to the `.emlx` path.
+        try PraticaSyncFixtures.writeExternalizedAttachment(
+            bytes, named: "offerta-grande.pdf", rowID: 1, part: "2", into: fixture
+        )
+
+        let vaultRoot = try Fixtures.makeVaultRoot()
+        let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        var settings = PraticheSettings.default
+        settings.attachmentThresholdMB = 1
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [Fixtures.row(rowID: 1, messageID: "<bignestedalt@rossi-spa.it>")],
+            onDisk: [], settings: settings
+        )
+        _ = try await engine.sync(request)
+
+        #expect(Fixtures.allegatiFiles(under: vaultRoot).isEmpty)
+        let doc = try Fixtures.onlyMessageDocument(under: vaultRoot)
+        let reference = try #require(doc.frontmatter.storeReferences.first)
+        #expect(reference.name == "offerta-grande.pdf")
+        #expect(
+            reference.storePath.contains("/2/"),
+            "storePath's own over-threshold branch must resolve the real nested part number, not fall back to the .emlx path because ordinal + 1 guessed \"3\""
+        )
+        #expect(doc.frontmatter.pendingAttachmentNames.isEmpty)
+    }
 }

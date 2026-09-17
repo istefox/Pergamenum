@@ -117,4 +117,32 @@ internal enum PraticaSyncFixtures {
         let url = emailDir.appending(path: name, directoryHint: .notDirectory)
         return (url, try String(contentsOf: url, encoding: .utf8))
     }
+
+    /// ADR-0048: writes `bytes` where Mail itself would, when it externalizes a part
+    /// instead of leaving it inline - the sibling `Attachments/<rowID>/<part>/<name>`
+    /// directory `EMLXReader.attachmentsDirectory(forMessageAt:rowID:part:)` computes.
+    ///
+    /// Locates the `.emlx` `MailStoreFixture.build` already wrote for `rowID` by a
+    /// plain recursive search under `fixture.root`, rather than re-deriving
+    /// `MailStoreFixture`'s own private fan-out digits a third time (`PraticaSyncEngine`
+    /// already duplicates that arithmetic nowhere - `EMLXLocator`/`MailStoreReader` are
+    /// the only production readers of the layout, and neither exposes it for a test to
+    /// call). A rowID collision is not possible: `MailStoreFixture.build` writes exactly
+    /// one `.emlx` per message, named after its own unique rowID.
+    static func writeExternalizedAttachment(
+        _ bytes: Data, named name: String, rowID: Int, part: String, into fixture: MailStoreFixture.Built
+    ) throws {
+        let targetName = "\(rowID).emlx"
+        let enumerator = FileManager.default.enumerator(
+            at: fixture.root, includingPropertiesForKeys: nil
+        )
+        let matches = enumerator?.compactMap { $0 as? URL }.filter { $0.lastPathComponent == targetName } ?? []
+        let emlxURL = try #require(
+            matches.first, "no .emlx file found for rowID \(rowID) under \(fixture.root.path(percentEncoded: false))"
+        )
+
+        let directory = EMLXReader.attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: part)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try bytes.write(to: directory.appending(path: name, directoryHint: .notDirectory))
+    }
 }
