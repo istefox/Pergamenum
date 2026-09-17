@@ -59,6 +59,15 @@ struct CategoryEditor: View {
         if case .editing(let category) = target { category.slug } else { nil }
     }
 
+    /// Why «Crea» is disabled beyond an empty name, shown under the slug field so a greyed
+    /// button is never unexplained (this view's own copy of `CategoryRegistry.validating`'s
+    /// `malformedSlug` refusal, surfaced before the press instead of after it). Always nil
+    /// while editing: the field is disabled there and the slug already passed validation
+    /// once, at creation.
+    private var slugProblem: String? {
+        Self.slugProblem(slug: slug, isCreating: isCreating)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             Text(isCreating ? "Nuova categoria" : "Modifica categoria").themedText(.title)
@@ -76,7 +85,7 @@ struct CategoryEditor: View {
                 Button("Annulla", action: onClose).keyboardShortcut(.cancelAction)
                 Button(isCreating ? "Crea" : "Salva", action: save)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || slugProblem != nil)
                     .accessibilityIdentifier("category-editor-save")
             }
         }
@@ -99,8 +108,21 @@ struct CategoryEditor: View {
 
             TextField("Slug", text: $slug)
                 .disabled(!isCreating)
-                .onChange(of: slug) { _, _ in slugFollowsName = false }
+                .onChange(of: slug) { _, newValue in
+                    // Only a person's own edit detaches the proposal - the write `name`'s
+                    // own `onChange` just made to this same field must not trip it, or the
+                    // slug stops following the name after the very first keystroke.
+                    if newValue != Self.proposedSlug(from: name) { slugFollowsName = false }
+                }
                 .accessibilityIdentifier("category-editor-slug")
+
+            // Suppressed while the name is still empty, so the sheet does not open
+            // already showing an error before anyone has typed anything.
+            if !name.trimmingCharacters(in: .whitespaces).isEmpty, let slugProblem {
+                Text(slugProblem)
+                    .themedText(.caption, color: .taskOverdue)
+                    .accessibilityIdentifier("category-editor-slug-problem")
+            }
 
             colorField
             symbolField
@@ -257,13 +279,24 @@ struct CategoryEditor: View {
 
     private func message(for reason: CategoryRegistry.RefusalReason) -> String {
         switch reason {
-        case .malformedSlug(let slug): "slug non valido: \(slug)"
+        case .malformedSlug(let slug): slug.isEmpty ? "lo slug non può essere vuoto" : "slug non valido: \(slug)"
         case .duplicateSlug(let slug): "esiste già una categoria con slug «\(slug)»"
         case .unknownParent(let slug): "la categoria superiore «\(slug)» non esiste"
         case .parentNotTopLevel(let slug): "«\(slug)» non è una categoria di primo livello"
         case .parentIsSelf(let slug): "una categoria non può essere superiore a se stessa: \(slug)"
         case .registryUnreadable: "il registro delle categorie non è leggibile: nessuna modifica viene salvata"
         }
+    }
+
+    /// Why «Crea» should stay disabled, in Italian, or nil when the slug is fine - the same
+    /// grammar `CategoryRegistry.validating` enforces (`Tag.isWellFormedValue`), surfaced
+    /// before the press instead of only after it as `message(for:)`'s `.malformedSlug` does.
+    /// Always nil while editing: the slug field is disabled there and already valid.
+    static func slugProblem(slug: String, isCreating: Bool) -> String? {
+        guard isCreating else { return nil }
+        guard !slug.isEmpty else { return "inserisci uno slug" }
+        guard Tag.isWellFormedValue(slug) else { return "solo minuscole, cifre e trattini singoli" }
+        return nil
     }
 
     /// A first proposal for the slug field (SPEC "Data model": "slug ... proposed from

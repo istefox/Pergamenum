@@ -1,0 +1,31 @@
+import Testing
+@testable import Pergamenum
+
+// `CategoryEditor.proposedSlug(from:)` and `CategoryEditor.slugProblem(slug:isCreating:)`
+// are both static and pure - the two rules a bug report against «Nuova categoria» traced
+// back to here: an unfollowed proposal (the first) and an unexplained disabled «Crea»
+// (the second).
+
+@Test func proposedSlugFoldsAccentsAndPunctuationToHyphens() {
+    #expect(CategoryEditor.proposedSlug(from: "Stampo Nexion") == "stampo-nexion")
+    #expect(CategoryEditor.proposedSlug(from: "Città è bella!") == "citta-e-bella")
+    #expect(CategoryEditor.proposedSlug(from: "  a---b  ") == "a-b")
+}
+
+@Test func proposedSlugFromAllPunctuationIsEmpty() {
+    #expect(CategoryEditor.proposedSlug(from: "!!!") == "")
+}
+
+@Test func slugProblemIsNilOnlyForAWellFormedSlugWhileCreating() {
+    #expect(CategoryEditor.slugProblem(slug: "stampo-nexion", isCreating: true) == nil)
+    #expect(CategoryEditor.slugProblem(slug: "", isCreating: true) != nil)
+    #expect(CategoryEditor.slugProblem(slug: "Stampo Nexion", isCreating: true) != nil)
+    #expect(CategoryEditor.slugProblem(slug: "-x", isCreating: true) != nil)
+    #expect(CategoryEditor.slugProblem(slug: "x-", isCreating: true) != nil)
+    #expect(CategoryEditor.slugProblem(slug: "a--b", isCreating: true) != nil)
+}
+
+@Test func slugProblemIsAlwaysNilWhileEditing() {
+    #expect(CategoryEditor.slugProblem(slug: "", isCreating: false) == nil)
+    #expect(CategoryEditor.slugProblem(slug: "not valid", isCreating: false) == nil)
+}

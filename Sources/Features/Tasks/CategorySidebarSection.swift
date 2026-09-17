@@ -109,7 +109,11 @@ struct CategorySidebarSection: View {
             if hasChildren {
                 disclosureButton(for: category.slug)
             } else {
-                Color.clear.frame(width: 10)
+                // Height pinned as well as width: `Color` takes any height it is offered,
+                // and this stack sits inside a bounded one (the sidebar `VStack`, not a
+                // `ScrollView`), so leaving it free lets the row swallow the leftover space
+                // meant for `TaskViewSidebar`'s trailing `Spacer()`.
+                Color.clear.frame(width: 10, height: 1)
             }
 
             Circle()
@@ -197,7 +201,7 @@ struct CategorySidebarSection: View {
     private func implicitRow(_ slug: String) -> some View {
         let isSelected = selection.categorySlug == slug
         return HStack(spacing: theme.spacing(.xs)) {
-            Color.clear.frame(width: 10)
+            Color.clear.frame(width: 10, height: 1)
             Text(slug)
                 .themedText(.body, color: isSelected ? .textSecondary : .textTertiary)
                 .lineLimit(1)

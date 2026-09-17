@@ -101,6 +101,16 @@ final class TaskCategoriesUITests: XCTestCase {
         let implicitRow = element("category-implicit-row-fantasma")
         XCTAssertTrue(implicitRow.waitForExistence(timeout: 5), "manca la riga della categoria implicita")
 
+        // A greedy `Color.clear` placeholder once let the row's height go unbounded and eat
+        // the whole sidebar (the bug this height check pins down): a normal row's frame is
+        // a couple of lines tall at most, never enough to reach halfway down the window.
+        XCTAssertLessThan(
+            registeredRow.frame.height, 60, "la riga della categoria registrata occupa troppo spazio verticale"
+        )
+        XCTAssertLessThan(
+            implicitRow.frame.height, 60, "la riga della categoria implicita occupa troppo spazio verticale"
+        )
+
         registeredRow.click()
 
         let categoryView = element("category-view-collaudi")
@@ -108,6 +118,35 @@ final class TaskCategoriesUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Verifica pressione"].waitForExistence(timeout: 5),
             "la vista categoria non mostra il task diretto"
+        )
+    }
+
+    /// A defect where «Crea» stayed enabled with an empty slug and pressing it did
+    /// nothing visible (the registry's refusal rendered as an empty sentence): the button
+    /// must disable itself and name the reason under the slug field instead.
+    func testCreaStaysDisabledWithAnEmptySlugAndNamesTheReason() throws {
+        show("Attività")
+
+        let addButton = element("category-add-button")
+        XCTAssertTrue(addButton.waitForExistence(timeout: 5), "manca il bottone «Nuova categoria»")
+        addButton.click()
+
+        let nameField = element("category-editor-name")
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "manca il campo Nome del nuovo editor")
+        nameField.click()
+        nameField.typeText("Prova")
+
+        let slugField = element("category-editor-slug")
+        XCTAssertTrue(slugField.waitForExistence(timeout: 5), "manca il campo Slug")
+        slugField.click()
+        slugField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
+
+        let saveButton = element("category-editor-save")
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "manca il bottone di salvataggio")
+        XCTAssertFalse(saveButton.isEnabled, "«Crea» resta attivo con lo slug vuoto")
+        XCTAssertTrue(
+            element("category-editor-slug-problem").waitForExistence(timeout: 5),
+            "nessun avviso mostrato per lo slug vuoto"
         )
     }
 }
