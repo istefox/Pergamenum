@@ -46,6 +46,13 @@ final class VaultSession {
     @ObservationIgnored let disk: VaultDisk
     /// Where the starred paths are read from and written back to (ADR-0012 D6).
     @ObservationIgnored let starredStore: StarredStore
+    /// Where the category registry is read from and written back to (ADR-0047 §D2).
+    @ObservationIgnored let categoryStore: CategoryRegistryStore
+    /// Set once at `init` from `categoryStore.load()`'s state; read by
+    /// `VaultSession+Categories.swift` to refuse every mutation while the on-disk file
+    /// could not be understood, rather than overwrite it (ADR-0047 §D2). Never flips
+    /// back within a session - the fix is to repair the file and reopen the vault.
+    @ObservationIgnored private(set) var categoryRegistryMalformed = false
 
     /// Test-only observability: incremented once per `starredStore.save` this session
     /// performs, wherever `VaultSession+Starred.swift` calls it. Per-instance - two tests
@@ -69,6 +76,13 @@ final class VaultSession {
     /// documented here rather than checked by the compiler. Writing it from anywhere else means
     /// the file on disk and this set stop agreeing.
     var starred: Set<String> = []
+
+    /// The category registry (ADR-0047 §D2).
+    ///
+    /// **Not `private(set)`, `starred`'s own reason above:** every door onto it is in
+    /// `VaultSession+Categories.swift`, another file, and so cannot write through a
+    /// private setter.
+    var categories: CategoryRegistry = .empty
 
     private(set) var settings: VaultSettings = .default
     private(set) var vocabulary: Vocabulary = .empty
@@ -179,11 +193,21 @@ final class VaultSession {
         self.history = NoteHistory(directory: state.history)
         self.disk = VaultDisk(store: store, history: history)
         self.starredStore = StarredStore(root: root)
+        self.categoryStore = CategoryRegistryStore(root: root)
 
         problems.append(contentsOf: state.migrateIfNeeded(from: privateDirectory, root: root))
 
         loadVocabulary()
         starred = starredStore.load()
+
+        let categoryLoad = categoryStore.load()
+        categories = categoryLoad.registry
+        categoryRegistryMalformed = categoryLoad.state == .malformed
+        if categoryRegistryMalformed {
+            problems.append(
+                "\(VaultLayout.categoriesFile): file malformato, nessuna categoria caricata"
+            )
+        }
     }
 
     // MARK: Reading and writing

@@ -7,6 +7,11 @@
 - **Plan:** `docs/superpowers/plans/2026-08-25-workspace-ui-creazione-board-toolbar-e-r.md`
 - **Base read:** every file:line below was read at `7ffd5fd`.
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ---
 
 ## Context

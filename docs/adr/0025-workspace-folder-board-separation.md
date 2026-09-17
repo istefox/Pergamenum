@@ -22,6 +22,11 @@ this chain's SPEC. See §D6 and the *SPEC claims that are false* table in the pl
 **Plan:** `docs/superpowers/plans/2026-08-27-workspace-folder-board-separation.md`.
 **SPEC:** `/Users/stefer/Developer/Pergamenum/SPEC.md` (R-01 … R-18).
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ---
 
 ## What is superseded, and why

@@ -8,6 +8,11 @@
 - Depends on: `docs/20260817_TextKit2_live_editing.md` for what the editor can and cannot
   do without touching the file.
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ## Context
 
 The roadmap (`docs/20260816_Pergamenum_Roadmap.md`, M8) asks for `![[note]]` and

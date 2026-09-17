@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=164 -->
+<!-- project-tasks: prefix=PG lastId=166 -->
 # PROJECT TASKS
 
-Updated: 2026-09-16 · Open: 49 (P1: 0) · In progress: 0
+Updated: 2026-09-17 · Open: 51 (P1: 0) · In progress: 0
 
 ## GitHub Issues
 - [ ] `PG-161` -> #289 **P3** [correctness] `VaultSession.writeFile` still reads its journal "before" on the main actor, before the actor hop, for every board write in the app — ADR-0043 §D5's Race 2 shape, moved inside the actor for `write` only, surviving on the `writeFile` door. ADR-0046 §D1/§D5 adds `expecting:` to `writeFile` in front of it without fixing it: a refusal throws before any write, so a stale `existing` read is discarded along with everything else, but the pre-hop read itself is unchanged. Folding it in changes what the journal records for every board write in the app, which is a decision about the journal and not about batch renames → `docs/adr/0046-batch-rename-stale-write-refusals.md` §D5, `docs/adr/0043-vault-write-ordering-concurrency-races.md` §D5, `Sources/Vault/VaultSession+Journal.swift:157-159` <!-- src:session opened:2026-09-15 kind:feature runs:5 adr:0046 promote:2026-09-16 -->
@@ -62,6 +62,7 @@ Updated: 2026-09-16 · Open: 49 (P1: 0) · In progress: 0
   - Merged first, manual hand-check deferred deliberately to a Sparkle-updated real build (a DerivedData Debug build never keeps Full Disk Access for Apple Mail across rebuilds — TCC ties the grant to the app's on-disk code identity, which changes every rebuild). Still to do once the release lands: the ADR-0042 section of `Pergamenum - checklist verifica Pratiche allegati (ADR-0040).txt` (10 items, none yet run — take a backup of the pratica folder first).
 - [ ] `PG-120` **P3** `MailStoreReaderTests.publishReportsMailIsWritingOnATornCopyAfterOneRetry` failed once during the full `PergamenumTests` suite (Stop-hook run), not reproduced in isolation — `Tests/MailStoreReaderTests.swift:139` <!-- src:session opened:2026-09-11 kind:fix runs:7 gh:#204 -->
   - Seen at the tail end of the 2026-09-11 Pergamenum 1.4 release session, on the final Stop-hook full-suite run (the one that hit `STOP_GATE_MAX_REENTRY=3` and disarmed). No file this session touched (`Project.swift` marketing-version bump, `TODO.md`) is anywhere near `MailStoreReaderTests`/`MailStoreReader`. Same suite-context-only shape as `PG-110` (fails inside the full suite, not investigated in isolation yet) — possibly related, not confirmed.
+- [ ] `PG-165` **P2** [fix] Stash residuo non droppato `task4-lint-check-rootview`, lasciato dal coder durante il Task 4 del chain task-categories — da droppare prima del merge finale del branch `chore-question-activity` su `main` <!-- src:session opened:2026-09-17 kind:fix -->
 
 ## In Progress
 
@@ -102,6 +103,9 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
   - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 ## Backlog / To Add
+
+- [ ] `PG-166` **P3** [roadmap] `linkCategory`/`unlinkCategory` non hanno un entry point UI cablato: la primitiva di scrittura esiste ed è testata (Task 6 del chain task-categories) ma il flusso SPEC "Collega una nota…" nell'editor delle categorie non è coperto da nessun R-id — `Sources/Vault/VaultSession+Categories.swift` <!-- src:session opened:2026-09-17 kind:roadmap -->
+  - Decisione di design del Task 6 (docs/plans/task-categories.md), non un difetto: la scrittura del frontmatter `pergamenum-category` funziona e ha copertura test, manca solo il comando/affordance che la invoca da UI.
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`

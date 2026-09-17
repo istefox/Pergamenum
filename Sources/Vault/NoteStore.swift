@@ -19,6 +19,11 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
     /// Defaulted so that the many places building a record for a test need not say
     /// "no embeds" to mean it; the one place that reads a note from disk always fills it.
     var embedTargets: [String] = []
+    /// The `pergamenum-category` scalar of this note's frontmatter (ADR-0047 §D5),
+    /// when it carries one - the slug this note is the linked home of (SPEC "Note ↔
+    /// category"). Defaulted for the same reason `embedTargets` is: the many places
+    /// building a record for a test need not say "no category" to mean it.
+    var categorySlug: String?
     /// Tasks found in the body, with their line numbers (SPEC §7.1).
     var tasks: [TaskItem]
     var modifiedAt: Date
@@ -121,6 +126,7 @@ struct NoteStore: Sendable {
             frontmatter: document.frontmatter,
             linkTargets: linkTargets(in: document),
             embedTargets: Transclusion.embeddedFiles(in: text),
+            categorySlug: CategoryFrontmatter.slug(in: document.frontmatter.foreignKeys),
             tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
             modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
             byteSize: data.count,

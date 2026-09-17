@@ -178,6 +178,9 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(!json.contains("\\/"))
 }
 
+// The two category reads (ADR-0047 §D9, R-09) live in `Tests/CategoryConnectorTests.swift`,
+// split out once this file crossed SwiftLint's `file_length` warning.
+
 // MARK: - Writing, and the guardrails around it
 
 @MainActor

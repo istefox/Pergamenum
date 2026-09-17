@@ -13,7 +13,9 @@ struct RootView: View {
     /// non-optional binding SwiftUI writes the focused row back over the initial
     /// value, so the window opened on an arbitrary pane.
     @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
+    // Not `private`: `RootView+Sheets.swift`'s `withSheets(_:)` reads it too (ADR-0045's
+    // own rule for a split that needs it - one comment naming the file that reads it).
+    @Environment(Navigation.self) var navigation
     @Environment(ShortcutStore.self) private var shortcuts
     /// The day pane's controller, because three sidebar rows are three scales of it
     /// (ADR-0013 §D4) rather than three panes.
@@ -101,52 +103,44 @@ struct RootView: View {
     }
 
     var body: some View {
-        content
-            // One colour across the whole strip, and opaque. The toolbar is translucent by
-            // default, so the backgrounds of the three panes underneath show through it and
-            // the seams of the split - the divider between the two editor columns, and the
-            // one before the inspector - climb into the title bar as hard vertical edges.
-            .toolbarBackground(theme.color(.backgroundSecondary), for: .windowToolbar)
-            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-            // A `pergamenum://canvas` link has to bring the Workspace forward before
-            // anything can act on it: the view that consumes the route only exists
-            // while that pane is shown, so from any other pane the link did nothing at
-            // all. Switching the pane here, where Navigation lives, is the whole fix -
-            // the consuming happens in WorkspaceView, once it is on screen.
-            .onChange(of: vault.routeState.pendingCanvas?.path) { _, pending in
-                if pending != nil { navigation.pane = .workspace }
-            }
-            .task {
-                if vault.routeState.pendingCanvas != nil { navigation.pane = .workspace }
-                if let root = vault.root { engine.attach(vaultRoot: root) }
-            }
-            // The vault's own themes (SPEC §11.3). Without this the engine never
-            // looked at `.pergamenum/themes/` outside the test suite, so a theme file
-            // in a vault did nothing at all and the picker in Settings could only
-            // ever offer the two bundled themes.
-            .onChange(of: vault.root) { _, newRoot in
-                if let newRoot {
-                    engine.attach(vaultRoot: newRoot)
-                } else {
-                    engine.detachVault()
+        // The help sheets and the task/category pickers are pure code motion into
+        // `RootView+Sheets.swift` (PG-035's own reasoning, applied here once
+        // `CategoryEditor`'s sheet crossed `file_length` - ADR-0047 §D6): six `.sheet`
+        // modifiers with nothing else in common, wrapped rather than chained inline so
+        // this file stays under the threshold.
+        withSheets(
+            content
+                // One colour across the whole strip, and opaque. The toolbar is translucent
+                // by default, so the backgrounds of the three panes underneath show through
+                // it and the seams of the split - the divider between the two editor
+                // columns, and the one before the inspector - climb into the title bar as
+                // hard vertical edges.
+                .toolbarBackground(theme.color(.backgroundSecondary), for: .windowToolbar)
+                .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+                // A `pergamenum://canvas` link has to bring the Workspace forward before
+                // anything can act on it: the view that consumes the route only exists
+                // while that pane is shown, so from any other pane the link did nothing at
+                // all. Switching the pane here, where Navigation lives, is the whole fix -
+                // the consuming happens in WorkspaceView, once it is on screen.
+                .onChange(of: vault.routeState.pendingCanvas?.path) { _, pending in
+                    if pending != nil { navigation.pane = .workspace }
                 }
-            }
-            .sheet(isPresented: Bindable(navigation).isShowingTaskSyntaxHelp) {
-                HelpSheet(topic: .taskSyntax) { navigation.isShowingTaskSyntaxHelp = false }
-            }
-            .sheet(isPresented: Bindable(navigation).isShowingConventionsHelp) {
-                HelpSheet(topic: .conventions) { navigation.isShowingConventionsHelp = false }
-            }
-            .sheet(isPresented: Bindable(navigation).isShowingDiaryHelp) {
-                HelpSheet(topic: .diary) { navigation.isShowingDiaryHelp = false }
-            }
-            // `TaskCommand.linkBoard`'s picker (ADR-0039 §D3), hosted here rather than by
-            // `TasksView` so it opens from every surface that offers the command — the
-            // "Task collegati" panel included, which lives inside the Workspace pane where
-            // `TasksView` does not exist.
-            .sheet(item: Bindable(navigation).taskPickingBoard) { task in
-                WorkspacePicker(task: task) { navigation.taskPickingBoard = nil }
-            }
+                .task {
+                    if vault.routeState.pendingCanvas != nil { navigation.pane = .workspace }
+                    if let root = vault.root { engine.attach(vaultRoot: root) }
+                }
+                // The vault's own themes (SPEC §11.3). Without this the engine never
+                // looked at `.pergamenum/themes/` outside the test suite, so a theme file
+                // in a vault did nothing at all and the picker in Settings could only
+                // ever offer the two bundled themes.
+                .onChange(of: vault.root) { _, newRoot in
+                    if let newRoot {
+                        engine.attach(vaultRoot: newRoot)
+                    } else {
+                        engine.detachVault()
+                    }
+                }
+        )
     }
 
     private var content: some View {

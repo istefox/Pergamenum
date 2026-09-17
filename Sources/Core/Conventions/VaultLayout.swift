@@ -12,6 +12,10 @@ enum VaultLayout {
     /// The starred notes of ADR-0012 D6. In the vault because starring describes the notes and
     /// travels with them; the open tabs describe this machine and stay in `UserDefaults`.
     static let starredFile = "starred.json"
+    /// The category registry of ADR-0047 §D2, beside `vocabolari.json`: a readable file
+    /// that travels with the vault, and not an index - deleting it loses the registry
+    /// and no task.
+    static let categoriesFile = "categories.json"
 
     /// Directory names never scanned for notes.
     ///

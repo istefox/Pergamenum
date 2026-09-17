@@ -50,6 +50,12 @@ enum Help {
       task reopen <task>
       task reschedule <task> --to <data|none>
 
+    CATEGORIE
+      categories            il registro: slug, nome, se implicita o archiviata,
+                             genitore, progresso done/totale
+      category-tasks <slug> i task di quella categoria e del suo sottoalbero,
+                             raggruppati come li raggruppa la vista dell'app
+
     GIORNATA
       day show [data]      blocchi, cosa è in programma e cosa scade
                            senza EventKit: il giorno come è scritto, non come lo sa il Mac

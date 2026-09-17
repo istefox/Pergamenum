@@ -51,9 +51,15 @@ handoff; the spec wins on any conflict.
    true, and the unit suite must always pass a temporary state base
    (`VaultState.processDefaultBase()` is test-aware; `VaultSession.init` still takes
    `stateBase` with no default) rather than resolving the real directory.
-4. **Obsidian compatibility.** The existing "Labs" vault opens without conversion.
-   `.canvas` files follow JSON Canvas 1.0 and round-trip with Obsidian. Extra
-   properties use prefixed keys and are preserved, not interpreted.
+4. **Obsidian compatibility.** *Amended 2026-09-16 (ADR-0047 §D11).* The existing "Labs" vault
+   opens without conversion, and it does so because the formats underneath are ordinary ones -
+   markdown, frontmatter YAML, wikilinks, `.canvas` as plain JSON Canvas 1.0, the `|W`/`|WxH`
+   embed-size suffix, 16-hex node ids, `pergamenum-` prefixed extra keys preserved and not
+   interpreted - not because keeping Obsidian able to read the result is a constraint this project
+   still holds. What ends is the round-trip *obligation*: a future design is no longer rejected on
+   the ground that it would stop Obsidian from opening a Pergamenum-written file, and the manual
+   round-trip probe (ADR-0020's Probe 2) is retired as an acceptance gate, never re-added as one.
+   Nothing on disk changes shape because of this amendment. Principle 5 below is untouched by it.
 5. **Harness conformance.** The naming, tag, frontmatter and wikilink conventions of
    the `harness-system` repo are the app's native schema, not an option. That repo
    stays the single source of truth: when a convention changes, the app config
@@ -403,6 +409,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0043** — Follow-up to ADR-0041, found by an independent post-implementation review: the per-path write-ordering guard (§D11) covers one of the vault's six index writers, two overlapping async writes can capture the same journal "before", and a `canOperate` check does not survive the `await` it guards. Decides one clock stamped inside `VaultDisk` with `apply` as the only index door, the journal's "before" read inside the actor, and a dirty-buffer prompt instead of an unconditional reload. The implementation chain measured the async cascade at 3-4x the ADR's own estimate (~210 call sites, 46 files, 25 test files) and named 13 call sites adopting the §D8 opt-in `expecting:` hash precondition. Extends ADR-0041 §D9/§D10/§D11, amends none → `docs/adr/0043-vault-write-ordering-concurrency-races.md`
 - **ADR-0045** — PG-143 pratiche structure refactor: SwiftLint's error-level `file_length`/`type_body_length` debt across eleven pratiche files resolved by pure `Type+Aspect.swift` extension splits (signatures untouched), `private` widening to `internal` only where a split requires it with one comment per widened member naming the file that reads it, and `PraticaSyncEngine+Messages.swift`'s `fileprivate` regeneration-plan cluster kept whole to preserve ADR-0036 §D21's opacity guarantee. Reopens nothing → `docs/adr/0045-pratiche-structure-refactor.md`
 - **ADR-0046** — Batch rename/move write guard, follow-up to ADR-0043 §D8: `VaultPlanApplication.Outcome`/`TagRenameOutcome`/`NoteFileOperations.Outcome` gain a `refusals` channel distinct from `failures`, driven by the existing opt-in `expecting:` hash precondition at all four batch writer closures; no preflight pass, the loop never stops on a refusal → `docs/adr/0046-batch-rename-stale-write-refusals.md`
+- **ADR-0047** — Task categories as a registry in the vault (`.pergamenum/categories.json`, `#project-<slug>` stays the pointer, `IndexCache.schemaVersion` 3 → 4) plus the end of the Obsidian round-trip as a binding constraint: amends `CLAUDE.md` principle 4 and SPEC §14, no on-disk format changes, eleven prior ADRs (0009, 0010, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025, 0027) gain a head scope note with their bodies untouched → `docs/adr/0047-task-categories-and-the-end-of-the-obsid.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 
@@ -572,5 +579,31 @@ already lives in the Chain decision index above.
   pre-hop journal-«before» read (ADR-0043 §D5's Race 2 shape, on this one door only) is deliberately
   left unfixed and filed as `PG-161`. The connectors' JSON is unchanged: refusals fold into
   `FileMoveSummary.failures` with their own sentence rather than a new key.
+- **ADR-0047 (task categories and the end of the Obsidian round-trip):** two things ship as one
+  chain because they touch the same documents. The category system is a registry file,
+  `.pergamenum/categories.json` (`CategoryRegistryStore`, `StarredStore`'s shape: atomic write,
+  malformed reads as empty and is never overwritten by a save), validated through one pure door
+  (`CategoryRegistry.validating(_:)`) before anything is written; `#project-<slug>` stays the only
+  pointer, no new tag or marker. `IndexSnapshot` gains the effective-category and rollup
+  derivations, and `IndexCache.schemaVersion` goes 3 → 4 so the linked note's `pergamenum-category`
+  key survives a cache reuse — the exact defect shape Pratiche already paid for. `TaskView.byProject`
+  and `TaskGrouping.project` deliberately keep reading `task.project` literally; inheriting through
+  a linked note would change two existing surfaces nobody asked to change. The sidebar's selection
+  becomes one derived `TaskPaneSelection` enum (view or category), replacing a second variable that
+  could disagree with the first — ADR-0024's rule applied to the second tree in the app; the five
+  `TaskView` cases stay five and unchanged (reopens ADR-0013 §D6 by addition, not by replacement).
+  The second half ends the Obsidian round-trip as a binding constraint, a product decision Stefano
+  took on 2026-08-22 during ADR-0020's implementation and left unpropagated: `CLAUDE.md` principle 4
+  and SPEC §14 are amended, not the formats — `.canvas` stays JSON Canvas 1.0, the embed-size suffix,
+  16-hex node ids and the `pergamenum-` prefixed-key discipline are unchanged, and no ADR body is
+  rewritten. Eleven prior ADRs whose decision rested on the round-trip (0009, 0010, 0018, 0019,
+  0020, 0021, 0022, 0023, 0024, 0025, 0027) gain a scope note at the head, verbatim, pointing here;
+  §D12's rule was reformulated during the chain's fix loop from a section-position test to a
+  load-bearing/counterfactual one, and the re-audit against the reformulated rule is what added
+  0009 and 0018 to the original nine. 0032 mentions Obsidian only in the same consequence-shaped way
+  the reformulated rule still excludes, and stays without a note, recorded as the correction R-13
+  asks for rather than applied silently. `CanvasTests.roundTripsAnObsidianCanvas`
+  and its siblings are untouched and stay green — they pin the JSON Canvas format, not a
+  compatibility gate → `docs/adr/0047-task-categories-and-the-end-of-the-obsid.md`
 
 Detail: see each ADR under `docs/adr/`.

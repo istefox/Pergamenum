@@ -5,18 +5,31 @@ import SwiftUI
 /// which had drifted to `file_length`/`type_body_length` warnings, the second of which
 /// crossed into an error).
 extension TasksView {
+    /// Branches on the pane's one selection (ADR-0047 §D6): one of the five views, drawn
+    /// exactly as before, or a category - `CategoryView`, fed this same `row` so a
+    /// category's tasks behave exactly like every other task in the pane.
+    @ViewBuilder
     var list: some View {
+        switch selection {
+        case .view(let taskView):
+            taskViewList(taskView)
+        case .category(let slug):
+            categoryList(slug)
+        }
+    }
+
+    private func taskViewList(_ taskView: IndexSnapshot.TaskView) -> some View {
         // Both halves computed once here rather than read twice from the body: the rows need
         // to know which of them are rolled over, and asking a second time would be a second
         // pass over every task in the vault on every redraw.
-        let rolled = rolledOverGroup
-        // The same reason, one layer down: every read of `options` decodes the stored JSON
-        // map, and the arrangement is where that answer is actually needed.
-        let options = self.options
-        let arranged = arrangedGroups(options: options) + rolled
+        let rolled = rolledOverGroup(for: taskView)
+        // The same reason, one layer down: every read of `options(for:)` decodes the stored
+        // JSON map, and the arrangement is where that answer is actually needed.
+        let currentOptions = options(for: .view(taskView))
+        let arranged = arrangedGroups(for: taskView, options: currentOptions) + rolled
         let rolledIDs = Set(rolled.first?.tasks.map(\.id) ?? [])
         return VStack(alignment: .leading, spacing: 0) {
-            TaskListControls(title: view.title, options: optionsBinding)
+            TaskListControls(title: taskView.title, options: optionsBinding(for: .view(taskView)))
                 .padding(.horizontal, theme.spacing(.l))
                 .padding(.top, theme.spacing(.s))
 
@@ -52,37 +65,88 @@ extension TasksView {
         }
     }
 
-    /// The controls of the view showing, read back from the one stored map and written
-    /// straight into it. A binding rather than `@State` mirrored onto storage: two copies of
-    /// a preference is how one of them ends up stale after a view switch.
-    var optionsBinding: Binding<TaskListOptions> {
+    /// A category's pane (SPEC "UI flows — Category view", R-05): a real registry entry
+    /// for a registered slug, or a synthesized stand-in for an implicit one - the same
+    /// fallback `CategorySidebarSection`'s "Registra" affordance implies exists, so
+    /// clicking either kind of row always opens something rather than nothing.
+    private func categoryList(_ slug: String) -> some View {
+        let category = vault.categories.entries.first { $0.slug == slug }
+            ?? Category(slug: slug, name: slug, color: CategoryColor.grigio.rawValue)
+        return VStack(alignment: .leading, spacing: 0) {
+            TaskListControls(title: category.name, options: optionsBinding(for: .category(slug)))
+                .padding(.horizontal, theme.spacing(.l))
+                .padding(.top, theme.spacing(.s))
+            CategoryView(
+                category: category,
+                isRegistered: vault.categories.entries.contains { $0.slug == slug },
+                options: options(for: .category(slug))
+            ) { task in
+                row(task)
+            }
+        }
+    }
+
+    /// The `@AppStorage("taskListOptions")` map's key for one selection: a view's own
+    /// `rawValue`, unchanged from before this type existed, or `category:<slug>` for a
+    /// category row - its own namespace inside the same map (ADR-0013 §D6), never a
+    /// second store, so a five-view key and a category key can never collide.
+    private func optionsKey(for selection: TaskPaneSelection) -> String {
+        switch selection {
+        case .view(let taskView): taskView.rawValue
+        case .category(let slug): "category:\(slug)"
+        }
+    }
+
+    /// The default controls for a selection with nothing stored yet: a view's own
+    /// (ADR-0013 §D6), or a plain ungrouped, schedule-sorted list for a category - there
+    /// is no sixth `TaskView.defaultListOptions` to borrow, and a category's own grouping
+    /// (direct tasks, then one section per child) is already what the "Per progetto"
+    /// grouping would otherwise ask the list to do a second time.
+    private func defaultOptions(for selection: TaskPaneSelection) -> TaskListOptions {
+        switch selection {
+        case .view(let taskView): taskView.defaultListOptions
+        case .category: TaskListOptions(grouping: .none, sorting: .schedule)
+        }
+    }
+
+    /// The controls of the selection showing, read back from the one stored map and
+    /// written straight into it. A binding rather than `@State` mirrored onto storage:
+    /// two copies of a preference is how one of them ends up stale after a switch.
+    private func optionsBinding(for selection: TaskPaneSelection) -> Binding<TaskListOptions> {
         Binding(
-            get: { options },
+            get: { options(for: selection) },
             set: { newValue in
                 var map = TaskListOptions.map(fromJSON: storedOptions)
-                map[view.rawValue] = newValue
+                map[optionsKey(for: selection)] = newValue
                 storedOptions = TaskListOptions.json(of: map)
             }
         )
     }
 
-    var options: TaskListOptions {
-        TaskListOptions.map(fromJSON: storedOptions)[view.rawValue] ?? view.defaultListOptions
+    private func options(for selection: TaskPaneSelection) -> TaskListOptions {
+        TaskListOptions.map(fromJSON: storedOptions)[optionsKey(for: selection)]
+            ?? defaultOptions(for: selection)
     }
 
-    /// The current view's tasks, arranged the way its controls ask (ADR-0013 §D6).
+    /// The controls of whatever is showing right now - not `private`, since
+    /// `TasksView+Row.swift`'s `row(_:isRolledOver:)` reads `options.density` to decide
+    /// whether to draw a task's second line, and a row is only ever drawn while the
+    /// selection it belongs to is the one showing.
+    var options: TaskListOptions { options(for: selection) }
+
+    /// One view's tasks, arranged the way its controls ask (ADR-0013 §D6).
     ///
     /// The arrangement itself is in `TaskArrangement`, outside SwiftUI, because a sort that is
     /// not stable and a group that swallows the tasks with nothing to group by are defects a
     /// test can hold and a screenshot cannot.
-    func arrangedGroups(options: TaskListOptions) -> [TaskGroup] {
+    func arrangedGroups(for taskView: IndexSnapshot.TaskView, options: TaskListOptions) -> [TaskGroup] {
         TaskArrangement.groups(
-            vault.index.tasks(for: view, on: today),
+            vault.index.tasks(for: taskView, on: today),
             options: options,
             // Only *Tutti* floats its starred notes, which is where the roadmap asks for them:
             // in a view already grouped by day or by project, a star would fight the grouping
             // the user chose rather than help it.
-            priorityPaths: view == .all ? Set(vault.starredNotes.map(\.relativePath)) : [],
+            priorityPaths: taskView == .all ? Set(vault.starredNotes.map(\.relativePath)) : [],
             boards: boards
         )
     }
@@ -94,8 +158,8 @@ extension TasksView {
     /// earlier day is not another way of cutting today's list, it is a second list. The
     /// controls of §D6 act on the day's own tasks and leave this one alone, which is why it is
     /// added here and not passed through `TaskArrangement`.
-    var rolledOverGroup: [TaskGroup] {
-        guard view == .today, vault.settings.rollover else { return [] }
+    func rolledOverGroup(for taskView: IndexSnapshot.TaskView) -> [TaskGroup] {
+        guard taskView == .today, vault.settings.rollover else { return [] }
         let tasks = vault.index.rolledOverTasks(
             on: today, daysBack: vault.settings.rolloverDays
         )

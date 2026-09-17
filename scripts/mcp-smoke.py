@@ -74,6 +74,19 @@ Appunti pratica.
 Richiamare lunedì.
 """
 
+# One registered category ("collaudi") and one task tagged with a slug the registry
+# does not know ("fantasma") - the R-04 implicit-category case, read here through the
+# connector rather than the sidebar.
+CATEGORY_NOTE = """---
+date: 2026-08-11
+tags:
+  - type-note
+---
+
+- [ ] Preventivo #project-collaudi
+- [ ] Non registrato #project-fantasma
+"""
+
 failures = []
 
 
@@ -314,6 +327,49 @@ def pratiche(binary, vault):
         server.close()
 
 
+def categories(binary, vault):
+    """ADR-0047 §D9 (R-09): the registry read, implicit categories folded in, and one
+    category's rolled-up, grouped task list - both read-only, neither writes.
+    """
+    print("categorie")
+    pergamenum_dir = os.path.join(vault, ".pergamenum")
+    os.makedirs(pergamenum_dir, exist_ok=True)
+    with open(os.path.join(pergamenum_dir, "categories.json"), "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "version": 1,
+            "entries": [{"slug": "collaudi", "name": "Collaudi", "color": "verde",
+                         "order": 0, "archived": False}],
+        }))
+    with open(os.path.join(vault, "Progetto.md"), "w", encoding="utf-8") as handle:
+        handle.write(CATEGORY_NOTE)
+
+    server = Server(binary, vault, allow_write=False)
+    try:
+        tools = server.send("tools/list", {})["result"]["tools"]
+        names = [tool["name"] for tool in tools]
+        check("list_categories" in names and "category_tasks" in names,
+              "i due strumenti delle categorie sono elencati")
+
+        listed = server.payload("list_categories")
+        by_slug = {entry["slug"]: entry for entry in listed}
+        check("collaudi" in by_slug and by_slug["collaudi"]["implicit"] is False,
+              "la categoria registrata torna con implicit false")
+        check("fantasma" in by_slug and by_slug["fantasma"]["implicit"] is True,
+              "il tag senza voce nel registro torna come categoria implicita")
+        check(by_slug["collaudi"]["progress"]["total"] == 1,
+              "il progresso conta solo i task di quella categoria")
+
+        tasks = server.payload("category_tasks", {"slug": "collaudi"})
+        check(tasks["groups"][0]["tasks"][0]["text"] == "Preventivo",
+              "category_tasks torna i task della categoria, raggruppati come la vista")
+
+        refusal = server.payload("category_tasks", {"slug": "non-esiste"})
+        check(refusal.get("isError") is True,
+              "uno slug né registrato né implicito è un errore parlante")
+    finally:
+        server.close()
+
+
 def resources(binary, vault):
     print("risorse")
     server = Server(binary, vault, allow_write=False)
@@ -336,7 +392,7 @@ def resources(binary, vault):
 binary = find_binary()
 print("binario: %s\n" % binary)
 
-for stage in (read_only, writing, views, pratiche, resources):
+for stage in (read_only, writing, views, pratiche, categories, resources):
     vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
     try:
         with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

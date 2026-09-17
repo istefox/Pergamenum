@@ -13,6 +13,8 @@ func dispatch(_ group: String, _ arguments: Arguments) async throws -> ExitCode 
     switch group {
     case "note": return try await noteGroup(arguments)
     case "task": return try await taskGroup(arguments)
+    case "categories": return try await CategoryCommands.categories(arguments)
+    case "category-tasks": return try await CategoryCommands.categoryTasks(arguments)
     case "day": return try await dayGroup(arguments)
     case "capture": return try await WriteCommands.capture(arguments)
     case "search": return try await SearchCommands.run(arguments)

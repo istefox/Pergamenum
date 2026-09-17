@@ -8,7 +8,8 @@ struct TasksView: View {
     @Environment(ThemeEngine.self) private var themeEngine
     @Environment(Navigation.self) var navigation
     @Environment(CommandActions.self) var actions
-    @State var view: IndexSnapshot.TaskView = .today
+    /// One derived selection (ADR-0047 §D6): a view of SPEC §7.4, or a category row.
+    @State var selection: TaskPaneSelection = .view(.today)
     /// Every board's vault-relative path, for the Workspace segment on each row and the
     /// `.workspace` grouping. Fetched once per scan rather than per row: `CanvasStore.allBoards()`
     /// is an uncached full filesystem walk (`WorkspacePicker` makes the same choice for itself).
@@ -34,7 +35,7 @@ struct TasksView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            TaskViewSidebar(selection: $view)
+            TaskViewSidebar(selection: $selection)
             Divider()
             list
         }
@@ -52,15 +53,30 @@ struct TasksView: View {
         // section and the capture usually happens while this view does not exist.
         .task { followLastCapture() }
         .onChange(of: vault.taskGeneration) { _, _ in followLastCapture() }
+        // The inspector's "Vai alla categoria" (`VaultBrowser.swift`'s `categoryLink`)
+        // only switches `navigation.pane`; this is what actually lands on the linked
+        // category, the same double registration `openPendingCanvas` needs and for the
+        // same reason - this view is recreated each time the pane switches to `.tasks`
+        // (`RootView.tasksPane`), so a value already set before it existed needs the
+        // `.task` and one set while it is already on screen needs the `.onChange`.
+        .task { followPendingCategorySelection() }
+        .onChange(of: navigation.pendingCategorySelection) { _, _ in followPendingCategorySelection() }
     }
 
     private func followLastCapture() {
         guard let capture = vault.consumeLastCapture() else { return }
-        view = switch capture.day {
+        let view: IndexSnapshot.TaskView = switch capture.day {
         case .none: .inbox
         case .some(let day) where day <= today: .today
         default: .upcoming
         }
+        selection = .view(view)
+    }
+
+    private func followPendingCategorySelection() {
+        guard let slug = navigation.pendingCategorySelection else { return }
+        navigation.pendingCategorySelection = nil
+        selection = .category(slug)
     }
 
     /// Capture, and the Task menu's actions on whatever is selected.

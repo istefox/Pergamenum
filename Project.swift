@@ -90,6 +90,10 @@ let sharedSources: [SourceFileGlob] = [
     .glob("Sources/Connector/**"),
     "Sources/Index/IndexCache.swift",
     "Sources/Index/IndexSnapshot.swift",
+    // The category derivations of ADR-0047 §D4 (`effectiveCategory(of:)`,
+    // `implicitCategories`, `tasks(inCategory:registry:rolledUp:)`, `progress(ofCategory:)`),
+    // named by hand because `Sources/Index/**` is not a glob (three files listed here already).
+    "Sources/Index/IndexSnapshot+Categories.swift",
     // Not optional beside the file above: it carries `tagUsage()` and the snapshot's own
     // `ViewCorpus` conformance, both of which `Sources/Vault` and `Sources/Connector` call.
     // Its absence broke `perg` and `pergamenum-mcp` outright - the failure CLAUDE.md's
@@ -98,6 +102,10 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Calendar/TimeBlock.swift",
     "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",
+    // The category registry's vault-side store and lifecycle (ADR-0047 §D2/§D3), named
+    // by hand per ADR-0007 §D2 the same way every other `Sources/Vault/**` file here is:
+    // the glob only covers `Sources/Core/**` and `Sources/Connector/**`.
+    "Sources/Vault/CategoryRegistryStore.swift",
     "Sources/Vault/NoteFileOperations.swift",
     "Sources/Vault/NoteHistory.swift",
     "Sources/Vault/NoteStore.swift",
@@ -118,6 +126,7 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultDisk.swift",
     "Sources/Vault/VaultScanner.swift",
     "Sources/Vault/VaultSession.swift",
+    "Sources/Vault/VaultSession+Categories.swift",
     "Sources/Vault/VaultSession+Diary.swift",
     "Sources/Vault/VaultSession+Files.swift",
     "Sources/Vault/VaultSession+Identity.swift",

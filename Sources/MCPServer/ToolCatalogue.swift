@@ -118,6 +118,30 @@ enum ToolCatalogue {
             annotations: .init(readOnlyHint: true)
         ),
         Tool(
+            name: "list_categories",
+            description: """
+                Il registro delle categorie di un task (ADR-0047): slug, nome, colore, \
+                simbolo, descrizione, scadenza, genitore, se archiviata, se implicita - un \
+                valore #project-* senza voce nel registro - e il progresso fatto/totale sul \
+                suo intero sottoalbero.
+                """,
+            inputSchema: ["type": "object", "properties": [:]],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
+            name: "category_tasks",
+            description: """
+                I task di una categoria e del suo intero sottoalbero, raggruppati come li \
+                raggruppa la vista Categoria dell'app.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": ["slug": ["type": "string"]],
+                "required": ["slug"],
+            ],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
             name: "lint_note",
             description: "Le violazioni di conformità di una nota (SPEC §4.7): nome, frontmatter, tag, related.",
             inputSchema: [

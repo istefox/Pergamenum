@@ -17,6 +17,11 @@
   (`Sources/Core/Canvas/JSONCanvas.swift:122, 187-189, 193`), which is already tested in three
   directions by `Tests/CanvasTests.swift:48-83, 127-140`.
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ## Context
 
 An image on a board today is a `file` node drawn by `NodeCard.previewCard`: a `ThumbnailImage`

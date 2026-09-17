@@ -73,6 +73,80 @@ private func task(_ line: String, in path: String = "Nota.md", at index: Int = 0
     )
 }
 
+// MARK: - `TaskParser.line(for:assigningCategory:)` (ADR-0047 §D5; R-03)
+
+@Test func assigningCategoryAddsTheTagToALineWithNone() {
+    let t = task("- [ ] Verifica disegno")
+    let updated = TaskParser.line(for: t, assigningCategory: "vibrofer")
+    #expect(updated == "- [ ] Verifica disegno #project-vibrofer")
+}
+
+@Test func assigningCategoryReplacesAnExistingTagRatherThanAppendingASecond() {
+    let t = task("- [ ] Verifica disegno #project-vecchio")
+    let updated = TaskParser.line(for: t, assigningCategory: "nuovo")
+    #expect(updated == "- [ ] Verifica disegno #project-nuovo")
+    #expect(
+        updated.components(separatedBy: "#project-").count - 1 == 1,
+        "più di un tag di categoria sulla riga: \(updated)"
+    )
+}
+
+@Test func assigningCategoryToALineWithTwoProjectTagsRemovesBothAndKeepsOnlyTheNewOne() {
+    // SPEC edge case: a line carrying two `#project-*` tags (however it got there) is
+    // normalized down to exactly one on the next assignment.
+    let t = task("- [ ] Verifica disegno #project-uno #project-due")
+    let updated = TaskParser.line(for: t, assigningCategory: "tre")
+    #expect(updated == "- [ ] Verifica disegno #project-tre")
+    #expect(
+        updated.components(separatedBy: "#project-").count - 1 == 1,
+        "più di un tag di categoria sulla riga: \(updated)"
+    )
+}
+
+@Test func assigningNilCategoryRemovesTheTagWithNoDoubleSpaceLeftBehind() {
+    let t = task("- [ ] Verifica disegno #project-vibrofer >2026-09-01")
+    let updated = TaskParser.line(for: t, assigningCategory: nil)
+    #expect(updated == "- [ ] Verifica disegno >2026-09-01")
+    #expect(!updated.contains("  "), "doppio spazio lasciato dalla rimozione: \(updated)")
+}
+
+@Test func assigningNilCategoryOnATrailingTagLeavesNoTrailingWhitespace() {
+    let t = task("- [ ] Verifica disegno #project-vibrofer")
+    let updated = TaskParser.line(for: t, assigningCategory: nil)
+    #expect(updated == "- [ ] Verifica disegno")
+}
+
+@Test func assigningCategoryLeavesAnUnrelatedTagUntouchedApartFromTheAddition() {
+    let t = task("- [ ] Verifica disegno #type-review")
+    let updated = TaskParser.line(for: t, assigningCategory: "vibrofer")
+    #expect(updated == "- [ ] Verifica disegno #type-review #project-vibrofer")
+}
+
+@Test func assigningCategoryLeavesEveryOtherPartOfTheLineByteIdentical() {
+    let original = "  * [ ] Task complesso >2026-09-01 !2026-09-10 @remind(2026-09-01 09:00)"
+        + " [[Nota]] #project-vecchio"
+    let t = task(original)
+    let updated = TaskParser.line(for: t, assigningCategory: "nuovo")
+    #expect(
+        updated == "  * [ ] Task complesso >2026-09-01 !2026-09-10 @remind(2026-09-01 09:00)"
+            + " [[Nota]] #project-nuovo"
+    )
+}
+
+@Test func rewritingAnAssignedCategoryLineIsRefusedWhenTheOriginalLineHasMovedOn() {
+    // Same guard `TaskParser.rewrite(_:at:expecting:with:)` gives every other
+    // `TaskChange` - a category assignment is an ordinary line rewrite and inherits
+    // it for free, with no case-specific staleness handling needed.
+    let originalNote = "- [ ] Verifica disegno"
+    let t = task(originalNote)
+    let newLine = TaskParser.line(for: t, assigningCategory: "vibrofer")
+
+    let changedNote = "- [ ] Verifica disegno rinominata"
+    let result = TaskParser.rewrite(changedNote, at: t.lineIndex, expecting: t.rawLine, with: newLine)
+    #expect(result == nil)
+    #expect(changedNote == "- [ ] Verifica disegno rinominata", "il testo stale non deve cambiare")
+}
+
 // MARK: - `TaskParser.insertingSubtask(in:below:draft:)` (ADR-0021 D9, A9; R-07)
 
 @Test func insertingASubtaskAssignsAFreshIDToAParentThatHadNone() throws {
