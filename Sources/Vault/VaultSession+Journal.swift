@@ -154,23 +154,40 @@ extension VaultSession {
     /// including the journal entry, which is what stops a board card from being the one part of
     /// a rename that cannot be undone.
     ///
-    /// `expecting` (ADR-0046 §D5) forwards straight to `VaultDisk.writeFile`. **Deliberately
-    /// left as it is:** the journal's own «before» just above is still read on the main actor,
-    /// ahead of the actor hop - ADR-0043 §D5's Race 2 shape, surviving here because closing it
-    /// would change what the journal records for every board write in the app, a decision about
-    /// the journal and not about batch renames (filed, not fixed, Task 7).
+    /// `expecting` (ADR-0046 §D5) forwards straight to `VaultDisk.writeFile`.
+    ///
+    /// **§D5 fix (PG-161/#289):** the journal's own «before» no longer reads on the main
+    /// actor ahead of the hop - that read, and the suspension right after it, was Race 2
+    /// (ADR-0043 §"Race 2") surviving on this door after `write(_:to:)` closed it on its
+    /// own. Only what the main actor alone knows - the command, the operation id, the entry
+    /// id and timestamp - travels across, as a `JournalDescriptor`, built only when a
+    /// journal is armed. `VaultDisk.writeFile` reads the current bytes itself, immediately
+    /// before writing the new ones, inside the same isolation, exactly like the note write.
     func writeFile(_ text: String, to relativePath: String, expecting: String? = nil) async throws {
-        let existing = (journal != nil && !isDryRun)
-            ? (try? store.url(for: relativePath)).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-            : nil
         guard !isDryRun else { return }
+
+        var journalDescriptor: VaultDisk.JournalDescriptor?
+        if journal != nil {
+            let now = Date()
+            journalDescriptor = VaultDisk.JournalDescriptor(
+                entryID: WriteJournal.makeID(at: now),
+                timestamp: now,
+                command: journalCommand,
+                operation: currentOperation
+            )
+        }
 
         // ADR-0043 §D1: the byte write moves inside `VaultDisk` too. Its sequence is kept
         // for `selfWrittenHashes` below (Task 7) but the mutation itself is never applied
         // to the index - a board is not a note, unchanged from before this task.
-        let mutation: VaultDisk.IndexMutation
+        let outcome: (mutation: VaultDisk.IndexMutation, journalProblem: String?)
         do {
-            mutation = try await disk.writeFile(text, to: relativePath, expecting: expecting)
+            outcome = try await disk.writeFile(
+                text, to: relativePath,
+                expecting: expecting,
+                journalDescriptor: journalDescriptor,
+                journal: journal
+            )
         } catch let refusal as VaultWriteRefusal {
             // Rethrown as-is, not wrapped: a refusal is its own channel
             // (`VaultPlanApplication.apply` classifies it apart from `failures`, ADR-0046 §D4),
@@ -182,18 +199,8 @@ extension VaultSession {
             )
         }
         let hash = NoteStore.hash(Data(text.utf8))
-        selfWrittenHashes[relativePath, default: []].append((sequence: mutation.sequence, hash: hash))
-
-        record(WriteJournal.Entry(
-            id: WriteJournal.makeID(at: Date()),
-            timestamp: Date(),
-            path: relativePath,
-            hashBefore: existing.map { NoteStore.hash(Data($0.utf8)) },
-            hashAfter: hash,
-            textBefore: existing,
-            command: journalCommand,
-            operation: currentOperation
-        ))
+        selfWrittenHashes[relativePath, default: []].append((sequence: outcome.mutation.sequence, hash: hash))
+        if let problem = outcome.journalProblem { recordProblem(problem) }
     }
 
     // MARK: Undo of a gesture (ADR-0016 §D5)
