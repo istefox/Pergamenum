@@ -178,4 +178,32 @@ vaults/30A57D29-D869-484F-926E-7C15B1555621/pratiche/ledger.json`):
    move a throwaway pratica folder to a different parent in a running Debug build,
    confirm the pratica keeps its sync state (no re-import prompt, tray badge
    unchanged), then undo the move and confirm the ledger follows back.
+
+## Review round 4 (supersedes `ba09c06`'s "Known gap, not fixed here" paragraph)
+
+`ba09c06`'s commit message closed with:
+
+> Known gap, not fixed here: remapLedgerConversations and updateTray/persistTrayCount
+> (PraticaLiveSync+Run.swift) read the same pre-await praticaPath directly, bypassing
+> praticaPathRedirects - a relocation mid-sync can still drop a conversation-ID remap or
+> resurrect the orphaned key through those two call sites. Tracked separately.
+
+That gap is now closed, on this same unmerged branch, by
+`docs/plans/pg-pratica-relocation-mid-sync-stop.md`: a relocation landing mid-sync now
+stops the run entirely (`PraticaRunStop`, `RunContext.livePraticaPath(in:)`, a `.finished`/
+`.relocated(to:)` outcome consumed by `run(praticaPath:kind:)`'s re-enqueue) rather than
+letting `remapLedgerConversations`, `updateTray`/`persistTrayCount`, or the engine's own
+write path read the stale pre-await `praticaPath` and act on it. The two regeneration
+entry points (`prepareRegeneration`/`commitRegeneration`) gained the analogous guard
+through `praticaPath(continuing:)`. Superseded, not just patched: the fix is "stop", never
+"remap and continue" — continuing was found to recreate the vacated folder
+(`NoteStore.write`'s own `createDirectory`) or permanently misfile an import under the
+wrong ledger key, either of which is worse than a run that simply asks to be requeued.
+
+One narrower gap from that same round is deliberately left open and tracked separately,
+not superseded by anything above: `PraticaSyncEngine.cancel()` is cooperative, checked
+once per message, so the message being written at the instant of the move still completes
+into the vacated path, and `PraticaFileOperations.restore` fails after a relocation since
+`moveItem` creates no intermediate directories. See `PG-168` in `TODO.md` and
+`docs/plans/pg-pratica-relocation-mid-sync-stop.md` §7 for both.
 5. `scripts/uitests.sh` before merging to `main` (repo convention).

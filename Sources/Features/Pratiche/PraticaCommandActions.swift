@@ -289,10 +289,20 @@ struct PraticaCommandActions {
     /// straight after imports it - "follows and imports", in that order, because the
     /// import reads the dossier from disk.
     func follow(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
+        // Round-5 review, `PG-168`'s third case: this first `updateDossier` write itself
+        // still uses the pre-await `praticaPath` with no relocation guard - only the
+        // SECOND use below, after the await, is guarded. Same narrow, accepted window.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.following(conversationID: proposal.conversationID, in: dossier)
         }
+        // Round-4 review, §6: re-read AFTER the `await` above, not the value captured
+        // before it - CLAUDE.md's "a precondition evaluated before an `await` is a
+        // filter, not a guard" applied literally. `pratiche.selection` is
+        // live-remapped by `moveLedgerState`, so a post-await read is exact and needs
+        // no redirect entry of its own; a stale `praticaPath` would dismiss the WRONG
+        // pratica's proposal and refresh a folder that no longer exists.
+        guard let praticaPath = pratiche.selection else { return }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
         await pratiche.refreshNow(praticaPath, in: vault)
     }
@@ -300,10 +310,13 @@ struct PraticaCommandActions {
     /// «Ignora»: one key of this pratica's own dossier, and nothing else - another
     /// pratica following the same counterpart still gets to propose it.
     func ignore(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
+        // Round-5 review, `PG-168`'s third case: same as `follow(_:)` above.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.ignoring(conversationID: proposal.conversationID, in: dossier)
         }
+        // Round-4 review, §6: same re-read as `follow(_:)` above, same reason.
+        guard let praticaPath = pratiche.selection else { return }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
     }
 

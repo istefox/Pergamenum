@@ -300,6 +300,14 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
             ledgerAfterFirstSync?.entries.first?.conversationID == 112_409,
             "the first sync's own bridge triple must name the conversation as it is now"
         )
+        // Round-4 review, test 11: the cheapest regression check that
+        // `RunContext.livePraticaPath(in:)`'s new resolver calls, threaded through all
+        // six of `runExclusive`'s steps, did not break the ordinary no-relocation path -
+        // an import must still land and still be recorded when nothing ever moves.
+        #expect(
+            ledgerAfterFirstSync?.importedMessageIDs == ["<abc123@rossi-spa.it>"],
+            "an ordinary sync must still import and still record, with every new `livePraticaPath` guard resolving to a no-op"
+        )
 
         // Mail renumbers the conversation on a reindex: same ROWID, same Message-ID,
         // a brand new `conversation_id`. A short pause guarantees the source's own
@@ -716,6 +724,78 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         #expect(
             controller.praticaPathRedirects.isEmpty,
             "once nothing anywhere is still in flight, the redirect this relocation left must be pruned"
+        )
+    }
+
+    // MARK: - Round-4 review, §1: `praticaPath(continuing:)`, the one door
+    // `PraticaLiveSync+Run.swift`'s `RunContext.livePraticaPath(in:)` goes through -
+    // after this, there is no way to spell a pratica path inside that pipeline other
+    // than through this resolver.
+
+    @Test func praticaPathContinuingReturnsTheCapturedPathWhenNothingRelocated() throws {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+
+        let resolved = try controller.praticaPath(continuing: "01 Progetti/Tifone/X")
+
+        #expect(resolved == "01 Progetti/Tifone/X", "nothing relocated it, so the captured path is still the live one")
+    }
+
+    @Test func praticaPathContinuingRefusesAndNamesWhereThePraticaWent() throws {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.praticaPathRedirects[oldPath] = newPath
+
+        do {
+            _ = try controller.praticaPath(continuing: oldPath)
+            Issue.record("expected praticaPath(continuing:) to throw .praticaRelocated")
+        } catch let stop as PraticaRunStop {
+            #expect(stop == .praticaRelocated(from: oldPath, to: newPath))
+        } catch {
+            Issue.record("expected PraticaRunStop, got \(error)")
+        }
+
+        // The two-hop chain: relocated twice before this caller ever asked - the same
+        // multi-hop walk `resolvePraticaPathRedirect` already does for
+        // `recordSyncOutcome`, reused here rather than forked.
+        let secondPath = "Calendar/02 Progetti/Tifone/X"
+        controller.praticaPathRedirects[newPath] = secondPath
+
+        do {
+            _ = try controller.praticaPath(continuing: oldPath)
+            Issue.record("expected praticaPath(continuing:) to throw .praticaRelocated across both hops")
+        } catch let stop as PraticaRunStop {
+            #expect(
+                stop == .praticaRelocated(from: oldPath, to: secondPath),
+                "the caller must be told where the pratica lives NOW, not the first hop"
+            )
+        } catch {
+            Issue.record("expected PraticaRunStop, got \(error)")
+        }
+    }
+
+    @Test func praticaPathContinuingIsOnlyMeaningfulWhileARunHoldsItsClaim() throws {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let oldPath = "01 Progetti/Tifone/X"
+        let newPath = "Calendar/01 Progetti/Tifone/X"
+        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.beginSync(oldPath)
+        let vault = VaultController()
+
+        controller.followFolderRelocations([MovedNote(old: oldPath, new: newPath)], in: vault)
+        #expect(controller.praticaPathRedirects[oldPath] == newPath, "a claimed path in flight must leave a redirect")
+
+        // The claim ends (the run's own `defer { controller.endSync() }`), and with
+        // nothing else in flight `pruneRedirectsIfIdle` wipes the whole map - documents
+        // why `beginSync`/`endSync` must bracket the WHOLE of `runExclusive`: the
+        // resolver is only meaningful while a run still holds its claim.
+        controller.endSync()
+        #expect(controller.praticaPathRedirects.isEmpty)
+
+        let resolved = try controller.praticaPath(continuing: oldPath)
+        #expect(
+            resolved == oldPath,
+            "once nothing is left to redirect through, the resolver returns its input rather than throwing"
         )
     }
 }

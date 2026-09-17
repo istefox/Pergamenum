@@ -1,5 +1,23 @@
 import Foundation
 
+/// Round-4 review (follow-up to `ba09c06`, `docs/plans/pg-pratica-relocation-mid-sync-
+/// stop.md`): why a run must STOP rather than adapt once its own pratica folder has
+/// moved out from under it - `PraticaLiveSync+Run.swift`'s `RunContext.livePraticaPath(
+/// in:)` is the door every step goes through, and this is what it throws.
+enum PraticaRunStop: Error, Equatable, Sendable {
+    /// The vault open when a run started is no longer the one live now - a genuinely
+    /// different concern from a relocation (this pipeline tolerates a vault switch:
+    /// see `PraticaLiveSync+Run.swift`'s `runEngine`), thrown only where continuing to
+    /// derive state from a preparation built for a vault nobody is looking at any more
+    /// would be pure waste.
+    case vaultChanged
+    /// The pratica folder a run captured has moved WITHIN the same vault: `from` is
+    /// what the run captured, `to` is where `praticaPathRedirects` says it lives now -
+    /// carried because the caller that must stop is the caller that must ask for a
+    /// fresh run at `to` (§3 of the plan above).
+    case praticaRelocated(from: String, to: String)
+}
+
 extension PraticheController {
     /// What a finished sync found waiting for this pratica (R-30). Also refreshes the
     /// list, since the dot on a row is one of these counts.
@@ -58,6 +76,18 @@ extension PraticheController {
             timeline = []
             details = [:]
             ledger = .empty
+            // Round-4 review, §6: a redirect entry describes THIS vault's own
+            // relocations alone (`livePraticaPath`'s own "session identity checked
+            // first" reason, `PraticaLiveSync+Run.swift`) - once the vault is gone,
+            // nothing it described still applies. No live bug either way (pruning,
+            // plus that session-identity-first ordering, already make a stale entry
+            // harmless), but dropping it here makes the invariant local rather than
+            // inferred. Deliberately NOT unconditional at the top of this function:
+            // `load(from:)` also runs on the SAME vault right after an ordinary
+            // rename/status-change/delete (`PraticaCommandActions`), and clearing the
+            // map there could erase an entry `moveLedgerState` just left, moments
+            // earlier in the same call stack, for a sync still in flight.
+            praticaPathRedirects.removeAll()
             return
         }
         ledger = PraticaLedger.load(from: Self.ledgerURL(for: session))
@@ -254,6 +284,17 @@ extension PraticheController {
             // first sync has no ledger entry yet (`state ... ?? .empty` never inserts
             // one), so that remap alone would not have seen this key.
             praticaPathRedirects[syncingPraticaPath] = remapped
+            // Round-4 review, §4: the redirect above is what stops the ledger/UI
+            // consumers from writing under the vacated path once they NEXT reach one
+            // of `livePraticaPath`'s guards - the ENGINE itself, mid-message, is not
+            // one of those consumers and keeps writing into the old folder until then
+            // (recreating it, `NoteStore.write`'s own `createDirectory` behaviour).
+            // Asking it to stop here, at the exact moment its own claimed path is
+            // found relocated, bounds that window to "the message being written
+            // right now" - `PraticaSyncEngine.cancel()` is cooperative, checked once
+            // per message, so it can still complete into the vacated path (`PG-168`,
+            // not fixed further here).
+            requestSyncStopForRelocation?()
         }
         if !regeneratingPraticaPaths.isEmpty {
             var remappedRegenerations: Set<String> = []
@@ -338,6 +379,20 @@ extension PraticheController {
             current = next
         }
         return current
+    }
+
+    /// The pratica folder an in-flight run captured, returned only while it is still
+    /// where that run left it (round-4 review, §1). Throws `.praticaRelocated`
+    /// otherwise: a run must not keep writing - files or ledger keys - under a path a
+    /// relocation has vacated. Carries the new path because the caller that must stop
+    /// is the caller that must ask for a fresh run there. A resolver, not a bare
+    /// `hasRelocated(_:) -> Bool` predicate: the `assertInsideVault(url)` shape
+    /// CLAUDE.md's working agreement forbids, containment per ADR-0041's
+    /// `VaultBoundary.url(for:)` precedent.
+    func praticaPath(continuing captured: String) throws -> String {
+        let current = resolvePraticaPathRedirect(captured)
+        guard current != captured else { return captured }
+        throw PraticaRunStop.praticaRelocated(from: captured, to: current)
     }
 
     // MARK: - «Rigenera…»'s own in-flight marker (review round 2)

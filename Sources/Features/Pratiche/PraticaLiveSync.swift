@@ -17,6 +17,7 @@ extension PraticheController {
         )
         coordinator.controller = controller
         controller.requestSyncCancellation = { [coordinator] in coordinator.cancel() }
+        controller.requestSyncStopForRelocation = { [coordinator] in coordinator.stopForRelocation() }
         controller.prepareRegeneration = { [coordinator] praticaPath, messageID in
             await coordinator.prepareRegeneration(praticaPath: praticaPath, messageID: messageID)
         }
@@ -25,6 +26,15 @@ extension PraticheController {
         }
         return controller
     }
+}
+
+/// What one `runExclusive` run ends with (round-4 review, §3) - the "echo the value
+/// back, not a bare bit" idiom `SyncRunQueue.request`/`finished` below already use:
+/// `.relocated(to:)` names the exact path this pipeline must ask to run again, rather
+/// than a caller having to re-derive it from `praticaPathRedirects` itself.
+enum RunOutcome: Equatable, Sendable {
+    case finished
+    case relocated(to: String)
 }
 
 /// The pure serialization rule behind `PraticaLiveSync.run(praticaPath:)` - the same
@@ -142,6 +152,17 @@ final class PraticaLiveSync {
         Task { await running.cancel() }
     }
 
+    /// Round-4 review, §4: asks the running engine to stop because ITS OWN pratica
+    /// folder just relocated - deliberately not `cancel()` above, which also drops
+    /// `queue.pending`/`queuedRequests` wholesale and would discard other pratiche's
+    /// own queued syncs that have nothing to do with this relocation. Cooperative, same
+    /// as `cancel()`: the engine observes it at its next message boundary, so the
+    /// message being written at the instant of the move still completes (`PG-168`).
+    func stopForRelocation() {
+        guard let running else { return }
+        Task { await running.cancel() }
+    }
+
     init(vault: VaultController) {
         self.vault = vault
     }
@@ -165,7 +186,22 @@ final class PraticaLiveSync {
         var currentKind = kind
         while true {
             if vault.session === currentSession, isStillEligible(current, kind: currentKind) {
-                await runExclusive(praticaPath: current)
+                let outcome = await runExclusive(praticaPath: current)
+                // Round-4 review, §3: a relocation mid-run left `current`'s pratica
+                // sitting at a path this run never got to sync - ask for it again
+                // BEFORE `queue.finished()` dequeues whatever else is waiting, so the
+                // request lands in `pending` (`SyncRunQueue.request` returns `nil`
+                // while `isRunning` is still `true` here, never dropped) rather than
+                // being lost. Livelock would need a SECOND relocation to land inside
+                // this very requeue's own run, which needs a person to move the same
+                // pratica again before the retry even starts - bounded in practice, no
+                // counter added.
+                if let requeued = Self.requeue(after: outcome, kind: currentKind) {
+                    _ = queue.request(requeued.path)
+                    queuedRequests[requeued.path] = Self.coalesce(
+                        queuedRequests[requeued.path], with: QueuedRequest(session: currentSession, kind: requeued.kind)
+                    )
+                }
             }
             guard let next = queue.finished() else { break }
             current = next
@@ -173,6 +209,21 @@ final class PraticaLiveSync {
             currentSession = queued?.session ?? currentSession
             currentKind = queued?.kind ?? currentKind
         }
+    }
+
+    /// The pure decision behind the re-enqueue above, extracted the same way
+    /// `SyncRunQueue` was (this file's own established idiom, `shouldRunQueuedRequest`/
+    /// `coalescedKind`'s own precedent). `nil` means the run finished on its own and
+    /// nothing needs to run again. The trigger kind is always the SAME `kind` the
+    /// relocated run was itself running under, never a hard-coded `.manualRefresh`:
+    /// that is what lets `shouldRunQueuedRequest` still revoke an `.automatic` requeue
+    /// if the pratica closed meanwhile (R-17), and what keeps a `.manualRefresh`
+    /// sticky through `coalesce`.
+    nonisolated static func requeue(
+        after outcome: RunOutcome, kind: PraticaWatcher.Trigger
+    ) -> (path: String, kind: PraticaWatcher.Trigger)? {
+        guard case .relocated(let newPath) = outcome else { return nil }
+        return (newPath, kind)
     }
 
     /// :976's recheck. `.manualRefresh` ignores `Eligibility` entirely, same as
@@ -298,6 +349,23 @@ final class PraticaLiveSync {
                 controller.endRegeneration(praticaPath)
                 return
             }
+            // Round-4 review, §2: a third guard in this ladder, ordered after both
+            // above (a superseded attempt stays silent, a vault switch already ended
+            // the claim) - the folder relocated while `regenerationPreview`'s own
+            // `await` was in flight. `plan.praticaFolder` still names the vacated
+            // path, and `commitRegeneration`'s own guard below would refuse it
+            // anyway, so there is nothing useful left to show. No auto-retry: unlike
+            // an ordinary sync (§3), regenerating one specific message is a
+            // per-message user action, not something this pipeline re-enqueues on
+            // its own.
+            do {
+                _ = try controller.praticaPath(continuing: praticaPath)
+            } catch {
+                controller.regeneration = nil
+                controller.endRegeneration(praticaPath)
+                controller.report("«\(praticaPath)» è stata spostata: riapri «Rigenera…» dalla nuova posizione.")
+                return
+            }
             controller.regeneration = .ready(plan)
             // Stays claimed: `.ready` still needs the claim through however long the
             // sheet sits on screen, and through the commit that follows it.
@@ -326,6 +394,30 @@ final class PraticaLiveSync {
             controller?.endRegeneration(plan.praticaFolder)
             return false
         }
+        // Round-4 review, §2: refused BEFORE anything is written - `plan.praticaFolder`
+        // was captured when the preview ran, and the diff may have sat on screen long
+        // enough for the folder to relocate before the person agreed to it.
+        // `PraticaCommandActions.confirmRegeneration` has already trashed the current
+        // files by the time this runs, so `false` is what tells it to put them back
+        // (`files.restore(trashed)`) rather than leaving the message missing - though
+        // `restore` uses `moveItem`, which does not create intermediate directories, so
+        // a relocated folder leaves the trashed files exactly there rather than restored
+        // (`PG-168`, not fixed further here; the sentence below says so).
+        do {
+            _ = try controller.praticaPath(continuing: plan.praticaFolder)
+        } catch {
+            controller.report(
+                "«\(plan.praticaFolder)» è stata spostata: riapri «Rigenera…» dalla nuova posizione. "
+                    + "I file del messaggio restano nel Cestino, recuperabili da lì."
+            )
+            controller.endRegeneration(plan.praticaFolder)
+            return false
+        }
+        // No re-check after this await, unlike `runEngine`'s post-`engine.sync` guard: a
+        // relocation landing during this one write can still land the regenerated files
+        // under the just-vacated folder (`PG-168`'s third case). `recordSyncOutcome`
+        // below still resolves `plan.praticaFolder` through the redirect, so the ledger
+        // itself stays correct either way - only the files can end up stray.
         do {
             let outcome = try await engine.commitRegeneration(plan)
             controller.recordSyncOutcome(

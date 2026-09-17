@@ -47,6 +47,31 @@ import Testing
 // `VaultController` to check it itself) is what keeps that safe: `false` reads and
 // rewrites `session`'s own file fresh from disk instead of the shared, already-moved
 // -on `self.ledger`, and never mutates `self.ledger` at all.
+//
+// Round-4 review (`docs/plans/pg-pratica-relocation-mid-sync-stop.md`), consumer-side
+// conclusion, recorded so a future round does not re-litigate it: the same
+// unreproducible-end-to-end finding above is why `PraticaRunStop`/`livePraticaPath(in:)`
+// is tested by INSTALLING a `praticaPathRedirects` entry at a synchronous seam
+// (`beginSync`/`beginRegeneration`, then `followFolderRelocations`) and driving
+// production code with the resulting stale path, never by racing a real relocation
+// against a real sync's timing - `Tests/PraticheControllerTests.swift`'s
+// `PraticaLedgerFolderRelocationTests` and `PraticaLiveSyncRelocatedMidRunTests.swift`'s
+// own suite both follow this without exception, and its regeneration-drop test needed
+// two redesigns to get there. First, the plan's own suggestion - reusing
+// `PraticaRegenerationSupersededPreviewTests`'s `waitUntil`-on-`regeneratingPratica
+// Paths` pin plus a concurrent `Task`, on the theory that `prepareRegeneration`'s one
+// `await` stays suspended long enough to interleave. Verified against this fixture and
+// found not just unreliable but structurally impossible: that `await` never actually
+// yields the MainActor back to the poller before running to full completion. Second, a
+// seam-based fallback that called the real `prepareRegeneration` once, in full, after
+// pre-installing its claim by hand - broken for a different reason, found only once
+// written: `beginRegeneration` is not idempotent to repeat once a relocation has
+// already reassigned `regeneratingPraticaPaths` wholesale, and `prepareRegeneration`
+// begins its own claim unconditionally on its first line, so calling it as both "the
+// stand-in for an already-open claim" and "the call under test" claims twice and
+// leaks. The test that survived tests the same primitives `praticaPath(continuing:)`,
+// `beginRegeneration` and `endRegeneration` directly, never the function that cannot be
+// driven twice.
 @MainActor
 @Suite(.serialized) struct PraticaLiveSyncRecordOutcomeTests {
     @Test func recordSyncOutcomeWritesOnlyIntoTheExplicitSessionNeverAnotherOpenVault() throws {

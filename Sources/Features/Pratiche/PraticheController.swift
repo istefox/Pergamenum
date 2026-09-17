@@ -242,6 +242,18 @@ final class PraticheController {
         requestSyncCancellation?()
     }
 
+    /// Round-4 review, §4: a relocation mid-sync must stop the ENGINE too, not only
+    /// guard the ledger/UI consumers downstream of it - without this, the engine keeps
+    /// writing into the vacated folder for the rest of the run. Same shape and
+    /// justification as `requestSyncCancellation` just above: a settable property, not
+    /// a third `init` parameter, so it cannot break `init(probe:performSync:)`
+    /// (ADR-0155). `nil` means nothing is wired, and a relocation runs with nothing to
+    /// stop. Wired by `live(vault:)` to `PraticaLiveSync.stopForRelocation()`, called
+    /// from `moveLedgerState` - deliberately NOT the same closure as
+    /// `requestSyncCancellation`, which also drops every queued request for OTHER
+    /// pratiche that have nothing to do with this relocation.
+    @ObservationIgnored var requestSyncStopForRelocation: (@MainActor () -> Void)?
+
     /// The chosen pratica's own list item, for the breadcrumb and the status pill.
     var selectedPratica: PraticaListItem? {
         guard let selection else { return nil }
