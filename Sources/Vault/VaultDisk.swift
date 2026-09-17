@@ -254,9 +254,7 @@ extension VaultDisk {
 
 extension VaultDisk {
     /// Writes any file in the vault - a `.canvas` board, most often - without touching the
-    /// index or the per-note history. The caller decides whether the mutation this returns
-    /// is worth applying at all; `VaultSession.writeFile` (`VaultSession+Journal.swift`)
-    /// never does, because a board is not a note (ADR-0016 §D6).
+    /// index or the per-note history, journalling nothing itself.
     ///
     /// `expecting` (ADR-0046 §D5) is compared against the file's current bytes, read here for
     /// that purpose - unlike `write(_:to:precomputedHash:...)` above, this overload performed
@@ -265,6 +263,12 @@ extension VaultDisk {
     /// can separate the read from the write. A path with no file reads as `nil`, which never
     /// equals a non-nil `expecting`, so a vanished board is refused rather than re-created
     /// (§D8).
+    ///
+    /// **Pre-§D5 shape, kept for `Tests/VaultWriteOrderingTests.swift`**, the same reason the
+    /// note write above keeps its own journal-less overload: that file drives this actor's raw
+    /// write/move/trash primitives directly, with no journal in play. The overload below -
+    /// distinguished by its `journalDescriptor:` label - is what `VaultSession.writeFile`
+    /// actually calls (§D5, PG-161/#289).
     func writeFile(_ text: String, to relativePath: String, expecting: String? = nil) async throws -> IndexMutation {
         if let expecting {
             let existing = try? store.text(relativePath)
@@ -280,6 +284,54 @@ extension VaultDisk {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let record = try? store.record(from: data, attributes: attributes, at: relativePath)
         return IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
+    }
+
+    /// The door `VaultSession.writeFile` actually calls (§D5, PG-161/#289). Unlike the
+    /// overload above, this one reads the file's current bytes itself - immediately before
+    /// writing the new ones, inside the same isolation the write itself runs in - and
+    /// records the journal entry here too: a claim about a disk transition can only be made
+    /// where the transition is serialized, the same rule `write(_:to:precomputedHash:
+    /// expecting:journalDescriptor:...)` already applies to the note door. Before this, the
+    /// main actor read `existing` ahead of the hop in `VaultSession.writeFile` - Race 2's
+    /// exact shape (ADR-0043 §"Race 2"), surviving on this door after the note write closed
+    /// it on its own (ADR-0046 §D5's note). `journalDescriptor` carries only what the main
+    /// actor alone knows - the command, the operation id, the entry id and timestamp.
+    func writeFile(
+        _ text: String, to relativePath: String,
+        expecting: String? = nil,
+        journalDescriptor: JournalDescriptor?,
+        journal: WriteJournal?
+    ) async throws -> (mutation: IndexMutation, journalProblem: String?) {
+        let textBefore = try? store.text(relativePath)
+        let hashBefore = textBefore.map { NoteStore.hash(Data($0.utf8)) }
+
+        if let expecting, hashBefore != expecting {
+            throw VaultWriteRefusal.movedOn(relativePath)
+        }
+
+        let data = Data(text.utf8)
+        let hash = try store.write(text, to: relativePath)
+        let fileURL = try store.url(for: relativePath)
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
+        let record = try? store.record(from: data, attributes: attributes, at: relativePath)
+
+        var journalProblem: String?
+        if let journal, let descriptor = journalDescriptor {
+            let entry = WriteJournal.Entry(
+                id: descriptor.entryID,
+                timestamp: descriptor.timestamp,
+                path: relativePath,
+                hashBefore: hashBefore,
+                hashAfter: hash,
+                textBefore: textBefore,
+                command: descriptor.command,
+                operation: descriptor.operation
+            )
+            journalProblem = journal.record(entry)
+        }
+
+        let mutation = IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
+        return (mutation, journalProblem)
     }
 
     /// Moves a file and returns both endpoints' mutations, each stamped from its own
