@@ -21,6 +21,18 @@ extension VaultController {
         session?.updateCategory(category)
     }
 
+    /// A drag among sibling category rows (R-01, `CategoryDropResolver`).
+    @discardableResult
+    func reorderCategories(_ slugs: [String], parent: String?) -> CategoryRegistry.RefusalReason? {
+        session?.reorderCategories(slugs, parent: parent)
+    }
+
+    /// A category row dragged onto another top-level one (R-01, `CategoryDropResolver`).
+    @discardableResult
+    func reparentCategory(_ slug: String, to parentSlug: String?) -> CategoryRegistry.RefusalReason? {
+        session?.reparentCategory(slug, to: parentSlug)
+    }
+
     @discardableResult
     func archiveCategory(_ slug: String) -> CategoryRegistry.RefusalReason? {
         session?.archiveCategory(slug)

@@ -18,6 +18,11 @@
   **ADR-0010 §D2** for the rule that decides whether a `![[…]]` names a file or a note - this
   ADR takes the file branch and leaves the note branch exactly where ADR-0010 put it.
 
+**Scope note (2026-09-17, ADR-0047 §D12 re-audit):** the Obsidian round-trip is no longer a
+binding constraint. The decision below stands as taken and the format it chose is unchanged;
+what no longer applies is the obligation that a future change keep Obsidian able to read the
+result. Body untouched.
+
 ## Context
 
 The editor is a TextKit 2 `NSTextView` that styles the markdown source in place and hides

@@ -12,6 +12,11 @@ Proposed — 2026-08-25. Supersedes **ADR-0022 §D8** on one point only: the ent
 the Workspace folder verbs. §D8's accessibility reasoning is untouched and is reaffirmed
 below (§D2).
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ## Context
 
 A read-only survey of every command surface in Pergamenum found six clusters where a

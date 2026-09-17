@@ -5,6 +5,11 @@
 - Supersedes: nothing. Adds the aggregation layer of the roadmap
   (`docs/20260816_Pergamenum_Roadmap.md`, M11), which SPEC v2.2 does not describe.
 
+**Scope note (2026-09-17, ADR-0047 §D12 re-audit):** the Obsidian round-trip is no longer a
+binding constraint. The decision below stands as taken and the format it chose is unchanged;
+what no longer applies is the obligation that a future change keep Obsidian able to read the
+result. Body untouched.
+
 ## Context
 
 Craft's Collections are the one feature of that app with no answer here: a set of typed

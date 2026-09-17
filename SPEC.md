@@ -1,210 +1,306 @@
-# SPEC: Vault write ordering — ADR-0043 implementation
+Status: Approved (2026-09-16)
 
-**Topic slug:** vault-write-ordering-adr-0043
+# SPEC — Task categories and the end of the Obsidian round-trip
 
-## Objective
+**Topic slug:** task-categories
 
-Implement the fix decided by `docs/adr/0043-vault-write-ordering-concurrency-races.md` (ADR-0043,
-status "decided, not implemented" at the time of writing). ADR-0043 is a follow-up to ADR-0041,
-raised by an independent post-implementation review that found four concurrency defects in the
-vault write path: the per-path write-ordering guard (§D11 of ADR-0041) covers only one of the
-vault's six index writers, two overlapping async writes can record the same journal "before", a
-`canOperate` precondition checked before an `await` does not survive the suspension it is meant to
-guard, and a read-then-write call site has no staleness check at all.
+## Destination
 
-This SPEC does not re-derive the design — ADR-0043 already decided it in full (§D1–§D8). This SPEC
-turns that decision into requirement criteria a plan and an implementation can be checked against,
-and states what "done" means for this chain, including the acceptance rule ADR-0043 §D9 states
-explicitly: **tests that force the interleaving deterministically are the acceptance criterion,
-never a green suite alone.**
+A SPEC ready for `/workplan`, covering two things that ship as one chain: a category system for
+tasks that exists independently of any note (a registry in the vault, a sidebar section, an
+assignment gesture, an optional linked note) and the propagation of a product decision already
+taken on 2026-08-22 but never written into the binding documents: Obsidian round-trip
+compatibility is no longer a constraint. `/workplan` produces the ADR inventory; this SPEC fixes
+what the ADR must say.
 
-Verified against the current working tree (2026-09-13, branch `emdash/strict-steaks-argue-n6z2c`,
-ADR-0041 on `main` via PR #254) before writing this SPEC: every file and line ADR-0043 cites was
-read again and matches byte-for-byte what the ADR quotes. Nothing in PRs #255–#258 (merged after
-#254) touched any of the nine files this SPEC's requirements name. The four races are current, not
-historical.
+## Objectives
 
-## Scope
+- Create, name, colour, order, nest and archive categories from the app, with no note involved.
+- Assign a task to a category from the task itself (menu, composer, drag, editor autocomplete),
+  never by hand-typing a tag.
+- See categories as first-class rows in the Attività sidebar, each with its progress, in the shape
+  of Todoist or Things, while every fact still lives in a markdown line or a readable JSON file in
+  the vault.
+- Optionally tie a category to a note, so the note's own checklist counts as the category's work.
+- Stop carrying "Obsidian must see the same thing" as a constraint on every future decision, and
+  say so in the documents that currently claim otherwise.
 
-In scope — the whole of ADR-0043 §D1 through §D8, as one chain (confirmed with the operator: the
-four races are not independently shippable per the ADR's own "Negative consequences" section —
-splitting them means building the shared clock twice):
+## Scope and non-goals
 
-- One clock stamped inside `VaultDisk`; every file-touching operation (write, non-note `writeFile`,
-  `moveFile`, `trashFile`) moves inside the actor and returns an `IndexMutation`.
-- `VaultSession.apply` becomes the only door onto the index; `updateIndex(_:at:)` is deleted.
-- The synchronous `write(_:to:) throws` door and `writeSynchronously` are deleted; `saveOpenNote()`,
-  `restoreVersion(_:)`, their production call sites and the seven dependent test files convert to
-  `async`.
-- The watcher's `reconcile(_:)` becomes `async`, reads inside the actor, and takes a stamp.
-- `readForEditing` (`VaultController+Tabs.swift`) stops writing the index.
-- The journal's "before" (`hashBefore`/`textBefore`) is read inside the actor, where the bytes it
-  describes are written, not on the main actor beforehand.
-- `selfWrittenHashes` becomes a per-path, sequence-tagged list, pruned by the clock rather than by a
-  cap.
-- `PraticaEntryComposer.handOff` stops unconditionally reloading from disk; `syncOpenNote(with:)`'s
-  dirty branch raises ADR-0001 §D3.4's conflict prompt instead of silently doing nothing, at all
-  nine `syncOpenNote` call sites.
-- `write` gains an opt-in `expecting: String?` precondition (§D8); the plan names which read-then-
-  write call sites adopt it.
-- Interleaving tests: one deterministic test per race — a sync writer racing an async writer (§D1,
-  §D2), two overlapping writes with diverging journal entries (§D5), a reconciliation racing two
-  writes (§D3, §D6), a buffer dirtied between a write and its hand-off (§D7), a stale expected-hash
-  (§D8) — none of them relying on real timing to reproduce.
+In scope: the category registry, its lifecycle (create, edit, reorder, reparent, archive, delete),
+the sidebar section and its category view, the four assignment gestures, the linked-note key and its
+inheritance rule, implicit categories for unregistered tags, read-only exposure through both
+connectors, and the documentation amendment for the Obsidian scope change.
 
-Out of scope (ADR-0043 §D10, restated here so the plan does not reopen it):
+Not in scope: any new task-line syntax, any rewrite of existing task lines when a category changes,
+category writes through the connectors, priorities, natural-language date parsing, infinite
+recurrence, saved views in the sidebar, changes to any on-disk format (`.canvas`, embed size suffix)
+that Obsidian compatibility once motivated.
 
-- No on-disk format change, no `IndexCache.schemaVersion` bump.
-- No change to the five task views, the board addressing rule, JSON Canvas round-trip, the
-  pratiche sync rewrite policy, or the MCP tool surface (`tools/list` answers unchanged;
-  `scripts/mcp-smoke.py` must still pass unmodified).
-- No new user-visible feature, no new setting.
-- No change to ADR-0007 §D6's three write guardrails (`--allow-write` gating, `dryRun` default,
-  journal recording path/hash-before/hash-after/previous-text) beyond §D5 making the third more
-  accurate.
-- No protected-interface addition (ADR-0043 explicitly declines one, deliberately, until this
-  chain's own signatures settle).
+## Decisions
+
+- **The task line points at a category with the existing `#project-<slug>` tag** — no new marker,
+  no new tag namespace. Every task already carrying a project tag joins the system on day one, the
+  parser and the "Per progetto" grouping stay what they are, and the harness tag regex is untouched.
+  Rejected: a dedicated `@cat(<slug>)` marker — a new field in the parser, a new §7.1 row, a new lint
+  rule, and worth it only if a task could belong to a project *and* a category that differ, which
+  nothing asked for. Rejected: a `#cat-<slug>` namespace — reopens the closed eight-prefix regex of
+  SPEC §4.4 and the harness vocabulary for no gain over `project`.
+- **The registry lives in the vault, as `categories.json` beside `vocabolari.json` under
+  `.pergamenum/`** — a readable file that travels with iCloud, satisfies Principle 1, and is not an
+  index (deleting it loses the registry, not any task). Rejected: an index note in markdown —
+  hand-editable but the metadata (colour, parent, linked note) does not sit well in prose and the
+  parse is fragile. Rejected: Application Support or the SQLite cache — violates Principles 1 and 3.
+- **Slugs are immutable; renaming changes only the display name** — no task line is ever rewritten
+  by a category operation. Rejected: rename-rewrites-the-slug through `renameTag` — coherent but
+  touches N files for one sidebar gesture and forces the display name to equal the tag.
+- **Two levels: category and sub-category, the child has its own slug and the parent is recorded
+  only in the registry** — a task reads `#project-offerte`; the registry says `offerte` belongs to
+  `vibrofer`. Reparenting is a registry edit. Slugs are unique across the whole registry, both
+  levels. Rejected: a composite `#project-<parent>-<child>` tag — self-describing on the line but
+  reparenting becomes a slug rename, which the previous decision forbids. Rejected: a free-depth
+  tree — the line carries one tag, so the tree would live only in the registry, with no gain over
+  two levels for personal use.
+- **An unregistered `#project-*` tag found on a task is an implicit category** — shown in the
+  sidebar with a muted style and a one-click "Registra" that promotes it. Nothing disappears at
+  adoption. Rejected: registered-only with an "Altro" bucket — historical tags vanish until
+  registered one by one. Rejected: auto-registration on first sight — the registry fills with typos.
+- **Categories get a sidebar section of their own under the five views** — this reopens ADR-0013
+  §D6's "five views, closed": the five stay five and unchanged, the section is an addition, not a
+  sixth view in the sense §D6 closed (a category row is a filter over the same tasks, parametrised by
+  slug, not a new place with its own semantics). Rejected: grouping-only inside existing views —
+  keeps today's model, misses the point. Rejected: replacing "Per progetto" — a removal, not an
+  addition, and the aggregated view still earns its place.
+- **A linked note is recorded as `pergamenum-category: <slug>` in the note's frontmatter** — the
+  prefixed namespace ADR-0020 and ADR-0032 already sanctioned, accepted by the frontmatter rules
+  without any code change. Rejected: a bare `category` key — reopens §4.3's closed schema and the
+  linter flags it. Rejected: no key, tag-in-`tags:` only — cannot tell "the category's home note"
+  from "a note that mentions the category".
+- **The linked note's tag-less tasks inherit the category** — derived by the index, no line
+  rewritten; an explicit `#project-*` on the line always wins. Rejected: navigation only — a
+  project note's checklist would not count until every row is tagged by hand.
+- **Delete touches the registry only; archive hides the row and removes the category from pickers**
+  — the tasks keep their tag and reappear as an implicit category (delete) or stay visible in
+  Oggi/Prossimi/Tutti (archive). Rejected: delete strips the tag from every line — a batch rewrite
+  for a sidebar gesture. Rejected: archive hides the tasks from the date views — a real deadline
+  becomes invisible.
+- **A parent row rolls up its children** — count, progress, deadline badge and the category view
+  include the whole subtree, the view groups direct tasks first and then one section per child.
+  Rejected: literal own-slug-only — a container parent shows empty.
+- **Connectors read categories, never write them** — one read for the registry (with implicit
+  categories marked), one read for a category's tasks (rolled up, grouped as the view is), both in
+  the shared API layer so `perg` and `pergamenum-mcp` cannot drift. Rejected: an assignment write
+  behind `--allow-write` — more surface to test, not asked for in this chain. Rejected: app-only —
+  contradicts ADR-0007.
+- **The Obsidian scope change is a rewritten principle, a new ADR, and a scope note on the ADRs
+  whose motivation was the round-trip** — bodies of past ADRs are not rewritten; the on-disk
+  formats they chose (JSON Canvas 1.0 for `.canvas`, the `|W`/`|WxH` embed suffix, 16-hex node ids)
+  stay as they are. What ends is the obligation that a future change keep Obsidian able to read the
+  result, and the round-trip probe as an acceptance test. Rejected: rewriting ADR bodies — history
+  lost. Rejected: CLAUDE.md and SPEC only — a reader of ADR-0020 still believes the round-trip binds.
+
+## Constraints
+
+- **Harness conformance stays binding (Principle 5)** — wikilinks, the four-key frontmatter, the
+  flat namespaced tag regex and `vocabolari.json` are harness conventions, not Obsidian ones; the
+  Obsidian amendment must not weaken them. Origin: user mandate in this interview ("solo il
+  round-trip").
+- **No task line is rewritten by a registry operation** — create, rename, reparent, archive, delete.
+  Origin: user choice, immutable slugs.
+- **Note frontmatter keys outside the four harness keys carry the `pergamenum-` prefix** — origin:
+  ADR-0020 §D, ADR-0032 §D6 and the frontmatter rules that implement them.
+- **The five task views of SPEC §7.4 stay five** — origin: ADR-0013 §D6; the sidebar section is an
+  addition, see the decision above.
+- **A capability a connector exposes is implemented once in the shared API layer** — origin:
+  ADR-0007 §D3, CLAUDE.md "AI connector".
+- **Every write goes through the vault session's single write door, with the `expecting:` hash
+  precondition where a line is replaced** — origin: ADR-0043 §D8, ADR-0046.
+- **Assignment writes carry the connector guardrails only when issued by a connector** — not
+  applicable in this chain since connectors do not write; noted so `/workplan` does not add them to
+  the app path. Origin: ADR-0007 §D6.
+- **A view uses colour only through a token** — the category colour is a *palette choice* stored in
+  the registry by name, resolved to a token at render time, never a hex value in a view. Origin:
+  CLAUDE.md design-system rule.
+- **UI language Italian, code and files English** — origin: CLAUDE.md.
 
 ## Stack
 
-Swift 6, strict concurrency, macOS 26 SDK. No new dependency. Touches `Sources/Vault`,
-`Sources/App` (`VaultController+*`), `Sources/Features/Pratiche/PraticaEntryComposer.swift`, and
-seven files under `Tests/`. `Sources/Connector` (`perg`, `pergamenum-mcp`) absorbs the async
-signature changes with no structural edit — both are already async end-to-end since ADR-0041 §D9.
-
-## Architecture
-
-As decided in ADR-0043 §D1–§D8 — restated here only as the requirement list a plan must satisfy,
-not re-derived:
-
-- **§D1 — one clock, one index door.** `VaultDisk.IndexMutation { path, record, sequence }`,
-  sequence taken inside the actor immediately after the disk operation lands (never issued by the
-  caller before the hop — Swift publishes no enqueue-order guarantee for an actor's jobs).
-  `VaultSession.apply(_ mutations: [VaultDisk.IndexMutation]) -> Int` is the only writer to `index`.
-- **§D2 — one write door.** `write(_:to:) throws` and `writeSynchronously` deleted; the ~20
-  `Sources/Vault` wrappers, `saveOpenNote()`, `restoreVersion(_:)`, their four production call
-  sites, and the seven dependent test files (`VaultTests`, `NoteHistoryTests`, `NoteTabTests`,
-  `VaultSessionTests`, `GuardrailTests`, `NoteTemplateTests`, `RelatedLinkTests`,
-  `ConnectorTests`) become `async`.
-- **§D3 — reconciliation inside the actor.** `VaultSession.reconcile(_:)` becomes `async`, delegates
-  its per-path read to `VaultDisk`, compares against `selfWrittenHashes` (§D6), advances that
-  path's clock, returns the `IndexMutation` plus the `ExternalChange` list.
-- **§D4 — `readForEditing` stops writing the index.** Removed and replaced by nothing; every other
-  change is now stamped by a writer, and a stale row is repaired by the cold scan.
-- **§D5 — the journal's "before" moves inside the actor.** `VaultSession.write` passes only a
-  `Sendable` descriptor (command, operation id, entry id, timestamp); `VaultDisk.write` reads the
-  current bytes itself, immediately before writing the new ones, and fills `hashBefore`/
-  `textBefore`. `isDryRun` still short-circuits before the hop.
-- **§D6 — `selfWrittenHashes` becomes `[String: [(sequence: UInt64, hash: String)]]`.** A
-  reconciliation that matches a hash drops every entry at or below that sequence.
-- **§D7 — a guard before an `await` is a filter, not a guarantee.** `handOff` keeps the
-  `WriteResult` and hands it to `syncOpenNote(with:)` instead of calling `reloadFocusedNote()`;
-  `syncOpenNote`'s dirty branch sets `note.externalChangePending = result.text`, raising ADR-0001
-  §D3.4's prompt, at all nine call sites (`VaultController+TimeBlocks` ×3, `+TaskDrop`, `+Diary`,
-  `+Routes`, `+Tasks` ×2, the composer's). `canOperate(on:)` stays as a cheap early refusal; the
-  comment inferring safety from it is deleted.
-- **§D8 — opt-in `expecting: String?` precondition.** `write(_:to:, expecting:)` throws
-  `WriteRefusal.movedOn(relativePath)` without writing when the actor's current hash differs from
-  `expecting`. Default `nil`. The plan names, by grep (`session.read(` followed by `session.write(`
-  in the same function, across `Sources/App`, `Sources/Features`, `Sources/Connector`), which call
-  sites adopt it and why.
+Unchanged: Swift 6, SwiftUI, the shared-sources connector architecture. The registry type, the
+index derivations and the read payloads must live where both connectors compile them (no SwiftUI
+import), or the tool builds break by design.
 
 ## Data model
 
-No schema change. `VaultDisk.IndexMutation` and the widened `selfWrittenHashes` container are
-in-memory types local to `Sources/Vault`, not persisted.
+**Category** (registry entry): `slug` (immutable, unique across the registry, matches the tag value
+grammar `[a-z0-9]+(-[a-z0-9]+)*`), `name` (display, free text), `color` (a name from a small fixed
+palette, not a hex), `symbol` (an SF Symbol name from a restricted picker, optional), `description`
+(one line, optional), `deadline` (a calendar date, optional), `parent` (a slug, optional, must name a
+top-level category: depth is at most two), `order` (position among siblings), `archived` (bool).
 
-## API
+**Registry**: an ordered list of categories plus a format version. Loaded with the vault, saved
+atomically on every change, absent file means empty registry. A malformed file is reported and
+treated as empty for the session, never silently overwritten.
 
-No MCP tool surface change (`tools/list` unchanged, `scripts/mcp-smoke.py` must pass unmodified).
-`VaultSession.write`'s public signature gains one optional parameter (`expecting:`); every other
-signature change (`saveOpenNote()`, `reconcile(_:)`, etc.) is an internal `async` conversion with
-no change to what the call means.
+**Implicit category**: a `#project-<slug>` value present on at least one task and absent from the
+registry. Derived by the index, has only a slug, is never persisted.
+
+**Task ↔ category**: the task's `project` tag, already parsed. Precedence for a task's effective
+category: explicit tag on the line, else the `pergamenum-category` of the note the task lives in,
+else none. A task on a `.canvas` board inherits nothing (a board has no frontmatter).
+
+**Note ↔ category**: `pergamenum-category: <slug>` in frontmatter, one slug per note, at most one
+note per category (a second note naming the same slug is a lint finding, and the category's "home"
+is the first one found in vault order, deterministically).
+
+**Rollup**: a parent's task set is its own effective tasks plus each child's; progress is
+done ÷ (open + done) over that set, counting `[x]` as done and `[ ]`/`[>]` as open, `[-]` excluded.
+
+## API / interfaces
+
+- Registry read/write on the vault session (create, update, reorder, reparent, archive, unarchive,
+  delete, promote-implicit).
+- Task write: "assign category" replaces an existing `#project-*` tag on the line or appends one;
+  "remove category" removes it. Both are ordinary line replacements through the write door with the
+  `expecting:` precondition.
+- Task command catalogue gains `assignCategory` and `removeCategory`, rendered on toolbar, menu bar
+  and context menu by the existing parity mechanism (ADR-0023, ADR-0039).
+- Index: effective category per task, implicit categories, per-category rolled-up task list and
+  progress, the note linked to a category.
+- Connector reads: `categories` (registry entries with `implicit: true|false`, archived flag, parent,
+  progress) and `category-tasks <slug>` (the rolled-up list, grouped as the app view groups it).
+  `perg` prints them, `pergamenum-mcp` declares them; both from the shared API.
+- Lint: one advisory finding for a `pergamenum-category` naming a slug that is neither registered
+  nor implicit, one for a slug linked from more than one note. Both through the existing rule engine
+  and the protected `LintFinding` shape.
 
 ## UI flows
 
-One user-visible change, explicitly called out by ADR-0043 as a consequence, not a new feature:
-ADR-0001 §D3.4's "keep mine / take theirs" conflict prompt now fires at the nine `syncOpenNote`
-call sites when the app writes a note out from under a dirty buffer — previously silent. No new
-setting, no new screen.
+- **Sidebar**: under the five views, a "Categorie" section: top-level rows with colour dot, symbol,
+  name, open count and a progress ring; children indented under a disclosure; implicit categories in
+  a muted style with a "Registra" affordance; archived ones in a collapsed "Archiviate" group; a "+"
+  in the section header to create. Flat recursive rows, never `DisclosureGroup` (ADR-0024's trap).
+- **Category editor** (sheet or popover): name, slug (proposed from the name, editable only at
+  creation), colour, symbol, description, deadline, parent. Slug collisions and depth violations
+  refuse with a message; nothing is written until valid.
+- **Category view**: header with name, description, deadline and rolled-up progress; then the direct
+  tasks; then one group per child. Grouping/sorting/density controls as in every view, remembered
+  per category.
+- **Assignment**: context menu and toolbar "Assegna categoria…" opens a picker (registered,
+  non-archived, grouped parent → child); a picker in the quick-capture composer; drag of a task row
+  onto a category row; typing `#project-` in the editor on a task line offers the registered slugs.
+- **Linked note**: from the category editor, "Collega una nota…" writes the frontmatter key; from the
+  category header, "Vai alla nota"; in the note inspector, the category is shown with a way to unlink.
+- **Reorder/reparent**: drag among sibling rows reorders; drag onto a top-level row reparents;
+  writes the registry only.
 
 ## Edge cases
 
-- A pratica insert and a Cmd+S save racing on the same note (Race 1 — the concrete failure the ADR
-  gives first).
-- A trash racing an in-flight write to the same path (Race 1).
-- An external (Obsidian) edit racing the watcher's reconciliation and a session write (Race 1,
-  Race 3's cousin).
-- Two `Task`-wrapped saves to the same path started from the main actor, interleaving their
-  synchronous prefixes around the actor hop (Race 2 — journal "before" divergence).
-- `PraticaEntryComposer.insert`'s two writes (pratica note, daily note mirror) racing a keystroke
-  in the open tab on the same note (Race 3 — the one with a reported user-visible symptom: lost
-  typing, no prompt, nothing in the journal).
-- A second writer landing at the actor between a read and a write derived from that read, with no
-  expected-hash guard adopted at that call site (Race 4 — plain lost update).
-- FSEvents coalescing several of this session's own writes into one callback (tests that
-  `selfWrittenHashes` pruning stays exact, not a heuristic cap).
+- Task carries two `#project-*` tags: the first wins, as today; the assign command replaces all of
+  them with the chosen one.
+- Category deleted while a task picker is open: the picker refreshes; a stale choice is refused,
+  not applied.
+- Linked note deleted, moved or renamed: the link is by slug in the note, so a move keeps it; a
+  deletion makes the category simply unlinked, no registry change.
+- `pergamenum-category` naming an implicit slug: inheritance works; the lint finding says the slug
+  is unregistered, not that the key is wrong.
+- Registry names a parent that no longer exists (hand-edited file): the child is shown at top level
+  with a warning badge; the registry is not auto-repaired.
+- Archiving a parent archives the subtree; unarchiving a child whose parent is archived unarchives
+  the parent too.
+- The composer's category picker and the assign command never offer archived categories; an
+  archived category's tag typed by hand still resolves to it.
+- Rollup and inheritance are index facts: closing the registry file or editing it by hand while the
+  app runs is picked up like any other vault change (file watcher), and the index is rebuilt from
+  the vault scan alone (Principle 3).
+
+## Test seams
+
+Existing seams only, one level each:
+
+- **Unit — registry**: decode/encode round-trip, format version, unique slugs, parent validity,
+  depth two, archive cascade, malformed file handling.
+- **Unit — parser writes**: assign/replace/remove `#project-*` on a line, indentation and other
+  markers preserved (the seam `TaskMarkerWriteTests` already uses).
+- **Unit — index**: effective category with precedence, implicit categories, inheritance from the
+  linked note, rollup and progress, board tasks inherit nothing (the seam `IndexCacheTests` and
+  `TaskTests` use).
+- **Unit — connector API**: the two read payloads, implicit flag, rollup (the seam the existing
+  `VaultAPI` payload tests use).
+- **Unit — command catalogue**: the two new commands render on every surface (`TaskCommandTests`).
+- **UI — one test**: the "Categorie" section appears with a registered and an implicit row, and
+  clicking a row opens the category view. Found by accessibility identifier, launched with the three
+  standard flags. The sidebar drag is not UI-tested while PG-162 is open; its drop logic is covered
+  at the unit seam `TaskDropTests` uses.
+- **Docs**: the amendment criteria are `no-test`.
 
 ## Success criteria
 
-- [ ] R-01 — `VaultDisk.IndexMutation { path, record, sequence }` exists and every file-touching
-  operation inside `VaultDisk` (write, `writeFile`, `moveFile`, `trashFile`) returns one; a move
-  returns two, each stamped from its own path's clock.
-- [ ] R-02 — `VaultSession.apply(_ mutations: [VaultDisk.IndexMutation]) -> Int` is the only
-  function in `Sources/` that calls `index.update`; `updateIndex(_:at:)` no longer exists.
-- [ ] R-03 — `write(_:to:) throws` and `writeSynchronously` no longer exist in `VaultSession.swift`;
-  every former call site (`saveOpenNote()`, `restoreVersion(_:)`, their production callers, and the
-  seven named test files) compiles and passes as `async`.
-- [ ] R-04 — `VaultSession.reconcile(_:)` is `async`, reads the changed path's bytes inside
-  `VaultDisk`, and stamps its `IndexMutation` from the same clock as every writer.
-- [ ] R-05 — `readForEditing` (`VaultController+Tabs.swift`) no longer calls `updateIndex`/
-  `session.updateIndex`.
-- [ ] R-06 — `VaultSession.write`'s journal entry has its `hashBefore`/`textBefore` read inside
-  `VaultDisk`, immediately before the new bytes are written, not on the main actor before the hop.
-- [ ] R-07 — `selfWrittenHashes` is keyed per path to a list of `(sequence, hash)` pairs; a matched
-  reconciliation drops every entry at or below the matched sequence.
-- [ ] R-08 — `PraticaEntryComposer.handOff` calls `vault.syncOpenNote(with:)` and never calls
-  `reloadFocusedNote()` on the just-written note's tab.
-- [ ] R-09 — `syncOpenNote(with:)`'s dirty-buffer branch sets `note.externalChangePending =
-  result.text` instead of returning silently; behaviour verified from at least one of the nine
-  named call sites (`VaultController+TimeBlocks`, `+TaskDrop`, `+Diary`, `+Routes`, `+Tasks`, the
-  composer's).
-- [ ] R-10 — `VaultSession.write(_:to:, expecting:)` exists, defaults `expecting` to `nil`, and
-  throws `WriteRefusal.movedOn(relativePath)` without writing when the actor's current hash
-  disagrees with a non-nil `expecting`; the plan states explicitly which read-then-write call sites
-  (composer, task/timeblock writers, pratiche sync) adopt it, and why.
-- [ ] R-11 — `Tests/VaultWriteOrderingTests` (or an extension of it) contains a deterministic test
-  that calls `apply`/`VaultDisk` methods directly to force a sync-write-vs-async-write inversion on
-  one path (§D1/§D2), independent of real timing.
-- [ ] R-12 — a deterministic test demonstrates that two overlapping writes to the same path produce
-  two journal entries whose `hashBefore` values differ and each correctly describes the transition
-  that actually occurred (§D5).
-- [ ] R-13 — a deterministic test demonstrates a reconciliation interleaved between two writes to
-  the same path applies in clock order, not call order (§D3, §D6).
-- [ ] R-14 — a deterministic test demonstrates that dirtying the editor buffer between a session
-  write and its hand-off raises the conflict prompt (`externalChangePending` set) rather than
-  silently discarding the user's unsaved edit (§D7).
-- [ ] R-15 — a deterministic test demonstrates that `write(_:to:, expecting:)` throws
-  `WriteRefusal.movedOn` and performs no write when the file has moved on since the caller's read
-  (§D8).
-- [ ] R-16 — `scripts/mcp-smoke.py` passes unmodified against the built `pergamenum-mcp` binary
-  (no MCP tool surface change).
-- [ ] R-17 — the full `PergamenumTests` suite passes; **R-11 through R-15 passing is the acceptance
-  criterion for this chain, not R-17 alone** — a green suite without the five interleaving tests
-  demonstrates nothing about this feature (ADR-0043 §D9).
-- [ ] R-18 — ADR-0043's header status is updated from "proposed — decided, not implemented" to
-  reflect implementation, once R-01 through R-17 hold. (no-test: this is a documentation edit to a
-  markdown file's header line, not something a unit test asserts against)
-- [ ] R-19 — GitHub issue #259 is closed once this chain's PR merges. (no-test: an operator/GitHub
-  action taken after merge, not a behavior a test in this repository can assert)
-- [ ] R-20 — `TODO.md`'s `PG-150` entry is updated to reflect completion, consistent with how prior
-  `PG-` entries in this chain family were closed (e.g. `PG-149`). (no-test: a project-ledger edit,
-  not application behavior)
+- [ ] R-01 — A category can be created, renamed, recoloured, given a symbol, description and
+  deadline, reordered, reparented, archived, unarchived and deleted from the app, with no note
+  opened or written, and each operation changes only the registry file.
+- [ ] R-02 — Slugs are unique across both levels, immutable after creation, and a parent is always a
+  top-level category; a violating edit is refused before anything is written.
+- [ ] R-03 — Assigning a category from context menu, toolbar, composer, sidebar drag or editor
+  autocomplete writes `#project-<slug>` on the task line, replacing any existing project tag,
+  preserving everything else on the line, through the write door with the hash precondition.
+- [ ] R-04 — A `#project-*` value with no registry entry appears in the sidebar as an implicit
+  category with a "Registra" affordance that creates the entry with that slug.
+- [ ] R-05 — The sidebar section lists top-level rows with colour, symbol, name, open count and
+  rolled-up progress, children under a disclosure, archived ones collapsed; clicking a row shows the
+  category view with direct tasks then one group per child.
+- [ ] R-06 — A note with `pergamenum-category: <slug>` is the category's home: "Vai alla nota" from
+  the category, the category shown in the note inspector, and every task in that note without an
+  explicit project tag counts as the category's; an explicit tag wins.
+- [ ] R-07 — Deleting a category removes only the registry entry and its tasks reappear as an
+  implicit category; archiving hides the row and the picker entry while the tasks stay in
+  Oggi, Prossimi and Tutti.
+- [ ] R-08 — Rollup progress equals done ÷ (open + done) over the subtree, cancelled excluded, and
+  the parent's deadline badge and count use the same set.
+- [ ] R-09 — `perg` and `pergamenum-mcp` both expose the registry read (with implicit and archived
+  flags, parent and progress) and the category-tasks read, from one shared implementation; the MCP
+  smoke script exercises both.
+- [ ] R-10 — The lint engine reports a `pergamenum-category` naming an unknown slug and a slug
+  linked from more than one note, as advisory findings through the existing `LintFinding` shape.
+- [ ] R-11 — The registry type, index derivations and read payloads compile in both connector
+  targets (no SwiftUI import in their files).
+- [ ] R-12 — CLAUDE.md Principle 4 is rewritten so that the Obsidian round-trip is no longer a
+  binding principle, keeping the on-disk formats and the harness principle as they are; SPEC §14 and
+  the compatibility line in SPEC §2 are amended the same way, dated. (no-test: documentation)
+- [ ] R-13 — A new ADR records the product decision of 2026-08-22, what ends (the round-trip
+  obligation and the probe as acceptance), what stays (formats, harness conformance), and lists every
+  ADR that receives a scope note. (no-test: documentation)
+- [ ] R-14 — Every ADR whose recorded motivation was Obsidian round-trip (at least 0019, 0020, 0024)
+  carries a scope note at its head pointing to the new ADR, with its body untouched. (no-test:
+  documentation)
+- [ ] R-15 — SPEC §7.4 gains the "Categorie" sidebar section as an amendment naming ADR-0013 §D6 and
+  stating the five views are unchanged; §7.1 gains one line saying `#project-<slug>` is the category
+  pointer and where the registry lives. (no-test: documentation)
+- [ ] R-16 — Full unit suite green, both connector builds green, the UI suite run by hand before
+  merge with the one new UI test green.
 
-## Definition of Done
+## Not yet specified
 
-R-01–R-17 implemented and verified in-session (build green, full unit suite green, the five
-interleaving tests in R-11–R-15 present and passing, `scripts/mcp-smoke.py` unmodified and passing).
-R-18–R-20 completed as part of this chain's own closing steps (ADR status line, issue close,
-TODO.md entry) — not deferred to a future session, since they are the record of this fix having
-landed, not application work.
+- The exact palette of category colours and the restricted symbol picker's list: a design-token
+  question for the mockup step, not a behaviour question.
+- Whether the category deadline should surface anywhere beyond the category header, sidebar badge
+  and connector payload (for instance in Prossimi). Default for this chain: it does not.
+
+## Out of scope
+
+- **Category writes from the connectors** — not asked for; a later chain can add `assign-category`
+  behind `--allow-write` on the same shared implementation.
+- **Rewriting task lines on rename, delete or reparent** — ruled out by the immutable-slug decision.
+- **A third nesting level** — the line carries one tag; two levels cover the personal-use case.
+- **Changing `.canvas`, embed-size or node-id formats** now that the round-trip no longer binds —
+  nothing needs to change; the amendment removes an obligation, not a format.
+- **Weakening harness conventions** — Principle 5 is independent of Obsidian and stays.
+- **Priorities, natural-language dates, infinite recurrence, saved views** — the other proposals from
+  this conversation, each its own chain.
+
+## Domain terms
+
+- **Categoria**: a registry entry, or an implicit one derived from a tag. The word "progetto" stays
+  in the tag (`#project-`) and in the existing "Per progetto" view and "Progetti" grouping, which are
+  not renamed: the tag is the pointer, the category is the entity.
+- **Nota collegata**: the one note carrying `pergamenum-category: <slug>`; the category's home, not a
+  requirement for its existence.

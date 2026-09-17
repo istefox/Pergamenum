@@ -70,56 +70,91 @@ struct CategorySidebarSection: View {
     // MARK: Registered rows
 
     private func row(_ category: Category, indented: Bool, hasChildren: Bool) -> some View {
-        let isSelected = selection.categorySlug == category.slug
-        let progress = vault.index.progress(ofCategory: category.slug, registry: vault.categories)
-        let openCount = progress.total - progress.done
+        // Archived rows accept neither drag: dropping a task here (assignment) contradicts
+        // "never offer an archived category" (CategoryRegistry.swift's own picker rule), and
+        // dragging an archived row for reorder/reparent has nothing valid to land on since
+        // both mutations only ever operate on the registered, non-archived tree.
+        let isArchived = category.archived
 
-        return TaskDropTarget(
-            onDrop: { payload in
+        return CategoryRowDropTarget(
+            isEnabled: !isArchived,
+            onDropTask: { payload in
                 await vault.dropTask(
                     sourcePath: payload.path, lineIndex: payload.lineIndex, onCategory: category.slug
                 )
             },
+            onDropCategory: { payload in applyCategoryDrop(payload, ontoTarget: category.slug) },
             content: {
-                HStack(spacing: theme.spacing(.xs)) {
-                    if hasChildren {
-                        disclosureButton(for: category.slug)
-                    } else {
-                        Color.clear.frame(width: 10)
-                    }
-
-                    Circle()
-                        .fill(theme.color(category.colorToken))
-                        .frame(width: 8, height: 8)
-
-                    if let symbol = category.symbol {
-                        Image(systemName: symbol).themedText(.caption, color: .textTertiary)
-                    }
-
-                    Text(category.name)
-                        .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    if progress.total > 0 {
-                        CategoryProgressRing(progress: progress)
-                    }
-                    if openCount > 0 {
-                        Text("\(openCount)").themedText(.caption, color: .textTertiary)
-                    }
+                let base = rowLabel(category, indented: indented, hasChildren: hasChildren)
+                if isArchived {
+                    base
+                } else {
+                    base.draggable(CategoryDragPayload(slug: category.slug).text)
                 }
-                .padding(.leading, indented ? theme.spacing(.l) : theme.spacing(.s))
-                .padding(.trailing, theme.spacing(.s))
-                .padding(.vertical, theme.spacing(.xs))
-                .background(isSelected ? theme.color(.accentMuted) : .clear)
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
-                .contentShape(Rectangle())
             }
         )
         .onTapGesture { selection = .category(category.slug) }
         .accessibilityIdentifier("category-row-\(category.slug)")
         .contextMenu { contextMenu(category) }
+    }
+
+    /// The label content shared by every registered row - its own function so `row(_:...)`
+    /// stays inside the length SwiftLint asks for, same reason `disclosureButton` is one.
+    private func rowLabel(_ category: Category, indented: Bool, hasChildren: Bool) -> some View {
+        let isSelected = selection.categorySlug == category.slug
+        let progress = vault.index.progress(ofCategory: category.slug, registry: vault.categories)
+        let openCount = progress.total - progress.done
+
+        return HStack(spacing: theme.spacing(.xs)) {
+            if hasChildren {
+                disclosureButton(for: category.slug)
+            } else {
+                Color.clear.frame(width: 10)
+            }
+
+            Circle()
+                .fill(theme.color(category.colorToken))
+                .frame(width: 8, height: 8)
+
+            if let symbol = category.symbol {
+                Image(systemName: symbol).themedText(.caption, color: .textTertiary)
+            }
+
+            Text(category.name)
+                .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            if progress.total > 0 {
+                CategoryProgressRing(progress: progress)
+            }
+            if openCount > 0 {
+                Text("\(openCount)").themedText(.caption, color: .textTertiary)
+            }
+        }
+        .padding(.leading, indented ? theme.spacing(.l) : theme.spacing(.s))
+        .padding(.trailing, theme.spacing(.s))
+        .padding(.vertical, theme.spacing(.xs))
+        .background(isSelected ? theme.color(.accentMuted) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    /// A category row dropped onto another one (R-01): resolves the pair against the live
+    /// registry through `CategoryDropResolver` and, when it names a move, calls the one
+    /// session method for it - a refusal from either is ignored here exactly as the
+    /// existing task-onto-category drop above ignores one from `dropTask`.
+    private func applyCategoryDrop(_ payload: CategoryDragPayload, ontoTarget targetSlug: String) {
+        guard let action = CategoryDropResolver.resolve(
+            dragged: payload.slug, ontoTarget: targetSlug, in: vault.categories
+        ) else { return }
+        switch action {
+        case .reparent(let dragged, let parent):
+            vault.reparentCategory(dragged, to: parent)
+        case .reorder(let parent, let slugs):
+            vault.reorderCategories(slugs, parent: parent)
+        }
     }
 
     @ViewBuilder
@@ -206,6 +241,46 @@ struct CategorySidebarSection: View {
                 }
             }
         }
+    }
+}
+
+/// A category row's drop target: takes either a dragged task (assigning it to this
+/// category, ADR-0047 §D8/§D9's existing gesture) or a dragged category row (reordering or
+/// reparenting it, R-01's gap closed by this fix), disambiguated by which payload the
+/// dropped string decodes as - `TaskDragPayload`'s two-part grammar first, since that is
+/// the pre-existing contract, and `CategoryDragPayload` only once that fails. Not
+/// `TaskDropTarget` itself (`Sources/Features/Today/TaskDrag.swift`): that type is shared by
+/// four other surfaces that never carry a category payload, so widening it here would widen
+/// it there too.
+private struct CategoryRowDropTarget<Content: View>: View {
+    @Environment(\.theme) private var theme
+
+    /// False for an archived row (R-07/`CategoryRegistry.assignableGroups`'s own "never offer
+    /// an archived category" rule): it accepts neither a dropped task nor a dropped category
+    /// row, since both mutations only ever operate on the registered, non-archived tree.
+    var isEnabled = true
+    let onDropTask: (TaskDragPayload) async -> Bool
+    let onDropCategory: (CategoryDragPayload) -> Void
+    @ViewBuilder let content: Content
+
+    @State private var isTargeted = false
+
+    var body: some View {
+        content
+            .overlay(
+                RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
+                    .stroke(isTargeted ? theme.color(.accentPrimary) : .clear, lineWidth: 1)
+            )
+            .dropDestination(for: String.self) { payloads, _ in
+                guard isEnabled, let text = payloads.first else { return false }
+                if let taskPayload = TaskDragPayload(text: text) {
+                    Task { @MainActor in _ = await onDropTask(taskPayload) }
+                    return true
+                }
+                guard let categoryPayload = CategoryDragPayload(text: text) else { return false }
+                onDropCategory(categoryPayload)
+                return true
+            } isTargeted: { isTargeted = isEnabled && $0 }
     }
 }
 

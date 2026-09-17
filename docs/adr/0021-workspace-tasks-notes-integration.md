@@ -15,6 +15,11 @@
   `CLAUDE.md`. It leans on **ADR-0013 §D6** for the view/grouping distinction and on
   **ADR-0007 §D2** for what a connector may and may not see.
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ## Context
 
 Pergamenum already holds all three halves of what this feature asks for, and holds them apart.

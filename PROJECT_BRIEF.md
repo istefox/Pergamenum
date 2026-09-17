@@ -87,6 +87,27 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-17: **Task categories and the end of the Obsidian round-trip (ADR-0047) — all 8 plan
+  tasks implemented on `chore-question-activity`.** A registry file in the vault
+  (`.pergamenum/categories.json`, `CategoryRegistryStore`/`VaultSession+Categories.swift`) gives
+  `#project-<slug>` an entity: name, colour, symbol, description, deadline, parent, archive; a
+  sidebar "Categorie" section (flat rows, never `DisclosureGroup`), a category editor and a
+  category view join the five unchanged `TaskView` cases behind one derived
+  `TaskPaneSelection`; `IndexSnapshot` gains the effective-category and rollup derivations and
+  `IndexCache.schemaVersion` goes 3 → 4 so a linked note's `pergamenum-category` key survives a
+  cache reuse; `perg`/`pergamenum-mcp` gain the two read-only connector reads from the same
+  implementation the app uses. Task 8 (this entry) is the documentation half: `CLAUDE.md`
+  principle 4 and SPEC §1/§3/§14/§13-M2/§7.1/§7.4 amended, dated, never deleted; eleven ADRs
+  (0009, 0010, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025, 0027) gain a head scope note
+  pointing at ADR-0047 with their bodies untouched. The first review round's fix loop reformulated
+  §D12's rule from a section-position test to a load-bearing/counterfactual one and re-ran the
+  audit, which added 0009 and 0018 to the original nine and confirmed ADR-0032 still takes none,
+  recorded in ADR-0047 §D12 rather than acted on silently. ADR-0047 itself moves from proposed to
+  accepted. Full unit suite green (3089/3089, including the fix loop's `Tests/CategoryDropTests.swift`);
+  `swiftlint --quiet` shows no new violation on any touched file.
+  `scripts/uitests.sh` deliberately deferred to just before the merge to `main`, per the standing
+  pre-merge rule — not yet run. `PG-165` (a leftover git stash from Task 4) is still owed before
+  the branch merges.
 - 2026-09-14: **Vault write ordering (ADR-0043, follow-up to ADR-0041) — all 10 plan tasks
   implemented on `feat/vault-write-ordering-adr-0043`.** Closes `PG-150`: one clock stamped inside
   `VaultDisk` with `VaultSession.apply(_:)` as the sole index door (`updateIndex(_:at:)` and the

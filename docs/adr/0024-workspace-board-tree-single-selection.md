@@ -27,6 +27,11 @@ a sheet — survives, plumbed through the new single setter.
 **Base read:** every file:line quoted below was read at `5041d5c`.
 **Plan:** `docs/superpowers/plans/2026-08-25-workspace-board-tree-single-selection.md`.
 
+**Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
+constraint. The decision below stands as taken and the format it chose is unchanged; what no
+longer applies is the obligation that a future change keep Obsidian able to read the result.
+Body untouched.
+
 ---
 
 ## Context

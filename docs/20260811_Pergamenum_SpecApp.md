@@ -17,6 +17,8 @@ Costruire **Pergamenum**, applicazione macOS nativa, completamente offline, per 
 2. Un **canvas spaziale infinito** dove note, PDF, immagini, email e link fluttuano come card ridimensionabili (modello VisualOS / JSON Canvas).
 3. Un **sistema di task e calendario integrato** con note giornaliere, scheduling `>data`, timeblocking, integrazione bidirezionale con Calendario e Promemoria Apple, e task collegabili a note e canvas.
 
+*Emendato 2026-09-16 (ADR-0047).* Il vault Labs si apre senza conversione perché il formato è markdown con frontmatter YAML e wikilink, non perché la compatibilità col round-trip di Obsidian sia un vincolo di prodotto. Vedi §3, il principio 4 e §14.
+
 **Definizione di "fatto"**: l'app è completa quando Stefano può, senza connessione internet, aprire il vault Labs, scrivere una nota giornaliera con task, trascinare sul canvas un PDF che appare come immagine ridimensionabile, collegare alla nota un'email (file .eml o link `message://`) che si apre con un click, collegare un task a una nota o a un canvas e navigare il collegamento nei due sensi, pianificare un task su una data che appare nella nota di quel giorno, e vedere/creare eventi del Calendario Apple dalla timeline dell'app.
 
 **Non-obiettivi (v1)**: collaborazione multi-utente, sync real-time proprietario, ecosistema plugin, rendering HTML delle email, gestione contatti, app iPad (futura, solo visualizzazione), versione Windows/web.
@@ -49,7 +51,7 @@ Il target macOS 26 consente l'uso senza fallback delle API SwiftUI correnti (inc
 | Email | Parsing header .eml in Swift puro (RFC 5322, solo header) | Nessun rendering del corpo |
 | Calendario/Promemoria | EventKit (`EKEventStore`) | Permessi split |
 | Persistenza note | File system: markdown + frontmatter YAML | Nessun database per i contenuti |
-| Persistenza canvas | File `.canvas` in formato JSON Canvas 1.0 | Compatibilità Obsidian |
+| Persistenza canvas | File `.canvas` in formato JSON Canvas 1.0 | Compatibilità Obsidian — *Emendato 2026-09-16 (ADR-0047): il formato resta JSON Canvas 1.0, l'obbligo di interoperabilità no.* |
 | Indice/cache | SQLite via GRDB solo come cache ricostruibile | L'indice non è mai fonte di verità |
 | Anteprime file | QuickLookThumbnailing (`QLThumbnailGenerator`) | Fallback per file generici |
 | Anteprima rapida | QuickLookUI (`QLPreviewPanel`) | Barra spazio su file selezionato (§6.6) |
@@ -64,6 +66,8 @@ Il target macOS 26 consente l'uso senza fallback delle API SwiftUI correnti (inc
 4. **Compatibilità Obsidian**: il vault Labs si apre in Pergamenum senza conversione; i file .canvas prodotti da Pergamenum si aprono in Obsidian; le proprietà extra usano chiavi non in conflitto e vengono preservate, non interpretate.
 5. **Conformità harness**: l'app applica le convenzioni della repo harness-system (naming.md, tag.md, frontmatter.md, wikilink.md) come schema nativo, non come opzione. La repo resta l'unica fonte di verità: se una convenzione cambia, si aggiorna la configurazione dell'app (§4.6), mai il contrario.
 6. **Sync delegata**: la sincronizzazione (futura, verso iPad) avviene mettendo il vault in iCloud Drive. Pergamenum non implementa trasporto proprio.
+
+*Emendato 2026-09-16 (ADR-0047).* Il principio 4 non impone più il round-trip con Obsidian come vincolo di prodotto: restano il formato JSON Canvas 1.0, il suffisso `|W`/`|WxH`, gli id a 16 esadecimali, la disciplina delle chiavi `pergamenum-` e l'apertura senza conversione del vault Labs, ma nessuna scelta futura è più respinta perché romperebbe la lettura da parte di Obsidian, e la sonda manuale di round-trip non è più un gate di accettazione. Il principio 5 (conformità harness) resta esplicitamente estraneo a questo emendamento.
 
 **Entitlement e chiavi Info.plist richieste:**
 
@@ -323,6 +327,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 | `[[...]]` nel testo | Collegamento del task a note e canvas (§7.2) |
 | `#project-*` | Appartenenza a progetto (tag harness, §4.4) |
 
+`#project-<slug>` è anche il puntatore a una categoria (ADR-0047): il registro delle categorie — nome, colore, simbolo, descrizione, scadenza, genitore — vive in `.pergamenum/categories.json`, un file del vault e non un indice (§7.4).
+
 ### 7.2 Collegamento task ↔ note e canvas (requisito)
 
 - Un task può contenere uno o più wikilink a **note .md** e a **file .canvas**. Il wikilink nel testo del task è il meccanismo di collegamento: nessuna sintassi aggiuntiva.
@@ -350,6 +356,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 | Tutti | Ogni task aperto del vault, raggruppato per nota di origine |
 
 *Emendato 2026-08-20 (ADR-0013 §D6, M12).* Le cinque viste restano cinque e guadagnano dei controlli: raggruppamento (per nota, progetto, pianificazione, scadenza), ordinamento, e densità compatta o estesa. Ogni controllo è ricordato **per la vista su cui è stato impostato**: Oggi vuole una lista piatta per ora e Tutti vuole il raggruppamento per nota, e un'impostazione sola per tutte renderebbe ogni passaggio da una all'altra una re-impostazione.
+
+*Emendato 2026-09-16 (ADR-0047, riapre ADR-0013 §D6 per addizione, non per sostituzione).* Le cinque viste restano cinque e restano invariate. La sidebar "Attività" guadagna, accanto a loro, una sezione "Categorie": righe per le categorie registrate e per quelle implicite (un tag `#project-*` mai registrato), con colore, simbolo, conteggio degli aperti e progresso a rollup, ciascuna apribile nella propria vista di categoria. La sezione è un'aggiunta, non una sesta vista.
 
 ---
 
@@ -481,7 +489,7 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
 |---|---|---|---|
 | M0 | Design system | Token chiaro/scuro, mockup Claude delle viste principali (editor, workspace, oggi, attività), ThemeEngine | Cambio tema a runtime su una vista demo; mockup approvati da Stefano |
 | M1 | Vault + editor | Apertura vault Labs, sidebar, editor md con stile, wikilink, quick switcher, frontmatter conforme auto-generato, indice base | Apro il vault Labs reale e navigo/modifico note senza corromperle né violare le convenzioni |
-| M2 | Workspace base | Gerarchia board/cartelle con breadcrumb (§6.1), barra strumenti §6.4 (Seleziona, Nota, Testo, Cartella, Immagine, Documento, Freccia), pan/zoom/resize, salvataggio JSON Canvas | Un .canvas creato in Pergamenum si apre correttamente in Obsidian e viceversa; la gerarchia board rispecchia le cartelle su disco |
+| M2 | Workspace base | Gerarchia board/cartelle con breadcrumb (§6.1), barra strumenti §6.4 (Seleziona, Nota, Testo, Cartella, Immagine, Documento, Freccia), pan/zoom/resize, salvataggio JSON Canvas | Un .canvas creato in Pergamenum si apre correttamente in Obsidian e viceversa (soddisfatto l'11/08/2026 — *Emendato 2026-09-16, ADR-0047: ritirato come gate di accettazione, mai cancellato dallo storico*); la gerarchia board rispecchia le cartelle su disco |
 | M3 | Card PDF ed email | Thumbnail PDFKit con cache e resize, card .eml con header, card URI e strumento Link, strumenti To Do e Disegno, apertura con doppio click, anteprima rapida con barra spazio (§6.6), import .eml con rinomina assistita | I requisiti primari di §6.5 e §6.6 funzionano su PDF e .eml reali; spazio su una card apre il pannello Quick Look |
 | M4 | Task | Sintassi §7.1, collegamenti task-note/canvas §7.2, viste Attività, ripianificazione rapida, cattura rapida | Un task con wikilink a una nota è navigabile nei due sensi e si completa da ogni vista |
 | M5 | Calendario | Daily note YYYYMMDD, EventKit lettura/scrittura, Promemoria bidirezionali, timeblocking | Un time block trascinato appare nel Calendario Apple; un Promemoria completato in-app risulta completato in Promemoria |
@@ -499,7 +507,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
 | Rendering **HTML** del corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente. Estrazione del testo del corpo in markdown leggero inclusa dal 2026-09-09 (pratiche, ADR-0036 §D16): il costo escluso era quello di mantenere un renderer HTML, che un riduttore a testo non ha. Nessuna WebView, nessun sidecar `.html`, nessun rendering con stili; la card `.eml` del Workspace resta invariata |
 | Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
-| Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian |
+| Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian — *Emendato 2026-09-16 (ADR-0047): il formato resta JSON Canvas 1.0 per sé; l'obbligo di interoperabilità con Obsidian non è più il motivo della scelta.* |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |
 | Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file |
 | Temi | Design token JSON (DTCG), no CSS/WKWebView; dal 2026-09-04 i token personalizzabili dall'utente comprendono anche la tipografia del corpo nota, non più i soli colori (ADR-0030) | Il CSS richiederebbe webview; i token danno lo stesso risultato in nativo e restano interoperabili con gli strumenti web di design. La scelta del carattere resta un file di tema nel vault, mai una preferenza dell'app: stesso meccanismo, una classe di token in più |
