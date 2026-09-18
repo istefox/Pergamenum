@@ -92,6 +92,29 @@ if [ -n "$debris" ]; then
     done
 fi
 
+# MARK: keep-focused
+
+# Confirmed by reading the screen recording XCUITest attaches to a failure: another
+# app taking frontmost mid-run - a Mail notification, another agent's own GUI
+# automation running elsewhere on this Mac - makes XCUITest's screen-coordinate drag
+# synthesis land on whatever window is actually on top instead of Pergamenum's. It
+# fails silently rather than loudly: the accessibility identifier still resolves (it's
+# Pergamenum's own AX tree, unaffected by what's on screen), so the failure reads as a
+# broken gesture or an unreachable row, not as "wrong window". None of this needs a
+# person at the keyboard - a background app raising itself is enough. Reasserting
+# frontmost once a second for the whole run, not just at launch, is what catches a
+# window raised partway through.
+focus_pergamenum() {
+    while true; do
+        osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "Pergamenum") to true' \
+            >/dev/null 2>&1
+        sleep 1
+    done
+}
+focus_pergamenum &
+readonly FOCUS_PID=$!
+trap 'kill "$FOCUS_PID" 2>/dev/null || true' EXIT
+
 # MARK: run
 
 printf 'uitests: log in %s\n' "$LOG"
@@ -113,6 +136,8 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
     test >"$LOG" 2>&1
 readonly RESULT=$?
 set -e
+
+kill "$FOCUS_PID" 2>/dev/null || true
 
 # MARK: what failed, and whether it is real
 
