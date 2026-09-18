@@ -3,8 +3,9 @@ import ProjectDescription
 let projectName = "Pergamenum"
 // Bundle identifier is lowercase by specification (SPEC §2), unlike the folder name.
 let bundleId = "it.stefer.pergamenum"
-// macOS 26 Tahoe baseline: no compatibility fallbacks for earlier releases (SPEC §2, §14).
-let deploymentTarget = "26.0"
+// macOS 27 baseline: no compatibility fallbacks for earlier releases (SPEC §2, §14).
+// Raised from 26.0 (Tahoe) on 2026-09-18: the dev machine moved to macOS 27.0/Xcode 27.0.
+let deploymentTarget = "27.0"
 
 let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "T7H24G7BFW",

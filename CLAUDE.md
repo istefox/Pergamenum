@@ -15,12 +15,15 @@ handoff; the spec wins on any conflict.
 
 ## Stack
 
-- Language/runtime: Swift 6 with strict concurrency, SwiftUI on the macOS 26 SDK
-- Platform: macOS 26 Tahoe or later, Apple Silicon. No compatibility fallbacks for
-  earlier releases - current SwiftUI APIs are used directly.
+- Language/runtime: Swift 6 with strict concurrency, SwiftUI on the macOS 27 SDK
+- Platform: macOS 27 or later, Apple Silicon. No compatibility fallbacks for
+  earlier releases - current SwiftUI APIs are used directly. (Raised from macOS 26
+  Tahoe/Xcode 26 on 2026-09-18: the dev machine moved to macOS 27.0/Xcode 27.0 and the
+  build already targets the macOS27.0 SDK - confirmed live via `sw_vers`/`xcodebuild
+  -version`, not assumed.)
 - AppKit via `NSViewRepresentable` where SwiftUI is insufficient: the text editor
   (TextKit 2 in an `NSTextView`) and the canvas.
-- Tooling: Tuist 4 for project generation, Swift Testing for tests, Xcode 26 toolchain
+- Tooling: Tuist 4 for project generation, Swift Testing for tests, Xcode 27 toolchain
 - Bundle identifier: `it.stefer.pergamenum` (lowercase, unlike the folder name).
   URL scheme `pergamenum://`. Automatic signing, team `T7H24G7BFW`. Developer ID
   distribution, no App Store, not sandboxed in v1. Apple Developer account:

@@ -14,8 +14,8 @@ at milestone M0 (design system).
 
 ## Requirements
 
-- macOS 26 Tahoe or later, Apple Silicon
-- Xcode 26 with Swift 6
+- macOS 27 or later, Apple Silicon
+- Xcode 27 with Swift 6
 - [Tuist](https://tuist.dev) 4.x (`brew install tuist`)
 
 ## Getting started
