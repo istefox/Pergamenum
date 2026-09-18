@@ -32,11 +32,11 @@ Costruire **Pergamenum**, applicazione macOS nativa, completamente offline, per 
 | Nome | Pergamenum |
 | Bundle ID | `it.stefer.pergamenum` |
 | Schema URL | `pergamenum://` (registrato via `CFBundleURLTypes`) |
-| Piattaforma v1 | **macOS 26 Tahoe o superiore**, Apple Silicon |
+| Piattaforma v1 | **macOS 27 o superiore**, Apple Silicon |
 | Lingua UI | Italiano (architettura pronta per localizzazione EN) |
 | Distribuzione | Solo personale: firma Developer ID, niente App Store in v1 |
 
-Il target macOS 26 consente l'uso senza fallback delle API SwiftUI correnti (incluso il linguaggio visivo Liquid Glass e le API di osservazione/animazione più recenti). Nessun codice di compatibilità per versioni precedenti.
+Il target macOS 27 consente l'uso senza fallback delle API SwiftUI correnti (incluso il linguaggio visivo Liquid Glass e le API di osservazione/animazione più recenti). Nessun codice di compatibilità per versioni precedenti. *(Innalzato da macOS 26 Tahoe il 2026-09-18: la macchina di sviluppo è passata a macOS 27.0/Xcode 27.0.)*
 
 ---
 
@@ -45,7 +45,7 @@ Il target macOS 26 consente l'uso senza fallback delle API SwiftUI correnti (inc
 | Livello | Tecnologia | Note |
 |---|---|---|
 | Linguaggio | Swift 6 | Concurrency strict |
-| UI | SwiftUI (SDK macOS 26), con AppKit (NSViewRepresentable) dove necessario | Editor e canvas richiedono AppKit |
+| UI | SwiftUI (SDK macOS 27), con AppKit (NSViewRepresentable) dove necessario | Editor e canvas richiedono AppKit |
 | Editor testo | TextKit 2 via NSTextView incapsulato | Vedi §7 |
 | PDF | PDFKit (`PDFDocument`, `PDFPage.thumbnail(of:for:)`) | Rendering card PDF |
 | Email | Parsing header .eml in Swift puro (RFC 5322, solo header) | Nessun rendering del corpo |
@@ -504,7 +504,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Tema | Decisione | Motivo |
 |---|---|---|
 | Stack | SwiftUI nativo, non Electron | Requisito email ridotto a link+apertura; PDFKit ed EventKit nativi |
-| Piattaforma | macOS 26 Tahoe+, nessun fallback | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
+| Piattaforma | macOS 27+, nessun fallback — *Innalzato da macOS 26 Tahoe+ il 2026-09-18: la macchina di sviluppo è passata a macOS 27.0/Xcode 27.0, confermato via `sw_vers`/`xcodebuild -version`* | Uso personale su Mac aggiornato; API SwiftUI correnti senza compromessi |
 | Rendering **HTML** del corpo email | Escluso | Nessuna libreria Swift mantenuta; il doppio click su Mail è sufficiente. Estrazione del testo del corpo in markdown leggero inclusa dal 2026-09-09 (pratiche, ADR-0036 §D16): il costo escluso era quello di mantenere un renderer HTML, che un riduttore a testo non ha. Nessuna WebView, nessun sidecar `.html`, nessun rendering con stili; la card `.eml` del Workspace resta invariata |
 | Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian — *Emendato 2026-09-16 (ADR-0047): il formato resta JSON Canvas 1.0 per sé; l'obbligo di interoperabilità con Obsidian non è più il motivo della scelta.* |

@@ -48,7 +48,8 @@ canvas tool.
 ## Architecture decisions
 
 Taken and not to be reopened without a stated reason (SPEC §14): native SwiftUI over
-Electron; macOS 26 Tahoe baseline with no fallbacks; no email body rendering; no full
+Electron; macOS 27 baseline with no fallbacks (raised from macOS 26 Tahoe on
+2026-09-18, see CLAUDE.md); no email body rendering; no full
 live preview in v1; pure JSON Canvas 1.0 for the canvas format; harness conventions
 as native schema; closed 4-key frontmatter with note IDs living in the index rather
 than in files; (the "no live preview" ruling is about the editor hiding syntax while
