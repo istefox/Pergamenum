@@ -185,6 +185,123 @@ extension ToolCatalogue {
             annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
         ),
         Tool(
+            name: "pratica_link_note",
+            description: """
+                Collega una nota che già esiste a una pratica (ADR-0049, relazione \
+                molti-a-molti). Se il riferimento c'è già non lo duplica. \
+                dryRun è true se omesso.
+                """,
+            inputSchema: praticaLinkSchema("title", "il titolo della nota"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_unlink_note",
+            description: "Scollega una nota da una pratica, senza toccare la nota. dryRun è true se omesso.",
+            inputSchema: praticaLinkSchema("title", "il titolo della nota"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_link_board",
+            description: "Collega una board che già esiste a una pratica. dryRun è true se omesso.",
+            inputSchema: praticaLinkSchema("board", "il nome del file .canvas"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_unlink_board",
+            description: "Scollega una board da una pratica, senza toccarla. dryRun è true se omesso.",
+            inputSchema: praticaLinkSchema("board", "il nome del file .canvas"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_link_task",
+            description: """
+                Collega un task che già esiste a una pratica. Se il task non ha ancora \
+                un ^id gliene assegna uno prima di collegarlo. dryRun è true se omesso.
+                """,
+            inputSchema: praticaLinkSchema("task", "il testo del task, oppure «percorso:riga»"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_unlink_task",
+            description: """
+                Scollega un task da una pratica, senza toccare il task. Un task senza \
+                ^id non è collegato a niente: la risposta lo dice, non è un errore.
+                """,
+            inputSchema: praticaLinkSchema("task", "il testo del task, oppure «percorso:riga»"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "pratica_create_note",
+            description: """
+                Crea una nota nuova con i tag di contesto della pratica (topic-pratica, \
+                client-*) e la collega subito - prima crea, poi collega. \
+                dryRun è true se omesso.
+                """,
+            inputSchema: praticaCreateSchema("title", "il titolo della nuova nota"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
+            name: "pratica_create_task",
+            description: """
+                Cattura un task nuovo nell'inbox, gli assegna un ^id e lo collega alla \
+                pratica. dryRun è true se omesso.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "pratica": [
+                        "type": "string",
+                        "description": "il titolo della pratica, oppure il percorso della sua cartella",
+                    ],
+                    "text": ["type": "string", "description": "il testo del task, senza «- [ ]»"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["pratica", "text"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
+            name: "pratica_create_board",
+            description: """
+                Crea una board vuota (ADR-0022) e la collega subito alla pratica. \
+                dryRun è true se omesso.
+                """,
+            inputSchema: praticaCreateSchema("name", "il nome della nuova board"),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
+            name: "message_link_note",
+            description: """
+                Collega una nota che già esiste a un singolo messaggio (relazione 0/1, \
+                ADR-0049 §D6): collegarne una seconda sostituisce la prima invece di \
+                aggiungersi. dryRun è true se omesso.
+                """,
+            inputSchema: messageLinkSchema(),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "message_unlink_note",
+            description: "Scollega la nota di un messaggio, senza toccare la nota. dryRun è true se omesso.",
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "message": ["type": "string", "description": "il percorso del messaggio"],
+                    "dryRun": dryRunProperty,
+                ],
+                "required": ["message"],
+            ],
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+        ),
+        Tool(
+            name: "message_create_note",
+            description: """
+                Crea una nota nuova con i tag di contesto della pratica del messaggio e \
+                la collega subito a quel messaggio. dryRun è true se omesso.
+                """,
+            inputSchema: messageLinkSchema(),
+            annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false)
+        ),
+        Tool(
             name: "undo_write",
             description: """
                 Rimette un file com'era prima di una scrittura registrata nel journal. \
@@ -225,6 +342,58 @@ extension ToolCatalogue {
             "type": "object",
             "properties": .object(properties),
             "required": .array([.string("task")] + required),
+        ]
+    }
+
+    /// Every pratica link/unlink pair takes the pratica plus one target field, named
+    /// for what it actually is (`title`, `board`, `task`) rather than a generic
+    /// `target` a caller would have to guess the meaning of.
+    private static func praticaLinkSchema(_ key: String, _ description: String) -> Value {
+        var properties: [String: Value] = [
+            "pratica": [
+                "type": "string",
+                "description": "il titolo della pratica, oppure il percorso della sua cartella",
+            ],
+            "dryRun": dryRunProperty,
+        ]
+        properties[key] = ["type": "string", "description": .string(description)]
+        return [
+            "type": "object",
+            "properties": .object(properties),
+            "required": .array([.string("pratica"), .string(key)]),
+        ]
+    }
+
+    /// `pratica_create_note`/`pratica_create_board`: the same shape plus an optional
+    /// destination folder, which `pratica_create_task` has no use for and does not share.
+    private static func praticaCreateSchema(_ key: String, _ description: String) -> Value {
+        var properties: [String: Value] = [
+            "pratica": [
+                "type": "string",
+                "description": "il titolo della pratica, oppure il percorso della sua cartella",
+            ],
+            "folder": ["type": "string", "description": "cartella di destinazione, la radice se omessa"],
+            "dryRun": dryRunProperty,
+        ]
+        properties[key] = ["type": "string", "description": .string(description)]
+        return [
+            "type": "object",
+            "properties": .object(properties),
+            "required": .array([.string("pratica"), .string(key)]),
+        ]
+    }
+
+    /// `message_link_note`/`message_create_note`: the message plus the note's title,
+    /// both required, no dynamic key needed since neither tool varies the shape.
+    private static func messageLinkSchema() -> Value {
+        [
+            "type": "object",
+            "properties": [
+                "message": ["type": "string", "description": "il percorso del messaggio"],
+                "title": ["type": "string", "description": "il titolo della nota"],
+                "dryRun": dryRunProperty,
+            ],
+            "required": ["message", "title"],
         ]
     }
 }

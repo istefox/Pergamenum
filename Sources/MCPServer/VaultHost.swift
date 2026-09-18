@@ -14,7 +14,9 @@ import MCP
 /// what has not changed, which is what makes that affordable.
 @MainActor
 final class VaultHost {
-    private let session: VaultSession
+    // Not `private` (ADR-0045 §D2): `VaultHost+PraticheLinks.swift`'s writers read it too,
+    // and `private` is file-scoped.
+    let session: VaultSession
     let allowsWriting: Bool
 
     private init(session: VaultSession, allowsWriting: Bool) {
@@ -137,6 +139,8 @@ final class VaultHost {
             return reply(VaultAPI.pratiche(session))
         case "pratica":
             return reply(try VaultAPI.pratica(session, try arguments.required("pratica")))
+        case "pratica_links":
+            return reply(try VaultAPI.praticaLinks(session, try arguments.required("pratica")))
         default:
             return nil
         }
@@ -256,7 +260,7 @@ final class VaultHost {
             case .operation(let summary): return reply(summary)
             }
         default:
-            return nil
+            return try await writePraticaLinks(name, arguments)
         }
     }
 
@@ -304,7 +308,8 @@ final class VaultHost {
 
     // MARK: Shared
 
-    private func reply(_ payload: some Encodable) -> CallTool.Result {
+    // Not `private`, same reason as `session` above.
+    func reply(_ payload: some Encodable) -> CallTool.Result {
         do {
             return CallTool.Result(content: [.text(try ConnectorJSON.encode(payload))])
         } catch {

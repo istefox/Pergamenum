@@ -662,6 +662,26 @@ extension PraticaSyncEngine {
         case fileMissing
     }
 
+    /// ADR-0049 §D7: a linked note survives «Rigenera» - carried into
+    /// `prepared.noteText` **before** the diff `regenerationPreview` computes just after
+    /// calling this, so the plan's `replacementText`, its diff and the bytes
+    /// `commitRegeneration` writes (`prepared`, not `replacementText`) are one and the
+    /// same. Patching `replacementText` alone would look right in the sheet and
+    /// silently destroy the link.
+    private static func carryingOverLinkedNote(
+        from currentText: String, into prepared: PreparedMessage
+    ) -> PreparedMessage {
+        guard let linkedNote = MessageDocument.parse(currentText)?.frontmatter.linkedNote,
+              let patched = MessageFrontmatterPatch.applying(
+                  line: MessageDocument.noteLine(for: linkedNote), forKey: MessageDocument.noteKey,
+                  before: [MessageDocument.storeReferencesKey, "pergamenum-mail-body"], to: prepared.noteText
+              )
+        else { return prepared }
+        var prepared = prepared
+        prepared.noteText = patched
+        return prepared
+    }
+
     /// ADR §D21.1/§D21.3: resolves the row (the index first, the ledger's own `rowID`
     /// only on `.notResolvableFromIndex`), locates and decodes its `.emlx` through the
     /// existing `prepare(_:request:reader:folder:)` with `request.regenerating` set to
@@ -706,7 +726,7 @@ extension PraticaSyncEngine {
         var regenerationRequest = request
         regenerationRequest.regenerating = messageID
         let folder = try folderContext(of: request)
-        guard let prepared = prepare(row, request: regenerationRequest, reader: reader, folder: folder)
+        guard var prepared = prepare(row, request: regenerationRequest, reader: reader, folder: folder)
         else { throw RegenerationFailure.notDecodable }
 
         let notePath = "\(request.praticaFolder)/email/\(prepared.fileName)"
@@ -714,6 +734,8 @@ extension PraticaSyncEngine {
         guard let currentText = try? String(contentsOf: noteURL, encoding: .utf8) else {
             throw RegenerationFailure.fileMissing
         }
+
+        prepared = Self.carryingOverLinkedNote(from: currentText, into: prepared)
 
         return RegenerationPlan(
             praticaFolder: request.praticaFolder,

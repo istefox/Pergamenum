@@ -109,36 +109,60 @@ struct PraticaTimelineView: View {
         return true
     }
 
+    /// ADR-0049 §D8: the aligned column's own fixed width - `BoardTray`'s own
+    /// fixed-width column (`frame(width: 200)`), reused as this feature's own number
+    /// since nothing narrower fits a note's title and no wider is asked for.
+    private static let noteSlotWidth: CGFloat = 200
+
     @ViewBuilder
     private func row(_ entry: PraticaTimelineEntry) -> some View {
         let lane = PraticaTimelineModel.lane(for: entry)
-        Group {
-            if entry.kind == .message {
-                PraticaMessageRow(
-                    entry: entry,
-                    detail: pratiche.details[entry.id],
-                    isExpanded: pratiche.expansion.isExpanded(entry.id),
-                    onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
-                    onQuickLook: preview(_:),
-                    vaultRoot: vault.root,
-                    actions: rowActions
-                )
-            } else {
-                PraticaEntryRow(
-                    entry: entry,
-                    detail: pratiche.details[entry.id],
-                    isExpanded: pratiche.expansion.isExpanded(entry.id),
-                    onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
-                    vaultRoot: vault.root,
-                    onOpenNote: onOpenNote
-                )
+        let gutter = theme.spacing(.m)
+        HStack(alignment: .top, spacing: gutter) {
+            Group {
+                if entry.kind == .message {
+                    PraticaMessageRow(
+                        entry: entry,
+                        detail: pratiche.details[entry.id],
+                        isExpanded: pratiche.expansion.isExpanded(entry.id),
+                        onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
+                        onQuickLook: preview(_:),
+                        vaultRoot: vault.root,
+                        actions: rowActions
+                    )
+                } else {
+                    PraticaEntryRow(
+                        entry: entry,
+                        detail: pratiche.details[entry.id],
+                        isExpanded: pratiche.expansion.isExpanded(entry.id),
+                        onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
+                        vaultRoot: vault.root,
+                        onOpenNote: onOpenNote
+                    )
+                }
             }
-        }
-        // DESIGN.md "Binding decisions": ~70 % width, leading for received and
-        // trailing for sent; a manual entry is full width. The width is the third
-        // carrier of direction, beside the glyph and the lane's own token (R-25).
-        .containerRelativeFrame(.horizontal, alignment: alignment(of: lane)) { width, _ in
-            lane == .entry ? width : width * 0.7
+            // DESIGN.md "Binding decisions": ~70 % width, leading for received and
+            // trailing for sent; a manual entry is full width. The width is the third
+            // carrier of direction, beside the glyph and the lane's own token (R-25).
+            //
+            // ADR-0049 §D8: a message row also reserves the gutter and the aligned
+            // column's own fixed width here, in this same arithmetic, rather than
+            // leaving the `HStack` to discover it on its own - `containerRelativeFrame`
+            // reads the outer scroll container's width however deeply it is nested, so
+            // without this the lane still claims the column's own space and the two
+            // draw on top of each other (the trap ADR §D8 names by name).
+            .containerRelativeFrame(.horizontal, alignment: alignment(of: lane)) { width, _ in
+                let reserved = entry.kind == .message ? gutter + Self.noteSlotWidth : 0
+                let available = width - reserved
+                return lane == .entry ? available : available * 0.7
+            }
+            if entry.kind == .message {
+                PraticaMessageNoteSlot(
+                    reference: pratiche.details[entry.id]?.linkedNote,
+                    hash: PraticaMessageRow.hash(of: entry)
+                )
+                .frame(width: Self.noteSlotWidth, alignment: .topLeading)
+            }
         }
         .contextMenu { menu(for: entry) }
         .tag(entry.id)

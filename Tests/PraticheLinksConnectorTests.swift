@@ -1,0 +1,228 @@
+import Foundation
+import Testing
+@testable import Pergamenum
+
+// ADR-0049 (Pratiche links to notes, tasks and boards), plan
+// docs/plans/pratiche-note-task-workspace-links.md, Task 7 - R-01, R-02, R-03, R-10, §D12.
+//
+// `Sources/Connector/VaultPraticheLinks.swift` is what a shell or a model reaches
+// instead of the app's own `PraticaCommandActions+Links.swift` - this file is the SPEC's
+// connector seam: the same relations, read with resolution state and written with the
+// same three guarantees (`isDryRun`, diff, journal) every other connector write carries.
+
+private let praticaFolder = "01 Progetti/Rossi/Offerta"
+
+private let praticaNote = """
+---
+pergamenum-dossier: 1
+pergamenum-dossier-counterparts:
+  - m.rossi@rossi-spa.it
+---
+
+Appunti pratica.
+"""
+
+private let messageWithNoLink = """
+---
+date: 2026-06-10
+tags:
+  - type-note
+  - type-email
+pergamenum-mail: 1
+pergamenum-mail-message-id: "<abc@rossi-spa.it>"
+pergamenum-mail-direction: received
+pergamenum-mail-date: 2026-06-10T14:06:00+02:00
+pergamenum-mail-from: "Mario Rossi <m.rossi@rossi-spa.it>"
+pergamenum-mail-subject: "Richiesta offerta"
+pergamenum-mail-body: complete
+---
+
+Buongiorno,
+"""
+
+private let messagePath = "\(praticaFolder)/email/msg.md"
+
+@MainActor
+private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
+    try vault.write(praticaNote, to: "\(praticaFolder)/pratica.md")
+    try vault.write(messageWithNoLink, to: messagePath)
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+    return session
+}
+
+@MainActor
+@Suite(.serialized) struct VaultAPIPraticheLinksTests {
+    // MARK: - Reading: resolution state (R-07, R-08)
+
+    @Test func praticaLinksResolvesAnExistingNoteAsUniqueAndAMissingOneAsMissing() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        try vault.write("---\ndate: 2026-09-01\ntags:\n  - type-note\n---\n\nCorpo.", to: "Offerta 2026.md")
+        await session.rescan()
+
+        VaultAPI.arm(session, command: "pratica_link_note", dryRun: false)
+        _ = try await VaultAPI.linkPraticaNote(session, pratica: praticaFolder, title: "Offerta 2026")
+        _ = try await VaultAPI.linkPraticaNote(session, pratica: praticaFolder, title: "Non Esiste")
+
+        let links = try VaultAPI.praticaLinks(session, praticaFolder)
+        #expect(links.notes.count == 2)
+        let unique = try #require(links.notes.first { $0.reference.contains("Offerta 2026") })
+        #expect(unique.state == "unique")
+        #expect(unique.path == "Offerta 2026.md")
+        let missing = try #require(links.notes.first { $0.reference.contains("Non Esiste") })
+        #expect(missing.state == "missing")
+        #expect(missing.path == nil)
+    }
+
+    @Test func aMessageWithNoLinkReadsAsNilRatherThanBroken() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        #expect(try VaultAPI.praticaMessageLink(session, at: messagePath) == nil)
+    }
+
+    // MARK: - Writing, and the dry-run guarantee (R-10)
+
+    @Test func linkingAPraticaNoteAsADryRunChangesNoByteButReturnsADiff() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        let notePath = vault.root.appending(path: "\(praticaFolder)/pratica.md")
+        let before = try Data(contentsOf: notePath)
+
+        VaultAPI.arm(session, command: "pratica_link_note", dryRun: true)
+        let summary = try await VaultAPI.linkPraticaNote(session, pratica: praticaFolder, title: "Offerta 2026")
+
+        #expect(!summary.applied)
+        #expect(try #require(summary.diff).contains("pergamenum-dossier-links-notes"))
+        #expect(try Data(contentsOf: notePath) == before)
+    }
+
+    @Test func linkingAndUnlinkingAPraticaBoardRoundTrips() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "pratica_link_board", dryRun: false)
+        let linked = try await VaultAPI.linkPraticaBoard(session, pratica: praticaFolder, board: "Rossi.canvas")
+        #expect(linked.applied)
+        let afterLink = try VaultAPI.praticaLinks(session, praticaFolder).boards
+        #expect(afterLink.count == 1)
+        // No `Rossi.canvas` board exists on disk yet: linking a bare name is allowed
+        // (a link can exist before a board that fulfils it, R-03's other direction),
+        // and shows up as missing rather than blocking the write.
+        #expect(afterLink.first?.reference == "[[Rossi.canvas]]")
+        #expect(afterLink.first?.state == "missing")
+
+        let unlinked = try await VaultAPI.unlinkPraticaBoard(session, pratica: praticaFolder, board: "Rossi.canvas")
+        #expect(unlinked.applied)
+        #expect(try VaultAPI.praticaLinks(session, praticaFolder).boards.isEmpty)
+    }
+
+    @Test func linkingAPraticaTaskAllocatesAnIDWhenTheTaskHasNoneYet() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        try vault.write("- [ ] Verifica disegno\n", to: "Tasks.md")
+        await session.rescan()
+
+        VaultAPI.arm(session, command: "pratica_link_task", dryRun: false)
+        _ = try await VaultAPI.linkPraticaTask(session, pratica: praticaFolder, task: "Verifica disegno")
+
+        let taskText = try String(contentsOf: vault.root.appending(path: "Tasks.md"), encoding: .utf8)
+        #expect(taskText.contains("^id(1)"))
+        let links = try VaultAPI.praticaLinks(session, praticaFolder)
+        #expect(links.tasks.count == 1)
+        #expect(links.tasks.first?.state == "unique")
+    }
+
+    @Test func unlinkingATaskWithNoIDIsANoOpRatherThanAnError() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        try vault.write("- [ ] Verifica disegno\n", to: "Tasks.md")
+        await session.rescan()
+
+        VaultAPI.arm(session, command: "pratica_unlink_task", dryRun: false)
+        let summary = try await VaultAPI.unlinkPraticaTask(session, pratica: praticaFolder, task: "Verifica disegno")
+        #expect(!summary.applied)
+    }
+
+    // MARK: - R-02: the message's one relation replaces rather than appends
+
+    @Test func linkingAMessageNoteTwiceReplacesRatherThanAppending() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "message_link_note", dryRun: false)
+        _ = try await VaultAPI.linkMessageNote(session, message: messagePath, title: "Offerta 2026")
+        _ = try await VaultAPI.linkMessageNote(session, message: messagePath, title: "Contratto 2026")
+
+        let text = try String(contentsOf: vault.root.appending(path: messagePath), encoding: .utf8)
+        #expect(text.contains("pergamenum-mail-note: \"[[Contratto 2026]]\""))
+        #expect(!text.contains("Offerta 2026"))
+        #expect(text.components(separatedBy: "pergamenum-mail-note:").count - 1 == 1)
+
+        let link = try VaultAPI.praticaMessageLink(session, at: messagePath)
+        #expect(link?.reference == "[[Contratto 2026]]")
+    }
+
+    @Test func unlinkingAMessageNoteRemovesTheKeyAndReadsAsNilAgain() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "message_link_note", dryRun: false)
+        _ = try await VaultAPI.linkMessageNote(session, message: messagePath, title: "Offerta 2026")
+        _ = try await VaultAPI.unlinkMessageNote(session, message: messagePath)
+
+        let text = try String(contentsOf: vault.root.appending(path: messagePath), encoding: .utf8)
+        #expect(!text.contains("pergamenum-mail-note"))
+        #expect(try VaultAPI.praticaMessageLink(session, at: messagePath) == nil)
+    }
+
+    // MARK: - R-03: create the target first, link it second
+
+    @Test func creatingAndLinkingAPraticaNoteCreatesItWithContextTagsThenLinksIt() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "pratica_create_note", dryRun: false)
+        _ = try await VaultAPI.createAndLinkPraticaNote(
+            session, pratica: praticaFolder, title: "Preventivo 2026", folder: nil
+        )
+
+        let noteText = try String(contentsOf: vault.root.appending(path: "Preventivo 2026.md"), encoding: .utf8)
+        #expect(noteText.contains("topic-pratica"))
+        let links = try VaultAPI.praticaLinks(session, praticaFolder)
+        #expect(links.notes.contains { $0.reference.contains("Preventivo 2026") })
+    }
+
+    @Test func creatingAndLinkingAPraticaBoardCreatesTheFileThenLinksItsName() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "pratica_create_board", dryRun: false)
+        _ = try await VaultAPI.createAndLinkPraticaBoard(
+            session, pratica: praticaFolder, name: "Preventivo", folder: nil
+        )
+
+        #expect(FileManager.default.fileExists(
+            atPath: vault.root.appending(path: "Preventivo.canvas").path(percentEncoded: false)
+        ))
+        let links = try VaultAPI.praticaLinks(session, praticaFolder)
+        let board = try #require(links.boards.first)
+        #expect(board.state == "unique")
+        #expect(board.path == "Preventivo.canvas")
+    }
+
+    @Test func creatingAndLinkingAMessageNoteCreatesItThenLinksIt() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "message_create_note", dryRun: false)
+        _ = try await VaultAPI.createAndLinkMessageNote(session, message: messagePath, title: "Preventivo 2026")
+
+        #expect(FileManager.default.fileExists(
+            atPath: vault.root.appending(path: "Preventivo 2026.md").path(percentEncoded: false)
+        ))
+        let link = try VaultAPI.praticaMessageLink(session, at: messagePath)
+        #expect(link?.state == "unique")
+    }
+}

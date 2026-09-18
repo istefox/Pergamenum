@@ -137,4 +137,71 @@ import Testing
         let bytesAfter = try Data(contentsOf: synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory))
         #expect(bytesAfter == Data(originalText.utf8), "a failed acquisition must never touch the file on disk")
     }
+
+    // MARK: - ADR-0049 §D7: a linked note survives «Rigenera», carried in before the diff
+
+    /// One-line surgery, mirroring `PraticaCommandActions.linkNote`'s own write - the
+    /// simplest way to put a `pergamenum-mail-note` key on a file this suite already
+    /// wrote, without depending on Task 2's UI-facing entry point.
+    private static func linking(_ reference: String, into text: String) throws -> String {
+        try #require(MessageFrontmatterPatch.applying(
+            line: MessageDocument.noteLine(for: reference), forKey: MessageDocument.noteKey,
+            before: [MessageDocument.storeReferencesKey, "pergamenum-mail-body"], to: text
+        ))
+    }
+
+    @Test func aMessageCarryingALinkRegeneratedStillCarriesIt() async throws {
+        let synced = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
+        let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+
+        let linked = try Self.linking("[[Offerta 2026]]", into: originalText)
+        try Data(linked.utf8).write(to: noteURL, options: .atomic)
+
+        let plan = try await synced.engine.regenerationPreview(synced.request, messageID: Self.messageID, rowID: nil)
+        #expect(plan.replacementText.contains("pergamenum-mail-note: \"[[Offerta 2026]]\""))
+        // Nothing else changed since the link was added: the replacement §D7 carries
+        // the key into and the file already on disk agree exactly, so there is
+        // nothing left to diff - the carry-over happens *before* the diff is taken,
+        // not as a correction shown alongside it.
+        #expect(plan.replacementText == linked)
+        #expect(plan.diff == nil)
+
+        _ = try await synced.engine.commitRegeneration(plan)
+        let writtenText = try String(contentsOf: noteURL, encoding: .utf8)
+        #expect(writtenText.contains("pergamenum-mail-note: \"[[Offerta 2026]]\""))
+    }
+
+    @Test func aHandEditAlongsideALinkStillCarriesTheLinkIntoTheReplacement() async throws {
+        let synced = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
+        let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+
+        let linked = try Self.linking("[[Offerta 2026]]", into: originalText)
+        let linkedAndEdited = linked + "\n\nAggiunto a mano.\n"
+        try Data(linkedAndEdited.utf8).write(to: noteURL, options: .atomic)
+
+        let plan = try await synced.engine.regenerationPreview(synced.request, messageID: Self.messageID, rowID: nil)
+        #expect(plan.replacementText.contains("pergamenum-mail-note: \"[[Offerta 2026]]\""))
+        #expect(plan.diff != nil, "the hand edit alone still produces a diff against the replacement")
+    }
+
+    // MARK: - ADR-0036 §D6 unchanged: linking a note is not a fifth sync trigger
+
+    @Test func anOrdinarySyncOverAnUnchangedCompleteMessageCarryingALinkWritesNothing() async throws {
+        let synced = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
+        let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+
+        let linked = try Self.linking("[[Offerta 2026]]", into: originalText)
+        try Data(linked.utf8).write(to: noteURL, options: .atomic)
+
+        _ = try await synced.engine.sync(synced.request)
+
+        let textAfterSync = try String(contentsOf: noteURL, encoding: .utf8)
+        #expect(
+            textAfterSync == linked,
+            "linking a note is a person's explicit action, not one of ADR-0036 §D6's four sync-rewrite triggers"
+        )
+    }
 }

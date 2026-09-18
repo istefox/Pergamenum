@@ -70,6 +70,13 @@ struct MessageDocument: Equatable, Sendable {
         /// construction site keeps compiling and every note written before this fix
         /// reads back as "waiting for nothing".
         var pendingInlineImages: [String] = []
+        /// `pergamenum-mail-note` (ADR-0049 §D6): the wikilink form of the note linked
+        /// to this message, `nil` when there is none. Written by
+        /// `MessageFrontmatterPatch`, not by a re-render, so an ordinary sync never
+        /// touches it (ADR-0036 §D6 unchanged). Defaulted `nil`, so every existing
+        /// construction site keeps compiling and every note written before this
+        /// feature reads back as "no link".
+        var linkedNote: String?
         var body: BodyState
         /// `pergamenum-mail-original` - absent when retention is off (R-09).
         var original: String?
@@ -148,6 +155,9 @@ struct MessageDocument: Equatable, Sendable {
         if !mail.pendingInlineImages.isEmpty {
             add(inlinePendingKey, inlineList(mail.pendingInlineImages))
         }
+        if let linkedNote = mail.linkedNote {
+            add(noteKey, quoted(linkedNote))
+        }
         if !mail.storeReferences.isEmpty {
             keys.append(Frontmatter.ForeignKey(
                 name: storeReferencesKey,
@@ -167,6 +177,9 @@ struct MessageDocument: Equatable, Sendable {
     /// `attachmentsKey` and before `storeReferencesKey` in both `foreignKeys(of:)` and
     /// `MessageFrontmatterPatch`'s insertion order.
     static let inlinePendingKey = "pergamenum-mail-inline-pending"
+    /// `pergamenum-mail-note` (ADR-0049 §D6), positioned after `inlinePendingKey` and
+    /// before `storeReferencesKey`.
+    static let noteKey = "pergamenum-mail-note"
 
     /// The full `pergamenum-mail-attachments:` line for a list of entries, in the same
     /// quoting `foreignKeys(of:)` already uses for this key (ADR-0040 §D4) -
@@ -180,6 +193,12 @@ struct MessageDocument: Equatable, Sendable {
     /// (ADR-0042 §D3) - `MessageFrontmatterPatch`'s only source for this key's text.
     static func inlinePendingLine(for contentIDs: [String]) -> String {
         "\(inlinePendingKey): \(inlineList(contentIDs))"
+    }
+
+    /// The full `pergamenum-mail-note:` line for a linked note's wikilink text
+    /// (ADR-0049 §D6) - `MessageFrontmatterPatch`'s only source for this key's text.
+    static func noteLine(for reference: String) -> String {
+        "\(noteKey): \(quoted(reference))"
     }
 
     /// `  - { name: "big.zip", size: 157286400, storePath: "/…/big.zip" }` - a YAML flow

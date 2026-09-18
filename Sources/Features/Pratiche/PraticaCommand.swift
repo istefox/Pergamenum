@@ -25,8 +25,20 @@ enum PraticaCommand: String, CaseIterable, Sendable {
     case reopen
     case refresh
     case revealInFinder
+    /// R-01 (ADR-0049 §D10): opens `PraticaLinkPicker` for the general
+    /// `pergamenum-dossier-links-notes` key - many notes, never a 0/1 relation like
+    /// the per-message one.
+    case linkNote
+    /// R-01: the same picker, parameterised for `pergamenum-dossier-links-tasks`.
+    case linkTask
+    /// R-01: the same picker, parameterised for `pergamenum-dossier-links-boards`.
+    case linkBoard
     /// R-34: moves the folder to the Trash via `FileManager.trashItem`. The only
     /// alert in the feature («Elimina pratica») guards this one (plan Task 7).
+    ///
+    /// Declared last, after the three link commands above: `PraticaMenuItems.menu`
+    /// keys its divider on this case, so anything declared after it would be drawn
+    /// below the separator that belongs to the destructive verb (ADR-0049 §D10).
     case delete
 
     /// The Italian label both surfaces draw for this command, pinned to
@@ -39,6 +51,9 @@ enum PraticaCommand: String, CaseIterable, Sendable {
         case .reopen: "Riapri"
         case .refresh: "Aggiorna ora"
         case .revealInFinder: "Mostra nel Finder"
+        case .linkNote: "Collega una nota…"
+        case .linkTask: "Collega un'attività…"
+        case .linkBoard: "Collega una board…"
         case .delete: "Elimina…"
         }
     }
@@ -54,6 +69,9 @@ enum PraticaCommand: String, CaseIterable, Sendable {
         case .reopen: "tray.and.arrow.up"
         case .refresh: "arrow.clockwise"
         case .revealInFinder: "folder"
+        case .linkNote: "doc.badge.plus"
+        case .linkTask: "checklist"
+        case .linkBoard: "rectangle.3.group"
         case .delete: "trash"
         }
     }
@@ -70,7 +88,7 @@ enum PraticaCommand: String, CaseIterable, Sendable {
             switch command {
             case .close: isActive
             case .reopen: !isActive
-            case .open, .rename, .refresh, .revealInFinder, .delete: true
+            case .open, .rename, .refresh, .revealInFinder, .linkNote, .linkTask, .linkBoard, .delete: true
             }
         }
     }

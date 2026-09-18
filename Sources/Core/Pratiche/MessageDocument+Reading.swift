@@ -36,6 +36,7 @@ extension MessageDocument {
                 attachments: list(attachmentsKey, lines),
                 storeReferences: storeReferences(in: lines),
                 pendingInlineImages: list(inlinePendingKey, lines),
+                linkedNote: scalar(noteKey, lines).map(unquoted),
                 body: scalar("pergamenum-mail-body", lines)
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
                 original: scalar("pergamenum-mail-original", lines).map(unquoted)

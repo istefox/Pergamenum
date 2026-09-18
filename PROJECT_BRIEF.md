@@ -87,6 +87,41 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-18: **A pratica links to notes, tasks and boards (ADR-0049) — all 8 plan tasks
+  implemented on `feat-note-project`.** Three foreign `pergamenum-dossier-links-*` keys on
+  `pratica.md` (`PraticaLinks`, kept out of `Dossier` so `Dossier.merging` cannot erase them) plus
+  one message key, `pergamenum-mail-note`; every reference is a wikilink, which makes R-07
+  (rename-safe) free through the note/board rename passes that already rewrite `[[…]]`. One
+  resolver (`PraticaLinkResolver`) answers `unique`/`ambiguous`/`missing` for all four relations
+  with no cache change (`IndexCache.schemaVersion` stays 4). `PraticaCommand`/`MessageCommand`
+  gain link/unlink verbs and a new `PraticaLinkPicker`; the pratica inspector gains three
+  read-only sections — NOTE COLLEGATE (with the R-06 aggregate over the pratica's own links and
+  every message's `linkedNote`, unioned and de-duplicated by title), TASK COLLEGATI, BOARD
+  COLLEGATE — and the timeline gains a per-row aligned column with a read-only note slot and a
+  header indicator glyph (R-05), reusing `BoardTray.traySection`'s shape. Both `perg` and
+  `pergamenum-mcp` gain the same reads and writes through one new file,
+  `Sources/Connector/VaultPraticheLinks.swift`. Full unit suite green (3203/3203, including six
+  new tests in `Tests/PraticaLinkAggregationTests.swift` over the R-06 aggregation rule and the
+  pre-existing `PraticaLinkResolverTests` suite from Task 1); `swiftlint --quiet` found four new
+  warnings across the chain, all fixed (a 7-parameter view-row function bundled into a
+  `LinkRowContent` struct, an over-120-column line split, a `VaultPayloads.swift` `file_length`
+  crossing resolved by moving the two ADR-0049 payload types into `VaultPraticheLinks.swift`, and a
+  second `type_body_length` crossing in `PraticaCommandActions.swift` resolved by widening the
+  existing ADR-0045 `+Links.swift` split to four more functions), plus one pre-existing warning's
+  magnitude accepted as ordinary debt growth (`main.swift`'s already-over-ceiling group `dispatch`
+  switch, one more branch) — zero *new* violations remain. Five measured deviations from the
+  plan's own file list, recorded in ADR-0049's "Implementation notes" follow-up section rather than
+  silently: the inspector-section file (§1), the note-slot width (§2), the three SwiftLint-driven
+  splits on the connector/CLI/MCP/app side (§3, §6, §7), and the accepted complexity growth (§5).
+  Notably: the three inspector sections are appended from
+  `PratichePane+Inspector.swift` (not `PratichePane.swift`, the plan's stated file), since that is
+  the file that actually builds the scroll view R-04 requires them inside; and Task 6's note-slot
+  column width (200pt) has no SPEC-given number, chosen to fit a title plus up to three opening
+  lines without starving the message lane at the pane's usual widths.
+  `scripts/uitests.sh` and the manual R-04/R-05/R-06/R-09 pass are deliberately deferred to just
+  before the merge to `main`, per the standing pre-merge rule — not yet run. The
+  `.claude/protected-interfaces` entry Task 8 proposes for `PraticaLinks.render` is left for the
+  human gate, not applied here.
 - 2026-09-17: **Task categories and the end of the Obsidian round-trip (ADR-0047) — all 8 plan
   tasks implemented on `chore-question-activity`.** A registry file in the vault
   (`.pergamenum/categories.json`, `CategoryRegistryStore`/`VaultSession+Categories.swift`) gives

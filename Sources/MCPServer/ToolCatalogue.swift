@@ -230,6 +230,25 @@ enum ToolCatalogue {
             annotations: .init(readOnlyHint: true)
         ),
         Tool(
+            name: "pratica_links",
+            description: """
+                Le tre relazioni generali di una pratica - note, task, board - con lo \
+                stato di ognuna: risolta, ambigua o non trovata (ADR-0049). Un \
+                riferimento resta anche quando è rotto: niente viene tolto.
+                """,
+            inputSchema: [
+                "type": "object",
+                "properties": [
+                    "pratica": [
+                        "type": "string",
+                        "description": "il titolo della pratica, oppure il percorso della sua cartella",
+                    ],
+                ],
+                "required": ["pratica"],
+            ],
+            annotations: .init(readOnlyHint: true)
+        ),
+        Tool(
             name: "journal_log",
             description: """
                 Le scritture fatte dai connettori, dalla più vecchia. Ogni riga ha un id \

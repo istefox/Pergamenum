@@ -80,7 +80,7 @@ extension VaultAPI {
         return PraticaTimelinePayload(
             path: folder,
             title: praticaTitle(ofFolder: folder),
-            entries: timeline(ofPraticaFolder: folder, vaultRoot: session.root)
+            entries: timeline(ofPraticaFolder: folder, session: session)
         )
     }
 }
@@ -182,15 +182,17 @@ private extension VaultAPI {
         var entry: PraticaTimelinePayload.Entry
     }
 
-    static func timeline(ofPraticaFolder folder: String, vaultRoot: URL) -> [PraticaTimelinePayload.Entry] {
-        let directory = vaultRoot.appending(path: folder, directoryHint: .isDirectory)
-        let rows = messageRows(in: directory) + manualEntryRows(in: directory)
+    @MainActor
+    static func timeline(ofPraticaFolder folder: String, session: VaultSession) -> [PraticaTimelinePayload.Entry] {
+        let directory = session.root.appending(path: folder, directoryHint: .isDirectory)
+        let rows = messageRows(in: directory, session: session) + manualEntryRows(in: directory)
         return rows
             .sorted { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
             .map(\.entry)
     }
 
-    static func messageRows(in praticaFolder: URL) -> [TimelineRow] {
+    @MainActor
+    static func messageRows(in praticaFolder: URL, session: VaultSession) -> [TimelineRow] {
         let messages = praticaFolder.appending(path: messagesDirectoryName, directoryHint: .isDirectory)
         let names = (try? FileManager.default.contentsOfDirectory(
             atPath: messages.path(percentEncoded: false)
@@ -215,7 +217,15 @@ private extension VaultAPI {
                 subject: mail.subject,
                 attachments: mail.attachments.map(attachmentName(ofWikilink:))
                     + mail.storeReferences.map(\.name),
-                body: document.newText
+                body: document.newText,
+                // ADR-0049 §D12/R-05: the per-message relation, resolved the same way
+                // `praticaLinks` resolves the general ones - `nil` when the message
+                // carries no `pergamenum-mail-note` at all, a different thing from a
+                // broken one.
+                linkedNote: mail.linkedNote.flatMap { reference in
+                    guard case let .wikilink(title) = PraticaLinkReference(parsing: reference) else { return nil }
+                    return noteTarget(title, session: session)
+                }
             ))
         }
     }
@@ -247,7 +257,10 @@ private extension VaultAPI {
                     from: nil,
                     subject: entry.subject,
                     attachments: [],
-                    body: entry.body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    body: entry.body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                    // SPEC "Out of scope": the per-message relation covers email rows
+                    // only, never a manual entry.
+                    linkedNote: nil
                 )
             ))
             open = nil

@@ -218,6 +218,13 @@ final class Navigation {
     /// place every surface shares.
     var taskPickingBoard: TaskItem?
 
+    /// The request `PraticaLinkPicker` is answering (ADR-0049 §D10), held the same way
+    /// and for the same reason as `taskPickingBoard` above: the three pratica-level link
+    /// commands and the one message-level command are offered from the list column, the
+    /// timeline and the inspector alike, and `RootView` is the one place a sheet reaches
+    /// every surface from.
+    var praticaLinkRequest: PraticaLinkRequest?
+
     /// The task `TaskCommand.assignCategory` opened `CategoryPicker` for (ADR-0047 §D5),
     /// held the same way and for the same reason as `taskPickingBoard` above: the command
     /// is reachable from more than one surface, and `RootView` is the one place they all
