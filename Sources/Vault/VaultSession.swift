@@ -272,15 +272,31 @@ final class VaultSession {
     /// behalf of a model does (ADR-0007 §D6), and it sets this.
     @ObservationIgnored var journal: WriteJournal?
 
-    /// What the journal records as the cause. Set by the caller before it writes.
-    @ObservationIgnored var journalCommand = ""
+    /// The session's standing cause, for a write made outside any gesture. Set by the caller
+    /// before it writes (`VaultAPI.arm`, the three borrow-and-return sites in
+    /// `VaultSession+TagRename`/`+TaskDrop`/`+BoardDrop`).
+    @ObservationIgnored private var standingJournalCommand = ""
 
-    /// The gesture currently open, if one is (ADR-0016 §D1).
+    /// What the journal records as the cause.
     ///
-    /// Every write made while this is set carries it, which is what lets `undo` reverse a
-    /// rename as one thing instead of as a burst of unrelated writes. Opened and closed only by
-    /// `transaction(_:_:)` in `VaultSession+Journal`; nothing else assigns it.
-    @ObservationIgnored var currentOperation: String?
+    /// Read from inside a `transaction`, it is that gesture's command, bound to the calling
+    /// task by `JournalGesture` (ADR-0050 §D2); read anywhere else, it is the standing command
+    /// above. Assigning it always sets the standing command: a gesture's command is fixed for
+    /// its duration by `transaction(_:_:)` and cannot be reassigned from inside it, which is what
+    /// keeps a second task's standing command out of a first task's open gesture.
+    var journalCommand: String {
+        get { JournalGesture.current?.command ?? standingJournalCommand }
+        set { standingJournalCommand = newValue }
+    }
+
+    /// The gesture the calling task is inside, if any (ADR-0016 §D1, ADR-0050 §D1).
+    ///
+    /// Every write made inside it carries this id, which is what lets `undo` reverse a rename as
+    /// one thing instead of as a burst of unrelated writes. Not stored on the session: it is the
+    /// task-local `JournalGesture.current`, bound only by `transaction(_:_:)` in
+    /// `VaultSession+Journal`, so two transactions open at once from two tasks each read their
+    /// own and neither can clear the other's (`PG-152`, issue #281).
+    var currentOperation: String? { JournalGesture.current?.operation }
 
     /// When true, writes are computed and not performed.
     ///
