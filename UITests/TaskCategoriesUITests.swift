@@ -51,6 +51,17 @@ final class TaskCategoriesUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// A task row carries no per-task identifier of its own (`TasksView.row` sets the same
+    /// `"task-row"` on every one of them, folded into one combined accessibility element) -
+    /// same trap and same fix as `WorkspaceIntegrationUITests.taskRow(containing:)`. Matched
+    /// on its combined accessibility label instead, which carries `task.text` verbatim: this
+    /// is content this test itself wrote, not prose the app could reword.
+    private func taskRow(containing text: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ AND label CONTAINS[c] %@", "task-row", text))
+            .firstMatch
+    }
+
     /// One registered category ("Collaudi") and one task tagged with a slug the registry
     /// does not know about ("fantasma") - R-04's implicit row.
     private func writeFixture() throws {
@@ -116,7 +127,7 @@ final class TaskCategoriesUITests: XCTestCase {
         let categoryView = element("category-view-collaudi")
         XCTAssertTrue(categoryView.waitForExistence(timeout: 5), "il click sulla riga non apre la vista categoria")
         XCTAssertTrue(
-            app.staticTexts["Verifica pressione"].waitForExistence(timeout: 5),
+            taskRow(containing: "Verifica pressione").waitForExistence(timeout: 5),
             "la vista categoria non mostra il task diretto"
         )
     }
