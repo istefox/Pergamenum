@@ -18,6 +18,13 @@
 - **Reopens nothing.** No SPEC §14 decision is revisited. No on-disk format, no schema, no frontmatter
   key, no tag grammar, no user-visible behaviour. No file under `Sources/` or `Tests/` is touched by
   this decision, and no test is added, skipped or removed.
+- **Runner amended 2026-09-18.** `runs-on: macos-26` and the `Xcode_26.6.app` pin (§D2, §D3, the
+  workflow excerpt above) were raised to `runs-on: xcode-27` and `Xcode_27.0.app`, matching the
+  project-wide macOS 27/Xcode 27 baseline bump (`Project.swift`'s `deploymentTarget`, CLAUDE.md).
+  `xcode-27` is GitHub's own per-Xcode-major-version label (public preview at the time of this
+  amendment), replacing the per-OS-version label this ADR was written against; confirmed live
+  against `actions/runner-images` before pinning, not assumed. Body below is left as written for
+  its own decided-at-the-time record; this note is the current state.
 - **Adds no exception to CLAUDE.md principle 2, and needs none.** Principle 2 governs what the *app*
   does at runtime. A machine that compiles the app is not a feature of it. ADR-0031 §D13's updater
   exception and ADR-0032's loopback exception are untouched, and this ADR adds no third one: nothing
