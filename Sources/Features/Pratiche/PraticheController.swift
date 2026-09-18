@@ -92,6 +92,19 @@ final class PraticheController {
     var syncingPraticaPath: String?
     var syncProgress: PraticaSyncEngine.Progress?
 
+    /// «Rigenera…»'s own in-flight marker (ADR §D21) - the regeneration-side twin of
+    /// `syncingPraticaPath` just above, needed because nothing here serializes
+    /// concurrent regenerations against each other the way `SyncRunQueue` serializes
+    /// ordinary syncs (review round 2, MINOR 2's root cause: a sync and a regeneration
+    /// for the SAME pratica can be in flight at once). A set rather than a second
+    /// optional for that reason. Wider than `regeneration`'s own nil/non-nil below: that
+    /// goes `nil` the instant `PraticaCommandActions.confirmRegeneration` starts
+    /// trashing files, before the async commit (and its own `recordSyncOutcome`)
+    /// actually runs - exactly the window `moveLedgerState` needs covered so a
+    /// relocation mid-regeneration still leaves a `praticaPathRedirects` entry (MINOR 1).
+    /// Set by `beginRegeneration`, released by `endRegeneration`/`dismissRegeneration`.
+    var regeneratingPraticaPaths: Set<String> = []
+
     /// The last thing that went wrong, in Italian, for the pane to show. Cleared by
     /// the next successful load - a stale error over a working pane is worse than none.
     var problem: String?
@@ -100,6 +113,22 @@ final class PraticheController {
     /// state"): `lastOpenedAt` is what the badge counts from, `importedMessageIDs`
     /// what a resumed sync skips.
     var ledger: PraticaLedger = .empty
+
+    /// A pratica path some in-flight caller captured before a relocation moved its
+    /// ledger key elsewhere, mapped to where that key sits now. `moveLedgerState`
+    /// populates one entry per key currently claimed by `syncingPraticaPath` or
+    /// `regeneratingPraticaPaths` - never for a key nothing is racing, which is what
+    /// used to make this grow across every relocation in a session (review round 2,
+    /// MINOR 1). `recordSyncOutcome` reads (never removes - MINOR 2) it to fold a stale
+    /// outcome into the pratica's CURRENT key instead of resurrecting the pre-move one
+    /// (`PraticaLiveSync+Run.swift`'s `runExclusive` captures its `praticaPath` before
+    /// two `await`s - ADR-0043 §D7's "a precondition evaluated before an `await` is a
+    /// filter, not a guard" shape, found by review). The whole map is dropped in one go
+    /// once nothing is in flight anywhere to still need any entry in it
+    /// (`pruneRedirectsIfIdle`). Not `private(set)`: `PraticheController+Ledger.swift`
+    /// reads and writes it from `moveLedgerState`, `recordSyncOutcome`, `endRegeneration`
+    /// and `pruneRedirectsIfIdle`.
+    var praticaPathRedirects: [String: String] = [:]
 
     /// How many tray proposals each pratica has, which is the dot on its row (R-33).
     /// Derived from `trayProposals` by `updateTray(_:for:in:)`; empty here means no
@@ -131,12 +160,16 @@ final class PraticheController {
     /// a diff» rather than two variables kept in sync (ADR-0024 §D2's rule) - the
     /// replacement for the old two-step `PraticaRegenerationRequest` confirmation.
     enum RegenerationState: Identifiable, Sendable {
-        case preparing(notePath: String, subject: String)
+        /// `praticaPath` (review round 2): the only way `dismissRegeneration`/
+        /// `endRegeneration` can release this attempt's claim on
+        /// `regeneratingPraticaPaths` before a plan even exists to read
+        /// `praticaFolder` from.
+        case preparing(notePath: String, subject: String, praticaPath: String)
         case ready(PraticaSyncEngine.RegenerationPlan)
 
         var id: String {
             switch self {
-            case .preparing(let notePath, _): notePath
+            case .preparing(let notePath, _, _): notePath
             case .ready(let plan): plan.id
             }
         }
@@ -208,6 +241,18 @@ final class PraticheController {
     func cancelSync() {
         requestSyncCancellation?()
     }
+
+    /// Round-4 review, §4: a relocation mid-sync must stop the ENGINE too, not only
+    /// guard the ledger/UI consumers downstream of it - without this, the engine keeps
+    /// writing into the vacated folder for the rest of the run. Same shape and
+    /// justification as `requestSyncCancellation` just above: a settable property, not
+    /// a third `init` parameter, so it cannot break `init(probe:performSync:)`
+    /// (ADR-0155). `nil` means nothing is wired, and a relocation runs with nothing to
+    /// stop. Wired by `live(vault:)` to `PraticaLiveSync.stopForRelocation()`, called
+    /// from `moveLedgerState` - deliberately NOT the same closure as
+    /// `requestSyncCancellation`, which also drops every queued request for OTHER
+    /// pratiche that have nothing to do with this relocation.
+    @ObservationIgnored var requestSyncStopForRelocation: (@MainActor () -> Void)?
 
     /// The chosen pratica's own list item, for the breadcrumb and the status pill.
     var selectedPratica: PraticaListItem? {

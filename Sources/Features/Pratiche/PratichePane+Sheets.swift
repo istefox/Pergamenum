@@ -62,7 +62,7 @@ extension PratichePane {
     @ViewBuilder
     func regenerationSheet() -> some View {
         switch pratiche.regeneration {
-        case .preparing(_, let subject):
+        case .preparing(_, let subject, _):
             regenerationPreparingSheet(subject: subject)
         case .ready(let plan):
             regenerationReadySheet(plan)
@@ -80,7 +80,7 @@ extension PratichePane {
             }
             HStack {
                 Spacer()
-                Button("Annulla") { pratiche.regeneration = nil }
+                Button("Annulla") { pratiche.dismissRegeneration() }
                     .keyboardShortcut(.cancelAction)
             }
         }
@@ -107,13 +107,13 @@ extension PratichePane {
             HStack {
                 Spacer()
                 if plan.diff != nil {
-                    Button("Annulla") { pratiche.regeneration = nil }
+                    Button("Annulla") { pratiche.dismissRegeneration() }
                         .keyboardShortcut(.cancelAction)
                     Button("Rigenera") { actions.confirmRegeneration(plan) }
                         .keyboardShortcut(.defaultAction)
                         .accessibilityIdentifier("pratiche-regenerate-confirm")
                 } else {
-                    Button("Chiudi") { pratiche.regeneration = nil }
+                    Button("Chiudi") { pratiche.dismissRegeneration() }
                         .keyboardShortcut(.defaultAction)
                 }
             }

@@ -200,6 +200,13 @@ The rules, in order:
 
 1. `bytes.isEmpty` → `.empty`. Nothing else is consulted. This is the case that actually fires in
    production (R-01).
+
+   **§D2 amended 2026-09-17 by ADR-0048** — `.empty` has a second, permanent cause besides "Mail
+   has not finished downloading": Exchange sometimes externalizes an attachment's bytes to Mail's
+   own sibling `Attachments/<rowID>/<part>/` directory and never writes them inline at all, no
+   matter how many syncs run. `resolveExternalized` tries that directory before falling back to
+   this rule's `.empty` verdict and the pending retry it produces; nothing here changes for an
+   attachment that really is not yet downloaded.
 2. The declared content type is looked up first. `application/octet-stream` — what a great many
    senders and `EmailFixtureCorpus.singleAttachmentMessageRFC822` alike declare — resolves to
    nothing, so the filename extension is consulted next. Keying on the content type alone would

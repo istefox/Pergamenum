@@ -30,12 +30,22 @@ struct MIMEPart: Equatable, Sendable {
     /// encoding but never charset-interpreted.
     var decodedData: Data?
     var filename: String?
+    /// This part's position in Mail's own IMAP-style (RFC 3501) body-part numbering: a
+    /// multipart container's immediate children are numbered `1, 2, 3…` in document
+    /// order, *including* nested container parts themselves (which consume a number
+    /// but produce no `MIMEPart` of their own); a child that is itself a `multipart/*`
+    /// container has its own children numbered `<parent>.1`, `<parent>.2`, …,
+    /// recursively. A non-multipart message's single part is `"1"`. This is the number
+    /// Mail's sibling `Attachments/<rowID>/<part>/` directory is keyed by (ADR-0048) -
+    /// not the flat index this array's own decode order carries, which diverges from
+    /// it as soon as any part nests or a non-attachment leaf precedes the attachment.
+    var partNumber: String
 
     static func == (lhs: MIMEPart, rhs: MIMEPart) -> Bool {
         lhs.kind == rhs.kind && lhs.contentType == rhs.contentType
             && lhs.headers.map(\.name) == rhs.headers.map(\.name)
             && lhs.headers.map(\.value) == rhs.headers.map(\.value)
             && lhs.decodedText == rhs.decodedText && lhs.decodedData == rhs.decodedData
-            && lhs.filename == rhs.filename
+            && lhs.filename == rhs.filename && lhs.partNumber == rhs.partNumber
     }
 }

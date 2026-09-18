@@ -29,6 +29,12 @@ extension VaultSession {
         /// Every note the batch carried, old path then new - what the facade needs to
         /// follow tabs and RECENTI, `renameFolder`'s own `movedNotes` shape.
         var movedNotes: [MovedNote] = []
+        /// Every folder the batch moved directly, old path then new - not its descendant
+        /// notes (those are `movedNotes` above). What `VaultController.didRelocateFolders`
+        /// hands to path-keyed feature state (Pratiche's ledger, ADR-0026 §D7) so a folder
+        /// relocation that carries a pratica along, whether the pratica itself or an
+        /// ancestor of it, does not silently orphan that state.
+        var movedFolders: [MovedNote] = []
         /// `VaultMoveBatch.Result.refused`'s reasons, verbatim, when the batch could not
         /// commit at all (ADR-0026 §D6, all-or-nothing) - empty on a successful batch.
         var refusals: [String] = []
@@ -141,6 +147,7 @@ extension VaultSession {
                             pendingNewStarredPaths.append(moved.new)
                         }
                         outcome.movedNotes.append(contentsOf: folder.movedNotes)
+                        outcome.movedFolders.append(MovedNote(old: move.item.path, new: folder.newPath))
                         report(folder.failures)
                     }
                 } catch {

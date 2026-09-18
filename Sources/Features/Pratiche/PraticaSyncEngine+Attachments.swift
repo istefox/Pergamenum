@@ -28,12 +28,15 @@ extension PraticaSyncEngine {
     /// and otherwise the `.emlx` container that really holds those bytes. Never a path
     /// this app has not looked at.
     ///
+    /// `part` is Mail's own IMAP-style body-part number (`MIMEPart.partNumber`,
+    /// ADR-0048) - a string because it can be `"1.2"`, not a flat array index.
+    ///
     /// Not `private`: `PraticaSyncEngine+Messages.swift`'s `prepare(_:request:reader:
     /// folder:)` is an extension of this actor in a separate file, and is this
     /// member's only caller.
-    static func storePath(of name: String, at emlxURL: URL, rowID: Int, part: Int) -> String {
+    static func storePath(of name: String, at emlxURL: URL, rowID: Int, part: String) -> String {
         let extracted = EMLXReader
-            .attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: "\(part)")
+            .attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: part)
             .appending(path: name, directoryHint: .notDirectory)
         let path = extracted.path(percentEncoded: false)
         return FileManager.default.fileExists(atPath: path) ? path : emlxURL.path(percentEncoded: false)

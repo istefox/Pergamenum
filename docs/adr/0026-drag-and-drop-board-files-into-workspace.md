@@ -236,6 +236,11 @@ The SPEC's "no new rewriting" section is right twice and incomplete once.
   arm covers a moved board that is itself a card, its `<old>/` prefix arm covers everything inside
   a moved folder, and its `writePath` substitution covers a board that moved as part of the folder
   being repointed. There is no third copy of that loop and this chain does not add one.
+- **Amended 2026-09-17** (pratica ledger orphaned by folder move/rename): a folder relocation also
+  publishes `MoveBatchOutcome.movedFolders` and triggers `VaultController.didRelocateFolders`, for a
+  move and for a rename alike, forward and through undo/redo — and path-keyed feature state
+  (Pratiche's ledger today) must subscribe to it rather than assume its own path is stable, the same
+  way `.canvas` node paths above must be repointed rather than left stale.
 
 ### §D8 — Undo is registered on the window's `UndoManager`, obtained from the SwiftUI
 ### environment and passed in as a parameter

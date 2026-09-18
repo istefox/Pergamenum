@@ -48,6 +48,10 @@ extension VaultController {
             for moved in outcome.movedNotes {
                 movedNote(from: moved.old, to: moved.new)
             }
+            // Covers renaming an *ancestor* folder (e.g. `01 Progetti` itself), which
+            // orphans a descendant pratica the same way a move does (ADR-0026 §D7) -
+            // `moveItems`' own `follow(_:)` hook does not run for a rename.
+            didRelocateFolders?([MovedNote(old: relativePath, new: outcome.newPath)])
             Task { await rescan() }
             return outcome.newPath
         } catch {

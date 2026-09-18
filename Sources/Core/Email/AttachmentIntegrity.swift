@@ -5,6 +5,12 @@ import Foundation
 // in `allegati/` as a zero-byte file - and two such attachments hash alike, so the second was
 // deduplicated onto the first one's name. Bytes are judged here, before anything hashes,
 // places or opens them.
+//
+// ADR-0048 (2026-09-17): "Mail had not finished downloading" is not the only reason these bytes
+// come back empty - Exchange sometimes externalizes an attachment permanently to Mail's own
+// sibling `Attachments/<rowID>/<part>/` directory and never writes it inline at all. `.empty`
+// still means exactly what it says about the *inline* bytes; `PraticaSyncEngine.resolveExternalized`
+// is what tries the sibling directory before this verdict turns into a pending retry.
 
 /// Whether an attachment's bytes are the file the sender attached, decided by magic bytes
 /// alone. Foundation only - no ImageIO, no `UTType`, no `NSWorkspace`: this file compiles

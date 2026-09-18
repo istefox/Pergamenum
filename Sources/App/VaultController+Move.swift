@@ -183,6 +183,12 @@ extension VaultController {
         for moved in outcome.movedNotes {
             movedNote(from: moved.old, to: moved.new)
         }
+        // The single choke point for both directions (§D8's own claim): this runs for
+        // a forward move and, unchanged, for `performInverse`'s undo/redo - so a moved
+        // pratica's ledger follows the same way back as it followed forward.
+        if !outcome.movedFolders.isEmpty {
+            didRelocateFolders?(outcome.movedFolders)
+        }
         Task { await rescan() }
     }
 

@@ -101,6 +101,13 @@ struct PraticaCommandActions {
     /// and follows every note it held out of the open tabs.
     func confirmDeletion(of pratica: PraticaListItem) {
         pratiche.deletionRequest = nil
+        // TODO: this never removes `pratica.id`'s ledger key (found during the
+        // pratica-ledger-orphaned-by-folder-move review, docs/plans/pg-pratica-ledger-
+        // orphaned-by-folder-move.md). Trashing a pratica and later recreating one with
+        // the same name would inherit its stale `importedMessageIDs` and re-skip
+        // messages that were never actually imported into the new folder. Real, but a
+        // separate defect from the move/rename orphaning this file fixes - not fixed
+        // here.
         guard vault.trashFolder(at: pratica.id) else { return }
         if pratiche.selection == pratica.id { pratiche.select(nil, in: vault) }
         pratiche.load(from: vault)
@@ -109,13 +116,14 @@ struct PraticaCommandActions {
     /// «Rinomina…», once a name has been typed. The folder rename repoints every
     /// canvas path that pointed inside it; the ledger follows the folder, since it is
     /// keyed by that path and a rename would otherwise lose the pratica's whole
-    /// import history.
+    /// import history - by the time `renameFolder` returns,
+    /// `VaultController.didRelocateFolders` has already run the generic remap
+    /// (ADR-0026 §D7), so this no longer calls `moveLedgerState` itself.
     func confirmRename(of pratica: PraticaListItem, to newName: String) {
         pratiche.renameRequest = nil
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != pratica.title else { return }
         guard let newPath = vault.renameFolder(at: pratica.id, to: trimmed) else { return }
-        pratiche.moveLedgerState(from: pratica.id, to: newPath, in: vault)
         if pratiche.selection == pratica.id {
             pratiche.select(newPath, in: vault)
         } else {
@@ -250,7 +258,7 @@ struct PraticaCommandActions {
             pratiche.report("«\(entry.subject)» non è più in Mail: non c'è nulla da cui rigenerarlo.")
             return
         }
-        pratiche.regeneration = .preparing(notePath: detail.notePath, subject: entry.subject)
+        pratiche.regeneration = .preparing(notePath: detail.notePath, subject: entry.subject, praticaPath: praticaPath)
         Task { await pratiche.prepareRegeneration?(praticaPath, messageID) }
     }
 
@@ -261,7 +269,13 @@ struct PraticaCommandActions {
     func confirmRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) {
         pratiche.regeneration = nil
         let trashed = files.trash(filesOf: plan.notePath)
-        guard !trashed.isEmpty else { return }
+        guard !trashed.isEmpty else {
+            // Nothing will ever call `commitRegeneration` for this attempt now, so
+            // nothing will call `recordSyncOutcome` either - release the claim here
+            // or it never releases (review round 2, MINOR 1/2).
+            pratiche.endRegeneration(plan.praticaFolder)
+            return
+        }
         Task {
             let succeeded = await pratiche.commitRegeneration?(plan) ?? false
             if !succeeded { files.restore(trashed) }
@@ -275,10 +289,20 @@ struct PraticaCommandActions {
     /// straight after imports it - "follows and imports", in that order, because the
     /// import reads the dossier from disk.
     func follow(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
+        // Round-5 review, `PG-168`'s third case: this first `updateDossier` write itself
+        // still uses the pre-await `praticaPath` with no relocation guard - only the
+        // SECOND use below, after the await, is guarded. Same narrow, accepted window.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.following(conversationID: proposal.conversationID, in: dossier)
         }
+        // Round-4 review, §6: re-read AFTER the `await` above, not the value captured
+        // before it - CLAUDE.md's "a precondition evaluated before an `await` is a
+        // filter, not a guard" applied literally. `pratiche.selection` is
+        // live-remapped by `moveLedgerState`, so a post-await read is exact and needs
+        // no redirect entry of its own; a stale `praticaPath` would dismiss the WRONG
+        // pratica's proposal and refresh a folder that no longer exists.
+        guard let praticaPath = pratiche.selection else { return }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
         await pratiche.refreshNow(praticaPath, in: vault)
     }
@@ -286,10 +310,13 @@ struct PraticaCommandActions {
     /// «Ignora»: one key of this pratica's own dossier, and nothing else - another
     /// pratica following the same counterpart still gets to propose it.
     func ignore(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
+        // Round-5 review, `PG-168`'s third case: same as `follow(_:)` above.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.ignoring(conversationID: proposal.conversationID, in: dossier)
         }
+        // Round-4 review, §6: same re-read as `follow(_:)` above, same reason.
+        guard let praticaPath = pratiche.selection else { return }
         pratiche.dismissTrayProposal(proposal.conversationID, for: praticaPath, in: vault)
     }
 

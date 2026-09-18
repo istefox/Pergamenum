@@ -81,6 +81,222 @@ extension PraticaSyncEngine {
         return (fileName, PreparedAttachment(fileName: fileName, bytes: bytes, digest: digest))
     }
 
+    // MARK: - Externalized attachments (ADR-0048)
+
+    /// What trying the sibling `Attachments/<rowID>/<part>/<name>` file (ADR-0048)
+    /// answered - tried only when the inline MIME payload's own
+    /// `AttachmentIntegrity` verdict is `.empty`. Never worse than today: a missing,
+    /// unreadable or itself-corrupt sibling file is `.unavailable`, which every
+    /// caller folds straight into its existing `pendingAttachmentNames` retry.
+    private enum ExternalizedResolution {
+        case unavailable
+        /// Read in full and re-verified in memory - ready for the same
+        /// threshold-check-then-`place` pipeline an inline attachment already uses.
+        case bytes(Data)
+        /// Verified on disk without a full read (`AttachmentIntegrity.verdict(ofFileAt:)`,
+        /// the same head/tail-window check an inline over-threshold `StoreReference`
+        /// already relies on) - never loaded whole just to record where it lives.
+        case overThreshold(size: Int, storePath: String)
+    }
+
+    /// Tries Mail's sibling `Attachments/<rowID>/<part>/` directory for a part whose
+    /// inline MIME payload decoded to zero bytes - Exchange's own storage
+    /// optimization for some attachments, permanent rather than "not yet downloaded"
+    /// (ADR-0048). `partNumber` is `MIMEPart.partNumber`, Mail's own IMAP-style
+    /// numbering - never a flat decode-order index, which diverges from it as soon as
+    /// the message nests a `multipart/alternative` or similar ahead of the part.
+    private static func resolveExternalized(
+        name: String,
+        contentType: String,
+        context: PrepareContext,
+        rowID: Int,
+        partNumber: String,
+        settings: PraticheSettings
+    ) -> ExternalizedResolution {
+        let url = EMLXReader
+            .attachmentsDirectory(forMessageAt: context.emlxURL, rowID: rowID, part: partNumber)
+            .appending(path: name, directoryHint: .notDirectory)
+        // `try?`, matching the "no permission prompt, no crash on a missing file"
+        // idiom `storePath` already uses: a sibling file that simply is not there is
+        // the common, expected case, not a diagnostic.
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0
+        else { return .unavailable }
+
+        if size > Self.thresholdBytes(settings) {
+            guard AttachmentIntegrity.verdict(ofFileAt: url, named: name) == .usable
+            else { return .unavailable }
+            return .overThreshold(
+                size: size,
+                storePath: Self.storePath(of: name, at: context.emlxURL, rowID: rowID, part: partNumber)
+            )
+        }
+
+        guard let bytes = try? Data(contentsOf: url),
+              AttachmentIntegrity.verdict(of: bytes, named: name, contentType: contentType) == .usable
+        else { return .unavailable }
+        return .bytes(bytes)
+    }
+
+    // MARK: - Per-part resolution (ADR-0045 shape: pulled out of `decodeBody`'s loop
+    // body so the loop itself stays under SwiftLint's complexity/length error
+    // thresholds - ADR-0048 added a second lookup, `resolveExternalized`, inline into
+    // both switch cases and that alone crossed both. No behavior changes: each helper
+    // is the exact code that used to sit in its `case`, unchanged statement for
+    // statement, only the effects (`writes`/`links`/`storeReferences`/
+    // `pendingAttachmentNames` for attachments; `body`/`inlineResolutions`/
+    // `inlineContentIDByOrdinal` for inline images) are now returned instead of
+    // mutated in place, since those accumulators are shared across every part in the
+    // loop and don't belong on either helper.
+
+    /// The three per-message values `resolveAttachment` and `resolveInlineImage` both
+    /// need and neither ever changes across a single `decodeBody` call - bundled so
+    /// each helper stays at 5-7 parameters instead of crossing SwiftLint's
+    /// `function_parameter_count` error threshold of 8 (`resolveInlineImage` alone
+    /// would otherwise need `context`, `request` and `row` on top of its own four).
+    private struct DecodedPartContext {
+        var context: PrepareContext
+        var request: SyncRequest
+        var row: MailMessageRow
+    }
+
+    /// What `decodeBody` does with one `.attachment` part, once resolved.
+    private enum AttachmentResolution {
+        case placed(write: PreparedAttachment?, link: String)
+        case storeReference(MessageDocument.StoreReference)
+        case pending(name: String)
+    }
+
+    /// The `.attachment` case's full resolution: inline bytes first, the sibling
+    /// `Attachments/` directory second (ADR-0048) when the inline payload is
+    /// `.empty`, threshold check, then `place` - identical order and identical
+    /// verdict handling to before this was pulled out of `decodeBody`.
+    private static func resolveAttachment(
+        filename: String?,
+        part: MIMEPart,
+        decoding: DecodedPartContext,
+        attachmentNameByDigest: inout [String: String],
+        takenAttachmentNames: inout Set<String>
+    ) -> AttachmentResolution {
+        let name = filename ?? Self.unnamedAttachment
+        let inlineBytes = part.decodedData ?? Data()
+        // ADR-0040 §D2/§D3, R-01/R-02/R-12: the verdict is taken once, before the
+        // threshold comparison, and governs both the copy branch and the
+        // store-reference branch (R-07, Task 5) - never place, never digest, never a
+        // `StoreReference`, for anything but `.usable`.
+        let verdict = AttachmentIntegrity.verdict(
+            of: inlineBytes, named: name, contentType: part.contentType
+        )
+        var resolvedBytes: Data?
+        switch verdict {
+        case .usable:
+            resolvedBytes = inlineBytes
+        case .empty:
+            // ADR-0048: an inline payload that decodes to zero bytes is not
+            // necessarily "not yet downloaded" - Exchange routinely externalizes the
+            // part to the sibling `Attachments/` directory instead, permanently, with
+            // nothing left inline. Tried once, before conceding the name to the
+            // pending list below.
+            switch Self.resolveExternalized(
+                name: name, contentType: part.contentType, context: decoding.context,
+                rowID: decoding.row.rowID, partNumber: part.partNumber, settings: decoding.request.settings
+            ) {
+            case .unavailable:
+                break
+            case .bytes(let bytes):
+                resolvedBytes = bytes
+            case .overThreshold(let size, let storePath):
+                return .storeReference(
+                    MessageDocument.StoreReference(name: name, size: size, storePath: storePath)
+                )
+            }
+        case .signatureMismatch, .truncated:
+            break
+        }
+        guard let bytes = resolvedBytes else {
+            return .pending(
+                name: PraticaNaming.attachmentFileName(date: decoding.context.calendarDate, name: name)
+            )
+        }
+        if bytes.count > Self.thresholdBytes(decoding.request.settings) {
+            // R-10: recorded where it really lives, never copied.
+            return .storeReference(MessageDocument.StoreReference(
+                name: name,
+                size: bytes.count,
+                storePath: Self.storePath(
+                    of: name, at: decoding.context.emlxURL, rowID: decoding.row.rowID, part: part.partNumber
+                )
+            ))
+        }
+        let placed = Self.place(
+            bytes, named: name, date: decoding.context.calendarDate,
+            nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
+        )
+        return .placed(write: placed.write, link: placed.fileName)
+    }
+
+    /// What `decodeBody` does with one `.inlineImage` part, once resolved. Unlike
+    /// `AttachmentResolution`, applying this one also rewrites `body` - the caller
+    /// keeps that mutation, since `body` is shared across every part in the loop.
+    private enum InlineImageResolution {
+        /// ADR-0042 §D5 (R-03): the body never mentions this id at all - no
+        /// placeholder, no pending entry, no retry state.
+        case notReferenced
+        case deferred(token: String)
+        case droppedAsDecorative
+        case embedded(write: PreparedAttachment?, fileName: String)
+    }
+
+    /// The `.inlineImage` case's full resolution, `body` read but not mutated here
+    /// (see `InlineImageResolution`'s doc comment) - same verdict handling, same
+    /// narrower ADR-0048 scope (no over-threshold path) as before this was pulled out.
+    private static func resolveInlineImage(
+        contentID: String,
+        part: MIMEPart,
+        ordinal: Int,
+        body: String,
+        decoding: DecodedPartContext,
+        attachmentNameByDigest: inout [String: String],
+        takenAttachmentNames: inout Set<String>
+    ) -> InlineImageResolution {
+        let inlineBytes = part.decodedData ?? Data()
+        let name = part.filename ?? "\(contentID).png"
+        // ADR-0040 §D9: integrity first, `isDecorative` second - a corrupt image's
+        // dimensions are unreadable, so `isDecorative` would already answer `false`
+        // (its own "never drop on a guess" rule) and place it.
+        let verdict = AttachmentIntegrity.verdict(
+            of: inlineBytes, named: name, contentType: part.contentType
+        )
+        var resolvedBytes: Data?
+        switch verdict {
+        case .usable:
+            resolvedBytes = inlineBytes
+        case .empty:
+            // ADR-0048, smaller scope than the attachment case above: no
+            // over-threshold path exists for an inline image, so an externalized one
+            // that happens to be oversized is treated the same as unavailable rather
+            // than growing a new store-reference shape this feature has never needed
+            // for inline pictures.
+            if case .bytes(let bytes) = Self.resolveExternalized(
+                name: name, contentType: part.contentType, context: decoding.context,
+                rowID: decoding.row.rowID, partNumber: part.partNumber, settings: decoding.request.settings
+            ) {
+                resolvedBytes = bytes
+            }
+        case .signatureMismatch, .truncated:
+            break
+        }
+        guard let bytes = resolvedBytes else {
+            guard MessageInlineImage.referencesContentID(contentID, in: body) else { return .notReferenced }
+            return .deferred(token: MessageInlineImage.deferralToken(forPart: ordinal))
+        }
+        guard !InlineImageClassifier.isDecorative(bytes) else { return .droppedAsDecorative }
+        let placed = Self.place(
+            bytes, named: name, date: decoding.context.calendarDate,
+            nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
+        )
+        return .embedded(write: placed.write, fileName: placed.fileName)
+    }
+
     /// Everything `resolveContext` reads or computes once from `row`/`reader`, so
     /// `decodeBody` and `prepare` itself don't each recompute it (ADR-0045 Task 4:
     /// `prepare`'s own body, split along its existing comment blocks to clear the
@@ -204,81 +420,48 @@ extension PraticaSyncEngine {
         } else {
             let parts = MIMEDecoder.decode(context.container.rfc822)
             var body = Self.bodyText(of: parts)
+            let decoding = DecodedPartContext(context: context, request: request, row: row)
             for (ordinal, part) in parts.enumerated() {
                 switch part.kind {
                 case .attachment(let filename):
-                    let name = filename ?? Self.unnamedAttachment
-                    let bytes = part.decodedData ?? Data()
-                    // ADR-0040 §D2/§D3, R-01/R-02/R-12: the verdict is taken once, before
-                    // the threshold comparison, and governs both the copy branch and the
-                    // store-reference branch (R-07, Task 5) - never place, never digest,
-                    // never a `StoreReference`, for anything but `.usable`.
-                    let verdict = AttachmentIntegrity.verdict(
-                        of: bytes, named: name, contentType: part.contentType
-                    )
-                    guard verdict == .usable else {
-                        pendingAttachmentNames.append(
-                            PraticaNaming.attachmentFileName(date: context.calendarDate, name: name)
-                        )
-                        continue
+                    switch Self.resolveAttachment(
+                        filename: filename, part: part, decoding: decoding,
+                        attachmentNameByDigest: &attachmentNameByDigest, takenAttachmentNames: &takenAttachmentNames
+                    ) {
+                    case .placed(let write, let link):
+                        if let write { writes.append(write) }
+                        links.append(link)
+                    case .storeReference(let reference):
+                        storeReferences.append(reference)
+                    case .pending(let name):
+                        pendingAttachmentNames.append(name)
                     }
-                    if bytes.count > Self.thresholdBytes(request.settings) {
-                        // R-10: recorded where it really lives, never copied.
-                        storeReferences.append(MessageDocument.StoreReference(
-                            name: name,
-                            size: bytes.count,
-                            storePath: Self.storePath(
-                                of: name, at: context.emlxURL, rowID: row.rowID, part: ordinal + 1
-                            )
-                        ))
-                        continue
-                    }
-                    let placed = Self.place(
-                        bytes, named: name, date: context.calendarDate,
-                        nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
-                    )
-                    if let write = placed.write { writes.append(write) }
-                    links.append(placed.fileName)
 
                 case .inlineImage(let contentID):
-                    let bytes = part.decodedData ?? Data()
-                    let name = part.filename ?? "\(contentID).png"
-                    // ADR-0040 §D9: integrity first, `isDecorative` second - a corrupt
-                    // image's dimensions are unreadable, so `isDecorative` would already
-                    // answer `false` (its own "never drop on a guess" rule) and place it.
-                    let verdict = AttachmentIntegrity.verdict(
-                        of: bytes, named: name, contentType: part.contentType
-                    )
-                    guard verdict == .usable else {
-                        // ADR-0042 §D5 (R-03): a body that never mentions this id (most
-                        // often the `text/plain` alternative, which the HTML alternative's
-                        // `cid:` embeds never appear in) gets no placeholder, no pending
-                        // entry, no retry state at all - never a phantom "In attesa" pill
-                        // for a picture nobody will ever miss reading the note.
-                        guard MessageInlineImage.referencesContentID(contentID, in: body) else { continue }
-                        let token = MessageInlineImage.deferralToken(forPart: ordinal)
+                    switch Self.resolveInlineImage(
+                        contentID: contentID, part: part, ordinal: ordinal, body: body, decoding: decoding,
+                        attachmentNameByDigest: &attachmentNameByDigest,
+                        takenAttachmentNames: &takenAttachmentNames
+                    ) {
+                    case .notReferenced:
+                        continue
+                    case .deferred(let token):
                         body = MessageInlineImage.replacingReferences(to: contentID, in: body, with: token)
                         inlineContentIDByOrdinal[ordinal] = contentID
-                        continue
-                    }
-                    guard !InlineImageClassifier.isDecorative(bytes) else {
+                    case .droppedAsDecorative:
                         // R-10: a signature logo is not an attachment. The reference
                         // goes with it, or the body keeps a `cid:` pointing nowhere.
                         body = MessageInlineImage.replacingReferences(to: contentID, in: body, with: "")
                         inlineResolutions[contentID] = .dropped
-                        continue
+                    case .embedded(let write, let fileName):
+                        if let write { writes.append(write) }
+                        // Embedded rather than listed: an inline image belongs where
+                        // the sender put it (SPEC "Edge cases").
+                        body = MessageInlineImage.replacingReferences(
+                            to: contentID, in: body, with: "![[\(fileName)]]"
+                        )
+                        inlineResolutions[contentID] = .embedded(fileName: fileName)
                     }
-                    let placed = Self.place(
-                        bytes, named: name, date: context.calendarDate,
-                        nameByDigest: &attachmentNameByDigest, taken: &takenAttachmentNames
-                    )
-                    if let write = placed.write { writes.append(write) }
-                    // Embedded rather than listed: an inline image belongs where the
-                    // sender put it (SPEC "Edge cases").
-                    body = MessageInlineImage.replacingReferences(
-                        to: contentID, in: body, with: "![[\(placed.fileName)]]"
-                    )
-                    inlineResolutions[contentID] = .embedded(fileName: placed.fileName)
 
                 case .textPlain, .textHTML:
                     continue

@@ -16,14 +16,19 @@ enum MIMEDecoder {
     /// (text/plain, text/html, inline `Content-ID`, attachment). A non-multipart
     /// message is returned as exactly one part.
     static func decode(_ rfc822: Data) -> [MIMEPart] {
-        parts(of: rfc822, depth: 0)
+        parts(of: rfc822, depth: 0, numberPrefix: "")
     }
 
     /// A `multipart/*` nested deeper than this is either a loop or an attack; real mail
     /// stops at three or four (`mixed` › `related` › `alternative`).
     private static let maximumDepth = 12
 
-    private static func parts(of message: Data, depth: Int) -> [MIMEPart] {
+    /// `numberPrefix` is RFC 3501's own running body-part number: empty at the root
+    /// call, `"1"`/`"2"`/… inside a top-level multipart's children, `"1.1"`/`"1.2"`/…
+    /// inside a nested one, and so on - a container consumes a slot in its parent's
+    /// numbering (`bodies(of:boundary:)`'s index below) but is never itself a
+    /// `MIMEPart`, exactly as `flatMap` already dropped it before this field existed.
+    private static func parts(of message: Data, depth: Int, numberPrefix: String) -> [MIMEPart] {
         guard depth <= maximumDepth else { return [] }
 
         let split = splitHeaders(message)
@@ -36,9 +41,22 @@ enum MIMEDecoder {
 
         if base.hasPrefix("multipart/"), let boundary = parameter("boundary", of: contentType) {
             return bodies(of: split.body, boundary: boundary)
-                .flatMap { parts(of: $0, depth: depth + 1) }
+                .enumerated()
+                .flatMap { index, childBody in
+                    parts(of: childBody, depth: depth + 1, numberPrefix: childNumber(numberPrefix, index + 1))
+                }
         }
-        return [leaf(headers: headers, contentType: base, body: split.body)]
+        // RFC 3501's convention for a message whose top level is not multipart at all:
+        // its one part is `"1"`, never the empty prefix a root call starts with.
+        return [leaf(
+            headers: headers, contentType: base, body: split.body,
+            partNumber: numberPrefix.isEmpty ? "1" : numberPrefix
+        )]
+    }
+
+    /// One-based: `childNumber("", 2) == "2"`, `childNumber("1", 2) == "1.2"`.
+    private static func childNumber(_ numberPrefix: String, _ index: Int) -> String {
+        numberPrefix.isEmpty ? "\(index)" : "\(numberPrefix).\(index)"
     }
 
     // MARK: - One leaf part
@@ -46,7 +64,8 @@ enum MIMEDecoder {
     private static func leaf(
         headers: [(name: String, value: String)],
         contentType: String,
-        body: Data
+        body: Data,
+        partNumber: String
     ) -> MIMEPart {
         let disposition = value(of: "content-disposition", in: headers) ?? ""
         let transferEncoding = value(of: "content-transfer-encoding", in: headers)
@@ -85,7 +104,8 @@ enum MIMEDecoder {
             // A TNEF `winmail.dat` is carried through exactly as it arrived: this app
             // does not decode TNEF, and half-decoding it would lose the file.
             decodedData: isText ? nil : decodeBytes(body, transferEncoding: transferEncoding),
-            filename: filename
+            filename: filename,
+            partNumber: partNumber
         )
     }
 

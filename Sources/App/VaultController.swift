@@ -120,6 +120,14 @@ final class VaultController {
     var watcher: VaultWatcher?
     var store: NoteStore? { session?.store }
 
+    /// Wired once by `PergamenumApp.init`, after `PraticheController` exists - never a
+    /// view's own state, which is why it is `@ObservationIgnored`. A folder relocation
+    /// (move or rename, forward and inverse alike, since both go through `follow(_:)`)
+    /// hands its old/new paths here so path-keyed feature state - Pratiche's ledger
+    /// today (ADR-0026 §D7) - can follow rather than silently orphan. `nil` in every
+    /// test that builds a bare `VaultController`, and the moves just go unfollowed.
+    @ObservationIgnored var didRelocateFolders: (([MovedNote]) -> Void)?
+
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()
