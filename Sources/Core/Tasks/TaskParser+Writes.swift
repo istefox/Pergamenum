@@ -148,6 +148,21 @@ extension TaskParser {
         return line.trimmingTrailingWhitespace() + " ^[[\(workspacePath)]]"
     }
 
+    /// Assigns a `^id` to a task that has none yet (ADR-0021 D1/D2, ADR-0049 §D3):
+    /// appended once, at the end of the line, the shape `assigningWorkspace` already
+    /// has. A task that already carries an `^id` is returned **unchanged** - the
+    /// caller decides the new id, through `nextLocalID(in:)`, before calling this, and
+    /// this never invents a second one for a task that already has one.
+    ///
+    /// The staleness guard is `rewrite(_:at:expecting:with:)`'s own, the same one
+    /// `insertingSubtask(in:below:draft:)` applies: the caller rewrites with
+    /// `expecting: task.rawLine`, so a note that moved on under the caller's feet
+    /// refuses rather than overwriting the wrong line.
+    static func line(for task: TaskItem, assigningLocalID localID: Int) -> String {
+        guard task.localID == nil else { return task.rawLine }
+        return task.rawLine.trimmingTrailingWhitespace() + " ^id(\(localID))"
+    }
+
     /// The whole `^[[<name>.canvas]]` marker, caret included, so removing one leaves no
     /// stranded `^` behind - the same reason `markerRange(in:prefix:)` returns the hour
     /// along with the date.

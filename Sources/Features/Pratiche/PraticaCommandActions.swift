@@ -50,7 +50,7 @@ struct PraticaCommandActions {
     func commands(for detail: PraticaRowDetail?) -> [MessageCommand] {
         let hasAttachments = !(detail?.attachments.isEmpty ?? true)
             || !(detail?.storeReferences.isEmpty ?? true)
-        return MessageCommand.available(hasAttachments: hasAttachments)
+        return MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: detail?.linkedNote != nil)
     }
 
     /// Where «Sposta in…» and «Aggiungi anche a…» may send a message: every other
@@ -79,6 +79,8 @@ struct PraticaCommandActions {
             NSWorkspace.shared.activateFileViewerSelecting([
                 root.appending(path: pratica.id, directoryHint: .isDirectory),
             ])
+        case .linkNote, .linkTask, .linkBoard:
+            requestLink(command, for: pratica)
         case .delete:
             pratiche.deletionRequest = pratica
         }
@@ -154,6 +156,8 @@ struct PraticaCommandActions {
             Task { @MainActor in await exclude(entry, detail: detail) }
         case .regenerate:
             requestRegeneration(of: entry, detail: detail)
+        case .linkNote, .unlinkNote:
+            handleNoteLink(command, entry: entry, detail: detail)
         case .moveTo, .alsoAddTo:
             break
         }
@@ -363,7 +367,10 @@ struct PraticaCommandActions {
 
     /// Which pratica a row belongs to: the folder its file sits in, never the current
     /// selection alone - a command invoked from a row is about that row.
-    private func praticaPath(detail: PraticaRowDetail?) -> String? {
+    ///
+    /// Not `private` (ADR-0045 §D2): `PraticaCommandActions+Links.swift`'s
+    /// `handleNoteLink` calls it too, and `private` is file-scoped.
+    func praticaPath(detail: PraticaRowDetail?) -> String? {
         guard let notePath = detail?.notePath,
               let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/")
         else { return pratiche.selection }
@@ -372,7 +379,10 @@ struct PraticaCommandActions {
 
     /// Re-reads what the writes above changed. The index is asked to rescan too,
     /// because files came and went and the list column counts them.
-    private func reload() {
+    ///
+    /// Not `private` (ADR-0045 §D2): `PraticaCommandActions+Links.swift`'s
+    /// `updateLinks` calls this too, and `private` is file-scoped.
+    func reload() {
         pratiche.reloadTimeline(from: vault)
         Task { await vault.rescan() }
     }

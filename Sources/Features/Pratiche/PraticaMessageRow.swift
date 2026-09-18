@@ -87,7 +87,23 @@ struct PraticaMessageRow: View {
                 .lineLimit(1)
             subject
             attachments
+            noteIndicator
             Spacer(minLength: 0)
+        }
+    }
+
+    /// R-05: drawn only when this message carries a link at all - `PraticaMessageNoteSlot`
+    /// in the timeline's own aligned column is what shows where it resolves to; this is
+    /// only the fact that one exists, direction's own third and fourth carriers already
+    /// spoken for (R-25).
+    @ViewBuilder
+    private var noteIndicator: some View {
+        if detail?.linkedNote != nil {
+            Image(systemName: "link")
+                .themedText(.caption, color: .textSecondary)
+                .help("Nota collegata")
+                .accessibilityLabel("Nota collegata")
+                .accessibilityIdentifier("pratiche-message-note-indicator-\(Self.hash(of: entry))")
         }
     }
 
@@ -232,6 +248,7 @@ struct PraticaMessageRow: View {
         ]
         let count = (detail?.attachments.count ?? 0) + (detail?.storeReferences.count ?? 0)
         if count > 0 { parts.append(count == 1 ? "1 allegato" : "\(count) allegati") }
+        if detail?.linkedNote != nil { parts.append("nota collegata") }
         if isPending { parts.append("corpo non ancora scaricato") }
         parts.append(isExpanded ? "espansa" : "compressa")
         return parts.joined(separator: ", ")

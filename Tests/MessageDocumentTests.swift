@@ -152,6 +152,53 @@ import Testing
         #expect(parsed.frontmatter.pendingInlineImages.isEmpty)
     }
 
+    // MARK: - ADR-0049 §D6: `pergamenum-mail-note`
+
+    @Test func rendersThePergamenumMailNoteKeyBetweenInlinePendingAndStoreReferences() {
+        var document = Self.sampleDocument()
+        document.frontmatter.pendingInlineImages = ["image001.png@01DA5C3E"]
+        document.frontmatter.linkedNote = "[[Offerta 2026]]"
+        document.frontmatter.storeReferences = [
+            MessageDocument.StoreReference(
+                name: "big.zip", size: 157_286_400,
+                storePath: "/Users/stefano/Labs/Attachments/2026/big.zip"
+            )
+        ]
+        let text = MessageDocument.render(document, tags: [Tag("type-note")!])
+        #expect(text.contains("pergamenum-mail-note: \"[[Offerta 2026]]\""))
+
+        let lines = text.components(separatedBy: "\n")
+        let inlinePendingIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.inlinePendingKey + ":") })
+        let noteIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.noteKey + ":") })
+        let storeReferencesIndex = lines.firstIndex(where: { $0.hasPrefix(MessageDocument.storeReferencesKey + ":") })
+        #expect(inlinePendingIndex != nil)
+        #expect(noteIndex != nil)
+        #expect(storeReferencesIndex != nil)
+        #expect(inlinePendingIndex! < noteIndex!)
+        #expect(noteIndex! < storeReferencesIndex!)
+    }
+
+    @Test func omitsThePergamenumMailNoteKeyWhenThereIsNoLink() {
+        let text = MessageDocument.render(Self.sampleDocument(), tags: [Tag("type-note")!])
+        #expect(!text.contains(MessageDocument.noteKey))
+    }
+
+    @Test func roundTripsTheLinkedNoteThroughParse() throws {
+        var original = Self.sampleDocument()
+        original.frontmatter.linkedNote = "[[Offerta 2026]]"
+        let text = MessageDocument.render(original, tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.linkedNote == original.frontmatter.linkedNote)
+    }
+
+    /// A message file written before this feature carries no `pergamenum-mail-note`
+    /// key at all - it must still parse, with `linkedNote` reading back `nil`.
+    @Test func aFileWrittenBeforeThisFeatureStillParsesWithNoLinkedNote() throws {
+        let text = MessageDocument.render(Self.sampleDocument(), tags: [Tag("type-note")!])
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.linkedNote == nil)
+    }
+
     // MARK: - R-12: direction and counterpart
 
     private static let ownAddresses: Set<String> = ["stefano@stefer.it"]

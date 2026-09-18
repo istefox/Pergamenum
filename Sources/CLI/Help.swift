@@ -80,6 +80,23 @@ enum Help {
                            telefonate come stanno nella cartella
                            legge solo i file della pratica e il registro del vault: non
                            apre mai l'archivio di Mail e non avvia nessuna sincronizzazione
+      pratica links <titolo|percorso>
+                           le tre relazioni generali - note, task, board - con lo stato
+                           di ognuna: risolta, ambigua o non trovata (ADR-0049)
+      pratica link-note|unlink-note <pratica> <titolo>
+      pratica link-board|unlink-board <pratica> <board>
+      pratica link-task|unlink-task <pratica> <task>
+                           collega o scollega una nota, una board o un task già
+                           esistenti; --dry-run mostra il diff senza scrivere
+      pratica create-note <pratica> <titolo>    [--folder <cartella>]
+      pratica create-task <pratica> <testo>
+      pratica create-board <pratica> <nome>     [--folder <cartella>]
+                           crea la nota, il task o la board e poi la collega, in
+                           quest'ordine
+      message link-note|unlink-note <percorso-messaggio> [<titolo>]
+      message create-note <percorso-messaggio> <titolo>
+                           la relazione 0/1 di un singolo messaggio: collegarne una
+                           seconda sostituisce la prima invece di aggiungersi
 
     INDICE
       index stats          quante note, quanti task, quanto ha impiegato la scansione

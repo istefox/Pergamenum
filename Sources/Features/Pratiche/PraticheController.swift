@@ -73,6 +73,14 @@ final class PraticheController {
     /// every one of those pure functions carry a payload none of them reads.
     var details: [String: PraticaRowDetail] = [:]
 
+    /// ADR-0049 (pratica/message links), Task 5 - R-04: the selected pratica's own
+    /// links, parsed but not resolved (resolution happens where it is drawn,
+    /// `PratichePane+Links.swift`'s own rule, since it costs an index lookup and
+    /// nothing more). Loaded by `reloadTimeline(from:)`, the same beat `timeline`/
+    /// `details` are - which is also what `PraticaCommandActions.reload()` calls
+    /// after every link write, so a write refreshes this for free.
+    var links: PraticaLinks = .empty
+
     /// The three toolbar filters (R-32).
     var filter = PraticaTimelineFilter()
 
@@ -276,5 +284,27 @@ final class PraticheController {
             if seen.insert(address.lowercased()).inserted { ordered.append(address) }
         }
         return ordered.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// R-06: the inspector's aggregate "note collegate" list - `links.notes` plus
+    /// every message's own `linkedNote` (`details[...].linkedNote`), unioned and
+    /// de-duplicated by title. `details` is a dictionary, so its iteration order is
+    /// not stable; a title reached only through a message is appended after the
+    /// general ones, sorted, and each row's `messagePaths` is sorted too - both for
+    /// the same reason, a deterministic result rather than one that happens to match
+    /// on a given run.
+    var aggregatedNoteLinks: [PraticaAggregatedNoteLink] {
+        var messagePathsByTitle: [String: [String]] = [:]
+        var messageOnlyTitles: Set<String> = []
+        for detail in details.values {
+            guard let raw = detail.linkedNote, case let .wikilink(title)? = PraticaLinkReference(parsing: raw)
+            else { continue }
+            messagePathsByTitle[title, default: []].append(detail.notePath)
+            if !links.notes.contains(title) { messageOnlyTitles.insert(title) }
+        }
+        let order = links.notes + messageOnlyTitles.sorted()
+        return order.map { title in
+            PraticaAggregatedNoteLink(title: title, messagePaths: (messagePathsByTitle[title] ?? []).sorted())
+        }
     }
 }

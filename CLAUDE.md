@@ -411,6 +411,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0046** — Batch rename/move write guard, follow-up to ADR-0043 §D8: `VaultPlanApplication.Outcome`/`TagRenameOutcome`/`NoteFileOperations.Outcome` gain a `refusals` channel distinct from `failures`, driven by the existing opt-in `expecting:` hash precondition at all four batch writer closures; no preflight pass, the loop never stops on a refusal → `docs/adr/0046-batch-rename-stale-write-refusals.md`
 - **ADR-0047** — Task categories as a registry in the vault (`.pergamenum/categories.json`, `#project-<slug>` stays the pointer, `IndexCache.schemaVersion` 3 → 4) plus the end of the Obsidian round-trip as a binding constraint: amends `CLAUDE.md` principle 4 and SPEC §14, no on-disk format changes, eleven prior ADRs (0009, 0010, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025, 0027) gain a head scope note with their bodies untouched → `docs/adr/0047-task-categories-and-the-end-of-the-obsid.md`
 - **ADR-0048** — A part whose inline MIME payload decodes to zero bytes is not always "not yet downloaded": Exchange sometimes externalizes it permanently to Mail's own sibling `Attachments/<ROWID>/<part>/` directory instead. `MIMEPart` gains a real RFC 3501 (IMAP-style) `partNumber`, closing a pre-existing flat-index bug in `storePath` for free; `decodeBody` tries the sibling file through the exact same integrity/threshold/place pipeline an inline attachment already uses before conceding to ADR-0040's pending retry. Amends ADR-0040 §D2, widens SPEC R-10 → `docs/adr/0048-externalized-attachments-resolved-from-sibling-directory.md`
+- **ADR-0049** — A pratica links to notes, tasks and boards: three foreign `pergamenum-dossier-links-*` keys on `pratica.md`, kept out of `Dossier` on purpose so `Dossier.merging`'s own C4 rule cannot erase them; every reference is written as a wikilink (`[[Titolo]]`, `[[Nome.canvas]]`, `[[Nota]] ^id(3)`), which is what makes R-07 (rename-safe) free through the note/board rename passes that already rewrite every `[[…]]`. One resolver (`PraticaLinkResolver`) answers `unique`/`ambiguous`/`missing` for all four relations by delegating to the two resolvers that already exist; nothing is cached (`IndexCache.schemaVersion` stays 4), a link is always read off the file that owns it. `PraticaCommand`/`MessageCommand` gain link/unlink verbs and one new picker, `PraticaLinkPicker`; the inspector gains three read-only sections (R-04, R-06) and the timeline gains a per-row aligned column (R-05) that never switches the inspector's own content (R-09). The write door reuses `DossierWriter`'s `expecting:` precondition shape. The connector gets one new file, `Sources/Connector/VaultPraticheLinks.swift`, read and write, translated by both front ends → `docs/adr/0049-pratiche-links-to-notes-tasks-and-boards.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 
@@ -606,5 +607,30 @@ already lives in the Chain decision index above.
   asks for rather than applied silently. `CanvasTests.roundTripsAnObsidianCanvas`
   and its siblings are untouched and stay green — they pin the JSON Canvas format, not a
   compatibility gate → `docs/adr/0047-task-categories-and-the-end-of-the-obsid.md`
+- **ADR-0049 (a pratica links to notes, tasks and boards):** three keys,
+  `pergamenum-dossier-links-{notes,tasks,boards}`, live in a new type, `PraticaLinks`, kept
+  foreign to `Dossier` on purpose (§D1) — a key `Dossier` owned would be a key
+  `Dossier.merging`'s own C4 rule erases the next time `DossierWriter.update` runs a sync write,
+  and `Dossier.render` (protected) is never touched. Every reference is written as a wikilink —
+  `[[Titolo]]`, `[[Nome.canvas]]`, `[[Nota]] ^id(3)`, and `pergamenum-mail-note: "[[Titolo]]"` on
+  a message file — which is what makes R-07 (rename-safe) free through the note and board rename
+  passes that already rewrite every `[[…]]` (§D2); the bare-title and vault-relative-path
+  alternatives were rejected for reasons named in §D2. `IndexCache.schemaVersion` stays at 4 (§D4)
+  — a link is read off the file that owns it every time, never off `NoteRecord.frontmatter
+  .foreignKeys`, which is empty on a cache-reused record. One resolver, `PraticaLinkResolver`,
+  answers `unique`/`ambiguous`/`missing` for all four relations by delegating to
+  `WorkspaceBoardResolver` and `IndexSnapshot.resolve(title:)`, candidates passed in rather than
+  fetched (§D5). «Rigenera» patches `prepared.noteText` (not `replacementText`) before the diff
+  is computed, so the link survives a regeneration (§D7) — the ADR-0036 §D21 trap this repo has
+  already paid for once. The timeline's per-message column is a fixed-width slot inside the
+  existing row's own `HStack`, the lane's 70% computed on `width - gutter` because
+  `containerRelativeFrame` resolves against the scroll container regardless of nesting (§D8); the
+  slot is read-only and opens the note in the editor rather than binding a second live text view
+  to it, and the inspector never switches on timeline-row selection (§D9, R-09). `PraticaCommand`/
+  `MessageCommand` gain link/unlink verbs and one new picker, `PraticaLinkPicker`, modelled on
+  `WorkspacePicker` rather than reusing `QuickSwitcher` (§D10). The write door mirrors
+  `DossierWriter.update`'s read-modify-write-with-`expecting:` shape (§D11). The connector gains
+  one new file, `Sources/Connector/VaultPraticheLinks.swift`, read and write, translated by both
+  front ends; `VaultAPI.PraticaSummary` (protected) is untouched (§D12) → `docs/adr/0049-pratiche-links-to-notes-tasks-and-boards.md`
 
 Detail: see each ADR under `docs/adr/`.

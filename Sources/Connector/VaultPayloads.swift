@@ -290,8 +290,9 @@ extension VaultAPI {
         let entries: [Entry]
 
         /// `{ kind: message|note|call, date, direction, from, subject, attachments,
-        /// body }`, in the SPEC's own field order. `direction`/`from` are `nil` for a
-        /// manual entry (`.note`/`.call`), which carries neither.
+        /// body, linkedNote }`, in the SPEC's own field order. `direction`/`from`/
+        /// `linkedNote` are `nil` for a manual entry (ADR-0049 §D12: links cover
+        /// email rows only).
         struct Entry: Encodable {
             let kind: String
             let date: String
@@ -300,8 +301,11 @@ extension VaultAPI {
             let subject: String
             let attachments: [String]
             let body: String
+            let linkedNote: PraticaLinkTarget?
         }
     }
+
+    // `PraticaLinkTarget`/`PraticaLinksPayload` (ADR-0049 §D12) live in `VaultPraticheLinks.swift`.
 }
 
 // MARK: - Le viste (ADR-0009)

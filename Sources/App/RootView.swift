@@ -9,13 +9,17 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeEngine.self) private var engine
-    /// Optional, which is the shape a macOS sidebar `List` expects: with a
-    /// non-optional binding SwiftUI writes the focused row back over the initial
-    /// value, so the window opened on an arbitrary pane.
-    @Environment(VaultController.self) private var vault
+    // Not `private`: `RootView+Sheets.swift`'s `withSheets(_:)` builds a
+    // `PraticaCommandActions` for `PraticaLinkPicker` (ADR-0049 §D10) and reads this
+    // too (ADR-0045's own rule for a split that needs it - one comment naming the
+    // file that reads it).
+    @Environment(VaultController.self) var vault
     // Not `private`: `RootView+Sheets.swift`'s `withSheets(_:)` reads it too (ADR-0045's
     // own rule for a split that needs it - one comment naming the file that reads it).
     @Environment(Navigation.self) var navigation
+    /// `PraticaLinkPicker`'s own `PraticaCommandActions` (ADR-0049 §D10), the same
+    /// reason `navigation` above is not `private`.
+    @Environment(PraticheController.self) var pratiche
     @Environment(ShortcutStore.self) private var shortcuts
     /// The day pane's controller, because three sidebar rows are three scales of it
     /// (ADR-0013 §D4) rather than three panes.

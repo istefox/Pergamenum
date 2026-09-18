@@ -172,7 +172,8 @@ extension PraticheController {
                 storeReferences: document.frontmatter.storeReferences,
                 isPending: document.frontmatter.body == .pending,
                 senderAddress: sender?.address,
-                pendingAttachments: document.frontmatter.pendingAttachmentNames
+                pendingAttachments: document.frontmatter.pendingAttachmentNames,
+                linkedNote: document.frontmatter.linkedNote
             )
         }
     }

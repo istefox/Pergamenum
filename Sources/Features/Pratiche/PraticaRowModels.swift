@@ -24,6 +24,13 @@ struct PraticaRowDetail: Equatable, Sendable {
     /// existing call site (which lists `attachments:` through `senderAddress:`
     /// positionally or by keyword) keeps compiling unchanged.
     var pendingAttachments: [String] = []
+    /// R-02/R-05 (ADR-0049 §D6): the wikilink text of `pergamenum-mail-note`, when this
+    /// message has a linked note - `nil` when it does not. Declared last, the same
+    /// convention this file's own comment states for `pendingAttachments` above.
+    /// Populated by `PraticheController+TimelineRead.swift` (Task 5); read here already
+    /// so `PraticaCommandActions.commands(for:)` can compute `MessageCommand`'s
+    /// `hasLinkedNote:` argument without a second field added later.
+    var linkedNote: String?
 }
 
 /// One attachment chip's file (R-10). `url` is absolute and may not exist: a copy that
@@ -34,4 +41,19 @@ struct PraticaAttachmentRef: Equatable, Sendable, Identifiable {
     var url: URL
 
     var id: String { name }
+}
+
+/// ADR-0049 (Pratiche links to notes, tasks and boards), plan
+/// docs/plans/pratiche-note-task-workspace-links.md, Task 5 - R-06.
+///
+/// One row of the inspector's aggregate "note collegate" list: the union of a
+/// pratica's own general note links (`PraticaLinks.notes`) and every message's own
+/// `linkedNote`, de-duplicated by title. `messagePaths` is empty for a link that is
+/// general-only; non-empty names which message(s) also carry the same note, which is
+/// what makes a per-message link attributable rather than merely present (R-06).
+struct PraticaAggregatedNoteLink: Equatable, Sendable, Identifiable {
+    var title: String
+    var messagePaths: [String]
+
+    var id: String { title }
 }

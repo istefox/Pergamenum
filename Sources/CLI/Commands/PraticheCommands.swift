@@ -40,6 +40,41 @@ enum PraticheCommands {
         return .success
     }
 
+    /// `pratica links <pratica>` (ADR-0049 §D12, R-01, R-07, R-08) - the general
+    /// relations `show` does not carry, each with its own resolution state.
+    @MainActor
+    static func links(_ arguments: Arguments) async throws -> ExitCode {
+        let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
+        let reference = try requireReference(arguments, "pratica links <pratica>")
+        let links = try VaultAPI.praticaLinks(session, reference)
+
+        if arguments.has("json") {
+            Output.json(links)
+        } else {
+            print(links)
+        }
+        return .success
+    }
+
+    /// The pratica reference of every `pratica <verbo>` subcommand, once the verb
+    /// itself has taken word(1) - the same shift `NoteCommands.requirePath` makes for
+    /// `note rename`/`note move`.
+    static func requireReference(_ arguments: Arguments, _ usage: String) throws -> String {
+        guard let reference = arguments.word(2), !reference.isEmpty else {
+            throw CommandError("uso: perg \(usage)", code: .usage)
+        }
+        return reference
+    }
+
+    /// The same shift for every `message <verbo>` subcommand, where word(2) is the
+    /// message's own relative path rather than a pratica reference.
+    static func requireMessagePath(_ arguments: Arguments, _ usage: String) throws -> String {
+        guard let path = arguments.word(2), !path.isEmpty else {
+            throw CommandError("uso: perg \(usage)", code: .usage)
+        }
+        return path
+    }
+
     // MARK: - For a person
 
     /// One line per pratica: where it is, then what it is - client, stato, quanti
@@ -79,6 +114,31 @@ enum PraticheCommands {
         case ("message", _): "ricevuto"
         case ("call", _): "telefonata"
         default: "nota"
+        }
+    }
+
+    /// The three general relations, each reference beside where it resolves to - the
+    /// same three states `PraticaLinkResolver` produces (R-07, R-08).
+    private static func print(_ links: VaultAPI.PraticaLinksPayload) {
+        Output.line("collegamenti di \(links.path)")
+        printLinkSection("note", links.notes)
+        printLinkSection("task", links.tasks)
+        printLinkSection("board", links.boards)
+    }
+
+    private static func printLinkSection(_ title: String, _ targets: [VaultAPI.PraticaLinkTarget]) {
+        guard !targets.isEmpty else { return }
+        Output.line("  \(title):")
+        for target in targets {
+            Output.line("    \(target.reference)  \(target.path ?? label(ofState: target.state))")
+        }
+    }
+
+    private static func label(ofState state: String) -> String {
+        switch state {
+        case "ambiguous": "(ambiguo)"
+        case "missing": "(non trovato)"
+        default: "(\(state))"
         }
     }
 }

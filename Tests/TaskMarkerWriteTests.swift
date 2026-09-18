@@ -73,6 +73,27 @@ private func task(_ line: String, in path: String = "Nota.md", at index: Int = 0
     )
 }
 
+// MARK: - `TaskParser.line(for:assigningLocalID:)` (ADR-0049 §D3; R-01)
+
+@Test func assigningLocalIDAppendsTheMarkerToALineWithNone() {
+    let t = task("- [ ] Verifica disegno")
+    let updated = TaskParser.line(for: t, assigningLocalID: 3)
+    #expect(updated == "- [ ] Verifica disegno ^id(3)")
+}
+
+@Test func assigningLocalIDToATaskThatAlreadyHasOneLeavesTheLineUntouched() {
+    let t = task("- [ ] Verifica disegno ^id(1)")
+    let updated = TaskParser.line(for: t, assigningLocalID: 3)
+    #expect(updated == "- [ ] Verifica disegno ^id(1)")
+}
+
+@Test func assigningLocalIDLeavesEveryOtherPartOfTheLineByteIdentical() {
+    let original = "  * [ ] Task complesso >2026-09-01 !2026-09-10 [[Nota]] ^[[board.canvas]]"
+    let t = task(original)
+    let updated = TaskParser.line(for: t, assigningLocalID: 5)
+    #expect(updated == original + " ^id(5)")
+}
+
 // MARK: - `TaskParser.line(for:assigningCategory:)` (ADR-0047 §D5; R-03)
 
 @Test func assigningCategoryAddsTheTagToALineWithNone() {

@@ -75,6 +75,7 @@ extension PraticheController {
             pratiche = []
             timeline = []
             details = [:]
+            links = .empty
             ledger = .empty
             // Round-4 review, §6: a redirect entry describes THIS vault's own
             // relocations alone (`livePraticaPath`'s own "session identity checked
@@ -118,6 +119,7 @@ extension PraticheController {
         guard let selection, let root = vault.root else {
             timeline = []
             details = [:]
+            links = .empty
             return
         }
         let read = Self.readTimeline(
@@ -129,6 +131,13 @@ extension PraticheController {
         )
         timeline = PraticaTimelineModel.ordered(read.entries)
         details = read.details
+        // ADR-0049 Task 5 (R-04): the same beat as `timeline`/`details` above, and
+        // the one `PraticaCommandActions.reload()` calls after every link write.
+        links = PraticaLinks.parse(
+            praticaFileAt: root.appending(
+                path: PraticaNaming.praticaNotePath(of: selection), directoryHint: .notDirectory
+            )
+        )
     }
 
     private func markOpened(_ praticaPath: String, in vault: VaultController) {

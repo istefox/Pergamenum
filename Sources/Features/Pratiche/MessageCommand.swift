@@ -21,6 +21,13 @@ enum MessageCommand: String, CaseIterable, Sendable {
     /// R-31: files copied, both dossiers gain the id.
     case alsoAddTo
     case regenerate
+    /// R-02 (ADR-0049 §D10): opens `PraticaLinkPicker` for this message's
+    /// `pergamenum-mail-note` key - offered regardless of an existing link, since
+    /// picking a new target replaces rather than appends (the relation is 0/1).
+    case linkNote
+    /// R-02: clears `pergamenum-mail-note`, offered only when there is a link to
+    /// remove (`available(hasAttachments:hasLinkedNote:)` below).
+    case unlinkNote
 
     /// The Italian label both surfaces draw, pinned to UX-BLUEPRINT.md's menu bar map
     /// ("Messaggio" row).
@@ -32,6 +39,8 @@ enum MessageCommand: String, CaseIterable, Sendable {
         case .moveTo: "Sposta in…"
         case .alsoAddTo: "Aggiungi anche a…"
         case .regenerate: "Rigenera…"
+        case .linkNote: "Collega nota…"
+        case .unlinkNote: "Scollega nota"
         }
     }
 
@@ -45,6 +54,8 @@ enum MessageCommand: String, CaseIterable, Sendable {
         case .moveTo: "folder"
         case .alsoAddTo: "plus.circle"
         case .regenerate: "arrow.triangle.2.circlepath"
+        case .linkNote: "doc.badge.plus"
+        case .unlinkNote: "doc.badge.minus"
         }
     }
 
@@ -54,20 +65,22 @@ enum MessageCommand: String, CaseIterable, Sendable {
     var carriesArgument: Bool {
         switch self {
         case .moveTo, .alsoAddTo: true
-        case .openInMail, .previewAttachment, .exclude, .regenerate: false
+        case .openInMail, .previewAttachment, .exclude, .regenerate, .linkNote, .unlinkNote: false
         }
     }
 
     /// The commands a message row offers - `.previewAttachment` only when the message
-    /// actually carries one.
+    /// actually carries one, `.unlinkNote` only when `pergamenum-mail-note` is set
+    /// (R-02, ADR-0049 §D10).
     ///
     /// Declaration order is the order both surfaces draw, the same rule
     /// `PraticaCommand.available(isActive:)` follows.
-    static func available(hasAttachments: Bool) -> [MessageCommand] {
+    static func available(hasAttachments: Bool, hasLinkedNote: Bool) -> [MessageCommand] {
         allCases.filter { command in
             switch command {
             case .previewAttachment: hasAttachments
-            case .openInMail, .exclude, .moveTo, .alsoAddTo, .regenerate: true
+            case .unlinkNote: hasLinkedNote
+            case .openInMail, .exclude, .moveTo, .alsoAddTo, .regenerate, .linkNote: true
             }
         }
     }

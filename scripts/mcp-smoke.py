@@ -74,6 +74,25 @@ Appunti pratica.
 Richiamare lunedì.
 """
 
+# One message with no linked note yet, the fixture `pratiche_links` collects and
+# unlinks (ADR-0049 §D6).
+MESSAGE_NOTE = """---
+date: 2026-06-10
+tags:
+  - type-note
+  - type-email
+pergamenum-mail: 1
+pergamenum-mail-message-id: "<abc@rossi-spa.it>"
+pergamenum-mail-direction: received
+pergamenum-mail-date: 2026-06-10T14:06:00+02:00
+pergamenum-mail-from: "Mario Rossi <m.rossi@rossi-spa.it>"
+pergamenum-mail-subject: "Richiesta offerta"
+pergamenum-mail-body: complete
+---
+
+Buongiorno,
+"""
+
 # One registered category ("collaudi") and one task tagged with a slug the registry
 # does not know ("fantasma") - the R-04 implicit-category case, read here through the
 # connector rather than the sidebar.
@@ -327,6 +346,72 @@ def pratiche(binary, vault):
         server.close()
 
 
+def pratiche_links(binary, vault):
+    """ADR-0049 §D12, R-10: the pratica/message link tools are reachable from MCP
+    too, absent without --allow-write, and a write with dryRun true changes nothing.
+
+    Everything else about the shape of a link - resolution states, the message's
+    replace-not-append rule, create-then-link ordering - is `Tests/
+    PraticheLinksConnectorTests.swift`'s job; what only a real server can show is
+    that these specific tool names are declared, listed correctly, and callable.
+    """
+    print("collegamenti pratiche")
+    folder = os.path.join(vault, "01 Progetti", "Rossi", "Offerta")
+    os.makedirs(os.path.join(folder, "email"))
+    pratica_path = os.path.join(folder, "pratica.md")
+    with open(pratica_path, "w", encoding="utf-8") as handle:
+        handle.write(PRATICA_NOTE)
+    message_path = os.path.join(folder, "email", "msg.md")
+    with open(message_path, "w", encoding="utf-8") as handle:
+        handle.write(MESSAGE_NOTE)
+
+    read_server = Server(binary, vault, allow_write=False)
+    try:
+        names = [tool["name"] for tool in read_server.send("tools/list", {})["result"]["tools"]]
+        check("pratica_links" in names, "lo strumento di lettura dei collegamenti è elencato")
+        check(not any(name.startswith(("pratica_link_", "pratica_unlink_", "pratica_create_",
+                                        "message_link_", "message_unlink_", "message_create_"))
+                      for name in names),
+              "gli strumenti che scrivono i collegamenti non sono elencati senza --allow-write")
+
+        links = read_server.payload("pratica_links", {"pratica": "Offerta"})
+        check(links["notes"] == [] and links["tasks"] == [] and links["boards"] == [],
+              "una pratica senza collegamenti torna tre elenchi vuoti")
+    finally:
+        read_server.close()
+
+    server = Server(binary, vault, allow_write=True)
+    try:
+        names = [tool["name"] for tool in server.send("tools/list", {})["result"]["tools"]]
+        check("pratica_link_note" in names and "message_link_note" in names,
+              "gli strumenti che scrivono i collegamenti ci sono con --allow-write")
+
+        rehearsal = server.payload("pratica_link_note", {"pratica": "Offerta", "title": "Preventivo 2026"})
+        check(rehearsal["applied"] is False, "senza dryRun non si applica niente")
+        check("pergamenum-dossier-links-notes" in (rehearsal.get("diff") or ""),
+              "la prova mostra la nuova chiave nel diff")
+        with open(pratica_path, encoding="utf-8") as handle:
+            check("Preventivo 2026" not in handle.read(), "il file non è stato toccato dalla prova")
+
+        applied = server.payload(
+            "pratica_link_note", {"pratica": "Offerta", "title": "Preventivo 2026", "dryRun": False})
+        check(applied["applied"] is True, "con dryRun false si scrive")
+
+        links = server.payload("pratica_links", {"pratica": "Offerta"})
+        check(any(note["reference"] == "[[Preventivo 2026]]" for note in links["notes"]),
+              "il collegamento è sulla pratica")
+        check(links["notes"][0]["state"] == "missing", "la nota collegata non esiste ancora: non risolve")
+
+        message = os.path.relpath(message_path, vault)
+        linked = server.payload(
+            "message_link_note", {"message": message, "title": "Contratto 2026", "dryRun": False})
+        check(linked["applied"] is True, "il messaggio si collega a una nota")
+        with open(message_path, encoding="utf-8") as handle:
+            check("pergamenum-mail-note" in handle.read(), "la chiave è sul file del messaggio")
+    finally:
+        server.close()
+
+
 def categories(binary, vault):
     """ADR-0047 §D9 (R-09): the registry read, implicit categories folded in, and one
     category's rolled-up, grouped task list - both read-only, neither writes.
@@ -392,7 +477,7 @@ def resources(binary, vault):
 binary = find_binary()
 print("binario: %s\n" % binary)
 
-for stage in (read_only, writing, views, pratiche, categories, resources):
+for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources):
     vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
     try:
         with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

@@ -80,6 +80,12 @@ extension PratichePane {
                         expandsTransclusions: false
                     )
                 }
+                // ADR-0049 Task 5 (R-04): under `pratica.md`'s body, still inside this
+                // same scroll view - `pratiche.selection`, never the timeline's row
+                // selection, is what gates it (R-09).
+                if pratiche.selection != nil {
+                    praticaLinksSection
+                }
             }
             .padding(theme.spacing(.m))
             .frame(maxWidth: .infinity, alignment: .leading)

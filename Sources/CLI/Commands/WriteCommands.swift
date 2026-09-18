@@ -140,4 +140,128 @@ enum WriteCommands {
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
     }
+
+    // MARK: pratica links (ADR-0049 §D12, R-01, R-03)
+
+    @MainActor
+    static func praticaLinkNote(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica link-note <pratica> <titolo>")
+        let session = try await Writing.session(arguments, command: "pratica link-note")
+        let summary = try await VaultAPI.linkPraticaNote(session, pratica: reference, title: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaUnlinkNote(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica unlink-note <pratica> <titolo>")
+        let session = try await Writing.session(arguments, command: "pratica unlink-note")
+        let summary = try await VaultAPI.unlinkPraticaNote(session, pratica: reference, title: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaLinkBoard(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica link-board <pratica> <board>")
+        let session = try await Writing.session(arguments, command: "pratica link-board")
+        let summary = try await VaultAPI.linkPraticaBoard(session, pratica: reference, board: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaUnlinkBoard(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica unlink-board <pratica> <board>")
+        let session = try await Writing.session(arguments, command: "pratica unlink-board")
+        let summary = try await VaultAPI.unlinkPraticaBoard(
+            session, pratica: reference, board: arguments.rest(from: 3)
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaLinkTask(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica link-task <pratica> <task>")
+        let session = try await Writing.session(arguments, command: "pratica link-task")
+        let summary = try await VaultAPI.linkPraticaTask(session, pratica: reference, task: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaUnlinkTask(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica unlink-task <pratica> <task>")
+        let session = try await Writing.session(arguments, command: "pratica unlink-task")
+        let summary = try await VaultAPI.unlinkPraticaTask(session, pratica: reference, task: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    // MARK: pratica create-and-link (R-03)
+
+    @MainActor
+    static func praticaCreateNote(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica create-note <pratica> <titolo>")
+        let session = try await Writing.session(arguments, command: "pratica create-note")
+        let summary = try await VaultAPI.createAndLinkPraticaNote(
+            session, pratica: reference, title: arguments.rest(from: 3), folder: arguments["folder"]
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaCreateTask(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica create-task <pratica> <testo>")
+        let session = try await Writing.session(arguments, command: "pratica create-task")
+        let summary = try await VaultAPI.createAndLinkPraticaTask(
+            session, pratica: reference, text: arguments.rest(from: 3)
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func praticaCreateBoard(_ arguments: Arguments) async throws -> ExitCode {
+        let reference = try PraticheCommands.requireReference(arguments, "pratica create-board <pratica> <nome>")
+        let session = try await Writing.session(arguments, command: "pratica create-board")
+        let summary = try await VaultAPI.createAndLinkPraticaBoard(
+            session, pratica: reference, name: arguments.rest(from: 3), folder: arguments["folder"]
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    // MARK: message link (R-02, R-03, §D6)
+
+    @MainActor
+    static func messageLinkNote(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try PraticheCommands.requireMessagePath(arguments, "message link-note <percorso> <titolo>")
+        let session = try await Writing.session(arguments, command: "message link-note")
+        let summary = try await VaultAPI.linkMessageNote(session, message: path, title: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func messageUnlinkNote(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try PraticheCommands.requireMessagePath(arguments, "message unlink-note <percorso>")
+        let session = try await Writing.session(arguments, command: "message unlink-note")
+        let summary = try await VaultAPI.unlinkMessageNote(session, message: path)
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    @MainActor
+    static func messageCreateNote(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try PraticheCommands.requireMessagePath(arguments, "message create-note <percorso> <titolo>")
+        let session = try await Writing.session(arguments, command: "message create-note")
+        let summary = try await VaultAPI.createAndLinkMessageNote(
+            session, message: path, title: arguments.rest(from: 3)
+        )
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
 }
