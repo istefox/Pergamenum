@@ -18,38 +18,39 @@ extension VaultSession {
     /// Runs `body` as one gesture: every write inside it carries the same operation id, and
     /// `undo` given that id reverses all of them.
     ///
-    /// The command is set for the duration and restored after, so a caller that had its own
-    /// `journalCommand` gets it back - the same borrow-and-return `VaultSession+TagRename`
-    /// already performs around the journal itself.
+    /// The gesture - its id and its command - is bound to the **calling task**, not stored on
+    /// the session (ADR-0050 §D1): `JournalGesture.current` is a task-local, so `journalCommand`
+    /// and `currentOperation` read it back from inside the body and read the session's standing
+    /// command and `nil` from anywhere else. A caller that had its own `journalCommand` finds it
+    /// untouched afterwards, because the gesture never wrote over it - the borrow-and-return
+    /// `VaultSession+TagRename` performs by hand around the journal itself is here performed by
+    /// the binding's own scope.
     ///
-    /// **Nested transactions are a programming error, not a feature.** Two ids would be open at
-    /// once and the inner writes would silently join the wrong gesture, which is the failure a
-    /// second `undo` would then complete. An `assertionFailure` says so on the first Debug run;
-    /// in Release the body still runs, under the gesture already open, because refusing to
-    /// perform a write the user asked for would be the worse of the two wrongs.
+    /// **Two transactions open at once from two tasks are not nested (ADR-0050 §D2).** That was
+    /// `PG-152` (issue #281): with the id kept on this `@MainActor` object and an `async` body
+    /// (ADR-0043 §D2), the scope spanned a suspension, the second `Task { }` found the first's
+    /// id still set and either tripped the assertion below or joined the first gesture, and the
+    /// first's `defer` then cleared the id under the second's remaining writes. Each task now
+    /// carries its own binding, so the interleaving cannot be observed: the writes of each land
+    /// under their own id and their own command, whichever order the main actor runs them in.
     ///
-    /// **Known hazard, recorded rather than silently absorbed (ADR-0043 §D2, `PG-152`).**
-    /// `currentOperation` is scoped state on a `@MainActor` object, and an `async` body means
-    /// two transactions started from two `Task { }`s can now interleave: the second trips the
-    /// assertion above in Debug and, in Release, joins the wrong gesture. That is a
-    /// pre-existing consequence of ADR-0041 §D9 - the async write door already existed - which
-    /// this conversion makes reachable from more call sites. It is **not** decided by ADR-0043
-    /// and is **not** fixed here: closing it properly means an actor-owned operation stack,
-    /// which is a design decision and belongs in its own ADR.
+    /// **Nested transactions in one task are still a programming error, not a feature.** Two ids
+    /// would be open at once and the inner writes would silently join the wrong gesture, which is
+    /// the failure a second `undo` would then complete. The task-local makes the check exact - a
+    /// non-`nil` value here can only have been bound by an enclosing `transaction` on this task's
+    /// own tree - and an `assertionFailure` says so on the first Debug run; in Release the body
+    /// still runs, under the gesture already open, because refusing to perform a write the user
+    /// asked for would be the worse of the two wrongs.
     @discardableResult
     func transaction<T>(_ command: String, _ body: () async throws -> T) async rethrows -> T {
-        guard currentOperation == nil else {
+        guard JournalGesture.current == nil else {
             assertionFailure("transazione annidata: «\(command)» dentro «\(journalCommand)»")
             return try await body()
         }
-        let previousCommand = journalCommand
-        journalCommand = command
-        currentOperation = WriteJournal.makeID(at: Date())
-        defer {
-            currentOperation = nil
-            journalCommand = previousCommand
+        let gesture = JournalGesture(operation: WriteJournal.makeID(at: Date()), command: command)
+        return try await JournalGesture.$current.withValue(gesture) {
+            try await body()
         }
-        return try await body()
     }
 
     // MARK: The two shape changes
