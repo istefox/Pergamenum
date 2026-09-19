@@ -129,6 +129,9 @@ else
     selection=(-only-testing:PergamenumUITests)
 fi
 
+# `set -e` is off for exactly the xcodebuild call: a red suite must not abort the script
+# before the per-test timings and the instance cleanup below have run. Only `-e` is
+# switched; `-u` and `-o pipefail` stay on throughout.
 set +e
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
     -destination 'platform=macOS' \
