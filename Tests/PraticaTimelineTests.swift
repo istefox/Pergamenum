@@ -247,6 +247,63 @@ import Testing
         )
     }
 
+    @Test func oldestFirstReversesTheClientGroupsAndThePraticheInsideThem() {
+        let now = Date()
+        let rossiOld = Self.item(id: "01/Rossi/Vecchia", client: "Rossi", lastActivity: now.addingTimeInterval(-100))
+        let rossiNew = Self.item(id: "01/Rossi/Nuova", client: "Rossi", lastActivity: now)
+        let bianchi = Self.item(id: "01/Bianchi/Quadro", client: "Bianchi", lastActivity: now.addingTimeInterval(-10))
+
+        let (open, _) = PraticheSidebarGrouping.grouped([rossiOld, rossiNew, bianchi], order: .oldestFirst)
+
+        // A group ranks by the pratica that leads it as ordered: Rossi now leads with its
+        // oldest (-100), Bianchi with its only one (-10), so Rossi comes first.
+        #expect(open.map(\.client) == ["Rossi", "Bianchi"])
+        #expect(
+            open.first { $0.client == "Rossi" }?.pratiche.map(\.id) == ["01/Rossi/Vecchia", "01/Rossi/Nuova"],
+            "inside a client, the least recently active pratica leads"
+        )
+    }
+
+    @Test func oldestFirstFlipsTheGroupRankingNotJustTheRows() {
+        let now = Date()
+        // One pratica per client, so the group order is the whole story.
+        let recent = Self.item(id: "01/Recente/A", client: "Recente", lastActivity: now)
+        let stale = Self.item(id: "01/Datato/A", client: "Datato", lastActivity: now.addingTimeInterval(-1_000))
+
+        #expect(PraticheSidebarGrouping.grouped([recent, stale]).open.map(\.client) == ["Recente", "Datato"])
+        #expect(
+            PraticheSidebarGrouping.grouped([recent, stale], order: .oldestFirst).open.map(\.client)
+                == ["Datato", "Recente"]
+        )
+    }
+
+    @Test func oldestFirstReversesChiuseAndLeavesItsMembershipAlone() {
+        let now = Date()
+        let newer = Self.item(id: "01/Rossi/Nuova", client: "Rossi", status: "archived", lastActivity: now)
+        let older = Self.item(id: "01/Bianchi/Vecchia", client: "Bianchi", status: "final", lastActivity: now.addingTimeInterval(-50))
+        let active = Self.item(id: "01/Rossi/Attiva", client: "Rossi", status: "active", lastActivity: now)
+
+        let newestFirst = PraticheSidebarGrouping.grouped([newer, older, active])
+        let oldestFirst = PraticheSidebarGrouping.grouped([newer, older, active], order: .oldestFirst)
+
+        #expect(newestFirst.closed.map(\.id) == ["01/Rossi/Nuova", "01/Bianchi/Vecchia"])
+        #expect(oldestFirst.closed.map(\.id) == ["01/Bianchi/Vecchia", "01/Rossi/Nuova"])
+        #expect(oldestFirst.open.flatMap(\.pratiche).map(\.id) == ["01/Rossi/Attiva"])
+    }
+
+    @Test func theTieBreakStaysAlphabeticalInBothDirections() {
+        let instant = Date()
+        // Same second, as a sync writing several files produces: the title decides, and
+        // flipping the direction must not reshuffle them.
+        let beta = Self.item(id: "01/Rossi/Beta", client: "Rossi", lastActivity: instant)
+        let alfa = Self.item(id: "01/Rossi/Alfa", client: "Rossi", lastActivity: instant)
+
+        for order in ChronologicalOrder.allCases {
+            let (open, _) = PraticheSidebarGrouping.grouped([beta, alfa], order: order)
+            #expect(open.first?.pratiche.map(\.id) == ["01/Rossi/Alfa", "01/Rossi/Beta"])
+        }
+    }
+
     @Test func closedPraticheCollapseUnderChiuseInsteadOfTheirClientGroup() {
         let now = Date()
         let active = Self.item(id: "01/Rossi/Attiva", client: "Rossi", status: "active", lastActivity: now)

@@ -39,6 +39,8 @@ struct RecordingsPane: View {
 
     @State private var review: ReviewContext?
     @State private var pendingDeletion: PlaudRecording?
+    /// A screen preference, never vault state: `@AppStorage`, not `PlaudVaultStore`'s ledger.
+    @AppStorage("recordingsListOrder") private var order: ChronologicalOrder = .newestFirst
 
     var body: some View {
         ScrollView {
@@ -96,6 +98,9 @@ struct RecordingsPane: View {
             Text("Registrazioni").themedText(.title)
             Text(countText).themedText(.caption, color: .textTertiary)
             Spacer()
+            // With the list it reorders, not in the window toolbar beside «Aggiorna»: the order
+            // is a property of this list, and a toolbar item would follow the pane around.
+            ChronologicalOrderMenu(order: $order, identifier: "recordings-order-menu")
         }
         .padding(.bottom, theme.spacing(.xs))
     }
@@ -126,8 +131,11 @@ struct RecordingsPane: View {
                     .themedText(.caption, color: .taskOverdue)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if recordings.recordings.isEmpty { empty }
-            ForEach(recordings.recordings, id: \.id) { recording in
+            // Ordered here, at draw time, and not in the controller: `recordings.recordings` is
+            // the service's answer as last fetched and is reassigned on every refresh and poll.
+            let ordered = RecordingFormat.ordered(recordings.recordings, by: order)
+            if ordered.isEmpty { empty }
+            ForEach(ordered, id: \.id) { recording in
                 row(recording)
             }
         }

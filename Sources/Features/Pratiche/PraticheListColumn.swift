@@ -29,6 +29,9 @@ struct PraticheListColumn: View {
     /// Closed pratiche are collapsed on open (R-33): they are the ones a person is not
     /// working on.
     @State private var isShowingClosed = false
+    /// A screen preference, never vault state: it lives in `@AppStorage`, the way the note
+    /// list's own view options do.
+    @AppStorage("praticheListOrder") private var order: ChronologicalOrder = .newestFirst
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,6 +91,10 @@ struct PraticheListColumn: View {
             .accessibilityIdentifier("pratiche-refresh-all")
 
             Spacer()
+
+            // Trailing, after the verbs: a view option, not a command (`TaskListControls`'s
+            // own placement of its menus).
+            ChronologicalOrderMenu(order: $order, identifier: "pratiche-order-menu")
         }
         .padding(.horizontal, theme.spacing(.m))
         .padding(.vertical, theme.spacing(.xs))
@@ -185,7 +192,7 @@ struct PraticheListColumn: View {
     // MARK: - Model
 
     private var grouped: (open: [PraticaClientGroup], closed: [PraticaListItem]) {
-        PraticheSidebarGrouping.grouped(filtered)
+        PraticheSidebarGrouping.grouped(filtered, order: order)
     }
 
     /// The filter narrows on title and client both: a person types «Rossi» meaning
