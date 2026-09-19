@@ -138,6 +138,19 @@ final class PraticheController {
     /// and `pruneRedirectsIfIdle`.
     var praticaPathRedirects: [String: String] = [:]
 
+    /// The deletion twin of `praticaPathRedirects` just above (ADR-0026 §D7's 2026-09-19
+    /// amendment, PG-169): a pratica path a sync or regeneration holds, whose folder was
+    /// trashed while it was still in flight. `forgetLedgerState` records a key here only for
+    /// a path `syncingPraticaPath` or `regeneratingPraticaPaths` actually claims at that
+    /// moment - a deletion with nothing running records nothing, since nothing will ever read
+    /// it. `praticaPath(continuing:)` refuses a path found here with `.praticaTrashed`, and
+    /// `recordSyncOutcome` writes nothing for it, which is what stops a finishing run from
+    /// putting back the ledger key the trash just removed. Cleared in one go with the
+    /// redirect map (`pruneRedirectsIfIdle`). Not `private(set)`: `PraticheController+Ledger
+    /// .swift` reads and writes it from `forgetLedgerState`, the private resolver behind
+    /// `praticaPath(continuing:)`/`recordSyncOutcome`/`endRegeneration`, and `load(from:)`.
+    var forgottenPraticaPaths: Set<String> = []
+
     /// How many tray proposals each pratica has, which is the dot on its row (R-33).
     /// Derived from `trayProposals` by `updateTray(_:for:in:)`; empty here means no
     /// dot, never a wrong one.
@@ -250,17 +263,19 @@ final class PraticheController {
         requestSyncCancellation?()
     }
 
-    /// Round-4 review, §4: a relocation mid-sync must stop the ENGINE too, not only
-    /// guard the ledger/UI consumers downstream of it - without this, the engine keeps
-    /// writing into the vacated folder for the rest of the run. Same shape and
-    /// justification as `requestSyncCancellation` just above: a settable property, not
-    /// a third `init` parameter, so it cannot break `init(probe:performSync:)`
-    /// (ADR-0155). `nil` means nothing is wired, and a relocation runs with nothing to
-    /// stop. Wired by `live(vault:)` to `PraticaLiveSync.stopForRelocation()`, called
-    /// from `moveLedgerState` - deliberately NOT the same closure as
+    /// Round-4 review, §4: a relocation - or, since PG-169, a trash - mid-sync must stop the
+    /// ENGINE too, not only guard the ledger/UI consumers downstream of it - without this,
+    /// the engine keeps writing into the vacated folder for the rest of the run. Whether
+    /// the path the run captured moved or went to the Trash does not change what the engine
+    /// has to do, so one closure serves both. Same shape and justification as
+    /// `requestSyncCancellation` just above: a settable property, not a third `init`
+    /// parameter, so it cannot break `init(probe:performSync:)` (ADR-0155). `nil` means
+    /// nothing is wired, and a relocation or trash runs with nothing to stop. Wired by
+    /// `live(vault:)` to `PraticaLiveSync.stopForVanishedPath()`, called from
+    /// `moveLedgerState` and `forgetLedgerState` - deliberately NOT the same closure as
     /// `requestSyncCancellation`, which also drops every queued request for OTHER
-    /// pratiche that have nothing to do with this relocation.
-    @ObservationIgnored var requestSyncStopForRelocation: (@MainActor () -> Void)?
+    /// pratiche that have nothing to do with this one.
+    @ObservationIgnored var requestSyncStopForVanishedPath: (@MainActor () -> Void)?
 
     /// The chosen pratica's own list item, for the breadcrumb and the status pill.
     var selectedPratica: PraticaListItem? {

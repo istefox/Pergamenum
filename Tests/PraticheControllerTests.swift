@@ -756,7 +756,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         }
 
         // The two-hop chain: relocated twice before this caller ever asked - the same
-        // multi-hop walk `resolvePraticaPathRedirect` already does for
+        // multi-hop walk `destination(of:)` already does for
         // `recordSyncOutcome`, reused here rather than forked.
         let secondPath = "Calendar/02 Progetti/Tifone/X"
         controller.praticaPathRedirects[newPath] = secondPath

@@ -135,6 +135,11 @@ extension PraticaLiveSync {
                 return .finished
             case .praticaRelocated(_, let to):
                 return .relocated(to: to)
+            case .praticaTrashed:
+                // PG-169: `.finished`, never `.relocated(to:)` - that drives `Self.requeue`,
+                // and a re-enqueued run for a trashed pratica would only dequeue into the
+                // «non ha un dossier leggibile in pratica.md» report above.
+                return .finished
             }
         } catch {
             // Every step below only ever throws `PraticaRunStop` - its own errors

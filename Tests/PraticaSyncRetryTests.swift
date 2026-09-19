@@ -140,4 +140,62 @@ import Testing
         #expect(secondOutcome.resolvedAttachmentFiles.count == 1, "one note amended in one line")
         #expect(secondOutcome.regeneratedPendingFiles.isEmpty, "a patch is never a full regeneration")
     }
+
+    // MARK: PG-169 (R-07) - a folder restored from the Trash comes back with no ledger entry
+
+    /// SPEC PG-169's one claim that rests on reading code rather than running it: no journal
+    /// and no undo for the ledger removal, because a pratica folder restored from the Trash
+    /// with an empty ledger re-reconciles against the message files already in it instead of
+    /// duplicating or overwriting them. The shape is the restored folder's: the files are on
+    /// disk, the ledger says nothing (`onDisk: []` both times, since `onDisk` is exactly
+    /// `state.importedMessageIDs`, which the trash emptied).
+    ///
+    /// What this deliberately does NOT assert is that the restore is free. The second run
+    /// writes nothing, so nothing re-enters `importedMessageIDs`: the restored pratica's ledger
+    /// stays empty for those messages, and every later sync re-walks and re-decodes them. That
+    /// is the accepted cost of "recovery is the Trash" (plan PG-169, §R-07), not a defect this
+    /// test hides.
+    @Test func aResyncWithAnEmptyLedgerLeavesTheMessageFilesExactlyAsTheyAre() async throws {
+        let date = Date(timeIntervalSince1970: 1_781_093_170)
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: date, dateReceived: date,
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+            )]
+        )
+        let vaultRoot = try Fixtures.makeVaultRoot()
+        let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [Fixtures.row(rowID: 1, messageID: "<abc123@rossi-spa.it>", date: date)],
+            onDisk: [], settings: .default
+        )
+        let firstOutcome = try await engine.sync(request)
+        #expect(firstOutcome.writtenFiles.count == 1, "precondition: the first sync wrote the message")
+        #expect(firstOutcome.importedMessageIDs == ["<abc123@rossi-spa.it>"])
+
+        let namesBefore = Fixtures.mdFiles(under: vaultRoot)
+        let (noteURL, textBefore) = try Fixtures.onlyNoteURLAndText(under: vaultRoot)
+        let modifiedBefore = try Fixtures.modificationDate(of: noteURL)
+
+        // The restored-folder shape: the file is there, the ledger has forgotten it.
+        let secondOutcome = try await engine.sync(request)
+
+        #expect(Fixtures.mdFiles(under: vaultRoot) == namesBefore, "no message file may be added or renamed")
+        #expect(
+            try String(contentsOf: noteURL, encoding: .utf8) == textBefore,
+            "the note that was already there must be byte-identical afterwards"
+        )
+        #expect(
+            try Fixtures.modificationDate(of: noteURL) == modifiedBefore,
+            "and not rewritten at all, not even to the same bytes"
+        )
+        #expect(secondOutcome.writtenFiles.isEmpty, "the message is already on disk, so nothing is written")
+        #expect(
+            secondOutcome.importedMessageIDs.isEmpty,
+            "a skipped message never re-enters the ledger, which is what the accepted cost in this test's header is"
+        )
+    }
 }

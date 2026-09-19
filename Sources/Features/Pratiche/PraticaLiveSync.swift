@@ -17,7 +17,7 @@ extension PraticheController {
         )
         coordinator.controller = controller
         controller.requestSyncCancellation = { [coordinator] in coordinator.cancel() }
-        controller.requestSyncStopForRelocation = { [coordinator] in coordinator.stopForRelocation() }
+        controller.requestSyncStopForVanishedPath = { [coordinator] in coordinator.stopForVanishedPath() }
         controller.prepareRegeneration = { [coordinator] praticaPath, messageID in
             await coordinator.prepareRegeneration(praticaPath: praticaPath, messageID: messageID)
         }
@@ -153,12 +153,14 @@ final class PraticaLiveSync {
     }
 
     /// Round-4 review, §4: asks the running engine to stop because ITS OWN pratica
-    /// folder just relocated - deliberately not `cancel()` above, which also drops
+    /// folder just relocated - or, since PG-169, went to the Trash: the path the run
+    /// captured is gone either way, and which of the two it was does not change what the
+    /// engine has to do. Deliberately not `cancel()` above, which also drops
     /// `queue.pending`/`queuedRequests` wholesale and would discard other pratiche's
-    /// own queued syncs that have nothing to do with this relocation. Cooperative, same
+    /// own queued syncs that have nothing to do with this one. Cooperative, same
     /// as `cancel()`: the engine observes it at its next message boundary, so the
-    /// message being written at the instant of the move still completes (`PG-168`).
-    func stopForRelocation() {
+    /// message being written at the instant of the move or trash still completes (`PG-168`).
+    func stopForVanishedPath() {
         guard let running else { return }
         Task { await running.cancel() }
     }
@@ -363,7 +365,7 @@ final class PraticaLiveSync {
             } catch {
                 controller.regeneration = nil
                 controller.endRegeneration(praticaPath)
-                controller.report("«\(praticaPath)» è stata spostata: riapri «Rigenera…» dalla nuova posizione.")
+                controller.report(PraticaRunStop.regenerationRefusal(after: error, of: praticaPath))
                 return
             }
             controller.regeneration = .ready(plan)
@@ -407,8 +409,8 @@ final class PraticaLiveSync {
             _ = try controller.praticaPath(continuing: plan.praticaFolder)
         } catch {
             controller.report(
-                "«\(plan.praticaFolder)» è stata spostata: riapri «Rigenera…» dalla nuova posizione. "
-                    + "I file del messaggio restano nel Cestino, recuperabili da lì."
+                PraticaRunStop.regenerationRefusal(after: error, of: plan.praticaFolder)
+                    + " I file del messaggio restano nel Cestino, recuperabili da lì."
             )
             controller.endRegeneration(plan.praticaFolder)
             return false
