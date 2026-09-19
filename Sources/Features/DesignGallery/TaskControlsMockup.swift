@@ -33,23 +33,10 @@ struct TaskControlsMockup: View {
     private static let paneWidth: CGFloat = 380
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                controls
-                rollover
-                eventNote
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            content()
+        MockupPage {
+            controls
+            rollover
+            eventNote
         }
     }
 
@@ -64,7 +51,7 @@ struct TaskControlsMockup: View {
     // MARK: I controlli
 
     private var controls: some View {
-        scene("I controlli delle viste task: un menu solo, la cui etichetta dice già come è "
+        MockupScene("I controlli delle viste task: un menu solo, la cui etichetta dice già come è "
             + "raggruppata la lista. Ricordati per vista, non per app.") {
             pane {
                 HStack(spacing: theme.spacing(.xs)) {
@@ -103,7 +90,7 @@ struct TaskControlsMockup: View {
     // MARK: Il rollover
 
     private var rollover: some View {
-        scene("Con il rollover acceso, la vista Oggi mostra anche i task pianificati e non "
+        MockupScene("Con il rollover acceso, la vista Oggi mostra anche i task pianificati e non "
             + "finiti dei giorni prima. Il marcatore dice **a quale giorno appartengono**: il "
             + "file non è cambiato, e senza quel marcatore la riga sembrerebbe lo spostamento "
             + "silenzioso che §7.3 rifiuta.") {
@@ -143,7 +130,7 @@ struct TaskControlsMockup: View {
     // MARK: La nota evento
 
     private var eventNote: some View {
-        scene("Dalla timeline: un evento senza nota offre di crearla, uno che ce l'ha già mostra "
+        MockupScene("Dalla timeline: un evento senza nota offre di crearla, uno che ce l'ha già mostra "
             + "il titolo invece dell'offerta - un secondo click farebbe una seconda nota. La "
             + "nota nasce accanto alla daily note di quel giorno.") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {

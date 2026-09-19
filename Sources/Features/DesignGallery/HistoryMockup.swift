@@ -30,29 +30,17 @@ struct HistoryMockup: View {
     private static let tripleWidth: CGFloat = 208
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Il foglio, testo pieno: «com'era»",
-                    HistorySheet(pane: .fullText)
-                )
-                scene(
-                    "Lo stesso foglio, differenze: «cosa è cambiato»",
-                    HistorySheet(pane: .diff)
-                )
-                entryPoints
-                edgeCases
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content
+        MockupPage {
+            MockupScene(
+                "Il foglio, testo pieno: «com'era»",
+                HistorySheet(pane: .fullText)
+            )
+            MockupScene(
+                "Lo stesso foglio, differenze: «cosa è cambiato»",
+                HistorySheet(pane: .diff)
+            )
+            entryPoints
+            edgeCases
         }
     }
 
@@ -83,14 +71,7 @@ struct HistoryMockup: View {
     }
 
     private func labelled(_ title: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text(title).themedText(.caption, color: .textSecondary)
-            content
-                .frame(width: Self.tripleWidth)
-                .padding(theme.spacing(.s))
-                .background(theme.color(.backgroundSecondary))
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
-        }
+        MockupCell(title, width: Self.tripleWidth) { content }
     }
 }
 

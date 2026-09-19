@@ -43,24 +43,12 @@ struct TagBrowserMockup: View {
     private static let pairWidth: CGFloat = 328
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                resting
-                narrowed
-                marking
-                starred
-                rename
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content()
+        MockupPage {
+            resting
+            narrowed
+            marking
+            starred
+            rename
         }
     }
 
@@ -69,7 +57,7 @@ struct TagBrowserMockup: View {
     /// Namespaces closed, counts on the right, and one pinned tag above them all. The count is
     /// the reason to open a namespace rather than guess.
     private var resting: some View {
-        scene("Il pannello a riposo: namespace chiusi, conteggi a destra, un tag appuntato in cima") {
+        MockupScene("Il pannello a riposo: namespace chiusi, conteggi a destra, un tag appuntato in cima") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 TagMockupPane(width: Self.pairWidth) {
                     TagMockupHeader(title: "TAG")
@@ -96,7 +84,7 @@ struct TagBrowserMockup: View {
     /// Two tags chosen. The left column keeps the surviving notes under the tags, in the same
     /// pane; the right sends them to the Note pane and leaves the browser to the tags alone.
     private var narrowed: some View {
-        scene("Due tag scelti, in AND: le note restano qui sotto · le note tornano nel pannello Note") {
+        MockupScene("Due tag scelti, in AND: le note restano qui sotto · le note tornano nel pannello Note") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 TagMockupPane(width: Self.pairWidth) {
                     TagMockupHeader(title: "TAG")
@@ -130,7 +118,7 @@ struct TagBrowserMockup: View {
     // MARK: Il segno della scelta
 
     private var marking: some View {
-        scene("Il tag scelto: riempito · con la spunta · in grassetto col conteggio acceso") {
+        MockupScene("Il tag scelto: riempito · con la spunta · in grassetto col conteggio acceso") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 ForEach(TagMockupTagRow.Marking.chosen, id: \.self) { marking in
                     TagMockupPane(width: 213) {
@@ -147,7 +135,7 @@ struct TagBrowserMockup: View {
     /// The Note pane with the section, and without it. The empty case is the common one for
     /// weeks after the feature ships, and a heading over nothing is a heading in the way.
     private var starred: some View {
-        scene("Il pannello Note con le preferite in cima · senza nessuna preferita") {
+        MockupScene("Il pannello Note con le preferite in cima · senza nessuna preferita") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 TagMockupPane(width: Self.pairWidth) {
                     TagMockupFilterField()
@@ -170,7 +158,7 @@ struct TagBrowserMockup: View {
     /// D7 shown to a person: the diff comes before the write, and the write is one note at a
     /// time through the journal. The question is how much diff.
     private var rename: some View {
-        scene("Rinomina in tutto il vault: il diff di una nota e il conteggio · tutte le note, scorrendo") {
+        MockupScene("Rinomina in tutto il vault: il diff di una nota e il conteggio · tutte le note, scorrendo") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 TagMockupSheet(width: Self.pairWidth, title: "Rinomina «topic-gomma» in «topic-gomma-metallo»") {
                     Text("12 note toccate").themedText(.caption, color: .textSecondary)

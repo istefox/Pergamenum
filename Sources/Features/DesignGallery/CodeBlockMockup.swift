@@ -18,33 +18,21 @@ struct CodeBlockMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Nell'editor: la sorgente resta visibile, i backtick compresi",
-                    CodeBlockMock(sample: .swift, style: .editor)
-                )
-                comparison
-                scene(
-                    "In lettura: gli stessi colori, senza la sintassi del fence",
-                    CodeBlockMock(sample: .swift, style: .reading)
-                )
-                palette
-                scene(
-                    "Linguaggio non dichiarato, o che la grammatica non conosce",
-                    CodeBlockMock(sample: .unknown, style: .editor)
-                )
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ block: CodeBlockMock) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            block
+        MockupPage {
+            MockupScene(
+                "Nell'editor: la sorgente resta visibile, i backtick compresi",
+                CodeBlockMock(sample: .swift, style: .editor)
+            )
+            comparison
+            MockupScene(
+                "In lettura: gli stessi colori, senza la sintassi del fence",
+                CodeBlockMock(sample: .swift, style: .reading)
+            )
+            palette
+            MockupScene(
+                "Linguaggio non dichiarato, o che la grammatica non conosce",
+                CodeBlockMock(sample: .unknown, style: .editor)
+            )
         }
     }
 

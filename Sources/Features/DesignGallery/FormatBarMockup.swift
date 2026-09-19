@@ -63,30 +63,24 @@ struct FormatBarMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("Su una selezione di poche parole: sei bottoni e due gruppi", .plain)
-                scene("Su testo già in grassetto: il bottone è acceso, e premerlo toglie", .alreadyBold)
-                scene(
-                    "Selezione in cima al riquadro: la barra si ribalta sotto, come il pannello di completamento",
-                    .flipped
-                )
-                scene(
-                    "Selezione su più righe: la barra sta sotto l'ultima riga, dov'è finito il mouse",
-                    .multiline
-                )
-                scene("Dentro un blocco di codice: nessuna barra", .insideFence)
-                scene("I due link non sono lo stesso link", .links)
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene("Su una selezione di poche parole: sei bottoni e due gruppi", .plain)
+            scene("Su testo già in grassetto: il bottone è acceso, e premerlo toglie", .alreadyBold)
+            scene(
+                "Selezione in cima al riquadro: la barra si ribalta sotto, come il pannello di completamento",
+                .flipped
+            )
+            scene(
+                "Selezione su più righe: la barra sta sotto l'ultima riga, dov'è finito il mouse",
+                .multiline
+            )
+            scene("Dentro un blocco di codice: nessuna barra", .insideFence)
+            scene("I due link non sono lo stesso link", .links)
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ state: FormatBarMock.State) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             SelectedNoteBackdrop(state: state)
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
         }

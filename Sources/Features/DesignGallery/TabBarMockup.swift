@@ -44,40 +44,28 @@ struct TabBarMockup: View {
     private static let tripleWidth: CGFloat = 213
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("La barra sopra l'intestazione di oggi: il titolo compare due volte") {
-                    Column(width: Self.sceneWidth) {
-                        TabStrip(tabs: Self.threeTabs, carriesHeaderControls: false)
-                        Divider()
-                        NoteHeader()
-                        Divider()
-                        BodyLines(count: 4)
-                    }
+        MockupPage {
+            MockupScene("La barra sopra l'intestazione di oggi: il titolo compare due volte") {
+                Column(width: Self.sceneWidth) {
+                    TabStrip(tabs: Self.threeTabs, carriesHeaderControls: false)
+                    Divider()
+                    NoteHeader()
+                    Divider()
+                    BodyLines(count: 4)
                 }
-                scene("La barra al posto dell'intestazione: i controlli passano nella barra") {
-                    Column(width: Self.sceneWidth) {
-                        TabStrip(tabs: Self.threeTabs, carriesHeaderControls: true)
-                        Divider()
-                        PathLine()
-                        Divider()
-                        BodyLines(count: 5)
-                    }
-                }
-                singleNote
-                overflow
-                activeMarking
             }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content()
+            MockupScene("La barra al posto dell'intestazione: i controlli passano nella barra") {
+                Column(width: Self.sceneWidth) {
+                    TabStrip(tabs: Self.threeTabs, carriesHeaderControls: true)
+                    Divider()
+                    PathLine()
+                    Divider()
+                    BodyLines(count: 5)
+                }
+            }
+            singleNote
+            overflow
+            activeMarking
         }
     }
 
@@ -86,7 +74,7 @@ struct TabBarMockup: View {
     /// Today's pane is the left one. The question is whether it stays that way until a second
     /// note is opened, or whether the bar is permanent so nothing ever moves.
     private var singleNote: some View {
-        scene("Una nota sola: barra nascosta, com'è oggi · barra sempre presente") {
+        MockupScene("Una nota sola: barra nascosta, com'è oggi · barra sempre presente") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 Column(width: Self.pairWidth) {
                     NoteHeader()
@@ -107,7 +95,7 @@ struct TabBarMockup: View {
     // MARK: Otto tab
 
     private var overflow: some View {
-        scene("Otto tab: restringere fino a stare dentro · scorrere e tenerle leggibili") {
+        MockupScene("Otto tab: restringere fino a stare dentro · scorrere e tenerle leggibili") {
             VStack(alignment: .leading, spacing: theme.spacing(.s)) {
                 Column(width: Self.sceneWidth) {
                     TabStrip(tabs: Self.eightTabs, carriesHeaderControls: false, isCramped: true)
@@ -126,7 +114,7 @@ struct TabBarMockup: View {
     // MARK: L'attiva
 
     private var activeMarking: some View {
-        scene("L'attiva: riempita · sottolineata · solo il peso del testo") {
+        MockupScene("L'attiva: riempita · sottolineata · solo il peso del testo") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 ForEach(TabChip.Marking.allCases, id: \.self) { marking in
                     Column(width: Self.tripleWidth) {
