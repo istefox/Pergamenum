@@ -237,30 +237,3 @@ private func functionBody(named signature: String, in source: String) -> String?
     }
     return nil
 }
-
-/// One `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives the
-/// repository root - the same derivation `SharedSourcesPurityTests.resolvedRepoRoot()`
-/// uses, duplicated rather than shared because that one is `private` to its own suite
-/// (the convention `Tests/VaultBoundaryCallSiteTests.swift`'s `CallSiteFixture` doc
-/// comment already states for the same reason).
-private func resolvedRepoRoot() throws -> URL {
-    let thisFileURL = URL(fileURLWithPath: #filePath)
-    let candidateRoot = thisFileURL
-        .deletingLastPathComponent() // NoteStoreReadTests.swift -> Tests/
-        .deletingLastPathComponent() // Tests/ -> repository root
-    guard FileManager.default.fileExists(atPath: candidateRoot.appendingPathComponent("Sources").path) else {
-        throw NoteStoreReadTestsRepoRootError.notFound(candidate: candidateRoot.path)
-    }
-    return candidateRoot
-}
-
-private enum NoteStoreReadTestsRepoRootError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-
-    var description: String {
-        switch self {
-        case let .notFound(candidate):
-            return "Could not resolve the repository root from #filePath. Candidate tried: \(candidate)"
-        }
-    }
-}

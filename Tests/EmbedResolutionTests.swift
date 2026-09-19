@@ -25,31 +25,11 @@ import Testing
 // exists on disk.
 @MainActor
 @Suite struct EmbedResolutionTests {
-    private static func makeTempVaultRoot() throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-embed-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    /// A tiny real PNG, the same way `EmbedAttachmentProbeTests.syntheticImage` builds one
-    /// for a probe, written to disk here because `Attachment.resolve` and `ThumbnailStore`
-    /// both read a real file rather than an in-memory image.
-    private static func writeImage(named name: String, in root: URL) throws {
-        let image = NSImage(size: CGSize(width: 40, height: 30))
-        image.lockFocus()
-        NSColor.systemTeal.setFill()
-        NSBezierPath(rect: CGRect(x: 0, y: 0, width: 40, height: 30)).fill()
-        image.unlockFocus()
-        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { throw CocoaError(.fileWriteUnknown) }
-        try png.write(to: root.appending(path: name, directoryHint: .notDirectory))
-    }
-
     /// The text view `applyStyling` and `applyEmbeds` run against, minus SwiftUI and minus
     /// the frame/container sizing `TranscludedLineTests` needs for its own layout
-    /// assertions: nothing here reads a fragment's geometry, only the render table.
+    /// assertions: nothing here reads a fragment's geometry, only the render table. Not
+    /// `EmbedEditorFixtures.editor(...)`: it builds no window and leaves `hidesMarkup` at
+    /// `NoteTextView`'s own default, where the shared one always passes it (ADR-0051 §D4).
     private static func editor(
         text: String, root: URL?, thumbnails: ThumbnailStore?
     ) -> (NSTextView, NoteTextView.Coordinator) {
@@ -62,21 +42,6 @@ import Testing
         textView.textContentStorage?.delegate = coordinator.decorations
         textView.string = text
         return (textView, coordinator)
-    }
-
-    /// Polls `embeds.renditions` until the offset appears or the bound runs out. The
-    /// render is a real, asynchronous call into the `ThumbnailStore` actor - not a
-    /// stand-in - so this test waits for it rather than assuming one run-loop turn is
-    /// enough, the same way `Task.sleep` yields the main actor for any other pending job
-    /// queued on it.
-    private static func waitForRendition(
-        at offset: Int, in coordinator: NoteTextView.Coordinator
-    ) async -> EmbedRendition? {
-        for _ in 0..<100 {
-            if let rendition = coordinator.embeds.renditions[offset] { return rendition }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return coordinator.embeds.renditions[offset]
     }
 
     /// Every paragraph-start offset of a line matching `needle`, in the order they occur -
@@ -99,9 +64,9 @@ import Testing
     }
 
     @Test func anImageEmbedResolvesToADrawnRenditionWithARealRender() async throws {
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        try Self.writeImage(named: "foto.png", in: root)
+        try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         let thumbnails = ThumbnailStore(
             root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
         )
@@ -115,7 +80,7 @@ import Testing
         // Nothing yet, synchronously: the first pass never blocks on the render.
         #expect(coordinator.embeds.renditions[offset] == nil)
 
-        guard case .drawn(let image) = await Self.waitForRendition(at: offset, in: coordinator) else {
+        guard case .drawn(let image) = await EmbedEditorFixtures.waitForRendition(at: offset, in: coordinator) else {
             Issue.record("expected the embed to resolve to a drawn rendition")
             return
         }
@@ -124,7 +89,7 @@ import Testing
     }
 
     @Test func aMissingFileResolvesToMissingWithoutTouchingTheRenderer() throws {
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let thumbnails = ThumbnailStore(
             root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
@@ -142,7 +107,7 @@ import Testing
     }
 
     @Test func aFileWhoseTypeIsNeitherAPictureNorAPDFIsNeverEnteredInTheTable() throws {
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         try Data("appunti".utf8).write(to: root.appending(path: "appunti.txt", directoryHint: .notDirectory))
         let thumbnails = ThumbnailStore(
@@ -178,9 +143,9 @@ import Testing
         // is expected to land in the 320 bucket, never in 720's own 960.
         #expect(ThumbnailStore.bucket(for: 300) == 320)
 
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        try Self.writeImage(named: "foto.png", in: root)
+        try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         let cacheDirectory = root.appending(path: "cache", directoryHint: .isDirectory)
         let thumbnails = ThumbnailStore(root: root, directory: cacheDirectory)
 
@@ -190,7 +155,7 @@ import Testing
         coordinator.applyEmbeds(to: textView)
 
         let offset = (text as NSString).range(of: "![[foto.png|300]]").location
-        guard case .drawn = await Self.waitForRendition(at: offset, in: coordinator) else {
+        guard case .drawn = await EmbedEditorFixtures.waitForRendition(at: offset, in: coordinator) else {
             Issue.record("expected the embed written |300 to resolve to a drawn rendition")
             return
         }
@@ -208,9 +173,9 @@ import Testing
     }
 
     @Test func anUnsizedEmbedStillRendersThroughTheDefaultWidthAndSharesItsEntryWithASecondUnsizedEmbed() async throws {
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        try Self.writeImage(named: "foto.png", in: root)
+        try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         let cacheDirectory = root.appending(path: "cache", directoryHint: .isDirectory)
         let thumbnails = ThumbnailStore(root: root, directory: cacheDirectory)
 
@@ -226,8 +191,8 @@ import Testing
         #expect(offsets.count == 2)
         guard offsets.count == 2 else { return }
 
-        guard case .drawn(let first) = await Self.waitForRendition(at: offsets[0], in: coordinator),
-              case .drawn(let second) = await Self.waitForRendition(at: offsets[1], in: coordinator)
+        guard case .drawn(let first) = await EmbedEditorFixtures.waitForRendition(at: offsets[0], in: coordinator),
+              case .drawn(let second) = await EmbedEditorFixtures.waitForRendition(at: offsets[1], in: coordinator)
         else {
             Issue.record("expected both unsized embeds to resolve to a drawn rendition")
             return
@@ -245,9 +210,9 @@ import Testing
         #expect(ThumbnailStore.bucket(for: 300) == 320)
         #expect(ThumbnailStore.bucket(for: 310) == 320)
 
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        try Self.writeImage(named: "foto.png", in: root)
+        try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         let cacheDirectory = root.appending(path: "cache", directoryHint: .isDirectory)
         let thumbnails = ThumbnailStore(root: root, directory: cacheDirectory)
 
@@ -259,8 +224,8 @@ import Testing
         let offset300 = (text as NSString).range(of: "![[foto.png|300]]").location
         let offset310 = (text as NSString).range(of: "![[foto.png|310]]").location
 
-        guard case .drawn(let renderedAt300) = await Self.waitForRendition(at: offset300, in: coordinator),
-              case .drawn(let renderedAt310) = await Self.waitForRendition(at: offset310, in: coordinator)
+        guard case .drawn(let renderedAt300) = await EmbedEditorFixtures.waitForRendition(at: offset300, in: coordinator),
+              case .drawn(let renderedAt310) = await EmbedEditorFixtures.waitForRendition(at: offset310, in: coordinator)
         else {
             Issue.record("expected both sized embeds to resolve to a drawn rendition")
             return

@@ -25,7 +25,7 @@ import Testing
 // + `MailStoreReader` vs. a full vault rescan + thumbnail store creation), which is
 // exactly the nondeterministic trigger this dispatch was told not to force. Neither
 // existing pratiche fixture pattern drives `PraticaLiveSync` itself for the same
-// reason: `PraticaSyncTests.makeEngine(mailStoreURL:vaultRoot:)` drives
+// reason: `PraticaSyncFixtures.makeEngine(mailStoreURL:vaultRoot:)` drives
 // `PraticaSyncEngine` one layer below it, and `PraticheConnectorTests`'s
 // `VaultSession(root:stateBase:)` never touches `PraticaLiveSync` at all.
 //

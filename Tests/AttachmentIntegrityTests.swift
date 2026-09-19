@@ -230,29 +230,12 @@ import Testing
     /// windows. Follows `Tests/SharedSourcesPurityTests.swift`'s own file-walking
     /// precedent.
     @Test func fileVerdictImplementationNeverCallsDataContentsOfWhole() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let fileURL = repoRoot.appendingPathComponent("Sources/Core/Email/AttachmentIntegrity.swift")
         let contents = try String(contentsOf: fileURL, encoding: .utf8)
         #expect(
             !contents.contains("Data(contentsOf:"),
             "AttachmentIntegrity.swift must read a file's size and windows only, never the whole file - ADR-0040 §D1/§D8"
         )
-    }
-
-    /// One `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives
-    /// the repository root, matching `SharedSourcesPurityTests.resolvedRepoRoot()`.
-    private static func resolvedRepoRoot() throws -> URL {
-        let thisFileURL = URL(fileURLWithPath: #filePath)
-        let candidateRoot = thisFileURL
-            .deletingLastPathComponent() // AttachmentIntegrityTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-        guard FileManager.default.fileExists(atPath: candidateRoot.appendingPathComponent("Sources").path) else {
-            struct RepoRootNotFound: Error, CustomStringConvertible {
-                let candidate: String
-                var description: String { "Could not resolve the repository root from #filePath. Candidate tried: \(candidate)" }
-            }
-            throw RepoRootNotFound(candidate: candidateRoot.path)
-        }
-        return candidateRoot
     }
 }
