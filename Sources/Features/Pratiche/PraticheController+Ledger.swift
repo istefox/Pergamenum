@@ -16,6 +16,45 @@ enum PraticaRunStop: Error, Equatable, Sendable {
     /// carried because the caller that must stop is the caller that must ask for a
     /// fresh run at `to` (§3 of the plan above).
     case praticaRelocated(from: String, to: String)
+    /// The pratica folder a run captured, or an ancestor of it, went to the Trash while the
+    /// run was still in flight (PG-169, ADR-0026 §D7's 2026-09-19 amendment) - the deletion
+    /// twin of `.praticaRelocated`. `path` is what the run captured. It carries no
+    /// destination because there is none, and `runExclusive` maps it to `.finished`, never
+    /// to `.relocated(to:)`: a re-enqueued run for a trashed pratica would only dequeue into
+    /// the «non ha un dossier leggibile» report.
+    case praticaTrashed(path: String)
+}
+
+extension PraticaRunStop {
+    /// The Italian sentence «Rigenera…» reports when the guard on its own pratica folder
+    /// refuses it - `PraticaLiveSync.prepareRegeneration` before showing a preview,
+    /// `commitRegeneration` before writing. Chosen here, not at either call site, so the two
+    /// cannot drift and neither grows a branch: a folder that moved sends the person to «la
+    /// nuova posizione», and a folder that went to the Trash (PG-169) has none to send them to.
+    static func regenerationRefusal(after error: Error, of folder: String) -> String {
+        if case .praticaTrashed? = error as? PraticaRunStop {
+            return "«\(folder)» è stata eliminata: la rigenerazione non è stata eseguita."
+        }
+        return "«\(folder)» è stata spostata: riapri «Rigenera…» dalla nuova posizione."
+    }
+}
+
+/// Where a pratica path some in-flight caller captured stands by the time that caller looks
+/// again (ADR-0026 §D7, PG-169). One value rather than a redirect map read beside a tombstone
+/// set: a second collection read separately is the `assertInsideVault(url)` shape CLAUDE.md's
+/// working agreement forbids, and the fourth caller would read one and forget the other.
+/// Private to this file, since `praticaPath(continuing:)`, `recordSyncOutcome` and
+/// `endRegeneration` - the only three askers - all live here.
+private enum PraticaPathDestination: Equatable {
+    /// Nothing relocated it and nothing trashed it.
+    case same
+    /// Relocated, once or more, and lives at this path now.
+    case moved(String)
+    /// Its folder went to the Trash - or, after a relocation, the folder it was last relocated
+    /// to did. The payload is the end of the redirect chain (the captured path itself when
+    /// nothing moved), because that is the key `regeneratingPraticaPaths` still holds and
+    /// `endRegeneration` has to release.
+    case forgotten(String)
 }
 
 extension PraticheController {
@@ -87,8 +126,11 @@ extension PraticheController {
             // `load(from:)` also runs on the SAME vault right after an ordinary
             // rename/status-change/delete (`PraticaCommandActions`), and clearing the
             // map there could erase an entry `moveLedgerState` just left, moments
-            // earlier in the same call stack, for a sync still in flight.
+            // earlier in the same call stack, for a sync still in flight. The same holds
+            // for a tombstone `forgetLedgerState` just left (PG-169) - `confirmDeletion`
+            // calls `load(from:)` straight after its trash.
             praticaPathRedirects.removeAll()
+            forgottenPraticaPaths.removeAll()
             return
         }
         ledger = PraticaLedger.load(from: Self.ledgerURL(for: session))
@@ -193,8 +235,25 @@ extension PraticheController {
         // A relocation that ran on the main actor while this outcome's own sync was
         // still in flight has already moved the ledger key out from under
         // `praticaPath` (`moveLedgerState`, below) - only meaningful against `self`
-        // when this outcome belongs to the vault that redirect map describes.
-        let currentPath = isCurrentVault ? resolvePraticaPathRedirect(praticaPath) : praticaPath
+        // when this outcome belongs to the vault that redirect map describes. The
+        // tombstones (`forgottenPraticaPaths`) describe the live vault alone for the same
+        // reason.
+        let currentPath: String
+        if isCurrentVault {
+            switch destination(of: praticaPath) {
+            case .same: currentPath = praticaPath
+            case .moved(let moved): currentPath = moved
+            // A trash (PG-169) that ran while this outcome's own run was in flight has
+            // already removed the ledger key. Writing anything now - a key, a `problem`
+            // sentence, the `ledger` assignment - would put back what it removed. This is
+            // the one guard that closes the regeneration half of that race, since
+            // `commitRegeneration` deliberately has no post-`await` re-check (`PG-168`'s
+            // third case).
+            case .forgotten: return
+            }
+        } else {
+            currentPath = praticaPath
+        }
         var sessionLedger = isCurrentVault ? ledger : PraticaLedger.load(from: url)
         var state = sessionLedger.byPraticaPath[currentPath] ?? .empty
         state.lastSyncAt = Date()
@@ -266,7 +325,7 @@ extension PraticheController {
     /// claimed by `syncingPraticaPath` or `regeneratingPraticaPaths` at this exact
     /// moment (MINOR 1 - most relocations run with nothing syncing or regenerating and
     /// now add zero entries, closing the unconditional per-relocation growth); and
-    /// `resolvePraticaPathRedirect` (below) no longer removes what it reads, so two
+    /// `destination(of:)` (below) no longer removes what it reads, so two
     /// concurrent in-flight callers sharing the same pre-move path both resolve
     /// correctly instead of the first consuming the entry out from under the second
     /// (MINOR 2). Nothing here needs a `selection` redirect: `recordSyncOutcome` only
@@ -303,7 +362,7 @@ extension PraticheController {
             // right now" - `PraticaSyncEngine.cancel()` is cooperative, checked once
             // per message, so it can still complete into the vacated path (`PG-168`,
             // not fixed further here).
-            requestSyncStopForRelocation?()
+            requestSyncStopForVanishedPath?()
         }
         if !regeneratingPraticaPaths.isEmpty {
             var remappedRegenerations: Set<String> = []
@@ -333,15 +392,111 @@ extension PraticheController {
         }
     }
 
+    /// The deletion twin of `moveLedgerState(from:to:in:)` (ADR-0026 §D7, amended
+    /// 2026-09-19, PG-169): a pratica folder sent to the Trash - or an ancestor of one, which
+    /// takes every descendant pratica with it - leaves every piece of path-keyed Pratiche state
+    /// describing a folder that is gone. The ledger is the one that does harm: a pratica
+    /// recreated under the same name would inherit the old one's history - its
+    /// `importedMessageIDs`, its «non più in Mail» list, its bridge `entries`, `lastOpenedAt`
+    /// and tray count. Measured, not assumed: `MailStoreReader.rows` builds every row with
+    /// `messageID: nil`, so stale ids do not by themselves stop `workItems` from queuing a
+    /// message (the engine's own on-disk `Message-ID` scan decides); the harm is history
+    /// leaking into a folder that never earned it, not a silent skip.
+    ///
+    /// Subtree-aware for the same reason the move twin is, through the same `isInSubtree`
+    /// predicate, so `01 Progetti-altro` is never taken for a descendant of `01 Progetti`. The
+    /// ledger key, the tray proposals and counts and the per-pratica watcher are removed; a
+    /// selection inside the subtree goes through `select(nil, in:)`, so `expansion`, the
+    /// timeline, the details and the links follow it as they do when a person deselects,
+    /// rather than keep describing a folder in the Trash.
+    ///
+    /// A run still in flight for the folder is stopped and its outcome discarded.
+    /// `syncingPraticaPath` and `regeneratingPraticaPaths` are deliberately NOT cleared, unlike
+    /// a relocation, which remaps them: the claim stays where the run itself releases it
+    /// (`endSync`/`endRegeneration`), because clearing it here would let `pruneRedirectsIfIdle`
+    /// wipe the tombstone while the run it protects is still going. The tombstone is recorded
+    /// independently of the dictionaries: a pratica's very first sync has no ledger entry yet
+    /// (`?? .empty` never inserts one), so `removeKeys` alone would not have seen it.
+    ///
+    /// Nothing here prunes a key merely because its folder is missing from the disk, and
+    /// nothing at load does either. A Finder move, an unmounted volume and a not-yet-scanned
+    /// index all look exactly like a deleted pratica, and pruning on that evidence would turn
+    /// the relocation bug into unrecoverable history loss. Only a trash this app performed
+    /// itself is proof.
+    func forgetLedgerState(under path: String, in vault: VaultController) {
+        // Snapshotted before anything below touches the claims - `moveLedgerState`'s own
+        // first line, and for the same reason.
+        let isInFlight: (String) -> Bool = { [syncingPraticaPath, regeneratingPraticaPaths] key in
+            key == syncingPraticaPath || regeneratingPraticaPaths.contains(key)
+        }
+        // `ledger` starts `.empty` and only `load(from:)` fills it, which the Pratiche pane
+        // and its sheets call - not the launch, and not this hook, which fires for ANY folder
+        // trashed through the note list or the Workspace browser. A controller that never
+        // loaded holds nothing to remove from, and saving that empty value would overwrite
+        // the real file and wipe every pratica's history. So an empty in-memory ledger is
+        // refreshed from disk first (a missing or unreadable file reads as `.empty` again,
+        // which changes nothing), and the save below happens only when a key really left.
+        let ledgerURL = vault.session.map(Self.ledgerURL(for:))
+        if ledger == .empty, let ledgerURL {
+            ledger = PraticaLedger.load(from: ledgerURL)
+        }
+        let ledgerKeyCount = ledger.byPraticaPath.count
+        Self.removeKeys(
+            &ledger.byPraticaPath, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
+        )
+        let removedLedgerKey = ledger.byPraticaPath.count != ledgerKeyCount
+        Self.removeKeys(
+            &trayProposals, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
+        )
+        Self.removeKeys(
+            &trayCounts, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
+        )
+        Self.removeKeys(
+            &watchersByPraticaPath, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
+        )
+        if let syncingPraticaPath, Self.isInSubtree(syncingPraticaPath, of: path) {
+            forgottenPraticaPaths.insert(syncingPraticaPath)
+            // The engine, mid-message, is not one of the consumers the tombstone stops: it
+            // keeps writing into the trashed folder until it is asked to stop
+            // (`PraticaSyncEngine.cancel()` is cooperative, checked once per message, so the
+            // message being written right now can still land - `PG-168`, not fixed here).
+            requestSyncStopForVanishedPath?()
+        }
+        for claimed in regeneratingPraticaPaths where Self.isInSubtree(claimed, of: path) {
+            forgottenPraticaPaths.insert(claimed)
+        }
+        if let selection, Self.isInSubtree(selection, of: path) {
+            select(nil, in: vault)
+        }
+        guard removedLedgerKey, let ledgerURL else { return }
+        do { try ledger.save(to: ledgerURL) } catch {
+            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        }
+    }
+
+    /// The one place `VaultController.didTrashFolder` calls into (ADR-0026 §D7, wired by
+    /// `PergamenumApp.init`): the deletion twin of `followFolderRelocations(_:in:)`, called
+    /// once for the folder the trash door sent to the Trash - a pratica itself or any ancestor
+    /// of one, since `forgetLedgerState` is subtree-aware.
+    func followFolderTrashing(_ path: String, in vault: VaultController) {
+        forgetLedgerState(under: path, in: vault)
+    }
+
+    /// Whether `path` is `root` itself or nested inside it. The prefix is `"\(root)/"` and
+    /// never the bare path, `VaultMoveBatch.plan`'s own convention (`VaultMoveBatch.swift:
+    /// 63-70`) to avoid mistaking `a-altro` for a descendant of `a`. The one predicate both
+    /// `remappedPath` (the move twin) and `removeKeys` (the delete twin) ask, so the
+    /// sibling-prefix rule cannot drift between the two.
+    private static func isInSubtree(_ path: String, of root: String) -> Bool {
+        path == root || path.hasPrefix("\(root)/")
+    }
+
     /// `path` itself, or `path` remapped to sit under `newPath` when it was nested
     /// inside `oldPath` - `nil` when `path` is neither, meaning it is untouched by this
-    /// relocation. The prefix is `"\(oldPath)/"` and never the bare path,
-    /// `VaultMoveBatch.plan`'s own convention (`VaultMoveBatch.swift:63-70`) to avoid
-    /// mistaking `a-altro` for a descendant of `a`.
+    /// relocation (`isInSubtree`'s own rule).
     private static func remappedPath(_ path: String, from oldPath: String, to newPath: String) -> String? {
-        if path == oldPath { return newPath }
-        if path.hasPrefix("\(oldPath)/") { return newPath + path.dropFirst(oldPath.count) }
-        return nil
+        guard isInSubtree(path, of: oldPath) else { return nil }
+        return path == oldPath ? newPath : newPath + path.dropFirst(oldPath.count)
     }
 
     /// The dictionary-keyed twin of `remappedPath`: every key equal to or nested inside
@@ -368,40 +523,64 @@ extension PraticheController {
         }
     }
 
+    /// The deletion twin of `remapKeys`: every key equal to or nested inside `path` is
+    /// removed, everything else untouched. A removed key joins `forgotten` only when
+    /// `isInFlight(key)` says a sync or regeneration still holds it as its own captured path
+    /// (review round 2's MINOR 1 rule, kept) - a deletion with nothing running for `key`
+    /// records no tombstone, since nothing will ever read one.
+    private static func removeKeys<Value>(
+        _ dict: inout [String: Value], under path: String,
+        forgotten: inout Set<String>, isInFlight: (String) -> Bool
+    ) {
+        for key in Array(dict.keys) where isInSubtree(key, of: path) {
+            dict.removeValue(forKey: key)
+            if isInFlight(key) { forgotten.insert(key) }
+        }
+    }
+
     /// `praticaPath` as some in-flight caller captured it, resolved to wherever a
     /// relocation moved its ledger key by the time the caller's own outcome arrives -
-    /// itself when no relocation ever touched it. Walks more than one hop only when the
-    /// same pratica was relocated twice before that outcome landed.
+    /// itself when no relocation ever touched it - and to `.forgotten` when the folder it
+    /// ended up at was trashed in the meantime (PG-169). Walks more than one hop only when
+    /// the same pratica was relocated twice before that outcome landed.
     ///
-    /// Never mutates `praticaPathRedirects` (review round 2, MINOR 2): the old
-    /// `removeValue` read let the FIRST of two concurrent in-flight callers sharing the
-    /// same pre-move path (an ordinary sync and a "Rigenera…" commit can race each
-    /// other for the same pratica - `PraticaLiveSync`'s `SyncRunQueue` only serializes
-    /// ordinary syncs against each other) consume the entry, leaving the second to fall
-    /// through to the stale key and resurrect it. `endSync`/`endRegeneration` are what
-    /// eventually drop an entry, once nothing anywhere is still in flight to need it
+    /// Never mutates `praticaPathRedirects` or `forgottenPraticaPaths` (review round 2,
+    /// MINOR 2): the old `removeValue` read let the FIRST of two concurrent in-flight
+    /// callers sharing the same pre-move path (an ordinary sync and a "Rigenera…" commit
+    /// can race each other for the same pratica - `PraticaLiveSync`'s `SyncRunQueue` only
+    /// serializes ordinary syncs against each other) consume the entry, leaving the second
+    /// to fall through to the stale key and resurrect it. `endSync`/`endRegeneration` are
+    /// what eventually drop an entry, once nothing anywhere is still in flight to need it
     /// (`pruneRedirectsIfIdle`, below) - never a single read.
-    private func resolvePraticaPathRedirect(_ praticaPath: String) -> String {
-        var current = praticaPath
-        var visited: Set<String> = [praticaPath]
+    private func destination(of captured: String) -> PraticaPathDestination {
+        var current = captured
+        var visited: Set<String> = [captured]
         while let next = praticaPathRedirects[current], visited.insert(next).inserted {
             current = next
         }
-        return current
+        if forgottenPraticaPaths.contains(current) { return .forgotten(current) }
+        return current == captured ? .same : .moved(current)
     }
 
     /// The pratica folder an in-flight run captured, returned only while it is still
     /// where that run left it (round-4 review, §1). Throws `.praticaRelocated`
-    /// otherwise: a run must not keep writing - files or ledger keys - under a path a
+    /// when it moved: a run must not keep writing - files or ledger keys - under a path a
     /// relocation has vacated. Carries the new path because the caller that must stop
-    /// is the caller that must ask for a fresh run there. A resolver, not a bare
+    /// is the caller that must ask for a fresh run there. Throws `.praticaTrashed` when
+    /// the folder went to the Trash (PG-169), which carries no destination: there is
+    /// nowhere to ask for a fresh run. A resolver, not a bare
     /// `hasRelocated(_:) -> Bool` predicate: the `assertInsideVault(url)` shape
     /// CLAUDE.md's working agreement forbids, containment per ADR-0041's
     /// `VaultBoundary.url(for:)` precedent.
     func praticaPath(continuing captured: String) throws -> String {
-        let current = resolvePraticaPathRedirect(captured)
-        guard current != captured else { return captured }
-        throw PraticaRunStop.praticaRelocated(from: captured, to: current)
+        switch destination(of: captured) {
+        case .same:
+            return captured
+        case .moved(let current):
+            throw PraticaRunStop.praticaRelocated(from: captured, to: current)
+        case .forgotten:
+            throw PraticaRunStop.praticaTrashed(path: captured)
+        }
     }
 
     // MARK: - «Rigenera…»'s own in-flight marker (review round 2)
@@ -425,9 +604,15 @@ extension PraticheController {
     /// own, possibly stale, captured value) through the same redirect chain
     /// `recordSyncOutcome` reads, since a relocation mid-regeneration keeps
     /// `regeneratingPraticaPaths` itself live-updated to the CURRENT path
-    /// (`moveLedgerState`, above), not the value this call was made with.
+    /// (`moveLedgerState`, above), not the value this call was made with. A trash
+    /// (PG-169) leaves the claim exactly where it was - `forgetLedgerState` never clears it,
+    /// so that this is the one place it is released - and `.forgotten` names the end of the
+    /// chain for the case a relocation came first.
     func endRegeneration(_ praticaPath: String) {
-        regeneratingPraticaPaths.remove(resolvePraticaPathRedirect(praticaPath))
+        switch destination(of: praticaPath) {
+        case .same: regeneratingPraticaPaths.remove(praticaPath)
+        case .moved(let current), .forgotten(let current): regeneratingPraticaPaths.remove(current)
+        }
         pruneRedirectsIfIdle()
     }
 
@@ -444,17 +629,19 @@ extension PraticheController {
         regeneration = nil
     }
 
-    /// Review round 2, MINOR 2's other half: since `resolvePraticaPathRedirect` never
-    /// removes what it reads, nothing prunes `praticaPathRedirects` on a per-entry
-    /// basis. The whole map is safe to drop in one go the moment NOTHING is in flight
-    /// anywhere - `syncingPraticaPath == nil && regeneratingPraticaPaths.isEmpty` -
-    /// since every entry in it exists only because `moveLedgerState` found something in
-    /// flight for that key at the time (MINOR 1), and nothing left running means every
-    /// caller that could have needed one has already resolved through it. Called from
-    /// `endSync` and `endRegeneration`, the two places that can make this true.
+    /// Review round 2, MINOR 2's other half: since `destination(of:)` never removes what
+    /// it reads, nothing prunes `praticaPathRedirects` on a per-entry basis. The whole map
+    /// is safe to drop in one go the moment NOTHING is in flight anywhere -
+    /// `syncingPraticaPath == nil && regeneratingPraticaPaths.isEmpty` - since every entry
+    /// in it exists only because `moveLedgerState` found something in flight for that key
+    /// at the time (MINOR 1), and nothing left running means every caller that could have
+    /// needed one has already resolved through it. `forgottenPraticaPaths` goes with it, for
+    /// the same reason: `forgetLedgerState` tombstones only a key something claims. Called
+    /// from `endSync` and `endRegeneration`, the two places that can make this true.
     private func pruneRedirectsIfIdle() {
         guard syncingPraticaPath == nil, regeneratingPraticaPaths.isEmpty else { return }
         praticaPathRedirects.removeAll()
+        forgottenPraticaPaths.removeAll()
     }
 
     /// §D23.4: Mail renumbered a followed conversation Mail's own way (a new

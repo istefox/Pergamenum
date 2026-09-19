@@ -73,6 +73,11 @@ extension VaultController {
             for path in result.trashedNotePaths {
                 trashedNote(at: path)
             }
+            // The deletion twin of `renameFolder`'s `didRelocateFolders` call (ADR-0026 §D7,
+            // 2026-09-19 amendment, PG-169). Trimmed the way `canOperateOnFolder` trims one
+            // line above the `do`, so a caller that ever passes "F/" cannot leave a key
+            // behind for the subscriber to miss.
+            didTrashFolder?(relativePath.trimmingCharacters(in: .pathSlashes))
             Task { await rescan() }
             return true
         } catch {

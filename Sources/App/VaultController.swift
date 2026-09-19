@@ -128,6 +128,16 @@ final class VaultController {
     /// test that builds a bare `VaultController`, and the moves just go unfollowed.
     @ObservationIgnored var didRelocateFolders: (([MovedNote]) -> Void)?
 
+    /// The deletion twin of `didRelocateFolders` above, wired at the same place for the same
+    /// reason (ADR-0026 §D7's 2026-09-19 amendment, PG-169). `trashFolder(at:)` - the one door
+    /// every folder delete goes through, whether it comes from a pratica's own «Elimina», the
+    /// note list or the Workspace browser - hands the vault-relative path it just sent to the
+    /// Trash here, so path-keyed feature state (Pratiche's ledger today) forgets it instead of
+    /// letting a folder recreated under the same name inherit it. Fired only after
+    /// `session.trashFolder` returned: every failure there throws, so a call means the folder
+    /// really went to the Trash. `nil` in every test that builds a bare `VaultController`.
+    @ObservationIgnored var didTrashFolder: ((String) -> Void)?
+
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()

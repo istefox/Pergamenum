@@ -150,6 +150,89 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     controller.close()
 }
 
+// MARK: - The deletion twin of `didRelocateFolders` (ADR-0026 §D7, 2026-09-19 amendment, PG-169)
+//
+// R-04 is proved at the DOOR, not at a caller: `VaultController.trashFolder(at:)` is the one
+// entry point the pratica command, the note list and the Workspace browser all share, and
+// `VaultSession.trashFolder` has exactly one caller in `Sources/` - this method.
+
+@MainActor
+@Test func trashingAFolderPublishesItsPathExactlyOnce() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    var published: [String] = []
+    controller.didTrashFolder = { published.append($0) }
+
+    let trashed = controller.trashFolder(at: "01 Progetti/vecchio")
+
+    #expect(trashed == true)
+    #expect(published == ["01 Progetti/vecchio"], "one trash, one publication, carrying the trashed folder's path")
+    controller.close()
+}
+
+@MainActor
+@Test func trashingAFolderPublishesTheTrimmedPath() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    var published: [String] = []
+    controller.didTrashFolder = { published.append($0) }
+
+    let trashed = controller.trashFolder(at: "01 Progetti/vecchio/")
+
+    #expect(trashed == true)
+    #expect(
+        published == ["01 Progetti/vecchio"],
+        "`canOperateOnFolder` trims the slash, so what is published must be trimmed too or a ledger key is left behind"
+    )
+    controller.close()
+}
+
+// R-05: a refusal publishes nothing, so a folder that is still on disk never has its state
+// forgotten. The setup is `vaultControllerRefusesToRenameAFolderWithAnUnsavedNoteUnderIt`'s.
+@MainActor
+@Test func aRefusedTrashPublishesNothing() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    controller.openNote(at: "01 Progetti/vecchio/Nota.md")
+    controller.updateOpenNoteText(note("Modifica non salvata."))
+    var published: [String] = []
+    controller.didTrashFolder = { published.append($0) }
+
+    let trashed = controller.trashFolder(at: "01 Progetti/vecchio")
+
+    #expect(trashed == false)
+    #expect(!controller.problems.isEmpty, "l'eliminazione rifiutata deve registrare un problema")
+    #expect(published.isEmpty, "a refused trash leaves the folder where it is, so nothing may be forgotten")
+    controller.close()
+}
+
+// R-05: a trash that throws in the session publishes nothing either - a folder that does not
+// exist, and the vault root, which `FolderFileOperations.trashFolder` refuses outright.
+@MainActor
+@Test func aFailedTrashPublishesNothing() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    var published: [String] = []
+    controller.didTrashFolder = { published.append($0) }
+
+    let missing = controller.trashFolder(at: "01 Progetti/mai-esistita")
+    let root = controller.trashFolder(at: "")
+
+    #expect(missing == false)
+    #expect(root == false)
+    #expect(!controller.problems.isEmpty, "each failed trash records its problem")
+    #expect(published.isEmpty, "fired implies the folder really went to the Trash; a throw never gets that far")
+    controller.close()
+}
+
 // MARK: - The read-only pair (PG-051): WorkspaceBrowser/NoteListPane read these through
 // VaultController instead of constructing their own FolderFileOperations.
 

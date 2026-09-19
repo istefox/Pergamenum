@@ -153,4 +153,37 @@ import Testing
             "the controller's shared, observable ledger tracks the LIVE vault only - a stale session's write must never appear in it"
         )
     }
+
+    /// PG-169's regression guard (`docs/plans/pg-169-pratica-ledger-forgotten-on-folder-
+    /// trash.md`, Task 4): `recordSyncOutcome` now resolves through a resolver that can also
+    /// answer "forgotten", so an ordinary record for a pratica nobody trashed must be exactly
+    /// what it was - including while a tombstone exists for a DIFFERENT pratica. The trashed
+    /// side of the same call is `Tests/PraticaLiveSyncTrashedMidRunTests.swift`'s.
+    @Test func recordSyncOutcomeStillWritesWhenSomeOtherPraticaWasTrashedMidRun() throws {
+        let vault = try TemporaryVault()
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let praticaPath = "01 Progetti/Rossi/Offerta"
+        let trashedPath = "01 Progetti/Verdi/Contratto"
+        controller.beginSync(praticaPath)
+        controller.beginRegeneration(trashedPath)
+        controller.followFolderTrashing(trashedPath, in: VaultController())
+        #expect(controller.forgottenPraticaPaths == [trashedPath], "precondition: a tombstone exists for the other one")
+
+        controller.recordSyncOutcome(
+            PraticaSyncEngine.SyncOutcome(
+                writtenFiles: [], importedMessageIDs: ["<abc@rossi-spa.it>"],
+                noLongerInMail: [], regeneratedPendingFiles: [], cancelled: false, bridge: []
+            ),
+            for: praticaPath, session: session, isCurrentVault: true
+        )
+
+        #expect(
+            controller.ledger.byPraticaPath[praticaPath]?.importedMessageIDs == ["<abc@rossi-spa.it>"],
+            "a tombstone for another pratica must not swallow this one's outcome"
+        )
+        let onDisk = PraticaLedger.load(from: PraticheController.ledgerURL(for: session))
+        #expect(onDisk.byPraticaPath[praticaPath]?.importedMessageIDs == ["<abc@rossi-spa.it>"])
+        #expect(controller.ledger.byPraticaPath[trashedPath] == nil, "and the trashed one stays gone")
+    }
 }

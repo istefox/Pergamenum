@@ -129,6 +129,8 @@ struct PergamenumApp: App {
         vault.didRelocateFolders = { [weak pratiche] moved in
             pratiche?.followFolderRelocations(moved, in: vault)
         }
+        // PG-169, the deletion twin: state keyed by a trashed folder is forgotten, not followed.
+        vault.didTrashFolder = { [weak pratiche] in pratiche?.followFolderTrashing($0, in: vault) }
         _pratiche = State(initialValue: pratiche)
 
         let panel = CapturePanel(

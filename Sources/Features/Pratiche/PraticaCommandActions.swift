@@ -103,15 +103,11 @@ struct PraticaCommandActions {
     /// and follows every note it held out of the open tabs.
     func confirmDeletion(of pratica: PraticaListItem) {
         pratiche.deletionRequest = nil
-        // TODO: this never removes `pratica.id`'s ledger key (found during the
-        // pratica-ledger-orphaned-by-folder-move review, docs/plans/pg-pratica-ledger-
-        // orphaned-by-folder-move.md). Trashing a pratica and later recreating one with
-        // the same name would inherit its stale `importedMessageIDs` and re-skip
-        // messages that were never actually imported into the new folder. Real, but a
-        // separate defect from the move/rename orphaning this file fixes - not fixed
-        // here.
+        // By the time `trashFolder` returns, `VaultController.didTrashFolder` has already
+        // forgotten the ledger key, the tray state, the watcher and the selection
+        // (ADR-0026 §D7, PG-169), so this clears none of them itself - `confirmRename`
+        // below says the same of `didRelocateFolders`.
         guard vault.trashFolder(at: pratica.id) else { return }
-        if pratiche.selection == pratica.id { pratiche.select(nil, in: vault) }
         pratiche.load(from: vault)
     }
 

@@ -115,7 +115,10 @@ is stable.
 - `PraticaCommandActions.confirmDeletion`/`trashFolder` never removes the ledger key:
   trashing a pratica and recreating one with the same name would inherit stale
   `importedMessageIDs`. Real, but a separate defect — filed as a TODO comment only,
-  not fixed here.
+  not fixed here. **Fixed since by PG-169** (`docs/plans/pg-169-pratica-ledger-forgotten-
+  on-folder-trash.md`): `VaultController.didTrashFolder` is this bug's deletion twin, and
+  `PraticheController.forgetLedgerState(under:in:)` removes the ledger key and the rest of
+  the path-keyed state the way `moveLedgerState` moves it; the TODO is gone.
 
 ## Manual data repair (after the code fix, before closing this out)
 

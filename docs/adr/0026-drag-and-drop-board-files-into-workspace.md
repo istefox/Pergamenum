@@ -241,6 +241,23 @@ The SPEC's "no new rewriting" section is right twice and incomplete once.
   move and for a rename alike, forward and through undo/redo — and path-keyed feature state
   (Pratiche's ledger today) must subscribe to it rather than assume its own path is stable, the same
   way `.canvas` node paths above must be repointed rather than left stale.
+- **Amended 2026-09-19** (pratica ledger forgotten on folder trash, PG-169): the same rule with the
+  opposite verb and no destination. `VaultController.trashFolder(at:)` — the one door every folder
+  delete goes through, whether from a pratica's own «Elimina», the note list or the Workspace
+  browser — publishes the trimmed path it just sent to the Trash through
+  `VaultController.didTrashFolder`, fired only after the trash succeeded. Path-keyed feature state must
+  therefore *forget* as well as follow: Pratiche removes every ledger key, tray proposal, tray count
+  and watcher equal to or under that path (the same trailing-slash subtree rule as a move), clears a
+  selection inside it, and stops an in-flight sync or regeneration and discards its outcome, so a
+  finishing run cannot put back the key the trash just removed. One deliberate **no**: nothing prunes
+  a ledger key merely because its folder is missing from the disk, at load or anywhere else. A Finder
+  move, an unmounted volume and a not-yet-scanned index look exactly like a deleted pratica, and
+  pruning on that evidence would turn the relocation bug above into unrecoverable history loss; only
+  a trash this app performed itself is proof. A folder trashed outside the app still leaves its key.
+  What a stale key actually costs, measured when it was fixed: a pratica recreated under the same name
+  inherits the old one's history (`importedMessageIDs`, the «non più in Mail» list, bridge `entries`,
+  `lastOpenedAt`, tray count). It does not silently skip messages: `MailStoreReader.rows` builds every
+  row with `messageID: nil`, so the engine's own on-disk `Message-ID` scan decides what is imported.
 
 ### §D8 — Undo is registered on the window's `UndoManager`, obtained from the SwiftUI
 ### environment and passed in as a parameter
