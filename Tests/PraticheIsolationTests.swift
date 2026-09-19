@@ -25,7 +25,7 @@ import Testing
     private static let forbiddenNameFragments = ["MailStore", "EMLXReader", "SQLite3"]
 
     @Test func noConnectorOrFrontEndFileReferencesTheMailStore() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         var offendingFiles: [String] = []
         var scannedAnyFile = false
 
@@ -117,32 +117,5 @@ import Testing
             result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
         }
         return result
-    }
-
-    /// Mirrors `SharedSourcesPurityTests.resolvedRepoRoot()`: one
-    /// `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives
-    /// the repository root, which is what `guardedDirectories`' `"Sources/..."` paths
-    /// are relative to - never `Sources` itself, which `resolvedSourcesRoot()` used to
-    /// return and which doubled the path segment.
-    private static func resolvedRepoRoot() throws -> URL {
-        let thisFileURL = URL(fileURLWithPath: #filePath)
-        let candidateRoot = thisFileURL
-            .deletingLastPathComponent() // PraticheIsolationTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-        guard FileManager.default.fileExists(atPath: candidateRoot.appendingPathComponent("Sources").path) else {
-            throw RepoRootResolutionError.notFound(candidate: candidateRoot.path)
-        }
-        return candidateRoot
-    }
-}
-
-private enum RepoRootResolutionError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-
-    var description: String {
-        switch self {
-        case let .notFound(candidate):
-            return "Could not resolve Sources/ from #filePath. Candidate tried: \(candidate)"
-        }
     }
 }

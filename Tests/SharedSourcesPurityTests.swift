@@ -24,7 +24,7 @@ import Testing
     ]
 
     @Test func noGuardedSharedSourceFileImportsSparkle() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         var offendingFiles: [String] = []
 
         for directory in Self.guardedDirectories {
@@ -66,7 +66,7 @@ import Testing
     // "import AppKit" (as `InlineFormat.swift`/`CodeSyntax.swift` do, explaining why
     // they must not) is not a violation, so comment lines are skipped.
     @Test func noCoreOrConnectorFileImportsAppKitOrSwiftUI() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         var offendingFiles: [String] = []
         let exceptions: Set<String> = ["MailLink.swift"]
 
@@ -93,30 +93,5 @@ import Testing
         }
 
         #expect(offendingFiles.isEmpty, "AppKit/SwiftUI imported under Sources/Core or Sources/Connector: \(offendingFiles)")
-    }
-
-    /// One `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives the
-    /// repository root. If the candidate does not contain a `Sources` directory, this
-    /// throws naming the path tried - it never skips silently.
-    private static func resolvedRepoRoot() throws -> URL {
-        let thisFileURL = URL(fileURLWithPath: #filePath)
-        let candidateRoot = thisFileURL
-            .deletingLastPathComponent() // SharedSourcesPurityTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-        guard FileManager.default.fileExists(atPath: candidateRoot.appendingPathComponent("Sources").path) else {
-            throw RepoRootResolutionError.notFound(candidate: candidateRoot.path)
-        }
-        return candidateRoot
-    }
-}
-
-private enum RepoRootResolutionError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-
-    var description: String {
-        switch self {
-        case let .notFound(candidate):
-            return "Could not resolve the repository root from #filePath. Candidate tried: \(candidate)"
-        }
     }
 }

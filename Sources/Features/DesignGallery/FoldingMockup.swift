@@ -15,24 +15,12 @@ struct FoldingMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("Aperta, come adesso", EditorMock(style: .open))
-                scene("Piegata, marcatore economico: sfondo sul titolo", EditorMock(style: .tinted))
-                scene("Piegata, marcatore caro: badge con il conteggio", EditorMock(style: .badge))
-                outlineControl
-                edgeCase
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content
+        MockupPage {
+            MockupScene("Aperta, come adesso", EditorMock(style: .open))
+            MockupScene("Piegata, marcatore economico: sfondo sul titolo", EditorMock(style: .tinted))
+            MockupScene("Piegata, marcatore caro: badge con il conteggio", EditorMock(style: .badge))
+            outlineControl
+            edgeCase
         }
     }
 

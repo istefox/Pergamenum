@@ -22,7 +22,7 @@ import Testing
     // MARK: - R-07: scripts/appcast.py --self-test (ADR-0031 §D10)
 
     @Test func appcastSelfTestExitsZeroWithOutput() async throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/appcast.py")
         try #require(
             FileManager.default.fileExists(atPath: scriptURL.path),
@@ -48,7 +48,7 @@ import Testing
     // MARK: - R-06: scripts/release.sh distributable + preflight (ADR-0031 §D8, §D11, §D12)
 
     @Test func releaseScriptPassesBashSyntaxCheck() async throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let result = try await Self.run(
             executable: "/bin/bash",
             arguments: ["-n", "scripts/release.sh"],
@@ -58,7 +58,7 @@ import Testing
     }
 
     @Test func releaseScriptCutsDistributableFromStapledBundleAfterStaple() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/release.sh")
         let contents = try String(contentsOf: scriptURL, encoding: .utf8)
         let lines = contents.components(separatedBy: "\n")
@@ -95,7 +95,7 @@ import Testing
     }
 
     @Test func releaseScriptDefinesSparkleToolResolver() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/release.sh")
         let contents = try String(contentsOf: scriptURL, encoding: .utf8)
         #expect(
@@ -107,7 +107,7 @@ import Testing
     // MARK: - Task 6 / R-06 support: scripts/fetch-sparkle-tools.sh (ADR-0031 §D11)
 
     @Test func fetchSparkleToolsScriptExistsAndPassesSyntaxCheck() async throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/fetch-sparkle-tools.sh")
         try #require(
             FileManager.default.fileExists(atPath: scriptURL.path),
@@ -123,7 +123,7 @@ import Testing
     }
 
     @Test func fetchSparkleToolsScriptIsStrictPinnedAndNeverForceRemoves() throws {
-        let repoRoot = try Self.resolvedRepoRoot()
+        let repoRoot = try resolvedRepoRoot()
         let scriptURL = repoRoot.appendingPathComponent("scripts/fetch-sparkle-tools.sh")
         try #require(
             FileManager.default.fileExists(atPath: scriptURL.path),
@@ -273,21 +273,6 @@ import Testing
             stderr: String(data: stderrData, encoding: .utf8) ?? ""
         )
     }
-
-    /// One `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives the
-    /// repository root - the exact resolution `Tests/SharedSourcesPurityTests.swift` uses. If
-    /// the candidate does not contain a `Sources` directory, this throws naming the path
-    /// tried - it never skips silently.
-    private static func resolvedRepoRoot() throws -> URL {
-        let thisFileURL = URL(fileURLWithPath: #filePath)
-        let candidateRoot = thisFileURL
-            .deletingLastPathComponent() // ReleasePipelineTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-        guard FileManager.default.fileExists(atPath: candidateRoot.appendingPathComponent("Sources").path) else {
-            throw RepoRootResolutionError.notFound(candidate: candidateRoot.path)
-        }
-        return candidateRoot
-    }
 }
 
 private struct ProcessTimeoutError: Error, CustomStringConvertible {
@@ -297,16 +282,5 @@ private struct ProcessTimeoutError: Error, CustomStringConvertible {
 
     var description: String {
         "\(executable) \(arguments.joined(separator: " ")) did not finish within \(timeout)s"
-    }
-}
-
-private enum RepoRootResolutionError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-
-    var description: String {
-        switch self {
-        case let .notFound(candidate):
-            return "Could not resolve the repository root from #filePath. Candidate tried: \(candidate)"
-        }
     }
 }

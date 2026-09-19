@@ -29,29 +29,17 @@ struct TemplateMockup: View {
     private static let doubleWidth: CGFloat = 320
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Il composer, template scelto, con l'anteprima del corpo",
-                    ComposerScene(showsPreview: true)
-                )
-                scene(
-                    "Lo stesso, senza anteprima: resta lo spazio vuoto di oggi",
-                    ComposerScene(showsPreview: false)
-                )
-                emptyStates
-                placeholders
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content
+        MockupPage {
+            MockupScene(
+                "Il composer, template scelto, con l'anteprima del corpo",
+                ComposerScene(showsPreview: true)
+            )
+            MockupScene(
+                "Lo stesso, senza anteprima: resta lo spazio vuoto di oggi",
+                ComposerScene(showsPreview: false)
+            )
+            emptyStates
+            placeholders
         }
     }
 
@@ -80,14 +68,7 @@ struct TemplateMockup: View {
     }
 
     private func labelled(_ title: String, _ width: CGFloat, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text(title).themedText(.caption, color: .textSecondary)
-            content
-                .frame(width: width, alignment: .leading)
-                .padding(theme.spacing(.s))
-                .background(theme.color(.backgroundSecondary))
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
-        }
+        MockupCell(title, width: width, alignment: .leading) { content }
     }
 }
 

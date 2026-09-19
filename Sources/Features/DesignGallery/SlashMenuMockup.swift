@@ -19,34 +19,28 @@ struct SlashMenuMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Appena premuto «/», con le due metà del catalogo",
-                    SlashPanelMock(state: .open)
-                )
-                scene(
-                    "«/ta», filtrato mentre si scrive",
-                    SlashPanelMock(state: .filtered)
-                )
-                scene(
-                    "«/xyz», nessuna corrispondenza",
-                    SlashPanelMock(state: .empty)
-                )
-                scene(
-                    "Un comando che l'app non può eseguire adesso non compare",
-                    SlashPanelMock(state: .noVault)
-                )
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene(
+                "Appena premuto «/», con le due metà del catalogo",
+                SlashPanelMock(state: .open)
+            )
+            scene(
+                "«/ta», filtrato mentre si scrive",
+                SlashPanelMock(state: .filtered)
+            )
+            scene(
+                "«/xyz», nessuna corrispondenza",
+                SlashPanelMock(state: .empty)
+            )
+            scene(
+                "Un comando che l'app non può eseguire adesso non compare",
+                SlashPanelMock(state: .noVault)
+            )
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ panel: SlashPanelMock) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             ZStack(alignment: .topLeading) {
                 NoteBackdrop()
                 panel.padding(.leading, 96).padding(.top, 92)

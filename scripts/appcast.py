@@ -37,6 +37,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, fields
 
 SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 
@@ -108,69 +109,62 @@ def skeleton(feed_url):
 # --- L'item ------------------------------------------------------------------------
 
 
-def make_item(
-    version,
-    short_version,
-    min_system,
-    download_url,
-    signature,
-    length,
-    notes_link,
-    pub_date,
-):
+@dataclass(frozen=True)
+class AppcastItem:
+    """Ciò che descrive una build nel feed: l'unico posto dove l'elenco dei campi è scritto.
+
+    `REQUIRED`, la CLI e il self-test lo leggono da qui invece di ripeterlo. `pub_date`
+    resta vuoto sulla riga di comando e si risolve al momento di costruire l'item.
+    """
+
+    version: str
+    short_version: str
+    min_system: str
+    download_url: str
+    signature: str
+    length: str
+    notes_link: str
+    pub_date: str = ""
+
+
+ITEM_FIELDS = tuple(f.name for f in fields(AppcastItem) if f.name != "pub_date")
+
+
+def make_item(spec):
     item = ET.Element("item")
-    ET.SubElement(item, "title").text = "%s %s" % (FEED_TITLE, short_version)
+    pub_date = spec.pub_date or email.utils.formatdate(localtime=True)
+    ET.SubElement(item, "title").text = "%s %s" % (FEED_TITLE, spec.short_version)
     ET.SubElement(item, "pubDate").text = pub_date
-    ET.SubElement(item, sparkle("version")).text = str(version)
-    ET.SubElement(item, sparkle("shortVersionString")).text = str(short_version)
-    ET.SubElement(item, sparkle("minimumSystemVersion")).text = str(min_system)
-    ET.SubElement(item, sparkle("releaseNotesLink")).text = notes_link
+    ET.SubElement(item, sparkle("version")).text = str(spec.version)
+    ET.SubElement(item, sparkle("shortVersionString")).text = str(spec.short_version)
+    ET.SubElement(item, sparkle("minimumSystemVersion")).text = str(spec.min_system)
+    ET.SubElement(item, sparkle("releaseNotesLink")).text = spec.notes_link
     ET.SubElement(
         item,
         "enclosure",
         {
-            "url": download_url,
-            sparkle("edSignature"): signature,
-            "length": str(length),
+            "url": spec.download_url,
+            sparkle("edSignature"): spec.signature,
+            "length": str(spec.length),
             "type": "application/octet-stream",
         },
     )
     return item
 
 
-def build_feed(
-    raw,
-    feed_url,
-    version,
-    short_version,
-    min_system,
-    download_url,
-    signature,
-    length,
-    notes_link,
-    pub_date=None,
-):
+def build_feed(raw, feed_url, spec):
     """Restituisce la radice del feed con l'item di questa build inserito o sostituito."""
     root = skeleton(feed_url) if raw is None else parse_feed(raw)
     channel = root.find("channel")
     if channel is None:
         fail("il feed pubblicato non ha un <channel>")
 
-    item = make_item(
-        version,
-        short_version,
-        min_system,
-        download_url,
-        signature,
-        length,
-        notes_link,
-        pub_date or email.utils.formatdate(localtime=True),
-    )
+    item = make_item(spec)
 
     existing = None
     for candidate in channel.findall("item"):
         node = candidate.find(sparkle("version"))
-        if node is not None and (node.text or "").strip() == str(version):
+        if node is not None and (node.text or "").strip() == str(spec.version):
             existing = candidate
             break
 
@@ -199,8 +193,9 @@ def serialize(root):
 # --- Self-test ---------------------------------------------------------------------
 
 
+FEED_URL = "https://istefox.github.io/pergamenum-updates/appcast.xml"
+
 ITEM_DEFAULTS = {
-    "feed_url": "https://istefox.github.io/pergamenum-updates/appcast.xml",
     "min_system": "26.0",
     "download_url": "https://github.com/istefox/pergamenum-updates/releases/download/v1.1-56/Pergamenum-1.1-56.zip",
     "signature": "Zm9vYmFyc2lnbmF0dXJl",
@@ -211,8 +206,8 @@ ITEM_DEFAULTS = {
 
 
 def _feed(raw, version, short_version):
-    values = dict(ITEM_DEFAULTS)
-    return build_feed(raw, version=version, short_version=short_version, **values)
+    spec = AppcastItem(version=version, short_version=short_version, **ITEM_DEFAULTS)
+    return build_feed(raw, FEED_URL, spec)
 
 
 def _check(report, condition, description):
@@ -221,42 +216,46 @@ def _check(report, condition, description):
     report.append("  ok  %s" % description)
 
 
-def self_test():
-    """Asserzioni in-process, senza rete e senza un secondo runner (ADR-0031 §D10)."""
-    report = []
-
-    # (1) Feed assente (404) -> uno skeleton fresco con un solo item, ben formato.
+def _case_1(report):
+    """Feed assente (404) -> uno skeleton fresco con un solo item, ben formato."""
     first = serialize(_feed(None, "56", "1.1"))
     root = ET.fromstring(first)
     _check(report, len(root.find("channel").findall("item")) == 1,
-           "(1) feed assente -> un solo <item>")
+           "feed assente -> un solo <item>")
     _check(report, b"sparkle:version" in first,
-           "(1) il prefisso sparkle: è nell'output, non ns0:")
+           "il prefisso sparkle: è nell'output, non ns0:")
     _check(report, b"ns0:" not in first,
-           "(1) nessun prefisso ns0: residuo")
+           "nessun prefisso ns0: residuo")
     _check(report, b'sparkle:edSignature="%s"' % ITEM_DEFAULTS["signature"].encode() in first,
-           "(1) l'enclosure porta sparkle:edSignature")
+           "l'enclosure porta sparkle:edSignature")
+    return first
 
-    # (2) Feed esistente con un item -> due item, il vecchio intatto, il nuovo per primo.
+
+def _case_2(report, first):
+    """Feed esistente con un item -> due item, il vecchio intatto, il nuovo per primo."""
     second = serialize(_feed(first, "57", "1.2"))
     root = ET.fromstring(second)
     items = root.find("channel").findall("item")
     versions = [item.find(sparkle("version")).text for item in items]
     _check(report, versions == ["57", "56"],
-           "(2) il nuovo item è in cima e il precedente è conservato (%s)" % versions)
+           "il nuovo item è in cima e il precedente è conservato (%s)" % versions)
     _check(report, items[1].find(sparkle("shortVersionString")).text == "1.1",
-           "(2) l'item preesistente non è stato riscritto")
+           "l'item preesistente non è stato riscritto")
 
-    # (3) Stesso sparkle:version due volte -> resta un item, aggiornato.
+
+def _case_3(report, first):
+    """Stesso sparkle:version due volte -> resta un item, aggiornato."""
     third = serialize(_feed(first, "56", "1.1.1"))
     root = ET.fromstring(third)
     items = root.find("channel").findall("item")
     _check(report, len(items) == 1,
-           "(3) la stessa build non duplica l'item")
+           "la stessa build non duplica l'item")
     _check(report, items[0].find(sparkle("shortVersionString")).text == "1.1.1",
-           "(3) l'item della stessa build è aggiornato sul posto")
+           "l'item della stessa build è aggiornato sul posto")
 
-    # (4) Feed esistente malformato -> errore rumoroso che nomina l'errore di parsing.
+
+def _case_4(report):
+    """Feed esistente malformato -> errore rumoroso che nomina l'errore di parsing."""
     try:
         _feed(b"<rss><channel><item></channel></rss>", "58", "1.3")
     except AppcastError as exc:
@@ -264,9 +263,11 @@ def self_test():
     else:
         message = ""
     _check(report, "non è XML valido" in message and "line" in message,
-           "(4) un feed malformato fallisce nominando l'errore di parsing (%s)" % message)
+           "un feed malformato fallisce nominando l'errore di parsing (%s)" % message)
 
-    # (5) Un <!DOCTYPE arriva al rifiuto prima del parser.
+
+def _case_5(report):
+    """Un <!DOCTYPE arriva al rifiuto prima del parser."""
     try:
         _feed(b"<!DOCTYPE rss [<!ENTITY x 'y'>]><rss><channel></channel></rss>", "59", "1.4")
     except AppcastError as exc:
@@ -274,7 +275,19 @@ def self_test():
     else:
         message = ""
     _check(report, "DOCTYPE" in message,
-           "(5) un feed con <!DOCTYPE è rifiutato senza essere parsato")
+           "un feed con <!DOCTYPE è rifiutato senza essere parsato")
+
+
+def self_test():
+    """Asserzioni in-process, senza rete e senza un secondo runner (ADR-0031 §D10)."""
+    report = []
+
+    # Il feed del caso 1 alimenta i casi 2 e 3, e viene scritto su disco alla fine.
+    first = _case_1(report)
+    _case_2(report, first)
+    _case_3(report, first)
+    _case_4(report)
+    _case_5(report)
 
     handle, path = tempfile.mkstemp(prefix="appcast-selftest-", suffix=".xml")
     with os.fdopen(handle, "wb") as out:
@@ -289,17 +302,7 @@ def self_test():
 # --- CLI ---------------------------------------------------------------------------
 
 
-REQUIRED = (
-    "feed_url",
-    "version",
-    "short_version",
-    "min_system",
-    "download_url",
-    "signature",
-    "length",
-    "notes_link",
-    "output",
-)
+REQUIRED = ("feed_url",) + ITEM_FIELDS + ("output",)
 
 
 def build_parser():
@@ -333,17 +336,8 @@ def main(argv=None):
         if missing:
             fail("argomenti mancanti: %s" % ", ".join("--" + n.replace("_", "-") for n in missing))
 
-        root = build_feed(
-            load_feed(args.feed_url),
-            feed_url=args.feed_url,
-            version=args.version,
-            short_version=args.short_version,
-            min_system=args.min_system,
-            download_url=args.download_url,
-            signature=args.signature,
-            length=args.length,
-            notes_link=args.notes_link,
-        )
+        spec = AppcastItem(**{name: getattr(args, name) for name in ITEM_FIELDS})
+        root = build_feed(load_feed(args.feed_url), args.feed_url, spec)
         with open(args.output, "wb") as handle:
             handle.write(serialize(root))
         print("appcast: scritto %s (build %s, versione %s)" % (args.output, args.version, args.short_version))

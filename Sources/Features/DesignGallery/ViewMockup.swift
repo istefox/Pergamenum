@@ -27,23 +27,10 @@ struct ViewMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                modes
-                states
-                renderers
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            content()
+        MockupPage {
+            modes
+            states
+            renderers
         }
     }
 
@@ -51,10 +38,10 @@ struct ViewMockup: View {
 
     private var modes: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            scene("In Modifica il blocco resta quello che è: un fence, con la sua sintassi in chiaro.") {
+            MockupScene("In Modifica il blocco resta quello che è: un fence, con la sua sintassi in chiaro.") {
                 sourceBlock
             }
-            scene("In Lettura, al suo posto, la vista. Stessa nota, stesso file, un click di distanza.") {
+            MockupScene("In Lettura, al suo posto, la vista. Stessa nota, stesso file, un click di distanza.") {
                 framed {
                     viewHeader(renderer: "tabella", count: 3)
                     ViewTableMockup()
@@ -113,7 +100,7 @@ struct ViewMockup: View {
 
     private var states: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            scene("Nessuna nota risponde: lo dice con parole sue, e resta una vista.") {
+            MockupScene("Nessuna nota risponde: lo dice con parole sue, e resta una vista.") {
                 framed {
                     viewHeader(renderer: "tabella", count: 0)
                     Text("Nessuna nota in «Clienti» ha un tag client- senza essere chiusa.")
@@ -121,7 +108,7 @@ struct ViewMockup: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            scene("Il blocco non si legge: la riga, il motivo, e il blocco così com'è scritto. "
+            MockupScene("Il blocco non si legge: la riga, il motivo, e il blocco così com'è scritto. "
                 + "Mai una lista vuota, che sarebbe indistinguibile da un vault che ha perso le note.") {
                 framed { errorBody }
             }
@@ -154,7 +141,7 @@ struct ViewMockup: View {
 
     private var renderers: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            scene("Board. L'unico renderer che scrive: trascinare una card fra due colonne "
+            MockupScene("Board. L'unico renderer che scrive: trascinare una card fra due colonne "
                 + "riscrive il tag status- nella nota. «Senza stato» sta per primo perché è "
                 + "l'unico modo di togliere uno stato con un gesto, e «Presse idrauliche» "
                 + "compare due volte perché il file dichiara davvero due stati (§D5).") {
@@ -163,7 +150,7 @@ struct ViewMockup: View {
                     ViewBoardMockup()
                 }
             }
-            scene("Gallery. Le miniature vengono da embedTargets. Una nota che non allega niente "
+            MockupScene("Gallery. Le miniature vengono da embedTargets. Una nota che non allega niente "
                 + "resta comunque una card: toglierla farebbe dire alla gallery meno di quanto "
                 + "la query ha trovato.") {
                 framed {
@@ -171,7 +158,7 @@ struct ViewMockup: View {
                     ViewGalleryMockup()
                 }
             }
-            scene("Calendario. Il giorno è il primo campo di tipo data fra le columns "
+            MockupScene("Calendario. Il giorno è il primo campo di tipo data fra le columns "
                 + "(date, modified, deadline.next, scheduled.next), e date quando non ce n'è "
                 + "nessuno: una chiave in più solo per questo non serve.") {
                 framed {
@@ -179,7 +166,7 @@ struct ViewMockup: View {
                     ViewCalendarMockup()
                 }
             }
-            scene("Lista. Per una vista incorporata in una nota che parla d'altro: una riga "
+            MockupScene("Lista. Per una vista incorporata in una nota che parla d'altro: una riga "
                 + "ciascuna, le colonne dopo il titolo piegate in una didascalia sola.") {
                 framed {
                     viewHeader(renderer: "lista", count: 3)

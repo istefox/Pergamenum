@@ -327,7 +327,7 @@ import Testing
     // MARK: - The one-file rule (ADR §D1)
 
     @Test func onlyMailStoreConnectionMentionsSQLite3Symbols() throws {
-        let emailDirectory = try Self.repoRoot().appending(path: "Sources/Core/Email", directoryHint: .isDirectory)
+        let emailDirectory = try resolvedRepoRoot().appending(path: "Sources/Core/Email", directoryHint: .isDirectory)
         var offending: [String] = []
 
         let contents = try FileManager.default.contentsOfDirectory(
@@ -437,12 +437,5 @@ import Testing
             [.modificationDate: Date().addingTimeInterval(60)],
             ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
         )
-    }
-
-    /// Same resolution `Tests/SharedSourcesPurityTests.swift` uses.
-    private static func repoRoot() throws -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // MailStoreReaderTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
     }
 }

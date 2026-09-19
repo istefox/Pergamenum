@@ -106,18 +106,20 @@ tags:
 - [ ] Non registrato #project-fantasma
 """
 
-failures = []
+def make_check(failures):
+    """A `check` that records into `failures`, so the list belongs to one run and not to the module."""
+
+    def check(condition, description):
+        print(("  ok   " if condition else "  FALLITO  ") + description)
+        if not condition:
+            failures.append(description)
+
+    return check
 
 
-def check(condition, description):
-    print(("  ok   " if condition else "  FALLITO  ") + description)
-    if not condition:
-        failures.append(description)
-
-
-def find_binary():
-    if len(sys.argv) > 1:
-        return sys.argv[1]
+def find_binary(argv):
+    if len(argv) > 1:
+        return argv[1]
     pattern = os.path.expanduser(
         "~/Library/Developer/Xcode/DerivedData/Pergamenum-*/Build/Products/Debug/pergamenum-mcp")
     found = sorted(glob.glob(pattern), key=os.path.getmtime)
@@ -170,7 +172,7 @@ class Server:
         self.process.terminate()
 
 
-def read_only(binary, vault):
+def read_only(binary, vault, check):
     print("sola lettura")
     server = Server(binary, vault, allow_write=False)
     try:
@@ -196,7 +198,7 @@ def read_only(binary, vault):
         server.close()
 
 
-def writing(binary, vault):
+def writing(binary, vault, check):
     print("scrittura abilitata")
     server = Server(binary, vault, allow_write=True)
     path = os.path.join(vault, "Nota.md")
@@ -268,7 +270,7 @@ def writing(binary, vault):
         server.close()
 
 
-def views(binary, vault):
+def views(binary, vault, check):
     """ADR-0009 D4: a view answers a model with the rows the window draws."""
     print("viste")
     server = Server(binary, vault, allow_write=False)
@@ -302,7 +304,7 @@ def views(binary, vault):
         server.close()
 
 
-def pratiche(binary, vault):
+def pratiche(binary, vault, check):
     """ADR-0036 R-36: the two pratiche tools answer from what a sync left on disk.
 
     Nothing here goes near Mail: the fixture is a folder this script writes, and a
@@ -346,7 +348,7 @@ def pratiche(binary, vault):
         server.close()
 
 
-def pratiche_links(binary, vault):
+def pratiche_links(binary, vault, check):
     """ADR-0049 §D12, R-10: the pratica/message link tools are reachable from MCP
     too, absent without --allow-write, and a write with dryRun true changes nothing.
 
@@ -412,7 +414,7 @@ def pratiche_links(binary, vault):
         server.close()
 
 
-def categories(binary, vault):
+def categories(binary, vault, check):
     """ADR-0047 §D9 (R-09): the registry read, implicit categories folded in, and one
     category's rolled-up, grouped task list - both read-only, neither writes.
     """
@@ -455,7 +457,7 @@ def categories(binary, vault):
         server.close()
 
 
-def resources(binary, vault):
+def resources(binary, vault, check):
     print("risorse")
     server = Server(binary, vault, allow_write=False)
     try:
@@ -474,22 +476,30 @@ def resources(binary, vault):
         server.close()
 
 
-binary = find_binary()
-print("binario: %s\n" % binary)
+def main(argv):
+    binary = find_binary(argv)
+    print("binario: %s\n" % binary)
 
-for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources):
-    vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
-    try:
-        with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:
-            handle.write(NOTE)
-        stage(binary, vault)
-    finally:
-        shutil.rmtree(vault, ignore_errors=True)
-    print()
+    failures = []
+    check = make_check(failures)
+    for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources):
+        vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
+        try:
+            with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:
+                handle.write(NOTE)
+            stage(binary, vault, check)
+        finally:
+            shutil.rmtree(vault, ignore_errors=True)
+        print()
 
-if failures:
-    print("%d controlli falliti:" % len(failures))
-    for failure in failures:
-        print("  - " + failure)
-    sys.exit(1)
-print("tutto a posto")
+    if failures:
+        print("%d controlli falliti:" % len(failures))
+        for failure in failures:
+            print("  - " + failure)
+        return 1
+    print("tutto a posto")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

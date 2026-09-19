@@ -279,18 +279,14 @@ if ! appcast_sha="$(gh api "repos/$UPDATES_REPO/contents/appcast.xml" --jq '.sha
     appcast_sha=""
 fi
 appcast_body="$(base64 <"$appcast" | tr -d '\n')"
+put_args=(-f message="appcast: Pergamenum $version ($BUILD)" -f content="$appcast_body")
+put_case="primo caricamento"
 if [ -n "$appcast_sha" ]; then
-    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
-        -f message="appcast: Pergamenum $version ($BUILD)" \
-        -f content="$appcast_body" \
-        -f sha="$appcast_sha" >/dev/null \
-        || fail "pubblicazione dell'appcast fallita (sostituzione)"
-else
-    gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" \
-        -f message="appcast: Pergamenum $version ($BUILD)" \
-        -f content="$appcast_body" >/dev/null \
-        || fail "pubblicazione dell'appcast fallita (primo caricamento)"
+    put_args+=(-f sha="$appcast_sha")
+    put_case="sostituzione"
 fi
+gh api -X PUT "repos/$UPDATES_REPO/contents/appcast.xml" "${put_args[@]}" >/dev/null \
+    || fail "pubblicazione dell'appcast fallita ($put_case)"
 
 # Il commit sui Contents API prova solo che git ha accettato il file: GitHub Pages lo
 # ricostruisce in modo asincrono, e senza questo controllo lo script dichiarerebbe
