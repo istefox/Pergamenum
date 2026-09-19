@@ -19,7 +19,8 @@
 #   - **An instance you are using is not killed.** A copy running out of /Applications is
 #     yours, not debris, so this stops and asks rather than closing your window. It has to
 #     stop rather than continue: that instance holds the global hot key and the run would
-#     fail on it anyway.
+#     fail on it anyway. The same holds after the run: one that started meanwhile is left
+#     alone and named, never closed with the debris (PG-175).
 #   - **The timings are printed beside the failures**, because a failure at ~60 s is a
 #     launch that never happened and a failure at 8 s is a test with something to say.
 #
@@ -67,18 +68,29 @@ running_instances() {
 }
 
 # A copy out of /Applications is the one you use; anything under DerivedData or inside the
-# test runner's container is debris from an earlier run.
+# test runner's container is debris from an earlier run. Sorted into `yours` and `debris`
+# by this one function, called before the run and again after it, so the two moments cannot
+# disagree about which copy is whose (PG-175: the second one used to close both). Both strings
+# keep a newline after every line on purpose: `read` skips a final line without one, which is
+# how the old `$(running_instances)` here never closed the last instance it listed.
 yours=""
 debris=""
-while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    case "$line" in
-        *"/Applications/"*) yours="$yours$line
+partition_instances() {
+    yours=""
+    debris=""
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        case "$line" in
+            *"/Applications/"*) yours="$yours$line
 " ;;
-        *) debris="$debris$line
+            *) debris="$debris$line
 " ;;
-    esac
-done < <(running_instances)
+        esac
+    done < <(running_instances)
+}
+
+partition_instances
 
 if [ -n "$yours" ]; then
     printf 'uitests: una copia installata di Pergamenum è in esecuzione:\n%s\n' "$yours" >&2
@@ -174,12 +186,18 @@ fi
 
 # MARK: leave nothing behind
 
-leftovers=$(running_instances)
-if [ -n "$leftovers" ]; then
-    printf '\nuitests: istanze sopravvissute al giro, le chiudo:\n%s\n' "$leftovers"
-    printf '%s' "$leftovers" | while IFS='	' read -r pid _; do
+# Only the debris. A copy out of /Applications that appeared while the run was going is the
+# person's, launched after the pre-run check had passed, and closing it here is the one thing
+# that check exists to refuse. It is reported, not touched.
+partition_instances
+if [ -n "$debris" ]; then
+    printf '\nuitests: istanze sopravvissute al giro, le chiudo:\n%s\n' "$debris"
+    printf '%s' "$debris" | while IFS='	' read -r pid _; do
         [ -n "$pid" ] && kill_and_wait "$pid"
     done
+fi
+if [ -n "$yours" ]; then
+    printf '\nuitests: una copia installata di Pergamenum è partita durante il giro, la lascio aperta:\n%s\n' "$yours"
 fi
 
 printf '\nuitests: log completo in %s\n' "$LOG"
