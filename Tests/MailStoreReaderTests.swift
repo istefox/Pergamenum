@@ -152,7 +152,22 @@ import Testing
         // always answers `.published`, so this fails until the coder implements
         // `PRAGMA quick_check` + the one retry.
         let result = MailStoreCopy.publish(from: fixture.root, into: stateDirectory)
-        #expect(result == .mailIsWriting)
+
+        // PG-120 (#204): this test failed once inside a full-suite run and never again in
+        // 8 later runs, and the report did not say how. `#expect` already prints both
+        // operands, so the message carries what it cannot: the on-disk state a wrong
+        // answer would leave behind - the source's size and what the state directory
+        // holds (a published `gen-*` directory, or a leftover `.staging-*` one).
+        let sourceSize = (try? FileManager.default.attributesOfItem(
+            atPath: fixture.indexURL.path(percentEncoded: false)
+        )[.size] as? Int) ?? -1
+        let stateEntries = (try? FileManager.default.contentsOfDirectory(
+            atPath: stateDirectory.path(percentEncoded: false)
+        ))?.sorted() ?? []
+        #expect(
+            result == .mailIsWriting,
+            "source index \(sourceSize) bytes; state directory holds \(stateEntries)"
+        )
     }
 
     @Test func publishReportsStoreMissingRatherThanAnEmptyDatabase() throws {
