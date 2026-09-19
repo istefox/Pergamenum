@@ -38,9 +38,12 @@ private func sampleTask(id: String, quote: String, dueHint: String? = nil) -> Pl
     PlaudTask(id: id, title: "Titolo \(id)", quote: quote, urgency: 4, importance: 5, dueHint: dueHint)
 }
 
-private func sampleRecording(id: String = "rec-1", state: PlaudRecordingState) -> PlaudRecording {
+private func sampleRecording(
+    id: String = "rec-1", name: String = "Registrazione", recordedAt: String = "2026-09-04T11:00:00",
+    state: PlaudRecordingState = .new
+) -> PlaudRecording {
     PlaudRecording(
-        id: id, name: "Registrazione", recordedAt: "2026-09-04T11:00:00", durationMs: 60_000,
+        id: id, name: name, recordedAt: recordedAt, durationMs: 60_000,
         deviceSerial: "device-1", state: state, lastError: nil
     )
 }
@@ -206,4 +209,69 @@ private func sampleRecording(id: String = "rec-1", state: PlaudRecordingState) -
 
     #expect(state.themes.flatMap(\.tasks).first(where: { $0.taskID == "t1" })?.isInitiallyChecked == true)
     #expect(state.speakerRenames.isEmpty)
+}
+
+// MARK: - List order (newest first / oldest first)
+
+// The wire order is never trusted: `RecordingFormat.ordered` reads `recorded_at` itself, through
+// the same `PlaudTimestamp` the row's date goes through, so a sort and the date beside it cannot
+// disagree.
+
+private let unorderedRecordings = [
+    sampleRecording(id: "mid", name: "Centrale", recordedAt: "2026-09-04T11:00:00"),
+    sampleRecording(id: "new", name: "Recente", recordedAt: "2026-09-05T09:00:00"),
+    sampleRecording(id: "old", name: "Vecchia", recordedAt: "2026-09-03T08:00:00")
+]
+
+@Test func recordingsSortNewestFirstByTheirRecordingInstant() {
+    let ordered = RecordingFormat.ordered(unorderedRecordings, by: .newestFirst)
+
+    #expect(ordered.map(\.id) == ["new", "mid", "old"])
+}
+
+@Test func recordingsSortOldestFirstWhenAsked() {
+    let ordered = RecordingFormat.ordered(unorderedRecordings, by: .oldestFirst)
+
+    #expect(ordered.map(\.id) == ["old", "mid", "new"])
+}
+
+@Test func mixedWireShapesFallIntoOneTimeline() {
+    // The three shapes `PlaudTimestamp` reads: zone-less UTC, plain `Z`, fractional-second `Z`.
+    let mixed = [
+        sampleRecording(id: "zoneless", recordedAt: "2026-09-04T11:00:00"),
+        sampleRecording(id: "plainZ", recordedAt: "2026-09-04T12:00:00Z"),
+        sampleRecording(id: "fractional", recordedAt: "2026-09-04T10:00:00.500Z")
+    ]
+
+    #expect(RecordingFormat.ordered(mixed, by: .oldestFirst).map(\.id) == ["fractional", "zoneless", "plainZ"])
+}
+
+@Test func anUnreadableRecordedAtSortsLastInBothDirections() {
+    let withUnknown = unorderedRecordings + [
+        sampleRecording(id: "unknown-b", name: "B", recordedAt: "ieri"),
+        sampleRecording(id: "unknown-a", name: "A", recordedAt: "")
+    ]
+
+    // Neither old nor new: after every dated recording whichever way the list runs, and the
+    // unreadable block itself in name order both times.
+    #expect(RecordingFormat.ordered(withUnknown, by: .newestFirst).map(\.id)
+        == ["new", "mid", "old", "unknown-a", "unknown-b"])
+    #expect(RecordingFormat.ordered(withUnknown, by: .oldestFirst).map(\.id)
+        == ["old", "mid", "new", "unknown-a", "unknown-b"])
+}
+
+@Test func recordingsSharingAnInstantKeepTheirNameThenIdOrderInBothDirections() {
+    let sameInstant = [
+        sampleRecording(id: "3", name: "B", recordedAt: "2026-09-04T11:00:00"),
+        sampleRecording(id: "2", name: "A", recordedAt: "2026-09-04T11:00:00"),
+        sampleRecording(id: "1", name: "A", recordedAt: "2026-09-04T11:00:00")
+    ]
+
+    // The tie-break is a determinism device and never inverts with the direction.
+    #expect(RecordingFormat.ordered(sameInstant, by: .newestFirst).map(\.id) == ["1", "2", "3"])
+    #expect(RecordingFormat.ordered(sameInstant, by: .oldestFirst).map(\.id) == ["1", "2", "3"])
+}
+
+@Test func orderingNoRecordingsReturnsNone() {
+    #expect(RecordingFormat.ordered([], by: .newestFirst).isEmpty)
 }

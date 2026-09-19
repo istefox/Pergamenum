@@ -155,6 +155,42 @@ enum RecordingFormat {
         )
     }
 
+    /// The recordings in the order the person chose, by `recorded_at` and by nothing the
+    /// service happened to send.
+    ///
+    /// Every timestamp goes through `localInstant(_:)`, so the sort cannot disagree with the date
+    /// a row prints. It is read once per recording rather than inside the comparator, since
+    /// `PlaudTimestamp` builds a formatter per call.
+    ///
+    /// A `recorded_at` nobody can read is *unknown*, neither old nor new: the row prints «—» for
+    /// it rather than guess, so it sorts after every dated recording in both directions
+    /// (`TaskArrangement.sort`'s rule for an undated task). Ties, and the unreadable block itself,
+    /// break on `name` then `id` ascending and never invert with the direction, so no row swaps
+    /// place between two redraws.
+    ///
+    /// `nonisolated` for the reason `RecordingsPane.effectiveState` is: a pure function that
+    /// silently carries a `View`'s main-actor isolation is a trap for a unit test calling it.
+    nonisolated static func ordered(
+        _ recordings: [PlaudRecording], by order: ChronologicalOrder
+    ) -> [PlaudRecording] {
+        let stamped = recordings.map { (recording: $0, instant: localInstant($0.recordedAt)) }
+        let stable = { (left: PlaudRecording, right: PlaudRecording) in
+            left.name == right.name ? left.id < right.id : left.name < right.name
+        }
+        let sorted = stamped.sorted { left, right in
+            switch (left.instant, right.instant) {
+            case let (leftInstant?, rightInstant?):
+                leftInstant == rightInstant
+                    ? stable(left.recording, right.recording)
+                    : order.precedes(leftInstant, rightInstant)
+            case (.some, .none): true
+            case (.none, .some): false
+            case (.none, .none): stable(left.recording, right.recording)
+            }
+        }
+        return sorted.map(\.recording)
+    }
+
     static func duration(milliseconds: Int) -> String {
         let totalMinutes = max(0, milliseconds) / 60_000
         let hours = totalMinutes / 60

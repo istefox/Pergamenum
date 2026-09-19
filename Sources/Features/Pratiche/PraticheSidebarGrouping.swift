@@ -61,28 +61,49 @@ enum PraticheSidebarGrouping {
     /// The title breaks a tie on both axes, so two pratiche touched in the same second
     /// (a sync writing several files) keep one stable order between reloads instead of
     /// swapping rows under the reader.
-    static func grouped(_ pratiche: [PraticaListItem]) -> (open: [PraticaClientGroup], closed: [PraticaListItem]) {
-        let closed = pratiche.filter { isClosed(status: $0.status) }.sorted(by: byRecency)
+    ///
+    /// `order` is the person's choice, `.newestFirst` being everything above. `.oldestFirst`
+    /// inverts all three axes at once - the pratiche inside a client, the client groups, and
+    /// «Chiuse» - because they are one question asked at three levels: groups running one way
+    /// over rows running the other is not a reversed list. A group then ranks by the pratica
+    /// that leads it *as ordered*, which is the correct reading in both directions.
+    ///
+    /// The tie-break never inverts: title inside a group, client between groups. It exists so
+    /// same-second rows keep one order between reloads, and flipping it with the direction would
+    /// reshuffle them on every toggle for a reason nobody can read off the screen. So
+    /// `.oldestFirst` is the exact reverse of `.newestFirst` except inside a block of pratiche
+    /// sharing one instant, which stays alphabetical in both.
+    static func grouped(
+        _ pratiche: [PraticaListItem], order: ChronologicalOrder = .newestFirst
+    ) -> (open: [PraticaClientGroup], closed: [PraticaListItem]) {
+        let recency = { (left: PraticaListItem, right: PraticaListItem) in
+            byRecency(left, right, order: order)
+        }
+        let closed = pratiche.filter { isClosed(status: $0.status) }.sorted(by: recency)
         let open = pratiche.filter { !isClosed(status: $0.status) }
 
         var byClient: [String: [PraticaListItem]] = [:]
         for pratica in open { byClient[pratica.client, default: []].append(pratica) }
 
         let groups = byClient
-            .map { PraticaClientGroup(client: $0.key, pratiche: $0.value.sorted(by: byRecency)) }
+            .map { PraticaClientGroup(client: $0.key, pratiche: $0.value.sorted(by: recency)) }
             .sorted { left, right in
-                let leftMost = left.pratiche.first?.lastActivity ?? .distantPast
-                let rightMost = right.pratiche.first?.lastActivity ?? .distantPast
-                return leftMost == rightMost ? left.client < right.client : leftMost > rightMost
+                let leftLead = left.pratiche.first?.lastActivity ?? .distantPast
+                let rightLead = right.pratiche.first?.lastActivity ?? .distantPast
+                return leftLead == rightLead
+                    ? left.client < right.client
+                    : order.precedes(leftLead, rightLead)
             }
 
         return (open: groups, closed: closed)
     }
 
-    private static func byRecency(_ left: PraticaListItem, _ right: PraticaListItem) -> Bool {
+    private static func byRecency(
+        _ left: PraticaListItem, _ right: PraticaListItem, order: ChronologicalOrder
+    ) -> Bool {
         left.lastActivity == right.lastActivity
             ? left.title < right.title
-            : left.lastActivity > right.lastActivity
+            : order.precedes(left.lastActivity, right.lastActivity)
     }
 
     /// Whether `status` is one of the two «Chiuse» statuses (R-33, R-34's own
