@@ -180,7 +180,7 @@ final class DayViewUITests: XCTestCase {
         // leftward drag that runs out of room saturates the clamp from below and produces
         // the mirror-image failure this test exists to catch.
         let grab = divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        grab.press(forDuration: 0.2, thenDragTo: grab.withOffset(CGVector(dx: 160, dy: 0)))
+        grab.dragTo(grab.withOffset(CGVector(dx: 160, dy: 0)), pressing: 0.2)
 
         XCTAssertGreaterThan(month.frame.width, before, "allargando la colonna il mese non è cresciuto")
         XCTAssertTrue(app.staticTexts["Note"].exists, "la trascinata ha preso il divisorio sbagliato")
