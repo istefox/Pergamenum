@@ -296,6 +296,12 @@ move the previous copy aside rather than deleting it.
   to headings, and two tests spent days looking for a field that no longer answered to
   that name while the feature worked perfectly. Use `accessibilityIdentifier`, which is
   the part of a view that is a contract.
+- **A UI test drags through `dragTo(_:pressing:)` (`UITests/DragSupport.swift`), never through
+  `press(forDuration:thenDragTo:)`.** On macOS 27 that call delivers no translation at all - a
+  resize reads its untouched starting size, a sidebar drag never starts - while
+  `click(forDuration:thenDragTo:)` on the same gesture works (PG-162). For weeks it read as the OS
+  refusing synthesized drags and twelve tests stayed red on that theory; the helper's comment
+  records the variants already tried and failed, so they are not tried again.
 - **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
   the app are usually still running on a vault inside
   `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not
