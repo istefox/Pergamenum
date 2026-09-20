@@ -10,7 +10,7 @@ import Testing
 /// sources in it. The scale is a way of looking at the same anchor, not a second one.
 @MainActor
 @Test func theWeekScaleBuildsSevenColumnsAroundTheAnchor() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     try vault.write("""
     ---
@@ -46,7 +46,7 @@ import Testing
 /// reads the same four sources the day does, from the same files.
 @MainActor
 @Test func aBlockWrittenOnTheDayReachesTheWeeksColumn() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -66,7 +66,7 @@ import Testing
 /// when that means showing the neighbouring months.
 @MainActor
 @Test func theMonthScaleCoversWholeWeeks() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -83,7 +83,7 @@ import Testing
 /// exists: `Cmd+←` in the week has to move a week.
 @MainActor
 @Test func theNavigatorsFollowTheScale() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, _) = try await makeController(vault: vault, store: store)
@@ -104,7 +104,7 @@ import Testing
 /// three scales.
 @MainActor
 @Test func switchingBackToTheDayKeepsWhereTheWeekWas() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, _) = try await makeController(vault: vault, store: store)

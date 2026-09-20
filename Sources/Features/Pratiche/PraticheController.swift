@@ -473,6 +473,16 @@ extension PraticheController {
         reloadLedger(from: url)
     }
 
+    /// The read side of the door: `praticaPath`'s state in `session`'s own ledger, reading the file
+    /// first when memory did not come from it. A live sync fires from a window-key or FSEvents trigger
+    /// without the pane having called `load(from:)`, and the `entries` bridge and `importedMessageIDs`
+    /// it starts from are what let it follow a conversation Mail renumbered and skip what it already
+    /// imported - read off `ledger` directly they would both be empty.
+    func ledgerState(of praticaPath: String, in session: VaultSession) -> PraticaLedger.PraticaState {
+        ensureLedgerLoaded(from: Self.ledgerURL(for: session))
+        return ledger.byPraticaPath[praticaPath] ?? .empty
+    }
+
     /// Reads `url` into `ledger` and records where it came from. A file that is absent adopts an
     /// empty, writable ledger (R-03: a first write is a creation, not a refusal); one that is there
     /// and unreadable adopts an empty ledger that is never saved (§D3) and is reported once.

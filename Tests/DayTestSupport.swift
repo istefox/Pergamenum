@@ -68,24 +68,6 @@ final class StubCalendarStore: CalendarStore {
     }
 }
 
-struct DayVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-day-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
-
 let testDay = CalendarDate(iso: "2026-08-11")!
 
 let dayNoteWithProse = """
@@ -114,7 +96,7 @@ tags:
 /// for from one a block opened behind their back.
 @MainActor
 func makeController(
-    vault: borrowing DayVault,
+    vault: borrowing TemporaryVault,
     store: StubCalendarStore,
     openingTheDailyNote: Bool = true
 ) async throws -> (DayController, VaultController) {

@@ -32,29 +32,10 @@ import Testing
 
 // MARK: - Fixture
 
-private struct TemporaryRoot: ~Copyable {
-    let url: URL
-
-    init() throws {
-        url = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-workspace-creation-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-
-    deinit { try? FileManager.default.removeItem(at: url) }
-
-    func makeDirectory(_ relativePath: String) throws {
-        try FileManager.default.createDirectory(
-            at: url.appending(path: relativePath, directoryHint: .isDirectory),
-            withIntermediateDirectories: true
-        )
-    }
-}
-
 // MARK: - Creating a folder creates no board (R-01)
 
 @Test func createFolderShowsNoNewCanvasThroughAllBoards() throws {
-    let root = try TemporaryRoot()
+    let root = try CanvasTemporaryRoot()
     let store = CanvasStore(root: root.url)
     let boardsBefore = Set(store.allBoards())
 
@@ -67,7 +48,7 @@ private struct TemporaryRoot: ~Copyable {
 }
 
 @Test func createFolderAppearsInTheTreeAsAnExpandableFolderWithNoChildren() throws {
-    let root = try TemporaryRoot()
+    let root = try CanvasTemporaryRoot()
     try root.makeDirectory("01 Progetti")
     let store = CanvasStore(root: root.url)
 
@@ -83,7 +64,7 @@ private struct TemporaryRoot: ~Copyable {
 // MARK: - Creating a board creates no folder (R-02)
 
 @Test func createBoardAppearsInTheTreeAsABoardRowWithNoNewFolder() throws {
-    let root = try TemporaryRoot()
+    let root = try CanvasTemporaryRoot()
     try root.makeDirectory("A")
     let store = CanvasStore(root: root.url)
     let foldersBefore = Set(store.allFolders())

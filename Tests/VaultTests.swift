@@ -2,48 +2,6 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-/// A throwaway vault on disk, so the file-touching layers are tested against a real
-/// file system rather than a mock that cannot reproduce atomic writes or enumeration.
-/// Shared with `VaultSessionTests`, which needs the same throwaway vault.
-struct TemporaryVault: ~Copyable {
-    let root: URL
-    /// Stands in for `VaultState.applicationSupportBase()`, so a `VaultSession` built
-    /// against this vault never touches the real Application Support directory
-    /// (ADR-0017) - the same failure `RecentVaults.volatile()` exists to prevent, now
-    /// with files instead of `UserDefaults`.
-    let stateBase: URL
-
-    // Both throwing calls happen against locals, and `self`'s two stored properties
-    // are assigned only at the end: a noncopyable struct's initializer cannot always
-    // prove definite initialization across two interleaved throw points otherwise.
-    init() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let stateBase = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-state-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-
-        self.root = root
-        self.stateBase = stateBase
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: root)
-        try? FileManager.default.removeItem(at: stateBase)
-    }
-
-    @discardableResult
-    func write(_ contents: String, to relativePath: String) throws -> URL {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-        return url
-    }
-}
-
 private let sampleNote = """
 ---
 date: 2026-08-11

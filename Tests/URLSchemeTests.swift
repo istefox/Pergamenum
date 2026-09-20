@@ -101,24 +101,6 @@ func refusesRoutesItDoesNotAnswer(_ string: String) {
 
 // MARK: - Handling routes against a vault
 
-private struct RouteVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-routes-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
-
 private let routableNote = """
 ---
 date: 2026-08-11
@@ -132,7 +114,7 @@ Corpo.
 
 @MainActor
 @Test func opensTheNoteANoteRouteNames() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write(routableNote, to: "01 Progetti/Nota.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -145,7 +127,7 @@ Corpo.
 
 @MainActor
 @Test func reportsALinkToANoteThatIsNotThere() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -158,7 +140,7 @@ Corpo.
 
 @MainActor
 @Test func theDayRouteOpensOrCreatesTheDailyNote() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -169,7 +151,7 @@ Corpo.
 
 @MainActor
 @Test func theCaptureRouteAppendsWithoutOpeningTheNote() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write(routableNote, to: "Destinazione.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -191,7 +173,7 @@ Corpo.
 
 @MainActor
 @Test func theTaskRouteLandsInTheInbox() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -203,7 +185,7 @@ Corpo.
 
 @MainActor
 @Test func theSearchRouteOpensTheQuickSwitcherWithItsQuery() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -217,7 +199,7 @@ Corpo.
 
 @MainActor
 @Test func theCanvasRouteIsHandedToTheWorkspace() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -233,7 +215,7 @@ Corpo.
 
 @MainActor
 @Test func theLinterReportsANonConformantNoteAndPassesAConformantOne() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write(routableNote, to: "Conforme.md")
     try vault.write("""
     ---
@@ -261,7 +243,7 @@ Corpo.
 
 @MainActor
 @Test func aDailyNoteIsJudgedByItsOwnNamingRule() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-11
@@ -285,7 +267,7 @@ Corpo.
 
 @MainActor
 @Test func theLinterReadsDiskRatherThanTheIndex() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write(routableNote, to: "Nota.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -316,7 +298,7 @@ Corpo.
     // lazy continuation of that bullet in CommonMark, so the note reads as though the
     // block were titled "Riunione Riga catturata" - and the text sits inside a section
     // the app rewrites on the next block change.
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-12
@@ -342,7 +324,7 @@ Corpo.
 
 @MainActor
 @Test func twoCapturesInARowStayTwoSeparateLines() async throws {
-    let vault = try RouteVault()
+    let vault = try TemporaryVault()
     try vault.write(routableNote, to: "Destinazione.md")
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)

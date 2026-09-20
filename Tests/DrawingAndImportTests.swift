@@ -177,19 +177,9 @@ func canonicalisesTheCounterparty(_ testCase: (raw: String, expected: String)) {
 
 // MARK: - Drawing on a board
 
-private struct DrawingRoot: ~Copyable {
-    let url: URL
-    init() throws {
-        url = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-draw-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: url) }
-}
-
 @MainActor
 @Test func writesADrawingAsAnSVGAndPlacesItsCard() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: CGPoint(x: 10, y: 10), color: "#9A5B1F", width: 3, opacity: 1)
@@ -212,7 +202,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func reopensItsOwnDrawingForEditingWithoutDuplicatingTheCard() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: .zero, color: "#000000", width: 2, opacity: 1)
@@ -235,7 +225,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func refusesToEditAnSVGItDidNotWrite() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     try Data("<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M 0 0\"/></svg>".utf8)
         .write(to: root.url.appending(path: "importato.svg"))
 
@@ -249,7 +239,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func erasesOnlyTheStrokesUnderThePointer() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let controller = try openedWorkspaceController(rootURL: root.url)
 
     controller.beginStroke(at: CGPoint(x: 0, y: 0), color: "#000000", width: 2, opacity: 1)
@@ -265,7 +255,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func numbersDrawingsSequentiallyInAFolder() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let controller = try openedWorkspaceController(rootURL: root.url)
     let date = CalendarDate(iso: "2026-08-11")!
 
@@ -285,7 +275,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func proposesTheAssistedNameForAnImportedMessage() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let source = FileManager.default.temporaryDirectory
         .appending(path: "scaricato-\(UUID().uuidString).eml")
     try Data("""
@@ -319,7 +309,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func keepsTheNameOfANonEmailImport() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let source = FileManager.default.temporaryDirectory
         .appending(path: "schema-\(UUID().uuidString).png")
     try Data([0x89, 0x50, 0x4E, 0x47]).write(to: source)
@@ -333,7 +323,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func cascadesSeveralFilesImportedAtOnce() throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-src-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -356,7 +346,7 @@ private struct DrawingRoot: ~Copyable {
 
 @MainActor
 @Test func fileMenuImportProposesTheAssistedNameForAnEmailAndKeepsAPlainFileAsIs() async throws {
-    let root = try DrawingRoot()
+    let root = try CanvasTemporaryRoot()
     let emlSource = FileManager.default.temporaryDirectory
         .appending(path: "scaricato-\(UUID().uuidString).eml")
     try Data("""

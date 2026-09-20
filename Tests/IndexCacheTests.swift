@@ -3,33 +3,14 @@ import SQLite3
 import Testing
 @testable import Pergamenum
 
-private struct CacheVault: ~Copyable {
-    let root: URL
-    /// A throwaway sibling of `root`, standing in for `VaultState.applicationSupportBase()`
-    /// (ADR-0017) - `cacheURL` is resolved through the real `VaultState` rather than a
-    /// hand-rolled path, so this suite exercises the location the app actually writes to.
-    let stateBase: URL
-    let cacheURL: URL
-
-    // Everything that can throw happens against locals, and `self`'s three stored
-    // properties are assigned only at the end with nothing throwing in between - a
-    // noncopyable struct's initializer cannot prove definite initialization across
-    // more than two interleaved throw points, and three properties here tripped it.
-    init() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-cache-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let stateBase = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-cache-state-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-
-        self.root = root
-        self.stateBase = stateBase
-        self.cacheURL = VaultState(id: "cache-vault-test", base: stateBase).cacheFile
-    }
-    deinit {
-        try? FileManager.default.removeItem(at: root)
-        try? FileManager.default.removeItem(at: stateBase)
+/// What this suite needs beyond a throwaway vault: where its cache lives. File-private on
+/// purpose, so `TemporaryVault` stays what every other suite shares (ADR-0051 §D4).
+private extension TemporaryVault {
+    /// Resolved through the real `VaultState` rather than a hand-rolled path, so this suite
+    /// exercises the location the app actually writes to (ADR-0017). It lives under
+    /// `stateBase`, a sibling of `root`, and is a pure derivation: nothing is created.
+    var cacheURL: URL {
+        VaultState(id: "cache-vault-test", base: stateBase).cacheFile
     }
 
     /// Writes junk straight to `cacheURL`, standing in for a damaged or half-written
@@ -40,14 +21,6 @@ private struct CacheVault: ~Copyable {
             at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         try Data("questo non è un database".utf8).write(to: cacheURL)
-    }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
     }
 }
 
@@ -67,7 +40,7 @@ Corpo con [[Altra nota]].
 """
 
 @Test func aSavedRecordComesBackWhole() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "01 Progetti/Nota.md")
     let scanned = VaultScanner(root: vault.root).scan()
 
@@ -89,7 +62,7 @@ Corpo con [[Altra nota]].
 /// Schema 3 (ADR-0009 §D2): the one field M11 was allowed to add, and a cache that
 /// cannot carry it would make the gallery re-read the vault on every launch.
 @Test func aCachedRecordCarriesItsEmbeddedFiles() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note + "\n\n![[foto.png]]\n", to: "Nota.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -100,7 +73,7 @@ Corpo con [[Altra nota]].
 }
 
 @Test func aCachedTaskKeepsItsDatesAndItsProject() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -112,7 +85,7 @@ Corpo con [[Altra nota]].
 }
 
 @Test func anUnchangedFileIsTakenFromTheCacheInsteadOfBeingRead() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     try vault.write(note, to: "Altra.md")
     let cache = IndexCache(url: vault.cacheURL)
@@ -127,7 +100,7 @@ Corpo con [[Altra nota]].
 }
 
 @Test func aFileEditedSinceTheCacheIsReadAgain() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -145,7 +118,7 @@ Corpo con [[Altra nota]].
 }
 
 @Test func aNoteDeletedSinceTheCacheDoesNotComeBack() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     try vault.write(note, to: "Sparita.md")
     let cache = IndexCache(url: vault.cacheURL)
@@ -163,19 +136,19 @@ Corpo con [[Altra nota]].
 }
 
 @Test func loadingACacheThatIsNotThereGivesNothing() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     #expect(IndexCache(url: vault.cacheURL).load().isEmpty)
 }
 
 @Test func loadingACorruptFileGivesNothingRatherThanHalfAVault() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.corruptCache()
     // A partial read would be indistinguishable from a vault that had lost notes.
     #expect(IndexCache(url: vault.cacheURL).load().isEmpty)
 }
 
 @Test func aCacheFromAnOlderSchemaIsIgnored() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -191,7 +164,7 @@ Corpo con [[Altra nota]].
 }
 
 @Test func savingTwiceLeavesOnlyTheSecondSetOfNotes() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Prima.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -215,7 +188,7 @@ private let taskMarkerNote = """
 """
 
 @Test func theThreeNewTaskFieldsSurviveASaveAndLoadRoundTripWithNoSchemaBump() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(taskMarkerNote, to: "Progetto.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -238,7 +211,7 @@ private let taskMarkerNote = """
 }
 
 @Test func deletingCacheDbAndRescanningReDerivesTheSameRelationships() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(taskMarkerNote, to: "Progetto.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))
@@ -258,7 +231,7 @@ private let taskMarkerNote = """
 }
 
 @Test func clearingRemovesTheFile() throws {
-    let vault = try CacheVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Nota.md")
     let cache = IndexCache(url: vault.cacheURL)
     #expect(cache.save(VaultScanner(root: vault.root).scan().records))

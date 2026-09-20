@@ -34,28 +34,10 @@ import Testing
 
 // MARK: - Finding the file
 
-private struct AttachmentVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-attachment-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data("x".utf8).write(to: url)
-    }
-}
-
 @Test func findsTheFileBesideTheNoteFirst() throws {
-    let vault = try AttachmentVault()
-    try vault.write("01 Progetti/foto.png")
-    try vault.write("foto.png")
+    let vault = try TemporaryVault()
+    try vault.write("x", to: "01 Progetti/foto.png")
+    try vault.write("x", to: "foto.png")
 
     #expect(Attachment.resolve(
         "foto.png", nearNoteAt: "01 Progetti/Nota.md", inVaultAt: vault.root
@@ -63,8 +45,8 @@ private struct AttachmentVault: ~Copyable {
 }
 
 @Test func fallsBackToTheVaultRootAndThenToTheName() throws {
-    let vault = try AttachmentVault()
-    try vault.write("Allegati/schema.png")
+    let vault = try TemporaryVault()
+    try vault.write("x", to: "Allegati/schema.png")
 
     // Written as a path from the root.
     #expect(Attachment.resolve(
@@ -77,8 +59,8 @@ private struct AttachmentVault: ~Copyable {
 }
 
 @Test func readsANameThatArrivedPercentEncoded() throws {
-    let vault = try AttachmentVault()
-    try vault.write("foto pressa.png")
+    let vault = try TemporaryVault()
+    try vault.write("x", to: "foto pressa.png")
 
     #expect(Attachment.resolve(
         "foto%20pressa.png", nearNoteAt: "Nota.md", inVaultAt: vault.root
@@ -86,8 +68,8 @@ private struct AttachmentVault: ~Copyable {
 }
 
 @Test func refusesToLeaveTheVault() throws {
-    let vault = try AttachmentVault()
-    try vault.write("dentro.png")
+    let vault = try TemporaryVault()
+    try vault.write("x", to: "dentro.png")
 
     #expect(Attachment.resolve("/etc/hosts", nearNoteAt: "Nota.md", inVaultAt: vault.root) == nil)
     #expect(Attachment.resolve("~/foto.png", nearNoteAt: "Nota.md", inVaultAt: vault.root) == nil)
@@ -98,7 +80,7 @@ private struct AttachmentVault: ~Copyable {
 }
 
 @Test func aMissingFileResolvesToNothingRatherThanAGuess() throws {
-    let vault = try AttachmentVault()
+    let vault = try TemporaryVault()
     #expect(Attachment.resolve("assente.png", nearNoteAt: "Nota.md", inVaultAt: vault.root) == nil)
     // Remote is refused here too: this app makes no network call in any feature.
     #expect(Attachment.resolve(
@@ -107,7 +89,7 @@ private struct AttachmentVault: ~Copyable {
 }
 
 @Test func aFolderIsNotAnAttachment() throws {
-    let vault = try AttachmentVault()
+    let vault = try TemporaryVault()
     try FileManager.default.createDirectory(
         at: vault.root.appending(path: "foto.png", directoryHint: .isDirectory),
         withIntermediateDirectories: true
