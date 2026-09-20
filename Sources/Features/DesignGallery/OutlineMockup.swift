@@ -41,8 +41,11 @@ struct OutlineMockup: View {
         }
     }
 
+    /// Three across: `MockupGalleryView.tripleWidth` (the outer width) less the 16 points of
+    /// padding a `MockupCell` adds around its frame. It was a hardcoded 230, which is 246 outer
+    /// and a row of 770 against the 672 a page gives.
     private func labelled(_ title: String, _ content: some View) -> some View {
-        MockupCell(title, width: 230) { content }
+        MockupCell(title, width: MockupGalleryView.tripleWidth - 16) { content }
     }
 }
 
