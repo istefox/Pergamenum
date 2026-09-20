@@ -140,53 +140,13 @@ func rejectsInvalidColours(_ raw: String) {
     #expect((node?["count"] as? NSNumber)?.doubleValue == 1)
 }
 
-// MARK: - Folder creation, and the fixture every store test builds on
+// MARK: - Folder creation
 //
 // The five tests that pinned the folder→board mapping (`boardPath(forFolder:)`,
 // `load(folder:)`, `save(_:folder:)`, `contents(ofFolder:board:)`) are gone with the API
 // they exercised - ADR-0025 §D1 deletes it rather than deprecating it. Their subject is
-// re-asserted against the path-addressing shape below.
-
-struct CanvasTemporaryRoot: ~Copyable {
-    let url: URL
-
-    init() throws {
-        url = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-canvas-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-
-    deinit { try? FileManager.default.removeItem(at: url) }
-
-    func makeDirectory(_ relativePath: String) throws {
-        try FileManager.default.createDirectory(
-            at: url.appending(path: relativePath, directoryHint: .isDirectory),
-            withIntermediateDirectories: true
-        )
-    }
-
-    func makeFile(_ relativePath: String, _ contents: String = "x") throws {
-        let fileURL = url.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: fileURL)
-    }
-}
-
-/// A `WorkspaceController` attached to a fresh store with one board already created and
-/// open at the vault root - the fixture every controller test that mutates a document
-/// needs, since `attach` alone opens nothing (ADR-0025 §D4) and `mutate` now refuses to
-/// write without an open board (PG-062).
-@MainActor
-func openedWorkspaceController(rootURL: URL) throws -> WorkspaceController {
-    let store = CanvasStore(root: rootURL)
-    let controller = WorkspaceController()
-    controller.attach(to: store)
-    let board = try store.createBoard(named: rootURL.lastPathComponent, in: "")
-    controller.open(board: board)
-    return controller
-}
+// re-asserted against the path-addressing shape below. The fixture every store test builds
+// on, `CanvasTemporaryRoot`, lives in `CanvasTestSupport.swift`.
 
 @Test func createsARealDirectoryForAFolderCard() throws {
     let root = try CanvasTemporaryRoot()
