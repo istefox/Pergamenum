@@ -210,7 +210,8 @@ show_verdict() {
 }
 
 # Read-only and instant: it never touches the machine, so it can be asked at any moment by any
-# session. Exit 0 only when HEAD's own tree has a full green verdict.
+# session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
+# a run is still owed.
 status_report() {
     local head_tree main_tree base
     head_tree=$(tree_of HEAD)
@@ -228,7 +229,10 @@ status_report() {
     else
         printf 'uitests: nessun verde completo tra gli antenati di HEAD\n'
     fi
-    [ "$(verdict_field "$(verdict_file "$head_tree" full)" result)" = green ]
+    # Verified means: HEAD's own tree has a full green verdict, or nothing that differs from the
+    # last full green one can reach the UI (a script, a doc, the ledger).
+    [ "$(verdict_field "$(verdict_file "$head_tree" full)" result)" = green ] \
+        || { [ -n "$base" ] && [ "$PLAN" = NONE ]; }
 }
 
 # MARK: --affected
