@@ -65,4 +65,27 @@ import Testing
         #expect(!reduced.contains("tracker.example.test"))
         #expect(reduced.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
+
+    // MARK: Entities
+
+    @Test(arguments: [
+        ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
+        ("&apos;", "'"), ("&#39;", "'"),
+        ("&nbsp;", " "), ("&euro;", "€"), ("&hellip;", "…"),
+        ("&rsquo;", "\u{2019}"), ("&#8217;", "\u{2019}"), ("&lsquo;", "\u{2018}"),
+        ("&ldquo;", "\u{201C}"), ("&rdquo;", "\u{201D}"),
+        ("&ndash;", "\u{2013}"), ("&mdash;", "\u{2014}"),
+        // The lookup is case-insensitive.
+        ("&AMP;", "&"), ("&Euro;", "€"),
+        // Numeric references outside the table go through the parse.
+        ("&#65;", "A"), ("&#x41;", "A"), ("&#X41;", "A"),
+    ])
+    func decodesEntity(entity: String, expected: String) {
+        #expect(HTMLTextReducer.reduce("<p>a\(entity)b</p>").contains("a\(expected)b"))
+    }
+
+    @Test(arguments: ["&unknown;", "&#xZZ;", "&#1114112;", "&toolongentityname;"])
+    func leavesAnUnmappableEntityAsWritten(entity: String) {
+        #expect(HTMLTextReducer.reduce("<p>a\(entity)b</p>").contains("a\(entity)b"))
+    }
 }
