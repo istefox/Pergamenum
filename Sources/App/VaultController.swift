@@ -159,7 +159,10 @@ final class VaultController {
     ///
     /// Not `private(set)`: the one door onto it, `togglePin`, is in `VaultController+Files.swift`
     /// and cannot write through a private setter from another file. Same documented trade as
-    /// `columns` and `replaceOpenNote`.
+    /// `columns` and `replaceOpenNote`. That is a trade, not a law: a door declared in the file that
+    /// declares the property does get a `private(set)` setter (`PraticheController.updateLedger`,
+    /// ADR-0052 §D2) - taken there because a ledger saved back over a file nothing else can rebuild
+    /// is worth the door sitting in an unexpected file.
     var pinnedTags: [Tag] = []
 
     init(

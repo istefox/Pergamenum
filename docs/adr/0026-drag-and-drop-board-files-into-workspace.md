@@ -258,6 +258,12 @@ The SPEC's "no new rewriting" section is right twice and incomplete once.
   inherits the old one's history (`importedMessageIDs`, the «non più in Mail» list, bridge `entries`,
   `lastOpenedAt`, tray count). It does not silently skip messages: `MailStoreReader.rows` builds every
   row with `messageID: nil`, so the engine's own on-disk `Message-ID` scan decides what is imported.
+- **Amended 2026-09-20** (ledger marker and one write door, PG-172, ADR-0052 §D6): the tombstone the
+  trash leaves on a path an in-flight sync or regeneration still claims is no longer kept until the
+  whole controller is idle. It is dropped, per path, by whichever of `endSync`/`endRegeneration`
+  releases that path, as soon as no sync and no regeneration claims it - a claim on some other path
+  no longer keeps it alive. A tombstone on a path that is still claimed stays, and that claim's
+  outcome is still discarded exactly as above.
 
 ### §D8 — Undo is registered on the window's `UndoManager`, obtained from the SwiftUI
 ### environment and passed in as a parameter

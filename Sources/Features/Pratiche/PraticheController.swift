@@ -92,8 +92,9 @@ final class PraticheController {
     /// The pratica a sync is running for, and how far it has got (R-20's progress bar,
     /// screen 1a's «12 di 80 · Annulla»).
     ///
-    /// Not `private(set)`, on this property and every other one down to `ledger`
-    /// below: `PraticheController+Ledger.swift` is an extension of this class in a
+    /// Not `private(set)`, on this property and every other one down to `problem`
+    /// below (`ledger`, right after it, is the exception and says why):
+    /// `PraticheController+Ledger.swift` is an extension of this class in a
     /// separate file, and reads and writes all of them from `beginSync`, `endSync`,
     /// `updateProgress`, `report`, `recordSyncOutcome`, `moveLedgerState` and
     /// `remapLedgerConversations`.
@@ -120,7 +121,24 @@ final class PraticheController {
     /// The per-vault ledger (`…/vaults/<id>/pratiche/ledger.json`, SPEC "Per-vault
     /// state"): `lastOpenedAt` is what the badge counts from, `importedMessageIDs`
     /// what a resumed sync skips.
-    var ledger: PraticaLedger = .empty
+    ///
+    /// `private(set)`, unlike every property above it (ADR-0052 §D2): this is saved back over a
+    /// file nothing else can rebuild, so the one way to change it is `updateLedger(_:_:)`, which
+    /// checks `ledgerOrigin` first and cannot be skipped by the next writer. That door sits at the
+    /// foot of THIS file and not beside the rest of the ledger code in `PraticheController+Ledger
+    /// .swift`, because Swift confines a `private(set)` setter to the declaring file and a stored
+    /// property cannot live in an extension. Two other places in this repo hit the same wall and
+    /// kept an internal setter (`VaultController.pinnedTags`, and this property until ADR-0052);
+    /// the wall is real only when the door has to live in another file.
+    private(set) var ledger: PraticaLedger = .empty
+
+    /// Which ledger file `ledger` was read from (ADR-0052 §D1) - what makes «this memory is the
+    /// vault I am about to write into» a fact rather than an assumption.
+    private(set) var ledgerOrigin: LedgerOrigin = .none
+
+    /// R-04: the unreadable ledger files already reported this session, so one sentence goes out per
+    /// file however many writers run. A later successful read of a file takes it off again.
+    @ObservationIgnored private var reportedUnreadableLedgers: Set<URL> = []
 
     /// A pratica path some in-flight caller captured before a relocation moved its
     /// ledger key elsewhere, mapped to where that key sits now. `moveLedgerState`
@@ -145,8 +163,10 @@ final class PraticheController {
     /// moment - a deletion with nothing running records nothing, since nothing will ever read
     /// it. `praticaPath(continuing:)` refuses a path found here with `.praticaTrashed`, and
     /// `recordSyncOutcome` writes nothing for it, which is what stops a finishing run from
-    /// putting back the ledger key the trash just removed. Cleared in one go with the
-    /// redirect map (`pruneRedirectsIfIdle`). Not `private(set)`: `PraticheController+Ledger
+    /// putting back the ledger key the trash just removed. Dropped per path when the run that
+    /// claimed it ends and nothing else still claims that path (`dropTombstoneIfUnclaimed`,
+    /// ADR-0052 §D6), and cleared in one go with the redirect map once nothing at all is in
+    /// flight (`pruneRedirectsIfIdle`). Not `private(set)`: `PraticheController+Ledger
     /// .swift` reads and writes it from `forgetLedgerState`, the private resolver behind
     /// `praticaPath(continuing:)`/`recordSyncOutcome`/`endRegeneration`, and `load(from:)`.
     var forgottenPraticaPaths: Set<String> = []
@@ -321,5 +341,228 @@ final class PraticheController {
         return order.map { title in
             PraticaAggregatedNoteLink(title: title, messagePaths: (messagePathsByTitle[title] ?? []).sorted())
         }
+    }
+}
+
+// MARK: - The ledger's one door (ADR-0052)
+
+// Here, in the file that declares `ledger`, and not beside the rest of the ledger code: a
+// `private(set)` setter is visible to this file's extensions and to nothing else (see `ledger`).
+
+extension PraticheController {
+    /// Which ledger file the in-memory `ledger` was read from (§D1). One enum rather than a `URL?`
+    /// beside an `isWritable: Bool` that could disagree (ADR-0024 §D2's rule).
+    enum LedgerOrigin: Equatable, Sendable {
+        /// Nothing read yet, or no vault open.
+        case none
+        /// Read from this file: decoded, or absent and therefore writable (a first write creates it).
+        case loaded(URL)
+        /// This file is there and could not be read: `ledger` is empty and nothing is saved over it.
+        case unreadable(URL)
+
+        /// The file the memory came from, compared by `URL` equality against the target's. Both
+        /// sides come from `PraticheController.ledgerURL(for:)` off the same `session.state.directory`,
+        /// so the comparison is stable; a caller that standardised or resolved symlinks on one side
+        /// only would make every write look like a change of vault.
+        var url: URL? {
+            switch self {
+            case .none: nil
+            case .loaded(let url), .unreadable(let url): url
+            }
+        }
+
+        /// False only for `.unreadable`.
+        var allowsSaving: Bool {
+            switch self {
+            case .none, .loaded: true
+            case .unreadable: false
+            }
+        }
+    }
+
+    /// Which vault's ledger a write is for (§D2). A `VaultSession?` and never a `VaultController`:
+    /// `recordSyncOutcome` is handed a session and a flag by its caller and holds no controller.
+    enum LedgerTarget {
+        /// The vault being shown, `nil` when none is open. Goes through the marker: memory that did
+        /// not come from this vault's file is replaced by it first.
+        case live(VaultSession?)
+        /// A session that is no longer the live one (a sync that outlived a vault switch): its own
+        /// file, read fresh and written back, never `ledger` and never `ledgerOrigin`.
+        case stale(VaultSession)
+    }
+
+    /// What `updateLedger(_:_:)` did with a change.
+    enum LedgerWrite: Equatable {
+        case saved
+        /// The change left the ledger as it was, so nothing was written.
+        case unchanged
+        /// Applied in memory; there was no vault to save it under.
+        case notPersisted
+        /// The file is unreadable (§D3): applied in memory for the live vault, dropped for a stale
+        /// one, saved nowhere.
+        case refused
+        /// The save threw: memory holds the change, the file does not.
+        case failed
+    }
+
+    /// The only way to change the ledger (§D2). It resolves the file the write is for, checks the
+    /// marker and re-reads (and resets the vault-scoped state) when memory did not come from that
+    /// file, refuses a file it could not read (§D3), applies `change`, and saves only what really
+    /// differs. A writer is the closure it always was, with no knowledge of loading or saving.
+    ///
+    /// `change` is applied to a copy and never to `&ledger`: two writers touch other properties of
+    /// `self` from inside it (`forgottenPraticaPaths`, `praticaPathRedirects`), which while `ledger`
+    /// is held inout is an exclusivity trap, and the copy is also what makes «did anything change»
+    /// answerable. A writer that also touches sibling state calls this FIRST (§D8): the door can
+    /// reset that state, and the reverse order would put back what a vault change had just cleared.
+    @discardableResult
+    func updateLedger(_ target: LedgerTarget, _ change: (inout PraticaLedger) -> Void) -> LedgerWrite {
+        switch target {
+        case .stale(let session):
+            return updateStaleLedger(at: Self.ledgerURL(for: session), change)
+        case .live(let session):
+            let url = session.map(Self.ledgerURL(for:))
+            ensureLedgerLoaded(from: url)
+            var updated = ledger
+            change(&updated)
+            guard ledgerOrigin.allowsSaving else {
+                // Still applied in memory (§D3): a badge goes out and a count shows, and nothing
+                // becomes durable. The marker's contract is «this memory came from that file»,
+                // never «this memory equals that file» - a failed save already broke the latter.
+                ledger = updated
+                return .refused
+            }
+            guard updated != ledger else { return .unchanged }
+            ledger = updated
+            guard let url else { return .notPersisted }
+            // A ledger that will not save costs one badge, not a pratica: reported, never
+            // thrown at the person reading their mail.
+            do {
+                try updated.save(to: url)
+                return .saved
+            } catch {
+                problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+                return .failed
+            }
+        }
+    }
+
+    /// Re-reads `session`'s ledger file (`nil`: no vault is open) and adopts it - always, where the
+    /// door re-reads only when the marker differs; what `load(from:)` calls. It resets the
+    /// vault-scoped state when the marker named a DIFFERENT file, or when there is no vault at all,
+    /// and never for a re-read of the same one: `load(from:)` runs after every pratica command, and
+    /// resetting there would wipe the tray on every rename. `.none` to a file is a first load, not a
+    /// change of vault, and resets nothing either.
+    func reloadLedger(for session: VaultSession?) {
+        reloadLedger(from: session.map(Self.ledgerURL(for:)))
+    }
+
+    private func reloadLedger(from url: URL?) {
+        if url == nil || (ledgerOrigin.url != nil && ledgerOrigin.url != url) {
+            resetVaultScopedState()
+        }
+        adoptLedger(from: url)
+    }
+
+    /// The marker check (§D1): memory that already came from `url` is left alone - which includes
+    /// `.none` with no vault, and an `.unreadable` marker, which keeps refusing until a
+    /// `load(from:)` finds the file readable.
+    private func ensureLedgerLoaded(from url: URL?) {
+        guard ledgerOrigin.url != url else { return }
+        reloadLedger(from: url)
+    }
+
+    /// Reads `url` into `ledger` and records where it came from. A file that is absent adopts an
+    /// empty, writable ledger (R-03: a first write is a creation, not a refusal); one that is there
+    /// and unreadable adopts an empty ledger that is never saved (§D3) and is reported once.
+    private func adoptLedger(from url: URL?) {
+        guard let url else {
+            ledger = .empty
+            ledgerOrigin = .none
+            return
+        }
+        switch PraticaLedger.read(from: url) {
+        case .loaded(let onDisk):
+            ledger = onDisk
+            ledgerOrigin = .loaded(url)
+            reportedUnreadableLedgers.remove(url)
+        case .missing:
+            ledger = .empty
+            ledgerOrigin = .loaded(url)
+            reportedUnreadableLedgers.remove(url)
+        case .unreadable:
+            ledger = .empty
+            ledgerOrigin = .unreadable(url)
+            reportUnreadableLedger(url)
+        }
+    }
+
+    /// `.stale`'s half of the door: `url`'s own file read fresh, changed, written back, and neither
+    /// `ledger` nor `ledgerOrigin` ever touched - they describe the live vault alone. A save failure
+    /// stays unreported here, as it was before the door existed: `problem` is the live pane's, and
+    /// this write is not for the live vault.
+    private func updateStaleLedger(at url: URL, _ change: (inout PraticaLedger) -> Void) -> LedgerWrite {
+        var stored: PraticaLedger
+        switch PraticaLedger.read(from: url) {
+        case .loaded(let onDisk):
+            stored = onDisk
+            reportedUnreadableLedgers.remove(url)
+        case .missing:
+            stored = .empty
+            reportedUnreadableLedgers.remove(url)
+        case .unreadable:
+            reportUnreadableLedger(url)
+            return .refused
+        }
+        let before = stored
+        change(&stored)
+        guard stored != before else { return .unchanged }
+        do {
+            try stored.save(to: url)
+            return .saved
+        } catch {
+            return .failed
+        }
+    }
+
+    /// R-04: one sentence naming the file, the first time it is found unreadable and not again
+    /// until a read of it has succeeded.
+    private func reportUnreadableLedger(_ url: URL) {
+        guard reportedUnreadableLedgers.insert(url).inserted else { return }
+        problem = "Il registro delle pratiche non è leggibile e non verrà sovrascritto: "
+            + "\(url.path(percentEncoded: false)). Ripara o elimina il file."
+    }
+
+    /// What belongs to the vault that was open and to no other (§D5): the list, the tray, the
+    /// per-pratica throttle marks, the selection and everything read for it. Without this a pratica
+    /// path that exists in two vaults (`01 Progetti/Tifone` is not an unusual name) inherits vault A's
+    /// badge, proposals and window-key throttle.
+    ///
+    /// Deliberately NOT cleared, and the part a future reader will be tempted to «complete»:
+    /// - `praticaPathRedirects` and `forgottenPraticaPaths`, and `syncingPraticaPath`,
+    ///   `regeneratingPraticaPaths`, `regeneration`: an in-flight run owns them and `endSync`/
+    ///   `endRegeneration` release them. A writer reaches this reset in the middle of a run (a controller
+    ///   that never loaded, plus a sync finishing), and clearing a tombstone there would resurrect the
+    ///   key the trash had just removed.
+    /// - `problem` and `fullDiskAccessState`: not per vault.
+    /// - `mailStoreEvents`, `windowKeyObserver`, `fsEventsFireTask`: per Mail store and per controller,
+    ///   armed once by `startWatching(_:)`, which only the Pratiche pane calls - tearing them down here
+    ///   would leave both automatic triggers disarmed until the pane was next opened. What
+    ///   `watchersByPraticaPath` holds is pure throttle bookkeeping (`PraticaWatcher` is a struct of
+    ///   dates), so emptying it IS stopping those watchers.
+    ///
+    /// `selection` is cleared by assignment and not through `select(nil, in:)`, which marks a pratica
+    /// opened, rebuilds the list and reloads the timeline, all against the vault being left.
+    private func resetVaultScopedState() {
+        pratiche = []
+        trayProposals = [:]
+        trayCounts = [:]
+        watchersByPraticaPath = [:]
+        selection = nil
+        selectedEntryID = nil
+        expansion = PraticaTimelineModel.ExpansionState()
+        timeline = []
+        details = [:]
+        links = .empty
     }
 }

@@ -424,7 +424,9 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 @Suite(.serialized) struct PraticaLedgerFolderRelocationTests {
     @Test func moveLedgerStateRemapsExactKey() {
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+        // No session in these tests, so the ledger is seeded through the door: marker `.none`,
+        // target `nil`, memory only (ADR-0052 §D9).
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath["01 Progetti/Tifone/X"] = .empty }
         let vault = VaultController()
 
         controller.moveLedgerState(from: "01 Progetti/Tifone/X", to: "Calendar/01 Progetti/Tifone/X", in: vault)
@@ -437,7 +439,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         var state = PraticaLedger.PraticaState.empty
         state.importedMessageIDs = ["<a@rossi-spa.it>"]
-        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = state
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath["01 Progetti/Tifone/X"] = state }
         let vault = VaultController()
 
         // The actual bug shape: the pratica itself is not the moved item, an ANCESTOR of
@@ -457,7 +459,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 
     @Test func moveLedgerStateLeavesSiblingPrefixAlone() {
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        controller.ledger.byPraticaPath["01 Progetti-altro"] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath["01 Progetti-altro"] = .empty }
         let vault = VaultController()
 
         controller.moveLedgerState(from: "01 Progetti", to: "Calendar/01 Progetti", in: vault)
@@ -473,7 +475,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let oldPath = "01 Progetti/Tifone/X"
         let newPath = "Calendar/01 Progetti/Tifone/X"
-        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath[oldPath] = .empty }
         controller.trayCounts[oldPath] = 3
         controller.trayProposals[oldPath] = []
         controller.watchersByPraticaPath[oldPath] = PraticaWatcher()
@@ -502,7 +504,10 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let session = try #require(vaultController.session)
 
         let pratiche = PraticheController.live(vault: vaultController)
-        pratiche.ledger.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+        // On disk and not in memory (ADR-0052 §D9): a session exists, so the door reads the file.
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         pratiche.moveLedgerState(
             from: "01 Progetti/Tifone/X", to: "Calendar/01 Progetti/Tifone/X", in: vaultController
@@ -532,7 +537,10 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         vaultController.didRelocateFolders = { [weak pratiche] moved in
             pratiche?.followFolderRelocations(moved, in: vaultController)
         }
-        pratiche.ledger.byPraticaPath["F"] = .empty
+        let session = try #require(vaultController.session)
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["F"] = .empty
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
         let manager = UndoManager()
 
         let outcome = await vaultController.moveItems(
@@ -567,7 +575,10 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         vaultController.didRelocateFolders = { [weak pratiche] moved in
             pratiche?.followFolderRelocations(moved, in: vaultController)
         }
-        pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = .empty
+        let session = try #require(vaultController.session)
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["01 Progetti/Tifone"] = .empty
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         let newPath = vaultController.renameFolder(at: "01 Progetti", to: "Calendar")
 
@@ -597,7 +608,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let oldPath = "01 Progetti/Tifone/X"
         let newPath = "Calendar/01 Progetti/Tifone/X"
-        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath[oldPath] = .empty }
         // Mirrors `beginSync(praticaPath)`, called before `runExclusive`'s own `await`s.
         controller.beginSync(oldPath)
         let vaultController = VaultController()
@@ -637,7 +648,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let oldPath = "01 Progetti/Tifone/X"
         let newPath = "Calendar/01 Progetti/Tifone/X"
-        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath[oldPath] = .empty }
         let vault = VaultController()
 
         controller.moveLedgerState(from: oldPath, to: newPath, in: vault)
@@ -663,7 +674,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let oldPath = "01 Progetti/Tifone/X"
         let newPath = "Calendar/01 Progetti/Tifone/X"
-        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath[oldPath] = .empty }
         // Both callers captured `oldPath` before the relocation below, exactly like
         // `beginSync` (`runExclusive`) and `beginRegeneration` (`prepareRegeneration`)
         // do in production, before either one's own `await`s.
@@ -778,7 +789,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let oldPath = "01 Progetti/Tifone/X"
         let newPath = "Calendar/01 Progetti/Tifone/X"
-        controller.ledger.byPraticaPath[oldPath] = .empty
+        controller.updateLedger(.live(nil)) { $0.byPraticaPath[oldPath] = .empty }
         controller.beginSync(oldPath)
         let vault = VaultController()
 
