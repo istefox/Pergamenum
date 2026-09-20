@@ -308,7 +308,7 @@ final class PraticaLiveSync {
             controller.endRegeneration(praticaPath)
             return
         }
-        let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
+        let state = controller.ledgerState(of: praticaPath, in: session)
         let onDisk = Set(state.importedMessageIDs)
         // §D3: the ledger's own bridge, for a message the fresh index copy cannot
         // resolve by `Message-ID` on its own.
