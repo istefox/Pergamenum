@@ -69,7 +69,7 @@ extension PraticaLiveSync {
             praticaPath: praticaPath, session: session, root: root, settings: settings, controller: controller
         )
         let stateDirectory = PraticheController.stateDirectory(for: session)
-        let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
+        let state = controller.ledgerState(of: praticaPath, in: session)
         let onDisk = Set(state.importedMessageIDs)
         let mailRoot = MailStoreLocation.resolve()
         // R-30/SPEC "Membership rule": the window the tray proposes inside, and the
