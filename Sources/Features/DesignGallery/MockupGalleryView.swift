@@ -45,57 +45,43 @@ struct MockupGalleryView: View {
 
         var id: String { rawValue }
 
-        var title: String {
-            switch self {
-            case .capture: "Cattura"
-            case .slash: "Menu /"
-            case .code: "Codice"
-            case .outline: "Indice"
-            case .folding: "Ripiegamento"
-            case .transclusion: "Transclusione"
-            case .embed: "Immagini e PDF"
-            case .find: "Trova"
-            case .format: "Formato"
-            case .history: "Cronologia"
-            case .template: "Template"
-            case .tabs: "Tab"
-            case .tagBrowser: "Tag e preferiti"
-            case .mentions: "Menzioni"
-            case .views: "Viste"
-            case .week: "Settimana"
-            case .taskControls: "Attività e rollover"
-            case .editor: "Editor"
-            case .workspace: "Workspace"
-            case .today: "Oggi"
-            case .tasks: "Attività"
-            }
-        }
+        var title: String { entry.title }
 
         /// The milestone each screen belongs to, so a mockup that has been overtaken by
         /// the real thing is recognisable as such rather than mistaken for a proposal.
-        var milestone: String {
+        var milestone: String { entry.milestone }
+
+        /// A screen's title and milestone, kept in one exhaustive `switch` so adding a case
+        /// is one edit here plus its view in `MockupGalleryView.current`, and forgetting
+        /// either fails the build rather than leaving a screen with no caption.
+        private struct Entry {
+            let title: String
+            let milestone: String
+        }
+
+        private var entry: Entry {
             switch self {
-            case .capture: "M7, realizzato"
-            case .slash: "M8, realizzato"
-            case .code: "M8, realizzato"
-            case .outline: "M8, realizzato"
-            case .folding: "M8, realizzato"
-            case .transclusion: "M8, da approvare"
-            case .embed: "ADR-0018 slice 3, realizzato"
-            case .find: "M8, realizzato"
-            case .format: "M8, realizzato"
-            case .history: "M9, realizzato"
-            case .template: "M9, da approvare"
-            case .tabs: "M10, da approvare"
-            case .tagBrowser: "M10, da approvare"
-            case .mentions: "M10, da approvare"
-            case .views: "M11, da approvare"
-            case .week: "M12, da approvare"
-            case .taskControls: "M12, da approvare"
-            case .editor: "M1, realizzato"
-            case .workspace: "M2 e M3, realizzato"
-            case .today: "M5, realizzato"
-            case .tasks: "M4, realizzato"
+            case .capture: Entry(title: "Cattura", milestone: "M7, realizzato")
+            case .slash: Entry(title: "Menu /", milestone: "M8, realizzato")
+            case .code: Entry(title: "Codice", milestone: "M8, realizzato")
+            case .outline: Entry(title: "Indice", milestone: "M8, realizzato")
+            case .folding: Entry(title: "Ripiegamento", milestone: "M8, realizzato")
+            case .transclusion: Entry(title: "Transclusione", milestone: "M8, da approvare")
+            case .embed: Entry(title: "Immagini e PDF", milestone: "ADR-0018 slice 3, realizzato")
+            case .find: Entry(title: "Trova", milestone: "M8, realizzato")
+            case .format: Entry(title: "Formato", milestone: "M8, realizzato")
+            case .history: Entry(title: "Cronologia", milestone: "M9, realizzato")
+            case .template: Entry(title: "Template", milestone: "M9, da approvare")
+            case .tabs: Entry(title: "Tab", milestone: "M10, da approvare")
+            case .tagBrowser: Entry(title: "Tag e preferiti", milestone: "M10, da approvare")
+            case .mentions: Entry(title: "Menzioni", milestone: "M10, da approvare")
+            case .views: Entry(title: "Viste", milestone: "M11, da approvare")
+            case .week: Entry(title: "Settimana", milestone: "M12, da approvare")
+            case .taskControls: Entry(title: "Attività e rollover", milestone: "M12, da approvare")
+            case .editor: Entry(title: "Editor", milestone: "M1, realizzato")
+            case .workspace: Entry(title: "Workspace", milestone: "M2 e M3, realizzato")
+            case .today: Entry(title: "Oggi", milestone: "M5, realizzato")
+            case .tasks: Entry(title: "Attività", milestone: "M4, realizzato")
             }
         }
     }
