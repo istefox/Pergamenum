@@ -276,6 +276,8 @@ struct VaultBrowser: View {
                     .accessibilityIdentifier("inspector-unlink-category")
                 }
             }
+        } else {
+            AssignCategoryMenu(notePath: note.relativePath)
         }
     }
 

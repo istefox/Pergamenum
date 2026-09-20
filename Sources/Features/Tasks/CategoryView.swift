@@ -117,26 +117,41 @@ struct CategoryView<Row: View>: View {
                     .accessibilityIdentifier("category-view-deadline")
             }
 
-            if let home = homeNote(of: category.slug) {
+            homeNoteControls
+        }
+    }
+
+    /// The linked-note row (SPEC "Note ↔ category"): «Vai alla nota» and «Scollega la
+    /// nota» when the category has a home, and always the affordance that sets one -
+    /// «Collega una nota…» or, once there is a home, «Cambia nota…». A registered category
+    /// only: an implicit one has no registry entry for a note to point at yet (the
+    /// «Registra» button above comes first).
+    @ViewBuilder
+    private var homeNoteControls: some View {
+        let home = vault.index.homeNote(ofCategory: category.slug)
+        HStack(spacing: theme.spacing(.m)) {
+            if let home {
                 Button("Vai alla nota") {
                     vault.openNote(at: home.relativePath)
                     navigation.pane = .notes
                 }
-                .buttonStyle(.plain)
-                .themedText(.caption, color: .accentPrimary)
                 .accessibilityIdentifier("category-view-go-to-note")
             }
+            if isRegistered {
+                Button(home == nil ? "Collega una nota…" : "Cambia nota…") {
+                    navigation.categoryLinkingNote = .init(slug: category.slug, name: category.name)
+                }
+                .accessibilityIdentifier("category-view-link-note")
+            }
+            if let home {
+                Button("Scollega la nota") {
+                    Task { await vault.unlinkCategory(fromNoteAt: home.relativePath) }
+                }
+                .accessibilityIdentifier("category-view-unlink-note")
+            }
         }
-    }
-
-    /// The category's "home" (SPEC "Note ↔ category"): the note carrying
-    /// `pergamenum-category: <slug>`, or nil when none does. First in vault order,
-    /// deterministically, on the rare chance more than one claims the slug - the same
-    /// tie-break `VaultSession.categoryViolations` reports as `duplicateHome`.
-    private func homeNote(of slug: String) -> NoteRecord? {
-        vault.index.allNotes
-            .filter { $0.categorySlug == slug }
-            .min { $0.relativePath < $1.relativePath }
+        .buttonStyle(.plain)
+        .themedText(.caption, color: .accentPrimary)
     }
 
     // MARK: Children (SPEC: "then one group per child")

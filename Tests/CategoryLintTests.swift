@@ -185,3 +185,56 @@ private func note(category slug: String? = nil, _ body: String) -> String {
     #expect(document.frontmatter.date != nil)
     #expect(document.frontmatter.tags.map(\.description) == ["type-note"])
 }
+
+// MARK: - One home per category (`setCategoryHome`, PG-166)
+
+@MainActor
+@Test func setCategoryHomeMovesTheHomeAndStripsTheKeyFromThePreviousClaimant() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(category: "vibrofer", "Vecchia."), to: "A.md")
+    try vault.write(note("Nuova."), to: "B.md")
+    try vault.write(note(category: "altra", "Estranea."), to: "C.md")
+    let s = await openSession(root: vault.root, stateBase: vault.stateBase)
+
+    guard case .written = await s.setCategoryHome("vibrofer", toNoteAt: "B.md") else {
+        Issue.record("setCategoryHome non ha scritto")
+        return
+    }
+    func slug(of path: String) throws -> String? {
+        CategoryFrontmatter.slug(in: NoteDocument.parse(try s.read(path).1).frontmatter.foreignKeys)
+    }
+
+    #expect(try slug(of: "B.md") == "vibrofer")
+    #expect(try slug(of: "A.md") == nil)
+    // A note naming a different slug is not this category's business.
+    #expect(try slug(of: "C.md") == "altra")
+    // The state the UI must never leave behind: two claimants of one slug.
+    #expect(s.index.notesClaimingCategory("vibrofer").map(\.relativePath) == ["B.md"])
+}
+
+@MainActor
+@Test func setCategoryHomeOnTheCurrentHomeChangesNothing() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(category: "vibrofer", "Casa."), to: "A.md")
+    let s = await openSession(root: vault.root, stateBase: vault.stateBase)
+    let before = try s.read("A.md").1
+
+    guard case .unchanged = await s.setCategoryHome("vibrofer", toNoteAt: "A.md") else {
+        Issue.record("un re-link della home attuale doveva essere .unchanged")
+        return
+    }
+    #expect(try s.read("A.md").1 == before)
+}
+
+@MainActor
+@Test func notesClaimingCategoryIsInPathOrderAndHomeIsTheFirst() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(category: "vibrofer", "Seconda."), to: "Z.md")
+    try vault.write(note(category: "vibrofer", "Prima."), to: "B.md")
+    try vault.write(note("Nessuna."), to: "A.md")
+    let s = await openSession(root: vault.root, stateBase: vault.stateBase)
+
+    #expect(s.index.notesClaimingCategory("vibrofer").map(\.relativePath) == ["B.md", "Z.md"])
+    #expect(s.index.homeNote(ofCategory: "vibrofer")?.relativePath == "B.md")
+    #expect(s.index.homeNote(ofCategory: "assente") == nil)
+}

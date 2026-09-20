@@ -93,6 +93,28 @@ extension VaultSession {
         }
     }
 
+    /// Makes `relativePath` the category's one home (SPEC "Note ↔ category": one home per
+    /// category): links it, then strips the key from every other note still claiming the
+    /// slug, so the UI never produces the `duplicateHome` finding it would otherwise leave
+    /// behind. The new link is written first and a failure returns before anything is
+    /// stripped - a category is never left homeless by a write that did not land. A
+    /// displaced note that cannot be rewritten is recorded and does not undo the link;
+    /// the worst case is the pre-existing `duplicateHome` finding, which names it.
+    @discardableResult
+    func setCategoryHome(_ slug: String, toNoteAt relativePath: String) async -> WriteOutcome {
+        let outcome = await linkCategory(slug, toNoteAt: relativePath)
+        switch outcome {
+        case .stale, .failed:
+            return outcome
+        case .written, .unchanged:
+            break
+        }
+        for other in index.notesClaimingCategory(slug) where other.relativePath != relativePath {
+            await unlinkCategory(fromNoteAt: other.relativePath)
+        }
+        return outcome
+    }
+
     /// Removes the `pergamenum-category` key (the note inspector's unlink affordance,
     /// SPEC "UI flows: Linked note"). The note's own `#project-*` task tags, if any,
     /// are untouched and keep counting as usual (SPEC "Task ↔ category").
