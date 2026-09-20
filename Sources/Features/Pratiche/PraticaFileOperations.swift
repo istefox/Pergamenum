@@ -57,17 +57,53 @@ struct PraticaFileOperations {
     }
 
     /// The inverse of `trash(filesOf:)`: back out of the Trash, to exactly where each
-    /// file was.
+    /// file was. Returns the files it could **not** put back, which are still in the Trash
+    /// and still recoverable by hand - `moveBack(_:)`'s shape, for the mirror-image reason:
+    /// that caller must not rewrite content into a path whose restore failed, this one must
+    /// tell the person where the files are.
+    ///
+    /// No longer reports, and `static`. Per-file reporting was never right: `report` is one
+    /// string, last writer wins, so it clobbered the actionable sentence
+    /// `PraticaLiveSync.commitRegeneration` had just raised for a relocated pratica. The caller
+    /// is the only layer that knows whether a better sentence is already on screen. Being
+    /// static also makes it testable from a temporary directory, without a `VaultController`
+    /// or a real Trash.
+    ///
+    /// **It does not create the intermediate directory, on purpose (PG-168).** The target is
+    /// `<praticaFolder>/email/<name>`, and when the folder has been relocated or trashed
+    /// `moveItem` fails; creating the chain here would bring back exactly the vacated folder
+    /// (a note in it, no `pratica.md` beside it) that the sync write guard exists to prevent,
+    /// from the very code path that runs *because* that guard refused. Nothing is at risk: the
+    /// files are in the Trash, intact.
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `exclude(_:detail:)` and
     /// `confirmRegeneration(_:)` are in a separate file, and both call this.
-    func restore(_ files: [TrashedFile]) {
+    @discardableResult
+    static func restore(_ files: [TrashedFile]) -> [TrashedFile] {
+        var stillInTrash: [TrashedFile] = []
         for file in files {
             do {
                 try FileManager.default.moveItem(at: file.inTrash, to: file.original)
             } catch {
-                pratiche.report("«\(file.relativePath)» non è tornato al suo posto: \(error.localizedDescription)")
+                stillInTrash.append(file)
             }
+        }
+        return stillInTrash
+    }
+
+    /// The one Italian sentence for what `restore(_:)` could not put back, `nil` when nothing
+    /// failed so a caller writes `if let sentence` and never reports a success. Pure, and here
+    /// rather than at the two call sites so they cannot drift. The tail deliberately repeats
+    /// `PraticaLiveSync.commitRegeneration`'s «recuperabili da lì»: the same situation reads
+    /// the same whichever path produced it.
+    static func restoreFailureMessage(for files: [TrashedFile]) -> String? {
+        switch files.count {
+        case 0:
+            nil
+        case 1:
+            "«\(files[0].relativePath)» non è tornato al suo posto: resta nel Cestino, recuperabile da lì."
+        default:
+            "\(files.count) file non sono tornati al loro posto: restano nel Cestino, recuperabili da lì."
         }
     }
 

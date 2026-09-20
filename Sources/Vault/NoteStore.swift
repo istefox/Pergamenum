@@ -136,12 +136,25 @@ struct NoteStore: Sendable {
 
     /// Writes a note atomically and returns the hash of what was written, for the
     /// watcher to recognise as its own.
+    ///
+    /// `requiringExistingFolder` (PG-168) is the container half of the same opt-in family as
+    /// `VaultSession.write`'s `expecting:`, defaulted to today's behaviour so all six callers
+    /// keep creating (a rename or a move legitimately writes into a folder it has just made).
+    /// When set, the parent is **not** created and `Data.write` is left to fail with its own
+    /// ENOENT. That failure is the point: a caller that opts in is one for which bringing back
+    /// a directory somebody just vacated is worse than not writing, and an unconditional
+    /// `createDirectory` here is what turned a mid-sync folder move into a stray
+    /// `<vacated>/email/` holding a message and no `pratica.md`. The *named* refusal is raised
+    /// one layer up, in `VaultDisk`, where the check and the write share an isolation; this
+    /// flag is what makes losing that check's race loud instead of quiet.
     @discardableResult
-    func write(_ text: String, to relativePath: String) throws -> String {
+    func write(_ text: String, to relativePath: String, requiringExistingFolder: Bool = false) throws -> String {
         let fileURL = try boundary.url(for: relativePath)
 
-        let parent = fileURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        if !requiringExistingFolder {
+            let parent = fileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        }
 
         let data = Data(text.utf8)
         try data.write(to: fileURL, options: .atomic)

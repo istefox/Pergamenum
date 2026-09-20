@@ -275,3 +275,63 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
     #expect(defaultWrite.text == first)
     #expect(try Data(contentsOf: vault.root.appending(path: path)) == Data(first.utf8))
 }
+
+// PG-168 / #313: `requiringExistingFolder` is the container-side sibling of `expecting:`.
+// A write that asks for it never brings its parent folder into existence.
+@MainActor
+@Test func aWriteRequiringAnExistingFolderIsRefusedAndCreatesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = batch3Session(vault)
+    let path = "Vacated/email/Message.md"
+
+    await #expect(throws: VaultSession.WriteRefusal.folderVanished("Vacated/email")) {
+        try await session.write(batch3Text("Late"), to: path, requiringExistingFolder: true)
+    }
+
+    #expect(!FileManager.default.fileExists(atPath: vault.root.appending(path: "Vacated").path(percentEncoded: false)))
+    #expect(session.index.note(at: path) == nil)
+    #expect((session.selfWrittenHashes[path] ?? []).isEmpty, "a refusal leaves no provisional hash behind")
+    #expect(VaultSession.WriteRefusal.folderVanished("Vacated/email").description.contains("Vacated/email"))
+}
+
+@MainActor
+@Test func aWriteRequiringAnExistingFolderSucceedsWhenTheFolderIsThere() async throws {
+    let vault = try TemporaryVault()
+    let session = batch3Session(vault)
+    try FileManager.default.createDirectory(
+        at: vault.root.appending(path: "Live", directoryHint: .isDirectory), withIntermediateDirectories: true
+    )
+    let text = batch3Text("Present")
+
+    let result = try await session.write(text, to: "Live/N.md", requiringExistingFolder: true)
+
+    #expect(result.text == text)
+    #expect(session.index.note(at: "Live/N.md")?.contentHash == batch3Hash(text))
+}
+
+@MainActor
+@Test func theDefaultWriteStillCreatesItsFolder() async throws {
+    let vault = try TemporaryVault()
+    let session = batch3Session(vault)
+    let text = batch3Text("Creates")
+
+    try await session.write(text, to: "Fresh/Deep/N.md")
+
+    #expect(try Data(contentsOf: vault.root.appending(path: "Fresh/Deep/N.md")) == Data(text.utf8))
+}
+
+@MainActor
+@Test func aLaterLegitimateWriteToARefusedPathStillReconciles() async throws {
+    let vault = try TemporaryVault()
+    let session = batch3Session(vault)
+    let path = "Later/N.md"
+    await #expect(throws: VaultSession.WriteRefusal.folderVanished("Later")) {
+        try await session.write(batch3Text("Refused"), to: path, requiringExistingFolder: true)
+    }
+
+    let text = batch3Text("Accepted")
+    try await session.write(text, to: path)
+
+    #expect(session.index.note(at: path)?.contentHash == batch3Hash(text))
+    #expect(try Data(contentsOf: vault.root.appending(path: path)) == Data(text.utf8))
+}

@@ -130,6 +130,15 @@ extension PraticaLiveSync {
             try refreshTray(effectiveDossier: effectiveDossier, prepared: prepared, window: window, claimed: claimed, context: context)
             return .finished
         } catch let stop as PraticaRunStop {
+            // PG-168: raised here and nowhere earlier because here the writer is provably
+            // finished - `engine.sync` has returned - so a directory still standing at the
+            // vacated path is a fact, not a race. Reported, never touched.
+            if let leftover = PraticaRunStop.leftoverNotice(after: stop),
+               FileManager.default.fileExists(
+                   atPath: root.appending(path: leftover.path, directoryHint: .isDirectory).path(percentEncoded: false)
+               ) {
+                controller.report(leftover.sentence)
+            }
             switch stop {
             case .vaultChanged:
                 return .finished
@@ -161,9 +170,11 @@ extension PraticaLiveSync {
         // Resolved OUTSIDE the `do` below (round-4 review, §2): a `PraticaRunStop` must
         // propagate to `runExclusive`'s own catch, not be swallowed by the catch-all
         // just below, which exists for `session.read`/`session.write`'s own errors.
-        // Round-5 review, `PG-168`'s third case: no re-check after the `session.write`
-        // below - a relocation landing during that one write can still land it at the
-        // just-vacated path. Narrow and accepted, same shape as `commitRegeneration`'s.
+        // PG-168's third case: no re-check after the `session.write` below, and none is
+        // needed. It passes `expecting: record.contentHash`, `VaultDisk.write` compares that
+        // against the bytes it reads itself inside the actor, and a note that moved with its
+        // folder reads back as nothing - so a relocation landing during the write is refused
+        // with `movedOn`, never landed at the vacated path.
         let praticaPath = try context.livePraticaPath(in: vault)
         let notePath = PraticaNaming.praticaNotePath(of: praticaPath)
         do {
@@ -244,8 +255,9 @@ extension PraticaLiveSync {
                 effectiveDossier = PraticaTrayModel.following(conversationID: conversation, in: effectiveDossier)
             }
             // Round-4 review, §2: resolved immediately before the write it guards.
-            // Round-5 review, `PG-168`'s third case: same narrow no-re-check-after-await
-            // window as `applyConversationRemap`'s write above.
+            // PG-168's third case: no re-check after the await, and none is needed - the
+            // write goes through `DossierWriter.update`'s `expecting:`, refused after a move
+            // exactly as `applyConversationRemap`'s is above.
             let praticaPath = try context.livePraticaPath(in: vault)
             await DossierWriter.update(at: praticaPath, session: context.session) { $0 = effectiveDossier }
             candidates = MembershipRule.candidates(
@@ -271,7 +283,9 @@ extension PraticaLiveSync {
         // that entire call.
         let praticaPath = try context.livePraticaPath(in: vault)
         let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: context.root) { text, path, expecting in
-            _ = try await session.write(text, to: path, expecting: expecting)
+            // PG-168: never recreate the folder a relocation or a trash has just vacated -
+        // the engine's only door onto a note, so this holds for every write it will ever make.
+        _ = try await session.write(text, to: path, expecting: expecting, requiringExistingFolder: true)
         }
         // Kept for the duration of this one sync and cleared after it: «Annulla» has
         // an engine to reach only while there is a sync to stop.
@@ -324,6 +338,15 @@ extension PraticaLiveSync {
         } catch let stop as PraticaRunStop {
             throw stop
         } catch let refusal as VaultSession.WriteRefusal {
+            // PG-168: a write refused because the folder it was about to land in is gone is
+            // usually the relocation or the trash this run is being stopped for, not a failure
+            // - and reporting «Sincronizzazione non riuscita» over a run that is about to
+            // requeue itself would announce one that did not happen. Asking the live path
+            // first throws the `PraticaRunStop` that `runExclusive`'s ladder turns into a
+            // requeue or a quiet finish, and the partial outcome is never recorded. Only when
+            // nothing relocated it (the folder was deleted from outside the app) does this fall
+            // through to the report.
+            if case .folderVanished = refusal { _ = try context.livePraticaPath(in: vault) }
             guard vault.session === session else { return false }
             context.controller.report("Sincronizzazione non riuscita: \(refusal.description)")
         } catch {

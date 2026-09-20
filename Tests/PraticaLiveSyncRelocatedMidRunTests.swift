@@ -250,15 +250,19 @@ private func dossierNoteText(conversations: [Int]) -> String {
             vaultController.close()
             return
         }
-        let succeeded = await commit(plan)
+        let outcome = await commit(plan)
 
-        #expect(succeeded == false, "a relocated folder must refuse the commit rather than write under the vacated path")
+        #expect(outcome == .refused, "a relocated folder must refuse the commit rather than write under the vacated path")
         #expect(
             PraticaSyncFixtures.mdFiles(under: vault.root, folder: Self.old).count == 1,
             "nothing new may be written under the vacated folder - only the one message the seed sync already wrote"
         )
         #expect(pratiche.regeneratingPraticaPaths.isEmpty, "the claim must be released exactly once, not leaked")
         #expect(pratiche.problem != nil, "the refusal must be reported so the person knows where the files went")
+        #expect(
+            pratiche.problem?.hasSuffix("recuperabili da lì.") == true,
+            "the refusal's own sentence must survive the restore that follows it (PG-168)"
+        )
 
         vaultController.close()
     }

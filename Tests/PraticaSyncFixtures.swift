@@ -44,29 +44,48 @@ internal enum PraticaSyncFixtures {
     /// A throwaway vault-shaped directory (no `VaultSession`, no note index - the
     /// engine's own attachment/`.eml` writes are plain files, and the one `.md` hop
     /// this closure stands in for is `VaultSession.write`'s job in production).
-    static func makeVaultRoot() throws -> URL {
+    ///
+    /// Seeds each of `folders` as an existing pratica - the folder and its `pratica.md` -
+    /// because `PraticaSyncEngine.makeDirectory` (PG-168) refuses to bring a pratica into
+    /// existence: a sync only ever runs against one that already is, which is what
+    /// `runExclusive`'s own `pratica.md` read guarantees in production.
+    static func makeVaultRoot(seeding folders: [String] = [praticaFolder]) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "pergamenum-pratica-sync-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try seedPratiche(folders, under: url)
         return url
+    }
+
+    /// The folder and the `pratica.md` marker `PraticaSyncEngine.makeDirectory` looks for.
+    /// The note's body is irrelevant to the engine, which only checks that it is there.
+    static func seedPratiche(_ folders: [String], under vaultRoot: URL) throws {
+        for folder in folders {
+            let directory = vaultRoot.appending(path: folder, directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("---\npergamenum-dossier: 1\n---\n".utf8)
+                .write(to: directory.appending(path: "pratica.md", directoryHint: .notDirectory))
+        }
     }
 
     /// `PraticaRegenerationTests`' own vault root - kept separate from `makeVaultRoot()`
     /// rather than merged: the two differ only in the temp-directory prefix, and merging
     /// them would silently rename a directory a failing test prints.
-    static func makeRegenerationVaultRoot() throws -> URL {
+    static func makeRegenerationVaultRoot(seeding folders: [String] = [praticaFolder]) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "pergamenum-pratica-regen-vault-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try seedPratiche(folders, under: url)
         return url
     }
 
     static func makeEngine(mailStoreURL: URL, vaultRoot: URL) -> PraticaSyncEngine {
         PraticaSyncEngine(mailStoreURL: mailStoreURL, vaultRoot: vaultRoot) { text, relativePath in
+            // Creates no directory, like production's `requiringExistingFolder: true` write
+            // (PG-168): the engine's `makeDirectory` makes `email/` before this is reached,
+            // and a closure that created intermediates here would paper over exactly the
+            // resurrection the suites below assert cannot happen.
             let url = vaultRoot.appending(path: relativePath, directoryHint: .notDirectory)
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
             try Data(text.utf8).write(to: url, options: .atomic)
         }
     }

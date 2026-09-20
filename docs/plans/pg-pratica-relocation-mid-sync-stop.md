@@ -215,6 +215,12 @@ comment so a future reader does not "fix" it back.
 
 ### 7. Named residual gap — `PG-168`, not fixed
 
+> **Superseded 2026-09-20 by `pg-168-sync-write-never-recreates-a-vacated-pratica.md` (#313).**
+> The premise below, that `NoteStore.write` recreates the folder and nothing can stop it, was
+> right about the mechanism and wrong about the remedy: the write can be told not to create its
+> parent (`requiringExistingFolder`), and the engine's own directories are made only under a
+> pratica that still has its `pratica.md`. Both gaps below are fixed there.
+
 `PraticaSyncEngine.cancel()` is cooperative, checked once per message, so even with §4 the
 message being written at the instant of the move completes into the vacated path,
 recreating that directory. What is left: a stray `<oldPath>/email/` (and possibly

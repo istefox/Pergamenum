@@ -427,6 +427,11 @@ not happen and said nothing is the failure mode the guardrails exist to prevent.
 existing `catch` already reports «La voce non è stata scritta in «\(notePath)»: …» and is the right
 answer with no change.
 
+> Cross-reference, 2026-09-20 (PG-168, #313): the full-render exclusion above stands. The one
+> hazard it leaves, a write recreating a vacated parent folder, is closed by a second opt-in
+> parameter, `requiringExistingFolder:`, not by widening `expecting:` — see
+> `docs/plans/pg-168-sync-write-never-recreates-a-vacated-pratica.md`.
+
 ### §D9 — This ADR decides; it does not implement
 
 Nothing in `Sources/` or `Tests/` changes in the commit that adds this file. There is no plan, no

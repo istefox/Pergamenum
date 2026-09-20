@@ -25,6 +25,23 @@ enum PraticaRunStop: Error, Equatable, Sendable {
     case praticaTrashed(path: String)
 }
 
+/// What `PraticaLiveSync.commitRegeneration` tells `PraticaCommandActions.confirmRegeneration`
+/// to do about the files it has already trashed. Not a `Bool`: a `Bool` cannot say "already
+/// reported, and what is on screen is better than anything you could add" - and
+/// `PraticheController.report` is last-writer-wins on a single line, so a second sentence does
+/// not add to the first, it replaces it.
+enum PraticaRegenerationCommit: Equatable, Sendable {
+    /// Written. Nothing to put back.
+    case committed
+    /// Refused before writing - the pratica folder was relocated or trashed - and the sentence
+    /// saying so, and that the files are in the Trash, is already on the banner. Put the files
+    /// back if the destination allows, and say nothing.
+    case refused
+    /// The write itself failed. Put the files back, and own the sentence about any that could
+    /// not be: the failure report says why, not where they are.
+    case failed
+}
+
 extension PraticaRunStop {
     /// The Italian sentence «Rigenera…» reports when the guard on its own pratica folder
     /// refuses it - `PraticaLiveSync.prepareRegeneration` before showing a preview,
@@ -36,6 +53,27 @@ extension PraticaRunStop {
             return "«\(folder)» è stata eliminata: la rigenerazione non è stata eseguita."
         }
         return "«\(folder)» è stata spostata: riapri «Rigenera…» dalla nuova posizione."
+    }
+
+    /// PG-168: the path a stopped run leaves behind and the Italian sentence that names it, for
+    /// the caller to report **only if something is still standing there**. `nil` for
+    /// `.vaultChanged`, which vacated nothing.
+    ///
+    /// Reported and never touched: a directory named `email/` with no `pratica.md` beside it is
+    /// indistinguishable from one a person made by hand, and deleting files on a heuristic is
+    /// what "File over app" forbids. The write guard (`requiringExistingFolder:`,
+    /// `PraticaSyncEngine.makeDirectory`) stops a run bringing the vacated folder back; this is
+    /// for what it cannot reason about - a folder an older build orphaned, or bytes whose atomic
+    /// rename landed just before a `mv` enumerated the directory and so did not travel with it.
+    static func leftoverNotice(after stop: PraticaRunStop) -> (path: String, sentence: String)? {
+        switch stop {
+        case .vaultChanged:
+            nil
+        case .praticaRelocated(let from, _):
+            (from, "Dopo lo spostamento è rimasta una cartella in «\(from)»: controllala, non la tocco.")
+        case .praticaTrashed(let path):
+            (path, "Dopo l'eliminazione è rimasta una cartella in «\(path)»: controllala, non la tocco.")
+        }
     }
 }
 
@@ -253,8 +291,9 @@ extension PraticheController {
             // already removed the ledger key. Writing anything now - a key, a `problem`
             // sentence, the `ledger` assignment - would put back what it removed. This is
             // the one guard that closes the regeneration half of that race, since
-            // `commitRegeneration` deliberately has no post-`await` re-check (`PG-168`'s
-            // third case).
+            // `commitRegeneration` deliberately has no post-`await` re-check: the engine's
+            // patch writes carry `expecting:` and its full render cannot recreate a vacated
+            // folder (PG-168), so a relocation landing mid-write costs the ledger nothing.
             case .forgotten: return
             }
         } else {
@@ -365,12 +404,12 @@ extension PraticheController {
             // consumers from writing under the vacated path once they NEXT reach one
             // of `livePraticaPath`'s guards - the ENGINE itself, mid-message, is not
             // one of those consumers and keeps writing into the old folder until then
-            // (recreating it, `NoteStore.write`'s own `createDirectory` behaviour).
-            // Asking it to stop here, at the exact moment its own claimed path is
-            // found relocated, bounds that window to "the message being written
-            // right now" - `PraticaSyncEngine.cancel()` is cooperative, checked once
-            // per message, so it can still complete into the vacated path (`PG-168`,
-            // not fixed further here).
+            // (which used to recreate it). Asking it to stop here, at the exact moment
+            // its own claimed path is found relocated, bounds that window to "the message
+            // being written right now" - `PraticaSyncEngine.cancel()` is cooperative,
+            // checked once per message, so that message can still reach its write. It can
+            // no longer bring the vacated folder back (PG-168): `PraticaSyncEngine.
+            // makeDirectory` and the `requiringExistingFolder:` write refuse instead.
             requestSyncStopForVanishedPath?()
         }
         if !regeneratingPraticaPaths.isEmpty {
@@ -460,7 +499,8 @@ extension PraticheController {
             // The engine, mid-message, is not one of the consumers the tombstone stops: it
             // keeps writing into the trashed folder until it is asked to stop
             // (`PraticaSyncEngine.cancel()` is cooperative, checked once per message, so the
-            // message being written right now can still land - `PG-168`, not fixed here).
+            // message being written right now can still reach its write - and is refused,
+            // not landed: it may not recreate the trashed folder, PG-168).
             requestSyncStopForVanishedPath?()
         }
         for claimed in regeneratingPraticaPaths where Self.isInSubtree(claimed, of: path) {

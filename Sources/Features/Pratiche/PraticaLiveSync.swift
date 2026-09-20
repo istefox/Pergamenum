@@ -159,7 +159,8 @@ final class PraticaLiveSync {
     /// `queue.pending`/`queuedRequests` wholesale and would discard other pratiche's
     /// own queued syncs that have nothing to do with this one. Cooperative, same
     /// as `cancel()`: the engine observes it at its next message boundary, so the
-    /// message being written at the instant of the move or trash still completes (`PG-168`).
+    /// message being written at the instant of the move or trash still reaches its write - which
+    /// is refused rather than landed, since it may not recreate the vacated folder (`PG-168`).
     func stopForVanishedPath() {
         guard let running else { return }
         Task { await running.cancel() }
@@ -328,7 +329,9 @@ final class PraticaLiveSync {
         }
 
         let engine = PraticaSyncEngine(mailStoreURL: indexURL, vaultRoot: root) { text, path, expecting in
-            _ = try await session.write(text, to: path, expecting: expecting)
+            // PG-168: never recreate the folder a relocation or a trash has just vacated -
+        // the engine's only door onto a note, so this holds for every write it will ever make.
+        _ = try await session.write(text, to: path, expecting: expecting, requiringExistingFolder: true)
         }
         regenerationEngine = engine
 
@@ -388,23 +391,25 @@ final class PraticaLiveSync {
     /// §D21.2: commits an already-previewed plan through the same engine instance that
     /// produced it, then records the outcome in the ledger exactly as an ordinary sync
     /// would (`isRegeneration` routes it into `regeneratedPendingFiles`, never
-    /// `importedMessageIDs` - `PraticaSyncEngine.commit`'s own rule). `false` on
-    /// failure, so the caller can put the trashed files back.
-    func commitRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) async -> Bool {
+    /// `importedMessageIDs` - `PraticaSyncEngine.commit`'s own rule). Anything but
+    /// `.committed` tells the caller to put the trashed files back; `.refused` also says the
+    /// sentence explaining why is already on the banner.
+    func commitRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) async -> PraticaRegenerationCommit {
         guard let controller, let session = vault.session, let engine = regenerationEngine else {
             controller?.report("Rigenerazione non riuscita: il motore di sincronizzazione non è più disponibile.")
             controller?.endRegeneration(plan.praticaFolder)
-            return false
+            return .failed
         }
         // Round-4 review, §2: refused BEFORE anything is written - `plan.praticaFolder`
         // was captured when the preview ran, and the diff may have sat on screen long
         // enough for the folder to relocate before the person agreed to it.
         // `PraticaCommandActions.confirmRegeneration` has already trashed the current
-        // files by the time this runs, so `false` is what tells it to put them back
-        // (`files.restore(trashed)`) rather than leaving the message missing - though
-        // `restore` uses `moveItem`, which does not create intermediate directories, so
-        // a relocated folder leaves the trashed files exactly there rather than restored
-        // (`PG-168`, not fixed further here; the sentence below says so).
+        // files by the time this runs, so anything but `.committed` is what tells it to put
+        // them back (`PraticaFileOperations.restore`) rather than leaving the message
+        // missing - though `restore` uses `moveItem`, which does not create intermediate
+        // directories (and must not: that would resurrect the vacated folder, PG-168), so a
+        // relocated folder leaves the trashed files exactly where they are. The sentence below
+        // says so, and `.refused` is what stops `confirmRegeneration` overwriting it.
         do {
             _ = try controller.praticaPath(continuing: plan.praticaFolder)
         } catch {
@@ -413,28 +418,29 @@ final class PraticaLiveSync {
                     + " I file del messaggio restano nel Cestino, recuperabili da lì."
             )
             controller.endRegeneration(plan.praticaFolder)
-            return false
+            return .refused
         }
-        // No re-check after this await, unlike `runEngine`'s post-`engine.sync` guard: a
-        // relocation landing during this one write can still land the regenerated files
-        // under the just-vacated folder (`PG-168`'s third case). `recordSyncOutcome`
-        // below still resolves `plan.praticaFolder` through the redirect, so the ledger
-        // itself stays correct either way - only the files can end up stray.
+        // No re-check after this await, unlike `runEngine`'s post-`engine.sync` guard, and
+        // none is needed (PG-168's third case): a relocation landing during this write cannot
+        // resurrect the folder. The engine's `commit` verifies the pratica up front
+        // (`makeDirectory`), and this engine's closure passes `requiringExistingFolder:`, so
+        // the write is refused rather than landed. `recordSyncOutcome` below still resolves
+        // `plan.praticaFolder` through the redirect, so the ledger stays correct either way.
         do {
             let outcome = try await engine.commitRegeneration(plan)
             controller.recordSyncOutcome(
                 outcome, for: plan.praticaFolder, session: session, isCurrentVault: vault.session === session
             )
             controller.endRegeneration(plan.praticaFolder)
-            return true
+            return .committed
         } catch {
             guard vault.session === session else {
                 controller.endRegeneration(plan.praticaFolder)
-                return false
+                return .failed
             }
             controller.report(Self.regenerationFailureMessage(error))
             controller.endRegeneration(plan.praticaFolder)
-            return false
+            return .failed
         }
     }
 

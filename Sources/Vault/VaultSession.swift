@@ -534,8 +534,18 @@ extension VaultSession {
     /// it never saw (ADR-0007 §D6: a write that did nothing and said nothing is the
     /// failure mode the guardrails exist to prevent). `nil` (the default) keeps every
     /// pre-existing call site's shape: no precondition, an unconditional write.
+    ///
+    /// **PG-168:** `requiringExistingFolder`, when `true`, refuses (`WriteRefusal.folderVanished`)
+    /// rather than create the directory the note would land in - the container-side sibling of
+    /// `expecting:`, checked inside the actor (`VaultDisk.write`). The refusal is thrown from
+    /// `disk.write` below, so the `catch` that follows already removes the provisional
+    /// `selfWrittenHashes` entry: a refused write never leaves a hash nothing will match.
     @discardableResult
-    func write(_ text: String, to relativePath: String, expecting: String? = nil) async throws -> WriteResult {
+    func write(
+        _ text: String, to relativePath: String,
+        expecting: String? = nil,
+        requiringExistingFolder: Bool = false
+    ) async throws -> WriteResult {
         // ADR-0007 §D6's first guardrail: a dry run must never reach the actor.
         guard !isDryRun else { return WriteResult(path: relativePath, text: text) }
 
@@ -567,6 +577,7 @@ extension VaultSession {
                 text, to: relativePath,
                 precomputedHash: hash,
                 expecting: expecting,
+                requiringExistingFolder: requiringExistingFolder,
                 journalDescriptor: journalDescriptor,
                 journal: journal,
                 recordsHistory: recordsHistory

@@ -194,10 +194,21 @@ extension VaultDisk {
     /// this overload already performs for the journal, so the precondition is free. A
     /// mismatch throws `VaultSession.WriteRefusal` before `store.write` is ever called: no
     /// byte moves, no history entry, no journal entry, no index mutation.
+    ///
+    /// `requiringExistingFolder` (PG-168) sits beside `expecting` for the same ADR-0043 §D5
+    /// reason: a claim about a disk transition can only be made where the transition is
+    /// serialized. It is a claim about the *container* rather than the contents, which is why it
+    /// is a second parameter and not an extension of `expecting` - §D8 excludes a full render
+    /// from `expecting` by name (a note composed from Mail has no "before" to expect), and that
+    /// exclusion stands unchanged; this precondition is available to exactly that excluded
+    /// case, which is where the defect lives. Losing the race between this check and
+    /// `store.write` is survivable by construction: in this mode `NoteStore.write` does not
+    /// create intermediates, so the byte write fails rather than recreating the folder.
     func write(
         _ text: String, to relativePath: String,
         precomputedHash: String,
         expecting: String? = nil,
+        requiringExistingFolder: Bool = false,
         journalDescriptor: JournalDescriptor?,
         journal: WriteJournal?,
         recordsHistory: Bool
@@ -212,7 +223,18 @@ extension VaultDisk {
             throw VaultSession.WriteRefusal.movedOn(relativePath)
         }
 
-        let hash = try store.write(text, to: relativePath)
+        if requiringExistingFolder {
+            let parent = try store.url(for: relativePath).deletingLastPathComponent()
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(
+                atPath: parent.path(percentEncoded: false), isDirectory: &isDirectory
+            )
+            guard exists, isDirectory.boolValue else {
+                throw VaultSession.WriteRefusal.folderVanished((relativePath as NSString).deletingLastPathComponent)
+            }
+        }
+
+        let hash = try store.write(text, to: relativePath, requiringExistingFolder: requiringExistingFolder)
 
         let fileURL = try store.url(for: relativePath)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))

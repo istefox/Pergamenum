@@ -11,11 +11,20 @@ import Foundation
 /// unqualified typealias so all fifteen existing references keep compiling.
 enum VaultWriteRefusal: Error, CustomStringConvertible, Equatable {
     case movedOn(String)
+    /// The directory a write was about to land in does not exist, and the write was asked not
+    /// to create it (`requiringExistingFolder:`, PG-168). Carries the *folder*, not the file,
+    /// unlike `movedOn`: the folder is the actionable thing, since the file was never going to
+    /// be the problem, the vacated parent was. The two answers differ on purpose, `movedOn`
+    /// says somebody changed the contents (re-read and retry), this one says somebody removed
+    /// the container (act at its new location, or not at all).
+    case folderVanished(String)
 
     var description: String {
         switch self {
         case .movedOn(let path):
             "«\(path)» è cambiato da quando questa scrittura è partita, non lo tocco"
+        case .folderVanished(let path):
+            "«\(path)» non esiste più, non la ricreo per scriverci dentro"
         }
     }
 }
