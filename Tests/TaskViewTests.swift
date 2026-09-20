@@ -11,24 +11,6 @@ private let today = CalendarDate(iso: "2026-08-11")!
 
 // MARK: - Task views and rewriting on disk
 
-private struct TaskVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-tasks-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
-
 private let fiveViewsNote = """
 ---
 date: 2026-08-11
@@ -48,7 +30,7 @@ tags:
 
 @MainActor
 @Test func sortsTasksIntoTheFiveViews() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -70,7 +52,7 @@ tags:
 
 @MainActor
 @Test func findsTheTasksLinkingToANote() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -84,7 +66,7 @@ tags:
 
 @MainActor
 @Test func completingATaskRewritesItsSourceNote() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -103,7 +85,7 @@ tags:
 
 @MainActor
 @Test func reschedulingWritesTheNewDate() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -119,7 +101,7 @@ tags:
 
 @MainActor
 @Test func settingADueDateFromTheContextMenuWritesIt() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -139,7 +121,7 @@ tags:
 
 @MainActor
 @Test func refusesToRewriteATaskThatMovedOnDisk() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -157,7 +139,7 @@ tags:
 
 @MainActor
 @Test func quickCaptureAppendsToTheInbox() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -178,7 +160,7 @@ tags:
 
 @MainActor
 @Test func quickCaptureIgnoresEmptyInput() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     #expect(await !controller.captureTask("   "))
@@ -189,7 +171,7 @@ tags:
 
 @MainActor
 @Test func theDueFilterListsWhatFallsDueNextAndTheMonthMarksIt() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-11
@@ -219,7 +201,7 @@ tags:
 
 @MainActor
 @Test func theCompletedFilterKeepsFinishedTasksInTheDay() async throws {
-    let vault = try TaskVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-11
