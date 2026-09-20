@@ -217,7 +217,7 @@ private func note(_ path: String) -> NoteRecord {
     #expect(tree.map(\.kind) == [.note])
 }
 
-// MARK: - NoteListPane.opening(from:to:tree:currentlyOpen:isComposingNote:) (ADR-0026 §D4)
+// MARK: - NoteSelectionRule.opening(from:to:tree:currentlyOpen:isComposingNote:) (ADR-0026 §D4)
 // Plan `docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md`,
 // Task 6: the Note pane's own collapse rule, extracted as a RED-placeholder
 // `nonisolated static` on `NoteListPane` (`Sources/Features/Editor/NoteListPane.swift`,
@@ -254,7 +254,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 // §D4 Row 1: exactly one id, different from what is open - that note opens.
 
 @Test func openingOpensADifferentNote_D4Row1() {
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: nil, isComposingNote: false
     )
@@ -263,7 +263,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 }
 
 @Test func openingOpensADifferentNoteWhileAnotherIsAlreadyOpen_D4Row1() {
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: ["Appunti.md"], to: ["01 Progetti/Brief.md"],
         tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "Appunti.md", isComposingNote: false
@@ -279,11 +279,11 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 // Behaviour (b): re-selecting the note underneath calls `leaveComposer()` rather than
 // re-reading the note and discarding unsaved text. Asserted as a *distinct* signal, not
 // as `.open(path)` for the same path - the whole reason this rule returns a
-// `SelectionOutcome` instead of a bare `String?`: collapsing both branches into "the
+// `NoteSelectionRule.Outcome` instead of a bare `String?`: collapsing both branches into "the
 // path that should now read as open" would erase exactly this distinction and silently
 // turn a `leaveComposer()` back into a discarding re-read.
 @Test func openingCallsLeaveComposerWhenTheCoveredNoteIsReselected() {
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
     )
@@ -306,11 +306,11 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 // already containing this id - must answer identically, because this rule does not
 // look at `from` at all.
 @Test func openingIgnoresTheOldSetEntirely_R04() {
-    let masked = NoteListPane.opening(
+    let masked = NoteSelectionRule.opening(
         from: [], to: ["01 Progetti/Brief.md"], tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
     )
-    let unmasked = NoteListPane.opening(
+    let unmasked = NoteSelectionRule.opening(
         from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
         tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: true
@@ -325,7 +325,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
     // already read this id as selected, so `List` would report no change and the
     // setter would never run - answered anyway, defensively, for a function that has
     // to answer every input it can be given.
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: ["01 Progetti/Brief.md"], to: ["01 Progetti/Brief.md"],
         tree: [noteNode("01 Progetti/Brief.md")],
         currentlyOpen: "01 Progetti/Brief.md", isComposingNote: false
@@ -340,7 +340,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 @Test func openingLeavesTheOpenNoteAloneForTwoOrMoreSelectedIds_R10() {
     // Two ids fail the count guard before the tree is ever consulted - `tree: []` is
     // enough.
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: ["01 Progetti"], to: ["01 Progetti/Brief.md", "Appunti.md"], tree: [],
         currentlyOpen: "Appunti.md", isComposingNote: false
     )
@@ -351,7 +351,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 @Test func openingLeavesTheOpenNoteOpenWhenTwoRowsAreSelectedWhileComposerIsUp_R10() {
     // The composer stays exactly where it is too - two rows lit answers only "what
     // would a drag carry" and never touches what is open (§D4).
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: [], to: ["01 Progetti/Brief.md", "Appunti.md"], tree: [],
         currentlyOpen: "Appunti.md", isComposingNote: true
     )
@@ -366,7 +366,7 @@ private func noteNode(_ id: String) -> NoteTree.Node {
 @Test func openingDoesNothingOnAnEmptySet_D4Row4() {
     // An empty `new` fails the `new.first` guard before the tree is ever consulted -
     // `tree: []` is enough.
-    let result = NoteListPane.opening(
+    let result = NoteSelectionRule.opening(
         from: ["Appunti.md"], to: [], tree: [], currentlyOpen: "Appunti.md", isComposingNote: false
     )
 
