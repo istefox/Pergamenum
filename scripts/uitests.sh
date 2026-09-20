@@ -90,6 +90,16 @@ partition_instances() {
     done < <(running_instances)
 }
 
+# Closes what `partition_instances` filed as debris, naming it under the header given. One place
+# for the pre-run sweep, the sweep before a launch-failure rerun and the post-run cleanup.
+close_debris() {
+    [ -n "$debris" ] || return 0
+    printf '%s\n%s\n' "$1" "$debris"
+    printf '%s' "$debris" | while IFS='	' read -r pid _; do
+        [ -n "$pid" ] && kill_and_wait "$pid"
+    done
+}
+
 partition_instances
 
 if [ -n "$yours" ]; then
@@ -97,12 +107,7 @@ if [ -n "$yours" ]; then
     fail "chiudila prima di lanciare la suite - tiene il tasto globale e il giro fallirebbe comunque"
 fi
 
-if [ -n "$debris" ]; then
-    printf 'uitests: istanze rimaste da un giro precedente, le chiudo:\n%s\n' "$debris"
-    printf '%s' "$debris" | while IFS='	' read -r pid _; do
-        [ -n "$pid" ] && kill_and_wait "$pid"
-    done
-fi
+close_debris "uitests: istanze rimaste da un giro precedente, le chiudo:"
 
 # MARK: keep-focused
 
@@ -149,7 +154,7 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
     -destination 'platform=macOS' \
     "${selection[@]}" \
     test >"$LOG" 2>&1
-readonly RESULT=$?
+RESULT=$?
 set -e
 
 kill "$FOCUS_PID" 2>/dev/null || true
@@ -184,18 +189,59 @@ if [ -n "$failures" ]; then
     grep -E "error: -\[" "$LOG" | sed -E 's/^.*error: //' | sed 's/^/  /' || true
 fi
 
+# MARK: a launch that never happened
+
+# «Failed to get launch progress ... The LaunchServices launcher has returned an error» is not a
+# test outcome: the app never started, 0.7 s into the test, before a single assertion ran. It
+# happened once in 120 launches (PG-181), on the first test after a suite boundary, 0.13 s after the
+# previous instance was terminated - launchd did spawn the new process, and Xcode still reported the
+# launch as failed, so the cause is a race in the machinery and not in a test. Such a test is run
+# once more, alone, and the report says so. It is the only failure ever retried: an assertion that
+# failed once is a result, and a retry would hide exactly the flakiness this suite exists to show.
+launch_failed=$(grep -E "error: -\[[^]]+\] : Failed to get launch progress" "$LOG" \
+    | sed -E 's/.*error: -\[([^.]+)\.([^ ]+) ([^]]+)\].*/-only-testing:\1\/\2\/\3/' | sort -u || true)
+if [ -n "$launch_failed" ] && [ "$RESULT" -ne 0 ]; then
+    printf '\nuitests: questi test non sono partiti (LaunchServices, PG-181), li rilancio una volta:\n%s\n' \
+        "$launch_failed"
+    partition_instances
+    close_debris "uitests: istanze rimaste dal lancio fallito, le chiudo:"
+
+    rerun_selection=()
+    while IFS= read -r arg; do rerun_selection+=("$arg"); done <<< "$launch_failed"
+    focus_pergamenum &
+    rerun_focus=$!
+    trap 'kill "$FOCUS_PID" "$rerun_focus" 2>/dev/null || true' EXIT
+    set +e
+    xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
+        -destination 'platform=macOS' \
+        "${rerun_selection[@]}" \
+        test >"$LOG.rerun" 2>&1
+    rerun_result=$?
+    set -e
+    kill "$rerun_focus" 2>/dev/null || true
+
+    # Every failure of the first run was a launch failure, and the rerun passed them all: nothing
+    # is left red. Anything else that failed first time stays failed, and the exit code says so.
+    failed_count=$(grep -cE "^Test Case .* failed \(" "$LOG" || true)
+    launch_count=$(printf '%s\n' "$launch_failed" | grep -c . || true)
+    if [ "$rerun_result" -eq 0 ] && [ "$failed_count" -eq "$launch_count" ]; then
+        printf 'uitests: passati al secondo tentativo, nessun altro fallimento. Log del rilancio in %s\n' "$LOG.rerun"
+        RESULT=0
+    elif [ "$rerun_result" -eq 0 ]; then
+        printf 'uitests: passati al secondo tentativo, ma il giro ha altri fallimenti. Log del rilancio in %s\n' "$LOG.rerun"
+    else
+        printf 'uitests: falliti anche al secondo tentativo. Log del rilancio in %s\n' "$LOG.rerun"
+    fi
+fi
+
 # MARK: leave nothing behind
 
 # Only the debris. A copy out of /Applications that appeared while the run was going is the
 # person's, launched after the pre-run check had passed, and closing it here is the one thing
 # that check exists to refuse. It is reported, not touched.
 partition_instances
-if [ -n "$debris" ]; then
-    printf '\nuitests: istanze sopravvissute al giro, le chiudo:\n%s\n' "$debris"
-    printf '%s' "$debris" | while IFS='	' read -r pid _; do
-        [ -n "$pid" ] && kill_and_wait "$pid"
-    done
-fi
+close_debris "
+uitests: istanze sopravvissute al giro, le chiudo:"
 if [ -n "$yours" ]; then
     printf '\nuitests: una copia installata di Pergamenum è partita durante il giro, la lascio aperta:\n%s\n' "$yours"
 fi
