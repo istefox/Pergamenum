@@ -26,6 +26,28 @@ struct MockupGalleryView: View {
     /// scroller. A row of cells is sized from this, never guessed.
     static let contentWidth: CGFloat = 720
 
+    /// One mockup: what the picker calls it, where it stands, and the view that draws it.
+    ///
+    /// These three used to be three separate `switch`es over `Screen`, kept in step by hand.
+    /// The compiler forces each to be exhaustive, but nothing tied one to the other, so a
+    /// case could be given a title and a milestone and still open the wrong view, or
+    /// reuse a neighbour's. They are one value now, produced by the single `switch` in
+    /// `Screen.page`: adding a screen is one `case` and one line there, and there is
+    /// no second place to forget.
+    struct Page {
+        let title: String
+        /// The milestone the screen belongs to, so a mockup that has been overtaken by
+        /// the real thing is recognisable as such rather than mistaken for a proposal.
+        let milestone: String
+        let content: AnyView
+
+        init(_ title: String, _ milestone: String, _ content: some View) {
+            self.title = title
+            self.milestone = milestone
+            self.content = AnyView(content)
+        }
+    }
+
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, embed, find, format,
              history, template, tabs, tagBrowser, mentions, views, week, taskControls,
@@ -33,57 +55,34 @@ struct MockupGalleryView: View {
 
         var id: String { rawValue }
 
-        var title: String {
-            switch self {
-            case .capture: "Cattura"
-            case .slash: "Menu /"
-            case .code: "Codice"
-            case .outline: "Indice"
-            case .folding: "Ripiegamento"
-            case .transclusion: "Transclusione"
-            case .embed: "Immagini e PDF"
-            case .find: "Trova"
-            case .format: "Formato"
-            case .history: "Cronologia"
-            case .template: "Template"
-            case .tabs: "Tab"
-            case .tagBrowser: "Tag e preferiti"
-            case .mentions: "Menzioni"
-            case .views: "Viste"
-            case .week: "Settimana"
-            case .taskControls: "Attività e rollover"
-            case .editor: "Editor"
-            case .workspace: "Workspace"
-            case .today: "Oggi"
-            case .tasks: "Attività"
-            }
-        }
+        var title: String { page.title }
+        var milestone: String { page.milestone }
 
-        /// The milestone each screen belongs to, so a mockup that has been overtaken by
-        /// the real thing is recognisable as such rather than mistaken for a proposal.
-        var milestone: String {
+        /// The only per-screen table. Exhaustive on purpose: a new `case` above does not
+        /// compile until it has a title, a milestone and a view here.
+        var page: Page {
             switch self {
-            case .capture: "M7, realizzato"
-            case .slash: "M8, realizzato"
-            case .code: "M8, realizzato"
-            case .outline: "M8, realizzato"
-            case .folding: "M8, realizzato"
-            case .transclusion: "M8, da approvare"
-            case .embed: "ADR-0018 slice 3, realizzato"
-            case .find: "M8, realizzato"
-            case .format: "M8, realizzato"
-            case .history: "M9, realizzato"
-            case .template: "M9, da approvare"
-            case .tabs: "M10, da approvare"
-            case .tagBrowser: "M10, da approvare"
-            case .mentions: "M10, da approvare"
-            case .views: "M11, da approvare"
-            case .week: "M12, da approvare"
-            case .taskControls: "M12, da approvare"
-            case .editor: "M1, realizzato"
-            case .workspace: "M2 e M3, realizzato"
-            case .today: "M5, realizzato"
-            case .tasks: "M4, realizzato"
+            case .capture: Page("Cattura", "M7, realizzato", CaptureMockup())
+            case .slash: Page("Menu /", "M8, realizzato", SlashMenuMockup())
+            case .code: Page("Codice", "M8, realizzato", CodeBlockMockup())
+            case .outline: Page("Indice", "M8, realizzato", OutlineMockup())
+            case .folding: Page("Ripiegamento", "M8, realizzato", FoldingMockup())
+            case .transclusion: Page("Transclusione", "M8, da approvare", TransclusionMockup())
+            case .embed: Page("Immagini e PDF", "ADR-0018 slice 3, realizzato", EmbedMockup())
+            case .find: Page("Trova", "M8, realizzato", FindBarMockup())
+            case .format: Page("Formato", "M8, realizzato", FormatBarMockup())
+            case .history: Page("Cronologia", "M9, realizzato", HistoryMockup())
+            case .template: Page("Template", "M9, da approvare", TemplateMockup())
+            case .tabs: Page("Tab", "M10, da approvare", TabBarMockup())
+            case .tagBrowser: Page("Tag e preferiti", "M10, da approvare", TagBrowserMockup())
+            case .mentions: Page("Menzioni", "M10, da approvare", UnlinkedMentionsMockup())
+            case .views: Page("Viste", "M11, da approvare", ViewMockup())
+            case .week: Page("Settimana", "M12, da approvare", WeekMockup())
+            case .taskControls: Page("Attività e rollover", "M12, da approvare", TaskControlsMockup())
+            case .editor: Page("Editor", "M1, realizzato", EditorMockup())
+            case .workspace: Page("Workspace", "M2 e M3, realizzato", WorkspaceMockup())
+            case .today: Page("Oggi", "M5, realizzato", TodayMockup())
+            case .tasks: Page("Attività", "M4, realizzato", TasksMockup())
             }
         }
     }
@@ -116,30 +115,7 @@ struct MockupGalleryView: View {
         .padding(theme.spacing(.m))
     }
 
-    @ViewBuilder
     private var current: some View {
-        switch screen {
-        case .capture: CaptureMockup()
-        case .slash: SlashMenuMockup()
-        case .code: CodeBlockMockup()
-        case .outline: OutlineMockup()
-        case .folding: FoldingMockup()
-        case .transclusion: TransclusionMockup()
-        case .embed: EmbedMockup()
-        case .find: FindBarMockup()
-        case .format: FormatBarMockup()
-        case .history: HistoryMockup()
-        case .template: TemplateMockup()
-        case .tabs: TabBarMockup()
-        case .tagBrowser: TagBrowserMockup()
-        case .mentions: UnlinkedMentionsMockup()
-        case .views: ViewMockup()
-        case .week: WeekMockup()
-        case .taskControls: TaskControlsMockup()
-        case .editor: EditorMockup()
-        case .workspace: WorkspaceMockup()
-        case .today: TodayMockup()
-        case .tasks: TasksMockup()
-        }
+        screen.page.content
     }
 }
