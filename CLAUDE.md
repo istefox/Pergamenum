@@ -302,15 +302,20 @@ move the previous copy aside rather than deleting it.
   `click(forDuration:thenDragTo:)` on the same gesture works (PG-162). For weeks it read as the OS
   refusing synthesized drags and twelve tests stayed red on that theory; the helper's comment
   records the variants already tried and failed, so they are not tried again.
-- **The UI suite runs only through `scripts/uitests.sh`, which owns its DerivedData and its evidence.**
-  It builds into `build/uitests-dd` (the `Stop` hook's unit build and a UI run on one `build.db`
-  produced "database is locked" reds that were nobody's defect, PG-183), refuses to start beside
-  another `xcodebuild`, retries a failing test once and names the ones that recover as flakes,
-  labels a launch failure whatever its duration, and writes a `.xcresult` next to its log. **A red
-  is diagnosed from that bundle (`xcrun xcresulttool get test-results summary --path <bundle>`)
-  before anything is rerun** - a full run is ~25 minutes of the machine, and five of them in a day
-  is what this rule is the answer to. `scripts/uitests.sh --affected` picks the classes a change
-  can reach for iteration; it does not replace the whole suite before a merge to `main`.
+- **The UI suite runs only through `scripts/uitests.sh`, which owns its DerivedData, its evidence and
+  what it learned.** It builds into `build/uitests-dd` (the `Stop` hook's unit build and a UI run on
+  one `build.db` produced "database is locked" reds that were nobody's defect, PG-183), refuses to
+  start beside another `xcodebuild`, labels a launch failure whatever its duration, and writes a
+  `.xcresult` next to its log. **A red is diagnosed from that bundle (`xcrun xcresulttool get
+  test-results summary --path <bundle>`) before anything is rerun.**
+  **A run is paid once per tree, not once per session** (~25 minutes of the machine, and the pointer
+  is shared with the person at it): a run over a clean tree writes a verdict, keyed by the tree hash,
+  into the git common dir every worktree shares. **Before running anything, ask
+  `scripts/uitests.sh --status`** - it answers instantly whether this tree or `main` is already
+  verified and what changed since the last full green; a full run over a verified tree is skipped
+  (`--force` overrides), and a second session cannot start one while another holds the lock.
+  `--affected` runs only the classes a change since that green can reach, and nothing when none can.
+  The whole suite is run once by whoever merges to `main`; every other session reads the verdict.
 - **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
   the app are usually still running on a vault inside
   `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not
