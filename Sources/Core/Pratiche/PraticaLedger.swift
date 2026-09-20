@@ -111,14 +111,47 @@ struct PraticaLedger: Equatable, Sendable, Codable {
             .appending(path: fileName, directoryHint: .notDirectory)
     }
 
-    /// Reads `ledger.json` from the per-vault state directory (ADR-0017 precedent).
-    /// Missing or unreadable → `.empty`: a fresh ledger costs one full re-sync,
-    /// nothing else.
-    static func load(from url: URL) -> PraticaLedger {
-        guard let data = try? Data(contentsOf: url) else { return .empty }
+    /// What `read(from:)` found at a ledger path (ADR-0052 §D3) - the one distinction
+    /// `load(from:)` throws away. A writer that is about to save has to tell a ledger that
+    /// is simply not there yet (saving creates it) from one that is there and cannot be read
+    /// (saving destroys it).
+    enum Read: Equatable, Sendable {
+        case loaded(PraticaLedger)
+        /// No file at that path: a fresh ledger, and saving one is a creation, not a loss.
+        case missing
+        /// A file is there and could not be read or decoded: corrupt JSON, a schema this
+        /// build does not know, a directory at the path, a permission refusal.
+        case unreadable
+    }
+
+    /// Reads `ledger.json` from the per-vault state directory (ADR-0017 precedent) and says
+    /// which of the three things happened. `missing` is `Data(contentsOf:)` failing with
+    /// `.fileReadNoSuchFile` / `.fileNoSuchFile`; anything else that throws, and any decode
+    /// failure, is `unreadable`. Foundation only: this file compiles into `perg` and
+    /// `pergamenum-mcp` too (ADR-0007), and the change is additive.
+    static func read(from url: URL) -> Read {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return .missing
+        } catch {
+            return .unreadable
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(PraticaLedger.self, from: data)) ?? .empty
+        guard let ledger = try? decoder.decode(PraticaLedger.self, from: data) else { return .unreadable }
+        return .loaded(ledger)
+    }
+
+    /// Reads `ledger.json` from the per-vault state directory (ADR-0017 precedent).
+    /// Missing or unreadable → `.empty`: a fresh ledger costs one full re-sync,
+    /// nothing else. What a reader wants (`VaultAPI.pratiche(_:)`), never what a writer
+    /// wants: a writer asks `read(from:)`, so it can refuse to save over a file it could
+    /// not read.
+    static func load(from url: URL) -> PraticaLedger {
+        guard case .loaded(let ledger) = read(from: url) else { return .empty }
+        return ledger
     }
 
     func save(to url: URL) throws {

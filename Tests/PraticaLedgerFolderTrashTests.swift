@@ -38,8 +38,11 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
 
     @Test func forgetLedgerStateRemovesTheExactKey() {
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
-        controller.ledger.byPraticaPath["01 Progetti/Tifone/Y"] = .empty
+        // No session, so the ledger is seeded through the door: marker `.none`, target `nil`, memory only.
+        controller.updateLedger(.live(nil)) {
+            $0.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
+            $0.byPraticaPath["01 Progetti/Tifone/Y"] = .empty
+        }
         let vault = VaultController()
 
         controller.forgetLedgerState(under: "01 Progetti/Tifone/X", in: vault)
@@ -53,9 +56,11 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
 
     @Test func forgetLedgerStateRemovesEveryDescendantUnderATrashedAncestor() {
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        controller.ledger.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
-        controller.ledger.byPraticaPath["01 Progetti/Rossi/Y"] = ledgerState(importing: "<b@rossi-spa.it>")
-        controller.ledger.byPraticaPath["02 Archivio/Z"] = ledgerState(importing: "<c@rossi-spa.it>")
+        controller.updateLedger(.live(nil)) {
+            $0.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
+            $0.byPraticaPath["01 Progetti/Rossi/Y"] = ledgerState(importing: "<b@rossi-spa.it>")
+            $0.byPraticaPath["02 Archivio/Z"] = ledgerState(importing: "<c@rossi-spa.it>")
+        }
         let vault = VaultController()
 
         // The bug shape the relocation twin already had: the pratica is not the trashed
@@ -75,9 +80,11 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
 
     @Test func forgetLedgerStateLeavesASiblingPrefixAlone() {
         let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        controller.ledger.byPraticaPath["01 Progetti/Tifone"] = .empty
-        controller.ledger.byPraticaPath["01 Progetti-altro"] = .empty
-        controller.ledger.byPraticaPath["01 Progetti-altro/Y"] = .empty
+        controller.updateLedger(.live(nil)) {
+            $0.byPraticaPath["01 Progetti/Tifone"] = .empty
+            $0.byPraticaPath["01 Progetti-altro"] = .empty
+            $0.byPraticaPath["01 Progetti-altro/Y"] = .empty
+        }
         let vault = VaultController()
 
         controller.forgetLedgerState(under: "01 Progetti", in: vault)
@@ -144,11 +151,14 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         let url = PraticheController.ledgerURL(for: session)
 
         let pratiche = PraticheController.live(vault: vaultController)
-        pratiche.ledger.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
-        pratiche.ledger.byPraticaPath["01 Progetti-altro/Y"] = .empty
+        // Seeded on disk and never in memory (ADR-0052 §D9): the door reads the file first, so a
+        // value assigned to a controller that never loaded would be discarded by design.
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["01 Progetti/Tifone/X"] = ledgerState(importing: "<a@rossi-spa.it>")
+        seeded.byPraticaPath["01 Progetti-altro/Y"] = .empty
         // The key is on disk BEFORE the removal, or the assertion below proves nothing:
         // an empty file would satisfy it just as well.
-        try pratiche.ledger.save(to: url)
+        try seeded.save(to: url)
         #expect(PraticaLedger.load(from: url).byPraticaPath["01 Progetti/Tifone/X"] != nil)
 
         pratiche.forgetLedgerState(under: "01 Progetti", in: vaultController)
@@ -179,8 +189,9 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         vaultController.didTrashFolder = { [weak pratiche] path in
             pratiche?.followFolderTrashing(path, in: vaultController)
         }
-        pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = ledgerState(importing: "<a@rossi-spa.it>")
-        try pratiche.ledger.save(to: url)
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["01 Progetti/Tifone"] = ledgerState(importing: "<a@rossi-spa.it>")
+        try seeded.save(to: url)
 
         let trashed = vaultController.trashFolder(at: "01 Progetti/Tifone")
 
@@ -197,12 +208,15 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         try vault.write(praticaNote, to: "01 Progetti-altro/Y/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
+        let session = try #require(vaultController.session)
         let pratiche = PraticheController.live(vault: vaultController)
         vaultController.didTrashFolder = { [weak pratiche] path in
             pratiche?.followFolderTrashing(path, in: vaultController)
         }
-        pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = ledgerState(importing: "<a@rossi-spa.it>")
-        pratiche.ledger.byPraticaPath["01 Progetti-altro/Y"] = ledgerState(importing: "<b@rossi-spa.it>")
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath["01 Progetti/Tifone"] = ledgerState(importing: "<a@rossi-spa.it>")
+        seeded.byPraticaPath["01 Progetti-altro/Y"] = ledgerState(importing: "<b@rossi-spa.it>")
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         let trashed = vaultController.trashFolder(at: "01 Progetti")
 
@@ -265,8 +279,9 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         vaultController.didTrashFolder = { [weak pratiche] trashed in
             pratiche?.followFolderTrashing(trashed, in: vaultController)
         }
-        pratiche.ledger.byPraticaPath[path] = ledgerState(importing: "<a@rossi-spa.it>", "<b@rossi-spa.it>")
-        try pratiche.ledger.save(to: PraticheController.ledgerURL(for: session))
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath[path] = ledgerState(importing: "<a@rossi-spa.it>", "<b@rossi-spa.it>")
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         #expect(vaultController.trashFolder(at: path))
         try vault.write(praticaNote, to: "\(path)/pratica.md")

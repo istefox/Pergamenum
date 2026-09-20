@@ -197,7 +197,13 @@ extension PraticaLiveSync {
                 // a renumbering by filtering `ledgerEntries` for the OLD id, which is
                 // then empty and never retried, a permanent silent loss unrelated to
                 // relocation. All-or-nothing keeps the failure retriable instead.
-                context.controller.remapLedgerConversations(prepared.conversationRemap, of: praticaPath, in: vault)
+                // The run's own session, and whether it is still the live one, read HERE after the
+                // `await` above and not before it (ADR-0052 §D7, ADR-0043 §D7): a vault switch in
+                // that window sends the repointing to this session's own file.
+                context.controller.remapLedgerConversations(
+                    prepared.conversationRemap, of: praticaPath,
+                    session: context.session, isCurrentVault: vault.session === context.session
+                )
             }
         } catch let refusal as VaultSession.WriteRefusal {
             context.controller.report("«\(notePath)» non è stato aggiornato: \(refusal.description)")
