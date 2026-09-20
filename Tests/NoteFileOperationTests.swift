@@ -100,25 +100,20 @@ import Testing
 // MARK: - The operations on disk
 
 private struct OpsVault: ~Copyable {
-    let root: URL
+    private let base: TemporaryVault
     let store: NoteStore
     let operations: NoteFileOperations
+    var root: URL { base.root }
 
     init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-ops-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        store = NoteStore(root: root)
+        let base = try TemporaryVault()
+        store = NoteStore(root: base.root)
         operations = NoteFileOperations(store: store)
+        self.base = base
     }
-    deinit { try? FileManager.default.removeItem(at: root) }
 
     func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
+        try base.write(contents, to: relativePath)
     }
 
     func text(at relativePath: String) throws -> String {
