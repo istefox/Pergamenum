@@ -36,17 +36,10 @@ import SwiftUI
 struct TabBarMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Full width inside `MockupGalleryView.contentWidth`: 720 less 24 of padding a side.
-    private static let sceneWidth: CGFloat = 672
-    /// Two across: 2 × 328 + 16 of spacing = 672.
-    private static let pairWidth: CGFloat = 328
-    /// Three across: 3 × 213 + 2 × 16 = 671.
-    private static let tripleWidth: CGFloat = 213
-
     var body: some View {
         MockupPage {
             MockupScene("La barra sopra l'intestazione di oggi: il titolo compare due volte") {
-                Column(width: Self.sceneWidth) {
+                Column(width: MockupGalleryView.rowWidth) {
                     TabStrip(tabs: Self.threeTabs, carriesHeaderControls: false)
                     Divider()
                     NoteHeader()
@@ -55,7 +48,7 @@ struct TabBarMockup: View {
                 }
             }
             MockupScene("La barra al posto dell'intestazione: i controlli passano nella barra") {
-                Column(width: Self.sceneWidth) {
+                Column(width: MockupGalleryView.rowWidth) {
                     TabStrip(tabs: Self.threeTabs, carriesHeaderControls: true)
                     Divider()
                     PathLine()
@@ -76,12 +69,12 @@ struct TabBarMockup: View {
     private var singleNote: some View {
         MockupScene("Una nota sola: barra nascosta, com'è oggi · barra sempre presente") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                Column(width: Self.pairWidth) {
+                Column(width: MockupGalleryView.pairWidth) {
                     NoteHeader()
                     Divider()
                     BodyLines(count: 4)
                 }
-                Column(width: Self.pairWidth) {
+                Column(width: MockupGalleryView.pairWidth) {
                     TabStrip(tabs: [Self.threeTabs[0]], carriesHeaderControls: false)
                     Divider()
                     NoteHeader()
@@ -97,10 +90,10 @@ struct TabBarMockup: View {
     private var overflow: some View {
         MockupScene("Otto tab: restringere fino a stare dentro · scorrere e tenerle leggibili") {
             VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-                Column(width: Self.sceneWidth) {
+                Column(width: MockupGalleryView.rowWidth) {
                     TabStrip(tabs: Self.eightTabs, carriesHeaderControls: false, isCramped: true)
                 }
-                Column(width: Self.sceneWidth) {
+                Column(width: MockupGalleryView.rowWidth) {
                     TabStrip(
                         tabs: Array(Self.eightTabs.prefix(4)),
                         carriesHeaderControls: false,
@@ -117,7 +110,7 @@ struct TabBarMockup: View {
         MockupScene("L'attiva: riempita · sottolineata · solo il peso del testo") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 ForEach(TabChip.Marking.allCases, id: \.self) { marking in
-                    Column(width: Self.tripleWidth) {
+                    Column(width: MockupGalleryView.tripleWidth) {
                         HStack(spacing: 2) {
                             TabChip(tab: Self.threeTabs[0], marking: marking)
                             TabChip(tab: Self.threeTabs[1], marking: marking)

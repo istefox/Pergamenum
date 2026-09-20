@@ -32,9 +32,6 @@ struct UnlinkedMentionsMockup: View {
 
     /// The inspector at the width it actually has in `VaultBrowser` (ideal 230, max 320).
     private static let inspectorWidth: CGFloat = 260
-    /// Two sections across: 2 × 328 + 16 of spacing = 672, the same grid the tag browser uses.
-    private static let pairWidth: CGFloat = 328
-
     var body: some View {
         MockupPage {
             inPlace
@@ -99,7 +96,7 @@ struct UnlinkedMentionsMockup: View {
         }
     }
 
-    private func panel(width: CGFloat = Self.pairWidth, @ViewBuilder _ content: () -> some View)
+    private func panel(width: CGFloat = MockupGalleryView.pairWidth, @ViewBuilder _ content: () -> some View)
         -> some View {
         content()
             .padding(theme.spacing(.m))

@@ -22,11 +22,13 @@ import SwiftUI
 struct TemplateMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Three cells across, inside `MockupGalleryView.contentWidth`:
-    /// 3 × (208 + 16 of padding) + 2 × 16 of spacing = 704, under the 720 available.
-    private static let tripleWidth: CGFloat = 208
-    /// Two across, with the room the first row does not need: 2 × (320 + 16) + 16 = 688.
-    private static let doubleWidth: CGFloat = 320
+    /// Three cells across: `MockupGalleryView.tripleWidth` (the outer width) less the 16 points
+    /// of padding a `MockupCell` adds around its frame, so the row is 671. This was 208, measured
+    /// against 720 rather than the 672 a page gives, and came to 704.
+    private static let tripleWidth: CGFloat = MockupGalleryView.tripleWidth - 16
+    /// Two across, the same way from `MockupGalleryView.pairWidth`: the row is 672. This was 320,
+    /// which came to 688.
+    private static let doubleWidth: CGFloat = MockupGalleryView.pairWidth - 16
 
     var body: some View {
         MockupPage {
