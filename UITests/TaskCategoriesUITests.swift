@@ -99,6 +99,19 @@ final class TaskCategoriesUITests: XCTestCase {
             to: vault.appending(path: "Collaudi.md", directoryHint: .notDirectory),
             atomically: true, encoding: .utf8
         )
+        // A second note with no category, the one PG-166's «Collega una nota…» picks.
+        try """
+        ---
+        date: 2026-08-14
+        tags:
+          - type-note
+        ---
+
+        # Piano collaudi
+        """.write(
+            to: vault.appending(path: "Piano.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
     }
 
     /// R-04, R-05: a registered category and an implicit one both show in the sidebar,
@@ -159,5 +172,30 @@ final class TaskCategoriesUITests: XCTestCase {
             element("category-editor-slug-problem").waitForExistence(timeout: 5),
             "nessun avviso mostrato per lo slug vuoto"
         )
+    }
+
+    /// PG-166: a category with no home note offers «Collega una nota…», the picker writes
+    /// the note's `pergamenum-category` key, and the view then offers «Vai alla nota».
+    func testLinkingANoteFromTheCategoryViewMakesItTheHome() throws {
+        show("Attività")
+        element("category-row-collaudi").click()
+
+        XCTAssertFalse(
+            element("category-view-go-to-note").exists, "la categoria non dovrebbe avere ancora una nota"
+        )
+        let link = element("category-view-link-note")
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "manca «Collega una nota…» nella vista categoria")
+        link.click()
+
+        let row = element("category-note-picker-row-Piano.md")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "il picker non elenca la nota")
+        row.click()
+
+        XCTAssertTrue(
+            element("category-view-go-to-note").waitForExistence(timeout: 10),
+            "dopo il collegamento la vista non offre «Vai alla nota»"
+        )
+        let written = try String(contentsOf: vault.appending(path: "Piano.md"), encoding: .utf8)
+        XCTAssertTrue(written.contains("pergamenum-category: collaudi"), "la chiave non è stata scritta sul file")
     }
 }

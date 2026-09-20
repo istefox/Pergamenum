@@ -237,6 +237,12 @@ final class Navigation {
     /// is the one place a sheet reaches every surface from.
     var categoryEditorTarget: CategoryEditor.Target?
 
+    /// The category `CategoryNotePicker` is choosing a home note for (PG-166), held the
+    /// same way and for the same reason as `categoryEditorTarget` above: «Collega una
+    /// nota…» lives in both `CategoryView`'s header and `CategorySidebarSection`'s row
+    /// menu, and `RootView` is the one place a sheet reaches every surface from.
+    var categoryLinkingNote: CategoryNotePicker.Request?
+
     /// A category slug the Attività pane should select once it is on screen, the
     /// `pendingCanvas`-style shape (`VaultController+Routes.swift:151`) applied to a
     /// destination that lives in `Navigation` rather than `VaultController.routeState`:

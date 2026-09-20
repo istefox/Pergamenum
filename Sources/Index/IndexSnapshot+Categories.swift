@@ -17,6 +17,22 @@ extension IndexSnapshot {
         return notes[task.sourcePath]?.categorySlug
     }
 
+    /// Every note carrying `pergamenum-category: <slug>`, first in vault order (path order,
+    /// the tie-break `VaultSession.categoryViolations` reports as `duplicateHome`). More
+    /// than one is the rare, lint-reported state; `setCategoryHome` is what clears it.
+    func notesClaimingCategory(_ slug: String) -> [NoteRecord] {
+        notes.values
+            .filter { $0.categorySlug == slug }
+            .sorted { $0.relativePath < $1.relativePath }
+    }
+
+    /// The category's "home" (SPEC "Note ↔ category"): the first claimant, or nil when no
+    /// note carries the slug. One resolver for the category view and for the write that
+    /// displaces a previous home, so the two cannot disagree about which note is "the" one.
+    func homeNote(ofCategory slug: String) -> NoteRecord? {
+        notesClaimingCategory(slug).first
+    }
+
     /// `#project-*` values effective on at least one task and absent from the registry
     /// (SPEC "Implicit category"). Derived here, never persisted.
     func implicitCategories(registry: CategoryRegistry) -> Set<String> {

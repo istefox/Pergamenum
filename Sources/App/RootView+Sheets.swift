@@ -31,6 +31,9 @@ extension RootView {
             .sheet(item: Bindable(navigation).categoryEditorTarget) { target in
                 CategoryEditor(target: target) { navigation.categoryEditorTarget = nil }
             }
+            .sheet(item: Bindable(navigation).categoryLinkingNote) { request in
+                CategoryNotePicker(request: request) { navigation.categoryLinkingNote = nil }
+            }
             .sheet(item: Bindable(navigation).praticaLinkRequest) { request in
                 PraticaLinkPicker(
                     request: request,

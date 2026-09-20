@@ -164,6 +164,9 @@ struct CategorySidebarSection: View {
     @ViewBuilder
     private func contextMenu(_ category: Category) -> some View {
         Button("Modifica…") { navigation.categoryEditorTarget = .editing(category) }
+        Button(vault.index.homeNote(ofCategory: category.slug) == nil ? "Collega una nota…" : "Cambia nota…") {
+            navigation.categoryLinkingNote = .init(slug: category.slug, name: category.name)
+        }
         if category.archived {
             Button("Riattiva") { vault.unarchiveCategory(category.slug) }
         } else {

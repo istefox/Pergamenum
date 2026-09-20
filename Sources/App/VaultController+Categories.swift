@@ -63,6 +63,15 @@ extension VaultController {
         return handle(await session.linkCategory(slug, toNoteAt: relativePath))
     }
 
+    /// Makes a note the category's one home, displacing any previous one (PG-166): the
+    /// entry point every «Collega una nota…» / «Assegna una categoria…» affordance calls,
+    /// where `linkCategory` alone would leave two notes claiming the slug.
+    @discardableResult
+    func setCategoryHome(_ slug: String, toNoteAt relativePath: String) async -> Bool {
+        guard let session else { return false }
+        return handle(await session.setCategoryHome(slug, toNoteAt: relativePath))
+    }
+
     /// The note inspector's unlink affordance (SPEC "UI flows: Linked note").
     @discardableResult
     func unlinkCategory(fromNoteAt relativePath: String) async -> Bool {
