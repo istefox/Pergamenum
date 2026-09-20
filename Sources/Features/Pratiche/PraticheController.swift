@@ -228,9 +228,10 @@ final class PraticheController {
     @ObservationIgnored var prepareRegeneration: (@MainActor (_ praticaPath: String, _ messageID: String) async -> Void)?
 
     /// §D21.2: commits an already-previewed `RegenerationPlan` and records the
-    /// outcome in the ledger, answering whether it succeeded - wired by
+    /// outcome in the ledger, answering what became of it (`PraticaRegenerationCommit`, which
+    /// also says whether a sentence is already on screen) - wired by
     /// `PraticheController.live` to `PraticaLiveSync.commitRegeneration`.
-    @ObservationIgnored var commitRegeneration: (@MainActor (_ plan: PraticaSyncEngine.RegenerationPlan) async -> Bool)?
+    @ObservationIgnored var commitRegeneration: (@MainActor (_ plan: PraticaSyncEngine.RegenerationPlan) async -> PraticaRegenerationCommit)?
 
     /// R-30: the strip a person collapsed stays collapsed until they open it again,
     /// for this window only.

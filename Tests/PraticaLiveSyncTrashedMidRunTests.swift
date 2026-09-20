@@ -235,7 +235,14 @@ private final class StopSpy {
         #expect(PraticaLiveSync.requeue(after: outcome, kind: .fsEvents) == nil, "so nothing is re-enqueued")
         #expect(pratiche.ledger.byPraticaPath[Self.folder] == nil, "the stopped run must not resurrect the trashed key")
         #expect(PraticaSyncFixtures.mdFiles(under: vault.root).isEmpty, "the stopped run wrote nothing")
-        #expect(pratiche.problem == nil, "a run stopped by a deletion is silent, not a failure")
+        // The fixture flags the trash in the ledger but leaves `pratica.md` on disk (the run
+        // has to read the dossier before it can be stopped), so a directory really does stand
+        // at the vacated path: PG-168's leftover notice, and only it, is the right report. A
+        // stop is never «Sincronizzazione non riuscita».
+        #expect(
+            pratiche.problem == PraticaRunStop.leftoverNotice(after: .praticaTrashed(path: Self.folder))?.sentence,
+            "a run stopped by a deletion reports at most the leftover it can see, never a failure"
+        )
         #expect(pratiche.syncingPraticaPath == nil, "the claim is released by the run's own defer")
         #expect(pratiche.forgottenPraticaPaths.isEmpty, "and with nothing in flight the tombstone goes with it")
 
@@ -288,9 +295,9 @@ private final class StopSpy {
             vaultController.close()
             return
         }
-        let succeeded = await commit(plan)
+        let outcome = await commit(plan)
 
-        #expect(succeeded == false, "a trashed folder must refuse the commit rather than write into it")
+        #expect(outcome == .refused, "a trashed folder must refuse the commit rather than write into it")
         #expect(
             PraticaSyncFixtures.mdFiles(under: vault.root).count == 1,
             "nothing new may be written - only the one message the seed sync already wrote"

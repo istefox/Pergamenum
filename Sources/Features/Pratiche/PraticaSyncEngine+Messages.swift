@@ -780,14 +780,23 @@ extension PraticaSyncEngine {
         // it must never be the thing that exists while what it points at does not. The
         // attachment bytes are written the same way regardless of write mode below
         // (ADR-0040 §D4).
-        let allegatiDirectory = try directory("allegati", of: request)
-        for attachment in prepared.attachments {
-            let target = allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
-            try Self.writeAtomically(attachment.bytes, to: target)
-            // PG-123: the bytes came out of a mail store, so the copy is a download as far
-            // as Gatekeeper is concerned - stamped after the rename, or the xattr would
-            // land on the temporary sibling `.atomic` throws away.
-            try AttachmentQuarantine.apply(to: target)
+        //
+        // PG-168: the pratica is verified once, HERE, before a single byte moves - a folder a
+        // relocation or a trash has already vacated costs nothing, instead of "attachments
+        // written, note refused". Whatever this call creates (`email/`, then `allegati/` only
+        // when there is something to put in it) is a leaf under a pratica that still has its
+        // `pratica.md`; `writeAtomically` below no longer creates anything itself.
+        let emailDirectory = try makeDirectory("email", of: request)
+        if !prepared.attachments.isEmpty {
+            let allegatiDirectory = try makeDirectory("allegati", of: request)
+            for attachment in prepared.attachments {
+                let target = allegatiDirectory.appending(path: attachment.fileName, directoryHint: .notDirectory)
+                try Self.writeAtomically(attachment.bytes, to: target)
+                // PG-123: the bytes came out of a mail store, so the copy is a download as far
+                // as Gatekeeper is concerned - stamped after the rename, or the xattr would
+                // land on the temporary sibling `.atomic` throws away.
+                try AttachmentQuarantine.apply(to: target)
+            }
         }
         folder.attachmentNameByDigest = prepared.attachmentNameByDigest
         folder.takenAttachmentNames = prepared.takenAttachmentNames
@@ -864,8 +873,7 @@ extension PraticaSyncEngine {
             let baseName = (prepared.fileName as NSString).deletingPathExtension
             try Self.writeAtomically(
                 originalBytes,
-                to: try directory("email", of: request)
-                    .appending(path: "\(baseName).eml", directoryHint: .notDirectory)
+                to: emailDirectory.appending(path: "\(baseName).eml", directoryHint: .notDirectory)
             )
         }
 
@@ -953,10 +961,14 @@ extension PraticaSyncEngine {
     /// - the bytes land in a temporary sibling and are renamed over the target in one
     /// operation, so an interrupted run leaves either the previous file or the new one
     /// and never half of either.
+    ///
+    /// PG-168: the directory is the caller's business and is made by `makeDirectory`, under
+    /// a pratica that still has its `pratica.md`. It used to be created here, with its whole
+    /// parent chain, which is how an attachment or `.eml` landing after a folder relocation
+    /// brought the vacated folder back. These bytes never go through `VaultSession`, so
+    /// `expecting:` never protected them: a move landing after `makeDirectory` now makes this
+    /// write fail with ENOENT instead.
     private static func writeAtomically(_ data: Data, to url: URL) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
         try data.write(to: url, options: .atomic)
     }
 }

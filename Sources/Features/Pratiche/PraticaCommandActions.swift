@@ -181,7 +181,16 @@ struct PraticaCommandActions {
         reload()
 
         register(undoName: "Escludi") { actions in
-            actions.files.restore(trashed)
+            // Reported BEFORE the dossier write below, so that write's own failure sentence,
+            // if any, is the later and more specific one (`report` is last-writer-wins). The
+            // id is un-excluded and the pane reloads even when the files stayed in the Trash:
+            // the dossier and the files are independent, and leaving the id excluded would
+            // also stop the next sync re-importing it. The person is told where they are
+            // instead of watching the row come back with nothing behind it.
+            let stillInTrash = PraticaFileOperations.restore(trashed)
+            if let sentence = PraticaFileOperations.restoreFailureMessage(for: stillInTrash) {
+                actions.pratiche.report(sentence)
+            }
             await actions.updateDossier(at: praticaPath) { dossier in
                 dossier.excluded.removeAll { $0 == messageID }
             }
@@ -277,8 +286,17 @@ struct PraticaCommandActions {
             return
         }
         Task {
-            let succeeded = await pratiche.commitRegeneration?(plan) ?? false
-            if !succeeded { files.restore(trashed) }
+            let result = await pratiche.commitRegeneration?(plan) ?? .failed
+            if result != .committed {
+                let stillInTrash = PraticaFileOperations.restore(trashed)
+                // `.refused` already put the better sentence on screen - the pratica moved or
+                // was trashed, and the files are in the Trash - and `report` is last-writer-
+                // wins, so speaking again would replace it with a worse one. `.failed` has said
+                // why the write failed but not where the files are, so it owns this sentence.
+                if result == .failed, let sentence = PraticaFileOperations.restoreFailureMessage(for: stillInTrash) {
+                    pratiche.report(sentence)
+                }
+            }
             reload()
         }
     }
@@ -289,9 +307,11 @@ struct PraticaCommandActions {
     /// straight after imports it - "follows and imports", in that order, because the
     /// import reads the dossier from disk.
     func follow(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
-        // Round-5 review, `PG-168`'s third case: this first `updateDossier` write itself
-        // still uses the pre-await `praticaPath` with no relocation guard - only the
-        // SECOND use below, after the await, is guarded. Same narrow, accepted window.
+        // PG-168's third case: this first `updateDossier` write still uses the pre-await
+        // `praticaPath` with no relocation guard - only the SECOND use below is guarded. It
+        // cannot resurrect a folder: `DossierWriter.update` reads the note first and writes
+        // with `expecting:`, and a note that moved with its folder reads back as nothing,
+        // so the write is refused.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.following(conversationID: proposal.conversationID, in: dossier)
@@ -310,7 +330,7 @@ struct PraticaCommandActions {
     /// «Ignora»: one key of this pratica's own dossier, and nothing else - another
     /// pratica following the same counterpart still gets to propose it.
     func ignore(_ proposal: PraticaTrayModel.PraticaTrayProposal) async {
-        // Round-5 review, `PG-168`'s third case: same as `follow(_:)` above.
+        // PG-168's third case: same as `follow(_:)` above, and refused for the same reason.
         guard let praticaPath = pratiche.selection else { return }
         await updateDossier(at: praticaPath) { dossier in
             dossier = PraticaTrayModel.ignoring(conversationID: proposal.conversationID, in: dossier)
