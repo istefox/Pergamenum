@@ -38,6 +38,28 @@ struct MockupGalleryView: View {
     /// its frame, so it takes this less 16 as its `width`.
     static let tripleWidth: CGFloat = ((rowWidth - 32) / 3).rounded(.down)
 
+    /// One mockup: what the picker calls it, where it stands, and the view that draws it.
+    ///
+    /// These three used to be three separate `switch`es over `Screen`, kept in step by hand.
+    /// The compiler forces each to be exhaustive, but nothing tied one to the other, so a
+    /// case could be given a title and a milestone and still open the wrong view, or
+    /// reuse a neighbour's. They are one value now, produced by the single `switch` in
+    /// `Screen.page`: adding a screen is one `case` and one line there, and there is
+    /// no second place to forget.
+    struct Page {
+        let title: String
+        /// The milestone the screen belongs to, so a mockup that has been overtaken by
+        /// the real thing is recognisable as such rather than mistaken for a proposal.
+        let milestone: String
+        let content: AnyView
+
+        init(_ title: String, _ milestone: String, _ content: some View) {
+            self.title = title
+            self.milestone = milestone
+            self.content = AnyView(content)
+        }
+    }
+
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, embed, find, format,
              history, template, tabs, tagBrowser, mentions, views, week, taskControls,
@@ -45,43 +67,34 @@ struct MockupGalleryView: View {
 
         var id: String { rawValue }
 
-        var title: String { entry.title }
+        var title: String { page.title }
+        var milestone: String { page.milestone }
 
-        /// The milestone each screen belongs to, so a mockup that has been overtaken by
-        /// the real thing is recognisable as such rather than mistaken for a proposal.
-        var milestone: String { entry.milestone }
-
-        /// A screen's title and milestone, kept in one exhaustive `switch` so adding a case
-        /// is one edit here plus its view in `MockupGalleryView.current`, and forgetting
-        /// either fails the build rather than leaving a screen with no caption.
-        private struct Entry {
-            let title: String
-            let milestone: String
-        }
-
-        private var entry: Entry {
+        /// The only per-screen table. Exhaustive on purpose: a new `case` above does not
+        /// compile until it has a title, a milestone and a view here.
+        var page: Page {
             switch self {
-            case .capture: Entry(title: "Cattura", milestone: "M7, realizzato")
-            case .slash: Entry(title: "Menu /", milestone: "M8, realizzato")
-            case .code: Entry(title: "Codice", milestone: "M8, realizzato")
-            case .outline: Entry(title: "Indice", milestone: "M8, realizzato")
-            case .folding: Entry(title: "Ripiegamento", milestone: "M8, realizzato")
-            case .transclusion: Entry(title: "Transclusione", milestone: "M8, da approvare")
-            case .embed: Entry(title: "Immagini e PDF", milestone: "ADR-0018 slice 3, realizzato")
-            case .find: Entry(title: "Trova", milestone: "M8, realizzato")
-            case .format: Entry(title: "Formato", milestone: "M8, realizzato")
-            case .history: Entry(title: "Cronologia", milestone: "M9, realizzato")
-            case .template: Entry(title: "Template", milestone: "M9, da approvare")
-            case .tabs: Entry(title: "Tab", milestone: "M10, da approvare")
-            case .tagBrowser: Entry(title: "Tag e preferiti", milestone: "M10, da approvare")
-            case .mentions: Entry(title: "Menzioni", milestone: "M10, da approvare")
-            case .views: Entry(title: "Viste", milestone: "M11, da approvare")
-            case .week: Entry(title: "Settimana", milestone: "M12, da approvare")
-            case .taskControls: Entry(title: "Attività e rollover", milestone: "M12, da approvare")
-            case .editor: Entry(title: "Editor", milestone: "M1, realizzato")
-            case .workspace: Entry(title: "Workspace", milestone: "M2 e M3, realizzato")
-            case .today: Entry(title: "Oggi", milestone: "M5, realizzato")
-            case .tasks: Entry(title: "Attività", milestone: "M4, realizzato")
+            case .capture: Page("Cattura", "M7, realizzato", CaptureMockup())
+            case .slash: Page("Menu /", "M8, realizzato", SlashMenuMockup())
+            case .code: Page("Codice", "M8, realizzato", CodeBlockMockup())
+            case .outline: Page("Indice", "M8, realizzato", OutlineMockup())
+            case .folding: Page("Ripiegamento", "M8, realizzato", FoldingMockup())
+            case .transclusion: Page("Transclusione", "M8, da approvare", TransclusionMockup())
+            case .embed: Page("Immagini e PDF", "ADR-0018 slice 3, realizzato", EmbedMockup())
+            case .find: Page("Trova", "M8, realizzato", FindBarMockup())
+            case .format: Page("Formato", "M8, realizzato", FormatBarMockup())
+            case .history: Page("Cronologia", "M9, realizzato", HistoryMockup())
+            case .template: Page("Template", "M9, da approvare", TemplateMockup())
+            case .tabs: Page("Tab", "M10, da approvare", TabBarMockup())
+            case .tagBrowser: Page("Tag e preferiti", "M10, da approvare", TagBrowserMockup())
+            case .mentions: Page("Menzioni", "M10, da approvare", UnlinkedMentionsMockup())
+            case .views: Page("Viste", "M11, da approvare", ViewMockup())
+            case .week: Page("Settimana", "M12, da approvare", WeekMockup())
+            case .taskControls: Page("Attività e rollover", "M12, da approvare", TaskControlsMockup())
+            case .editor: Page("Editor", "M1, realizzato", EditorMockup())
+            case .workspace: Page("Workspace", "M2 e M3, realizzato", WorkspaceMockup())
+            case .today: Page("Oggi", "M5, realizzato", TodayMockup())
+            case .tasks: Page("Attività", "M4, realizzato", TasksMockup())
             }
         }
     }
@@ -114,30 +127,7 @@ struct MockupGalleryView: View {
         .padding(theme.spacing(.m))
     }
 
-    @ViewBuilder
     private var current: some View {
-        switch screen {
-        case .capture: CaptureMockup()
-        case .slash: SlashMenuMockup()
-        case .code: CodeBlockMockup()
-        case .outline: OutlineMockup()
-        case .folding: FoldingMockup()
-        case .transclusion: TransclusionMockup()
-        case .embed: EmbedMockup()
-        case .find: FindBarMockup()
-        case .format: FormatBarMockup()
-        case .history: HistoryMockup()
-        case .template: TemplateMockup()
-        case .tabs: TabBarMockup()
-        case .tagBrowser: TagBrowserMockup()
-        case .mentions: UnlinkedMentionsMockup()
-        case .views: ViewMockup()
-        case .week: WeekMockup()
-        case .taskControls: TaskControlsMockup()
-        case .editor: EditorMockup()
-        case .workspace: WorkspaceMockup()
-        case .today: TodayMockup()
-        case .tasks: TasksMockup()
-        }
+        screen.page.content
     }
 }

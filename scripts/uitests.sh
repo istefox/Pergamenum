@@ -24,10 +24,42 @@
 #   - **The timings are printed beside the failures**, because a failure at ~60 s is a
 #     launch that never happened and a failure at 8 s is a test with something to say.
 #
+#   - **It builds into its own DerivedData** (`build/uitests-dd`). The `Stop` hook builds the
+#     unit suite into the default one at the end of every turn, and two xcodebuilds on one
+#     `build.db` end with "database is locked" in whichever loses - which reads as a suite
+#     failure and cost a day of reruns (PG-183). Separate paths make the collision
+#     impossible instead of unlikely, and it refuses to start beside another xcodebuild.
+#   - **It keeps the evidence.** A `.xcresult` bundle is written next to the log, so a red is
+#     diagnosed from failure messages and screenshots instead of by running 24 minutes again
+#     (`xcrun xcresulttool get test-results summary --path <bundle>`).
+#   - **A launch that never happened is labelled whatever its duration**, and is the only
+#     failure retried (see the section further down).
+#   - **What a run learns is shared.** A run over a clean tree writes a verdict keyed by the
+#     tree hash into the git common dir, which every worktree and every session of this repo
+#     sees. `--status` reads it in a second, a full run over a tree already verified is
+#     skipped, and two sessions cannot run the suite at once. Twenty-five minutes of the
+#     machine is paid once per tree, not once per chat.
+#
 # Usage:  scripts/uitests.sh [-only-testing:...]
 #         with no arguments the whole bundle runs; an argument REPLACES that selection
 #         rather than adding to it, so a single suite can be run:
 #         scripts/uitests.sh -only-testing:PergamenumUITests/TimelineHoursUITests
+#
+#         scripts/uitests.sh --status
+#         says whether this tree, and `main`, already has a verdict, and what changed since the
+#         last full green one. Read-only, instant, safe at any moment.
+#
+#         scripts/uitests.sh --affected
+#         derives the selection from what differs from the last full green verdict (or from
+#         `main` when there is none), prints why, and runs only that - or nothing, when nothing
+#         that differs can reach the UI. For iteration only: the rule in CLAUDE.md, the whole
+#         suite before a merge to `main`, is not replaced by it.
+#
+#         scripts/uitests.sh --force ...
+#         runs even though the tree already has a full green verdict.
+#
+# A run this long is best started away from the machine and read afterwards:
+#         caffeinate -dimsu scripts/uitests.sh > /dev/null 2>&1 &
 
 set -euo pipefail
 
@@ -36,6 +68,10 @@ readonly LOG="${TMPDIR:-/tmp}/pergamenum-uitests-$(date +%Y%m%d-%H%M%S).log"
 # What a launch timeout costs, to the tenth. Anything at or past this is reported as a
 # suspected timeout rather than as a real failure.
 readonly TIMEOUT_SECONDS=59
+readonly RESULT_BUNDLE="${LOG%.log}.xcresult"
+readonly FOCUS_LOG="${LOG%.log}.focus"
+# Not the default DerivedData: see the header. `build/` is gitignored.
+readonly DERIVED_DATA="$REPO/build/uitests-dd"
 
 cd "$REPO"
 
@@ -58,6 +94,209 @@ kill_and_wait() {
     done
     kill -9 "$pid" 2>/dev/null || true
 }
+
+# MARK: --affected
+
+# One changed path to what it can reach: `ALL` (the whole suite), `NONE` (no UI run), or the
+# UI-test classes that exercise it. Conservative on purpose: a path nobody mapped is `ALL`,
+# because a selection that misses a class is a green run that says nothing about it, which is
+# the failure this script exists to prevent. The editor, the app shell, the design system and
+# everything in `Sources/Core` that is not named below reach too many classes to list.
+classes_for_path() {
+    case "$1" in
+        UITests/DragSupport.swift) echo ALL ;;
+        UITests/*UITests.swift)
+            local base="${1#UITests/}"
+            echo "${base%.swift}" ;;
+        Sources/CLI/*|Sources/MCPServer/*|Sources/Connector/*) echo NONE ;;
+        Sources/Features/Workspace/*|Sources/Core/Canvas/*|Sources/Vault/CanvasStore.swift|Sources/Vault/BoardFileOperations.swift|Sources/Vault/BoardTaskRecord.swift)
+            echo "WorkspaceBoardUITests WorkspaceFocusUITests WorkspaceIntegrationUITests WorkspaceOpenStateUITests SidebarMoveUITests" ;;
+        Sources/Features/Pratiche/*|Sources/Core/Pratiche/*|Sources/Core/Email/*)
+            echo "PraticheUITests" ;;
+        Sources/Features/Tasks/*|Sources/Core/Tasks/*|Sources/Core/Categories/*)
+            echo "TaskTimeUITests TaskCategoriesUITests" ;;
+        Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
+            echo "DayViewUITests DiaryUITests TimeBlockUITests TimelineHoursUITests TaskTimeUITests" ;;
+        Sources/App/SparkleUpdateController*) echo "UpdateMenuUITests" ;;
+        Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
+        *) echo ALL ;;
+    esac
+}
+
+# MARK: shared verdicts
+
+# What one run learned is worth something to every session working on this repo, so it is
+# written where all of them look: the git common dir, which every worktree shares. A verdict is
+# keyed by the tree hash of HEAD, not by the commit: a merge commit whose tree equals the branch
+# tree that was tested is the same code, and the same verdict. Only a clean tree gets one, since
+# a green over uncommitted edits describes no commit. UITESTS_VERDICT_DIR exists so a test of
+# this logic never writes into the real, shared directory.
+common_dir=$(cd "$(git rev-parse --git-common-dir)" && pwd)
+readonly VERDICT_DIR="${UITESTS_VERDICT_DIR:-$common_dir/uitests-verdicts}"
+readonly LOCK="$VERDICT_DIR/running"
+
+tree_of() { git rev-parse "$1^{tree}" 2>/dev/null; }
+is_clean() { [ -z "$(git status --porcelain --untracked-files=normal)" ]; }
+verdict_field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+verdict_file() { printf '%s/%s.%s.verdict' "$VERDICT_DIR" "$1" "$2"; }
+
+# The newest full green verdict whose commit is HEAD or one of its ancestors: the point from
+# which "what changed" is the whole question.
+last_verified_ancestor() {
+    local f c
+    for f in $(ls -t "$VERDICT_DIR"/*.full.verdict 2>/dev/null); do
+        [ "$(verdict_field "$f" result)" = green ] || continue
+        c=$(verdict_field "$f" commit)
+        if git merge-base --is-ancestor "$c" HEAD 2>/dev/null; then
+            printf '%s' "$c"
+            return
+        fi
+    done
+}
+
+# What the difference from `base` (committed, staged, unstaged and untracked) can reach, into
+# PLAN (ALL, NONE or LIST), PLAN_CLASSES, PLAN_REASON (the first path that forces ALL) and
+# PLAN_NONE (how many changed paths reach nothing).
+PLAN=""
+PLAN_CLASSES=""
+PLAN_REASON=""
+PLAN_NONE=0
+plan_from() {
+    local changed path cls wanted=""
+    PLAN=""
+    PLAN_CLASSES=""
+    PLAN_REASON=""
+    PLAN_NONE=0
+    changed=$( { git diff --name-only "$1"; git ls-files --others --exclude-standard; } | sort -u)
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        cls=$(classes_for_path "$path")
+        case "$cls" in
+            ALL) PLAN_REASON="${PLAN_REASON:-$path}" ;;
+            NONE) PLAN_NONE=$((PLAN_NONE + 1)) ;;
+            *) wanted="$wanted $cls" ;;
+        esac
+    done <<< "$changed"
+    if [ -n "$PLAN_REASON" ]; then
+        PLAN=ALL
+    elif [ -z "${wanted// /}" ]; then
+        PLAN=NONE
+    else
+        PLAN=LIST
+        PLAN_CLASSES=$(printf '%s\n' $wanted | sort -u | tr '\n' ' ')
+    fi
+}
+
+describe_plan() {
+    case "$PLAN" in
+        NONE) printf 'nessun giro: %d file cambiati, nessuno raggiunge la UI' "$PLAN_NONE" ;;
+        ALL) printf 'giro completo: %s raggiunge troppe classi per elencarle' "$PLAN_REASON" ;;
+        *) printf 'solo %s' "$PLAN_CLASSES" ;;
+    esac
+}
+
+show_verdict() {
+    local label="$1" tree="$2" scope f
+    for scope in full partial; do
+        f=$(verdict_file "$tree" "$scope")
+        if [ -f "$f" ]; then
+            printf '  %-5s %-8s %s il %s, %s test (commit %s)\n' "$label" "$scope" \
+                "$(verdict_field "$f" result)" "$(verdict_field "$f" date)" \
+                "$(verdict_field "$f" executed)" "$(verdict_field "$f" commit | cut -c1-7)"
+        else
+            printf '  %-5s %-8s nessun verdetto\n' "$label" "$scope"
+        fi
+    done
+}
+
+# Read-only and instant: it never touches the machine, so it can be asked at any moment by any
+# session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
+# a run is still owed.
+status_report() {
+    local head_tree main_tree base
+    head_tree=$(tree_of HEAD)
+    printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
+        "$(is_clean && echo pulito || echo 'con modifiche non committate')"
+    show_verdict HEAD "$head_tree"
+    main_tree=$(tree_of main || tree_of origin/main || true)
+    if [ -n "$main_tree" ] && [ "$main_tree" != "$head_tree" ]; then
+        show_verdict main "$main_tree"
+    fi
+    base=$(last_verified_ancestor)
+    if [ -n "$base" ]; then
+        plan_from "$base"
+        printf 'uitests: ultimo verde completo tra gli antenati: %s; da allora %s\n' "${base:0:7}" "$(describe_plan)"
+    else
+        printf 'uitests: nessun verde completo tra gli antenati di HEAD\n'
+    fi
+    # Verified means: HEAD's own tree has a full green verdict, or nothing that differs from the
+    # last full green one can reach the UI (a script, a doc, the ledger).
+    [ "$(verdict_field "$(verdict_file "$head_tree" full)" result)" = green ] \
+        || { [ -n "$base" ] && [ "$PLAN" = NONE ]; }
+}
+
+# MARK: --affected
+
+affected_selection() {
+    local base how cls
+    base=$(last_verified_ancestor)
+    if [ -n "$base" ]; then
+        how="dall'ultimo verde completo ${base:0:7}"
+    else
+        base=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || true)
+        [ -n "$base" ] || fail "--affected non trova il punto di partenza"
+        how="da main, mai verificato"
+    fi
+    plan_from "$base"
+    case "$PLAN" in
+        NONE)
+            printf 'uitests: --affected (%s): %s.\n' "$how" "$(describe_plan)"
+            exit 0 ;;
+        ALL)
+            printf 'uitests: --affected (%s): %s.\n' "$how" "$(describe_plan)"
+            selection=(-only-testing:PergamenumUITests)
+            SCOPE=full ;;
+        *)
+            selection=()
+            for cls in $PLAN_CLASSES; do
+                selection+=("-only-testing:PergamenumUITests/$cls")
+            done
+            printf 'uitests: --affected (%s): %d classi: %s\n' "$how" "${#selection[@]}" "$PLAN_CLASSES" ;;
+    esac
+}
+
+FORCE=0
+SCOPE=partial
+selection=()
+if [ "${1:-}" = "--force" ]; then
+    FORCE=1
+    shift
+fi
+if [ "${1:-}" = "--status" ]; then
+    [ "$#" -eq 1 ] || fail "--status non si combina con altri argomenti"
+    if status_report; then exit 0; else exit 1; fi
+fi
+if [ "${1:-}" = "--affected" ]; then
+    [ "$#" -eq 1 ] || fail "--affected non si combina con altri argomenti"
+    affected_selection
+elif [ "$#" -eq 0 ]; then
+    SCOPE=full
+fi
+
+# The tree this run is about, taken before anything moves. A full run over a tree that already
+# has a full green verdict is a run somebody else already paid for.
+readonly START_TREE=$(tree_of HEAD)
+if is_clean; then START_CLEAN=1; else START_CLEAN=0; fi
+readonly START_CLEAN
+if [ "$SCOPE" = full ] && [ "$START_CLEAN" -eq 1 ] && [ "$FORCE" -eq 0 ]; then
+    verdict=$(verdict_file "$START_TREE" full)
+    if [ -f "$verdict" ] && [ "$(verdict_field "$verdict" result)" = green ]; then
+        printf 'uitests: questo albero è già verificato: verde il %s, %s test, commit %s. Nessun giro (--force per rifarlo).\n' \
+            "$(verdict_field "$verdict" date)" "$(verdict_field "$verdict" executed)" \
+            "$(verdict_field "$verdict" commit | cut -c1-7)"
+        exit 0
+    fi
+fi
 
 # MARK: instances
 
@@ -109,6 +348,39 @@ fi
 
 close_debris "uitests: istanze rimaste da un giro precedente, le chiudo:"
 
+# Another xcodebuild on this project - the Stop hook's unit run, a build in a terminal - is
+# not debris and is not this script's to kill. With its own DerivedData it could no longer
+# corrupt the run, but it still fights the run for the CPU and for the display's focus, and a
+# result taken beside it is not one to trust (PG-183).
+if other=$(pgrep -fl 'xcodebuild.*Pergamenum' 2>/dev/null) && [ -n "$other" ]; then
+    printf 'uitests: un altro xcodebuild è in corso:\n%s\n' "$other" >&2
+    fail "aspetta che finisca e rilancia"
+fi
+
+# Two sessions running the suite at once is one run too many: they fight for the pointer, the
+# focus and the global hot key, and the second one's result is noise. The lock names who has
+# it, so the other session knows there is a verdict coming that will be its own as well.
+FOCUS_PID=""
+rerun_focus=""
+cleanup() {
+    kill $FOCUS_PID $rerun_focus 2>/dev/null || true
+    [ "$(cut -f1 "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    return 0
+}
+mkdir -p "$VERDICT_DIR"
+take_lock() {
+    ( set -C; printf '%s\t%s\t%s\t%s\n' "$$" "$REPO" "$(date +%H:%M:%S)" "$SCOPE" >"$LOCK" ) 2>/dev/null
+}
+if ! take_lock; then
+    if kill -0 "$(cut -f1 "$LOCK" 2>/dev/null)" 2>/dev/null; then
+        printf 'uitests: un giro è già in corso (pid, cartella, ora, ambito):\n  %s\n' "$(tr '\t' ' ' <"$LOCK")" >&2
+        fail "aspetta che finisca: il suo verdetto varrà anche per questa sessione (uitests.sh --status)"
+    fi
+    rm -f "$LOCK"
+    take_lock || fail "non riesco a prendere il lock dei giri"
+fi
+trap cleanup EXIT
+
 # MARK: keep-focused
 
 # Confirmed by reading the screen recording XCUITest attaches to a failure: another
@@ -122,28 +394,39 @@ close_debris "uitests: istanze rimaste da un giro precedente, le chiudo:"
 # frontmost once a second for the whole run, not just at launch, is what catches a
 # window raised partway through.
 focus_pergamenum() {
+    local front
     while true; do
-        osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "Pergamenum") to true' \
-            >/dev/null 2>&1
+        # One call: note who is frontmost, then reassert. Every time it was somebody else
+        # is written to FOCUS_LOG, so a red can be laid against a stolen focus instead of
+        # guessing at one (the loop itself has never been proven a cause or a cure).
+        front=$(osascript -e 'tell application "System Events"
+            set prev to name of first process whose frontmost is true
+            set frontmost of (first process whose name is "Pergamenum") to true
+            return prev
+        end tell' 2>/dev/null || true)
+        if [ -n "$front" ] && [ "$front" != "Pergamenum" ]; then
+            printf '%s %s\n' "$(date +%H:%M:%S)" "$front" >>"$FOCUS_LOG"
+        fi
         sleep 1
     done
 }
 focus_pergamenum &
-readonly FOCUS_PID=$!
-trap 'kill "$FOCUS_PID" 2>/dev/null || true' EXIT
+FOCUS_PID=$!
 
 # MARK: run
 
 printf 'uitests: log in %s\n' "$LOG"
-printf 'uitests: la macchina è occupata per una decina di minuti, non toccare la tastiera\n\n'
+printf 'uitests: la macchina è occupata (la suite intera ~25 minuti), non toccare la tastiera\n\n'
 
 # The whole bundle unless the caller named something narrower. Not both: two
 # `-only-testing` arguments are a union, so appending one to the default would silently
 # run everything and look like it had run one suite.
-if [ "$#" -gt 0 ]; then
-    selection=("$@")
-else
-    selection=(-only-testing:PergamenumUITests)
+if [ "${#selection[@]}" -eq 0 ]; then
+    if [ "$#" -gt 0 ]; then
+        selection=("$@")
+    else
+        selection=(-only-testing:PergamenumUITests)
+    fi
 fi
 
 # `set -e` is off for exactly the xcodebuild call: a red suite must not abort the script
@@ -152,6 +435,8 @@ fi
 set +e
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
     -destination 'platform=macOS' \
+    -derivedDataPath "$DERIVED_DATA" \
+    -resultBundlePath "$RESULT_BUNDLE" \
     "${selection[@]}" \
     test >"$LOG" 2>&1
 RESULT=$?
@@ -165,19 +450,29 @@ printf '\n'
 grep -E "^	 Executed [0-9]+ tests?" "$LOG" | tail -1 || true
 
 failures=$(grep -E "^Test Case .* failed \(" "$LOG" || true)
-if [ -z "$failures" ] && [ "$RESULT" -eq 0 ]; then
+
+real=""
+[ -z "$failures" ] || real="$failures
+"
+
+if [ -z "$real" ] && [ "$RESULT" -eq 0 ]; then
     # Said out loud rather than left to be inferred from a count: the whole point of this
     # script is that the state of the suite stops being something somebody has to work out.
     printf '\nuitests: verde.\n'
 fi
-if [ -n "$failures" ]; then
+if [ -n "$real" ]; then
     printf '\nFallimenti:\n'
-    printf '%s\n' "$failures" | while IFS= read -r line; do
+    printf '%s' "$real" | while IFS= read -r line; do
         # `Test Case '-[Suite testName]' failed (8.834 seconds).` - the seconds are the
         # tell: a test that took a whole minute did not fail, it never launched.
         seconds=$(printf '%s' "$line" | sed -E 's/.*failed \(([0-9]+)\.[0-9]+ seconds\).*/\1/')
         name=$(printf '%s' "$line" | sed -E "s/.*'-\[(.*)\]'.*/\1/")
-        if [ "$seconds" -ge "$TIMEOUT_SECONDS" ] 2>/dev/null; then
+        # The other tell, for the launch that fails at once (PG-181: 0.7 s, "Failed to get
+        # launch progress"), which no duration threshold can see.
+        if grep -F "error: -[$name]" "$LOG" \
+            | grep -qE 'Failed to get launch progress|Failed to launch|LaunchServices|is not running'; then
+            printf '  %ss  %s   ← fallimento di lancio, non un fallimento vero\n' "$seconds" "$name"
+        elif [ "$seconds" -ge "$TIMEOUT_SECONDS" ] 2>/dev/null; then
             printf '  ~%ss  %s   ← sospetto timeout di lancio, non un fallimento vero\n' \
                 "$seconds" "$name"
         else
@@ -210,10 +505,11 @@ if [ -n "$launch_failed" ] && [ "$RESULT" -ne 0 ]; then
     while IFS= read -r arg; do rerun_selection+=("$arg"); done <<< "$launch_failed"
     focus_pergamenum &
     rerun_focus=$!
-    trap 'kill "$FOCUS_PID" "$rerun_focus" 2>/dev/null || true' EXIT
     set +e
     xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
         -destination 'platform=macOS' \
+        -derivedDataPath "$DERIVED_DATA" \
+        -resultBundlePath "${RESULT_BUNDLE%.xcresult}-rerun.xcresult" \
         "${rerun_selection[@]}" \
         test >"$LOG.rerun" 2>&1
     rerun_result=$?
@@ -234,6 +530,33 @@ if [ -n "$launch_failed" ] && [ "$RESULT" -ne 0 ]; then
     fi
 fi
 
+# MARK: verdict
+
+# Recorded for every session, once the run is settled (a launch rerun included, since RESULT is
+# already the final word by here). Never for a tree that was dirty at the start or is now, or
+# that moved meanwhile: that green would describe no commit.
+record_verdict() {
+    local executed result file tmp
+    if [ "$START_CLEAN" -ne 1 ] || ! is_clean || [ "$(tree_of HEAD)" != "$START_TREE" ]; then
+        printf '\nuitests: albero con modifiche non committate o cambiato durante il giro, nessun verdetto registrato\n'
+        return 0
+    fi
+    executed=$(grep -E "^	 Executed [0-9]+ tests?" "$LOG" | tail -1 | sed -E 's/.*Executed ([0-9]+) tests?.*/\1/' || true)
+    executed="${executed:-0}"
+    result=red
+    [ "$RESULT" -eq 0 ] && [ "$executed" -gt 0 ] && result=green
+    file=$(verdict_file "$START_TREE" "$SCOPE")
+    tmp="$file.$$"
+    {
+        printf 'tree=%s\ncommit=%s\ndate=%s\nscope=%s\nresult=%s\nexecuted=%s\n' \
+            "$START_TREE" "$(git rev-parse HEAD)" "$(date '+%Y-%m-%d %H:%M')" "$SCOPE" "$result" "$executed"
+        printf 'selection=%s\nbundle=%s\nlog=%s\n' "${selection[*]}" "$RESULT_BUNDLE" "$LOG"
+    } >"$tmp" && mv "$tmp" "$file"
+    printf '\nuitests: verdetto %s (%s) registrato per l'"'"'albero %s: lo vedono tutte le sessioni con --status\n' \
+        "$result" "$SCOPE" "${START_TREE:0:7}"
+}
+record_verdict
+
 # MARK: leave nothing behind
 
 # Only the debris. A copy out of /Applications that appeared while the run was going is the
@@ -246,5 +569,13 @@ if [ -n "$yours" ]; then
     printf '\nuitests: una copia installata di Pergamenum è partita durante il giro, la lascio aperta:\n%s\n' "$yours"
 fi
 
+if [ -s "$FOCUS_LOG" ]; then
+    printf '\nuitests: il focus è stato di un altro %d volte (dettaglio in %s):\n' \
+        "$(wc -l <"$FOCUS_LOG" | tr -d ' ')" "$FOCUS_LOG"
+    awk '{ $1=""; print }' "$FOCUS_LOG" | sort | uniq -c | sort -rn | sed 's/^/  /'
+fi
+
 printf '\nuitests: log completo in %s\n' "$LOG"
+printf 'uitests: risultato in %s\n' "$RESULT_BUNDLE"
+printf 'uitests: per diagnosticare senza rilanciare: xcrun xcresulttool get test-results summary --path %s\n' "$RESULT_BUNDLE"
 exit "$RESULT"
