@@ -334,7 +334,8 @@ import Testing
             at: emailDirectory, includingPropertiesForKeys: nil
         )
         let connectionFileName = "MailStoreConnection.swift"
-        for fileURL in contents where fileURL.pathExtension == "swift" && fileURL.lastPathComponent != connectionFileName {
+        for fileURL in contents
+        where fileURL.pathExtension == "swift" && fileURL.lastPathComponent != connectionFileName {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
             if text.contains("sqlite3_") {
                 offending.append(fileURL.lastPathComponent)
@@ -342,100 +343,5 @@ import Testing
         }
 
         #expect(offending.isEmpty, "sqlite3_ found outside MailStoreConnection.swift: \(offending)")
-    }
-
-    // MARK: - Fixtures shared across tests
-
-    private static let inboxMailbox = MailStoreFixture.Mailbox(rowID: 1, url: "ews://account/INBOX")
-
-    private static let sharedConversationID = 112_409
-
-    private static let firstMessage = MailStoreFixture.Message(
-        rowID: 1,
-        subject: "Richiesta offerta staffe antivibranti",
-        senderAddress: "m.rossi@rossi-spa.it",
-        mailboxRowID: 1,
-        conversationID: sharedConversationID,
-        dateSent: Date(timeIntervalSinceReferenceDate: 700_000_000),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 700_000_030)
-    )
-
-    private static let secondMessageSameConversation = MailStoreFixture.Message(
-        rowID: 2,
-        subject: "Re: Richiesta offerta staffe antivibranti",
-        senderAddress: "stefano@stefer.it",
-        mailboxRowID: 1,
-        conversationID: sharedConversationID,
-        dateSent: Date(timeIntervalSinceReferenceDate: 700_010_000),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 700_010_030)
-    )
-
-    private static let thirdMessageOtherConversation = MailStoreFixture.Message(
-        rowID: 3,
-        subject: "Altra pratica",
-        senderAddress: "altro@esempio.it",
-        mailboxRowID: 1,
-        conversationID: 999_999,
-        dateSent: Date(timeIntervalSinceReferenceDate: 800_000_000),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 800_000_030)
-    )
-
-    private static let messageWithAttachments = MailStoreFixture.Message(
-        rowID: 4,
-        subject: "Disegni allegati",
-        senderAddress: "m.rossi@rossi-spa.it",
-        mailboxRowID: 1,
-        conversationID: 555_555,
-        dateSent: Date(timeIntervalSinceReferenceDate: 700_020_000),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 700_020_030),
-        attachments: [
-            MailStoreFixture.Attachment(attachmentID: "att-1", name: "offerta.pdf"),
-            MailStoreFixture.Attachment(attachmentID: "att-2", name: "disegno.dwg"),
-        ]
-    )
-
-    private static let recipientsConversationID = 424_242
-
-    private static let messageWithRecipients = MailStoreFixture.Message(
-        rowID: 5,
-        subject: "Preventivo con destinatari",
-        senderAddress: "m.rossi@rossi-spa.it",
-        mailboxRowID: 1,
-        conversationID: recipientsConversationID,
-        dateSent: Date(timeIntervalSinceReferenceDate: 700_030_000),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 700_030_030),
-        recipients: ["A.Bianchi@ROSSI-SPA.IT", "carla@rossi-spa.it"]
-    )
-
-    private static let messageWithNoRecipients = MailStoreFixture.Message(
-        rowID: 6,
-        subject: "Senza destinatari",
-        senderAddress: "m.rossi@rossi-spa.it",
-        mailboxRowID: 1,
-        conversationID: recipientsConversationID,
-        dateSent: Date(timeIntervalSinceReferenceDate: 700_030_100),
-        dateReceived: Date(timeIntervalSinceReferenceDate: 700_030_130)
-    )
-
-    private static func freshStateDirectory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-mailstore-state-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
-    /// Moves the fixture's `Envelope Index` modification date forward and appends a
-    /// second message to the same database - a stand-in for "Mail wrote since the
-    /// last publish".
-    private static func touchAndAppendMessage(fixture: MailStoreFixture.Built) throws {
-        _ = try MailStoreFixture.build(
-            mailboxes: fixture.mailboxes,
-            messages: [Self.firstMessage, Self.secondMessageSameConversation],
-            in: fixture.root
-        )
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(60)],
-            ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
-        )
     }
 }
