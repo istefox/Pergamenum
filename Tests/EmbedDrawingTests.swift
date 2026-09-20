@@ -34,12 +34,13 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
 
 @MainActor
 @Suite struct EmbedDrawing {
-    private static let note = "prima\n![[foto.png]]\ndopo\n"
-    /// "prima\n" is six characters; the embed's own paragraph starts right after it.
-    private static let embedOffset = 6
-    /// "![[foto.png]]", the embed's whole run - thirteen characters - relative to its own
-    /// paragraph's start (ADR-0018 slice 3, Step 3, item 1: never the trailing newline).
-    private static let marker = HiddenMarker(range: NSRange(location: 0, length: 13), kind: .embed)
+    private static let note = EmbedEditorFixtures.note
+    private static let embedOffset = EmbedEditorFixtures.embedOffset
+    /// The embed's whole run relative to its own paragraph's start (ADR-0018 slice 3, Step 3,
+    /// item 1: never the trailing newline).
+    private static let marker = HiddenMarker(
+        range: NSRange(location: 0, length: EmbedEditorFixtures.runLength), kind: .embed
+    )
     /// The embed's own paragraph, newline included - what the substituted copy's length
     /// must still equal.
     private static var embedParagraphLength: Int {
@@ -153,25 +154,10 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
 /// test here is that wiring, not the delegate's own logic already covered above.
 @MainActor
 @Suite struct EmbedDrawingCoordinator {
-    private static func makeTempVaultRoot() throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-embed-draw-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private static func writeImage(named name: String, in root: URL) throws {
-        let image = NSImage(size: CGSize(width: 40, height: 30))
-        image.lockFocus()
-        NSColor.systemTeal.setFill()
-        NSBezierPath(rect: CGRect(x: 0, y: 0, width: 40, height: 30)).fill()
-        image.unlockFocus()
-        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { throw CocoaError(.fileWriteUnknown) }
-        try png.write(to: root.appending(path: name, directoryHint: .notDirectory))
-    }
-
+    /// Not `EmbedEditorFixtures.editor(...)`, on purpose: this one is a plain `NSTextView` with
+    /// no window and no `claimsCommand`, returning a tuple, because what is under test is the
+    /// render reaching the delegate - not a caret, a click or an undo, which is what the shared
+    /// fixture's real `CompletingTextView` in a real `NSWindow` exists for (ADR-0051 §D4).
     private static func editor(
         text: String, root: URL?, thumbnails: ThumbnailStore?
     ) -> (NSTextView, NoteTextView.Coordinator) {
@@ -188,9 +174,9 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     }
 
     /// Polls until the delegate's own paragraph substitution starts returning the
-    /// attachment, the same way `EmbedResolutionTests.waitForRendition` polls
-    /// `embeds.renditions` - here the assertion is one level further down the pipeline,
-    /// at the hook `EditorDecorationDelegate` actually draws from.
+    /// attachment. Not `EmbedEditorFixtures.waitForRendition`: that one polls
+    /// `embeds.renditions`, and here the assertion is one level further down the pipeline,
+    /// at the hook `EditorDecorationDelegate` actually draws from (ADR-0051 §D4).
     private static func waitForSubstitution(
         offset: Int, in coordinator: NoteTextView.Coordinator, textView: NSTextView
     ) async -> NSTextParagraph? {
@@ -204,9 +190,9 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     }
 
     @Test func aRenderLandingAfterTheFirstPassStillReachesTheDelegate() async throws {
-        let root = try Self.makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot(prefix: "pergamenum-embed-draw-")
         defer { try? FileManager.default.removeItem(at: root) }
-        try Self.writeImage(named: "foto.png", in: root)
+        try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         let thumbnails = ThumbnailStore(
             root: root, directory: root.appending(path: "cache", directoryHint: .isDirectory)
         )
@@ -243,17 +229,9 @@ private func anyTextLocation() -> any NSTextLocation {
     return storage.documentRange.location
 }
 
-@MainActor
-private func makeTempVaultRoot() throws -> URL {
-    let root = FileManager.default.temporaryDirectory
-        .appending(path: "pergamenum-embed-resize-\(UUID().uuidString)", directoryHint: .isDirectory)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    return root
-}
-
 /// A one-page PDF, written to disk so `ThumbnailStore`'s real PDF branch
 /// (`ThumbnailStore.renderPDF`, `fileURL.pathExtension.lowercased() == "pdf"`) renders it,
-/// the same way `EmbedResolutionTests.writeImage` writes a real PNG for `Attachment.resolve`
+/// the same way `EmbedEditorFixtures.writeImage` writes a real PNG for `Attachment.resolve`
 /// to read - R-09 asks that the feature work identically for image and PDF embeds, so this
 /// test's rendition has to come from the PDF path, never a bare `NSImage` standing in for
 /// one.
@@ -342,7 +320,7 @@ private func writePDF(named name: String, in root: URL, pageSize: CGSize = CGSiz
     /// width ADR-0019 §D4 keeps) that the column actually clamps it, so this test would pass
     /// by accident if the clamp were simply skipped.
     @Test func aNoSuffixEmbedFromAPDFRenditionResolvesToTheNaturalSizeClampedToTheColumn() async throws {
-        let root = try makeTempVaultRoot()
+        let root = try EmbedEditorFixtures.makeTempVaultRoot(prefix: "pergamenum-embed-resize-")
         defer { try? FileManager.default.removeItem(at: root) }
         try writePDF(named: "documento.pdf", in: root)
         let thumbnails = ThumbnailStore(

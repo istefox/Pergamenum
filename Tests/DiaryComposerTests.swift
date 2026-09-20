@@ -6,7 +6,7 @@ import Testing
 /// confirmed. Split from `DiaryControllerTests` to keep both files inside the length
 /// SwiftLint allows.
 @MainActor
-private func makeDiary(_ vault: borrowing DayVault) async throws -> (DiaryController, VaultController) {
+private func makeDiary(_ vault: borrowing TemporaryVault) async throws -> (DiaryController, VaultController) {
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let diary = DiaryController(vault: controller)
@@ -14,7 +14,7 @@ private func makeDiary(_ vault: borrowing DayVault) async throws -> (DiaryContro
     return (diary, controller)
 }
 
-/// Takes the root rather than the vault: `DayVault` is noncopyable, and a `#expect`
+/// Takes the root rather than the vault: `TemporaryVault` is noncopyable, and a `#expect`
 /// or `#require` that borrows one does not compile.
 private func diaryOnDisk(_ root: URL) -> String? {
     try? String(contentsOf: root.appending(path: "Diario/20260811.md"), encoding: .utf8)
@@ -22,7 +22,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func composesAnEntryAtTheTimeThatWasClicked() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -45,7 +45,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// when the time and the title both change.
 @MainActor
 @Test func editingAnEntryReplacesItRatherThanAddingAnother() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -63,7 +63,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func cancellingTheComposerWritesNothing() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -81,7 +81,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// other, whatever is in it.
 @MainActor
 @Test func leavesTheDailyNoteAlone() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
@@ -99,7 +99,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// sections, and neither parser may claim the other's lines.
 @MainActor
 @Test func doesNotConfuseATimeBlockWithADiaryEntry() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-11

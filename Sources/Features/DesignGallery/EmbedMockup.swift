@@ -15,24 +15,18 @@ struct EmbedMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("Immagine al posto di ![[foto-1-chi-siamo.jpg]]", EditorMock(style: .image))
-                scene("PDF, prima pagina di ![alt](capitolato.pdf)", EditorMock(style: .pdf))
-                scene("Un click seleziona tutto il blocco, non un carattere", EditorMock(style: .selected))
-                scene("Il cursore rivela l'enfasi, non l'immagine", EditorMock(style: .caretContrast))
-                scene("Riferimento non trovato nel vault", EditorMock(style: .missing))
-                deleteInOneStep
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene("Immagine al posto di ![[foto-1-chi-siamo.jpg]]", EditorMock(style: .image))
+            scene("PDF, prima pagina di ![alt](capitolato.pdf)", EditorMock(style: .pdf))
+            scene("Un click seleziona tutto il blocco, non un carattere", EditorMock(style: .selected))
+            scene("Il cursore rivela l'enfasi, non l'immagine", EditorMock(style: .caretContrast))
+            scene("Riferimento non trovato nel vault", EditorMock(style: .missing))
+            deleteInOneStep
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             content.frame(maxWidth: 620, alignment: .leading)
         }
     }

@@ -1,183 +1,178 @@
-Status: Approved (2026-09-19)
+Status: Approved (2026-09-20)
 
-# SPEC — Forget a pratica's per-path state when its folder is trashed (PG-169)
+# SPEC — Pratiche ledger is only written over the ledger it was loaded from (PG-172)
 
 ## Destination
 
-A SPEC to hand off to `/workplan`: a small fix lane, no new feature. Reaching the end means
-that trashing a pratica folder, or any ancestor of one, leaves no path-keyed Pratiche state
-behind, from every place the app can trash a folder.
+A SPEC to hand off to `/workplan`: one fix chain, no new feature. Reaching the end means no
+Pratiche writer can save a ledger that was never loaded for the vault it is saving into, an
+unreadable ledger file is never overwritten, the in-memory Pratiche state of one vault never
+survives into another, and a trashed pratica's tombstone no longer outlives its own claim.
+
+> Correction from `/workplan` (2026-09-20): reading the code shows six ledger save sites, not four
+> (`remapLedgerConversations` in `PraticheController+Ledger.swift` has the same vault-switch half of
+> the defect). Every «four writers» below means all six save sites; R-02 and R-10 already cover it.
 
 ## Objectives
 
-Pratiche keeps per-pratica state keyed by the pratica folder's vault-relative path: the import
-ledger (`importedMessageIDs`, pending entries, not-in-store list, tray count, bridge entries),
-the tray proposals and counts, the file watcher, the selection, and the in-flight sync or
-regeneration claim. Trashing the folder today leaves all of it in place. Recreating a pratica
-with the same name then inherits the old one's history: the stale `importedMessageIDs`, the
-«non più in Mail» list, the bridge entries, `lastOpenedAt` and the tray count. Corrected
-2026-09-19 after testing: the first reading of this ticket said `workItems` would refuse to
-re-queue those messages, but `MailStoreReader.rows` builds every row with `messageID: nil`, so
-stale ids alone do not filter anything and the engine's own on-disk `Message-ID` scan decides.
-The defect is state leaking into a folder that never earned it, with no error to show for it.
+`PraticheController` keeps an in-memory copy of the per-vault ledger. It starts empty and only
+`load(from:)` fills it, which the Pratiche pane, the settings tab and two sheets call; the app
+never calls it at launch. Four writers (the tray count, «opened» stamp, folder-move remap and
+sync-outcome record) mutate that copy and save it straight back. A folder move or a sync outcome
+that happens before the pane was ever opened therefore overwrites the real ledger with an empty or
+partial one, and loses every pratica's imported ids, bridge entries, not-in-store list, last-opened
+date and tray count, none of which is recoverable from disk. The second variant is the same defect
+across a vault switch: a ledger loaded for vault A is saved into vault B's file. Confirmed by
+reading the writers, not yet reproduced at runtime.
 
-This is the deletion twin of the folder-relocation orphaning already fixed (ADR-0026 §D7,
-`didRelocateFolders`): same state, same key, same shape of hazard, opposite verb. The fix
-mirrors that one so the two cannot drift.
+Two neighbouring defects share the cause or the hook and ride along: other in-memory Pratiche state
+(tray counts, tray proposals, file watchers) is never reset when the vault changes, and a
+tombstone left by a trashed pratica (PG-169) is only dropped when nothing at all is in flight.
 
 ## Scope and non-goals
 
 In scope:
-- One hook on the vault's single folder-trash door, fired after a successful trash, carrying
-  the trashed folder's vault-relative path.
-- Pratiche subscribes and drops every piece of path-keyed state equal to or nested under it.
-- An in-flight sync or regeneration for an affected pratica is stopped and its outcome
-  discarded rather than written back.
-- Removal of the `TODO` comment in the pratica delete command that this defect left there.
+- A «ledger loaded for this file» marker on the controller, and one door through which every
+  ledger mutation and save goes.
+- A ledger file that exists but cannot be read is left untouched by every writer.
+- When the marker shows a different vault, the vault-scoped in-memory state is reset.
+- The tombstone of a trashed pratica is dropped per path, when no claim on that path remains.
 
-Non-goals (detail under Out of scope): pruning ledger keys orphaned by deletions the app did
-not perform, undoing a ledger removal, connector changes, any change to the on-disk ledger format.
+Non-goals: the ledger's on-disk format, the connectors, the read side (a read before any load
+still sees an empty ledger, which loses nothing), the other half of PG-173 (a queued sync for a
+trashed pratica reporting «non ha un dossier leggibile»), PG-168, and the unreadable-file recovery
+UI (no quarantine, no repair action).
 
 ## Decisions
 
-- **Generic hook on the trash door, not a fix inside the pratica delete command** — the
-  folder-trash door has three callers (the pratica «Elimina pratica» command, the note list's
-  folder delete, the Workspace browser's folder delete). Trashing an ancestor such as a
-  project folder orphans every descendant pratica the same way. A hook on the door covers all
-  three and the ancestor case with one subscription, exactly as `didRelocateFolders` does for
-  moves. Rejected: fixing only the pratica command as the ticket literally names it — leaves the
-  same defect reachable from two other surfaces and from any ancestor deletion.
-- **Subtree-aware removal** — a key equal to the trashed path or under `"<path>/"` is removed,
-  with the trailing slash in the prefix so a sibling named `a-altro` is never taken for a
-  descendant of `a` (the convention the move batch and `remappedPath` already use). Rejected:
-  exact-key removal — misses descendant pratiche.
-- **Every path-keyed piece of state goes, not only the ledger** — tray proposals, tray counts,
-  the per-pratica watcher, and the selection travel with the ledger key, as they already do on
-  relocation. A stale watcher or a dangling selection on a folder that no longer exists is the
-  same class of leak. Rejected: ledger only — the ticket's wording, but it would leave the
-  in-memory state disagreeing with the persisted one until the next launch.
-- **An in-flight run is stopped and its outcome discarded** — reuses the cooperative stop the
-  relocation path already requests, and makes a run whose path was deleted unable to write its
-  outcome back. Without it `recordSyncOutcome` would recreate the key the hook just removed, and
-  the engine would keep writing into a folder that was just trashed (ADR-0043 §D7's shape:
-  a check made before the `await` is a filter, not a guard). Rejected: removing the key and
-  ignoring the race — resurrects the very defect being fixed, only less often.
-- **No pruning of orphaned keys on load** — a key with no folder on disk is not proof the
-  pratica is gone: a Finder move, an unmounted volume or a not-yet-scanned index looks the same,
-  and deleting the ledger for those is unrecoverable where an orphan is merely wasteful.
-  Rejected: prune-on-load — would turn the relocation bug into silent history loss.
-- **Ledger removal is not journalled and needs no undo** — assumption, see Edge cases: the sync
-  engine matches messages already on disk by `Message-ID` before writing, so a folder restored
-  from the Trash with no ledger entry re-reconciles rather than duplicating or overwriting.
+- **Marker plus lazy load, not an eager load at launch** — the controller remembers which ledger
+  file its in-memory copy came from. A writer whose session points at a different file, or at none
+  yet, reloads from disk first, then mutates. This covers "never loaded" and "loaded for another
+  vault" with one rule and does not depend on any caller remembering to call `load(from:)`.
+  Rejected: eager load on session change — needs a hook on the vault switch and an ordering proof,
+  and still leaves a writer that runs before the hook unprotected. Rejected: both — more surface
+  for the same guarantee.
+- **One door, not a check in each writer** — the ledger becomes read-only outside the controller's
+  own ledger code and is changed only through one method that verifies the marker, mutates and
+  saves. A fifth writer cannot forget the check. Same shape as the vault-boundary resolver in
+  ADR-0041 (a resolver callers cannot route around, not an assertion they can skip). Rejected: an
+  `ensureLoaded` helper each writer calls — this is how the four writers reached the defect.
+- **An unreadable ledger file is never saved over** — the load distinguishes «missing» (fresh,
+  saving is fine) from «present but unreadable» (corrupt JSON or a schema this build does not
+  know). For the second, every writer skips its save, the app works on an empty in-memory ledger
+  for the session, and one message names the file, once per file per session. The person repairs or
+  deletes the file by hand. Rejected: moving it aside automatically — leaves an orphan file nobody
+  is told about, and turns a refusal into a silent policy.
+- **The PG-169 special case in `forgetLedgerState` collapses into the same door** — its
+  «if the in-memory ledger is empty, reload» heuristic is exactly what the marker replaces, and a
+  heuristic that treats a genuinely empty ledger as «never loaded» would keep reloading needlessly.
+- **A change of vault resets what belongs to the vault** — when the marker names a different file,
+  the tray proposals, tray counts, file watchers, selection, timeline and details are cleared
+  together with the ledger. Today only the no-vault branch of `load(from:)` clears anything, and it
+  clears neither the tray state nor the watchers. Rejected: ledger only — leaves vault A's badges
+  showing on any vault-B pratica with a colliding path.
+- **A tombstone is dropped per path** — the tombstone for path X falls when no sync or
+  regeneration that captured X is still in flight, regardless of claims on other paths. It is kept
+  while a claim on X is open, since that claim is stale by definition and refusing it is correct.
+  Rejected: a per-claim identity token — distinguishes a recreated same-name pratica from a stale
+  claim on it, but touches every caller of the path resolver for a P3 cosmetic case. Rejected:
+  leaving it — the refusal of a healthy sync by an unrelated open sheet is the reported symptom.
 
 ## Constraints
 
-- **Hook shape mirrors `didRelocateFolders`** — a closure on the vault controller, wired once in
-  the app's `init`, so the vault controller gains no reference to anything Pratiche-shaped —
-  origin: existing ADR-0026 §D7 and the dependency direction ADR-0007 fixes.
-- **Fires only after a trash that succeeded** — a refused or failed trash (unsaved note in the
-  folder, disk error) must leave the ledger untouched — origin: correctness, the state
-  describes a folder that still exists.
-- **No `IndexCache.schemaVersion` change, no ledger file-format change, no connector change** —
-  origin: the ledger is a plain per-vault file both connectors read; removing a key needs neither.
-- **No test is disabled or weakened**; new tests use Swift Testing and a temporary state base —
-  origin: CLAUDE.md working agreements.
-
-## Stack
-
-Swift 6, the existing vault controller / Pratiche controller pair. No dependency added.
+- **Ledger file format unchanged, `IndexCache.schemaVersion` unchanged** — origin: ADR-0036 §D3,
+  and the connectors read this same file (`VaultAPI.pratiche`).
+- **The connectors keep reading exactly what they read** — origin: ADR-0007; a change to the
+  shared ledger type must compile in `perg` and `pergamenum-mcp`.
+- **Tests never resolve the real state directory** — origin: CLAUDE.md principle 3; every test
+  passes a temporary state base.
+- **No test is disabled or deleted; tests that assign the ledger directly move onto a test seam**
+  — origin: CLAUDE.md working agreements.
+- **PG-169's behaviour is preserved** — origin: ADR-0026 §D7 as amended; the folder-trash test
+  files stay green unchanged in what they assert.
 
 ## Data model
 
-Unchanged. The per-vault ledger maps a pratica folder path to its state; this work only
-removes entries. Every in-memory dictionary keyed by the same path (tray proposals, tray
-counts, watchers) is treated identically.
+One new piece of controller state: the ledger file the in-memory copy was loaded from, absent when
+nothing is loaded. A ledger loaded from a file is one of three outcomes: loaded, missing (empty,
+writable) or unreadable (empty in memory, not writable). The persisted ledger itself is untouched.
 
 ## API / interfaces
 
-- The vault controller gains one optional closure, invoked with the vault-relative path of a
-  folder that was just trashed, after the trash succeeded and before the rescan is scheduled.
-- The Pratiche controller gains one entry point that the closure calls, and a removal routine
-  that is the deletion counterpart of its existing relocation routine.
-- The removal saves the ledger once, at the end, like the relocation routine does.
-
-## UI flows
-
-No visible change. «Elimina pratica» keeps its confirmation alert and its outcome.
+No connector, CLI or MCP change. Internally the controller's ledger stops being assignable from
+outside its own ledger code; a single mutation entry point replaces the four direct save sites and
+the special case in `forgetLedgerState`. `PraticaLedger`'s load gains a way to tell «missing» from
+«unreadable»; its shared file compiles into both connector targets, so the change is additive.
 
 ## Edge cases
 
-- **Ancestor trashed** — deleting a folder that merely contains one or more pratiche removes
-  all their state; a sibling whose name shares a prefix is untouched.
-- **A pratica selected inside the trashed subtree** — the selection is cleared and the timeline
-  emptied, as the delete command already does for the pratica it deletes.
-- **Sync or regeneration in flight for a pratica in the subtree** — stopped, outcome discarded,
-  the key is not recreated, the folder is not recreated by the engine after the trash.
-- **Restore from the Trash** — the folder returns without a ledger entry. Assumed safe because
-  the engine reads the folder's existing message files by `Message-ID` before deciding what to
-  write. This is the one claim resting on reading code rather than running it, so it needs a
-  test that proves it (R-07), not just a hope.
-- **Trash refused or failed** — no state is touched.
-- **Ledger cannot be saved** — reported through the existing problem channel, as the
-  relocation routine does; the in-memory state is still cleaned.
-- **Delete, recreate under the same name, sync** — the new pratica starts from an empty
-  ledger and imports every message that matches, which is the acceptance case for the ticket.
+- Writer runs on a controller that never loaded, file present and readable: reload, mutate, save;
+  every other pratica's state survives.
+- Writer runs on a controller that never loaded, file missing: starts from empty, saves. That is
+  a first-ever write, not a loss.
+- Loaded for vault A, then a writer receives vault B's session: reload B's file, reset the
+  vault-scoped state, mutate, save. A's file is not touched.
+- Vault closed (no session): marker cleared, same reset as above.
+- File unreadable: no write, one message per file per session, the app keeps working. Once the file
+  is readable again, the next load returns to normal saving.
+- A sync outcome for a vault that is no longer the live one already reads that vault's own file
+  fresh; it goes through the same unreadable-file rule.
+- Tombstone: a claim on another path stays open while X's own claim ends; X's tombstone drops. A
+  claim on X still open keeps it.
 
 ## Test seams
 
-Two, both existing and both at the controller level, no UI test:
-1. The Pratiche controller's own unit suite, where the relocation routine is already pinned
-   (exact key, descendant under an ancestor, sibling prefix, tray/selection/watcher/in-flight
-   path, persistence to disk, no redirect when idle). The removal routine gets the same battery.
-2. The vault controller's folder-operation tests, for the hook itself: fires with the right path
-   after a successful trash, does not fire on a refused or failed one.
-
-The end-to-end shape (delete, recreate, sync imports everything) is asserted at seam 1 by
-driving the same door the relocation tests already drive, not through the UI. The UI suite is
-neither needed nor extended; `scripts/uitests.sh` is unaffected.
+One seam, at the level existing tests already use: `PraticheController` driven directly, with a
+real `ledger.json` written under a temporary state base and read back after each writer runs. This
+is where the folder-trash tests already sit, so no new seam is needed. The vault-switch case uses
+two sessions on two temporary state bases. The tombstone case uses the controller's own claim
+begin/end calls, as the PG-169 mid-run tests do. The «one door» guarantee is a type-system property.
 
 ## Success criteria
 
-- [ ] R-01 — Trashing a pratica folder removes its ledger key from memory and from the persisted
-  ledger file.
-- [ ] R-02 — Trashing an ancestor folder removes the ledger keys of every pratica nested inside
-  it, and leaves a sibling folder whose name merely shares the prefix untouched.
-- [ ] R-03 — The same removal applies to tray proposals, tray counts and the per-pratica watcher,
-  and clears the selection when it points inside the trashed subtree.
-- [ ] R-04 — The hook fires from all three callers of the folder-trash door, not only from the
-  pratica delete command.
-- [ ] R-05 — The hook does not fire, and no state changes, when the trash is refused or fails.
-- [ ] R-06 — A sync or regeneration in flight for a trashed pratica is stopped, and its outcome
-  does not recreate the ledger key.
-- [ ] R-07 — A pratica folder restored from the Trash with no ledger entry re-syncs without
-  duplicating or overwriting the message files already in it.
-- [ ] R-08 — Deleting a pratica and creating another with the same name yields a ledger that
-  starts empty, so the new pratica's first sync is not filtered by the old one's imported IDs.
-- [ ] R-09 — The `TODO` comment in the pratica delete command describing this defect is removed
-  and the ledger-orphaning note in the earlier fix's plan document is updated to point at the fix
-  (no-test: a comment and a documentation obligation, nothing to assert).
-- [ ] R-10 — Build, linter, and the unit suite are green with no test disabled.
+- [ ] R-01 — A controller that never loaded, with a readable ledger on disk, runs each of the four
+  writers (tray count, opened stamp, folder move, sync outcome); afterwards the file still holds
+  every pratica's prior state and only the intended change differs.
+- [ ] R-02 — A controller loaded for vault A whose writer then receives vault B's session leaves
+  A's file byte-identical, and B's file holds B's prior state plus the change and nothing from A.
+- [ ] R-03 — With no ledger file at all, a writer starts from empty and saves; that first write is
+  not treated as a refusal.
+- [ ] R-04 — With an unreadable ledger file, none of the four writers nor the trash path alters the
+  file (bytes identical before and after), and exactly one problem message naming that file is
+  reported per session however many writers run.
+- [ ] R-05 — After the unreadable file is repaired to a readable one and the ledger is loaded
+  again, writers save normally.
+- [ ] R-06 — Loading for vault B after vault A clears tray proposals, tray counts, watchers,
+  selection, timeline and details; the pratiche list holds no A entry. Closing the vault clears the
+  same set.
+- [ ] R-07 — After X's claim ends, X's tombstone is gone even while a claim on another path is
+  open; a fresh sync on a recreated X is not refused.
+- [ ] R-08 — While a claim on X is still in flight, X's tombstone remains and that claim's outcome
+  is still discarded (PG-169's behaviour).
+- [ ] R-09 — The existing PG-169 folder-trash, mid-run-trash, relocation and record-outcome test
+  files pass without loosening any assertion, and both connector targets still build.
+- [ ] R-10 — The ledger cannot be assigned from outside the controller's ledger code. (no-test: enforced by the type system, verified by the build and by review of the diff)
 
 ## Not yet specified
 
-_none_
+- How the per-vault file watchers are stopped when the marker changes, and whether the controller
+  already holds the handles to stop them or only drops them. For `/workplan` to read off the code;
+  the outcome required is in R-06.
 
 ## Out of scope
 
-- **Ledger keys orphaned by deletions or moves outside the app** (Finder, another tool) — no
-  pruning on load, for the reason in Decisions. Recorded so a later reader does not mistake the
-  absence for an oversight. Stefano's own already-orphaned entries were repaired by hand under
-  the earlier plan and need nothing here.
-- **A stale ledger entry left by a pratica that stops being a pratica** (its `pratica.md` removed
-  while the folder stays) — a different trigger, no folder trash involved.
-- **Undo of a folder trash** — folder delete is not journalled (ADR-0022) and recovery is the
-  Trash itself.
-- **Connectors** — `perg` and `pergamenum-mcp` read the ledger but never delete a folder.
-- **The wider async-write hazards** tracked under their own PG numbers.
+- **Unreadable-file recovery UI** — the refusal is the whole behaviour here; a repair or quarantine
+  action is a separate feature, and the ledger is rebuildable by design (a fresh one costs one
+  re-sync).
+- **PG-173 first half** — a queued sync reporting «non ha un dossier leggibile» for a trashed
+  pratica; cosmetic, needs `SyncRunQueue`'s private state, a different mechanism.
+- **PG-168 and #208** — relocation TOCTOU windows and a missing ledger write for an unrecoverable
+  followed conversation; neither shares the loading defect.
+- **The read side** — a read of the ledger before any load sees an empty one and loses nothing.
 
 ## Domain terms
 
-- **Ledger** — the per-vault file recording, per pratica folder path, what was imported from
-  Mail. Not the source of truth for content, which is the files on disk (principle 3).
-- **Folder-trash door** — the vault controller's single method that moves a folder to the
-  Finder's Trash, whatever surface asked for it.
+- **Marker** — the record of which ledger file the in-memory ledger was loaded from.
+- **Tombstone** — the entry in the forgotten-paths set left when a pratica folder is trashed
+  while a sync or regeneration holds its path (PG-169).
+- **Claim** — a sync or a «Rigenera…» attempt holding a pratica path as its own.

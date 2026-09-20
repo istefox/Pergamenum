@@ -20,11 +20,13 @@ import XCTest
 ///   R-11 and R-12 are proven through it here.
 /// - **The drag half was spiked first**, per Task 7's own instruction, with a throwaway test
 ///   doing `row.press(forDuration: 0.4, thenDragTo: folderRow)` in the Workspace tree, run five
-///   separate times through `scripts/uitests.sh`. It passed 5/5 - `.press(forDuration:
-///   thenDragTo:)` does start and complete a real `NSDraggingSession` against a folder row's
-///   `.dropDestination(for: VaultItemDrag.self)` on this machine - so R-15's four named
-///   scenarios (single-row board drag, folder drag, multi-row drag, undo of a move) are written
-///   for real below rather than deferred to a manual-verification item.
+///   separate times through `scripts/uitests.sh`. It passed 5/5 - that call did start and
+///   complete a real `NSDraggingSession` against a folder row's
+///   `.dropDestination(for: VaultItemDrag.self)` - so R-15's four named scenarios
+///   (single-row board drag, folder drag, multi-row drag, undo of a move) are written for real
+///   below rather than deferred to a manual-verification item. On macOS 27 that exact call
+///   stopped delivering a drag at all (PG-162); the four scenarios now drive it through
+///   `dragTo(_:pressing:)` (`DragSupport.swift`), which says why.
 ///
 /// Every row this file interacts with sits at the vault's own top level. That is a fixture
 /// choice, not a limitation of what the feature can do: `WorkspaceRow`'s chevron carries no
@@ -310,9 +312,21 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         XCTAssertTrue(destination.waitForExistence(timeout: 5))
 
-        source.press(forDuration: 0.4, thenDragTo: destination)
+        // A second attempt if the first did not land, and only then. Measured on 2026-09-20
+        // (PG-180): with the pointer moved by anything else during the run this drag failed 13
+        // times in 20, always at ~17 s with the source row still in place; on a machine nobody
+        // touched it passed 30 in 30, and under CPU load alone it did not change (2 in 20, as on
+        // an idle one). A synthesized drag shares the pointer with the person at the keyboard, so
+        // it can be lost without the app having done anything wrong. The retry is safe because a
+        // lost drag leaves the source row where it was, and a drop that only arrived late is
+        // caught by the wait, which is why the source is checked before a second gesture.
+        let moved = vault.appending(path: "Target/DragBoard.canvas")
+        source.dragTo(destination)
+        if !waitForFile(moved, toExist: true, timeout: 4), source.exists {
+            source.dragTo(destination)
+        }
 
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragBoard.canvas"), toExist: true, timeout: 8),
+        XCTAssertTrue(waitForFile(moved, toExist: true, timeout: 8),
                      "il drag di una singola riga board non ha spostato il file")
         XCTAssertTrue(waitForFile(vault.appending(path: "DragBoard.canvas"), toExist: false, timeout: 8))
     }
@@ -326,7 +340,7 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         XCTAssertTrue(destination.waitForExistence(timeout: 5))
 
-        source.press(forDuration: 0.4, thenDragTo: destination)
+        source.dragTo(destination)
 
         XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragFolder/inner.canvas"), toExist: true, timeout: 8),
                      "il drag di una cartella non ha portato con sé il suo contenuto")
@@ -349,7 +363,7 @@ final class SidebarMoveUITests: XCTestCase {
         // The drag starts on `rowA`, which is part of the lit set - `WorkspaceRow
         // .beginDrag()` reads `effectiveItems` at that moment and carries the whole set,
         // never just the row the gesture began on (ADR-0026 §D4, R-11).
-        rowA.press(forDuration: 0.4, thenDragTo: destination)
+        rowA.dragTo(destination)
 
         XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragMultiA.canvas"), toExist: true, timeout: 8),
                      "il drag multi-riga non ha spostato DragMultiA")
@@ -394,7 +408,7 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         XCTAssertTrue(destination.waitForExistence(timeout: 5))
 
-        source.press(forDuration: 0.4, thenDragTo: destination)
+        source.dragTo(destination)
         XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragUndo.canvas"), toExist: true, timeout: 8),
                      "il drag non ha spostato il file prima del tentativo di annullamento")
 

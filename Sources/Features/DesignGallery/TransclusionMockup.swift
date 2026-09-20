@@ -15,24 +15,18 @@ struct TransclusionMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("Nota intera", NoteMock(scene: .whole))
-                scene("Una sezione sola: ![[Prove in laboratorio#Campioni]]", NoteMock(scene: .section))
-                scene("Oltre il tetto: si taglia e si offre la nota", NoteMock(scene: .capped))
-                scene("Bersaglio che non esiste (chiude PG-020)", NoteMock(scene: .missing))
-                scene("Profondità uno: dentro una resa, un ![[…]] è un link", NoteMock(scene: .nested))
-                scene("Nell'editor: la riga sorgente resta, la nota sta sotto", EditorMock())
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene("Nota intera", NoteMock(scene: .whole))
+            scene("Una sezione sola: ![[Prove in laboratorio#Campioni]]", NoteMock(scene: .section))
+            scene("Oltre il tetto: si taglia e si offre la nota", NoteMock(scene: .capped))
+            scene("Bersaglio che non esiste (chiude PG-020)", NoteMock(scene: .missing))
+            scene("Profondità uno: dentro una resa, un ![[…]] è un link", NoteMock(scene: .nested))
+            scene("Nell'editor: la riga sorgente resta, la nota sta sotto", EditorMock())
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             content.frame(maxWidth: 620, alignment: .leading)
         }
     }

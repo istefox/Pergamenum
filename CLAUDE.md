@@ -231,6 +231,14 @@ move the previous copy aside rather than deleting it.
   the time the write and its hand-off ran, the tab it refused to find dirty had become dirty. The
   guard belongs on the same side of the suspension as the action it protects: ask again after the
   `await`, or act on state read after it, never on a check made before it.
+- **A ledger, cache or registry the app holds in memory and saves back must record which file it
+  was read from.** A writer that cannot prove it is writing over the file it loaded reads first, and
+  never saves over a file it could not read. `PraticheController.ledger` could be written back from
+  the wrong memory two ways (a folder rename or a first sync before the pane was ever opened; a
+  vault switch that left vault A's ledger in memory over vault B's file) because nothing tied the
+  memory to a file — and a corrupt `ledger.json` was the same loss with a third trigger. The fix is a marker
+  (`LedgerOrigin`) plus one write door (`updateLedger(_:_:)`) with `private(set)` on the property,
+  so a new writer cannot route around it (ADR-0052 §D1/§D3).
 - Verify every change against `docs/20260811_Pergamenum_SpecApp.md`. If the spec and
   an instruction disagree, say so before writing code.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
@@ -296,6 +304,26 @@ move the previous copy aside rather than deleting it.
   to headings, and two tests spent days looking for a field that no longer answered to
   that name while the feature worked perfectly. Use `accessibilityIdentifier`, which is
   the part of a view that is a contract.
+- **A UI test drags through `dragTo(_:pressing:)` (`UITests/DragSupport.swift`), never through
+  `press(forDuration:thenDragTo:)`.** On macOS 27 that call delivers no translation at all - a
+  resize reads its untouched starting size, a sidebar drag never starts - while
+  `click(forDuration:thenDragTo:)` on the same gesture works (PG-162). For weeks it read as the OS
+  refusing synthesized drags and twelve tests stayed red on that theory; the helper's comment
+  records the variants already tried and failed, so they are not tried again.
+- **The UI suite runs only through `scripts/uitests.sh`, which owns its DerivedData, its evidence and
+  what it learned.** It builds into `build/uitests-dd` (the `Stop` hook's unit build and a UI run on
+  one `build.db` produced "database is locked" reds that were nobody's defect, PG-183), refuses to
+  start beside another `xcodebuild`, labels a launch failure whatever its duration, and writes a
+  `.xcresult` next to its log. **A red is diagnosed from that bundle (`xcrun xcresulttool get
+  test-results summary --path <bundle>`) before anything is rerun.**
+  **A run is paid once per tree, not once per session** (~25 minutes of the machine, and the pointer
+  is shared with the person at it): a run over a clean tree writes a verdict, keyed by the tree hash,
+  into the git common dir every worktree shares. **Before running anything, ask
+  `scripts/uitests.sh --status`** - it answers instantly whether this tree or `main` is already
+  verified and what changed since the last full green; a full run over a verified tree is skipped
+  (`--force` overrides), and a second session cannot start one while another holds the lock.
+  `--affected` runs only the classes a change since that green can reach, and nothing when none can.
+  The whole suite is run once by whoever merges to `main`; every other session reads the verdict.
 - **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
   the app are usually still running on a vault inside
   `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not
@@ -416,6 +444,7 @@ The one-line summary of each already lives in the Chain decision index below.
 - **ADR-0048** — A part whose inline MIME payload decodes to zero bytes is not always "not yet downloaded": Exchange sometimes externalizes it permanently to Mail's own sibling `Attachments/<ROWID>/<part>/` directory instead. `MIMEPart` gains a real RFC 3501 (IMAP-style) `partNumber`, closing a pre-existing flat-index bug in `storePath` for free; `decodeBody` tries the sibling file through the exact same integrity/threshold/place pipeline an inline attachment already uses before conceding to ADR-0040's pending retry. Amends ADR-0040 §D2, widens SPEC R-10 → `docs/adr/0048-externalized-attachments-resolved-from-sibling-directory.md`
 - **ADR-0049** — A pratica links to notes, tasks and boards: three foreign `pergamenum-dossier-links-*` keys on `pratica.md`, kept out of `Dossier` on purpose so `Dossier.merging`'s own C4 rule cannot erase them; every reference is written as a wikilink (`[[Titolo]]`, `[[Nome.canvas]]`, `[[Nota]] ^id(3)`), which is what makes R-07 (rename-safe) free through the note/board rename passes that already rewrite every `[[…]]`. One resolver (`PraticaLinkResolver`) answers `unique`/`ambiguous`/`missing` for all four relations by delegating to the two resolvers that already exist; nothing is cached (`IndexCache.schemaVersion` stays 4), a link is always read off the file that owns it. `PraticaCommand`/`MessageCommand` gain link/unlink verbs and one new picker, `PraticaLinkPicker`; the inspector gains three read-only sections (R-04, R-06) and the timeline gains a per-row aligned column (R-05) that never switches the inspector's own content (R-09). The write door reuses `DossierWriter`'s `expecting:` precondition shape. The connector gets one new file, `Sources/Connector/VaultPraticheLinks.swift`, read and write, translated by both front ends → `docs/adr/0049-pratiche-links-to-notes-tasks-and-boards.md`
 - **ADR-0050** — Closes `PG-152`/#281: the journal gesture (`operation` id + `command`) becomes a task-local `JournalGesture.current` (`Sources/Core/Vault/`), bound by `transaction(_:_:)` through `withValue` and read back by `currentOperation`/`journalCommand` (now computed), instead of `@MainActor` state set for the duration of an `async` body. Two transactions open at once on two tasks each stamp their own id; the nested-transaction assertion becomes exact instead of a concurrency false positive. Not the issue's «actor-owned operation stack», rejected because a stack disambiguates nesting, never interleaving. `VaultDisk` untouched, no schema/format/manifest change; the three `journalCommand`/`journal` borrow-and-return sites (`+TagRename`/`+TaskDrop`/`+BoardDrop`) are named as the same hazard shape and left for a follow-up. Acceptance is a gate-forced deterministic interleaving test (ADR-0043 §D9's rule) → `docs/adr/0050-journal-gesture-travels-with-the-task.md`
+- **ADR-0052** — Closes `PG-172`/#312 and the second half of `PG-173`: `PraticheController.ledger` becomes `private(set)` with a `LedgerOrigin` marker (`none`/`loaded(URL)`/`unreadable(URL)`) recording which file the memory came from, and every ledger mutation — six save sites, not the four the SPEC counted — goes through one door, `updateLedger(_:_:)` (`LedgerTarget` live/stale, `LedgerWrite` outcome), which reads first when the marker does not match the target file, applies the change to a local copy, and saves only if it changed. A `ledger.json` that exists but cannot be read is never saved over (`PraticaLedger.read(from:) -> Read`, one visible sentence, no quarantine or repair UI). PG-169's «is the in-memory ledger empty?» heuristic in `forgetLedgerState` is deleted; a vault change resets the vault-scoped state (`pratiche`, tray proposals/counts, watchers, selection, timeline, details, links) but not the redirect map, tombstones or in-flight claims. The tombstone falls per path (`dropTombstoneIfUnclaimed`) instead of all-or-nothing, amending ADR-0026 §D7's 2026-09-19 note. The door sits at the foot of `PraticheController.swift` because Swift confines a `private(set)` setter to the declaring file; `PraticaLedger.swift` stays Foundation-only for `perg`/`pergamenum-mcp`. On-disk format, `IndexCache.schemaVersion` (4) and every protected interface untouched. Extends ADR-0036 §D3, amends ADR-0026 §D7 → `docs/adr/0052-pratiche-ledger-marker-and-one-write-door.md`
 
 ## Decisions from later chains (ADR-0027 – ADR-0041)
 

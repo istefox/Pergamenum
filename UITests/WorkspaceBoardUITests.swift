@@ -68,10 +68,7 @@ final class WorkspaceBoardUITests: XCTestCase {
         // The grip is centred on the corner, so half of it lies outside the card:
         // this is the exact point that could not be hit before.
         let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-        corner.press(
-            forDuration: 0.4,
-            thenDragTo: corner.withOffset(CGVector(dx: 160, dy: 90))
-        )
+        corner.dragTo(corner.withOffset(CGVector(dx: 160, dy: 90)))
 
         let node = try waitForNode("aaaa000000000001") { $0.width > self.cardA.width + 100 }
         XCTAssertGreaterThan(node.width, cardA.width + 100, "la card non è stata allargata")
@@ -92,10 +89,7 @@ final class WorkspaceBoardUITests: XCTestCase {
         let card = try element(nodeID: "aaaa000000000001")
         card.click()
         let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-        corner.press(
-            forDuration: 0.4,
-            thenDragTo: corner.withOffset(CGVector(dx: 60, dy: 40))
-        )
+        corner.dragTo(corner.withOffset(CGVector(dx: 60, dy: 40)))
 
         let node = try waitForNode("aaaa000000000001") { $0.width > self.cardA.width + 20 }
         XCTAssertGreaterThan(node.width, cardA.width + 20, "grip non afferrabile da zoomata")
@@ -120,10 +114,7 @@ final class WorkspaceBoardUITests: XCTestCase {
 
         app.typeKey("a", modifierFlags: [])
         from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .press(
-                forDuration: 0.4,
-                thenDragTo: to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            )
+            .dragTo(to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
 
         let edges = try waitForEdges { $0.count == 1 }
         XCTAssertEqual(edges.first?["fromNode"] as? String, "aaaa000000000001")
@@ -142,10 +133,7 @@ final class WorkspaceBoardUITests: XCTestCase {
         let group = try element(labelled: "GRUPPO")
         // Well inside the middle and clear of the card the group holds.
         let middle = group.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
-        middle.press(
-            forDuration: 0.4,
-            thenDragTo: middle.withOffset(CGVector(dx: 150, dy: 90))
-        )
+        middle.dragTo(middle.withOffset(CGVector(dx: 150, dy: 90)))
 
         // Past the autosave delay before looking, or this test passes on a board that
         // did move and simply had not been written yet - which is what it did against
@@ -161,10 +149,7 @@ final class WorkspaceBoardUITests: XCTestCase {
         // On the left band of the frame, which is the only part that answers.
         let band = group.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
             .withOffset(CGVector(dx: 4, dy: 0))
-        band.press(
-            forDuration: 0.4,
-            thenDragTo: band.withOffset(CGVector(dx: 200, dy: 0))
-        )
+        band.dragTo(band.withOffset(CGVector(dx: 200, dy: 0)))
 
         let moved = try waitForNode("gggg000000000003") { $0.x > 100 }
         XCTAssertGreaterThan(moved.x, 100, "il gruppo non si muove nemmeno dalla cornice")
@@ -181,10 +166,7 @@ final class WorkspaceBoardUITests: XCTestCase {
         // Asserting on the outcome rather than on a highlight keeps this test about
         // behaviour: a selection the pointer cannot act on is not a selection.
         let corner = inside.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-        corner.press(
-            forDuration: 0.4,
-            thenDragTo: corner.withOffset(CGVector(dx: 120, dy: 70))
-        )
+        corner.dragTo(corner.withOffset(CGVector(dx: 120, dy: 70)))
 
         let node = try waitForNode("cccc000000000004") { $0.width > 320 }
         XCTAssertGreaterThan(node.width, 320, "la card dentro il gruppo non è raggiungibile")

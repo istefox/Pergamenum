@@ -45,28 +45,9 @@ import Testing
         #expect(base.port == 3777)
     }
 
-    /// One `deletingLastPathComponent()` off this file's own directory (`Tests/`) gives the
-    /// repository root, then down into `Sources`.
+    /// The repository root, then down into `Sources`. `resolvedRepoRoot()` has already checked
+    /// that `Sources` exists, so this cannot hand back a path that is not there.
     private static func resolvedSourcesRoot() throws -> URL {
-        let thisFileURL = URL(fileURLWithPath: #filePath)
-        let candidateRoot = thisFileURL
-            .deletingLastPathComponent() // PlaudIsolationTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-            .appendingPathComponent("Sources")
-        guard FileManager.default.fileExists(atPath: candidateRoot.path) else {
-            throw RepoRootResolutionError.notFound(candidate: candidateRoot.path)
-        }
-        return candidateRoot
-    }
-}
-
-private enum RepoRootResolutionError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-
-    var description: String {
-        switch self {
-        case let .notFound(candidate):
-            return "Could not resolve Sources/ from #filePath. Candidate tried: \(candidate)"
-        }
+        try resolvedRepoRoot().appendingPathComponent("Sources")
     }
 }

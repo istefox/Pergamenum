@@ -70,7 +70,7 @@ import Testing
 
 @MainActor
 @Test func aTaskCanBeComposedIntoAChosenNoteRatherThanTheInbox() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     try vault.write(hostNote, to: "01 Progetti/Nexion.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -102,7 +102,7 @@ import Testing
 
 @MainActor
 @Test func aReminderComposedInTheAppIsOnTheLineTheSchedulerReads() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -123,7 +123,7 @@ import Testing
 
 @MainActor
 @Test func aTaskComposedIntoANoteThatIsNotThereIsRefused() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -141,7 +141,7 @@ import Testing
 
 @MainActor
 @Test func theLastCaptureIsReadableOnceSoTheViewFollowsTheTask() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -158,7 +158,7 @@ import Testing
 
 @MainActor
 @Test func aNewNoteStartsInTheFolderItWasAskedFor() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     try vault.write(hostNote, to: "01 Progetti/Nexion.md")
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -221,7 +221,7 @@ import Testing
 
 @MainActor
 @Test func aTaskWithAnHourCanAlsoBecomeABlockOnItsDay() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -250,7 +250,7 @@ import Testing
 
 @MainActor
 @Test func withoutTheCheckboxNoBlockIsMade() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -267,7 +267,7 @@ import Testing
 
 @MainActor
 @Test func aSecondBlockOnTheSameDayIsPlacedAfterTheFirst() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
 
@@ -303,7 +303,7 @@ import Testing
 // (`Sources/Features/Tasks/TaskComposer.swift:323`).
 @MainActor
 @Test func selectedTaskStaysStaleAfterASubtaskCaptureAndBreaksASecondOne() async throws {
-    let vault = try ComposerVault()
+    let vault = try TemporaryVault()
     try vault.write(parentTaskNote, to: "01 Progetti/Nexion.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
@@ -347,24 +347,6 @@ import Testing
 }
 
 // MARK: Fixture
-
-private struct ComposerVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-composer-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
 
 private let hostNote = """
 ---

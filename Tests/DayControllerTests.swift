@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 @Test func turnsATaskIntoABlockAndWritesItIntoTheNote() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -27,7 +27,7 @@ import Testing
 
 @MainActor
 @Test func placesASecondBlockAfterTheFirstRatherThanOnTopOfIt() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -48,7 +48,7 @@ import Testing
 
 @MainActor
 @Test func publishingWritesTheEventAndMarksTheBlock() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -72,7 +72,7 @@ import Testing
 
 @MainActor
 @Test func doesNotMarkABlockPublishedWhenTheCalendarRefuses() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -94,7 +94,7 @@ import Testing
 
 @MainActor
 @Test func doesNotPublishTheSameBlockTwice() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -115,7 +115,7 @@ import Testing
 
 @MainActor
 @Test func removingABlockTakesItOutOfTheNote() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -134,7 +134,7 @@ import Testing
 
 @MainActor
 @Test func readsBlocksAlreadyInTheNote() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse + "\n\n## Timeline\n\n- 14:00-15:00 Riunione [published]\n",
                     to: "Calendar/20260811.md")
     let store = StubCalendarStore()
@@ -148,7 +148,7 @@ import Testing
 
 @MainActor
 @Test func completingAReminderGoesThroughToTheStore() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
@@ -167,7 +167,7 @@ import Testing
 
 @MainActor
 @Test func reportsAReminderTheStoreRefuses() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
@@ -184,7 +184,7 @@ import Testing
 
 @MainActor
 @Test func showsOnlyTheRemindersDueOnTheDayShown() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     store.storedReminders = [
@@ -199,7 +199,7 @@ import Testing
 
 @MainActor
 @Test func creatingAnEventPutsItOnTheDayShown() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -212,7 +212,7 @@ import Testing
 
 @MainActor
 @Test func creatingAReminderGivesItTheDayShownAsItsDueDate() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -226,7 +226,7 @@ import Testing
 
 @MainActor
 @Test func publishingEveryBlockReportsHowManyWent() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -249,7 +249,7 @@ import Testing
 
 @MainActor
 @Test func aBlockUsesTheTaskHourAndTheDurationFromSettings() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -274,7 +274,7 @@ import Testing
 
 @MainActor
 @Test func aBlockIsRemovedFromTheNoteItLivesIn() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(vault: vault, store: store)
@@ -305,7 +305,7 @@ import Testing
 /// when the block goes.
 @MainActor
 @Test func blockingOutADayNeverOpensTheNoteInTheEditor() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(
@@ -338,7 +338,7 @@ import Testing
 /// not leave the app writing files for a day nobody asked about.
 @MainActor
 @Test func aDayWithoutANoteGetsOneOnlyWhenSomethingIsWrittenToIt() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let store = StubCalendarStore()
     let (dayController, vaultController) = try await makeController(
         vault: vault, store: store, openingTheDailyNote: false
@@ -364,7 +364,7 @@ import Testing
 /// delete has no business touching it.
 @MainActor
 @Test func removingABlockLeavesTheTaskItCameFromAlone() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
     let source = """
     ---

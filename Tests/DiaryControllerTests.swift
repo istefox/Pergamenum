@@ -26,7 +26,7 @@ private enum FireAndForgetWaitError: Error {
 /// The diary's controller against a real vault on disk: what it writes, when it writes
 /// it, and the days it leaves alone.
 @MainActor
-private func makeDiary(_ vault: borrowing DayVault) async throws -> (DiaryController, VaultController) {
+private func makeDiary(_ vault: borrowing TemporaryVault) async throws -> (DiaryController, VaultController) {
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     let diary = DiaryController(vault: controller)
@@ -34,7 +34,7 @@ private func makeDiary(_ vault: borrowing DayVault) async throws -> (DiaryContro
     return (diary, controller)
 }
 
-/// Takes the root rather than the vault: `DayVault` is noncopyable, and a `#expect`
+/// Takes the root rather than the vault: `TemporaryVault` is noncopyable, and a `#expect`
 /// or `#require` that borrows one does not compile - the macro's autoclosure wants a
 /// copy.
 private func diaryOnDisk(_ root: URL) -> String? {
@@ -43,7 +43,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func writesANewEntryIntoTheDayFile() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -61,7 +61,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// Walking through a week must not leave a week of empty files behind.
 @MainActor
 @Test func writesNothingForADayNothingWasWrittenOn() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -77,7 +77,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func writesTheProseOnceTypingStops() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -92,7 +92,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func readsBackWhatItWrote() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -121,7 +121,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// loses work if it is wrong, so it is the one worth testing.
 @MainActor
 @Test func writesTheDayBeforeLeavingIt() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -140,7 +140,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// on screen, and a reload that discarded the pending write lost the last sentence.
 @MainActor
 @Test func writesWhatIsOwedBeforeRereadingTheSameDay() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -160,7 +160,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func snapsEveryEntryToTheTenMinuteGrid() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -173,7 +173,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func neverMakesAnEntryShorterThanTenMinutes() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -186,7 +186,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func movesAndResizesAnEntryAndWritesBothToTheFile() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -206,7 +206,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// round trip through the file unchanged.
 @MainActor
 @Test func keepsABlockOfThreeHours() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -223,7 +223,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func keepsAnEntryInsideTheDayItBelongsTo() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -237,7 +237,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func deletingTheLastEntryLeavesTheProseAlone() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -260,7 +260,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// lived, and what was lived overlaps.
 @MainActor
 @Test func allowsTwoEntriesAtTheSameHour() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -275,7 +275,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// A day written by hand in Obsidian is read exactly as the app's own would be.
 @MainActor
 @Test func readsADayWrittenByHand() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     try vault.write("""
     ---
     date: 2026-08-11
@@ -304,7 +304,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func showsSixToMidnightOnAnOrdinaryDay() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -322,7 +322,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// view, and changing one does not touch the other.
 @MainActor
 @Test func drawsTheHoursSetInSettings() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -341,7 +341,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// An entry before the usual hours must not be invisible: the grid grows up to it.
 @MainActor
 @Test func growsTheGridToReachAnEntryBeforeTheUsualHours() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -358,7 +358,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 /// it: 23:30 plus an hour is clamped to midnight, and midnight is drawn.
 @MainActor
 @Test func drawsABlockThatRunsToMidnight() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 
@@ -382,7 +382,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
 @MainActor
 @Test func addsUpTheTimeTheDayAccountsFor() async throws {
-    let vault = try DayVault()
+    let vault = try TemporaryVault()
     let root = vault.root
     let (diary, controller) = try await makeDiary(vault)
 

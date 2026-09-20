@@ -131,27 +131,9 @@ Corpo della nota.
 
 // MARK: - Symmetry across two notes
 
-private struct LinkVault: ~Copyable {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-links-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-    deinit { try? FileManager.default.removeItem(at: root) }
-
-    func write(_ contents: String, to relativePath: String) throws {
-        let url = root.appending(path: relativePath, directoryHint: .notDirectory)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: url)
-    }
-}
-
 @MainActor
 @Test func writesTheLinkOnBothNotes() async throws {
-    let vault = try LinkVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Origine.md")
     try vault.write(note, to: "03 Risorse/Destinazione.md")
 
@@ -175,7 +157,7 @@ private struct LinkVault: ~Copyable {
 
 @MainActor
 @Test func writesNeitherNoteWhenTheTargetCannotTakeTheLink() async throws {
-    let vault = try LinkVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Origine.md")
 
     // A target already at the five-link limit cannot take another.
@@ -199,7 +181,7 @@ private struct LinkVault: ~Copyable {
 
 @MainActor
 @Test func reportsATargetThatDoesNotExist() async throws {
-    let vault = try LinkVault()
+    let vault = try TemporaryVault()
     try vault.write(note, to: "Origine.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())

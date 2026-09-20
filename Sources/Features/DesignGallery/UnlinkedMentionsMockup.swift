@@ -32,26 +32,11 @@ struct UnlinkedMentionsMockup: View {
 
     /// The inspector at the width it actually has in `VaultBrowser` (ideal 230, max 320).
     private static let inspectorWidth: CGFloat = 260
-    /// Two sections across: 2 × 328 + 16 of spacing = 672, the same grid the tag browser uses.
-    private static let pairWidth: CGFloat = 328
-
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                inPlace
-                states
-                withResults
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content()
+        MockupPage {
+            inPlace
+            states
+            withResults
         }
     }
 
@@ -60,7 +45,7 @@ struct UnlinkedMentionsMockup: View {
     /// The whole inspector column, because what is being approved is the section's place in it
     /// rather than the section on its own.
     private var inPlace: some View {
-        scene("Nell'inspector, sotto i backlink: chi punta qui, e chi ne parla senza puntare.") {
+        MockupScene("Nell'inspector, sotto i backlink: chi punta qui, e chi ne parla senza puntare.") {
             VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                 starRow
                 group("CONFORMITÀ") {
@@ -96,22 +81,22 @@ struct UnlinkedMentionsMockup: View {
 
     private var states: some View {
         HStack(alignment: .top, spacing: theme.spacing(.m)) {
-            scene("Durante la scansione.") {
+            MockupScene("Durante la scansione.") {
                 panel { mentions(.scanning) }
             }
-            scene("Nessuna menzione: lo dice, non lascia il vuoto.") {
+            MockupScene("Nessuna menzione: lo dice, non lascia il vuoto.") {
                 panel { mentions(.empty) }
             }
         }
     }
 
     private var withResults: some View {
-        scene("Con i risultati: la nota, e la riga in cui il titolo compare senza essere un link.") {
+        MockupScene("Con i risultati: la nota, e la riga in cui il titolo compare senza essere un link.") {
             panel(width: Self.inspectorWidth) { mentions(.found) }
         }
     }
 
-    private func panel(width: CGFloat = Self.pairWidth, @ViewBuilder _ content: () -> some View)
+    private func panel(width: CGFloat = MockupGalleryView.pairWidth, @ViewBuilder _ content: () -> some View)
         -> some View {
         content()
             .padding(theme.spacing(.m))

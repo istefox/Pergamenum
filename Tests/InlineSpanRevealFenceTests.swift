@@ -10,28 +10,6 @@ import Testing
 // here is a global invariant or a regression fence over Tasks 1-6, already merged and green.
 // If any assertion below genuinely fails against today's code, that is reported, not fixed here.
 
-// MARK: - Shared process/repo-root helpers (ReleasePipelineTests.swift's own shape, duplicated
-// rather than exposed, since that file's helpers are `private` to its own type)
-
-private enum RepoRootResolutionError: Error, CustomStringConvertible {
-    case notFound(candidate: String)
-    var description: String {
-        switch self {
-        case .notFound(let candidate): "no Sources/ found starting from \(candidate)"
-        }
-    }
-}
-
-private func resolvedRepoRoot() throws -> URL {
-    let candidate = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent() // this file -> Tests/
-        .deletingLastPathComponent() // Tests/ -> repository root
-    guard FileManager.default.fileExists(atPath: candidate.appendingPathComponent("Sources").path) else {
-        throw RepoRootResolutionError.notFound(candidate: candidate.path)
-    }
-    return candidate
-}
-
 // MARK: - 1. The invariant (constraint 3): every `inlineSpans` key is a `paragraphs` member
 
 @Suite struct InlineSpansKeysAreAlwaysParagraphMembers {

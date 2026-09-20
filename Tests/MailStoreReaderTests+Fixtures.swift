@@ -102,11 +102,4 @@ extension MailStoreReaderTests {
             ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
         )
     }
-
-    /// Same resolution `Tests/SharedSourcesPurityTests.swift` uses.
-    static func repoRoot() throws -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // MailStoreReaderTests.swift -> Tests/
-            .deletingLastPathComponent() // Tests/ -> repository root
-    }
 }

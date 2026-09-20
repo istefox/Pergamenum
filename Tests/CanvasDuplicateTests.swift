@@ -45,30 +45,10 @@ import Testing
 
 @MainActor
 @Suite struct CanvasDuplicateWorkspaceControllerTests {
-    private struct TemporaryRoot: ~Copyable {
-        let url: URL
-
-        init() throws {
-            url = FileManager.default.temporaryDirectory
-                .appending(path: "pergamenum-duplicate-\(UUID().uuidString)", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-
-        deinit { try? FileManager.default.removeItem(at: url) }
-
-        func makeFile(_ relativePath: String, _ contents: String = "x") throws {
-            let fileURL = url.appending(path: relativePath, directoryHint: .notDirectory)
-            try FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try Data(contents.utf8).write(to: fileURL)
-        }
-    }
-
     // MARK: - New node's own fields (R-10)
 
     @Test func duplicatingOneFileNodeAppendsACopyWithANewIdAndAGridStepOffset() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: CGPoint(x: 100, y: 200))
         controller.setColor(.preset(3), forNodeIDs: [id])
@@ -94,7 +74,7 @@ import Testing
     // MARK: - Id collision, nodes AND edges (§D11)
 
     @Test func theCopysIdDiffersFromEveryIdAlreadyInTheDocumentAcrossNodesAndEdges() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let a = controller.placeFile("a.png", at: .zero)
         let b = controller.placeFile("b.png", at: CGPoint(x: 300, y: 0))
@@ -115,7 +95,7 @@ import Testing
     // MARK: - Edges untouched (§D11: "edges are not duplicated")
 
     @Test func edgesAreUnchangedWhenDuplicatingANodeThatHasOneOnIt() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let a = controller.placeFile("a.png", at: .zero)
         let b = controller.placeFile("b.png", at: CGPoint(x: 300, y: 0))
@@ -131,7 +111,7 @@ import Testing
     // MARK: - Crop key survives (R-11's rendering premise)
 
     @Test func aNodeCarryingACropDuplicatesWithTheCropKeyIntact() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.beginCrop(nodeID: id, drawnSize: CGSize(width: 800, height: 400))
@@ -150,7 +130,7 @@ import Testing
     // MARK: - R-10's real content: only the `.canvas` file's bytes change
 
     @Test func duplicatingChangesOnlyTheCanvasFilesBytesNotTheFolderListing() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         try root.makeFile("foto.png", "not a real png, only presence matters here")
         let store = CanvasStore(root: root.url)
         let controller = WorkspaceController()
@@ -184,7 +164,7 @@ import Testing
     // MARK: - R-11: missing referenced file
 
     @Test func duplicatingANodeWhoseFileNoLongerExistsStillCreatesTheCopy() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         // No file written for "sparita.png" - the node is a pointer to nothing, the same
         // way a card whose source vanished from the Finder already renders (broken-file
@@ -209,7 +189,7 @@ import Testing
     // MARK: - Round-trip (R-10)
 
     @Test func aDuplicateSurvivesSaveAndLoadAsTwoNodesWithDistinctIdsAndTheSameFile() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let store = CanvasStore(root: root.url)
         let controller = WorkspaceController()
         controller.attach(to: store)
@@ -236,7 +216,7 @@ import Testing
     // MARK: - Selection cascades (§D8)
 
     @Test func selectionAfterDuplicateIsExactlyTheNewIdsSoASecondDuplicaCascades() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.placeFile("foto.png", at: .zero)
         controller.select(nodeID: id, adding: false)

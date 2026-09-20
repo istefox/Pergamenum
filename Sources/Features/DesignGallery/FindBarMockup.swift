@@ -49,25 +49,19 @@ struct FindBarMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("Cmd+F, appena aperta: nessuna ricerca, nessun conteggio", .opened)
-                scene("Mentre si scrive: la corrente si distingue dalle altre", .matching)
-                scene("Cmd+Alt+F: la sostituzione è una seconda riga, la prima non si muove", .replacing)
-                scene("Regex acceso, con i gruppi di cattura da una parte e dall'altra", .regex)
-                scene("Un pattern ancora a metà: si dice, non si accusa", .incompletePattern)
-                scene("Nessuna corrispondenza, che è un'altra cosa da un pattern non valido", .noMatches)
-                scene("Solo nella selezione: l'ambito dice a che cosa", .inSelection)
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene("Cmd+F, appena aperta: nessuna ricerca, nessun conteggio", .opened)
+            scene("Mentre si scrive: la corrente si distingue dalle altre", .matching)
+            scene("Cmd+Alt+F: la sostituzione è una seconda riga, la prima non si muove", .replacing)
+            scene("Regex acceso, con i gruppi di cattura da una parte e dall'altra", .regex)
+            scene("Un pattern ancora a metà: si dice, non si accusa", .incompletePattern)
+            scene("Nessuna corrispondenza, che è un'altra cosa da un pattern non valido", .noMatches)
+            scene("Solo nella selezione: l'ambito dice a che cosa", .inSelection)
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ state: FindBarMock.State) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             VStack(spacing: 0) {
                 FindBarMock(state: state)
                 Divider()

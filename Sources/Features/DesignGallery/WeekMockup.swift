@@ -25,38 +25,25 @@ struct WeekMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene("La settimana: sette liste, quattro sorgenti, la nota del giorno "
-                    + "nell'intestazione. Giovedì è il giorno ancorato, quello su cui si torna "
-                    + "passando alla scala giorno.") {
-                    WeekGridMockup()
-                }
-                scene("Un task trascinato: la colonna di destinazione si accende e mostra la "
-                    + "striscia delle ore, che compare solo lì. Lasciarlo sul giorno riscrive "
-                    + "`>data`; lasciarlo su un'ora scrive anche l'ora e crea il blocco.") {
-                    WeekGridMockup(dropTarget: 4)
-                }
-                scene("Una colonna piena non tronca in silenzio: dice quante ne restano.") {
-                    WeekGridMockup(crowded: true)
-                }
-                scene("Il mese: la stessa settimana vista da lontano. Ogni giorno porta al "
-                    + "massimo due righe e poi un numero, un punto se ha una daily note, e i "
-                    + "giorni dei mesi vicini restano visibili in grigio invece che sparire.") {
-                    MonthGridMockup()
-                }
+        MockupPage {
+            MockupScene("La settimana: sette liste, quattro sorgenti, la nota del giorno "
+                + "nell'intestazione. Giovedì è il giorno ancorato, quello su cui si torna "
+                + "passando alla scala giorno.") {
+                WeekGridMockup()
             }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            content()
+            MockupScene("Un task trascinato: la colonna di destinazione si accende e mostra la "
+                + "striscia delle ore, che compare solo lì. Lasciarlo sul giorno riscrive "
+                + "`>data`; lasciarlo su un'ora scrive anche l'ora e crea il blocco.") {
+                WeekGridMockup(dropTarget: 4)
+            }
+            MockupScene("Una colonna piena non tronca in silenzio: dice quante ne restano.") {
+                WeekGridMockup(crowded: true)
+            }
+            MockupScene("Il mese: la stessa settimana vista da lontano. Ogni giorno porta al "
+                + "massimo due righe e poi un numero, un punto se ha una daily note, e i "
+                + "giorni dei mesi vicini restano visibili in grigio invece che sparire.") {
+                MonthGridMockup()
+            }
         }
     }
 }

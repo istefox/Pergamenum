@@ -181,7 +181,7 @@ final class DiaryUITests: XCTestCase {
 
         let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
         let to = eleven.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        from.press(forDuration: 0.2, thenDragTo: to)
+        from.dragTo(to, pressing: 0.2)
 
         let range = app.staticTexts["diary-sheet-range"].firstMatch
         XCTAssertTrue(range.waitForExistence(timeout: 5), "il trascinamento non apre la scheda")
@@ -207,7 +207,7 @@ final class DiaryUITests: XCTestCase {
         XCTAssertTrue(nine.waitForExistence(timeout: 5), "manca la riga delle 09:00")
         let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
         let ten = hourLine("10:00").coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        from.press(forDuration: 0.2, thenDragTo: ten)
+        from.dragTo(ten, pressing: 0.2)
 
         let title = app.textFields["diary-sheet-title"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda non si è aperta")
@@ -218,7 +218,7 @@ final class DiaryUITests: XCTestCase {
 
         // Two hours down the grid, which is 120 points at sixty to the hour.
         let block = entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
-        block.press(forDuration: 0.3, thenDragTo: block.withOffset(CGVector(dx: 0, dy: 120)))
+        block.dragTo(block.withOffset(CGVector(dx: 0, dy: 120)), pressing: 0.3)
 
         XCTAssertTrue(
             waitForDiary { $0.contains("- 11:00-12:00 Da spostare") },

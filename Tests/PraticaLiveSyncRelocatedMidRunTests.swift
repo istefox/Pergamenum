@@ -82,7 +82,12 @@ private func dossierNoteText(conversations: [Int]) -> String {
         // resurrects `old` nor rewrites what the relocation already left at `new`.
         var seeded = PraticaLedger.PraticaState.empty
         seeded.importedMessageIDs = ["<preesistente@rossi-spa.it>"]
-        pratiche.ledger.byPraticaPath[Self.old] = seeded
+        // On disk and not in memory (ADR-0052 §D9): `followFolderRelocations` reads the file through
+        // the door, so a value assigned to a controller that never loaded would be discarded.
+        let session = try #require(vaultController.session)
+        var seededLedger = PraticaLedger.empty
+        seededLedger.byPraticaPath[Self.old] = seeded
+        try seededLedger.save(to: PraticheController.ledgerURL(for: session))
         pratiche.trayCounts[Self.old] = 2
         pratiche.trayProposals[Self.old] = []
 
@@ -144,7 +149,10 @@ private func dossierNoteText(conversations: [Int]) -> String {
 
         var seeded = PraticaLedger.PraticaState.empty
         seeded.entries = [PraticaLedger.Entry(messageID: "<abc123@rossi-spa.it>", rowID: 1, conversationID: 112_409)]
-        pratiche.ledger.byPraticaPath[Self.old] = seeded
+        let session = try #require(vaultController.session)
+        var seededLedger = PraticaLedger.empty
+        seededLedger.byPraticaPath[Self.old] = seeded
+        try seededLedger.save(to: PraticheController.ledgerURL(for: session))
 
         pratiche.beginSync(Self.old)
         pratiche.followFolderRelocations([MovedNote(old: Self.old, new: Self.new)], in: vaultController)

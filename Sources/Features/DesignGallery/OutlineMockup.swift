@@ -15,28 +15,16 @@ struct OutlineMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "A destra, nell'ispettore, sopra Backlink",
-                    InspectorPlacement()
-                )
-                scene(
-                    "A sinistra, sotto l'elenco delle note",
-                    SidebarPlacement()
-                )
-                edgeCases
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content
+        MockupPage {
+            MockupScene(
+                "A destra, nell'ispettore, sopra Backlink",
+                InspectorPlacement()
+            )
+            MockupScene(
+                "A sinistra, sotto l'elenco delle note",
+                SidebarPlacement()
+            )
+            edgeCases
         }
     }
 
@@ -53,15 +41,11 @@ struct OutlineMockup: View {
         }
     }
 
+    /// Three across: `MockupGalleryView.tripleWidth` (the outer width) less the 16 points of
+    /// padding a `MockupCell` adds around its frame. It was a hardcoded 230, which is 246 outer
+    /// and a row of 770 against the 672 a page gives.
     private func labelled(_ title: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text(title).themedText(.caption, color: .textSecondary)
-            content
-                .frame(width: 230)
-                .padding(theme.spacing(.s))
-                .background(theme.color(.backgroundSecondary))
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
-        }
+        MockupCell(title, width: MockupGalleryView.tripleWidth - 16) { content }
     }
 }
 

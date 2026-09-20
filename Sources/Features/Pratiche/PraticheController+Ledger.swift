@@ -65,9 +65,13 @@ extension PraticheController {
         for praticaPath: String,
         in vault: VaultController
     ) {
+        // The door first, the two assignments after it (ADR-0052 §D8): the door can reset both
+        // dictionaries on a change of vault, and the reverse order would drop the proposals a sync
+        // has just computed the first time the marker mismatches. `persistTrayCount` reads only
+        // `count`, so nothing is lost by the move.
+        persistTrayCount(proposals.count, for: praticaPath, in: vault)
         trayProposals[praticaPath] = proposals
         trayCounts[praticaPath] = proposals.count
-        persistTrayCount(proposals.count, for: praticaPath, in: vault)
         pratiche = Self.listItems(
             in: vault, ledger: ledger, trayCounts: trayCounts,
             rootFolder: vault.settings.pratiche.rootFolder
@@ -86,13 +90,13 @@ extension PraticheController {
     /// does not rewrite the file - and, for a pratica with no tray and no ledger entry
     /// yet, does not create one to say zero.
     private func persistTrayCount(_ count: Int, for praticaPath: String, in vault: VaultController) {
-        guard let session = vault.session else { return }
-        var state = ledger.byPraticaPath[praticaPath] ?? .empty
-        guard state.trayCount != count else { return }
-        state.trayCount = count
-        ledger.byPraticaPath[praticaPath] = state
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
-            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        updateLedger(.live(vault.session)) { ledger in
+            var state = ledger.byPraticaPath[praticaPath] ?? .empty
+            // Returning without a mutation is what keeps the file from being rewritten: the door
+            // saves only a ledger that differs from the one it started with.
+            guard state.trayCount != count else { return }
+            state.trayCount = count
+            ledger.byPraticaPath[praticaPath] = state
         }
     }
 
@@ -109,13 +113,14 @@ extension PraticheController {
     /// Rebuilds the list from the index and re-reads the ledger. Cheap enough to call
     /// from the pane's `.task` and after every sync: it walks the index this app
     /// already keeps, and reads exactly one JSON file.
+    ///
+    /// The ledger goes through `reloadLedger(for:)` (ADR-0052 §D1/§D5), which records which file
+    /// the memory came from and resets the tray, the watchers, the selection and everything read
+    /// for it when that file belongs to a different vault - or to none, the vault having closed.
+    /// A re-read of the same vault resets nothing: this runs after every pratica command.
     func load(from vault: VaultController) {
         guard let session = vault.session else {
-            pratiche = []
-            timeline = []
-            details = [:]
-            links = .empty
-            ledger = .empty
+            reloadLedger(for: nil)
             // Round-4 review, §6: a redirect entry describes THIS vault's own
             // relocations alone (`livePraticaPath`'s own "session identity checked
             // first" reason, `PraticaLiveSync+Run.swift`) - once the vault is gone,
@@ -133,7 +138,7 @@ extension PraticheController {
             forgottenPraticaPaths.removeAll()
             return
         }
-        ledger = PraticaLedger.load(from: Self.ledgerURL(for: session))
+        reloadLedger(for: session)
         pratiche = Self.listItems(
             in: vault, ledger: ledger, trayCounts: trayCounts,
             rootFolder: vault.settings.pratiche.rootFolder
@@ -183,14 +188,12 @@ extension PraticheController {
     }
 
     private func markOpened(_ praticaPath: String, in vault: VaultController) {
-        guard let session = vault.session else { return }
-        var state = ledger.byPraticaPath[praticaPath] ?? .empty
-        state.lastOpenedAt = Date()
-        ledger.byPraticaPath[praticaPath] = state
-        // A ledger that will not save costs one badge, not a pratica: reported, never
-        // thrown at the person reading their mail.
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
-            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+        // A ledger that will not save costs one badge, not a pratica: the door reports it and
+        // never throws it at the person reading their mail.
+        updateLedger(.live(vault.session)) { ledger in
+            var state = ledger.byPraticaPath[praticaPath] ?? .empty
+            state.lastOpenedAt = Date()
+            ledger.byPraticaPath[praticaPath] = state
         }
     }
 
@@ -207,8 +210,10 @@ extension PraticheController {
     }
 
     func endSync() {
+        let released = syncingPraticaPath
         syncingPraticaPath = nil
         syncProgress = nil
+        if let released { dropTombstoneIfUnclaimed(released) }
         pruneRedirectsIfIdle()
     }
 
@@ -226,12 +231,13 @@ extension PraticheController {
     /// vault is live right now, and merging a stale sync's outcome into a DIFFERENT
     /// vault's in-memory ledger before saving it back under `session`'s own path would
     /// write that other vault's entries into this one's file - a real cross-vault
-    /// corruption, not a UI-only glitch.
+    /// corruption, not a UI-only glitch. Both halves go through `updateLedger(_:_:)`
+    /// (ADR-0052 §D2), which is also what makes a live write on a controller that never
+    /// loaded read the file first instead of saving an empty ledger over it.
     func recordSyncOutcome(
         _ outcome: PraticaSyncEngine.SyncOutcome, for praticaPath: String, session: VaultSession,
         isCurrentVault: Bool
     ) {
-        let url = Self.ledgerURL(for: session)
         // A relocation that ran on the main actor while this outcome's own sync was
         // still in flight has already moved the ledger key out from under
         // `praticaPath` (`moveLedgerState`, below) - only meaningful against `self`
@@ -254,41 +260,35 @@ extension PraticheController {
         } else {
             currentPath = praticaPath
         }
-        var sessionLedger = isCurrentVault ? ledger : PraticaLedger.load(from: url)
-        var state = sessionLedger.byPraticaPath[currentPath] ?? .empty
-        state.lastSyncAt = Date()
-        var imported = Set(state.importedMessageIDs)
-        imported.formUnion(outcome.importedMessageIDs)
-        state.importedMessageIDs = imported.sorted()
-        // R-16: what this run found gone from Mail joins what earlier runs found, and
-        // what it imported again leaves the list - a message that came back (a mailbox
-        // put back, an archive re-indexed) gets its link back with it.
-        var gone = Set(state.notInStore)
-        gone.formUnion(outcome.noLongerInMail)
-        gone.subtract(outcome.importedMessageIDs)
-        state.notInStore = gone.sorted()
-        // §D23.2: the §D3 bridge, keyed by Message-ID so a regeneration's fresh triple
-        // replaces the stale one rather than appending a second - newest wins because
-        // Mail renumbers ROWIDs on an index rebuild, and a stale ROWID is worse than
-        // none (`forgetImportedMessage`'s own reason). Sorted because `PraticaLedger.save`
-        // pretty-prints with `.sortedKeys`, so the file stays diffable by hand.
-        var entriesByID = Dictionary(
-            state.entries.map { ($0.messageID, $0) }, uniquingKeysWith: { _, new in new }
-        )
-        for entry in outcome.bridge { entriesByID[entry.messageID] = entry }
-        state.entries = entriesByID.values.sorted { $0.messageID < $1.messageID }
-        sessionLedger.byPraticaPath[currentPath] = state
-        do {
-            try sessionLedger.save(to: url)
-        } catch {
-            if isCurrentVault {
-                problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
-            }
-        }
         // The observable property is this controller's view of the LIVE vault - never
-        // updated on behalf of a vault that is no longer the one open.
+        // updated on behalf of a vault that is no longer the one open, which is `.stale`'s
+        // whole meaning: its own file, read fresh, and neither `ledger` nor its marker touched.
+        updateLedger(isCurrentVault ? .live(session) : .stale(session)) { ledger in
+            var state = ledger.byPraticaPath[currentPath] ?? .empty
+            state.lastSyncAt = Date()
+            var imported = Set(state.importedMessageIDs)
+            imported.formUnion(outcome.importedMessageIDs)
+            state.importedMessageIDs = imported.sorted()
+            // R-16: what this run found gone from Mail joins what earlier runs found, and
+            // what it imported again leaves the list - a message that came back (a mailbox
+            // put back, an archive re-indexed) gets its link back with it.
+            var gone = Set(state.notInStore)
+            gone.formUnion(outcome.noLongerInMail)
+            gone.subtract(outcome.importedMessageIDs)
+            state.notInStore = gone.sorted()
+            // §D23.2: the §D3 bridge, keyed by Message-ID so a regeneration's fresh triple
+            // replaces the stale one rather than appending a second - newest wins because
+            // Mail renumbers ROWIDs on an index rebuild, and a stale ROWID is worse than
+            // none (`forgetImportedMessage`'s own reason). Sorted because `PraticaLedger.save`
+            // pretty-prints with `.sortedKeys`, so the file stays diffable by hand.
+            var entriesByID = Dictionary(
+                state.entries.map { ($0.messageID, $0) }, uniquingKeysWith: { _, new in new }
+            )
+            for entry in outcome.bridge { entriesByID[entry.messageID] = entry }
+            state.entries = entriesByID.values.sorted { $0.messageID < $1.messageID }
+            ledger.byPraticaPath[currentPath] = state
+        }
         if isCurrentVault {
-            ledger = sessionLedger
             // ADR-0040 §D10/§D7.3: what this run's attachment repair pass could not
             // fix - a file it could not trash, a downgrade it could not write. Empty
             // on every healthy run.
@@ -339,7 +339,16 @@ extension PraticheController {
         let isInFlight: (String) -> Bool = { [syncingPraticaPath, regeneratingPraticaPaths] path in
             path == syncingPraticaPath || regeneratingPraticaPaths.contains(path)
         }
-        Self.remapKeys(&ledger.byPraticaPath, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
+        // The door first, its siblings after (ADR-0052 §D8): on a change of vault it resets
+        // `trayProposals`, `trayCounts`, `watchersByPraticaPath` and `selection`, and what follows
+        // must remap what is there afterwards, not what a vault that has just been left held.
+        // The remap itself saves through the door only if a key really moved.
+        updateLedger(.live(vault.session)) { ledger in
+            Self.remapKeys(
+                &ledger.byPraticaPath, from: oldPath, to: newPath,
+                redirects: &praticaPathRedirects, isInFlight: isInFlight
+            )
+        }
         Self.remapKeys(&trayProposals, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
         Self.remapKeys(&trayCounts, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
         Self.remapKeys(&watchersByPraticaPath, from: oldPath, to: newPath, redirects: &praticaPathRedirects, isInFlight: isInFlight)
@@ -375,10 +384,6 @@ extension PraticheController {
                 }
             }
             regeneratingPraticaPaths = remappedRegenerations
-        }
-        guard let session = vault.session else { return }
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
-            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }
 
@@ -429,22 +434,18 @@ extension PraticheController {
         let isInFlight: (String) -> Bool = { [syncingPraticaPath, regeneratingPraticaPaths] key in
             key == syncingPraticaPath || regeneratingPraticaPaths.contains(key)
         }
-        // `ledger` starts `.empty` and only `load(from:)` fills it, which the Pratiche pane
-        // and its sheets call - not the launch, and not this hook, which fires for ANY folder
-        // trashed through the note list or the Workspace browser. A controller that never
-        // loaded holds nothing to remove from, and saving that empty value would overwrite
-        // the real file and wipe every pratica's history. So an empty in-memory ledger is
-        // refreshed from disk first (a missing or unreadable file reads as `.empty` again,
-        // which changes nothing), and the save below happens only when a key really left.
-        let ledgerURL = vault.session.map(Self.ledgerURL(for:))
-        if ledger == .empty, let ledgerURL {
-            ledger = PraticaLedger.load(from: ledgerURL)
+        // This hook fires for ANY folder trashed through the note list or the Workspace browser,
+        // including before the Pratiche pane has ever loaded the ledger. That case used to be
+        // patched here (PG-169: «if the in-memory ledger is `.empty`, read the file first»), a
+        // heuristic that took a genuinely empty ledger for an unloaded one. The marker replaces
+        // it (ADR-0052 §D4): the door reads the file when memory did not come from it, and saves
+        // only when a key really left, so an unrelated trash leaves the file byte-identical.
+        // The door first, its siblings after (§D8).
+        updateLedger(.live(vault.session)) { ledger in
+            Self.removeKeys(
+                &ledger.byPraticaPath, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
+            )
         }
-        let ledgerKeyCount = ledger.byPraticaPath.count
-        Self.removeKeys(
-            &ledger.byPraticaPath, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
-        )
-        let removedLedgerKey = ledger.byPraticaPath.count != ledgerKeyCount
         Self.removeKeys(
             &trayProposals, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
         )
@@ -467,10 +468,6 @@ extension PraticheController {
         }
         if let selection, Self.isInSubtree(selection, of: path) {
             select(nil, in: vault)
-        }
-        guard removedLedgerKey, let ledgerURL else { return }
-        do { try ledger.save(to: ledgerURL) } catch {
-            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }
 
@@ -608,11 +605,19 @@ extension PraticheController {
     /// (PG-169) leaves the claim exactly where it was - `forgetLedgerState` never clears it,
     /// so that this is the one place it is released - and `.forgotten` names the end of the
     /// chain for the case a relocation came first.
+    ///
+    /// The tombstone of the path released goes with the claim, unless something else still
+    /// claims THAT path (ADR-0052 §D6): an open «Rigenera…» on another pratica is not a reason
+    /// to keep refusing this one once it has been recreated.
     func endRegeneration(_ praticaPath: String) {
+        let released: String
         switch destination(of: praticaPath) {
-        case .same: regeneratingPraticaPaths.remove(praticaPath)
-        case .moved(let current), .forgotten(let current): regeneratingPraticaPaths.remove(current)
+        case .same: released = praticaPath
+        case .moved(let current), .forgotten(let current): released = current
         }
+        regeneratingPraticaPaths.remove(released)
+        dropTombstoneIfUnclaimed(released)
+        if released != praticaPath { dropTombstoneIfUnclaimed(praticaPath) }
         pruneRedirectsIfIdle()
     }
 
@@ -644,6 +649,17 @@ extension PraticheController {
         forgottenPraticaPaths.removeAll()
     }
 
+    /// A tombstone outlives its own run only while something still claims THAT path; a claim on
+    /// another path is not its business (ADR-0052 §D6, PG-173's second half). Where
+    /// `pruneRedirectsIfIdle` above answers for the whole controller at once, this answers for one
+    /// path, so a healthy pratica recreated under a trashed one's name is not refused because an
+    /// unrelated «Rigenera…» sheet happens to be open. A claim still open on the path keeps its
+    /// tombstone, and that claim's outcome is still discarded (PG-169's behaviour, unchanged).
+    private func dropTombstoneIfUnclaimed(_ path: String) {
+        guard path != syncingPraticaPath, !regeneratingPraticaPaths.contains(path) else { return }
+        forgottenPraticaPaths.remove(path)
+    }
+
     /// §D23.4: Mail renumbered a followed conversation Mail's own way (a new
     /// `conversation_id` recovered from a member `Message-ID`'s still-known row) - the
     /// ledger's own triples have to be repointed too, or the next sync's
@@ -652,18 +668,27 @@ extension PraticheController {
     ///
     /// Declared here (ADR-0155 §D1); the coder wires the body (§D23.4's repointing,
     /// called from `PraticaLiveSync.runExclusive` before candidates are evaluated).
-    func remapLedgerConversations(_ remap: [Int: Int], of praticaPath: String, in vault: VaultController) {
-        guard !remap.isEmpty, var state = ledger.byPraticaPath[praticaPath] else { return }
-        state.entries = state.entries.map { entry in
-            guard let newID = remap[entry.conversationID] else { return entry }
-            return PraticaLedger.Entry(
-                messageID: entry.messageID, rowID: entry.rowID, conversationID: newID
-            )
-        }
-        ledger.byPraticaPath[praticaPath] = state
-        guard let session = vault.session else { return }
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
-            problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
+    ///
+    /// Takes the run's own `session` and an `isCurrentVault` flag, like `recordSyncOutcome`
+    /// (ADR-0052 §D7), and not the `VaultController` it used to: it runs after an `await
+    /// session.write`, and a vault switch landing inside that window must write the repointing
+    /// into the run's OWN ledger file rather than into whatever vault is live now - or drop it.
+    /// Dropping it is not free, since the note has already been rewritten with the new id.
+    /// The `guard var state` moved inside the closure: read outside the door it looked at an
+    /// unloaded ledger, found nothing and returned.
+    func remapLedgerConversations(
+        _ remap: [Int: Int], of praticaPath: String, session: VaultSession, isCurrentVault: Bool
+    ) {
+        guard !remap.isEmpty else { return }
+        updateLedger(isCurrentVault ? .live(session) : .stale(session)) { ledger in
+            guard var state = ledger.byPraticaPath[praticaPath] else { return }
+            state.entries = state.entries.map { entry in
+                guard let newID = remap[entry.conversationID] else { return entry }
+                return PraticaLedger.Entry(
+                    messageID: entry.messageID, rowID: entry.rowID, conversationID: newID
+                )
+            }
+            ledger.byPraticaPath[praticaPath] = state
         }
     }
 

@@ -15,34 +15,28 @@ struct CaptureMockup: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Nota nuova, il pannello appena aperto",
-                    CapturePanelMock(destination: .note, state: .empty)
-                )
-                scene(
-                    "Task, con Programma e Scadenza",
-                    CapturePanelMock(destination: .task, state: .task)
-                )
-                scene(
-                    "Aggiunta alla nota di oggi",
-                    CapturePanelMock(destination: .today, state: .today)
-                )
-                scene(
-                    "La scorciatoia che il sistema ha rifiutato",
-                    CapturePanelMock(destination: .note, state: .shortcutRefused)
-                )
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        MockupPage {
+            scene(
+                "Nota nuova, il pannello appena aperto",
+                CapturePanelMock(destination: .note, state: .empty)
+            )
+            scene(
+                "Task, con Programma e Scadenza",
+                CapturePanelMock(destination: .task, state: .task)
+            )
+            scene(
+                "Aggiunta alla nota di oggi",
+                CapturePanelMock(destination: .today, state: .today)
+            )
+            scene(
+                "La scorciatoia che il sistema ha rifiutato",
+                CapturePanelMock(destination: .note, state: .shortcutRefused)
+            )
         }
-        .background(theme.color(.backgroundPrimary))
     }
 
     private func scene(_ caption: String, _ panel: CapturePanelMock) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
+        MockupScene(caption) {
             ZStack {
                 HostAppBackdrop()
                 panel

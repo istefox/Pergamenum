@@ -140,7 +140,10 @@ private final class StopSpy {
         let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
         var seeded = PraticaLedger.PraticaState.empty
         seeded.importedMessageIDs = ["<preesistente@rossi-spa.it>"]
-        pratiche.ledger.byPraticaPath[Self.folder] = seeded
+        // On disk and not in memory (ADR-0052 §D9): the trash below reads the file through the door.
+        var seededLedger = PraticaLedger.empty
+        seededLedger.byPraticaPath[Self.folder] = seeded
+        try seededLedger.save(to: url)
         // Mirrors `beginRegeneration(plan.praticaFolder)`, claimed before `commitRegeneration`'s await.
         pratiche.beginRegeneration(Self.folder)
 
@@ -215,10 +218,13 @@ private final class StopSpy {
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
+        let session = try #require(vaultController.session)
         let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
         let sync = PraticaLiveSync(vault: vaultController)
         sync.controller = pratiche
-        pratiche.ledger.byPraticaPath[Self.folder] = .empty
+        var seeded = PraticaLedger.empty
+        seeded.byPraticaPath[Self.folder] = .empty
+        try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         pratiche.beginSync(Self.folder)
         pratiche.followFolderTrashing(Self.folder, in: vaultController)
@@ -352,7 +358,7 @@ private final class StopSpy {
     /// entry per deleted pratica for the life of the session.
     @Test func trashingAPraticaWithNoRunInFlightRecordsNoTombstone() {
         let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
-        pratiche.ledger.byPraticaPath[Self.folder] = .empty
+        pratiche.updateLedger(.live(nil)) { $0.byPraticaPath[Self.folder] = .empty }
         pratiche.trayCounts[Self.folder] = 2
 
         pratiche.followFolderTrashing(Self.folder, in: VaultController())
@@ -433,6 +439,93 @@ private final class StopSpy {
 
         #expect(pratiche.forgottenPraticaPaths.isEmpty)
         #expect(stop(continuing: Self.folder, on: pratiche) == nil, "the name is free to be a live pratica again")
+    }
+
+    // MARK: - A tombstone falls per path (PG-172 / PG-173's second half, ADR-0052 §D6)
+
+    /// R-07. The refusal of a healthy sync by an UNRELATED open claim was the reported symptom:
+    /// X's run ends while a «Rigenera…» on Y is still open, so nothing is idle and the old
+    /// all-or-nothing prune kept X's tombstone, refusing a pratica recreated under X's name.
+    @Test func endingXsSyncDropsXsTombstoneWhileAnotherPraticasClaimIsStillOpen() {
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let other = "01 Progetti/Altra"
+        pratiche.beginSync(Self.folder)
+        pratiche.beginRegeneration(other)
+        pratiche.followFolderTrashing(Self.folder, in: VaultController())
+        pratiche.followFolderTrashing(other, in: VaultController())
+        #expect(pratiche.forgottenPraticaPaths == [Self.folder, other], "precondition: both claims were tombstoned")
+
+        pratiche.endSync()
+
+        #expect(!pratiche.forgottenPraticaPaths.contains(Self.folder), "X's claim ended, so X's tombstone falls")
+        #expect(pratiche.regeneratingPraticaPaths == [other], "Y's claim is still open")
+        #expect(pratiche.forgottenPraticaPaths == [other], "and Y's own tombstone stays with it")
+        #expect(stop(continuing: Self.folder, on: pratiche) == nil, "a recreated X is not refused")
+        #expect(stop(continuing: other, on: pratiche) == .praticaTrashed(path: other), "while Y's stale claim still is")
+    }
+
+    /// R-08, PG-169's behaviour unchanged: a claim still open on X keeps X's tombstone, and that
+    /// claim's outcome is still discarded.
+    @Test func aClaimStillOpenOnXKeepsXsTombstone() throws {
+        let vault = try TemporaryVault()
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        pratiche.beginSync(Self.folder)
+        pratiche.beginRegeneration(Self.folder)
+        pratiche.followFolderTrashing(Self.folder, in: VaultController())
+
+        pratiche.endSync()
+
+        #expect(pratiche.forgottenPraticaPaths == [Self.folder], "the regeneration claim on X is still open")
+        #expect(stop(continuing: Self.folder, on: pratiche) == .praticaTrashed(path: Self.folder))
+        pratiche.recordSyncOutcome(
+            syncOutcome(importing: ["<a@rossi-spa.it>"]), for: Self.folder, session: session, isCurrentVault: true
+        )
+        #expect(pratiche.ledger.byPraticaPath[Self.folder] == nil, "the stale claim's outcome is discarded")
+        let ledgerFile = PraticheController.ledgerURL(for: session).path(percentEncoded: false)
+        #expect(!FileManager.default.fileExists(atPath: ledgerFile), "and writes nothing at all")
+
+        pratiche.endRegeneration(Self.folder)
+
+        #expect(pratiche.forgottenPraticaPaths.isEmpty, "the last claim on X ending is what lets its tombstone go")
+    }
+
+    /// The regeneration twin of the first test.
+    @Test func endingARegenerationDropsOnlyItsOwnTombstone() {
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let other = "01 Progetti/Altra"
+        pratiche.beginRegeneration(Self.folder)
+        pratiche.beginRegeneration(other)
+        pratiche.followFolderTrashing(Self.folder, in: VaultController())
+        pratiche.followFolderTrashing(other, in: VaultController())
+        #expect(pratiche.forgottenPraticaPaths == [Self.folder, other], "precondition")
+
+        pratiche.endRegeneration(Self.folder)
+
+        #expect(pratiche.forgottenPraticaPaths == [other], "only the ended regeneration's own tombstone fell")
+        #expect(pratiche.regeneratingPraticaPaths == [other])
+        #expect(stop(continuing: Self.folder, on: pratiche) == nil)
+        #expect(stop(continuing: other, on: pratiche) == .praticaTrashed(path: other))
+    }
+
+    /// `destination(of:)` resolving to `.forgotten(current)`: the caller captured `folder`, a
+    /// relocation moved the claim to `moved`, `moved` was trashed. The tombstone that must fall is
+    /// `moved`'s, and a claim on another path must not be what keeps it.
+    @Test func endingARelocatedThenTrashedRegenerationDropsTheTombstoneOfWhereItEndedUp() {
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let vault = VaultController()
+        let other = "01 Progetti/Altra"
+        pratiche.beginRegeneration(Self.folder)
+        pratiche.beginRegeneration(other)
+        pratiche.followFolderRelocations([MovedNote(old: Self.folder, new: Self.moved)], in: vault)
+        pratiche.followFolderTrashing(Self.moved, in: vault)
+        pratiche.followFolderTrashing(other, in: vault)
+        #expect(pratiche.forgottenPraticaPaths == [Self.moved, other], "precondition")
+
+        pratiche.endRegeneration(Self.folder)
+
+        #expect(pratiche.regeneratingPraticaPaths == [other], "the claim held at the destination was released")
+        #expect(pratiche.forgottenPraticaPaths == [other], "the destination's tombstone fell, the open claim's did not")
     }
 
     /// `confirmDeletion` calls `load(from:)` straight after its trash, still inside the same

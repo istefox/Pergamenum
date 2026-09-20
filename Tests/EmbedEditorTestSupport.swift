@@ -8,18 +8,22 @@ import AppKit
 /// In a file of its own for the reason `DayTestSupport` is: three suites need it -
 /// `EmbedCaret` (ADR-0018's caret, deletion, click and accessibility), `EmbedResizeGesture`
 /// and `EmbedResizeCommit` (ADR-0019's handle, drag and commit) - and a copy in each is a
-/// copy that drifts.
+/// copy that drifts. `EmbedDrawing` and `EmbedResolution` adopt the byte-identical pieces
+/// (`makeTempVaultRoot`, `writeImage`, `waitForRendition`, `note`, `embedOffset`, `runLength`)
+/// and keep local the two helpers that are genuinely narrower than `editor(...)` and
+/// `waitForRendition` - each says so where it is declared (ADR-0051 §D4).
 @MainActor
 enum EmbedEditorFixtures {
-    static func makeTempVaultRoot() throws -> URL {
+    /// `prefix` names the directory a stray leftover in `$TMPDIR` came from; nothing reads it.
+    static func makeTempVaultRoot(prefix: String = "pergamenum-embed-") throws -> URL {
         let root = FileManager.default.temporaryDirectory
-            .appending(path: "pergamenum-embed-caret-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "\(prefix)\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
     }
 
-    /// A tiny real PNG, the same way `EmbedResolutionTests.writeImage` builds one: the
-    /// render has to be real for `EmbedTable` to resolve to `.drawn` rather than stall.
+    /// A tiny real PNG: the render has to be real for `EmbedTable` to resolve to `.drawn`
+    /// rather than stall.
     static func writeImage(named name: String, in root: URL) throws {
         let image = NSImage(size: CGSize(width: 40, height: 30))
         image.lockFocus()
@@ -74,9 +78,8 @@ enum EmbedEditorFixtures {
         return Fixture(textView: textView, coordinator: coordinator, window: window)
     }
 
-    /// Polls `embeds.renditions` until the render lands, the same shape
-    /// `EmbedResolutionTests.waitForRendition` already uses for the same real,
-    /// asynchronous `ThumbnailStore` call.
+    /// Polls `embeds.renditions` until the render lands - the real, asynchronous
+    /// `ThumbnailStore` call.
     static func waitForRendition(
         at offset: Int, in coordinator: NoteTextView.Coordinator
     ) async -> EmbedRendition? {

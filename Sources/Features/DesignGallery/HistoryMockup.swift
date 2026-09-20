@@ -23,36 +23,25 @@ import SwiftUI
 struct HistoryMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Sized from `MockupGalleryView.contentWidth` rather than guessed: at the 230 this
-    /// first shipped with, the three cells came to 818 points against the sheet's 780
-    /// and were quietly clipped at both edges. Nobody caught it until the template
-    /// mockup made the same mistake by a wider margin.
-    private static let tripleWidth: CGFloat = 208
+    /// Three cells across: `MockupGalleryView.tripleWidth` (the outer width) less the 16 points
+    /// of padding a `MockupCell` adds around its frame, so the row is 671. At the 230 this
+    /// first shipped with, the row came to 818 points against the sheet's 780 and was quietly
+    /// clipped at both edges; the 208 that replaced it was measured against 720 and still
+    /// came to 704, 32 over the 672 a page really gives.
+    private static let tripleWidth: CGFloat = MockupGalleryView.tripleWidth - 16
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.l)) {
-                scene(
-                    "Il foglio, testo pieno: «com'era»",
-                    HistorySheet(pane: .fullText)
-                )
-                scene(
-                    "Lo stesso foglio, differenze: «cosa è cambiato»",
-                    HistorySheet(pane: .diff)
-                )
-                entryPoints
-                edgeCases
-            }
-            .padding(theme.spacing(.l))
-            .frame(maxWidth: MockupGalleryView.contentWidth, alignment: .leading)
-        }
-        .background(theme.color(.backgroundPrimary))
-    }
-
-    private func scene(_ caption: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.s)) {
-            Text(caption).themedText(.caption, color: .textTertiary)
-            content
+        MockupPage {
+            MockupScene(
+                "Il foglio, testo pieno: «com'era»",
+                HistorySheet(pane: .fullText)
+            )
+            MockupScene(
+                "Lo stesso foglio, differenze: «cosa è cambiato»",
+                HistorySheet(pane: .diff)
+            )
+            entryPoints
+            edgeCases
         }
     }
 
@@ -83,14 +72,7 @@ struct HistoryMockup: View {
     }
 
     private func labelled(_ title: String, _ content: some View) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text(title).themedText(.caption, color: .textSecondary)
-            content
-                .frame(width: Self.tripleWidth)
-                .padding(theme.spacing(.s))
-                .background(theme.color(.backgroundSecondary))
-                .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
-        }
+        MockupCell(title, width: Self.tripleWidth) { content }
     }
 }
 
