@@ -212,6 +212,33 @@ func rejectsMalformedHex(_ input: String) {
     #expect(engine.current.inheritedTokens.isEmpty)
 }
 
+// MARK: - Font weight ladder
+
+@Test(arguments: [
+    (100, FontWeightStop.ultraLight), (149, .ultraLight),
+    (150, .thin), (249, .thin),
+    (250, .light), (349, .light),
+    (350, .regular), (400, .regular), (449, .regular),
+    (450, .medium), (549, .medium),
+    (550, .semibold), (649, .semibold),
+    (650, .bold), (700, .bold), (749, .bold),
+    (750, .heavy), (849, .heavy),
+    (850, .black), (900, .black),
+])
+func weightThresholdsRoundDownToTheLighterStop(weight: Int, stop: FontWeightStop) {
+    #expect(FontWeightStop(dtcg: weight) == stop)
+}
+
+@Test func everyWeightStopIsDistinctAndOrderedInBothFrameworks() {
+    let stops = FontWeightStop.allCases
+    #expect(Set(stops.map(\.swiftUI)).count == stops.count)
+    #expect(Set(stops.map(\.appKit)).count == stops.count)
+    // AppKit's weights are CGFloats, so the ladder's order is checkable: a stop mapped to
+    // the wrong AppKit weight would break the ascending run that the thresholds imply.
+    let appKit = stops.map(\.appKit.rawValue)
+    #expect(appKit == appKit.sorted())
+}
+
 // MARK: - Helpers
 
 /// Each test gets its own defaults suite so persisted selections cannot leak between
