@@ -5,7 +5,9 @@ import Foundation
 ///
 /// Pure code motion off `VaultBrowser.swift` (PG-035/ADR-0045's own pattern): this type
 /// used no `View` state of its own even there, and adding `categoryLines(_:)` for
-/// ADR-0047 §D10 is what pushed that file over `file_length`.
+/// ADR-0047 §D10 is what pushed that file over `file_length`. It then moved from
+/// `Sources/Features/Editor` to `Core` (PG-147): seven call sites across four feature
+/// folders read it, and it imports nothing but `Foundation`.
 enum ConformanceText {
     static func lines(_ violations: NoteViolations) -> [String] {
         nameLines(violations.name)
@@ -110,7 +112,7 @@ enum ConformanceText {
 
 extension ConformanceText {
     static func creationFailure(_ error: Error) -> String {
-        guard let creation = error as? VaultController.CreationError else { return "\(error)" }
+        guard let creation = error as? VaultSession.CreationError else { return "\(error)" }
         switch creation {
         case .alreadyExists(let path):
             return "Esiste già una nota in \(path)"

@@ -402,26 +402,30 @@ private enum HTMLEntities {
         return result
     }
 
-    private static func replacement(for name: String) -> String? {
-        switch name.lowercased() {
-        case "amp": return "&"
-        case "lt": return "<"
-        case "gt": return ">"
-        case "quot": return "\""
-        case "apos", "#39": return "'"
+    /// The named entities, and the two numeric references that show up often enough to
+    /// be worth a lookup instead of the parse below. Keys are lowercase: the lookup
+    /// lowercases the name first.
+    static let named: [String: String] = [
+        "amp": "&",
+        "lt": "<",
+        "gt": ">",
+        "quot": "\"",
+        "apos": "'", "#39": "'",
         // A non-breaking space is a space once the HTML is gone: keeping U+00A0 puts an
         // invisible, unsearchable character in every imported message.
-        case "nbsp": return " "
-        case "euro": return "€"
-        case "hellip": return "…"
-        case "rsquo", "#8217": return "\u{2019}"
-        case "lsquo": return "\u{2018}"
-        case "ldquo": return "\u{201C}"
-        case "rdquo": return "\u{201D}"
-        case "ndash": return "\u{2013}"
-        case "mdash": return "\u{2014}"
-        default: break
-        }
+        "nbsp": " ",
+        "euro": "€",
+        "hellip": "…",
+        "rsquo": "\u{2019}", "#8217": "\u{2019}",
+        "lsquo": "\u{2018}",
+        "ldquo": "\u{201C}",
+        "rdquo": "\u{201D}",
+        "ndash": "\u{2013}",
+        "mdash": "\u{2014}",
+    ]
+
+    private static func replacement(for name: String) -> String? {
+        if let known = named[name.lowercased()] { return known }
         guard name.hasPrefix("#") else { return nil }
         let digits = name.dropFirst()
         let value: UInt32?
