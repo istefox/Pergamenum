@@ -44,7 +44,7 @@ import Testing
 
 // MARK: - La scrittura
 
-private let taskNote = """
+private let dropTargetNote = """
 ---
 date: 2026-08-17
 tags:
@@ -61,7 +61,7 @@ tags:
 
 @MainActor
 private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
-    try vault.write(taskNote, to: "Lavoro.md")
+    try vault.write(dropTargetNote, to: "Lavoro.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
     return session
@@ -145,7 +145,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
 
     #expect(!outcome.didWrite)
     #expect(outcome.problem?.contains("non è più dove risultava") == true)
-    #expect(try session.read("Lavoro.md").text == taskNote)
+    #expect(try session.read("Lavoro.md").text == dropTargetNote)
 }
 
 /// The differential guard is here and quiet, and the test says which of the two it is: a `>`
@@ -169,7 +169,7 @@ private func task(_ session: VaultSession, containing text: String) throws -> Ta
 
 @MainActor
 private func controller(_ vault: borrowing TemporaryVault) async throws -> VaultController {
-    try vault.write(taskNote, to: "Lavoro.md")
+    try vault.write(dropTargetNote, to: "Lavoro.md")
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     return controller

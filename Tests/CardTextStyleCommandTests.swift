@@ -21,22 +21,10 @@ import Testing
 // shape (`Tests/CanvasCropTests.swift`) rather than `CardTextStyleTests.swift`'s.
 @MainActor
 @Suite struct CardTextStyleCommandTests {
-    private struct TemporaryRoot: ~Copyable {
-        let url: URL
-
-        init() throws {
-            url = FileManager.default.temporaryDirectory
-                .appending(path: "pergamenum-textstyle-cmd-\(UUID().uuidString)", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-
-        deinit { try? FileManager.default.removeItem(at: url) }
-    }
-
     // MARK: Setting colour writes exactly one key
 
     @Test func settingColorOnATextNodeWritesTheColorKeyAndNothingElseChanges() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         let before = try #require(controller.document.node(id: id))
@@ -58,7 +46,7 @@ import Testing
     // MARK: Setting then clearing alignment - no leftover key, no default written
 
     @Test func settingThenClearingAlignmentLeavesTheNodesUnknownExactlyAsItStarted() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         let originalUnknown = try #require(controller.document.node(id: id)).unknown
@@ -75,7 +63,7 @@ import Testing
     // MARK: SPEC edge case - deleting all text leaves both properties in place
 
     @Test func deletingAllOfACardsTextLeavesColorAndAlignmentInPlace() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let controller = try openedWorkspaceController(rootURL: root.url)
         let id = controller.addFreeText("ciao", at: .zero)
         controller.setTextColor(.preset(2), forNodeIDs: [id])
@@ -98,7 +86,7 @@ import Testing
         {"nodes":[{"id":"a","type":"text","x":0,"y":0,"width":220,"height":60,
                    "text":"ciao","pergamenum-crop":"0.1000 0.1000 0.5000 0.5000"}],"edges":[]}
         """
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let store = CanvasStore(root: root.url)
         try store.save(
             try CanvasDocument(data: Data(canvas.utf8)), board: "\(root.url.lastPathComponent).canvas"
@@ -121,7 +109,7 @@ import Testing
     // MARK: R-06 - both survive a save/close/reopen of the board
 
     @Test func bothPropertiesSurviveASaveAndReopenOfTheBoard() throws {
-        let root = try TemporaryRoot()
+        let root = try CanvasTemporaryRoot()
         let store = CanvasStore(root: root.url)
         let controller = WorkspaceController()
         controller.attach(to: store)

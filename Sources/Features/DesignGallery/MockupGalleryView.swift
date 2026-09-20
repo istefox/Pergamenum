@@ -26,6 +26,18 @@ struct MockupGalleryView: View {
     /// scroller. A row of cells is sized from this, never guessed.
     static let contentWidth: CGFloat = 720
 
+    /// What one mockup row actually gets: `contentWidth` less the 24 points of padding
+    /// `MockupPage` puts on each side (`spacing(.l)`), applied *before* it clamps to
+    /// `contentWidth`, so the content sees 672 and never 720. Two rows in the gallery were
+    /// sized against 720 and came out 32 and 16 points too wide.
+    static let rowWidth: CGFloat = contentWidth - 48
+    /// Two across, with the 16 points (`spacing(.m)`) an `HStack` puts between them: 328.
+    static let pairWidth: CGFloat = (rowWidth - 16) / 2
+    /// Three across, the same way: 213 rounded down from 213.33, so the row is 671 and fits.
+    /// This is the *outer* width of a cell. A `MockupCell` pads 8 points each side after
+    /// its frame, so it takes this less 16 as its `width`.
+    static let tripleWidth: CGFloat = ((rowWidth - 32) / 3).rounded(.down)
+
     /// One mockup: what the picker calls it, where it stands, and the view that draws it.
     ///
     /// These three used to be three separate `switch`es over `Screen`, kept in step by hand.

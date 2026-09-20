@@ -35,12 +35,8 @@ import SwiftUI
 struct TagBrowserMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Full width inside `MockupGalleryView.contentWidth`: 720 less 24 of padding a side.
-    private static let sceneWidth: CGFloat = 672
     /// The sidebar at its usual width, so the pane is judged at the size it will have.
     private static let paneWidth: CGFloat = 300
-    /// Two across: 2 × 328 + 16 of spacing = 672.
-    private static let pairWidth: CGFloat = 328
 
     var body: some View {
         MockupPage {
@@ -59,7 +55,7 @@ struct TagBrowserMockup: View {
     private var resting: some View {
         MockupScene("Il pannello a riposo: namespace chiusi, conteggi a destra, un tag appuntato in cima") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                TagMockupPane(width: Self.pairWidth) {
+                TagMockupPane(width: MockupGalleryView.pairWidth) {
                     TagMockupHeader(title: "TAG")
                     TagMockupTagRow(name: "client-nexion", count: 4, marking: .none, isPinned: true)
                     Divider().padding(.vertical, 2)
@@ -67,7 +63,7 @@ struct TagBrowserMockup: View {
                         TagMockupNamespaceRow(name: group.name, count: group.total, isOpen: false)
                     }
                 }
-                TagMockupPane(width: Self.pairWidth) {
+                TagMockupPane(width: MockupGalleryView.pairWidth) {
                     TagMockupHeader(title: "TAG")
                     TagMockupNamespaceRow(name: "client", count: 12, isOpen: true)
                     TagMockupTagRow(name: "client-vibrofer", count: 8, marking: .none)
@@ -86,7 +82,7 @@ struct TagBrowserMockup: View {
     private var narrowed: some View {
         MockupScene("Due tag scelti, in AND: le note restano qui sotto · le note tornano nel pannello Note") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                TagMockupPane(width: Self.pairWidth) {
+                TagMockupPane(width: MockupGalleryView.pairWidth) {
                     TagMockupHeader(title: "TAG")
                     TagMockupNamespaceRow(name: "client", count: 12, isOpen: true)
                     TagMockupTagRow(name: "client-nexion", count: 4, marking: .filled)
@@ -98,7 +94,7 @@ struct TagBrowserMockup: View {
                     ForEach(Self.notes, id: \.self) { TagMockupNoteRow(title: $0) }
                 }
                 VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                    TagMockupPane(width: Self.pairWidth) {
+                    TagMockupPane(width: MockupGalleryView.pairWidth) {
                         TagMockupHeader(title: "TAG")
                         TagMockupNamespaceRow(name: "client", count: 12, isOpen: true)
                         TagMockupTagRow(name: "client-nexion", count: 4, marking: .filled)
@@ -106,7 +102,7 @@ struct TagBrowserMockup: View {
                         TagMockupTagRow(name: "topic-gomma", count: 19, marking: .filled)
                         TagMockupTagRow(name: "topic-ceramica", count: 12, marking: .none)
                     }
-                    TagMockupPane(width: Self.pairWidth) {
+                    TagMockupPane(width: MockupGalleryView.pairWidth) {
                         TagMockupHeader(title: "NOTE · client-nexion + topic-gomma (3)")
                         ForEach(Self.notes, id: \.self) { TagMockupNoteRow(title: $0) }
                     }
@@ -121,7 +117,7 @@ struct TagBrowserMockup: View {
         MockupScene("Il tag scelto: riempito · con la spunta · in grassetto col conteggio acceso") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 ForEach(TagMockupTagRow.Marking.chosen, id: \.self) { marking in
-                    TagMockupPane(width: 213) {
+                    TagMockupPane(width: MockupGalleryView.tripleWidth) {
                         TagMockupTagRow(name: "topic-gomma", count: 19, marking: marking)
                         TagMockupTagRow(name: "topic-ceramica", count: 12, marking: .none)
                     }
@@ -137,14 +133,14 @@ struct TagBrowserMockup: View {
     private var starred: some View {
         MockupScene("Il pannello Note con le preferite in cima · senza nessuna preferita") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                TagMockupPane(width: Self.pairWidth) {
+                TagMockupPane(width: MockupGalleryView.pairWidth) {
                     TagMockupFilterField()
                     TagMockupHeader(title: "PREFERITE")
                     ForEach(Self.starredNotes, id: \.self) { TagMockupNoteRow(title: $0, isStarred: true) }
                     Divider().padding(.vertical, theme.spacing(.xs))
                     ForEach(Self.folders, id: \.self) { TagMockupFolderRow(name: $0) }
                 }
-                TagMockupPane(width: Self.pairWidth) {
+                TagMockupPane(width: MockupGalleryView.pairWidth) {
                     TagMockupFilterField()
                     ForEach(Self.folders, id: \.self) { TagMockupFolderRow(name: $0) }
                     TagMockupNoteRow(title: "Curva di trasmissibilità")
@@ -160,13 +156,13 @@ struct TagBrowserMockup: View {
     private var rename: some View {
         MockupScene("Rinomina in tutto il vault: il diff di una nota e il conteggio · tutte le note, scorrendo") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                TagMockupSheet(width: Self.pairWidth, title: "Rinomina «topic-gomma» in «topic-gomma-metallo»") {
+                TagMockupSheet(width: MockupGalleryView.pairWidth, title: "Rinomina «topic-gomma» in «topic-gomma-metallo»") {
                     Text("12 note toccate").themedText(.caption, color: .textSecondary)
                     TagMockupDiff(path: "Clienti/Nexion.md", lines: Self.diff)
                     Text("e altre 11, tutte con la stessa riga")
                         .themedText(.caption, color: .textTertiary)
                 }
-                TagMockupSheet(width: Self.pairWidth, title: "Rinomina «topic-gomma» in «topic-gomma-metallo»") {
+                TagMockupSheet(width: MockupGalleryView.pairWidth, title: "Rinomina «topic-gomma» in «topic-gomma-metallo»") {
                     Text("12 note toccate").themedText(.caption, color: .textSecondary)
                     TagMockupDiff(path: "Clienti/Nexion.md", lines: Self.diff)
                     TagMockupDiff(path: "Progetti/Sospensione.md", lines: Self.diff)

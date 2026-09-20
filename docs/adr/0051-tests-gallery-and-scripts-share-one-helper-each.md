@@ -207,3 +207,87 @@ left for the same reason.
 - The collision to watch: worktree `204-pg-120-mailstorereadertestspublishre` targets
   `Tests/MailStoreReaderTests.swift:139`; this chain edits the resolver at the bottom of the same
   file.
+
+## Amendment, 2026-09-20: the four residuals closed
+
+The four entries left open above became `PG-176` to `PG-179` (#330 to #333). Three were closed on
+branch `chore/adr-0051-residuals`; #333 was closed on `main` by #337 while it was open. Each was re-measured against the tree before any edit, and two
+of the four issue texts were wrong in a way that changed the fix. This section is additive: the
+body above is not rewritten.
+
+**#331 / PG-177, `taskNote` declared twice.** Renamed to `fiveViewsNote` (`TaskViewTests`) and
+`dropTargetNote` (`TaskDropTests`). They are not merged: `TaskDropTests` reads its fixture by line
+offset and by the word `Collaudo`. Not fixed, out of scope: `praticaNote` is declared four times in
+four files (`PraticheConnectorTests`, `PraticaLedgerFolderTrashTests`, `DossierWriterTests`,
+`PraticheLinksConnectorTests`), and their contents were not compared.
+
+**#332 / PG-178, `tripleWidth`.** The issue names 213 as the odd value out. 208 is the wrong one.
+`MockupPage` pads 24 points a side and only then clamps to `contentWidth`, so a mockup's content
+gets 672, not 720, and a `MockupCell` pads 8 a side after its frame. 208 was measured against 720
+and gave a row of 704, 32 over. `TemplateMockup`'s `doubleWidth` of 320 was the same slip (a row of
+688, 16 over) and is not named in the issue. `MockupGalleryView` now derives `rowWidth` (672),
+`pairWidth` (328) and `tripleWidth` (213) once, and the mockups read them: `HistoryMockup` and
+`TemplateMockup` take the outer width less the 16 a cell pads. That removed `sceneWidth` declared in
+two files (one of them never read), `pairWidth` declared in three, and a bare `213` in
+`TagBrowserMockup`. The single-use literals (`FoldingMockup` 330, `EmbedMockup` 300, `SlashMenuMockup`
+340, `TaskControlsMockup`, `WorkspaceMockup`, `ViewMockupRenderers` 204) are not a shared grid and
+are left.
+
+**#333 / PG-179, `MockupGalleryView.Screen`.** The claim that forgetting a switch is a silent gap is
+false: all three switches are exhaustive with no `default:`, so the compiler refuses the build. The
+cost was edit count, not silence. This branch first merged `title` and `milestone` into one switch
+returning a private `Entry`, then met a fix already on `main`: #337 had closed the same issue by
+folding all three switches, the view included, into one `Screen.page` table of `Page` values (an
+`AnyView` per screen). The branch's version was dropped in the merge and `main`'s kept, so this
+chain changes nothing about the screen switches. It stays worth knowing that the `Entry` shape was
+checked equal to the old one, all 21 titles and milestones, and that `main`'s `Page` table trades
+the `@ViewBuilder` switch's type identity for the single table.
+
+**#330 / PG-176, the temp-vault fixtures.** There were 21 struct declarations (22 `~Copyable` hits,
+one of them a comment, one `TemporaryVault` itself), so 20 duplicates, not the 22 the issue says.
+There are now 10. §D4 bounded the merge: only a fixture that is a subset of another is folded.
+
+| Outcome | Fixtures |
+|---|---|
+| Folded into `TemporaryVault` (7) | `TaskVault`, `LinkVault`, `RouteVault`, `ComposerVault`, `DayVault`, `AttachmentVault`, `CacheVault` |
+| Compose a `TemporaryVault`, forward `root` and `write` (4) | `OpsVault`, `BoardOpsVault`, `FolderOpsVault`, `CharacterizationVault` |
+| Folded into `CanvasTemporaryRoot`, now in `CanvasTestSupport.swift` (4) | the three `TemporaryRoot`s and `DrawingRoot` |
+| Kept local, each with a comment naming why (4) | `VaultWalkFixture`, `BoundaryFixture`, `CallSiteFixture` at the declaration; `TemporaryDirectory` (`ThemeCustomizationTests`) in `TemporaryVaultSupport.swift`, because that file sits exactly at SwiftLint's 400-line warning threshold and five lines of comment there would add a warning |
+
+`TemporaryVault` gained nothing and moved to `Tests/TemporaryVaultSupport.swift` (§D2). Its surface is
+still `root`, `stateBase`, `init`, `deinit` and `write(_:to:)`. `text(at:)`, `bytes(at:)`,
+`createDirectory`, a `write` that supplies its own contents, and a `prefix:` parameter were each
+refused: every one has one call-site family, and a shared fixture that grows a member per suite is the
+unbounded superset §D4 forbids. Three decisions differ from what the plan said, each for a reason found
+while doing it:
+
+- `CacheVault` became a file-private `extension TemporaryVault` in `IndexCacheTests.swift` carrying
+  `cacheURL` and `corruptCache()`, not two free functions. The effect is the same, `TemporaryVault`'s
+  shared surface is untouched, and the 15 `vault.cacheURL` call sites did not have to change.
+- `CharacterizationVault` was to stay local because its file header calls it a baseline to re-run
+  unedited after ADR-0041's `rename` refactor. That refactor has landed (`NoteFileOperations.swift:218-237`
+  runs `renamePlan` and `VaultPlanApplication.apply`), and the file, untouched since it was written,
+  passes against the refactored code, so the reason expired and it is composed like the other three.
+- `VaultWalkFixture` stays local, but not for the reason first given. No caller reads the `URL` its
+  `makeFile` returns (0 of 30 calls), so it is a strict subset of `CanvasTemporaryRoot`. What is left is
+  the name: that fixture is documented for canvas suites and no walk test touches a board. It is the
+  first candidate if a neutral name for the plain-directory fixture is ever wanted.
+
+Things a reader of the diff should know:
+
+- The `#expect` comments in `VaultMoveTests.swift:443`, `FolderFileOperationTests`,
+  `NoteFileOperationTests` and `NoteRenameCharacterizationTests` read as if a call on a `~Copyable`
+  value cannot appear inside `#expect`. That is wider than the truth. 155 lines under `Tests/` put
+  `vault.` inside one and compile, including a throwing method call
+  (`#expect(try vault.text(at:) == sampleBoard)` in `FolderFileOperationTests`). What fails is
+  passing the value itself by name as an argument. The comments are left as they were; `TemporaryVaultSupport.swift` states the narrow form.
+- The per-suite temp-directory prefixes (`pergamenum-tasks-`, `-links-`, `-composer-`, `-day-`,
+  `-cache-`, `-ops-` and the rest) collapse to `pergamenum-vault-` or `pergamenum-canvas-`. No test
+  reads a directory name (grepped). What is lost is diagnostic: debris under the system temp directory
+  no longer says which suite left it.
+- Ten fixtures that had no `stateBase` (the six folded into `TemporaryVault` other than `CacheVault`,
+  and the four composed ones) now create and remove one nobody reads. It does not hide a leak: under test `VaultController.open` resolves `VaultState.processDefaultBase()`, an isolated
+  per-process directory, not the real Application Support.
+- The plan expected `grep -rn '~Copyable' Tests/` to fall to 8 lines. It falls to 12: the four composed
+  fixtures are still `~Copyable`, since a struct holding a noncopyable value must be. That is 10
+  declarations and 2 comments, and 12 is the number a ninth copy has to be measured against.
