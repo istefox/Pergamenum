@@ -29,7 +29,7 @@ private struct TaskVault: ~Copyable {
     }
 }
 
-private let taskNote = """
+private let fiveViewsNote = """
 ---
 date: 2026-08-11
 tags:
@@ -49,7 +49,7 @@ tags:
 @MainActor
 @Test func sortsTasksIntoTheFiveViews() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -71,7 +71,7 @@ tags:
 @MainActor
 @Test func findsTheTasksLinkingToANote() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -85,7 +85,7 @@ tags:
 @MainActor
 @Test func completingATaskRewritesItsSourceNote() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -104,7 +104,7 @@ tags:
 @MainActor
 @Test func reschedulingWritesTheNewDate() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -120,7 +120,7 @@ tags:
 @MainActor
 @Test func settingADueDateFromTheContextMenuWritesIt() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -140,7 +140,7 @@ tags:
 @MainActor
 @Test func refusesToRewriteATaskThatMovedOnDisk() async throws {
     let vault = try TaskVault()
-    try vault.write(taskNote, to: "Note.md")
+    try vault.write(fiveViewsNote, to: "Note.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
@@ -151,7 +151,7 @@ tags:
     #expect(await !controller.apply(.state(.done), to: task))
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Note.md"), encoding: .utf8)
-    #expect(onDisk == taskNote)
+    #expect(onDisk == fiveViewsNote)
     controller.close()
 }
 
