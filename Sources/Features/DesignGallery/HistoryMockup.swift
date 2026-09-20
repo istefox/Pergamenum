@@ -23,12 +23,6 @@ import SwiftUI
 struct HistoryMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Sized from `MockupGalleryView.contentWidth` rather than guessed: at the 230 this
-    /// first shipped with, the three cells came to 818 points against the sheet's 780
-    /// and were quietly clipped at both edges. Nobody caught it until the template
-    /// mockup made the same mistake by a wider margin.
-    private static let tripleWidth: CGFloat = 208
-
     var body: some View {
         MockupPage {
             MockupScene(
@@ -71,7 +65,7 @@ struct HistoryMockup: View {
     }
 
     private func labelled(_ title: String, _ content: some View) -> some View {
-        MockupCell(title, width: Self.tripleWidth) { content }
+        MockupCell(title, outerWidth: MockupGalleryView.tripleWidth) { content }
     }
 }
 

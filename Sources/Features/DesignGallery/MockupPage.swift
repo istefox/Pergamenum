@@ -68,19 +68,25 @@ struct MockupScene<Content: View>: View {
 /// by hand; `alignment` is the one thing they disagreed about (the template mockup's cells
 /// start at the leading edge, the other two centre), so it is a parameter rather than a
 /// reason for a second copy.
+///
+/// `outerWidth` is the room the cell takes in its row, padding included, which is what every
+/// other size in the gallery means (`MockupGalleryView.tripleWidth`, `TabBarMockup`'s `Column`).
+/// The cell used to take the *content* width and add its padding on top, so the same number
+/// drew a cell 16 points wider than in a `Column`, and rows of three came out at 208, 213 and
+/// 230 depending on the file (#332).
 struct MockupCell<Content: View>: View {
     @Environment(\.theme) private var theme
     private let title: String
-    private let width: CGFloat
+    private let outerWidth: CGFloat
     private let alignment: Alignment
     private let content: Content
 
     init(
-        _ title: String, width: CGFloat, alignment: Alignment = .center,
+        _ title: String, outerWidth: CGFloat, alignment: Alignment = .center,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
-        self.width = width
+        self.outerWidth = outerWidth
         self.alignment = alignment
         self.content = content()
     }
@@ -89,7 +95,7 @@ struct MockupCell<Content: View>: View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text(title).themedText(.caption, color: .textSecondary)
             content
-                .frame(width: width, alignment: alignment)
+                .frame(width: max(0, outerWidth - 2 * theme.spacing(.s)), alignment: alignment)
                 .padding(theme.spacing(.s))
                 .background(theme.color(.backgroundSecondary))
                 .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))

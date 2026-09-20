@@ -40,8 +40,6 @@ struct TabBarMockup: View {
     private static let sceneWidth: CGFloat = 672
     /// Two across: 2 × 328 + 16 of spacing = 672.
     private static let pairWidth: CGFloat = 328
-    /// Three across: 3 × 213 + 2 × 16 = 671.
-    private static let tripleWidth: CGFloat = 213
 
     var body: some View {
         MockupPage {
@@ -117,7 +115,7 @@ struct TabBarMockup: View {
         MockupScene("L'attiva: riempita · sottolineata · solo il peso del testo") {
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
                 ForEach(TabChip.Marking.allCases, id: \.self) { marking in
-                    Column(width: Self.tripleWidth) {
+                    Column(width: MockupGalleryView.tripleWidth) {
                         HStack(spacing: 2) {
                             TabChip(tab: Self.threeTabs[0], marking: marking)
                             TabChip(tab: Self.threeTabs[1], marking: marking)

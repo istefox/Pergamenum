@@ -22,11 +22,9 @@ import SwiftUI
 struct TemplateMockup: View {
     @Environment(\.theme) private var theme
 
-    /// Three cells across, inside `MockupGalleryView.contentWidth`:
-    /// 3 × (208 + 16 of padding) + 2 × 16 of spacing = 704, under the 720 available.
-    private static let tripleWidth: CGFloat = 208
-    /// Two across, with the room the first row does not need: 2 × (320 + 16) + 16 = 688.
-    private static let doubleWidth: CGFloat = 320
+    /// Two across: 2 × 328 + 16 of spacing = 672, the outer width of a `MockupCell`. `internal`
+    /// rather than `private` because `MockupGalleryLayoutTests` reads it.
+    static let doubleWidth: CGFloat = 328
 
     var body: some View {
         MockupPage {
@@ -49,9 +47,9 @@ struct TemplateMockup: View {
             Text("Quando la cartella Templates/ non esiste")
                 .themedText(.caption, color: .textTertiary)
             HStack(alignment: .top, spacing: theme.spacing(.m)) {
-                labelled("A. Il controllo non c'è", Self.tripleWidth, AbsentControl())
-                labelled("B. C'è, disattivato", Self.tripleWidth, DisabledControl())
-                labelled("C. C'è, e spiega", Self.tripleWidth, TeachingControl())
+                labelled("A. Il controllo non c'è", MockupGalleryView.tripleWidth, AbsentControl())
+                labelled("B. C'è, disattivato", MockupGalleryView.tripleWidth, DisabledControl())
+                labelled("C. C'è, e spiega", MockupGalleryView.tripleWidth, TeachingControl())
             }
         }
     }
@@ -67,8 +65,8 @@ struct TemplateMockup: View {
         }
     }
 
-    private func labelled(_ title: String, _ width: CGFloat, _ content: some View) -> some View {
-        MockupCell(title, width: width, alignment: .leading) { content }
+    private func labelled(_ title: String, _ outerWidth: CGFloat, _ content: some View) -> some View {
+        MockupCell(title, outerWidth: outerWidth, alignment: .leading) { content }
     }
 }
 

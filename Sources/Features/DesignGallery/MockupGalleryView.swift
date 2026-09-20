@@ -26,6 +26,15 @@ struct MockupGalleryView: View {
     /// scroller. A row of cells is sized from this, never guessed.
     static let contentWidth: CGFloat = 720
 
+    /// The outer width of one item in a row of three, padding and frame included.
+    ///
+    /// 720 less 24 of padding a side leaves 672, and 3 × 213 + 2 × 16 of spacing = 671. One
+    /// value for every mockup that draws three across: `TabBarMockup` had 213 and
+    /// `HistoryMockup`/`TemplateMockup` had 208, which is the same row at two widths. `208`
+    /// was a cell's *content* width, so its outer width was 224 and the row 704, wider than
+    /// the 672 there is. `MockupCell(_:outerWidth:)` takes this value as is.
+    static let tripleWidth: CGFloat = 213
+
     /// One mockup: what the picker calls it, where it stands, and the view that draws it.
     ///
     /// These three used to be three separate `switch`es over `Screen`, kept in step by hand.

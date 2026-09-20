@@ -42,7 +42,7 @@ struct OutlineMockup: View {
     }
 
     private func labelled(_ title: String, _ content: some View) -> some View {
-        MockupCell(title, width: 230) { content }
+        MockupCell(title, outerWidth: MockupGalleryView.tripleWidth) { content }
     }
 }
 
