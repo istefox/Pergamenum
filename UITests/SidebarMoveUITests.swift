@@ -312,9 +312,21 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         XCTAssertTrue(destination.waitForExistence(timeout: 5))
 
+        // A second attempt if the first did not land, and only then. Measured on 2026-09-20
+        // (PG-180): with the pointer moved by anything else during the run this drag failed 13
+        // times in 20, always at ~17 s with the source row still in place; on a machine nobody
+        // touched it passed 30 in 30, and under CPU load alone it did not change (2 in 20, as on
+        // an idle one). A synthesized drag shares the pointer with the person at the keyboard, so
+        // it can be lost without the app having done anything wrong. The retry is safe because a
+        // lost drag leaves the source row where it was, and a drop that only arrived late is
+        // caught by the wait, which is why the source is checked before a second gesture.
+        let moved = vault.appending(path: "Target/DragBoard.canvas")
         source.dragTo(destination)
+        if !waitForFile(moved, toExist: true, timeout: 4), source.exists {
+            source.dragTo(destination)
+        }
 
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragBoard.canvas"), toExist: true, timeout: 8),
+        XCTAssertTrue(waitForFile(moved, toExist: true, timeout: 8),
                      "il drag di una singola riga board non ha spostato il file")
         XCTAssertTrue(waitForFile(vault.appending(path: "DragBoard.canvas"), toExist: false, timeout: 8))
     }
