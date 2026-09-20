@@ -32,20 +32,31 @@
 #   - **It keeps the evidence.** A `.xcresult` bundle is written next to the log, so a red is
 #     diagnosed from failure messages and screenshots instead of by running 24 minutes again
 #     (`xcrun xcresulttool get test-results summary --path <bundle>`).
-#   - **A failure that passes on the retry is a flake, not a red.** `-retry-tests-on-failure`
-#     runs each failing test once more; the ones that recover are named apart from the ones
-#     that do not, and a launch that never happened is labelled whatever its duration.
+#   - **A launch that never happened is labelled whatever its duration**, and is the only
+#     failure retried (see the section further down).
+#   - **What a run learns is shared.** A run over a clean tree writes a verdict keyed by the
+#     tree hash into the git common dir, which every worktree and every session of this repo
+#     sees. `--status` reads it in a second, a full run over a tree already verified is
+#     skipped, and two sessions cannot run the suite at once. Twenty-five minutes of the
+#     machine is paid once per tree, not once per chat.
 #
 # Usage:  scripts/uitests.sh [-only-testing:...]
 #         with no arguments the whole bundle runs; an argument REPLACES that selection
 #         rather than adding to it, so a single suite can be run:
 #         scripts/uitests.sh -only-testing:PergamenumUITests/TimelineHoursUITests
 #
+#         scripts/uitests.sh --status
+#         says whether this tree, and `main`, already has a verdict, and what changed since the
+#         last full green one. Read-only, instant, safe at any moment.
+#
 #         scripts/uitests.sh --affected
-#         derives the selection from what differs from `main` (committed, staged, unstaged
-#         and untracked), prints why, and runs only that - or nothing, when nothing that
-#         differs can reach the UI. For iteration only: the rule in CLAUDE.md, the whole suite
-#         before a merge to `main`, is not replaced by it.
+#         derives the selection from what differs from the last full green verdict (or from
+#         `main` when there is none), prints why, and runs only that - or nothing, when nothing
+#         that differs can reach the UI. For iteration only: the rule in CLAUDE.md, the whole
+#         suite before a merge to `main`, is not replaced by it.
+#
+#         scripts/uitests.sh --force ...
+#         runs even though the tree already has a full green verdict.
 #
 # A run this long is best started away from the machine and read afterwards:
 #         caffeinate -dimsu scripts/uitests.sh > /dev/null 2>&1 &
@@ -112,46 +123,179 @@ classes_for_path() {
     esac
 }
 
-affected_selection() {
-    local base changed path cls
-    base=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || true)
-    [ -n "$base" ] || fail "--affected non trova il punto di partenza da main"
-    changed=$( { git diff --name-only "$base"; git ls-files --others --exclude-standard; } | sort -u)
-    if [ -z "$changed" ]; then
-        printf 'uitests: --affected: nessuna differenza da main, nessun giro.\n'
-        exit 0
-    fi
-    local wanted="" all_reason="" none_count=0
+# MARK: shared verdicts
+
+# What one run learned is worth something to every session working on this repo, so it is
+# written where all of them look: the git common dir, which every worktree shares. A verdict is
+# keyed by the tree hash of HEAD, not by the commit: a merge commit whose tree equals the branch
+# tree that was tested is the same code, and the same verdict. Only a clean tree gets one, since
+# a green over uncommitted edits describes no commit. UITESTS_VERDICT_DIR exists so a test of
+# this logic never writes into the real, shared directory.
+common_dir=$(cd "$(git rev-parse --git-common-dir)" && pwd)
+readonly VERDICT_DIR="${UITESTS_VERDICT_DIR:-$common_dir/uitests-verdicts}"
+readonly LOCK="$VERDICT_DIR/running"
+
+tree_of() { git rev-parse "$1^{tree}" 2>/dev/null; }
+is_clean() { [ -z "$(git status --porcelain --untracked-files=normal)" ]; }
+verdict_field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+verdict_file() { printf '%s/%s.%s.verdict' "$VERDICT_DIR" "$1" "$2"; }
+
+# The newest full green verdict whose commit is HEAD or one of its ancestors: the point from
+# which "what changed" is the whole question.
+last_verified_ancestor() {
+    local f c
+    for f in $(ls -t "$VERDICT_DIR"/*.full.verdict 2>/dev/null); do
+        [ "$(verdict_field "$f" result)" = green ] || continue
+        c=$(verdict_field "$f" commit)
+        if git merge-base --is-ancestor "$c" HEAD 2>/dev/null; then
+            printf '%s' "$c"
+            return
+        fi
+    done
+}
+
+# What the difference from `base` (committed, staged, unstaged and untracked) can reach, into
+# PLAN (ALL, NONE or LIST), PLAN_CLASSES, PLAN_REASON (the first path that forces ALL) and
+# PLAN_NONE (how many changed paths reach nothing).
+PLAN=""
+PLAN_CLASSES=""
+PLAN_REASON=""
+PLAN_NONE=0
+plan_from() {
+    local changed path cls wanted=""
+    PLAN=""
+    PLAN_CLASSES=""
+    PLAN_REASON=""
+    PLAN_NONE=0
+    changed=$( { git diff --name-only "$1"; git ls-files --others --exclude-standard; } | sort -u)
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         cls=$(classes_for_path "$path")
         case "$cls" in
-            ALL) all_reason="${all_reason:-$path}" ;;
-            NONE) none_count=$((none_count + 1)) ;;
+            ALL) PLAN_REASON="${PLAN_REASON:-$path}" ;;
+            NONE) PLAN_NONE=$((PLAN_NONE + 1)) ;;
             *) wanted="$wanted $cls" ;;
         esac
     done <<< "$changed"
-    if [ -n "$all_reason" ]; then
-        printf 'uitests: --affected: %s raggiunge troppe classi per elencarle, giro completo.\n' "$all_reason"
-        selection=(-only-testing:PergamenumUITests)
-        return
+    if [ -n "$PLAN_REASON" ]; then
+        PLAN=ALL
+    elif [ -z "${wanted// /}" ]; then
+        PLAN=NONE
+    else
+        PLAN=LIST
+        PLAN_CLASSES=$(printf '%s\n' $wanted | sort -u | tr '\n' ' ')
     fi
-    if [ -z "${wanted// /}" ]; then
-        printf 'uitests: --affected: %d file cambiati, nessuno raggiunge la UI, nessun giro.\n' "$none_count"
-        exit 0
-    fi
-    selection=()
-    for cls in $(printf '%s\n' $wanted | sort -u); do
-        selection+=("-only-testing:PergamenumUITests/$cls")
-    done
-    printf 'uitests: --affected: %d classi: %s\n' "${#selection[@]}" \
-        "$(printf '%s\n' "${selection[@]}" | sed 's|.*/||' | tr '\n' ' ')"
 }
 
+describe_plan() {
+    case "$PLAN" in
+        NONE) printf 'nessun giro: %d file cambiati, nessuno raggiunge la UI' "$PLAN_NONE" ;;
+        ALL) printf 'giro completo: %s raggiunge troppe classi per elencarle' "$PLAN_REASON" ;;
+        *) printf 'solo %s' "$PLAN_CLASSES" ;;
+    esac
+}
+
+show_verdict() {
+    local label="$1" tree="$2" scope f
+    for scope in full partial; do
+        f=$(verdict_file "$tree" "$scope")
+        if [ -f "$f" ]; then
+            printf '  %-5s %-8s %s il %s, %s test (commit %s)\n' "$label" "$scope" \
+                "$(verdict_field "$f" result)" "$(verdict_field "$f" date)" \
+                "$(verdict_field "$f" executed)" "$(verdict_field "$f" commit | cut -c1-7)"
+        else
+            printf '  %-5s %-8s nessun verdetto\n' "$label" "$scope"
+        fi
+    done
+}
+
+# Read-only and instant: it never touches the machine, so it can be asked at any moment by any
+# session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
+# a run is still owed.
+status_report() {
+    local head_tree main_tree base
+    head_tree=$(tree_of HEAD)
+    printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
+        "$(is_clean && echo pulito || echo 'con modifiche non committate')"
+    show_verdict HEAD "$head_tree"
+    main_tree=$(tree_of main || tree_of origin/main || true)
+    if [ -n "$main_tree" ] && [ "$main_tree" != "$head_tree" ]; then
+        show_verdict main "$main_tree"
+    fi
+    base=$(last_verified_ancestor)
+    if [ -n "$base" ]; then
+        plan_from "$base"
+        printf 'uitests: ultimo verde completo tra gli antenati: %s; da allora %s\n' "${base:0:7}" "$(describe_plan)"
+    else
+        printf 'uitests: nessun verde completo tra gli antenati di HEAD\n'
+    fi
+    # Verified means: HEAD's own tree has a full green verdict, or nothing that differs from the
+    # last full green one can reach the UI (a script, a doc, the ledger).
+    [ "$(verdict_field "$(verdict_file "$head_tree" full)" result)" = green ] \
+        || { [ -n "$base" ] && [ "$PLAN" = NONE ]; }
+}
+
+# MARK: --affected
+
+affected_selection() {
+    local base how cls
+    base=$(last_verified_ancestor)
+    if [ -n "$base" ]; then
+        how="dall'ultimo verde completo ${base:0:7}"
+    else
+        base=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || true)
+        [ -n "$base" ] || fail "--affected non trova il punto di partenza"
+        how="da main, mai verificato"
+    fi
+    plan_from "$base"
+    case "$PLAN" in
+        NONE)
+            printf 'uitests: --affected (%s): %s.\n' "$how" "$(describe_plan)"
+            exit 0 ;;
+        ALL)
+            printf 'uitests: --affected (%s): %s.\n' "$how" "$(describe_plan)"
+            selection=(-only-testing:PergamenumUITests)
+            SCOPE=full ;;
+        *)
+            selection=()
+            for cls in $PLAN_CLASSES; do
+                selection+=("-only-testing:PergamenumUITests/$cls")
+            done
+            printf 'uitests: --affected (%s): %d classi: %s\n' "$how" "${#selection[@]}" "$PLAN_CLASSES" ;;
+    esac
+}
+
+FORCE=0
+SCOPE=partial
 selection=()
+if [ "${1:-}" = "--force" ]; then
+    FORCE=1
+    shift
+fi
+if [ "${1:-}" = "--status" ]; then
+    [ "$#" -eq 1 ] || fail "--status non si combina con altri argomenti"
+    if status_report; then exit 0; else exit 1; fi
+fi
 if [ "${1:-}" = "--affected" ]; then
     [ "$#" -eq 1 ] || fail "--affected non si combina con altri argomenti"
     affected_selection
+elif [ "$#" -eq 0 ]; then
+    SCOPE=full
+fi
+
+# The tree this run is about, taken before anything moves. A full run over a tree that already
+# has a full green verdict is a run somebody else already paid for.
+readonly START_TREE=$(tree_of HEAD)
+if is_clean; then START_CLEAN=1; else START_CLEAN=0; fi
+readonly START_CLEAN
+if [ "$SCOPE" = full ] && [ "$START_CLEAN" -eq 1 ] && [ "$FORCE" -eq 0 ]; then
+    verdict=$(verdict_file "$START_TREE" full)
+    if [ -f "$verdict" ] && [ "$(verdict_field "$verdict" result)" = green ]; then
+        printf 'uitests: questo albero è già verificato: verde il %s, %s test, commit %s. Nessun giro (--force per rifarlo).\n' \
+            "$(verdict_field "$verdict" date)" "$(verdict_field "$verdict" executed)" \
+            "$(verdict_field "$verdict" commit | cut -c1-7)"
+        exit 0
+    fi
 fi
 
 # MARK: instances
@@ -213,6 +357,30 @@ if other=$(pgrep -fl 'xcodebuild.*Pergamenum' 2>/dev/null) && [ -n "$other" ]; t
     fail "aspetta che finisca e rilancia"
 fi
 
+# Two sessions running the suite at once is one run too many: they fight for the pointer, the
+# focus and the global hot key, and the second one's result is noise. The lock names who has
+# it, so the other session knows there is a verdict coming that will be its own as well.
+FOCUS_PID=""
+rerun_focus=""
+cleanup() {
+    kill $FOCUS_PID $rerun_focus 2>/dev/null || true
+    [ "$(cut -f1 "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    return 0
+}
+mkdir -p "$VERDICT_DIR"
+take_lock() {
+    ( set -C; printf '%s\t%s\t%s\t%s\n' "$$" "$REPO" "$(date +%H:%M:%S)" "$SCOPE" >"$LOCK" ) 2>/dev/null
+}
+if ! take_lock; then
+    if kill -0 "$(cut -f1 "$LOCK" 2>/dev/null)" 2>/dev/null; then
+        printf 'uitests: un giro è già in corso (pid, cartella, ora, ambito):\n  %s\n' "$(tr '\t' ' ' <"$LOCK")" >&2
+        fail "aspetta che finisca: il suo verdetto varrà anche per questa sessione (uitests.sh --status)"
+    fi
+    rm -f "$LOCK"
+    take_lock || fail "non riesco a prendere il lock dei giri"
+fi
+trap cleanup EXIT
+
 # MARK: keep-focused
 
 # Confirmed by reading the screen recording XCUITest attaches to a failure: another
@@ -243,8 +411,7 @@ focus_pergamenum() {
     done
 }
 focus_pergamenum &
-readonly FOCUS_PID=$!
-trap 'kill "$FOCUS_PID" 2>/dev/null || true' EXIT
+FOCUS_PID=$!
 
 # MARK: run
 
@@ -270,7 +437,6 @@ xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
     -destination 'platform=macOS' \
     -derivedDataPath "$DERIVED_DATA" \
     -resultBundlePath "$RESULT_BUNDLE" \
-    -retry-tests-on-failure -test-iterations 2 \
     "${selection[@]}" \
     test >"$LOG" 2>&1
 RESULT=$?
@@ -285,33 +451,14 @@ grep -E "^	 Executed [0-9]+ tests?" "$LOG" | tail -1 || true
 
 failures=$(grep -E "^Test Case .* failed \(" "$LOG" || true)
 
-# A test that failed and then passed on the retry is a flake: named, not counted. One that
-# never passed is a real red. Told apart by looking for a `passed` line for the same test.
 real=""
-recovered=""
-seen=""
-while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    name=$(printf '%s' "$line" | sed -E "s/.*'-\[(.*)\]'.*/\1/")
-    case "$seen" in *"|$name|"*) continue ;; esac
-    seen="$seen|$name|"
-    if grep -qF "Test Case '-[$name]' passed (" "$LOG"; then
-        recovered="$recovered$line
+[ -z "$failures" ] || real="$failures
 "
-    else
-        real="$real$line
-"
-    fi
-done <<< "$failures"
 
 if [ -z "$real" ] && [ "$RESULT" -eq 0 ]; then
     # Said out loud rather than left to be inferred from a count: the whole point of this
     # script is that the state of the suite stops being something somebody has to work out.
     printf '\nuitests: verde.\n'
-fi
-if [ -n "$recovered" ]; then
-    printf '\nRipescati al secondo tentativo (flake, non un rosso):\n'
-    printf '%s' "$recovered" | sed -E "s/^Test Case '-\[(.*)\]' failed \((.*)\)\.$/  \1  (\2)/"
 fi
 if [ -n "$real" ]; then
     printf '\nFallimenti:\n'
@@ -358,10 +505,11 @@ if [ -n "$launch_failed" ] && [ "$RESULT" -ne 0 ]; then
     while IFS= read -r arg; do rerun_selection+=("$arg"); done <<< "$launch_failed"
     focus_pergamenum &
     rerun_focus=$!
-    trap 'kill "$FOCUS_PID" "$rerun_focus" 2>/dev/null || true' EXIT
     set +e
     xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum \
         -destination 'platform=macOS' \
+        -derivedDataPath "$DERIVED_DATA" \
+        -resultBundlePath "${RESULT_BUNDLE%.xcresult}-rerun.xcresult" \
         "${rerun_selection[@]}" \
         test >"$LOG.rerun" 2>&1
     rerun_result=$?
@@ -381,6 +529,33 @@ if [ -n "$launch_failed" ] && [ "$RESULT" -ne 0 ]; then
         printf 'uitests: falliti anche al secondo tentativo. Log del rilancio in %s\n' "$LOG.rerun"
     fi
 fi
+
+# MARK: verdict
+
+# Recorded for every session, once the run is settled (a launch rerun included, since RESULT is
+# already the final word by here). Never for a tree that was dirty at the start or is now, or
+# that moved meanwhile: that green would describe no commit.
+record_verdict() {
+    local executed result file tmp
+    if [ "$START_CLEAN" -ne 1 ] || ! is_clean || [ "$(tree_of HEAD)" != "$START_TREE" ]; then
+        printf '\nuitests: albero con modifiche non committate o cambiato durante il giro, nessun verdetto registrato\n'
+        return 0
+    fi
+    executed=$(grep -E "^	 Executed [0-9]+ tests?" "$LOG" | tail -1 | sed -E 's/.*Executed ([0-9]+) tests?.*/\1/' || true)
+    executed="${executed:-0}"
+    result=red
+    [ "$RESULT" -eq 0 ] && [ "$executed" -gt 0 ] && result=green
+    file=$(verdict_file "$START_TREE" "$SCOPE")
+    tmp="$file.$$"
+    {
+        printf 'tree=%s\ncommit=%s\ndate=%s\nscope=%s\nresult=%s\nexecuted=%s\n' \
+            "$START_TREE" "$(git rev-parse HEAD)" "$(date '+%Y-%m-%d %H:%M')" "$SCOPE" "$result" "$executed"
+        printf 'selection=%s\nbundle=%s\nlog=%s\n' "${selection[*]}" "$RESULT_BUNDLE" "$LOG"
+    } >"$tmp" && mv "$tmp" "$file"
+    printf '\nuitests: verdetto %s (%s) registrato per l'"'"'albero %s: lo vedono tutte le sessioni con --status\n' \
+        "$result" "$SCOPE" "${START_TREE:0:7}"
+}
+record_verdict
 
 # MARK: leave nothing behind
 
