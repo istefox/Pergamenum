@@ -210,8 +210,8 @@ left for the same reason.
 
 ## Amendment, 2026-09-20: the four residuals closed
 
-The four entries left open above became `PG-176` to `PG-179` (#330 to #333) and were closed on
-branch `chore/adr-0051-residuals`. Each was re-measured against the tree before any edit, and two
+The four entries left open above became `PG-176` to `PG-179` (#330 to #333). Three were closed on
+branch `chore/adr-0051-residuals`; #333 was closed on `main` by #337 while it was open. Each was re-measured against the tree before any edit, and two
 of the four issue texts were wrong in a way that changed the fix. This section is additive: the
 body above is not rewritten.
 
@@ -235,10 +235,13 @@ are left.
 
 **#333 / PG-179, `MockupGalleryView.Screen`.** The claim that forgetting a switch is a silent gap is
 false: all three switches are exhaustive with no `default:`, so the compiler refuses the build. The
-cost was edit count, not silence. `title` and `milestone` are now one switch returning a private
-`Entry`; `current` stays its own `@ViewBuilder` switch, because folding it in needs `AnyView` or a
-stored closure. No test pins the titles, so a script compared `HEAD` with the new file: all 21 cases
-keep the same title and milestone.
+cost was edit count, not silence. This branch first merged `title` and `milestone` into one switch
+returning a private `Entry`, then met a fix already on `main`: #337 had closed the same issue by
+folding all three switches, the view included, into one `Screen.page` table of `Page` values (an
+`AnyView` per screen). The branch's version was dropped in the merge and `main`'s kept, so this
+chain changes nothing about the screen switches. It stays worth knowing that the `Entry` shape was
+checked equal to the old one, all 21 titles and milestones, and that `main`'s `Page` table trades
+the `@ViewBuilder` switch's type identity for the single table.
 
 **#330 / PG-176, the temp-vault fixtures.** There were 21 struct declarations (22 `~Copyable` hits,
 one of them a comment, one `TemporaryVault` itself), so 20 duplicates, not the 22 the issue says.
