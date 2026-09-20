@@ -31,6 +31,12 @@ import Testing
 
 // MARK: - Fixture
 
+/// Kept local on purpose (ADR-0051 §D4, PG-176). It is the same shape as `CanvasTemporaryRoot`
+/// (`url` and `makeFile`, with no caller reading the `URL` this `makeFile` returns), but that
+/// fixture is named and documented for canvas suites and nothing here touches a board;
+/// adopting it would make a walk test read as a canvas test, and renaming it costs every canvas
+/// suite. If a neutral name for the plain-directory fixture is ever wanted, this is the first
+/// candidate to fold into it.
 private struct VaultWalkFixture: ~Copyable {
     let url: URL
 

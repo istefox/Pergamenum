@@ -114,6 +114,11 @@ private func expectOutsideVault(
 
 /// All adversarial paths, including ../../etc/passwd, land in this unique container
 /// if the guard regresses. Sentinel setup never touches a real vault or system file.
+///
+/// Kept local on purpose (ADR-0051 §D4, PG-176): `root` is `level/vault` inside a
+/// symlink-resolved `container`, so `../..` stays inside a directory the fixture owns and
+/// cleans up. `TemporaryVault.root` sits directly under the system temp directory, where the
+/// same path would name a shared one.
 private struct BoundaryFixture: ~Copyable {
     let container: URL
     let root: URL
