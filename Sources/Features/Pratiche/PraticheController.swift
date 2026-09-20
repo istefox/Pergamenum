@@ -122,6 +122,16 @@ final class PraticheController {
     /// what a resumed sync skips.
     var ledger: PraticaLedger = .empty
 
+    /// The `ledger.json` URL `ledger` above was last read from or reconciled with, `nil`
+    /// while it is only the `.empty` it starts as (PG-172, #312). `ledger` says nothing about
+    /// WHICH file it mirrors, so a writer that saved it straight after mutating memory could
+    /// overwrite the real file with an empty ledger (nothing had loaded yet) or with another
+    /// vault's entries (a vault switch the pane never saw). Every writer and every reader
+    /// that acts on `ledger` for a live vault goes through `ensureLedgerLoaded(for:)`, the
+    /// one door that compares this against the vault's own URL. Not `private(set)`:
+    /// `PraticheController+Ledger.swift` sets it from `load(from:)` and that door.
+    @ObservationIgnored var ledgerLoadedURL: URL?
+
     /// A pratica path some in-flight caller captured before a relocation moved its
     /// ledger key elsewhere, mapped to where that key sits now. `moveLedgerState`
     /// populates one entry per key currently claimed by `syncingPraticaPath` or

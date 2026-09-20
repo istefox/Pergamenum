@@ -170,6 +170,7 @@ private func stop(continuing path: String, on controller: PraticheController) ->
         let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
         pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = stateImporting("<a@rossi-spa.it>")
         pratiche.ledger.byPraticaPath["01 Progetti-altro/Y"] = .empty
+        pratiche.markLedgerLoaded(in: vaultController)
         pratiche.trayCounts["01 Progetti/Tifone"] = 2
         #expect(pratiche.problem == nil, "precondition")
 
@@ -230,6 +231,7 @@ private func stop(continuing path: String, on controller: PraticheController) ->
         // What the OLD pratica at this path left in the ledger: a message this Mail index
         // has never heard of.
         pratiche.ledger.byPraticaPath[Self.folder] = stateImporting(stale)
+        pratiche.markLedgerLoaded(in: vaultController)
 
         // Control, hook unwired: the old pratica's history is what the next sync inherits.
         _ = await sync.runExclusive(praticaPath: Self.folder)

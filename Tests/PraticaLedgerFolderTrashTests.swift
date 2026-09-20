@@ -203,6 +203,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         }
         pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = ledgerState(importing: "<a@rossi-spa.it>")
         pratiche.ledger.byPraticaPath["01 Progetti-altro/Y"] = ledgerState(importing: "<b@rossi-spa.it>")
+        pratiche.markLedgerLoaded(in: vaultController)
 
         let trashed = vaultController.trashFolder(at: "01 Progetti")
 

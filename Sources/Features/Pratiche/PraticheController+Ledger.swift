@@ -58,6 +58,29 @@ private enum PraticaPathDestination: Equatable {
 }
 
 extension PraticheController {
+    /// Makes `ledger` the content of `session`'s own `ledger.json` and returns that URL
+    /// (PG-172, #312). The one door every ledger writer, and every reader that acts on the
+    /// ledger for a live vault, goes through before touching `ledger`: `ledger` starts
+    /// `.empty` and only `load(from:)` fills it, and nothing calls that at launch or on a
+    /// vault switch, so a writer that saved it straight after mutating memory could replace
+    /// the real file with an empty or another vault's ledger. When `ledgerLoadedURL` already
+    /// names this vault's file the memory copy is trusted as it is, so an unsaved in-flight
+    /// mutation is never clobbered by a re-read; otherwise the file is read fresh (a missing
+    /// or unreadable one reads as `.empty`, as `load(from:)` does).
+    ///
+    /// A door that returns the URL rather than a `Bool` check, per CLAUDE.md's working
+    /// agreement on invariant checks: the next writer gets the URL to save to only by
+    /// passing through here.
+    @discardableResult
+    func ensureLedgerLoaded(for session: VaultSession) -> URL {
+        let url = Self.ledgerURL(for: session)
+        if ledgerLoadedURL != url {
+            ledger = PraticaLedger.load(from: url)
+            ledgerLoadedURL = url
+        }
+        return url
+    }
+
     /// What a finished sync found waiting for this pratica (R-30). Also refreshes the
     /// list, since the dot on a row is one of these counts.
     func updateTray(
@@ -87,11 +110,12 @@ extension PraticheController {
     /// yet, does not create one to say zero.
     private func persistTrayCount(_ count: Int, for praticaPath: String, in vault: VaultController) {
         guard let session = vault.session else { return }
+        let url = ensureLedgerLoaded(for: session)
         var state = ledger.byPraticaPath[praticaPath] ?? .empty
         guard state.trayCount != count else { return }
         state.trayCount = count
         ledger.byPraticaPath[praticaPath] = state
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+        do { try ledger.save(to: url) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }
@@ -116,6 +140,7 @@ extension PraticheController {
             details = [:]
             links = .empty
             ledger = .empty
+            ledgerLoadedURL = nil
             // Round-4 review, §6: a redirect entry describes THIS vault's own
             // relocations alone (`livePraticaPath`'s own "session identity checked
             // first" reason, `PraticaLiveSync+Run.swift`) - once the vault is gone,
@@ -133,7 +158,11 @@ extension PraticheController {
             forgottenPraticaPaths.removeAll()
             return
         }
-        ledger = PraticaLedger.load(from: Self.ledgerURL(for: session))
+        // Always a fresh read, unlike `ensureLedgerLoaded(for:)`: this is the refresh, and
+        // it also stamps which file the memory copy now mirrors.
+        let url = Self.ledgerURL(for: session)
+        ledger = PraticaLedger.load(from: url)
+        ledgerLoadedURL = url
         pratiche = Self.listItems(
             in: vault, ledger: ledger, trayCounts: trayCounts,
             rootFolder: vault.settings.pratiche.rootFolder
@@ -184,12 +213,13 @@ extension PraticheController {
 
     private func markOpened(_ praticaPath: String, in vault: VaultController) {
         guard let session = vault.session else { return }
+        let url = ensureLedgerLoaded(for: session)
         var state = ledger.byPraticaPath[praticaPath] ?? .empty
         state.lastOpenedAt = Date()
         ledger.byPraticaPath[praticaPath] = state
         // A ledger that will not save costs one badge, not a pratica: reported, never
         // thrown at the person reading their mail.
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+        do { try ledger.save(to: url) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }
@@ -231,7 +261,9 @@ extension PraticheController {
         _ outcome: PraticaSyncEngine.SyncOutcome, for praticaPath: String, session: VaultSession,
         isCurrentVault: Bool
     ) {
-        let url = Self.ledgerURL(for: session)
+        // For the live vault this is what makes `ledger` the file's own content before the
+        // merge below; for another vault it only names its file, which is read fresh.
+        let url = isCurrentVault ? ensureLedgerLoaded(for: session) : Self.ledgerURL(for: session)
         // A relocation that ran on the main actor while this outcome's own sync was
         // still in flight has already moved the ledger key out from under
         // `praticaPath` (`moveLedgerState`, below) - only meaningful against `self`
@@ -333,6 +365,9 @@ extension PraticheController {
     /// selection.
     func moveLedgerState(from oldPath: String, to newPath: String, in vault: VaultController) {
         guard oldPath != newPath else { return }
+        // Before any remap below mutates `ledger` (PG-172): the remap must act on the
+        // vault's own ledger, not on an unloaded `.empty` or another vault's.
+        let ledgerURL = vault.session.map { ensureLedgerLoaded(for: $0) }
         // Snapshotted before any of the remaps below touch `syncingPraticaPath`/
         // `regeneratingPraticaPaths` themselves, so this still reads their PRE-move
         // values while every one of the following calls is still relocating `oldPath`.
@@ -376,8 +411,8 @@ extension PraticheController {
             }
             regeneratingPraticaPaths = remappedRegenerations
         }
-        guard let session = vault.session else { return }
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+        guard let ledgerURL else { return }
+        do { try ledger.save(to: ledgerURL) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }
@@ -433,13 +468,10 @@ extension PraticheController {
         // and its sheets call - not the launch, and not this hook, which fires for ANY folder
         // trashed through the note list or the Workspace browser. A controller that never
         // loaded holds nothing to remove from, and saving that empty value would overwrite
-        // the real file and wipe every pratica's history. So an empty in-memory ledger is
-        // refreshed from disk first (a missing or unreadable file reads as `.empty` again,
-        // which changes nothing), and the save below happens only when a key really left.
-        let ledgerURL = vault.session.map(Self.ledgerURL(for:))
-        if ledger == .empty, let ledgerURL {
-            ledger = PraticaLedger.load(from: ledgerURL)
-        }
+        // the real file and wipe every pratica's history. `ensureLedgerLoaded(for:)` reads
+        // the file first when memory does not mirror it (PG-172 generalised the `.empty`
+        // test this used to be), and the save below happens only when a key really left.
+        let ledgerURL = vault.session.map { ensureLedgerLoaded(for: $0) }
         let ledgerKeyCount = ledger.byPraticaPath.count
         Self.removeKeys(
             &ledger.byPraticaPath, under: path, forgotten: &forgottenPraticaPaths, isInFlight: isInFlight
@@ -653,7 +685,9 @@ extension PraticheController {
     /// Declared here (ADR-0155 §D1); the coder wires the body (§D23.4's repointing,
     /// called from `PraticaLiveSync.runExclusive` before candidates are evaluated).
     func remapLedgerConversations(_ remap: [Int: Int], of praticaPath: String, in vault: VaultController) {
-        guard !remap.isEmpty, var state = ledger.byPraticaPath[praticaPath] else { return }
+        guard !remap.isEmpty, let session = vault.session else { return }
+        let url = ensureLedgerLoaded(for: session)
+        guard var state = ledger.byPraticaPath[praticaPath] else { return }
         state.entries = state.entries.map { entry in
             guard let newID = remap[entry.conversationID] else { return entry }
             return PraticaLedger.Entry(
@@ -661,8 +695,7 @@ extension PraticheController {
             )
         }
         ledger.byPraticaPath[praticaPath] = state
-        guard let session = vault.session else { return }
-        do { try ledger.save(to: Self.ledgerURL(for: session)) } catch {
+        do { try ledger.save(to: url) } catch {
             problem = "Non è stato possibile aggiornare il registro delle pratiche: \(error.localizedDescription)"
         }
     }

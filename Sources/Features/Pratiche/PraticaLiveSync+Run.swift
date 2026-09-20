@@ -69,6 +69,7 @@ extension PraticaLiveSync {
             praticaPath: praticaPath, session: session, root: root, settings: settings, controller: controller
         )
         let stateDirectory = PraticheController.stateDirectory(for: session)
+        controller.ensureLedgerLoaded(for: session)
         let state = controller.ledger.byPraticaPath[praticaPath] ?? .empty
         let onDisk = Set(state.importedMessageIDs)
         let mailRoot = MailStoreLocation.resolve()

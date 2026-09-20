@@ -503,6 +503,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 
         let pratiche = PraticheController.live(vault: vaultController)
         pratiche.ledger.byPraticaPath["01 Progetti/Tifone/X"] = .empty
+        pratiche.markLedgerLoaded(in: vaultController)
 
         pratiche.moveLedgerState(
             from: "01 Progetti/Tifone/X", to: "Calendar/01 Progetti/Tifone/X", in: vaultController
@@ -533,6 +534,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
             pratiche?.followFolderRelocations(moved, in: vaultController)
         }
         pratiche.ledger.byPraticaPath["F"] = .empty
+        pratiche.markLedgerLoaded(in: vaultController)
         let manager = UndoManager()
 
         let outcome = await vaultController.moveItems(
@@ -568,6 +570,7 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
             pratiche?.followFolderRelocations(moved, in: vaultController)
         }
         pratiche.ledger.byPraticaPath["01 Progetti/Tifone"] = .empty
+        pratiche.markLedgerLoaded(in: vaultController)
 
         let newPath = vaultController.renameFolder(at: "01 Progetti", to: "Calendar")
 

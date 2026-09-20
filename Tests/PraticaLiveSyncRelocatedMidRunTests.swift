@@ -83,6 +83,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         var seeded = PraticaLedger.PraticaState.empty
         seeded.importedMessageIDs = ["<preesistente@rossi-spa.it>"]
         pratiche.ledger.byPraticaPath[Self.old] = seeded
+        pratiche.markLedgerLoaded(in: vaultController)
         pratiche.trayCounts[Self.old] = 2
         pratiche.trayProposals[Self.old] = []
 
@@ -145,6 +146,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         var seeded = PraticaLedger.PraticaState.empty
         seeded.entries = [PraticaLedger.Entry(messageID: "<abc123@rossi-spa.it>", rowID: 1, conversationID: 112_409)]
         pratiche.ledger.byPraticaPath[Self.old] = seeded
+        pratiche.markLedgerLoaded(in: vaultController)
 
         pratiche.beginSync(Self.old)
         pratiche.followFolderRelocations([MovedNote(old: Self.old, new: Self.new)], in: vaultController)
