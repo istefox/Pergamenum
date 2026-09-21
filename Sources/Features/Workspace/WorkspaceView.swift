@@ -206,24 +206,18 @@ struct WorkspaceView: View {
         guard let pendingOuter = pending, let pending = pendingOuter else { return }
         defer { _ = vault.consumePendingWorkspacePlacement() }
         let folder = (pending as NSString).deletingLastPathComponent
-        // Read in the hand-off, never in `body`: `allBoards()` walks the vault uncached.
-        let resolution = WorkspaceBoardResolver.board(
-            inFolder: folder, among: workspace.store?.allBoards() ?? []
-        )
-        guard case .unique(let path) = resolution else {
-            workspace.select(folder.isEmpty ? nil : .folder(folder))
-            let container = folder.isEmpty ? "la radice del vault" : "«\(folder)»"
-            vault.recordProblem(
-                resolution == .ambiguous
-                ? "\(pending): \(container) contiene più di una board, aprine una e riprova"
-                : "\(pending): \(container) non contiene nessuna board, creane una e riprova"
-            )
+        // `enter(folder:)` selects the board or the folder and reads the board list here, in the
+        // hand-off, never in `body`: `allBoards()` walks the vault uncached.
+        let resolution = workspace.enter(folder: folder)
+        if let problem = WorkspaceBoardResolver.placementProblem(
+            for: pending, inFolder: folder, resolution: resolution
+        ) {
+            vault.recordProblem(problem)
             return
         }
-        workspace.select(.board(path: path.value))
         // A board that could not be read leaves the previous one on screen (ADR-0025 §D4),
         // and the note must not be placed on it.
-        guard workspace.current == .board(path: path.value) else { return }
+        guard case .unique(let path) = resolution, workspace.current == .board(path: path.value) else { return }
         if !workspace.document.nodes.contains(where: {
             if case .file(let path, _) = $0.kind { return path == pending } else { return false }
         }) {

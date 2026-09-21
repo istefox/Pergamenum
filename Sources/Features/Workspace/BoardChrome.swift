@@ -45,19 +45,16 @@ struct BoardTopBar: View {
     /// segment is `select(nil)`, the only spelling of "nothing selected": `.folder("")` is
     /// never produced (§D3).
     ///
-    /// The board list is read here, in the click, and never in `body`: `allBoards()` is an
-    /// uncached walk of the whole vault, as `WorkspaceBoardResolver`'s own doc comment says.
+    /// The rule is `WorkspaceController.enter(folder:)`'s, shared with the folder card and the
+    /// editor hand-off. The root guard stays here because it answers a different question:
+    /// `enter(folder: "")` would resolve the vault root's own board, and a root holding exactly
+    /// one would open it for a click that means "nothing selected".
     private func open(ancestor folder: String) {
         guard !folder.isEmpty else {
             workspace.select(nil)
             return
         }
-        switch WorkspaceBoardResolver.board(
-            inFolder: folder, among: workspace.store?.allBoards() ?? []
-        ) {
-        case .unique(let path): workspace.select(.board(path: path.value))
-        case .ambiguous, .notFound: workspace.select(.folder(folder))
-        }
+        workspace.enter(folder: folder)
     }
 }
 
