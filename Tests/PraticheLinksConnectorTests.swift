@@ -12,7 +12,7 @@ import Testing
 
 private let praticaFolder = "01 Progetti/Rossi/Offerta"
 
-private let praticaNote = """
+private let minimalPraticaNote = """
 ---
 pergamenum-dossier: 1
 pergamenum-dossier-counterparts:
@@ -44,7 +44,7 @@ private let messagePath = "\(praticaFolder)/email/msg.md"
 
 @MainActor
 private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
-    try vault.write(praticaNote, to: "\(praticaFolder)/pratica.md")
+    try vault.write(minimalPraticaNote, to: "\(praticaFolder)/pratica.md")
     try vault.write(messageWithNoLink, to: messagePath)
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()

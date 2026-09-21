@@ -11,7 +11,7 @@ import Testing
 // red until the coder's implementation lands, rather than against the stub's own
 // (empty) behaviour.
 
-private let praticaNote = """
+private let praticaNoteWithForeignKey = """
 ---
 pergamenum-dossier: 1
 obsidian-icon: 📁
@@ -25,7 +25,7 @@ Corpo della pratica, non toccato.
 @MainActor
 @Test func dossierWriterUpdatePreservesAForeignKeyItDoesNotOwnByteForByte() async throws {
     let vault = try TemporaryVault()
-    try vault.write(praticaNote, to: "Rossi/pratica.md")
+    try vault.write(praticaNoteWithForeignKey, to: "Rossi/pratica.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
 
     let failure = await DossierWriter.update(at: "Rossi", session: session) { dossier in

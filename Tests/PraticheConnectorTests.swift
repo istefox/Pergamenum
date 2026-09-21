@@ -21,7 +21,7 @@ import Testing
 
 private let praticaFolder = "01 Progetti/Rossi/Offerta"
 
-private let praticaNote = """
+private let praticaNoteWithTagsAndConversation = """
 ---
 date: 2026-09-01
 tags:
@@ -41,7 +41,7 @@ Appunti pratica.
 
 @MainActor
 private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
-    try vault.write(praticaNote, to: "\(praticaFolder)/pratica.md")
+    try vault.write(praticaNoteWithTagsAndConversation, to: "\(praticaFolder)/pratica.md")
 
     let message = MessageDocument(
         frontmatter: .init(
