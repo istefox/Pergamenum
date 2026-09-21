@@ -75,7 +75,10 @@ struct BoardContentLayer: View {
             // inside the band-only hit area (`hitShape(for:)`) it was meant to miss
             // (testDraggingTheMiddleOfAGroupLeavesItWhereItIs). A group already has its
             // own readable label from that header `Text`; it does not need this one.
-            .modifier(NodeAccessibility(summary: accessibilitySummary(for: node), isGroup: node.isGroup))
+            .modifier(NodeAccessibility(
+                summary: Self.accessibilitySummary(for: node, isFolder: workspace.subfolder(for: node) != nil),
+                isGroup: node.isGroup
+            ))
             // Stable regardless of render state: the placeholder branch below carries
             // no Text, so a UI test that only knows the node's title cannot find a card
             // once `drawsPlaceholder` switches it in at low zoom.
@@ -236,14 +239,18 @@ struct BoardContentLayer: View {
     /// (PG-041). Approximates what `NodeCard` shows without any of its async state (email
     /// headers, thumbnails): enough to identify the card, not a mirror of every visual
     /// detail.
-    private func accessibilitySummary(for node: CanvasNode) -> String {
+    ///
+    /// A pure function of the card (ADR-0053 §D2 #3), so a test can ask for the words without
+    /// hosting the board. `isFolder` is what `workspace.subfolder(for:)` answers for a `.file`
+    /// card: it reads the disk, so the caller asks and this function does not.
+    nonisolated static func accessibilitySummary(for node: CanvasNode, isFolder: Bool) -> String {
         switch node.kind {
         case .text(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "nota vuota" : trimmed
         case .file(let path, _):
             let name = (path as NSString).lastPathComponent
-            return workspace.subfolder(for: node) != nil ? "cartella \(name)" : name
+            return isFolder ? "cartella \(name)" : name
         case .link(let url):
             return LinkCardTitle.read(from: node) ?? url
         case .group(let label):

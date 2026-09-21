@@ -193,11 +193,23 @@ struct WorkspaceRow: View {
     /// The state said in words, because the colour that used to say it is gone (R-02) and
     /// was never something a screen reader could read anyway (ADR-0024 §D9).
     private var accessibilityLabel: String {
-        switch node.kind {
+        Self.accessibilityLabel(
+            kind: node.kind, name: node.name, boardCount: node.boardCount, isSelected: isSelected
+        )
+    }
+
+    /// The row's label as a pure function of what it reads (ADR-0053 §D2 #2), so a test can ask
+    /// for the words without hosting the row. A board says ", aperta" when it is the open one and
+    /// a folder says ", selezionata" when it is the selected one - the two suffixes the GUI tests
+    /// told a lit row by. `isSelected` is `selection?.path == node.id`, decided by the caller.
+    nonisolated static func accessibilityLabel(
+        kind: WorkspaceTree.Node.Kind, name: String, boardCount: Int, isSelected: Bool
+    ) -> String {
+        switch kind {
         case .board:
-            return isSelected ? "Workspace \(node.name), aperta" : "Workspace \(node.name)"
+            return isSelected ? "Workspace \(name), aperta" : "Workspace \(name)"
         case .folder:
-            let base = "Cartella \(node.name), \(node.boardCount) Workspace"
+            let base = "Cartella \(name), \(boardCount) Workspace"
             return isSelected ? "\(base), selezionata" : base
         }
     }

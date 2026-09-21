@@ -178,7 +178,7 @@ struct BoardCardActions {
     /// at.
     func open(_ node: CanvasNode) {
         if let subfolder = workspace.subfolder(for: node) {
-            enter(subfolder)
+            workspace.enter(folder: subfolder)
             return
         }
         switch node.kind {
@@ -197,20 +197,6 @@ struct BoardCardActions {
             workspace.beginTextEdit(nodeID: node.id)
         case .group, .unknown:
             break
-        }
-    }
-
-    /// A folder card, under the one rule §D5 gives every folder→board navigation: the
-    /// resolver decides which board the folder means, `.unique` opens it, and
-    /// `.ambiguous`/`.notFound` selects the folder rather than guessing at a board named
-    /// after it (§D1). The board list is read in the gesture, never in a `body`, because
-    /// `allBoards()` walks the whole vault uncached.
-    private func enter(_ folder: String) {
-        switch WorkspaceBoardResolver.board(
-            inFolder: folder, among: workspace.store?.allBoards() ?? []
-        ) {
-        case .unique(let path): workspace.select(.board(path: path.value))
-        case .ambiguous, .notFound: workspace.select(.folder(folder))
         }
     }
 }
