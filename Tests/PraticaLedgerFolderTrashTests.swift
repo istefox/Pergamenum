@@ -16,7 +16,7 @@ import Testing
 // (R-04/R-05 at the door), which `Tests/VaultSessionFolderOperationsTests.swift` owns beside
 // the facade's other folder tests.
 
-private let praticaNote = """
+private let minimalPraticaNote = """
 ---
 pergamenum-dossier: 1
 pergamenum-dossier-counterparts:
@@ -180,7 +180,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
     /// `undoOfFolderMoveRestoresLedgerKey` wires `didRelocateFolders`).
     @Test func trashingAFolderThroughTheDoorForgetsTheLedgerKey() async throws {
         let vault = try TemporaryVault()
-        try vault.write(praticaNote, to: "01 Progetti/Tifone/pratica.md")
+        try vault.write(minimalPraticaNote, to: "01 Progetti/Tifone/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
         let session = try #require(vaultController.session)
@@ -204,8 +204,8 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
 
     @Test func trashingAnAncestorFolderThroughTheDoorForgetsEveryDescendantPraticaKey() async throws {
         let vault = try TemporaryVault()
-        try vault.write(praticaNote, to: "01 Progetti/Tifone/pratica.md")
-        try vault.write(praticaNote, to: "01 Progetti-altro/Y/pratica.md")
+        try vault.write(minimalPraticaNote, to: "01 Progetti/Tifone/pratica.md")
+        try vault.write(minimalPraticaNote, to: "01 Progetti-altro/Y/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
         let session = try #require(vaultController.session)
@@ -237,7 +237,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
     /// clears it itself, the hook does.
     @Test func deletingAPraticaThroughItsOwnCommandForgetsTheLedgerKey() async throws {
         let vault = try TemporaryVault()
-        try vault.write(praticaNote, to: "01 Progetti/Tifone/pratica.md")
+        try vault.write(minimalPraticaNote, to: "01 Progetti/Tifone/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
         let session = try #require(vaultController.session)
@@ -271,7 +271,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
     @Test func aPraticaRecreatedUnderTheSameNameStartsFromAnEmptyLedger() async throws {
         let vault = try TemporaryVault()
         let path = "01 Progetti/Tifone"
-        try vault.write(praticaNote, to: "\(path)/pratica.md")
+        try vault.write(minimalPraticaNote, to: "\(path)/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
         let session = try #require(vaultController.session)
@@ -284,7 +284,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         try seeded.save(to: PraticheController.ledgerURL(for: session))
 
         #expect(vaultController.trashFolder(at: path))
-        try vault.write(praticaNote, to: "\(path)/pratica.md")
+        try vault.write(minimalPraticaNote, to: "\(path)/pratica.md")
         pratiche.load(from: vaultController)
 
         #expect(pratiche.ledger.byPraticaPath[path] == nil, "the recreated pratica must not inherit the old one's key")
@@ -306,7 +306,7 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
     @Test func trashingAnUnrelatedFolderBeforeTheLedgerIsLoadedLeavesTheFileUntouched() async throws {
         let vault = try TemporaryVault()
         let pratica = "01 Progetti/Tifone"
-        try vault.write(praticaNote, to: "\(pratica)/pratica.md")
+        try vault.write(minimalPraticaNote, to: "\(pratica)/pratica.md")
         try vault.write("Una nota.", to: "Altro/nota.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -341,8 +341,8 @@ private func ledgerState(importing ids: String...) -> PraticaLedger.PraticaState
         let vault = try TemporaryVault()
         let pratica = "01 Progetti/Tifone"
         let neighbour = "01 Progetti/Verdi"
-        try vault.write(praticaNote, to: "\(pratica)/pratica.md")
-        try vault.write(praticaNote, to: "\(neighbour)/pratica.md")
+        try vault.write(minimalPraticaNote, to: "\(pratica)/pratica.md")
+        try vault.write(minimalPraticaNote, to: "\(neighbour)/pratica.md")
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
         let session = try #require(vaultController.session)
