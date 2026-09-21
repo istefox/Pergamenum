@@ -131,6 +131,7 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 ## Commands
 
 ```bash
+tuist install                                                                                   # once per fresh worktree, before the first generate (else the Stop hook reports exit 66, not a red test)
 tuist generate --no-open                                                                        # regenerate after editing Project.swift
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' build
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' test
