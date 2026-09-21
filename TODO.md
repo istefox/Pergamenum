@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=202 -->
+<!-- project-tasks: prefix=PG lastId=204 -->
 # PROJECT TASKS
 
 Updated: 2026-09-21 · Open: 53 (P1: 0) · In progress: 0
@@ -50,6 +50,8 @@ Updated: 2026-09-21 · Open: 53 (P1: 0) · In progress: 0
 
 ## Open Issues
 
+- [ ] `PG-203` **P2** [fix] Eight UI tests are red on `main` and were red before #371 (same messages on `5aa78b0`, and with no window watcher): five in `WikilinkNavigationUITests` ("Not hittable: Link" at {577.6, 309.8}), `WorkspaceBoardUITests` `testACornerGripResizesTheCard` and `testTheArrowToolConnectsTwoCards`, `TaskTimeUITests` `testAScadenzaWithAnHourCanAlsoBecomeABlockOnItsDay`; the full run of 2026-09-21 was `contaminated` (Finder took focus 26 times) so no verdict is `green` for this tree, and the reds must be fixed or retired before stage 3 can name a green baseline — `UITests/WikilinkNavigationUITests.swift`, `UITests/WorkspaceBoardUITests.swift`, `UITests/TaskTimeUITests.swift` <!-- src:session kind:fix opened:2026-09-21 runs:1 -->
+- [ ] `PG-204` **P3** [fix] `pollingStopsAndMarksExpiredAfterTheInjectedTimeout` failed once in the Stop hook's unit run while the UI suite was running: a 25 ms injected timeout checked after a real 150 ms sleep, which a loaded machine does not honour — `Tests/RecordingsControllerTests.swift:339` <!-- src:session kind:fix opened:2026-09-21 runs:1 -->
 - [ ] `PG-201` **P3** [fix] A Swift Testing issue recorded outside a test's task context (`Test «unknown»`) does not fail `xcodebuild`: one run printed "failed with 11 issues" and still ended `** TEST SUCCEEDED **`, exit 0, so a `NeverKeyWindow` refusal raised from a run-loop callback would show only in the log — `Tests/HostedViewSupport.swift` <!-- src:session kind:fix opened:2026-09-21 runs:1 -->
 - [ ] `PG-173` **P3** [fix] Two cosmetic residuals of PG-169, both rare and self-clearing, neither losing data: a sync queued but not yet running for a pratica that gets trashed reaches `runExclusive`'s `guard let dossier` and reports «"…" non ha un dossier leggibile in pratica.md» in the pane (`SyncRunQueue.pending` is private to `PraticaLiveSync` and the tombstone is only recorded for a claimed path); and `forgottenPraticaPaths` is cleared only by `pruneRedirectsIfIdle`, so a pratica trashed and recreated under the same name can have its sync refused with `.praticaTrashed` while an unrelated claim (e.g. a regeneration preview sheet) stays open — `Sources/Features/Pratiche/PraticheController+Ledger.swift` · `docs/plans/pg-169-pratica-ledger-forgotten-on-folder-trash.md` §"Risks, residuals and HITL gates" <!-- src:review opened:2026-09-19 kind:fix runs:17 promote:declined -->
   - 2026-09-20: the second residual (`forgottenPraticaPaths` cleared only by `pruneRedirectsIfIdle`) is fixed by PR #346, the tombstone now falls per path in `endSync`/`endRegeneration` (ADR-0052 §D6); only the first residual, the queued-but-not-running sync reporting «non ha un dossier leggibile», remains.
