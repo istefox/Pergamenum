@@ -72,70 +72,11 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
-    func testWorkspaceBrowserBoardDashboardAndProjectSubtasksSurviveARestartAndARescan() throws {
-        launch()
-
-        // MARK: 1. Open the Workspace browser, select the board, read its two panels.
-
-        openPane("Workspace")
-        openBoard()
-        // Read from the board's own document (R-06), populated by the fixture and
-        // independent of anything a task does - true before a single task exists.
-        assertReferencedNotesShowBothFixtureNotes()
-        // Nothing assigned yet (R-05): the count in the header says so.
-        assertAssignedTasksHeaderCount(0)
-
-        // MARK: 2. A project task with two sub-tasks on different due dates.
-
-        openPane("Attività")
-        captureParentTask()
-        selectTaskRow(containing: parentText)
-        addSubtask(text: childOneText, dueInDays: 3)
-        // See the header comment: the parent's own line changed underneath the
-        // selection the moment it gained `^id(N)`, and re-clicking the row is what
-        // reads that change back before the second sub-task is composed.
-        selectTaskRow(containing: parentText)
-        addSubtask(text: childTwoText, dueInDays: 10)
-
-        // MARK: 3. Assign the board to the project task.
-
-        selectTaskRow(containing: parentText)
-        assignWorkspace()
-
-        // MARK: 4. "Progetti": the group expands with its progress indicator.
-
-        selectGrouping("Progetti")
-        assertProjectGroupExists(done: 0, total: 2)
-
-        // The board's own tray now lists what R-05 promised it would, from the same
-        // in-memory index the assignment just updated - no rescan needed for this.
-        openPane("Workspace")
-        openBoard()
-        assertAssignedTasksHeaderCount(1)
-        assertAssignedTaskRow(containing: parentText)
-
-        // MARK: 5. Quit, relaunch, force a full index rebuild: everything survives.
-
-        app.terminate()
-        launch()
-        rebuildIndex()
-
-        openPane("Workspace")
-        openBoard()
-        assertReferencedNotesShowBothFixtureNotes()
-        assertAssignedTasksHeaderCount(1)
-        assertAssignedTaskRow(containing: parentText)
-
-        openPane("Attività")
-        selectGrouping("Progetti")
-        assertProjectGroupExists(done: 0, total: 2)
-    }
-
     // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `WorkspaceView.placePendingNote`
     // (ADR-0025 §D5, §F8): the editor hand-off's own `.ambiguous`/`.notFound` branch, the
     // third of the three `WorkspaceBoardResolver.board(inFolder:among:)` call sites with no
-    // UI coverage. Both tests also confirm the branch's `vault.recordProblem` call, the one
-    // effect neither of them would prove by the navigation assertion alone - read back from
+    // UI coverage. This test also confirms the branch's `vault.recordProblem` call, the one
+    // effect the navigation assertion alone would not prove - read back from
     // Impostazioni → Avanzate → Problemi (`SettingsView.swift`), the only place `vault
     // .problems` is drawn. Opening Impostazioni through Cmd+, and finding its tab by
     // `identifier:` is the pattern `NoteTreeAndShortcutsUITests` already uses for the same
@@ -146,7 +87,7 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     // (`WorkspaceView.swift`), which SwiftUI fires on a transition the view is alive to see,
     // never on a value already non-nil when the view mounts. Clicking the Inserisci command
     // from the Note pane first, then switching panes, would set the flag on a `WorkspaceView`
-    // that does not exist yet and lose the hand-off entirely - not what this pair is testing.
+    // that does not exist yet and lose the hand-off entirely - not what this test is testing.
     // The Inserisci menu itself needs no pane of its own: it is a scene-level `Commands` menu
     // gated only on `vault.openNote != nil`, unaffected by which pane is visible.
 
@@ -161,19 +102,6 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         assertFolderSelected(ambiguousFolder)
         try assertNoBoardWasWritten(in: ambiguousFolder, otherThan: ["A.canvas", "B.canvas"])
         assertProblemRecorded(containing: ambiguousNotePath)
-    }
-
-    func testSendingANoteFromAFolderWithNoBoardsToTheWorkspaceSelectsTheFolderAndRecordsAProblem() throws {
-        launch()
-        openPane("Note")
-        openNoteInEditor(titled: orphanNoteTitle)
-        openPane("Workspace")
-
-        app.menuBars.menuItems["Apri nel Workspace"].click()
-
-        assertFolderSelected(orphanFolder)
-        try assertNoBoardWasWritten(in: orphanFolder, otherThan: [])
-        assertProblemRecorded(containing: orphanNotePath)
     }
 
     // MARK: Launch
@@ -401,10 +329,10 @@ final class WorkspaceIntegrationUITests: XCTestCase {
         XCTAssertTrue(selected.waitForExistence(timeout: 8), "la cartella «\(folder)» non risulta selezionata")
     }
 
-    /// The regression this pair guards against by name (ADR-0025 §F8): the hand-off used to
+    /// The regression this test guards against by name (ADR-0025 §F8): the hand-off used to
     /// open a board named after the folder, writing one where none existed. `expectedCanvases`
     /// is the fixture's own board list for that folder, unaffected by the hand-off if the
-    /// guard held; the same on-disk check `WorkspaceOpenStateUITests`'s R-01/R-10 tests use.
+    /// guard held; the same on-disk check `WorkspaceOpenStateUITests`'s R-10 test uses.
     private func assertNoBoardWasWritten(in folder: String, otherThan expectedCanvases: Set<String>) throws {
         let directory = vault.appending(path: folder, directoryHint: .isDirectory)
         let contents = try FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))

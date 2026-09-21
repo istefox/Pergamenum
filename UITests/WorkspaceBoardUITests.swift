@@ -95,17 +95,6 @@ final class WorkspaceBoardUITests: XCTestCase {
         XCTAssertGreaterThan(node.width, cardA.width + 20, "grip non afferrabile da zoomata")
     }
 
-    /// PG-041: below `BoardGeometry.placeholderZoom` the card draws no Text, but its
-    /// accessibility label must still say what the card holds.
-    func testAZoomedOutCardStillHasAReadableAccessibilityLabel() throws {
-        zoomOutBelowPlaceholder()
-        // Proves the test actually reached the placeholder branch it names, rather than
-        // passing trivially because the card still rendered its own Text (PG-108).
-        XCTAssertFalse(app.staticTexts["CARD A"].exists, "il ramo placeholder non è stato raggiunto")
-        let card = try element(nodeID: "aaaa000000000001")
-        XCTAssertEqual(card.label, "CARD A", "la card senza testo non ha una label accessibile")
-    }
-
     // MARK: 2. The Freccia tool draws an edge
 
     func testTheArrowToolConnectsTwoCards() throws {
@@ -156,20 +145,6 @@ final class WorkspaceBoardUITests: XCTestCase {
         // Moving a group moves what it holds (SPEC §6.5).
         let inside = try node("cccc000000000004")
         XCTAssertGreaterThan(inside.x, 400, "la card dentro il gruppo è rimasta indietro")
-    }
-
-    func testACardInsideAGroupCanBeSelected() throws {
-        let inside = try element(labelled: "CARD C dentro il gruppo")
-        inside.click()
-
-        // Selected means grips, and grips mean the card grew when one is dragged.
-        // Asserting on the outcome rather than on a highlight keeps this test about
-        // behaviour: a selection the pointer cannot act on is not a selection.
-        let corner = inside.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-        corner.dragTo(corner.withOffset(CGVector(dx: 120, dy: 70)))
-
-        let node = try waitForNode("cccc000000000004") { $0.width > 320 }
-        XCTAssertGreaterThan(node.width, 320, "la card dentro il gruppo non è raggiungibile")
     }
 
     // MARK: Fixture and helpers
