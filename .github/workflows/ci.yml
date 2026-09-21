@@ -73,13 +73,18 @@ jobs:
         # confirm they read .tuist-version automatically.
         # Homebrew 6.0 (2026-06) refuses to load a versioned formula from a
         # third-party tap until it is explicitly trusted (docs.brew.sh/Tap-Trust);
-        # `brew trust --formula` on the exact pinned formula, not the whole tap,
-        # is the documented minimal grant.
+        # `brew trust --formula` on the exact pinned formula was the minimal
+        # grant, and stopped being enough on 2026-09-21: installing
+        # tuist@4.208.0 also loads the tap's newer sibling formula
+        # (tuist@4.209.0 that day) to resolve versions, and brew refuses that
+        # one as untrusted ("Refusing to load formula ... from untrusted tap").
+        # The whole tap is trusted instead; it is Tuist's own tap, on an
+        # ephemeral runner whose workflow holds no secret (contents: read).
         run: |
           TUIST_VERSION="$(cat .tuist-version)"
           echo "Pinned Tuist version: ${TUIST_VERSION}"
           brew tap tuist/tuist
-          brew trust --formula "tuist/tuist/tuist@${TUIST_VERSION}"
+          brew trust tuist/tuist
           brew install --formula "tuist@${TUIST_VERSION}"
 
       - name: tuist install
