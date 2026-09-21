@@ -1,178 +1,249 @@
-Status: Approved (2026-09-20)
+Status: Approved (2026-09-21)
 
-# SPEC — Pratiche ledger is only written over the ledger it was loaded from (PG-172)
+# SPEC — Replace the UI suite as the merge gate
 
 ## Destination
 
-A SPEC to hand off to `/workplan`: one fix chain, no new feature. Reaching the end means no
-Pratiche writer can save a ledger that was never loaded for the vault it is saving into, an
-unreadable ledger file is never overwritten, the in-memory Pratiche state of one vault never
-survives into another, and a trashed pratica's tombstone no longer outlives its own claim.
-
-> Correction from `/workplan` (2026-09-20): reading the code shows six ledger save sites, not four
-> (`remapLedgerConversations` in `PraticheController+Ledger.swift` has the same vault-switch half of
-> the defect). Every «four writers» below means all six save sites; R-02 and R-10 already cover it.
+A SPEC handed to `/workplan`: three stages, each a useful stopping point. When the work is done the
+check that guards a merge to `main` is the unit suite plus in-process tests, no longer the 121-test
+UI suite; 17 targeted GUI tests remain, run through `--affected` at merge and never blocking; a run
+disturbed by the machine is recorded as `contaminated`, neither green nor red; and a new feature
+carries at most 2 or 3 GUI tests of its own.
 
 ## Objectives
 
-`PraticheController` keeps an in-memory copy of the per-vault ledger. It starts empty and only
-`load(from:)` fills it, which the Pratiche pane, the settings tab and two sheets call; the app
-never calls it at launch. Four writers (the tray count, «opened» stamp, folder-move remap and
-sync-outcome record) mutate that copy and save it straight back. A folder move or a sync outcome
-that happens before the pane was ever opened therefore overwrites the real ledger with an empty or
-partial one, and loses every pratica's imported ids, bridge entries, not-in-store list, last-opened
-date and tray count, none of which is recoverable from disk. The second variant is the same defect
-across a vault switch: a ledger loaded for vault A is saved into vault B's file. Confirmed by
-reading the writers, not yet reproduced at runtime.
-
-Two neighbouring defects share the cause or the hook and ride along: other in-memory Pratiche state
-(tray counts, tray proposals, file watchers) is never reset when the vault changes, and a
-tombstone left by a trashed pratica (PG-169) is only dropped when nothing at all is in flight.
+The merge gate must give the same answer whatever the Mac is doing. Today a full run takes about 26
+minutes and its verdict depends on focus stolen by another app, an installed copy of the app
+appearing mid-run, an external monitor and automation timeouts, so a red is often nobody's defect
+(PG-182, PG-186, PG-188, PG-194). Given up first: full coverage of gestures and layout, then speed.
+The per-test triage of all 121 tests, approved file by file on 2026-09-21, is the source of truth
+for what leaves the suite; this SPEC does not re-decide it.
 
 ## Scope and non-goals
 
-In scope:
-- A «ledger loaded for this file» marker on the controller, and one door through which every
-  ledger mutation and save goes.
-- A ledger file that exists but cannot be read is left untouched by every writer.
-- When the marker shows a different vault, the vault-scoped in-memory state is reset.
-- The tombstone of a trashed pratica is dropped per path, when no claim on that path remains.
-
-Non-goals: the ledger's on-disk format, the connectors, the read side (a read before any load
-still sees an empty ledger, which loses nothing), the other half of PG-173 (a queued sync for a
-trashed pratica reporting «non ha un dossier leggibile»), PG-168, and the unreadable-file recovery
-UI (no quarantine, no repair action).
+In: the `contaminated` verdict and its detection; one ADR for the package of test seams; the seam
+refactors; the replacement unit and in-process tests; deleting the approved GUI tests; the rule
+change in `CLAUDE.md`; the regime for future features.
+Out: a Tart VM (PG-187), running the GUI suite in CI, a rewrite of the runner script, PG-195, any
+new feature (full list in Out of scope).
 
 ## Decisions
 
-- **Marker plus lazy load, not an eager load at launch** — the controller remembers which ledger
-  file its in-memory copy came from. A writer whose session points at a different file, or at none
-  yet, reloads from disk first, then mutates. This covers "never loaded" and "loaded for another
-  vault" with one rule and does not depend on any caller remembering to call `load(from:)`.
-  Rejected: eager load on session change — needs a hook on the vault switch and an ordering proof,
-  and still leaves a writer that runs before the hook unprotected. Rejected: both — more surface
-  for the same guarantee.
-- **One door, not a check in each writer** — the ledger becomes read-only outside the controller's
-  own ledger code and is changed only through one method that verifies the marker, mutates and
-  saves. A fifth writer cannot forget the check. Same shape as the vault-boundary resolver in
-  ADR-0041 (a resolver callers cannot route around, not an assertion they can skip). Rejected: an
-  `ensureLoaded` helper each writer calls — this is how the four writers reached the defect.
-- **An unreadable ledger file is never saved over** — the load distinguishes «missing» (fresh,
-  saving is fine) from «present but unreadable» (corrupt JSON or a schema this build does not
-  know). For the second, every writer skips its save, the app works on an empty in-memory ledger
-  for the session, and one message names the file, once per file per session. The person repairs or
-  deletes the file by hand. Rejected: moving it aside automatically — leaves an orphan file nobody
-  is told about, and turns a refusal into a silent policy.
-- **The PG-169 special case in `forgetLedgerState` collapses into the same door** — its
-  «if the in-memory ledger is empty, reload» heuristic is exactly what the marker replaces, and a
-  heuristic that treats a genuinely empty ledger as «never loaded» would keep reloading needlessly.
-- **A change of vault resets what belongs to the vault** — when the marker names a different file,
-  the tray proposals, tray counts, file watchers, selection, timeline and details are cleared
-  together with the ledger. Today only the no-vault branch of `load(from:)` clears anything, and it
-  clears neither the tray state nor the watchers. Rejected: ledger only — leaves vault A's badges
-  showing on any vault-B pratica with a colliding path.
-- **A tombstone is dropped per path** — the tombstone for path X falls when no sync or
-  regeneration that captured X is still in flight, regardless of claims on other paths. It is kept
-  while a claim on X is open, since that claim is stale by definition and refusing it is correct.
-  Rejected: a per-claim identity token — distinguishes a recreated same-name pratica from a stale
-  claim on it, but touches every caller of the path resolver for a P3 cosmetic case. Rejected:
-  leaving it — the refusal of a healthy sync by an unrelated open sheet is the reported symptom.
+- **Replace the merge gate, not reduce it.** The gate becomes the unit suite plus in-process tests
+  (real views hosted in a never-shown window, events sent directly). Rejected: a reduced gate with a
+  UI smoke set: it keeps a machine-dependent step in every merge.
+- **Per-test triage, then retire.** Every one of the 121 tests is Keep, Convert or Retire, approved
+  by Stefano file by file. Result: 17 keep, 42 convert (2 of them stay GUI until their replacement
+  exists), 62 retire outright, so 104 leave the GUI suite. Rejected: keeping the suite whole and
+  fixing its determinism: it does not remove the dependence on the machine.
+- **Stage order: verdict, then seams and tests, then the gate.** Stage 1 is the `contaminated`
+  verdict (relief with no production code). Stage 2 is seams and replacement tests, deleting each
+  converted GUI test in the PR that adds its replacement. Stage 3 is the outright retirements and the
+  `CLAUDE.md` rule change. No test is retired before its replacement exists. Rejected: the rule
+  change first (for a period the gate would cover less than before); one chain with no stopping point.
+- **The 17 GUI tests that remain are not a blocking gate.** The person merging runs
+  `uitests.sh --affected`; a green or red is information, `contaminated` does not block. The full
+  run of the 17 happens before a release. Rejected: only before a release (no GUI signal at merge at
+  all); blocking as today (the cost grows with the set).
+- **Retiring a test deletes it from the source**; git history keeps it. Each PR lists what it
+  deleted and points at the approved census entry. Rejected: moving files to an excluded folder
+  (dead code that ages).
+- **Unit suite time budget: under 60 s** for the whole suite (about 18 s today), because it runs at
+  the end of every turn through the Stop hook. Over budget, a block moves to a group run at merge.
+  Rejected: no fixed number; 30 s (would cap how many hosted tests can exist).
+- **If hosting a SwiftUI or Workspace view in-process fails**, the tests that depend on it stay GUI
+  until replaced, and the cap of 17 rises only with Stefano's approval, test by test. Rejected:
+  retiring them on their logic cover alone (declares the wiring lost without a decision); stopping
+  the work to reopen the direction.
+- **One ADR for the whole package of seams, written and Accepted before the first production
+  refactor** (start of stage 2). A seam found later amends it. Rejected: an ADR written at the end
+  as a register (a seam with no decision written first); one ADR per stage (contradicts the single
+  ADR Stefano chose).
+- **Seams are accepted only if behaviour is unchanged.** The proof is `uitests.sh --affected` on the
+  seam commit before its GUI test is deleted: green, or `contaminated` then green on the rerun.
+  Rejected: proof by the replacement test alone (written by the author of the seam, so circular);
+  diff review alone (not repeatable).
+- **Disturbance signals: installed copy appeared mid-run, launch failure or timeout, focus taken by
+  another app, external monitor connected.** Rejected: none; the monitor signal needs a new
+  detector, which is accepted.
+- **A run with reds and at least one signal is `contaminated`, and only the failed tests are rerun
+  once.** Rerun green gives `green`; rerun red with no signal gives `red`. Rejected: `contaminated`
+  with no rerun (leaves the decision to the person merging); staying `red` with a note (does not
+  solve the problem).
+- **Exit codes: 0 green, 1 red, 2 contaminated.** `--status` shows it and does not count it as
+  verified. Rejected: 0 (hides that it is not a green); 1 (blocks whoever reads only the exit code,
+  against the rule that it does not block).
+- **Stage 1 also fixes PG-194 (a 0-test run is not a red) and saves log evidence for PG-182.**
+  Rejected: adding PG-195 (merge with no verdict), a new check, not part of the verdict.
+- **The verdict logic gets an offline `--self-test` mode**, on the model of the appcast script's.
+  Rejected: a hand check only (not repeatable); rewriting the 581-line runner in Python (out of
+  proportion for this stage).
+- **One PR per functional area in stage 2**, roughly six to eight. Rejected: one PR per UI test file
+  (about 16 small PRs, more merge rounds); a single PR (one huge diff, no stop).
+- **The cap of 17 is informational, and the future regime is convention.** `--status` prints the GUI
+  test count against 17; `CLAUDE.md` and the plan template carry the rule of at most 2 or 3 GUI tests
+  per new feature, justified in the feature's ADR. Rejected: a check that fails above the cap (one
+  more thing to maintain); text only.
+- **VM (PG-187) on hold.** The in-process route comes first. Rejected: starting the VM now.
+- **A `contaminated` verdict does not block a merge on its own.** Rejected: treating it as red.
 
 ## Constraints
 
-- **Ledger file format unchanged, `IndexCache.schemaVersion` unchanged** — origin: ADR-0036 §D3,
-  and the connectors read this same file (`VaultAPI.pratiche`).
-- **The connectors keep reading exactly what they read** — origin: ADR-0007; a change to the
-  shared ledger type must compile in `perg` and `pergamenum-mcp`.
-- **Tests never resolve the real state directory** — origin: CLAUDE.md principle 3; every test
-  passes a temporary state base.
-- **No test is disabled or deleted; tests that assign the ledger directly move onto a test seam**
-  — origin: CLAUDE.md working agreements.
-- **PG-169's behaviour is preserved** — origin: ADR-0026 §D7 as amended; the folder-trash test
-  files stay green unchanged in what they assert.
+- **No test is retired without Stefano's approval of its entry** — origin: user mandate. The
+  triage in the census is that approval; a new candidate needs a new one.
+- **A seam changes no behaviour** — origin: user mandate.
+- **A test is never disabled to make a suite pass** — origin: global rules. Deleting an approved
+  test is not disabling; disabling stays forbidden.
+- **The Stop hook runs the unit target only** — origin: the repository's working agreements, after
+  UI launches killed the app in use. Hosted tests join that target and must never show a window or
+  take focus.
+- **Files shared with the two command line tools must not import SwiftUI** — origin: ADR-0001 §D1.
+  A seam placed there stays Foundation-only.
+- **Every UI-test file keeps its launch flags** (calendar, updater, Mail store, and the others in the
+  working agreements) — origin: existing rules.
+- **The generated project is never edited by hand**; a change that adds or removes a file is
+  followed by regeneration — origin: working agreements.
+- **Work happens on a feature branch, never on `main`**, with `/plan` and `/build` in separate
+  sessions — origin: user mandate.
+
+## Stack
+
+Swift 6 with Swift Testing for the unit and hosted tests, on the existing unit target; XCTest for
+the surviving GUI tests; the shell runner script for verdicts; Tuist for regeneration.
 
 ## Data model
 
-One new piece of controller state: the ledger file the in-memory copy was loaded from, absent when
-nothing is loaded. A ledger loaded from a file is one of three outcomes: loaded, missing (empty,
-writable) or unreadable (empty in memory, not writable). The persisted ledger itself is untouched.
+The verdict record, one per tree and scope, gains a third result and its reasons.
+
+| Field | Values |
+|---|---|
+| result | green, red, contaminated |
+| scope | full, partial (unchanged) |
+| reasons | zero or more of: installed copy, launch failure, focus taken, external monitor |
+| executed | number of tests that ran |
+
+A run that executes zero tests is an error state: reported, never stored as `red`, and it does not
+overwrite the tree's existing verdict.
+
+Classification after a run: all tests passed gives `green` whatever the signals (they are recorded);
+reds and no signal gives `red`; reds and at least one signal gives `contaminated` and triggers one
+rerun of the failed tests; the rerun settles it (green, red with no signal), or leaves it
+`contaminated` if the rerun was disturbed again.
 
 ## API / interfaces
 
-No connector, CLI or MCP change. Internally the controller's ledger stops being assignable from
-outside its own ledger code; a single mutation entry point replaces the four direct save sites and
-the special case in `forgetLedgerState`. `PraticaLedger`'s load gains a way to tell «missing» from
-«unreadable»; its shared file compiles into both connector targets, so the change is additive.
+The runner script: a third exit code (2), `--status` output naming `contaminated` and its reasons,
+the GUI test count against the cap, and a `--self-test` mode. Production interfaces are the seams the
+ADR lists; each is a refactor with unchanged behaviour: entering a folder from the Workspace
+controller (replacing three copies of the resolver switch), the row label, the drawn embed's
+accessibility summary, the Cmd-state at the editor coordinator, focus derivation on navigation,
+the Task view's day-to-view mapping, whether a row can move to a destination, the diary drag
+geometry, the category editor's disable predicate, and the day timeline's hours as a pure function.
+Protected interfaces named in the working agreements stay untouched.
 
 ## Edge cases
 
-- Writer runs on a controller that never loaded, file present and readable: reload, mutate, save;
-  every other pratica's state survives.
-- Writer runs on a controller that never loaded, file missing: starts from empty, saves. That is
-  a first-ever write, not a loss.
-- Loaded for vault A, then a writer receives vault B's session: reload B's file, reset the
-  vault-scoped state, mutate, save. A's file is not touched.
-- Vault closed (no session): marker cleared, same reset as above.
-- File unreadable: no write, one message per file per session, the app keeps working. Once the file
-  is readable again, the next load returns to normal saving.
-- A sync outcome for a vault that is no longer the live one already reads that vault's own file
-  fresh; it goes through the same unreadable-file rule.
-- Tombstone: a claim on another path stays open while X's own claim ends; X's tombstone drops. A
-  claim on X still open keeps it.
+- A run over a dirty tree records no verdict (existing behaviour, kept).
+- An installed copy already open before the run still refuses the run (existing behaviour, kept); one
+  that appears during the run is a signal, and its surrounding launch log is saved.
+- The rerun is itself disturbed: the verdict stays `contaminated`.
+- A green run with signals stays green; the signals are recorded, not acted on.
+- The external monitor is connected for the whole run: it counts as a signal only alongside reds.
+- Two hosted tests share a window or a controller: each test builds its own; nothing is shared.
+- A converted test whose replacement cannot be written: it stays as a GUI test and the cap
+  conversation is reopened with Stefano.
 
 ## Test seams
 
-One seam, at the level existing tests already use: `PraticheController` driven directly, with a
-real `ledger.json` written under a temporary state base and read back after each writer runs. This
-is where the folder-trash tests already sit, so no new seam is needed. The vault-switch case uses
-two sessions on two temporary state bases. The tombstone case uses the controller's own claim
-begin/end calls, as the PG-169 mid-run tests do. The «one door» guarantee is a type-system property.
+Existing over new, highest possible, few:
+1. The unit target: logic and the pure functions the seams extract.
+2. The same target for hosted views, reusing the existing editor and Workspace harnesses. The first
+   step of stage 2 is a prototype proving that a SwiftUI view and a Workspace view can be hosted.
+3. An offline self-test of the runner script's verdict logic, the only new seam.
+4. The affected GUI tests, used as the proof that a seam changed nothing, not as a new test.
 
 ## Success criteria
 
-- [ ] R-01 — A controller that never loaded, with a readable ledger on disk, runs each of the four
-  writers (tray count, opened stamp, folder move, sync outcome); afterwards the file still holds
-  every pratica's prior state and only the intended change differs.
-- [ ] R-02 — A controller loaded for vault A whose writer then receives vault B's session leaves
-  A's file byte-identical, and B's file holds B's prior state plus the change and nothing from A.
-- [ ] R-03 — With no ledger file at all, a writer starts from empty and saves; that first write is
-  not treated as a refusal.
-- [ ] R-04 — With an unreadable ledger file, none of the four writers nor the trash path alters the
-  file (bytes identical before and after), and exactly one problem message naming that file is
-  reported per session however many writers run.
-- [ ] R-05 — After the unreadable file is repaired to a readable one and the ledger is loaded
-  again, writers save normally.
-- [ ] R-06 — Loading for vault B after vault A clears tray proposals, tray counts, watchers,
-  selection, timeline and details; the pratiche list holds no A entry. Closing the vault clears the
-  same set.
-- [ ] R-07 — After X's claim ends, X's tombstone is gone even while a claim on another path is
-  open; a fresh sync on a recreated X is not refused.
-- [ ] R-08 — While a claim on X is still in flight, X's tombstone remains and that claim's outcome
-  is still discarded (PG-169's behaviour).
-- [ ] R-09 — The existing PG-169 folder-trash, mid-run-trash, relocation and record-outcome test
-  files pass without loosening any assertion, and both connector targets still build.
-- [ ] R-10 — The ledger cannot be assigned from outside the controller's ledger code. (no-test: enforced by the type system, verified by the build and by review of the diff)
+Stage 1: the verdict.
+- [ ] R-01 — A run records `contaminated` as a third result, with its reasons, in the same per-tree
+  record as green and red.
+- [ ] R-02 — The four signals are detected during a run: installed copy appeared, launch failure or
+  timeout, focus taken by another app, external monitor connected.
+- [ ] R-03 — Reds and at least one signal produce one rerun of only the failed tests; rerun green
+  gives `green`, rerun red with no signal gives `red`, a disturbed rerun leaves `contaminated`. A run
+  with no reds is `green` whatever the signals.
+- [ ] R-04 — Exit code is 0 for green, 1 for red, 2 for contaminated; `--status` shows the reasons and
+  never treats `contaminated` as verified; only `green` lets a later run be skipped.
+- [ ] R-05 — A run that executes zero tests is reported as an error, is never stored as `red`, and
+  does not overwrite the tree's existing verdict (PG-194).
+- [ ] R-06 — When an installed copy appears mid-run, about 10 seconds of the launch log around that
+  moment are saved next to the run's evidence (PG-182).
+- [ ] R-07 — The offline self-test asserts R-03, R-04 and R-05 with fabricated logs and signals, and
+  needs neither a build nor a GUI.
+
+Stage 2: seams and replacement tests.
+- [ ] R-08 — A prototype hosts one SwiftUI view and one Workspace view in a never-shown window with
+  events sent directly, inside the unit target, and its outcome is recorded before any dependent test
+  is converted. A view that cannot be hosted keeps its GUI test (cap changes need approval).
+- [ ] R-09 — One ADR, Accepted before the first production refactor, lists every seam of the census
+  and the rule that a seam changes no behaviour; a later seam amends it.
+- [ ] R-10 — Each seam is proved neutral by `--affected` on its commit before its GUI test is
+  deleted: green, or contaminated then green on the rerun.
+- [ ] R-11 — Every converted test has its replacement (unit or hosted) in the same PR that deletes
+  its GUI test; the two keep-until-replaced tests are deleted only when theirs exists.
+- [ ] R-12 — The unit tests the census names as coverage to add (for the day and task controllers,
+  `WindowPlace` and `DiaryGeometry`, among others) exist and pass.
+- [ ] R-13 — Each PR covers one functional area and lists the tests it deleted with their census
+  entry and the wiring lost.
+- [ ] R-14 — The whole unit suite stays under 60 seconds after every PR; over that, a block moves to
+  a merge-only group.
+- [ ] R-15 — No hosted test shows a window, takes focus or reads calendar, Mail or update state.
+
+Stage 3: the gate.
+- [ ] R-16 — The 62 outright retirements are deleted in their approved groups, only after stage 2's
+  replacements exist; afterwards exactly 17 GUI tests remain.
+- [ ] R-17 — `--status` prints the GUI test count against the cap of 17.
+- [ ] R-18 — `CLAUDE.md` states: the merge gate is the unit suite and in-process tests; the 17 GUI
+  tests run through `--affected` at merge and do not block; the full 17 run before a release;
+  `contaminated` is neither green nor red; a new feature carries at most 2 or 3 GUI tests, justified
+  in its ADR. (no-test: documentation obligation, checked by review)
+- [ ] R-19 — The rule text about the UI suite that now contradicts the above (run before every merge,
+  the last regressions found there) is amended, not left beside it. (no-test: documentation
+  obligation, checked by review)
 
 ## Not yet specified
 
-- How the per-vault file watchers are stopped when the marker changes, and whether the controller
-  already holds the handles to stop them or only drops them. For `/workplan` to read off the code;
-  the outcome required is in R-06.
+- Whether SwiftUI and Workspace views can be hosted in-process at all: proven only for one SwiftUI
+  entry point today; R-08 is the way to find out.
+- The detection method for the external monitor, a new detector with no precedent here.
+- Who sends the launch request that starts the installed copy: seen once in the log, sender not
+  visible (PG-182); R-06 collects evidence, it does not promise a cause.
+- Whether the surviving GUI suite can run on the hosted macOS 27 runner (label `xcode-27`, public
+  preview, checked 2026-09-21 in the images repository): a trial run is needed, and CI does not run
+  the GUI suite in this SPEC.
+- Several converted tests rest on seams or existing tests the census marks "to verify in `/plan`":
+  those checks belong to planning, not to this SPEC.
 
 ## Out of scope
 
-- **Unreadable-file recovery UI** — the refusal is the whole behaviour here; a repair or quarantine
-  action is a separate feature, and the ledger is rebuildable by design (a fresh one costs one
-  re-sync).
-- **PG-173 first half** — a queued sync reporting «non ha un dossier leggibile» for a trashed
-  pratica; cosmetic, needs `SyncRunQueue`'s private state, a different mechanism.
-- **PG-168 and #208** — relocation TOCTOU windows and a missing ledger write for an unrecoverable
-  followed conversation; neither shares the loading defect.
-- **The read side** — a read of the ledger before any load sees an empty one and loses nothing.
+- **A Tart VM (PG-187):** on hold by Stefano's choice, in favour of the in-process route.
+- **The GUI suite in CI:** the runner exists, but whether it gives a usable GUI session is
+  unverified, and the gate no longer needs it.
+- **Rewriting the runner script in another language:** out of proportion for a verdict change.
+- **PG-195 (a merge with no verdict for the tree):** a separate check, not part of the verdict.
+- **A check that fails above the cap:** the cap is informational by decision.
+- **Enforcing the full run of the 17 inside the release script:** a documented process step, not a
+  change to the release pipeline.
+- **New features:** none, apart from the regime that governs their GUI tests once they exist.
+- **Changing what the 17 surviving tests assert:** two defects noted in the census (a negative check
+  with no wait, a fixed sleep) are fixed only when those files are next touched.
 
 ## Domain terms
 
-- **Marker** — the record of which ledger file the in-memory ledger was loaded from.
-- **Tombstone** — the entry in the forgotten-paths set left when a pratica folder is trashed
-  while a sync or regeneration holds its path (PG-169).
-- **Claim** — a sync or a «Rigenera…» attempt holding a pratica path as its own.
+- **Contaminated:** a run with reds and at least one machine-disturbance signal that the rerun did
+  not settle; neither green nor red, and it does not block a merge by itself.
+- **Hosted test:** a test that builds a real AppKit or SwiftUI view in a window that is never shown
+  and sends it events directly, inside the unit target.
+- **Seam:** a small production refactor whose only purpose is to make behaviour testable, with no
+  change in what the app does.
+- **Keep-until-replaced:** a test that stays a GUI test only until its hosted replacement exists.
