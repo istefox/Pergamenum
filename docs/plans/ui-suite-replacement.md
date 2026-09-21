@@ -569,10 +569,118 @@ tools compile.
 
 ## 8. To be filled in during the build
 
-- R-08's outcome, per view kind, before any dependent test is converted (Task 3).
-- The unit suite's wall time after each stage-2 PR, against the 60 s budget (R-14).
-- Any converted test whose replacement could not be written, and the cap conversation it
-  triggered (SPEC edge case).
+- **R-08's outcome, per view kind, before any dependent test is converted (Task 3).** Filled in
+  2026-09-21 on `chore/pg169-fase1-fase2` at `0b0947a`, macOS 27.0 / Xcode 27.0. Four tests in
+  `Tests/HostedViewPrototypeTests.swift` (0.92 s together, run alone) over the harness in
+  `Tests/HostedViewSupport.swift`, all passing inside `PergamenumTests`. The window is a titled
+  `NSWindow` subclass that refuses key and main status, laid out once and never ordered in. It
+  also turns `orderFront`, `orderFrontRegardless`, `makeKeyAndOrderFront`, `order(_:relativeTo:)`
+  and `sendEvent` (bar AppKit's own bookkeeping events) into a recorded issue that does nothing,
+  which the fourth test pins; `NSApp.activate` is not intercepted, so R-15 is held as far as a
+  type can hold it and not beyond. Every test asserts `neverShown` (not visible, not key,
+  `NSApp.isActive` and `NSApp.keyWindow` as they were). **Partly proven: the Workspace half
+  hosts, draws and takes key equivalents; it does not take the pointer.**
+
+  | View kind | Hosts and lays out | Drawn, read back offscreen | Key equivalent | Mouse (uncommitted probe) |
+  |---|---|---|---|---|
+  | SwiftUI: `RenameNoteSheet`, injected theme | yes | yes (more than one colour) | yes: Esc fires the `.cancelAction` button, `onCancel` once; Return confirms nothing while the title is unchanged (default action disabled) | not reached: 126 clicks over the sheet's frame triggered no button |
+  | Workspace chrome: `BoardToolbar` over `openedWorkspaceController` | yes | not read | yes: bare `l` then `t` set `workspace.tool` to `.link` then `.text`; `z`, which no tool owns, is not handled and changes nothing | not tried separately |
+  | Workspace board: `BoardContentLayer`, two link cards, zoom and pan applied as `WorkspaceView.swift:357-366`, live `WorkspaceController`, a `VaultController` with no vault open | yes | yes, and the picture changes when the controller's zoom and pan change (8 then 6 distinct sampled colours, PNGs differ) | none bound on this layer | not reached: a click, a zoom-corrected click and a four-step drag, sent to the view `hitTest` names and to the hosting view's own recognisers, changed neither the selection nor the card's frame |
+  | Workspace board holding a text card | **not built; stays GUI** (decided 2026-09-21, below) | | | |
+
+  **What is in the tree and what is not.** The four tests pin the positive results: a sheet and a
+  board host and draw, a key equivalent reaches a `.keyboardShortcut` button, a bare letter moves
+  the live controller, and the board redraws when zoom and pan change. The figures and negative
+  results the tests do not assert (126 clicks over the sheet's frame and no button fired, the
+  click, the zoom-corrected click and the four-step drag on the board, empty `gestureRecognizers`
+  and `trackingAreas`, the 8 then 6 distinct sampled colours) were read by an uncommitted probe
+  that is not in the tree and was not kept. They cannot be replayed from the repository, and a
+  test asserting that something does not work would go red on the day it starts to work; whoever
+  needs one of them re-measures it. The zoom and pan wrapper is a replica: `HostedBoard`, in the
+  test file, copies the two modifiers of `WorkspaceView.swift:357-366` by hand and
+  `WorkspaceView` itself was not hosted, so the redraw test pins that `BoardContentLayer`
+  redraws for the controller's zoom and pan, not that `WorkspaceView` applies them the same way.
+  It opens with a control, two snapshots at unchanged state that must be equal, so the difference
+  it then asserts is the zoom and pan and not the snapshot's own noise.
+
+  Why the mouse does not arrive, measured (by that probe): `hosting.gestureRecognizers` is empty,
+  `trackingAreas` is empty, `acceptsFirstMouse` is false, the board's hosting view has no
+  subviews (SwiftUI draws none of its own) so `hitTest` can only answer with the hosting view, and
+  the SwiftUI accessibility tree in-process is one childless group. The only remaining route to
+  a SwiftUI gesture is `NSWindow.sendEvent` or `NSApp.sendEvent`, which is what makes a window
+  key and visible, so it was not tried: R-15 forbids it. This says nothing about an AppKit view inside a SwiftUI one:
+  the prototype sent no event to an `NSTextView`, and no file in `Tests/` does today (`mouseDown`
+  appears there in comments only).
+
+  Why no text-card board: `StickyTextCard` reads `@Environment(CommandActions.self)`, and a
+  missing observable object is a fatal error that ends the whole test process (seen once, in a
+  probe). `CommandActions.init` takes a concrete `EventKitStore` (`CommandActions.swift:28,48`)
+  whose `init()` reads EventKit's authorization status and observes `.EKEventStoreChanged`
+  (`CalendarService.swift:59`, `:95-98`), and R-15 says no hosted test reads calendar state.
+  The unit suite already builds `EventKitStore()` in ordinary tests (`RowCommandTests.swift:25`,
+  `CommandActionTests.swift:16`, `CalendarTests.swift:275`), so whether R-15's wording reached
+  that was raised for Stefano. **Decided by Stefano, 2026-09-21: R-15 stays strict.** No hosted
+  test constructs an `EventKitStore`, so a board with a text card stays a GUI test and the cap of
+  17 does not rise on its account. Whether such a board would host once `CommandActions` is
+  supplied was not measured, and now does not need to be.
+
+  What follows for the plan. None of Task 5's conversions is designed through a SwiftUI pointer
+  gesture (PR 1 goes through `enter(folder:)`, the two pure functions and the resize seams on
+  `openedWorkspaceController`; PR 2, 3, 4, 6 and 7 through pure functions and controllers), so
+  the fallback this plan's own §7 names for the Workspace half (`Board:100`, `Board:161` and the
+  OpenState label test staying GUI) does not trigger, and **the cap of 17 does not rise on this
+  evidence**. What stays GUI is what already is: `Board:64` (the grip resize is the pointer
+  chain), `OpenState:157` and `:204` (a click on a `List(selection:)` row), and the accessibility
+  label as read from the
+  tree, whose text seam #2 tests and whose attachment (`WorkspaceRow.swift:180`) nothing in-process
+  can. PR 5's hosted tests host AppKit views the prototype did not measure (`#tag` insertion,
+  `TableGridView`, the embed label, the wikilink plain-click, `menu(for:)`, the `NoteTextView`
+  teardown); their precedent is `Tests/EditorHeightTests.swift:49-55`, each is proven by its own
+  PR, and one that cannot be hosted stays GUI under the SPEC edge case (HITL gate, §7).
+- **The unit suite's wall time after each stage-2 PR, against the 60 s budget (R-14).** After
+  Task 3, the stage's opener, the approved command
+  (`-only-testing:PergamenumTests`, exit 0 in all four runs):
+
+  | | Tests | Swift Testing | xcodebuild testing phase |
+  |---|---|---|---|
+  | Before (clean tree at `0b0947a`) | 3350 in 181 suites | 20.913 s | 36.941 s |
+  | After Task 3, first run | 3354 in 182 suites | 23.275 s | 38.081 s |
+  | After Task 3, second run | 3354 in 182 suites | 20.606 s | 33.902 s |
+  | After the review fixes (finished tree) | 3354 in 182 suites | 19.835 s | 33.578 s |
+  | After PR 1, seams filled, call sites not yet collapsed | 3383 in 182 suites | 21.041 s | 36.111 s |
+  | After PR 1 (finished tree) | 3383 in 182 suites | 21.593 s | 36.313 s |
+
+  The four new tests took about 0.8 s as first written (0.808 s alone, 0.794 s inside the full
+  run) and about 0.9 s after the review fixes added the refusal checks and the stability control
+  (0.915 s alone, 0.908 s inside the full run). The after-runs differ from each other by up to
+  3.4 s (Swift Testing) and 4.5 s (testing phase), more than the tests cost, and the last two are
+  below the baseline on both measures: the difference Task 3 makes is smaller than this machine's
+  run-to-run spread, so no cost is claimed beyond the 0.9 s. Against the 60 s budget the two measures over the three after-runs are Swift Testing's
+  own 19.8 to 23.3 s and the `xcodebuild` testing phase's 33.6 to 38.1 s, both inside it. R-14
+  does not define which of the two counts; against the larger the margin is about 22 s. The
+  "about 18 s today" of Task 3 was not what this tree measured: 20.9 s before the task. The rows
+  for PRs 2 to 7 are still to be added, one per PR.
+
+  **PR 1** (Workspace tree and board, 2026-09-21, same tree and machine) adds 29 tests in five
+  files and no suite, all free functions: 3354 to 3383. Their own reported durations sum to about
+  0.06 s in the finished run, the longest being the `VaultSession` walk at 0.017 s. The two
+  after-runs are 21.0 s and 21.6 s for Swift Testing and 36.1 s and 36.3 s for the testing phase,
+  1.8 s and 2.7 s above the last Task 3 row, which is inside the 3.4 s and 4.5 s spread measured
+  there, so no cost is claimed beyond the 0.06 s. The run that first went red (25 of the 29 tests
+  failing on their `#expect`, no build error) took 20.887 s and 37.053 s and is not an after-row.
+  Against the 60 s budget the margin over the larger measure is about 24 s. Every run exited 0
+  except that red one.
+- **Any converted test whose replacement could not be written, and the cap conversation it
+  triggered (SPEC edge case).** None in PR 1 (2026-09-21): all ten of its conversions (`OpenState`
+  `:216`, `:251`, `:370`, `:383`, `:405`, `:425`; `Integration` `:75`, `:166`; `Board` `:100`,
+  `:161`) were written, through `enter(folder:)`, the two pure functions and the existing entry
+  points, and none needed a pointer event on a hosted view or a text-card board, so the cap of 17
+  did not rise. ADR-0053 was accepted by Stefano on 2026-09-21 and its text now says so. The
+  GUI tests these ten replace are still in `UITests/`: deleting them waits for the `--affected`
+  proof on a committed seam (R-10), and what each loses is listed test by test in the R-13
+  hand-over of PR 1 rather than here. The other question, whether R-15's "reads calendar state"
+  reaches the `EventKitStore()` a text-card board needs, was decided on 2026-09-21 (above): it
+  does, R-15 stays strict, and the cap of 17 does not rise on its account.
 
 ---
 
