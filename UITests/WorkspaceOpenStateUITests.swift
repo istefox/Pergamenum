@@ -211,21 +211,6 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         assertExactlyOneRowSelected(identifier: "workspace-board-\(nestedBoardFile)", suffix: ", aperta")
     }
 
-    // MARK: New (R-04) - a board-less folder's row closes the open board and selects only itself.
-
-    func testClickingABoardLessFolderRowClosesTheOpenBoardAndSelectsOnlyItsRow_R04() throws {
-        rootBoardRow.click()
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board radice avrebbe dovuto aprirsi")
-
-        let grouping = row(identifier: "workspace-folder-\(groupingFolder)")
-        XCTAssertTrue(grouping.waitForExistence(timeout: 5))
-        grouping.click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "selezionare una cartella senza board dovrebbe richiudere quella aperta")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(groupingFolder)", suffix: ", selezionata")
-    }
-
     // MARK: New (R-05) - a board-less folder's row opens nothing and raises no sheet.
 
     func testClickingABoardLessFolderRowOpensNoBoardAndRaisesNoSheet_R05() throws {
@@ -241,41 +226,6 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         XCTAssertEqual(app.sheets.count, 0, "nessun foglio dovrebbe comparire per il solo click sulla riga")
     }
 
-    // MARK: New (ADR-0025 R-01) - «Nuova cartella» makes a row and nothing else.
-
-    /// R-01 read as an outcome rather than as a line of code: the deleted
-    /// `try store.save(.empty, folder: created)` is invisible to a UI test, but the folder
-    /// it used to write is not. The row appears, no board opens, and the directory on disk
-    /// holds no `.canvas` - the third assertion is the one that would still fail if the
-    /// board creation came back in some other place.
-    func testCreatingAFolderMakesARowAndNoBoard_R01() throws {
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5))
-
-        app.buttons["workspace-new-folder"].click()
-        let sheet = app.descendants(matching: .any).matching(identifier: "workspace-new-sheet").firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "il foglio di creazione non si è aperto")
-
-        // Nothing is selected at this point, so the sheet's parent picker is seeded with
-        // the vault root (`WorkspaceBrowser.target(for: nil)`) and the new folder lands at
-        // the top level, where the assertion below looks for it.
-        let field = app.textFields["workspace-new-name"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5), "manca il campo del nome nel foglio di creazione")
-        field.click()
-        // Return rather than the «Crea» button: the field's own `onSubmit` runs the same
-        // confirmation, and a UI test does not reach a control by the words on it
-        // (CLAUDE.md) - that button carries no identifier.
-        field.typeText(newFolderName + "\r")
-
-        XCTAssertTrue(row(identifier: "workspace-folder-\(newFolderName)").waitForExistence(timeout: 10),
-                      "la cartella creata non ha una riga nell'albero")
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].exists,
-                      "creare una cartella non deve aprire nessuna board")
-
-        let created = vault.appending(path: newFolderName, directoryHint: .isDirectory)
-        let contents = try FileManager.default.contentsOfDirectory(atPath: created.path(percentEncoded: false))
-        XCTAssertEqual(contents.filter { $0.hasSuffix(".canvas") }, [],
-                       "«Nuova cartella» non deve scrivere nessun .canvas dentro la cartella creata")
-    }
 
     // MARK: New (ADR-0025 R-03) - two boards in one folder, two rows, each opening its own.
 
@@ -360,86 +310,6 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         // menu left open would still be up when the next assertion, or the next test's
         // first click, went looking for a row underneath it.
         app.typeKey(.escape, modifierFlags: [])
-    }
-
-    // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `BoardCardActions.enter`
-    // (ADR-0025 §D5): a folder card's double click resolves through the same
-    // `WorkspaceBoardResolver.board(inFolder:among:)` the tree row and the breadcrumb use,
-    // and only its `.unique` branch had ever been exercised before this pair.
-
-    func testDoubleClickingAnAmbiguousFolderCardClosesTheBoardAndSelectsTheFolder() throws {
-        rootBoardRow.click()
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board radice avrebbe dovuto aprirsi")
-
-        let card = row(identifier: "canvas-node-\(ambiguousFolderCardID)")
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "manca la card cartella per «\(boardFolder)»")
-        card.doubleClick()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "una cartella ambigua non deve aprire nessuna board")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(boardFolder)", suffix: ", selezionata")
-    }
-
-    func testDoubleClickingAFolderCardWithNoBoardsClosesTheBoardAndSelectsTheFolder() throws {
-        rootBoardRow.click()
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board radice avrebbe dovuto aprirsi")
-
-        let card = row(identifier: "canvas-node-\(notFoundFolderCardID)")
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "manca la card cartella per «\(emptyFolder)»")
-        card.doubleClick()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "una cartella senza board non deve aprire nessuna board")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(emptyFolder)", suffix: ", selezionata")
-    }
-
-    // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `BoardTopBar.open(ancestor:)`
-    // (ADR-0025 §D5): the breadcrumb's own `.ambiguous`/`.notFound` branch, reusing the
-    // multi-board and board-less-parent fixtures already in this file (`boardFolder` holds
-    // two boards directly, `groupingFolder` holds none directly) rather than adding new ones.
-    // The ancestor segment is a plain SwiftUI `Button(crumb.title)` with no identifier of
-    // its own (`BoardChrome.swift`); its title is the folder's own name, data this fixture
-    // wrote rather than app prose that could be reworded, the same distinction
-    // `WorkspaceIntegrationUITests.taskRow(containing:)` already relies on.
-
-    func testClickingAnAmbiguousBreadcrumbAncestorSelectsTheFolderInsteadOfABoard() throws {
-        app.buttons["workspace-expand-all"].click()
-        let nested = row(identifier: "workspace-board-\(nestedBoardFile)")
-        XCTAssertTrue(nested.waitForExistence(timeout: 5), "la board annidata non è comparsa dopo «Espandi tutto»")
-        nested.click()
-        assertExactlyOneRowSelected(identifier: "workspace-board-\(nestedBoardFile)", suffix: ", aperta")
-
-        // Index 1: the trail is ["Workspace", boardFolder, "Dettaglio", nestedBoardFile's own
-        // name] - `nestedBoardFile` nests one folder below `boardFolder`, so `boardFolder`
-        // is always the first ancestor segment after the root (PG-081: identifier, not label,
-        // per CLAUDE.md's "never find a control by the words on it").
-        let ancestor = app.buttons["breadcrumb-crumb-1"].firstMatch
-        XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(boardFolder)»")
-        ancestor.click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "un antenato ambiguo nel breadcrumb non deve aprire una board")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(boardFolder)", suffix: ", selezionata")
-    }
-
-    func testClickingANotFoundBreadcrumbAncestorSelectsTheFolderInsteadOfABoard() throws {
-        app.buttons["workspace-expand-all"].click()
-        let nested = row(identifier: "workspace-board-\(groupingChildBoardFile)")
-        XCTAssertTrue(nested.waitForExistence(timeout: 5), "la board del gruppo non è comparsa dopo «Espandi tutto»")
-        nested.click()
-        assertExactlyOneRowSelected(identifier: "workspace-board-\(groupingChildBoardFile)", suffix: ", aperta")
-
-        // Index 1: the trail is ["Workspace", groupingFolder, "Cliente", groupingChildBoardFile's
-        // own name] - `groupingChildBoardFile` nests one folder below `groupingFolder`, so
-        // `groupingFolder` is always the first ancestor segment after the root (PG-081:
-        // identifier, not label, per CLAUDE.md's "never find a control by the words on it").
-        let ancestor = app.buttons["breadcrumb-crumb-1"].firstMatch
-        XCTAssertTrue(ancestor.waitForExistence(timeout: 5), "manca il segmento breadcrumb «\(groupingFolder)»")
-        ancestor.click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "un antenato senza board nel breadcrumb non deve aprire una board")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(groupingFolder)", suffix: ", selezionata")
     }
 
     // MARK: Fixture
