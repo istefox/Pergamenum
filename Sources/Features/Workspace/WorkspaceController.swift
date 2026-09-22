@@ -98,6 +98,18 @@ final class WorkspaceController {
     /// with "which row is lit" because both read the same value.
     var isShowingBoard: Bool { current?.hasBoard ?? false }
     private(set) var document = CanvasDocument.empty
+
+    /// Which bytes `document` came from (ADR-0054 §D2, applying ADR-0052 §D1/§D3's rule -
+    /// an in-memory document records which file it was read from - to this second holder).
+    /// One value, not a path property beside a hash property that can drift apart. It
+    /// carries three things because §D4's reconciliation needs all three: *which* board,
+    /// the hash of the *bytes* read (not of a re-encoding of them), and the *document*
+    /// those bytes decoded to - the `base` of `save()`'s three-way comparison on a refusal.
+    enum BoardOrigin: Equatable {
+        case none
+        case loaded(board: String, hash: String, document: CanvasDocument)
+    }
+    private(set) var origin: BoardOrigin = .none
     private(set) var contents = CanvasStore.FolderContents(subfolders: [], unplaced: [])
     /// `contents.subfolders` in the shape the "is this path a folder" question needs.
     ///
@@ -115,9 +127,25 @@ final class WorkspaceController {
     var zoom: CGFloat = 1
     var pan: CGSize = .zero
 
-    /// Whether the board has changes not yet on disk. Shown as the "Salvato"
-    /// indicator of §6.1.
-    private(set) var hasUnsavedChanges = false
+    /// `.pending`/`.conflicted` while an edit has not safely reached disk, `.saved` once
+    /// it has - the "Salvato"/"Salvataggio…"/"Conflitto" indicator of §6.1 (ADR-0054 §D5).
+    ///
+    /// Not `private(set)`: `WorkspaceController+Conflict.swift`'s `keepLocalBoard()` and
+    /// `reloadBoardFromDisk()` advance it too, from a different file than the one that
+    /// declares it - the ADR-0045 widening this repo already uses when a
+    /// `type_body_length` split moves a writer out of the file that owns the property.
+    enum SaveState: Equatable {
+        case saved
+        case pending
+        case conflicted(reason: String)
+    }
+    var saveState: SaveState = .saved
+
+    /// Whether the board has changes not yet safely on disk. Kept as its own computed
+    /// property, name, type and meaning unchanged, so it can never disagree with
+    /// `saveState` (ADR-0054 §D5) - `true` for `.pending` and for `.conflicted`, both of
+    /// which still hold in-memory content nothing has written.
+    var hasUnsavedChanges: Bool { saveState != .saved }
 
     /// Annulla/ripeti for this board (SPEC §6.1).
     private var history = BoardHistory()
@@ -184,7 +212,7 @@ final class WorkspaceController {
         // board area draws only while `isShowingBoard`, which is false until something
         // is opened.
         board = ""
-        document = .empty
+        replaceDocument(.empty, origin: .none)
         current = nil
         // A fold is transient and keyed by node id (ADR-0028 §D8): a table carried into
         // another vault would name ids that mean nothing here, or - worse - ids that mean
@@ -195,7 +223,7 @@ final class WorkspaceController {
         // vault being left rather than the board being read: a step recorded on the
         // previous vault's board must not be undoable onto this one, and a dirty flag
         // that outlived its store would aim the next flush at `board == ""`.
-        hasUnsavedChanges = false
+        saveState = .saved
         history.reset()
     }
 
@@ -203,6 +231,16 @@ final class WorkspaceController {
         // A crop mode left open when the vault closes must not be silently lost
         // (ADR-0020 Consequences: "the board gains its first modal state").
         endCrop(confirm: true)
+        // `detach()` does not flush - it cancels. The flush that should have happened is
+        // `WorkspaceView`'s `.onDisappear`, which runs before this and now skips a
+        // conflicted board on purpose (ADR-0054 §D5), so this is the one path left where
+        // an unresolved conflict's edit still disappears - reported, not blocked: refusing
+        // to close over an autosave conflict would be worse than the loss it prevents.
+        if case .conflicted = saveState {
+            recordProblem(
+                "«\(board)» aveva un conflitto di salvataggio non risolto: le ultime modifiche non sono state salvate"
+            )
+        }
         saveTask?.cancel()
         saveTask = nil
         store = nil
@@ -211,7 +249,7 @@ final class WorkspaceController {
         emailHeaders = [:]
         // Same reason as in `attach` above, from the other side of the same crossing.
         foldedHeadings = [:]
-        document = .empty
+        replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
         current = nil
@@ -251,16 +289,24 @@ final class WorkspaceController {
     /// selection - that is `open(board:)`'s decision (ADR-0024 §D4).
     ///
     /// Returns false when there is no store to read from, and when the file is not there:
-    /// `CanvasStore.load(board:)` throws where the folder-derived read used to return
+    /// `CanvasStore.read(board:)` throws where the folder-derived read used to return
     /// `.empty`, and that failure has no successor fallback (ADR-0025 §D1/§D4). A board
     /// nothing could load must not become a board on screen, so the read happens before
     /// anything here is written and a miss leaves the open board exactly as it was.
+    ///
+    /// Reads through `store.read(board:)` rather than `store.load(board:)` so the hash
+    /// `origin` records comes from the same read as the document (ADR-0054 §D2) - not a
+    /// re-encoding of it, which `save()`'s reconciliation on a refusal depends on. This is
+    /// also the only channel that notices an external `.canvas` change at all: `.canvas`
+    /// paths never reach `VaultWatcher` (ADR-0054 §D7), so a board's own hash is stale
+    /// from the moment another writer touches the file until this board is reopened or an
+    /// autosave refuses and reconciles.
     @discardableResult
     private func load(board newBoard: String) -> Bool {
         guard let store else { return false }
-        let loaded: CanvasDocument
+        let loaded: (document: CanvasDocument, hash: String)
         do {
-            loaded = try store.load(board: newBoard)
+            loaded = try store.read(board: newBoard)
         } catch {
             recordProblem("\(newBoard): \(error)")
             return false
@@ -273,12 +319,15 @@ final class WorkspaceController {
         flushPendingSave()
 
         board = newBoard
-        document = loaded
+        replaceDocument(
+            loaded.document,
+            origin: .loaded(board: newBoard, hash: loaded.hash, document: loaded.document)
+        )
         selection = []
         pan = .zero
         zoom = 1
         refreshContents()
-        hasUnsavedChanges = false
+        saveState = .saved
         // Each board has its own history: undoing on one board must never reach back
         // into a change made on another.
         history.reset()
@@ -324,7 +373,7 @@ final class WorkspaceController {
         flushPendingSave()
         selection = []
         current = new
-        document = .empty
+        replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
     }
@@ -350,9 +399,12 @@ final class WorkspaceController {
     /// the folder from Finder appear under "Nuovi elementi", no view ever calls this, and
     /// `scanGeneration` cannot stand in for the invalidation because
     /// `VaultWatcher.handle(absolutePaths:)` discards every path that is not `.md` - which
-    /// is exactly the pdf, image and eml the tray exists for. A listing held until the next
-    /// `load` would leave a dropped file invisible until the user navigated away and back,
-    /// which is a worse trade than one directory enumeration per card.
+    /// is exactly the pdf, image and eml the tray exists for, and the same gap `save()`'s
+    /// own `expecting:` precondition exists to cover for `.canvas` bytes rather than
+    /// waiting on a watcher event that never comes (ADR-0054 §D7 - not a reason to extend
+    /// the watcher to `.canvas`, see that section). A listing held until the next `load`
+    /// would leave a dropped file invisible until the user navigated away and back, which
+    /// is a worse trade than one directory enumeration per card.
     ///
     /// What is worth removing is a *second* call inside one mutation, where the first has
     /// already read the same document against the same disk - see `createFolder`.
@@ -366,6 +418,22 @@ final class WorkspaceController {
     private func setContents(_ new: CanvasStore.FolderContents) {
         contents = new
         subfolderSet = Set(new.subfolders)
+    }
+
+    /// The only writer of `document`; every write carries the origin those bytes came
+    /// from, so the two can never drift apart the way `LedgerOrigin` exists to prevent
+    /// for the pratiche ledger's memory (ADR-0052 §D1/§D3, ADR-0054 §D2 applying the same
+    /// rule here). `mutate` below is the one place that still writes `document` in place
+    /// rather than through here, because an in-memory edit changes nothing about what
+    /// disk holds and so must not touch `origin`.
+    ///
+    /// Not `private`: `WorkspaceController+Conflict.swift`'s `keepLocalBoard()` and
+    /// `reloadBoardFromDisk()` (ADR-0054 §D5) call it from outside this file, the same
+    /// `type_body_length`-driven widening ADR-0045 already used for this repo's other
+    /// single-writer-door types.
+    func replaceDocument(_ newDocument: CanvasDocument, origin newOrigin: BoardOrigin) {
+        document = newDocument
+        origin = newOrigin
     }
 
     // MARK: Editing
@@ -383,7 +451,7 @@ final class WorkspaceController {
         guard current?.hasBoard == true else { return }
         history.record(before: document, creatingOnDisk: created)
         change(&document)
-        hasUnsavedChanges = true
+        markPendingUnlessConflicted()
         scheduleSave()
     }
 
@@ -405,14 +473,17 @@ final class WorkspaceController {
             // draft measured against the old one is stale and must not be written over
             // whatever undo/redo just restored (ADR-0020 D5, Consequences).
             endCrop(confirm: false)
-            document = restored
+            // Undo/redo moves memory, not disk, so the origin travels unchanged
+            // (ADR-0054 §D2) - `replaceDocument` still owns the write so the two stay
+            // paired, it is just handed the origin it already had.
+            replaceDocument(restored, origin: origin)
             // A card that no longer exists must not stay selected: the toolbar would
             // offer actions on nothing. The ids are hashed once rather than scanned per
             // selected card, so holding Cmd+Z on a board with a large marquee selection
             // stays linear instead of costing selection × nodes comparisons a step.
             let liveIDs = Set(document.nodes.map(\.id))
             selection = selection.intersection(liveIDs)
-            hasUnsavedChanges = true
+            markPendingUnlessConflicted()
             scheduleSave()
             refreshContents()
             return true
@@ -425,6 +496,17 @@ final class WorkspaceController {
         case .nothingToDo:
             return false
         }
+    }
+
+    /// `.saved` → `.pending` on an edit; a `.conflicted` board stays conflicted through
+    /// further edits (ADR-0054 §D5) - the state is resolved only by an explicit choice,
+    /// `keepLocalBoard()` or `reloadBoardFromDisk()`, never silently by typing.
+    /// `scheduleSave()` still runs after this either way, but `save()` itself returns
+    /// early while `.conflicted` (below), so a reschedule alone produces no further write
+    /// and no further refusal - "must not turn into a refusal per second."
+    private func markPendingUnlessConflicted() {
+        if case .conflicted = saveState { return }
+        saveState = .pending
     }
 
     /// Nodes being dragged right now, and how far, in board units.
@@ -588,20 +670,85 @@ final class WorkspaceController {
         if hasUnsavedChanges { save() }
     }
 
+    /// `.canvas` paths never reach `VaultWatcher` (ADR-0054 §D7), so nothing tells this
+    /// board when another writer has touched the file underneath it. `expecting:` is the
+    /// substitute: the write proves against `origin`'s hash instead, and a mismatch is
+    /// reconciled here rather than silently overwritten or silently discarded.
     private func save() {
         guard let store, hasUnsavedChanges else { return }
+        // A conflicted board neither writes nor retries until the person chooses
+        // `keepLocalBoard()` or `reloadBoardFromDisk()` (ADR-0054 §D5) - a retry per edit
+        // would refuse once a second and fill the problem list.
+        if case .conflicted = saveState { return }
+        attemptSave(store: store, allowingRetry: true)
+    }
+
+    /// An origin of `.none`, or one naming a different board than `board`, writes with
+    /// `expecting: nil` - there is nothing to prove and forcing a refusal would make the
+    /// board unsavable.
+    private func attemptSave(store: CanvasStore, allowingRetry: Bool) {
+        let expecting: String? = {
+            guard case .loaded(let originBoard, let hash, _) = origin, originBoard == board else { return nil }
+            return hash
+        }()
+
         do {
-            // The hash is deliberately dropped rather than recorded as a self-write:
-            // `VaultWatcher` reports only `.md` paths, so a `.canvas` write never
-            // reaches `VaultSession.reconcile` and there is nothing for a recorded hash
-            // to be recognised against. The board cannot be reloaded under the user by
-            // the watcher because the watcher never hears about it.
-            try store.save(document, board: board)
-            hasUnsavedChanges = false
+            let writtenHash = try store.save(document, board: board, expecting: expecting)
+            replaceDocument(document, origin: .loaded(board: board, hash: writtenHash, document: document))
+            saveState = .saved
+        } catch is VaultWriteRefusal {
+            guard allowingRetry else {
+                // A second writer landed inside the retry window; treated as diverged
+                // rather than reconciled and looped again (ADR-0054 §D4).
+                enterConflicted(reason: VaultWriteRefusal.movedOn(board).description)
+                return
+            }
+            reconcileAfterRefusal(store: store)
         } catch {
             // Left dirty on purpose: an indicator still showing unsaved changes is
             // the truth, and the next edit will retry.
             recordProblem("salvataggio di \(board): \(error)")
         }
+    }
+
+    /// ADR-0054 §D4: re-reads the board and asks the pure three-way rule what the
+    /// external writer did, using the base `origin` kept from the read this board's
+    /// unsaved edit started from.
+    private func reconcileAfterRefusal(store: CanvasStore) {
+        guard case .loaded(_, _, let base) = origin else {
+            // `expecting` is only ever non-nil when `origin` matches this board, so a
+            // refusal with nothing to reconcile against should not happen; nothing safe
+            // to do but report it.
+            enterConflicted(reason: VaultWriteRefusal.movedOn(board).description)
+            return
+        }
+
+        let theirs: (document: CanvasDocument, hash: String)
+        do {
+            theirs = try store.read(board: board)
+        } catch {
+            recordProblem("salvataggio di \(board): \(error)")
+            return
+        }
+
+        switch CanvasDocument.reconcile(mine: document, base: base, theirs: theirs.document) {
+        case .adopted(let merged):
+            replaceDocument(
+                merged, origin: .loaded(board: board, hash: theirs.hash, document: theirs.document)
+            )
+            attemptSave(store: store, allowingRetry: false)
+        case .diverged(let reasons):
+            enterConflicted(
+                reason: "\(VaultWriteRefusal.movedOn(board).description) (\(reasons.joined(separator: ", ")))"
+            )
+        }
+    }
+
+    /// The one door into `.conflicted` (ADR-0054 §D5): `recordProblem` fires here and only
+    /// here, so re-entering `save()` while already conflicted - which `markPendingUnlessConflicted()`
+    /// makes impossible until an explicit resolution - can never repeat it.
+    private func enterConflicted(reason: String) {
+        saveState = .conflicted(reason: reason)
+        recordProblem(reason)
     }
 }

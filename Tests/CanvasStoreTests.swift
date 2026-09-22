@@ -272,3 +272,127 @@ import Testing
 
     #expect(store.allBoards() == [])
 }
+
+// MARK: - `read(board:)`, guarded `save(_:board:expecting:)` and `writeRepoint` (ADR-0054
+// §D2/§D3/§D6, plan `docs/plans/pg-213-workspace-autosave-race.md`, Task 2, R-01, R-03, R-07)
+
+@Test func readsHashEqualsNoteStoreHashAndRoundTripsThroughSavesReturnValue() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    var document = CanvasDocument()
+    document.nodes.append(CanvasNode(id: "a", kind: .text("ciao"), x: 0, y: 0, width: 10, height: 10))
+
+    let savedHash = try store.save(document, board: "A.canvas")
+    let read = try store.read(board: "A.canvas")
+
+    #expect(read.hash == savedHash)
+    let onDisk = try Data(contentsOf: root.url.appending(path: "A.canvas"))
+    #expect(read.hash == NoteStore.hash(onDisk))
+    #expect(read.document == document)
+}
+
+@Test func saveExpectingAMatchingHashWrites() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    let hash = try store.save(.empty, board: "A.canvas")
+
+    var updated = CanvasDocument()
+    updated.nodes.append(CanvasNode(id: "a", kind: .text("nuovo"), x: 0, y: 0, width: 10, height: 10))
+    _ = try store.save(updated, board: "A.canvas", expecting: hash)
+
+    #expect(try store.load(board: "A.canvas") == updated)
+}
+
+@Test func saveExpectingAStaleHashThrowsAndLeavesTheFileByteIdentical() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    _ = try store.save(.empty, board: "A.canvas")
+    // Somebody else writes in between.
+    _ = try store.save(.empty, board: "A.canvas")
+    let onDiskBefore = try Data(contentsOf: root.url.appending(path: "A.canvas"))
+
+    var updated = CanvasDocument()
+    updated.nodes.append(CanvasNode(id: "a", kind: .text("scartato"), x: 0, y: 0, width: 10, height: 10))
+    do {
+        _ = try store.save(updated, board: "A.canvas", expecting: "stale-hash")
+        Issue.record("expected save(expecting:) to refuse a stale hash")
+    } catch VaultWriteRefusal.movedOn(let path) {
+        #expect(path == "A.canvas")
+    } catch {
+        Issue.record("expected VaultWriteRefusal.movedOn, got \(error)")
+    }
+    let onDiskAfter = try Data(contentsOf: root.url.appending(path: "A.canvas"))
+    #expect(onDiskBefore == onDiskAfter)
+}
+
+@Test func saveExpectingNilWritesUnconditionallyOverChangedBytes() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    _ = try store.save(.empty, board: "A.canvas")
+
+    var updated = CanvasDocument()
+    updated.nodes.append(CanvasNode(id: "a", kind: .text("sopra"), x: 0, y: 0, width: 10, height: 10))
+    _ = try store.save(updated, board: "A.canvas")
+
+    #expect(try store.load(board: "A.canvas") == updated)
+}
+
+@Test func saveExpectingAgainstAMissingBoardRefusesRatherThanRecreatingIt() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+
+    do {
+        _ = try store.save(.empty, board: "assente.canvas", expecting: "anything")
+        Issue.record("expected save(expecting:) to refuse a board that does not exist")
+    } catch VaultWriteRefusal.movedOn(let path) {
+        #expect(path == "assente.canvas")
+    } catch {
+        Issue.record("expected VaultWriteRefusal.movedOn, got \(error)")
+    }
+    #expect(!FileManager.default.fileExists(
+        atPath: root.url.appending(path: "assente.canvas").path(percentEncoded: false)
+    ))
+}
+
+@Test func writeRepointWritesOnAFreshChangeAndRefusesOnAStaleOne() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    let before = try CanvasDocument.empty.encoded()
+    _ = try store.save(.empty, board: "A.canvas")
+    let beforeText = String(decoding: before, as: UTF8.self)
+
+    var repointed = CanvasDocument()
+    repointed.nodes.append(CanvasNode(id: "a", kind: .file(path: "new.md", subpath: nil), x: 0, y: 0, width: 10, height: 10))
+    let after = String(decoding: try repointed.encoded(), as: UTF8.self)
+
+    try store.writeRepoint(VaultFileChange(path: "A.canvas", before: beforeText, after: after))
+    #expect(try store.load(board: "A.canvas") == repointed)
+
+    // A second repoint against the same (now stale) `before` refuses.
+    var secondRepoint = CanvasDocument()
+    secondRepoint.nodes.append(CanvasNode(id: "b", kind: .file(path: "other.md", subpath: nil), x: 0, y: 0, width: 10, height: 10))
+    do {
+        try store.writeRepoint(VaultFileChange(
+            path: "A.canvas", before: beforeText, after: String(decoding: try secondRepoint.encoded(), as: UTF8.self)
+        ))
+        Issue.record("expected writeRepoint to refuse a stale before")
+    } catch VaultWriteRefusal.movedOn(let path) {
+        #expect(path == "A.canvas")
+    } catch {
+        Issue.record("expected VaultWriteRefusal.movedOn, got \(error)")
+    }
+    #expect(try store.load(board: "A.canvas") == repointed, "the refused write must leave the file untouched")
+}
+
+@Test func writeRepointRefusesAPathEscapingTheVault() throws {
+    let root = try CanvasTemporaryRoot()
+    let store = CanvasStore(root: root.url)
+    let change = VaultFileChange(path: "../../evil.canvas", before: "{}", after: "{}")
+
+    do {
+        try store.writeRepoint(change)
+        Issue.record("expected writeRepoint to refuse a path escaping the vault")
+    } catch {
+        // refusal - either a boundary violation or VaultWriteRefusal is acceptable.
+    }
+}

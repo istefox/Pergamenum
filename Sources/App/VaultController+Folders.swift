@@ -45,6 +45,9 @@ extension VaultController {
             for failure in outcome.failures {
                 recordProblem("riferimento non aggiornato: \(failure)")
             }
+            for refusal in outcome.refusals {
+                recordProblem(VaultWriteRefusal.movedOn(refusal).description)
+            }
             for moved in outcome.movedNotes {
                 movedNote(from: moved.old, to: moved.new)
             }
@@ -90,10 +93,15 @@ extension VaultController {
     /// R-08).
     ///
     /// `renameFolder`'s shape above, minus the two follow-ups that belong to notes: no
-    /// `canOperateOnFolder` check, because a `.canvas` is not a file the editor can hold
-    /// unsaved edits to, and no `movedNote` pass, because renaming a board moves no note.
-    /// What is left is the same one: report what could not be repointed, then rescan so
-    /// the browser tree rebuilds around the new name.
+    /// `canOperateOnFolder` check - true of the *editor*, which holds no unsaved buffer
+    /// on a `.canvas` at all, but false of the *app*: the open Workspace board holds
+    /// unsaved edits to a `.canvas` for a second at a time, dozens of times a session.
+    /// That race is real (ADR-0054 §D6) and this is where its refusal surfaces, not where
+    /// it is prevented - `canOperateOnFolder`'s "ask before" shape does not apply to a
+    /// board autosave nothing here schedules or waits on. No `movedNote` pass either,
+    /// because renaming a board moves no note. What is left: report what could not be
+    /// repointed and what refused because the board changed since the plan was read, then
+    /// rescan so the browser tree rebuilds around the new name.
     @discardableResult
     func renameBoard(at relativePath: String, to newName: String) -> String? {
         guard let session else { return nil }
@@ -101,6 +109,9 @@ extension VaultController {
             let outcome = try session.renameBoard(at: relativePath, to: newName)
             for failure in outcome.failures {
                 recordProblem("riferimento non aggiornato: \(failure)")
+            }
+            for refusal in outcome.refusals {
+                recordProblem(VaultWriteRefusal.movedOn(refusal).description)
             }
             Task { await rescan() }
             return outcome.newPath

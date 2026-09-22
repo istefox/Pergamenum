@@ -85,7 +85,16 @@ struct WorkspaceView: View {
                     attachWorkspace()
                     checkPendingNewBoard()
                 }
-                .onDisappear { workspace.flushPendingSave() }
+                .onDisappear {
+                    // A conflicted board is not flushed here: flushing would attempt
+                    // exactly the write already refused, on the same stale expectation.
+                    // `detach()` (the next thing to run when the vault itself closes)
+                    // reports the loss instead (ADR-0054 §D5).
+                    guard case .conflicted = workspace.saveState else {
+                        workspace.flushPendingSave()
+                        return
+                    }
+                }
                 // `pergamenum://canvas?file=…&node=…` parks its target on the controller,
                 // and this is what acts on it. Nothing did before: the route reported
                 // success and opened nothing at all. Checked on appear too, because a

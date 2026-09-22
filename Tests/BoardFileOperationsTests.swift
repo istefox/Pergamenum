@@ -360,3 +360,63 @@ private func isUnique(_ resolution: WorkspaceBoardResolution) -> Bool {
     #expect(exists("A/x.canvas", in: vault.root))
     #expect(!exists("B/x.canvas", in: vault.root))
 }
+
+// MARK: - ADR-0054 §D6: the board repoint write is guarded, a stale sibling refuses
+//
+// `renamePlan`'s/`movePlan`'s own read is synchronous and immediately followed by the
+// write with no controllable in-process window, so a refusal is forced the way
+// ADR-0046 §D11 prescribes: at the writer seam, by driving `CanvasStore.writeRepoint`
+// directly with a hand-built `VaultFileChange` whose `before` disagrees with what is
+// really on disk - not a re-spelling of `renameBoard`/`moveBoard`, the production writer
+// under test (`Tests/VaultSessionFileOperationsTests.swift`'s precedent for the note door).
+
+@Test func aSiblingBoardWhoseBytesMovedOnIsRefusedThroughWriteRepointOnRename() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/vecchio.canvas")
+    let sibling = """
+    {"nodes":[{"id":"a","type":"file","file":"A/vecchio.canvas","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(sibling, to: "Labs.canvas")
+
+    let plan = try vault.operations.renamePlan("A/vecchio.canvas", to: "nuovo", knownPaths: [])
+    let staleChanges = plan.boardChanges.map {
+        VaultFileChange(path: $0.path, before: "{\"nodes\":[],\"stale\":true}", after: $0.after)
+    }
+    let originalBoard = try vault.text(at: "Labs.canvas")
+
+    let canvas = CanvasStore(root: vault.root)
+    let result = VaultPlanApplication.apply(staleChanges, writing: canvas.writeRepoint)
+
+    #expect(result.refusals == ["Labs.canvas"])
+    #expect(result.rewrittenPaths.isEmpty)
+    #expect(try vault.text(at: "Labs.canvas") == originalBoard)
+}
+
+@Test func theRepointLoopOnAMoveReportsARefusalAndStillRepointsTheOtherSiblings() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/x.canvas")
+    let stale = """
+    {"nodes":[{"id":"a","type":"file","file":"A/x.canvas","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    let fine = """
+    {"nodes":[{"id":"b","type":"file","file":"A/x.canvas","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(stale, to: "Stale.canvas")
+    try vault.write(fine, to: "Fine.canvas")
+
+    let plan = try vault.operations.movePlan("A/x.canvas", toFolder: "B")
+    let changes = plan.boardChanges.map { change in
+        change.path == "Stale.canvas"
+            ? VaultFileChange(path: change.path, before: "{\"nodes\":[],\"stale\":true}", after: change.after)
+            : change
+    }
+    let originalStale = try vault.text(at: "Stale.canvas")
+
+    let canvas = CanvasStore(root: vault.root)
+    let result = VaultPlanApplication.apply(changes, writing: canvas.writeRepoint)
+
+    #expect(result.refusals == ["Stale.canvas"])
+    #expect(result.rewrittenPaths == ["Fine.canvas"])
+    #expect(try vault.text(at: "Stale.canvas") == originalStale)
+    #expect(try vault.text(at: "Fine.canvas").contains("B/x.canvas"))
+}

@@ -183,9 +183,13 @@ extension VaultSession {
     /// or the owning node inside its `.canvas` board for a board-sourced task - the one
     /// resolution point the plan asks for, so every caller of `apply` gets it for free.
     ///
-    /// `expecting` only matters for the note branch - a board write goes through
-    /// `CanvasStore`, never `write(_:to:)`, so the precondition has nothing to attach to
-    /// there and is simply unused.
+    /// `expecting` matters only for the note branch, where the caller already hashed the
+    /// text this rewrite was computed against. A board write goes through `CanvasStore`
+    /// instead and derives its own precondition here: the caller's `expecting` is a hash
+    /// of the owning node's *text*, not of the `.canvas` file's bytes, so it has nothing
+    /// to compare against `CanvasStore.save`'s own guard. This branch reads the board
+    /// again immediately before writing (ADR-0054 §D6), which is what stops the
+    /// read-modify-write from straddling an autosave the open board makes in between.
     private func writeTaskSource(_ updated: String, for task: TaskItem, expecting: String? = nil) async throws -> WriteResult {
         guard task.sourcePath.hasSuffix(".\(CanvasStore.fileExtension)") else {
             return try await write(updated, to: task.sourcePath, expecting: expecting)
@@ -194,12 +198,13 @@ extension VaultSession {
             throw TaskSourceError.missingNodeID(task.sourcePath)
         }
         let canvasStore = CanvasStore(root: root)
-        var document = try canvasStore.load(board: task.sourcePath)
+        let read = try canvasStore.read(board: task.sourcePath)
+        var document = read.document
         guard let index = document.nodes.firstIndex(where: { $0.id == nodeID }) else {
             throw TaskSourceError.nodeNotFound(task.sourcePath, nodeID)
         }
         document.nodes[index].kind = .text(updated)
-        try canvasStore.save(document, board: task.sourcePath)
+        try canvasStore.save(document, board: task.sourcePath, expecting: read.hash)
         return WriteResult(path: task.sourcePath, text: updated)
     }
 

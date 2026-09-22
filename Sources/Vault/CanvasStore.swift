@@ -45,28 +45,72 @@ struct CanvasStore: Sendable {
         try boundary.url(for: board)
     }
 
-    /// Reads the board at a vault-relative path, failing when the file is not there.
+    /// Reads the board at a vault-relative path, failing when the file is not there, and
+    /// hands back the hash of the *bytes read* alongside the decoded document (ADR-0054
+    /// §D2/§D3) - not a re-encoding of it, since `encoded()`'s own determinism is exactly
+    /// what a hash comparison must not depend on.
     ///
     /// The failure is the decision (ADR-0025 §D1): a caller that wants "open this board
     /// if it exists" asks which board a folder means and gets an answer that can be
     /// "none" (§D5) - it does not name a path and hope.
-    func load(board: String) throws -> CanvasDocument {
+    func read(board: String) throws -> (document: CanvasDocument, hash: String) {
         let fileURL = try boundary.url(for: board)
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             throw StoreError.missing(board)
         }
-        return try CanvasDocument(data: try Data(contentsOf: fileURL))
+        let data = try Data(contentsOf: fileURL)
+        return (document: try CanvasDocument(data: data), hash: NoteStore.hash(data))
     }
 
+    /// `read(board:)`'s document alone, for every caller that has no use for the hash.
+    /// Signature and behaviour unchanged: still throws `StoreError.missing` for a file
+    /// that is not there, never `.empty`.
+    func load(board: String) throws -> CanvasDocument {
+        try read(board: board).document
+    }
+
+    /// Writes `document` at `board`, refusing on a stale `expecting:` (ADR-0054 §D3).
+    ///
+    /// `nil` - the default - is the pre-existing unconditional write every one of this
+    /// method's other call sites still gets. When `expecting` is non-nil it is compared
+    /// against the file's *current* bytes, read immediately before the atomic write with
+    /// no `await` in between (the in-process atomicity argument ADR-0054 §D3 makes), and
+    /// a mismatch throws `VaultWriteRefusal.movedOn(board)` with nothing written - a board
+    /// that no longer exists on disk answers with `nil` current bytes, which never equals
+    /// a non-nil expectation, so this refuses rather than silently re-creating it.
     @discardableResult
-    func save(_ document: CanvasDocument, board: String) throws -> String {
+    func save(_ document: CanvasDocument, board: String, expecting: String? = nil) throws -> String {
         let fileURL = try boundary.url(for: board)
+        if let expecting {
+            let current = try? Data(contentsOf: fileURL)
+            guard current.map(NoteStore.hash) == expecting else {
+                throw VaultWriteRefusal.movedOn(board)
+            }
+        }
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         let data = try document.encoded()
         try data.write(to: fileURL, options: .atomic)
         return NoteStore.hash(data)
+    }
+
+    /// The one guarded write for a planned `.canvas` repoint (ADR-0054 §D6), replacing
+    /// five hand-copied unguarded byte writes with one door.
+    ///
+    /// Compares the file's current bytes against `change.expectedHash` and throws
+    /// `VaultWriteRefusal.movedOn(change.path)` on a mismatch, writing nothing -
+    /// `VaultPlanApplication.apply`'s synchronous overload already classifies that error
+    /// into `refusals` rather than `failures`, so no plumbing is invented here. The path
+    /// goes through `boundary`, same as every other write this store makes: a
+    /// `change.path` escaping the vault refuses exactly as `save`/`load` already do.
+    func writeRepoint(_ change: VaultFileChange) throws {
+        let fileURL = try boundary.url(for: change.path)
+        let current = try? Data(contentsOf: fileURL)
+        guard current.map(NoteStore.hash) == change.expectedHash else {
+            throw VaultWriteRefusal.movedOn(change.path)
+        }
+        try Data(change.after.utf8).write(to: fileURL, options: .atomic)
     }
 
     /// The real contents of the folder holding the open board, split into what the board
