@@ -15,6 +15,11 @@ enum Attachment {
         var target: String
         /// The label of `![alt](…)`. The wikilink form carries none.
         var alt: String?
+
+        /// What an accessibility element announces for this embed: the CommonMark
+        /// caption where there is one, the file name otherwise (ADR-0053 §D2 seam #13,
+        /// moved from `CompletingTextView+Accessibility.swift`, unchanged).
+        var label: String { alt ?? target }
     }
 
     /// The embed a line consists of, or nil when the line is anything else.

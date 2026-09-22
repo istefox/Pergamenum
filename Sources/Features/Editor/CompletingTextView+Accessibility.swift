@@ -126,7 +126,7 @@ extension CompletingTextView {
         let inContainer = local.offsetBy(dx: containerFrame.minX, dy: containerFrame.minY)
         let inView = inContainer.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
         let onScreen = scan.window.convertToScreen(convert(inView, to: nil))
-        let label = embed.alt ?? embed.target
+        let label = embed.label
 
         if let reused = embedAccessibilityElements[paragraphStart] {
             reused.setAccessibilityLabel(label)

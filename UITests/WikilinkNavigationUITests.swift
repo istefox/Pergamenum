@@ -100,40 +100,6 @@ final class WikilinkNavigationUITests: XCTestCase {
         return link
     }
 
-    /// Issue #188 follow-up: a wikilink whose visible text was selected and made bold
-    /// (`[[**Prova**]]`) used to carry `.linkTarget("**Prova**")` all the way to navigation,
-    /// which looked for a note literally titled "**Prova**", found none, and silently did
-    /// nothing on Cmd+click. Overwrites "Origine" with a bold-wrapped wikilink before opening
-    /// it - the bold markers are concealed the same as the brackets (hidesMarkup, ADR-0018),
-    /// so the link's title stays "Destinazione" exactly as in the plain case.
-    func testCommandClickOnABoldWikilinkStillNavigatesToTheLinkedNote() throws {
-        try """
-        ---
-        date: 2026-09-09
-        tags:
-          - type-note
-        ---
-
-        [[**Destinazione**]]
-        """.write(
-            to: vault.appending(path: "Origine.md", directoryHint: .notDirectory),
-            atomically: true, encoding: .utf8
-        )
-
-        let editor = openOriginAndReturnEditor()
-        let link = wikilinkElement(title: "**Destinazione**")
-        XCUIElement.perform(withKeyModifiers: .command) { link.click() }
-
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline, !((editor.value as? String ?? "").contains("Nota di arrivo")) {
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        XCTAssertTrue(
-            (editor.value as? String ?? "").contains("Nota di arrivo"),
-            "Cmd+click su un wikilink in grassetto non ha aperto 'Destinazione'"
-        )
-    }
-
     func testCommandClickOnAWikilinkNavigatesToTheLinkedNote() throws {
         let editor = openOriginAndReturnEditor()
 
@@ -196,31 +162,6 @@ final class WikilinkNavigationUITests: XCTestCase {
         XCTAssertFalse(
             source.contains("Nota di arrivo"),
             "un click semplice sul wikilink ha navigato, invece di posizionare solo il cursore"
-        )
-    }
-
-    /// R-07 regression guard for the `rightMouseDown(with:)` override added to stop a
-    /// right-click on a link from un-concealing its paragraph before the menu appears
-    /// (issue #188 fix 1): the override replaces AppKit's own default dispatch for a
-    /// right-click landing on a link, so "Apri collegamento" navigating correctly is the one
-    /// thing a UI test can still verify here - concealment itself is a display-only effect
-    /// over the same raw source `editor.value` always returns, so it isn't observable this
-    /// way (CLAUDE.md: no rendered-text assertions), and is checked by hand instead.
-    func testRightClickApriCollegamentoStillNavigatesAfterTheRightMouseDownFix() throws {
-        let editor = openOriginAndReturnEditor()
-
-        wikilinkElement().rightClick()
-        let menuItem = app.menuItems["Apri collegamento"]
-        XCTAssertTrue(menuItem.waitForExistence(timeout: 5), "«Apri collegamento» non è nel menu contestuale")
-        menuItem.click()
-
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline, !((editor.value as? String ?? "").contains("Nota di arrivo")) {
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        XCTAssertTrue(
-            (editor.value as? String ?? "").contains("Nota di arrivo"),
-            "«Apri collegamento» dal menu contestuale non ha aperto 'Destinazione'"
         )
     }
 }

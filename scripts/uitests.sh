@@ -141,7 +141,7 @@ classes_for_path() {
             echo "${base%.swift}" ;;
         Sources/CLI/*|Sources/MCPServer/*|Sources/Connector/*) echo NONE ;;
         Sources/Features/Workspace/*|Sources/Core/Canvas/*|Sources/Vault/CanvasStore.swift|Sources/Vault/BoardFileOperations.swift|Sources/Vault/BoardTaskRecord.swift)
-            echo "WorkspaceBoardUITests WorkspaceFocusUITests WorkspaceIntegrationUITests WorkspaceOpenStateUITests SidebarMoveUITests" ;;
+            echo "WorkspaceBoardUITests WorkspaceIntegrationUITests WorkspaceOpenStateUITests SidebarMoveUITests" ;;
         Sources/Features/Pratiche/*|Sources/Core/Pratiche/*|Sources/Core/Email/*)
             echo "PraticheUITests" ;;
         Sources/Features/Tasks/*|Sources/Core/Tasks/*|Sources/Core/Categories/*)

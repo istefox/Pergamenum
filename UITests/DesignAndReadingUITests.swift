@@ -150,22 +150,6 @@ final class DesignAndReadingUITests: XCTestCase {
         XCTAssertTrue(source.contains("Titolo della nota"), "l'editor non mostra il sorgente della nota")
     }
 
-    // MARK: Tables
-
-    /// ADR-0029 §D4: a GFM table draws as a real editable grid, found by its own
-    /// `TableGridView`-carried identifier and never by the words in a cell (CLAUDE.md's
-    /// working agreement) - concealment is not checkable at this level (see the test
-    /// above), so this only asserts the grid itself is on screen.
-    func testTheEditorRendersATableAsAGridRatherThanItsPipes() throws {
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-        let note = text(withValue: "20260812_Nota_Lettura")
-        XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota di prova non è nell'elenco")
-        note.click()
-
-        let grid = app.descendants(matching: .any).matching(identifier: "editor-table").firstMatch
-        XCTAssertTrue(grid.waitForExistence(timeout: 5), "la tabella non è resa come griglia")
-    }
-
     // MARK: Keyboard scrolling
     //
     // `testReadingModeScrollsWithTheKeyboard` is deleted, not rewritten (plan

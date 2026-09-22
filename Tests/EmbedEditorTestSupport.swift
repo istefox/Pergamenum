@@ -12,6 +12,15 @@ import AppKit
 /// (`makeTempVaultRoot`, `writeImage`, `waitForRendition`, `note`, `embedOffset`, `runLength`)
 /// and keep local the two helpers that are genuinely narrower than `editor(...)` and
 /// `waitForRendition` - each says so where it is declared (ADR-0051 §D4).
+/// Captures every title `onFollowLink` was called with, instead of the fixture
+/// discarding them (ADR-0053 §D2 seam #4) - a plain-click-refused test asserts this
+/// stays empty, a Cmd-click test asserts it holds exactly the title clicked.
+@MainActor
+final class LinkFollowSpy {
+    private(set) var titles: [String] = []
+    func follow(title: String) { titles.append(title) }
+}
+
 @MainActor
 enum EmbedEditorFixtures {
     /// `prefix` names the directory a stray leftover in `$TMPDIR` came from; nothing reads it.
@@ -43,6 +52,9 @@ enum EmbedEditorFixtures {
         let textView: CompletingTextView
         let coordinator: NoteTextView.Coordinator
         let window: NSWindow
+        /// What `onFollowLink` was called with, if anything - `LinkFollowSpy`, not a
+        /// hard-wired discard.
+        let followedLinks: LinkFollowSpy
     }
 
     /// A real `CompletingTextView` with `claimsCommand` wired the same way
@@ -53,10 +65,11 @@ enum EmbedEditorFixtures {
     static func editor(
         text: String, hidesMarkup: Bool, root: URL?, thumbnails: ThumbnailStore?
     ) -> Fixture {
+        let followedLinks = LinkFollowSpy()
         let view = NoteTextView(
             text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-            hidesMarkup: hidesMarkup, onFollowLink: { _ in }, vaultRoot: root, notePath: "Nota.md",
-            thumbnails: thumbnails
+            hidesMarkup: hidesMarkup, onFollowLink: followedLinks.follow(title:), vaultRoot: root,
+            notePath: "Nota.md", thumbnails: thumbnails
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -75,7 +88,10 @@ enum EmbedEditorFixtures {
             contentRect: textView.frame, styleMask: [.titled], backing: .buffered, defer: false
         )
         window.contentView = textView
-        return Fixture(textView: textView, coordinator: coordinator, window: window)
+        return Fixture(
+            textView: textView, coordinator: coordinator, window: window,
+            followedLinks: followedLinks
+        )
     }
 
     /// Polls `embeds.renditions` until the render lands - the real, asynchronous

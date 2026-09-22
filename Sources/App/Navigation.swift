@@ -108,6 +108,16 @@ final class Navigation {
 
     var pane: Pane = .notes
 
+    /// Whether the pane on screen is running its own "concentrazione" (2026-08-28,
+    /// toolbar parity chain: Note gained its own flag alongside Workspace's).
+    ///
+    /// Moved here from `RootView` (ADR-0053 §D2 seam #5): it read only `navigation`
+    /// already, `pane` included, since `RootView.pane` was itself `navigation.pane`.
+    /// `RootView.sidebarVisibility` keeps its own `Binding` and reads this.
+    var isFocusedPane: Bool {
+        (isWorkspaceFocused && pane == .workspace) || (isNotesFocused && pane == .notes)
+    }
+
     /// Whether the Note pane shows its inspector - backlinks, linked tasks, and the
     /// unlinked mentions of ADR-0012 D9.
     ///

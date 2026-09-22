@@ -220,6 +220,42 @@ func anOpenEndedListStillGoesWhenNothingMatches(_ text: String, _ cursor: Int) {
 }
 
 @MainActor
+@Test func fifteenDownArrowsWalkPastTheFirstScreenfulAndStopAtTheListsEnd() {
+    // The test above only covers a 3-item list's two ends (ui-suite-replacement plan §2
+    // row 10: it did not hold as coverage for `CompletionPanelUITests:146`, which drove
+    // fifteen real down arrows over a list long enough that the selection walks past
+    // what fits on screen unscrolled - `CompletionPanelView`'s row list is capped at
+    // 320pt and its floor is 120pt, well under twenty rows' worth). The retired GUI test
+    // reached this with `:`, not `[[`: a wikilink's own candidates are ranked and capped
+    // at 12 (`CompletingTextView.swift:356`), too short to press fifteen times into. The
+    // emoji catalogue is the one open-ended, unbounded-by-a-limit list the panel offers
+    // (`EmojiCatalogue.matching("")` returns the whole thing, catalogue order, no cap),
+    // which is what the retired test actually walked.
+    let view = panelled("Nota :", cursor: 6)
+    let total = EmojiCatalogue.entries.count
+    #expect(view.completionPanel.items.count == total)
+    #expect(view.completionPanel.selectedIndex == 0)
+
+    for _ in 0..<15 { view.doCommand(by: #selector(NSTextView.moveDown(_:))) }
+    #expect(view.completionPanel.selectedIndex == 15)
+    #expect(view.completionPanel.selected == .emoji(glyph: "🧪", name: "provetta"))
+
+    // Far past the catalogue's own end (`total + 10` presses on top of the fifteen
+    // already made): stops at the last row rather than reading past it.
+    for _ in 0..<(total + 10) { view.doCommand(by: #selector(NSTextView.moveDown(_:))) }
+    #expect(view.completionPanel.selectedIndex == total - 1)
+    #expect(view.completionPanel.selected == .emoji(glyph: "✈️", name: "aereo"))
+
+    // `CompletionPanelView`'s `ScrollViewReader.scrollTo(selectedIndex)` (`:79`, `:82`)
+    // runs inside the `NSHostingView` `CompletionPanel.render(into:maxHeight:)` rebuilds
+    // on every `moveSelection` - proven here by `selectedIndex` reaching the catalogue's
+    // last row without the render pipeline crashing or losing track of the list; the
+    // `ScrollView`'s own pixel offset is SwiftUI-internal and not something a unit test
+    // reaches, the same boundary `docs/adr/0053-test-seams-for-the-in-process-merge-gate.md`'s
+    // hosted-view prototype names for a SwiftUI gesture.
+}
+
+@MainActor
 @Test func clickingARowLandsWhereReturnLands() {
     // The panel never acts on a choice itself; it hands it back. That is what makes a
     // click and a Return the same edit rather than two implementations of one.
