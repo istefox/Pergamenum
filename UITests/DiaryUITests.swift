@@ -1,10 +1,18 @@
 import XCTest
 
-/// The Diario pane, driven the way a person drives it: the toolbar, the composer, the
-/// timeline, and the file all of it ends up in.
+/// The Diario pane, driven the way a person drives it: the composer, the timeline, and
+/// the file all of it ends up in.
 ///
-/// The diary writes on its own - there is no Salva - so every one of these also checks
-/// the file on disk. A day that is only on screen is a day that is not written down.
+/// The diary writes on its own - there is no Salva - so the kept test also checks the
+/// file on disk. A day that is only on screen is a day that is not written down.
+///
+/// Five tests retired here per the UI-suite-replacement census (stage 3, Task 6): the
+/// toolbar-existence and editor-only-surface checks had no production seam behind them
+/// (existence-only assertions), and the two delete paths plus the typing/day-change
+/// round trip are now covered by `DiaryControllerTests`, cited in the census's
+/// DiaryUITests entry. What is left is the one end-to-end this pane still needs a real
+/// window for: composing a block through the toolbar, the sheet and Salva, and finding
+/// it both on the timeline and in the file.
 final class DiaryUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -52,26 +60,6 @@ final class DiaryUITests: XCTestCase {
         )
     }
 
-    /// The pane carries its own toolbar, like every other section.
-    func testTheDiarySectionCarriesItsToolbar() throws {
-        for label in ["Nuovo blocco", "Giorno precedente", "Giorno successivo", "Vai a data"] {
-            XCTAssertTrue(
-                app.toolbars.buttons[label].waitForExistence(timeout: 5),
-                "«\(label)» non è nella toolbar del Diario"
-            )
-        }
-    }
-
-    /// The pane hosts the one unified editor and nothing beside it: no separate preview
-    /// rendering, and no picker to switch into a mode that no longer exists (R-11,
-    /// ADR-0029 - supersedes ADR-0005 §D2's "editor and preview side by side" premise).
-    func testTheEditorIsTheOnlyWritingSurfaceOnScreen() throws {
-        XCTAssertTrue(element("diary-editor").waitForExistence(timeout: 5), "manca l'editor")
-        XCTAssertTrue(element("diary-timeline").waitForExistence(timeout: 5), "manca la giornata")
-        XCTAssertFalse(element("diary-preview").exists, "l'anteprima separata non deve più esistere")
-        XCTAssertFalse(element("diary-layout").exists, "il selettore di modalità non deve più esistere")
-    }
-
     /// The whole point of the pane: block out a couple of hours, give them a name, and
     /// find both on the timeline and in the file.
     func testABlockIsComposedAndWrittenToTheFile() throws {
@@ -90,75 +78,10 @@ final class DiaryUITests: XCTestCase {
         )
     }
 
-    /// And out again, from the x that sits on the block itself.
-    func testABlockIsDeletedFromTheTimeline() throws {
-        composeBlock(named: "Da eliminare")
-
-        entry.hover()
-        let remove = app.buttons["diary-remove-entry"].firstMatch
-        XCTAssertTrue(remove.waitForExistence(timeout: 5), "manca la x sul blocco")
-        remove.click()
-
-        XCTAssertTrue(
-            waitForDiary { !$0.contains("## Diario") },
-            "il file conserva la sezione dopo l'eliminazione"
-        )
-        XCTAssertFalse(entry.waitForExistence(timeout: 2), "il blocco è ancora disegnato")
-    }
-
-    /// The composer's own delete, for the block that is already open.
-    func testABlockIsDeletedFromItsSheet() throws {
-        composeBlock(named: "Da eliminare dalla scheda")
-
-        entry.click()
-        let delete = app.buttons["diary-sheet-delete"].firstMatch
-        XCTAssertTrue(delete.waitForExistence(timeout: 5), "la scheda non offre di eliminare")
-        delete.click()
-
-        XCTAssertTrue(waitForDiary { !$0.contains("## Diario") }, "il blocco è rimasto nel file")
-    }
-
-    /// What is typed in the editor is written without anybody asking for it, and the
-    /// day that was left is written before the next one is read.
-    func testTypingIsSavedAndSurvivesAChangeOfDay() throws {
-        let editor = app.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 5), "manca l'editor markdown")
-        editor.click()
-        editor.typeText("## Mattina\n\nRiunione con il cliente.\n")
-
-        XCTAssertTrue(
-            waitForDiary { $0.contains("Riunione con il cliente.") },
-            "quello che è stato scritto non è finito nel file"
-        )
-
-        app.toolbars.buttons["Giorno successivo"].click()
-        app.toolbars.buttons["Giorno precedente"].click()
-
-        XCTAssertTrue(
-            waitForDiary { $0.contains("Riunione con il cliente.") },
-            "il testo si è perso cambiando giorno"
-        )
-    }
-
     // MARK: Support
 
     private var entry: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "diary-entry").firstMatch
-    }
-
-    private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
-    /// Opens the composer from the toolbar, names the block and saves it.
-    private func composeBlock(named name: String) {
-        app.toolbars.buttons["Nuovo blocco"].click()
-        let title = app.textFields["diary-sheet-title"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda del blocco non si è aperta")
-        title.click()
-        title.typeText(name)
-        app.buttons["diary-sheet-save"].firstMatch.click()
-        XCTAssertTrue(waitForDiary { $0.contains(name) }, "«\(name)» non è stato scritto")
     }
 
     /// Polls the diary file, because the write happens on the app's side of the process

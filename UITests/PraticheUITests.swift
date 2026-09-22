@@ -2,21 +2,16 @@ import XCTest
 
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 10 -
-// R-18, R-33, R-39; UX-BLUEPRINT's own accessibility-identifier checklist.
+// R-18, R-33, R-39; UX-BLUEPRINT's own accessibility-identifier checklist. Every
+// assertion below reaches a control by its `accessibilityIdentifier`, never by the
+// words on it (CLAUDE.md's own rule, paid for twice already).
 //
-// Per this dispatch's explicit instruction: this file must **build for testing and
-// never run**. `PergamenumUITests` launches a real `Pergamenum.app` instance that
-// steals the global hotkey (`CLAUDE.md` "`.claude/test-cmd` runs at the end of every
-// turn"), so it is compiled here (`xcodebuild ... build-for-testing`) and executed
-// only by hand, never by an agent. Every assertion below reaches a control by its
-// `accessibilityIdentifier`, never by the words on it (CLAUDE.md's own rule, paid for
-// twice already).
-//
-// Identifiers asserted here are the ones the UX-BLUEPRINT checklist names that
-// `Sources/Features/Pratiche/**` already carries as of this dispatch. A checklist
-// identifier with no real view behind it yet is intentionally left out of this file
-// rather than asserted against a control that cannot exist - see this dispatch's own
-// report for the MISSING list the coder still owes.
+// Four tests retired here per the UI-suite-replacement census (stage 3, Task 6): the
+// pane/list/actions, filter-row, add-note/add-call and wizard-fields checks were all
+// existence-of-identifier assertions with no production seam behind them, the same
+// shape the census retired throughout this pass. What is left is the one real
+// selection-wiring path this pane still needs a window for: a click on a list row
+// driving the timeline and its inspector toggle.
 final class PraticheUITests: XCTestCase {
     /// One conformant pratica, seeded on disk before `launch()`, so the list column
     /// has a row and the timeline/inspector/add-note/add-call surfaces - all gated on
@@ -41,19 +36,13 @@ final class PraticheUITests: XCTestCase {
         stateBase = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        // R-19/ADR §D7: a per-test fixture root, never the real `~/Library/Mail`. Left
-        // empty for every test but the «Rigenera» one below, which seeds a real
-        // Envelope Index into it before `launch()` so a message reaches the timeline -
-        // `FullDiskAccessProbe.state()` reads a successful `open(2)` on real content
-        // the same way it reads `ENOENT` on an empty store, `.granted` either way
-        // (`FullDiskAccessProbe.swift`'s own doc comment), so seeding it here does not
-        // disturb `testTheFullDiskAccessBannerIsAbsentWithAReadableMailStoreFixture`.
+        // R-19/ADR §D7: a per-test fixture root, never the real `~/Library/Mail`, left
+        // empty - `FullDiskAccessProbe.state()` reads `ENOENT` on an empty store as
+        // `.granted`, same as it would a real one (`FullDiskAccessProbe.swift`'s own
+        // doc comment).
         mailStoreRoot = URL(filePath: NSTemporaryDirectory())
             .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        if name.contains("testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk") {
-            try seedMailStoreFixtureForRegeneration()
-        }
 
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
@@ -127,28 +116,6 @@ final class PraticheUITests: XCTestCase {
         )
     }
 
-    /// A real, schema-accurate Envelope Index (`MailStoreFixture`, `Tests/`-authored
-    /// and pure Foundation, no XCTest import - reused here rather than forked so this
-    /// UI test and the unit suite never carry two copies of the SQL fixture script) with
-    /// one message on the fixture pratica's already-followed conversation
-    /// (`pergamenum-dossier-conversations: [112409]` above), so a sync run
-    /// (`PratichePane`'s own `.task`, fired on every test's `showPratiche()`) writes it
-    /// straight into the timeline rather than into the tray. Only the «Rigenera» test
-    /// below calls this - every other test in this file keeps the empty mail store its
-    /// own doc comments describe.
-    private func seedMailStoreFixtureForRegeneration() throws {
-        _ = try MailStoreFixture.build(
-            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
-            messages: [.init(
-                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it",
-                mailboxRowID: 1, conversationID: 112_409,
-                dateSent: Date(timeIntervalSince1970: 1000), dateReceived: Date(timeIntervalSince1970: 1000),
-                emlxBody: EmailFixtureCorpus.completeMessageRFC822
-            )],
-            in: mailStoreRoot
-        )
-    }
-
     /// Clicks the fixture pratica's row (`pratiche-row-<folder path>`,
     /// `PraticheListColumn.praticaRow`'s own `pratica.id`, which is the folder path -
     /// `PraticheController.listItems`) and waits for the timeline that only exists once
@@ -165,40 +132,9 @@ final class PraticheUITests: XCTestCase {
 
     // MARK: - R-18: the pane itself, the list, and the Full Disk Access banner
 
-    func testThePaneCarriesItsListAndPrimaryActions() throws {
-        XCTAssertTrue(element("pratiche-pane").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-list").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-new").waitForExistence(timeout: 5), "manca «Nuova pratica»")
-        XCTAssertTrue(element("pratiche-refresh").waitForExistence(timeout: 5), "manca «Aggiorna»")
-    }
-
-    func testTheFilterRowCarriesTheSenderMenuAndAttachmentsToggle() throws {
-        XCTAssertTrue(element("pratiche-filter").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-sender-menu").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-attachments-only").waitForExistence(timeout: 5))
-    }
-
-    // MARK: - R-39: the timeline and its inspector toggle
-
     func testTheTimelineAndInspectorToggleAreAddressable() throws {
         selectFirstPratica()
         XCTAssertTrue(element("pratiche-timeline").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-inspector-toggle").waitForExistence(timeout: 5))
     }
-
-    func testTheAddNoteAndAddCallEntryPointsAreAddressable() throws {
-        selectFirstPratica()
-        XCTAssertTrue(element("pratiche-add-note").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-add-call").waitForExistence(timeout: 5))
-    }
-
-    // MARK: - The wizard (opened from «Nuova pratica»)
-
-    func testTheWizardOpensWithItsTitleAndClientFields() throws {
-        element("pratiche-new").click()
-        XCTAssertTrue(element("pratiche-wizard").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-wizard-title").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pratiche-wizard-client").waitForExistence(timeout: 5))
-    }
-
 }

@@ -16,17 +16,13 @@ import XCTest
 ///
 /// - **The menu is the deterministic half.** «Sposta in ▸» is a second rendering of the same
 ///   drag (§D9), added specifically because no test in this repository had ever driven a
-///   `.draggable` → `.dropDestination` pasteboard drag before this chain. R-01 … R-07, R-10,
-///   R-11 and R-12 are proven through it here.
+///   `.draggable` → `.dropDestination` pasteboard drag before this chain.
 /// - **The drag half was spiked first**, per Task 7's own instruction, with a throwaway test
 ///   doing `row.press(forDuration: 0.4, thenDragTo: folderRow)` in the Workspace tree, run five
 ///   separate times through `scripts/uitests.sh`. It passed 5/5 - that call did start and
 ///   complete a real `NSDraggingSession` against a folder row's
-///   `.dropDestination(for: VaultItemDrag.self)` - so R-15's four named scenarios
-///   (single-row board drag, folder drag, multi-row drag, undo of a move) are written for real
-///   below rather than deferred to a manual-verification item. On macOS 27 that exact call
-///   stopped delivering a drag at all (PG-162); the four scenarios now drive it through
-///   `dragTo(_:pressing:)` (`DragSupport.swift`), which says why.
+///   `.dropDestination(for: VaultItemDrag.self)`. On macOS 27 that exact call stopped
+///   delivering a drag at all (PG-162); `dragTo(_:pressing:)` (`DragSupport.swift`) says why.
 ///
 /// Every row this file interacts with sits at the vault's own top level. That is a fixture
 /// choice, not a limitation of what the feature can do: `WorkspaceRow`'s chevron carries no
@@ -35,7 +31,7 @@ import XCTest
 /// by hand), so a row nested under a *collapsed* folder cannot be reached by identifier without
 /// first clicking that exact pixel - a fragility this file has no reason to take on when every
 /// requirement below is provable with root-level fixtures instead. Where a row's *destination*
-/// after a move needs to be read back through the UI (R-01, R-05) this file reuses
+/// after a move needs to be read back through the UI (R-01) this file reuses
 /// `WorkspaceIntegrationUITests.openBoard()`'s own trick: typing into the filter field switches
 /// the browser to `flatList`, which draws every match flat regardless of expand state.
 ///
@@ -44,6 +40,15 @@ import XCTest
 /// only - there is no `.alert` on the Note pane the way `WorkspaceBrowser` has
 /// `sidebar-move-conflict`. R-07 is therefore driven against the **Workspace** tree, where the
 /// alert is real, not against the Note sidebar.
+///
+/// R-02, R-04, R-05, R-10, R-11 and all four R-15 drag scenarios retired here per the
+/// UI-suite-replacement census (stage 3, Task 6): R-03 and R-06 had already converted to
+/// unit tests in stage 2 (`VaultController.moveNote`, `canMove(to:)`). What is left is what
+/// stayed genuinely GUI-only: the deterministic menu path for a single row (R-01), the
+/// `.alert`-to-`NSAlert` conflict bridge (R-07), and the window's own `UndoManager` (R-12).
+/// The four synthesized drags were also the most exposed to the machine (PG-180: 13
+/// failures in 20 with the pointer disturbed, 30/30 clean on an untouched Mac); drag and
+/// drop is left with no cover at all after this, a loss named rather than hidden.
 final class SidebarMoveUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -104,53 +109,6 @@ final class SidebarMoveUITests: XCTestCase {
                        "la vecchia riga alla radice è ancora nell'albero")
     }
 
-    // MARK: R-02 - a folder row's «Sposta in ▸ B» moves the folder and everything inside it
-
-    func testMovingAFolderRowViaTheMenuMovesItAndEverythingInsideIt_R02() throws {
-        openWorkspace()
-        let row = workspaceRow("workspace-folder-Parent")
-        moveViaMenu(row, to: "Target")
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/Parent/p.canvas"), toExist: true),
-                     "Parent/p.canvas non è comparso sotto Target")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/Parent/Child/c.canvas"), toExist: true),
-                     "il contenuto annidato Parent/Child/c.canvas non ha seguito la cartella")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Parent"), toExist: false),
-                     "Parent è ancora nella radice")
-    }
-
-    // MARK: R-04 - a folder row's «Sposta in ▸ B» moves the folder and its contents, in the Note sidebar
-
-    func testMovingANoteSidebarFolderRowViaTheMenuMovesItAndItsContents_R04() throws {
-        let row = noteRow("folder-NoteFolder")
-        moveViaMenu(row, to: "Target")
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/NoteFolder/inner.md"), toExist: true),
-                     "NoteFolder/inner.md non ha seguito lo spostamento della cartella")
-        XCTAssertTrue(waitForFile(vault.appending(path: "NoteFolder"), toExist: false),
-                     "NoteFolder è ancora nella radice")
-    }
-
-    // MARK: R-05 - «Sposta in ▸ (radice)» moves to the vault root
-
-    func testMovingViaTheMenuToRadiceMovesToTheVaultRoot_R05() throws {
-        openWorkspace()
-        // `Deep/deep.canvas` is nested, so it is reached the same way
-        // `WorkspaceIntegrationUITests.openBoard()` reaches a nested row: through the
-        // filter, which switches the browser to `flatList` and draws every match flat.
-        let filter = app.textFields["workspace-filter"]
-        filter.click()
-        filter.typeText("deep")
-        let row = workspaceRow("workspace-board-Deep/deep.canvas")
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "riga Deep/deep.canvas assente")
-        moveViaMenu(row, to: "")
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "deep.canvas"), toExist: true),
-                     "deep.canvas non è comparso alla radice del vault")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Deep/deep.canvas"), toExist: false),
-                     "deep.canvas è ancora dentro Deep/")
-    }
-
     // MARK: R-07 - a collision is refused, named in a dialog, and changes nothing on disk
 
     /// BUG found while writing this test, reported rather than worked around silently:
@@ -196,44 +154,6 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertEqual(contents, Self.collideMarker, "il file già presente in Collide/ è stato sovrascritto")
     }
 
-    // MARK: R-10 - Cmd-click extends the selection without changing which board is open
-
-    func testCmdClickExtendsSelectionWithoutChangingTheOpenBoard_R10() throws {
-        openWorkspace()
-        let openRow = workspaceRow("workspace-board-Open.canvas")
-        let otherRow = workspaceRow("workspace-board-Board.canvas")
-        XCTAssertTrue(openRow.waitForExistence(timeout: 5))
-        openRow.click()
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists, "la board non si è aperta")
-
-        cmdClick(otherRow)
-
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists,
-                       "il Cmd-click ha chiuso la board aperta")
-        assertRowIsOpen(identifier: "workspace-board-Open.canvas")
-    }
-
-    // MARK: R-11 - a menu move performed with two rows selected moves both
-
-    func testAMenuMoveWithTwoRowsSelectedMovesBoth_R11() throws {
-        openWorkspace()
-        let rowA = workspaceRow("workspace-board-MultiA.canvas")
-        let rowB = workspaceRow("workspace-board-MultiB.canvas")
-        XCTAssertTrue(rowA.waitForExistence(timeout: 5))
-        XCTAssertTrue(rowB.waitForExistence(timeout: 5))
-        rowA.click()
-        cmdClick(rowB)
-
-        moveViaMenu(rowA, to: "Target")
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/MultiA.canvas"), toExist: true),
-                     "MultiA.canvas non si è spostata insieme alla selezione")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/MultiB.canvas"), toExist: true),
-                     "MultiB.canvas non si è spostata insieme alla selezione")
-        XCTAssertTrue(waitForFile(vault.appending(path: "MultiA.canvas"), toExist: false))
-        XCTAssertTrue(waitForFile(vault.appending(path: "MultiB.canvas"), toExist: false))
-    }
-
     // MARK: R-12 - Cmd+Z restores every moved item in one step, Cmd+Shift+Z reapplies
 
     func testUndoAfterAMenuMoveRestoresBothInOneStepAndRedoReappliesIt_R12() throws {
@@ -265,96 +185,6 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(waitForFile(vault.appending(path: "Target/UndoB.canvas"), toExist: true))
     }
 
-    // MARK: R-15 (1/4) - a single-row board drag
-
-    func testDraggingASingleBoardRowMovesTheFile_R15() throws {
-        openWorkspace()
-        let source = workspaceRow("workspace-board-DragBoard.canvas")
-        let destination = workspaceRow("workspace-folder-Target")
-        XCTAssertTrue(source.waitForExistence(timeout: 5))
-        XCTAssertTrue(destination.waitForExistence(timeout: 5))
-
-        // A second attempt if the first did not land, and only then. Measured on 2026-09-20
-        // (PG-180): with the pointer moved by anything else during the run this drag failed 13
-        // times in 20, always at ~17 s with the source row still in place; on a machine nobody
-        // touched it passed 30 in 30, and under CPU load alone it did not change (2 in 20, as on
-        // an idle one). A synthesized drag shares the pointer with the person at the keyboard, so
-        // it can be lost without the app having done anything wrong. The retry is safe because a
-        // lost drag leaves the source row where it was, and a drop that only arrived late is
-        // caught by the wait, which is why the source is checked before a second gesture.
-        let moved = vault.appending(path: "Target/DragBoard.canvas")
-        source.dragTo(destination)
-        if !waitForFile(moved, toExist: true, timeout: 4), source.exists {
-            source.dragTo(destination)
-        }
-
-        XCTAssertTrue(waitForFile(moved, toExist: true, timeout: 8),
-                     "il drag di una singola riga board non ha spostato il file")
-        XCTAssertTrue(waitForFile(vault.appending(path: "DragBoard.canvas"), toExist: false, timeout: 8))
-    }
-
-    // MARK: R-15 (2/4) - a folder drag
-
-    func testDraggingAFolderRowMovesItAndItsContents_R15() throws {
-        openWorkspace()
-        let source = workspaceRow("workspace-folder-DragFolder")
-        let destination = workspaceRow("workspace-folder-Target")
-        XCTAssertTrue(source.waitForExistence(timeout: 5))
-        XCTAssertTrue(destination.waitForExistence(timeout: 5))
-
-        source.dragTo(destination)
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragFolder/inner.canvas"), toExist: true, timeout: 8),
-                     "il drag di una cartella non ha portato con sé il suo contenuto")
-        XCTAssertTrue(waitForFile(vault.appending(path: "DragFolder"), toExist: false, timeout: 8))
-    }
-
-    // MARK: R-15 (3/4) - a multi-row drag
-
-    func testDraggingAMultiRowSelectionMovesAllOfThem_R15() throws {
-        openWorkspace()
-        let rowA = workspaceRow("workspace-board-DragMultiA.canvas")
-        let rowB = workspaceRow("workspace-board-DragMultiB.canvas")
-        let destination = workspaceRow("workspace-folder-Target")
-        XCTAssertTrue(rowA.waitForExistence(timeout: 5))
-        XCTAssertTrue(rowB.waitForExistence(timeout: 5))
-        XCTAssertTrue(destination.waitForExistence(timeout: 5))
-        rowA.click()
-        cmdClick(rowB)
-
-        // The drag starts on `rowA`, which is part of the lit set - `WorkspaceRow
-        // .beginDrag()` reads `effectiveItems` at that moment and carries the whole set,
-        // never just the row the gesture began on (ADR-0026 §D4, R-11).
-        rowA.dragTo(destination)
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragMultiA.canvas"), toExist: true, timeout: 8),
-                     "il drag multi-riga non ha spostato DragMultiA")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragMultiB.canvas"), toExist: true, timeout: 8),
-                     "il drag multi-riga non ha spostato DragMultiB: solo la riga trascinata si è mossa")
-        XCTAssertTrue(waitForFile(vault.appending(path: "DragMultiA.canvas"), toExist: false, timeout: 8))
-        XCTAssertTrue(waitForFile(vault.appending(path: "DragMultiB.canvas"), toExist: false, timeout: 8))
-    }
-
-    // MARK: R-15 (4/4) - undo of a drag move
-
-    func testUndoOfADragMoveRestoresTheFile_R15() throws {
-        openWorkspace()
-        let source = workspaceRow("workspace-board-DragUndo.canvas")
-        let destination = workspaceRow("workspace-folder-Target")
-        XCTAssertTrue(source.waitForExistence(timeout: 5))
-        XCTAssertTrue(destination.waitForExistence(timeout: 5))
-
-        source.dragTo(destination)
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragUndo.canvas"), toExist: true, timeout: 8),
-                     "il drag non ha spostato il file prima del tentativo di annullamento")
-
-        app.typeKey("z", modifierFlags: .command)
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "DragUndo.canvas"), toExist: true, timeout: 8),
-                     "Cmd+Z non ha ripristinato il file spostato con il drag")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/DragUndo.canvas"), toExist: false, timeout: 8))
-    }
-
     // MARK: Navigation
 
     private func openWorkspace() {
@@ -364,10 +194,6 @@ final class SidebarMoveUITests: XCTestCase {
     }
 
     private func workspaceRow(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
-    private func noteRow(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
@@ -398,14 +224,6 @@ final class SidebarMoveUITests: XCTestCase {
         target.click()
     }
 
-    private func assertRowIsOpen(identifier: String, file: StaticString = #filePath, line: UInt = #line) {
-        let openLabelled = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier == %@ AND label ENDSWITH ', aperta'", identifier)
-        ).firstMatch
-        XCTAssertTrue(openLabelled.waitForExistence(timeout: 5),
-                     "la riga «\(identifier)» non risulta più aperta", file: file, line: line)
-    }
-
     // MARK: Reading the result off disk
 
     private func waitForFile(_ url: URL, toExist expected: Bool, timeout: TimeInterval = 6) -> Bool {
@@ -432,36 +250,21 @@ final class SidebarMoveUITests: XCTestCase {
             .appending(path: "SidebarMoveUITest-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
 
-        for folder in [
-            "Deep", "Parent", "Parent/Child", "Collide", "NoteFolder", "Target", "DragFolder",
-        ] {
+        for folder in ["Collide", "Target"] {
             try FileManager.default.createDirectory(
                 at: vault.appending(path: folder, directoryHint: .isDirectory),
                 withIntermediateDirectories: true
             )
         }
 
-        // R-10 / R-11 / R-12's "open board" anchor and the boards moved by the various
-        // scenarios below - every one at the vault's own top level (see the file header).
-        for board in [
-            "Open.canvas", "Board.canvas", "Deep/deep.canvas", "MultiA.canvas", "MultiB.canvas",
-            "UndoA.canvas", "UndoB.canvas", "DragBoard.canvas", "DragFolder/inner.canvas",
-            "DragMultiA.canvas", "DragMultiB.canvas", "DragUndo.canvas",
-        ] {
+        // R-01 / R-07 / R-12's boards, every one at the vault's own top level (see the
+        // file header).
+        for board in ["Board.canvas", "UndoA.canvas", "UndoB.canvas"] {
             try Self.boardFixture.write(
                 to: vault.appending(path: board, directoryHint: .notDirectory),
                 atomically: true, encoding: .utf8
             )
         }
-        // R-02's carried content and R-06's descendant-disabling check.
-        try Self.boardFixture.write(
-            to: vault.appending(path: "Parent/p.canvas", directoryHint: .notDirectory),
-            atomically: true, encoding: .utf8
-        )
-        try Self.boardFixture.write(
-            to: vault.appending(path: "Parent/Child/c.canvas", directoryHint: .notDirectory),
-            atomically: true, encoding: .utf8
-        )
         // R-07's collision partner: same file name as the root-level `Board.canvas`.
         try Self.collideMarker.write(
             to: vault.appending(path: "Collide/Board.canvas", directoryHint: .notDirectory),
@@ -469,13 +272,6 @@ final class SidebarMoveUITests: XCTestCase {
         )
 
         try writeNote("Note", at: "Note.md")
-        try writeNote("Inner", at: "NoteFolder/inner.md")
-        // `VaultSession.folders` (the Note sidebar's own "Sposta in" destination list) is
-        // derived from note paths, not from a directory walk (`VaultSession+Files.swift:93-106`)
-        // - unlike the Workspace pane's `CanvasStore.allFolders()`, an empty folder is not
-        // offered there. `Target` needs a note of its own for R-03/R-04 to find it in that
-        // menu; the anchor is never itself moved or asserted on.
-        try writeNote("Anchor", at: "Target/anchor.md")
     }
 
     private func writeNote(_ title: String, at relativePath: String) throws {

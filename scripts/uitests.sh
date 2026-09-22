@@ -9,9 +9,11 @@
 # its sixty-seven tests turned out to have been red since before the milestone that was
 # about to be merged, and nothing had said so (PG-033).
 #
-# This script is the other half of the answer. The written rule is in CLAUDE.md: the suite
-# runs before every merge to `main`. What is here is everything about that run which is
-# easy to get wrong:
+# This script is the other half of the answer. That per-turn gap is now closed a different
+# way (the UI-suite-replacement plan, stage 3): the written rule in CLAUDE.md is that the
+# merge gate is the unit suite plus the in-process hosted-view tests, and only `--affected`
+# runs at merge time. What is here is everything about a run of this script which is easy
+# to get wrong:
 #
 #   - **Stale instances are killed first.** A full run started with one alive gives 18
 #     failures that are not real, every one at exactly 60.2 s - the launch timeout - and
@@ -57,7 +59,7 @@
 # Usage:  scripts/uitests.sh [-only-testing:...]
 #         with no arguments the whole bundle runs; an argument REPLACES that selection
 #         rather than adding to it, so a single suite can be run:
-#         scripts/uitests.sh -only-testing:PergamenumUITests/TaskTimeUITests
+#         scripts/uitests.sh -only-testing:PergamenumUITests/TaskCategoriesUITests
 #
 #         scripts/uitests.sh --status
 #         says whether this tree, and `main`, already has a verdict, and what changed since the
@@ -145,10 +147,10 @@ classes_for_path() {
         Sources/Features/Pratiche/*|Sources/Core/Pratiche/*|Sources/Core/Email/*)
             echo "PraticheUITests" ;;
         Sources/Features/Tasks/*|Sources/Core/Tasks/*|Sources/Core/Categories/*)
-            echo "TaskTimeUITests TaskCategoriesUITests" ;;
+            echo "TaskCategoriesUITests" ;;
         Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
-            echo "DayViewUITests DiaryUITests TimeBlockUITests TaskTimeUITests" ;;
-        Sources/App/SparkleUpdateController*) echo "UpdateMenuUITests" ;;
+            echo "DayViewUITests DiaryUITests" ;;
+        Sources/App/SparkleUpdateController*) echo NONE ;;
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;
     esac
@@ -262,6 +264,15 @@ show_verdict() {
     done
 }
 
+# How many GUI tests the tree currently carries - informational only, never a failing check
+# (the UI-suite-replacement plan's stage 3, Task 6 decided the cap by hand, not by enforcing it
+# here). `DragSupport.swift` holds no test class, only the drag helper every other file shares,
+# so it is excluded rather than counted as zero.
+gui_test_count() {
+    grep -rhc '^    func test' UITests/*UITests.swift 2>/dev/null \
+        | awk '{sum += $1} END {print sum + 0}'
+}
+
 # Read-only and instant: it never touches the machine, so it can be asked at any moment by any
 # session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
 # a run is still owed.
@@ -270,6 +281,7 @@ status_report() {
     head_tree=$(tree_of HEAD)
     printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
         "$(is_clean && echo pulito || echo 'con modifiche non committate')"
+    printf 'uitests: %d test GUI (cap deciso 2026-09-21: 17)\n' "$(gui_test_count)"
     show_verdict HEAD "$head_tree"
     main_tree=$(tree_of main || tree_of origin/main || true)
     if [ -n "$main_tree" ] && [ "$main_tree" != "$head_tree" ]; then

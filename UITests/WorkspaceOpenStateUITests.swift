@@ -8,22 +8,20 @@ import XCTest
 /// `docs/superpowers/plans/2026-08-25-workspace-board-tree-single-selection.md`, Task 6
 /// (R-14): this file is the rewrite that task asks for. Every row is found by
 /// `accessibilityIdentifier`, never by the words on it (`CLAUDE.md`) - the tree stopped
-/// being a `Button` per row (ADR-0024 §D1/F5), so the two ported tests below substitute
+/// being a `Button` per row (ADR-0024 §D1/F5), so the ported test below substitutes
 /// `app.descendants(matching: .any).matching(identifier:)` for the old `app.buttons[...]`
 /// lookup, and every new test follows the same rule from the start. No assertion in this
 /// file reads `selectedFolder` or `hasOpenBoard` - both were removed from the production
 /// code this plan's earlier tasks replaced (ADR-0024 §D4/§D6) and neither is a concept a
 /// UI test, which only ever sees rendered rows and labels, could reach even by accident.
 ///
-/// ADR-0025 ("A board is a file, a folder is a container") rewrites what the rows *are*
+/// ADR-0025 ("A board is a file, a folder is a container") rewrote what the rows *are*
 /// without touching how they are found: a folder and a `.canvas` are now two different
-/// rows (§D2), so a folder that owns a board has both. That is the one assertion in this
-/// file this chain deliberately reverses - the test named for §D2 below - and the five
-/// added under it cover this chain's own requirements: creating a folder makes a row and
-/// no board (R-01), two boards in one folder are two rows each opening its own (R-03), a
-/// board row's context menu offers both mutating verbs (R-08), an empty folder has a row
-/// (R-10), and a `.canvas` at the vault root has a top-level row while the root itself has
-/// none (R-11).
+/// rows (§D2). The tests that chain added (R-01, R-03, R-08, R-10, R-11, and the §D2
+/// reversal itself) retired here per the UI-suite-replacement census (stage 3, Task 6),
+/// each with an in-process replacement named in the census's WorkspaceOpenStateUITests
+/// entry. What is left is what stayed genuinely GUI-only: the empty-then-filled pane
+/// (R-14) and selecting a nested board lighting exactly one row (R-02/R-03).
 final class WorkspaceOpenStateUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -32,36 +30,9 @@ final class WorkspaceOpenStateUITests: XCTestCase {
 
     // MARK: Fixture identity, named once so every step and every assertion agrees.
 
-    /// A folder holding boards, directly under the root - since ADR-0025 §D2 the folder
-    /// and each of its boards are rows of their own, so this one accounts for three.
-    private let boardFolder = "Vibrofer"
-    private let boardFile = "Vibrofer/Vibrofer.canvas"
-    /// A second board in the **same** folder, under a name that is not the folder's - the
-    /// R-03 target, and the shape the old "one board per folder, named after it" rule
-    /// could not represent at all (ADR-0025 §D1).
-    private let siblingBoardFile = "Vibrofer/Altro.canvas"
-    /// A folder holding nothing whatsoever - the R-10 target: it has a row, and selecting
-    /// it neither opens nor writes a board.
-    private let emptyFolder = "Vuota"
-    /// What the R-01 test types into the creation sheet. A plain name, so
-    /// `NoteName.validate` raises nothing and the sheet's "Crea" is enabled: this test is
-    /// about what the verb creates, not about what the field refuses.
-    private let newFolderName = "Ricerca"
-    /// A board nested two levels deep, inside the folder above - the R-02/R-03 target:
-    /// selecting it must light exactly its own row, nowhere else in the tree.
+    /// A board nested two levels deep - the R-02/R-03 target: selecting it must light
+    /// exactly its own row, nowhere else in the tree.
     private let nestedBoardFile = "Vibrofer/Dettaglio/Dettaglio.canvas"
-    /// A board-less grouping folder whose only content is a subfolder that owns a board
-    /// (SPEC Decision 3 / ADR-0024 §D5) - the R-04/R-05 target: its row selects and opens
-    /// nothing.
-    private let groupingFolder = "Progetti"
-    private let groupingChildBoardFile = "Progetti/Cliente/Cliente.canvas"
-    /// Two folder-card nodes placed on the root board itself (review-triage-fix cycle 1,
-    /// MAJOR finding: `BoardCardActions.enter` had no UI coverage at all). One points at
-    /// `boardFolder`, which already holds two boards (`.ambiguous`); the other points at
-    /// `emptyFolder`, which holds none (`.notFound`) - both existing fixtures above, not
-    /// new ones.
-    private let ambiguousFolderCardID = "folder-card-ambiguous"
-    private let notFoundFolderCardID = "folder-card-notfound"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -165,40 +136,6 @@ final class WorkspaceOpenStateUITests: XCTestCase {
                         "lo stato vuoto dovrebbe sparire una volta aperta una board")
     }
 
-    /// This is the test the SPEC's Decision 7 and R-10 contradict (plan, "Five things the
-    /// SPEC says that are false or under-determined"): no open-board persistence exists in
-    /// this app, and `5041d5c` shipped exactly the behaviour asserted here. It stays green.
-    func testLeavingAndReturningToTheWorkspacePaneForgetsTheOpenBoard() throws {
-        rootBoardRow.click()
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists)
-
-        app.staticTexts["Note"].click()
-        XCTAssertTrue(app.staticTexts["Workspace"].waitForExistence(timeout: 5))
-        app.staticTexts["Workspace"].click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "tornando sul pane la board aperta prima non dovrebbe essere rimasta")
-    }
-
-    // MARK: Reversed (ADR-0025 §D2) - a folder that owns a board is a row *beside* it.
-
-    /// The one green assertion this chain deliberately inverts, and the reason it is worth
-    /// saying so here rather than only in the plan: under ADR-0024 §D2 a folder owning a
-    /// board was folded into that board's single row, so a `workspace-folder-` row for it
-    /// was proof of a bug. ADR-0025 §D2 separates the two concepts - a folder is a
-    /// container, a `.canvas` is a document - so the same folder now has a row of its own
-    /// *and* one row per board inside it. Same lookups, opposite expectation.
-    func testAFolderThatOwnsABoardIsARowBesideItsBoardsOwn_ADR0025_D2() throws {
-        XCTAssertTrue(row(identifier: "workspace-folder-\(boardFolder)").waitForExistence(timeout: 5),
-                      "«\(boardFolder)» è una cartella: deve avere una riga workspace-folder-* propria")
-
-        // Its board's row is a row of its own, one level in - visible once the folder is
-        // open, which is what a container row means.
-        app.buttons["workspace-expand-all"].click()
-        XCTAssertTrue(row(identifier: "workspace-board-\(boardFile)").waitForExistence(timeout: 5),
-                      "manca la riga della board dentro «\(boardFolder)»")
-    }
-
     // MARK: New (R-02/R-03) - selecting a nested board lights exactly its own row.
 
     func testSelectingANestedBoardLightsExactlyOneRowInTheTree_R02_R03() throws {
@@ -211,142 +148,21 @@ final class WorkspaceOpenStateUITests: XCTestCase {
         assertExactlyOneRowSelected(identifier: "workspace-board-\(nestedBoardFile)", suffix: ", aperta")
     }
 
-    // MARK: New (R-05) - a board-less folder's row opens nothing and raises no sheet.
-
-    func testClickingABoardLessFolderRowOpensNoBoardAndRaisesNoSheet_R05() throws {
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.sheets.count, 0)
-
-        let grouping = row(identifier: "workspace-folder-\(groupingFolder)")
-        XCTAssertTrue(grouping.waitForExistence(timeout: 5))
-        grouping.click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "nessuna board dovrebbe essersi aperta cliccando una cartella senza board")
-        XCTAssertEqual(app.sheets.count, 0, "nessun foglio dovrebbe comparire per il solo click sulla riga")
-    }
-
-
-    // MARK: New (ADR-0025 R-03) - two boards in one folder, two rows, each opening its own.
-
-    func testTwoBoardsInOneFolderAreTwoRowsAndEachOpensItsOwn_R03() throws {
-        app.buttons["workspace-expand-all"].click()
-
-        let named = row(identifier: "workspace-board-\(boardFile)")
-        let sibling = row(identifier: "workspace-board-\(siblingBoardFile)")
-        XCTAssertTrue(named.waitForExistence(timeout: 5), "manca la riga di «\(boardFile)»")
-        XCTAssertTrue(sibling.waitForExistence(timeout: 5),
-                      "manca la riga di «\(siblingBoardFile)»: una cartella può contenere più board")
-
-        named.click()
-        assertExactlyOneRowSelected(identifier: "workspace-board-\(boardFile)", suffix: ", aperta")
-
-        sibling.click()
-        assertExactlyOneRowSelected(identifier: "workspace-board-\(siblingBoardFile)", suffix: ", aperta")
-    }
-
-    // MARK: New (ADR-0025 R-10) - an empty folder is a row, and stays empty when selected.
-
-    func testAnEmptyFolderHasARowAndSelectingItWritesNothing_R10() throws {
-        let empty = row(identifier: "workspace-folder-\(emptyFolder)")
-        XCTAssertTrue(empty.waitForExistence(timeout: 5),
-                      "una cartella senza board non ha riga: prima di ADR-0025 §D2 era invisibile")
-        empty.click()
-
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
-                      "selezionare una cartella vuota non deve aprire nessuna board")
-        assertExactlyOneRowSelected(identifier: "workspace-folder-\(emptyFolder)", suffix: ", selezionata")
-
-        let folder = vault.appending(path: emptyFolder, directoryHint: .isDirectory)
-        let contents = try FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))
-        XCTAssertEqual(contents.filter { $0.hasSuffix(".canvas") }, [],
-                       "selezionare una cartella vuota non deve materializzare una board dentro di essa")
-    }
-
-    // MARK: New (ADR-0025 R-11) - a .canvas at the vault root is a top-level row, and the root is not.
-
-    func testARootLevelCanvasIsATopLevelRowAndTheRootItselfHasNone_R11() throws {
-        XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5),
-                      "un .canvas nella radice del vault deve avere una riga di primo livello")
-        // The vault root is the list, not a row in it (ADR-0025 §D2): a synthesized root
-        // would carry the folder identifier of the empty path.
-        XCTAssertFalse(row(identifier: "workspace-folder-").exists,
-                       "non deve esistere nessuna riga sintetizzata per la radice del vault")
-
-        rootBoardRow.click()
-        assertExactlyOneRowSelected(identifier: "workspace-board-\(vault.lastPathComponent).canvas",
-                                    suffix: ", aperta")
-    }
-
-    // MARK: New (ADR-0025 R-08) - a board row's context menu carries both mutating verbs.
-
-    /// The menu entries are found on `app.menuItems`, by title, and that is not a lapse
-    /// from `CLAUDE.md`'s "never by the words on it": a `.contextMenu`'s entries are
-    /// `NSMenuItem`s rendered **outside** the accessibility hierarchy of the row that owns
-    /// them (ADR-0025 F11), so `descendants(matching:)` under
-    /// `workspace-board-<path>` finds nothing at all no matter what identifier the
-    /// `Button` carries. `TimeBlockUITests.insertTimeBlockFromMenu` reaches its own entry
-    /// the same way, for the same reason.
-    ///
-    /// The titles are the production strings verbatim, ellipsis character included
-    /// (`WorkspaceBrowser.swift`'s row menu: «Rinomina…», «Elimina…»).
-    func testABoardRowsContextMenuOffersRenameAndDelete_R08() throws {
-        XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5))
-        // Neither verb is in the menu bar, so an entry found after the right click was
-        // raised by the right click - without this the assertions below would pass on any
-        // menu that happened to be open.
-        XCTAssertFalse(app.menuItems["Rinomina…"].exists, "«Rinomina…» era già raggiungibile prima del click destro")
-
-        rootBoardRow.rightClick()
-
-        let rename = app.menuItems["Rinomina…"].firstMatch
-        XCTAssertTrue(rename.waitForExistence(timeout: 5),
-                      "manca «Rinomina…» nel menu contestuale della riga board")
-        let delete = app.menuItems["Elimina…"].firstMatch
-        XCTAssertTrue(delete.waitForExistence(timeout: 5),
-                      "manca «Elimina…» nel menu contestuale della riga board")
-
-        // Dismissed rather than acted on: this test is about the menu being offered, and a
-        // menu left open would still be up when the next assertion, or the next test's
-        // first click, went looking for a row underneath it.
-        app.typeKey(.escape, modifierFlags: [])
-    }
-
     // MARK: Fixture
 
     /// Real folders and files on disk before the app ever launches: a `.canvas` in the
-    /// vault root itself (what the two ported tests click, and R-11's target), a folder
-    /// holding two boards under different names (`boardFolder`, `boardFile`,
-    /// `siblingBoardFile` - R-03), a board nested two levels inside it
-    /// (`nestedBoardFile`), a board-less grouping folder whose only content is a subfolder
-    /// that owns a board (`groupingFolder` / `groupingChildBoardFile`) - the shape SPEC
-    /// Decision 3 and ADR-0024 §D5 both require a selectable, non-opening row for - and a
-    /// folder holding nothing at all (`emptyFolder`, R-10).
+    /// vault root itself (what the kept test clicks) and a board nested two levels inside
+    /// a folder (`nestedBoardFile`, R-02/R-03's target).
     ///
     /// The root `.canvas` is not optional here, but the reason has changed with the model:
     /// it is no longer a root row the tree synthesizes when the file happens to exist, it
     /// is simply a board file, and a board file is a row because it is a file
-    /// (ADR-0025 §D1/§D2). Remove it and the two ported tests have no board to open -
-    /// nothing else about the tree changes, because the vault root is the list rather than
-    /// a row in it. Both tests are ported unchanged in intent from `5041d5c`, where "click
-    /// the root row" always meant "open the board", so the fixture keeps giving them one.
-    ///
-    /// The empty folder is created directly rather than as some board's parent: a folder
-    /// that exists only on disk, named by nothing, is exactly the row `CanvasStore
-    /// .allFolders()` was added to find.
+    /// (ADR-0025 §D1/§D2). Remove it and the kept test has no board to open - nothing else
+    /// about the tree changes, because the vault root is the list rather than a row in it.
     private func makeFixtureBoards() throws {
         let rootBoardFile = "\(vault.lastPathComponent).canvas"
-        // The root board alone carries the two folder-card nodes the double-click tests
-        // above need; every other board file stays the plain empty canvas the rest of this
-        // file's fixtures have always used.
-        try writeBoard(rootCanvas, at: rootBoardFile)
-        for boardPath in [boardFile, siblingBoardFile, nestedBoardFile, groupingChildBoardFile] {
-            try writeBoard(Self.emptyCanvas, at: boardPath)
-        }
-        try FileManager.default.createDirectory(
-            at: vault.appending(path: emptyFolder, directoryHint: .isDirectory),
-            withIntermediateDirectories: true
-        )
+        try writeBoard(Self.emptyCanvas, at: rootBoardFile)
+        try writeBoard(Self.emptyCanvas, at: nestedBoardFile)
     }
 
     private func writeBoard(_ contents: String, at boardPath: String) throws {
@@ -360,22 +176,4 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     private static let emptyCanvas = """
     { "nodes": [], "edges": [] }
     """
-
-    /// `emptyCanvas` plus the two folder cards the double-click tests above open: one
-    /// pointing at `boardFolder` (two boards inside it, `.ambiguous`), one at `emptyFolder`
-    /// (none, `.notFound`). A computed property rather than another `static let`, since it
-    /// has to read `boardFolder`/`emptyFolder` off `self` rather than duplicate their value.
-    private var rootCanvas: String {
-        """
-        {
-          "nodes": [
-            { "id": "\(ambiguousFolderCardID)", "type": "file", "file": "\(boardFolder)",
-              "x": 0, "y": 0, "width": 200, "height": 120 },
-            { "id": "\(notFoundFolderCardID)", "type": "file", "file": "\(emptyFolder)",
-              "x": 300, "y": 0, "width": 200, "height": 120 }
-          ],
-          "edges": []
-        }
-        """
-    }
 }

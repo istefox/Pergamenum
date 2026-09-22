@@ -4,13 +4,16 @@ import XCTest
 ///
 /// `NavigationHistoryTests` owns the rules; this suite owns the wiring, which is the half no
 /// unit test in a SwiftUI project can reach: whether the two buttons are in the window at all,
-/// whether the observer that fills the history is attached, and whether §D3's drift rule
-/// survives the trip through a real toolbar. Three of the four assertions here would pass
-/// against a history nothing was recording.
+/// and whether the observer that fills the history is attached.
 ///
 /// Every control is found by `accessibilityIdentifier`. The sidebar rows are the exception the
 /// whole suite already makes - their titles are the pane names, which are a contract of their
 /// own - and `-disableCalendar YES` keeps `EventKitStore` away from somebody's real diary.
+///
+/// The off-until-somewhere-to-go test retired here per the UI-suite-replacement census (stage
+/// 3, Task 6): its two initial checks were true with no recorder attached, so it wasn't
+/// exercising the wiring it claimed to. Replaced by CommandActionTests:56 and
+/// NavigationHistoryTests:25.
 final class HistoryNavigationUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -28,19 +31,6 @@ final class HistoryNavigationUITests: XCTestCase {
         try? FileManager.default.removeItem(at: vault)
         try? FileManager.default.removeItem(at: stateBase)
         try? FileManager.default.removeItem(at: mailStoreRoot)
-    }
-
-    /// A window that has been nowhere offers no way back, and the first move enables one.
-    func testTheArrowsAreOffUntilThereIsSomewhereToGo() throws {
-        launch()
-
-        XCTAssertFalse(back.isEnabled, "«Indietro» è accesa su una finestra appena aperta")
-        XCTAssertFalse(forward.isEnabled, "«Avanti» è accesa su una finestra appena aperta")
-
-        show("Tag")
-        XCTAssertTrue(tagList.waitForExistence(timeout: 5), "la pane Tag non è comparsa")
-        XCTAssertTrue(back.isEnabled, "«Indietro» è spenta dopo essere andati da qualche parte")
-        XCTAssertFalse(forward.isEnabled, "«Avanti» è accesa senza essere tornati indietro")
     }
 
     /// Three panes forward, three back, three forward again, in the same order.
@@ -88,7 +78,6 @@ final class HistoryNavigationUITests: XCTestCase {
 
     private var back: XCUIElement { app.buttons["history-back"].firstMatch }
     private var forward: XCUIElement { app.buttons["history-forward"].firstMatch }
-    private var dayNext: XCUIElement { app.buttons["day-next"].firstMatch }
     private var tagList: XCUIElement { app.descendants(matching: .any).matching(identifier: "tag-list").firstMatch }
     private var viewsPane: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "views-pane").firstMatch
