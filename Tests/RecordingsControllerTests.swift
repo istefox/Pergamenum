@@ -349,7 +349,7 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
     )
 
     await sut.process("rec-1")
-    try await Task.sleep(for: .milliseconds(150))
+    try await waitUntil(timeout: .seconds(2)) { sut.pollExpired.contains("rec-1") }
 
     #expect(sut.pollExpired.contains("rec-1"))
     #expect(!sut.pollingRecordingIDs.contains("rec-1"))
