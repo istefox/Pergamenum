@@ -151,7 +151,9 @@ struct FolderFileOperations {
     /// `noteChanges` stays and is always empty. It is the field the tests read to state
     /// what this operation does *not* do: a folder rename rewrites no note text at all
     /// since ADR-0025 §D6, and a guarantee spelled as an empty list the performer still
-    /// writes through is one a future planner can break loudly rather than silently.
+    /// writes through is one a future planner can break loudly rather than silently -
+    /// through `store.writeGuarded`, since ADR-0055 §D2, so the day a planner does
+    /// populate this list it inherits a guarded write rather than an unconditional one.
     struct FolderRenamePlan: Equatable, Sendable {
         var newPath: String
         var noteChanges: [VaultFileChange] = []
@@ -399,16 +401,18 @@ struct FolderFileOperations {
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
 
-        let notes = VaultPlanApplication.apply(plan.noteChanges) {
-            try store.write($0.after, to: $0.path)
-        }
+        // Guarded through the one note door (ADR-0055 §D1/§D2) rather than an unconditional
+        // byte write - `plan.noteChanges` is always empty (see `FolderRenamePlan`'s own doc
+        // comment above), so this loop is a no-op today and exists to keep the guarantee
+        // guarded rather than to change behaviour.
+        let notes = VaultPlanApplication.apply(plan.noteChanges, writing: store.writeGuarded)
         // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
         // byte write - which is why `apply` takes the writer rather than assuming one
         // (ADR-0041 §D4).
         let boards = VaultPlanApplication.apply(plan.boardChanges, writing: canvas.writeRepoint)
         outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
         outcome.failures.append(contentsOf: notes.failures + boards.failures)
-        outcome.refusals.append(contentsOf: boards.refusals)
+        outcome.refusals.append(contentsOf: notes.refusals + boards.refusals)
         return outcome
     }
 

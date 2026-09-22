@@ -161,6 +161,32 @@ struct NoteStore: Sendable {
         return Self.hash(data)
     }
 
+    /// The one guarded write for a planned note rewrite (ADR-0055 §D1), beside
+    /// `CanvasStore.writeRepoint` - the `.canvas` twin of this same door.
+    ///
+    /// Compares `change.expectedHash` (`VaultFileChange+ExpectedHash.swift:11`) against the
+    /// file's current bytes and throws `VaultWriteRefusal.movedOn(change.path)` on a mismatch,
+    /// with nothing written - a missing file included, since `nil` never equals a non-nil
+    /// expectation (ADR-0046 §D8: a vanished note is refused, not re-created). A match delegates
+    /// to `write(_:to:requiringExistingFolder:)` above with `requiringExistingFolder: true`: the
+    /// comparison has already proven the file, and therefore its parent, is there, so a redundant
+    /// `createDirectory` has nothing left to do (PG-168's decision, applied where it belongs).
+    ///
+    /// Not `VaultSession.writeGuarded` (`VaultSession.swift:626`), which does the same thing
+    /// through the async journalled door - two types, one verb, resolved by the receiver: a
+    /// caller inside `Sources/Vault`'s file-operations types uses this one, a caller inside a
+    /// `VaultSession` transaction uses that one. `VaultWriteRefusal` is referred to unqualified,
+    /// not `Pergamenum.VaultWriteRefusal`, which would not compile in `perg`/`pergamenum-mcp`
+    /// (ADR-0046 §D4).
+    func writeGuarded(_ change: VaultFileChange) throws {
+        let fileURL = try boundary.url(for: change.path)
+        let current = try? Data(contentsOf: fileURL)
+        guard current.map(Self.hash) == change.expectedHash else {
+            throw VaultWriteRefusal.movedOn(change.path)
+        }
+        try write(change.after, to: change.path, requiringExistingFolder: true)
+    }
+
     static func hash(_ data: Data) -> String {
         hexString(SHA256.hash(data: data))
     }

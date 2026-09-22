@@ -48,22 +48,23 @@ struct NoteFileOperations {
         var failures: [String] = []
         /// Paths (a note or a board) whose bytes moved on since the plan was computed, so
         /// nothing was written for them (ADR-0046 §D1/§D6). Unlike a tag rename this is
-        /// **not** recoverable by repeating the gesture: once the note has moved, `rename`'s
-        /// own `oldTitle` is derived from the *new* file name, so a second call rewrites
-        /// nothing and a refused link stays stale - reported as a problem naming the note,
-        /// not as a count.
+        /// **not** recoverable by repeating the gesture: once the note has moved,
+        /// `VaultSession.renameNote`'s own `oldTitle` is derived from the *new* file name, so a
+        /// second call rewrites nothing and a refused link stays stale - reported as a problem
+        /// naming the note, not as a count.
         var refusals: [String] = []
     }
 
     // MARK: - Computing what would change (ADR-0016 §D6)
     //
-    // `rename`, `move` and `trash` above write directly and stay exactly as they were, for the
-    // callers - this file's own tests included - that have no journal to go through. What
-    // follows computes the same arithmetic without touching disk, the split
-    // `VaultSession+TagRename` already makes between `tagRenamePreview` and `renameTag`: one
-    // function decides what would change, a second one - on `VaultSession+Files` - performs
-    // exactly that inside a transaction. A dry run is then honest by construction, not by a flag
-    // every method has to remember to check.
+    // The split `VaultSession+TagRename` already makes between `tagRenamePreview` and
+    // `renameTag`: one function decides what would change, a second one - on
+    // `VaultSession+Files` - performs exactly that inside a transaction. A dry run is then
+    // honest by construction, not by a flag every method has to remember to check. This type
+    // holds only the first half now: the direct-write performers (`rename`/`move`/`trash`) had
+    // no production caller and are deleted (ADR-0055 §D6) - the app's one note performer is
+    // `VaultSession.renameNote`/`moveNote`/`trashNote` (`VaultSession+Files.swift`), which reads
+    // a plan from here and performs it inside a transaction.
 
     /// What a rename would change: its destination, the notes that would be rewritten, the
     /// boards that would be repointed, and anything unreadable along the way.
@@ -82,8 +83,9 @@ struct NoteFileOperations {
         var failures: [String] = []
     }
 
-    /// What a rename would do, read from where the note still is - not from where `rename`
-    /// would leave it, since nothing has moved yet when this runs.
+    /// What a rename would do, read from where the note still is - not from where the
+    /// performer (`VaultSession.renameNote`) would leave it, since nothing has moved yet
+    /// when this runs.
     func renamePlan(
         _ relativePath: String,
         to newTitle: String,
@@ -128,9 +130,9 @@ struct NoteFileOperations {
         return plan
     }
 
-    /// What a move would do. Mirrors `move`'s own no-op and validation order, since a caller
-    /// asking to move a note into the folder it is already in gets back its own path rather
-    /// than a plan nobody needs to perform.
+    /// What a move would do. Mirrors `VaultSession.moveNote`'s own no-op and validation order,
+    /// since a caller asking to move a note into the folder it is already in gets back its own
+    /// path rather than a plan nobody needs to perform.
     func movePlan(_ relativePath: String, toFolder folder: String) throws -> MovePlan {
         let fileName = (relativePath as NSString).lastPathComponent
         let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
@@ -146,8 +148,8 @@ struct NoteFileOperations {
     }
 
     /// Notes that would be left pointing at nothing if `relativePath` went to the trash. Read
-    /// rather than written: `trash`'s own version computes the same thing after moving the file,
-    /// which changes nothing here since neither reads `relativePath` itself.
+    /// rather than written: `VaultSession.trashNote`'s own version computes the same thing after
+    /// moving the file, which changes nothing here since neither reads `relativePath` itself.
     func danglingLinks(for relativePath: String, knownPaths: [String]) -> [String] {
         let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
         let needle = title.lowercased()
@@ -157,8 +159,9 @@ struct NoteFileOperations {
         }
     }
 
-    /// What repointing every board's cards would change, read rather than written - `repointBoards`
-    /// performs exactly this once a caller has decided to.
+    /// What repointing every board's cards would change, read rather than written - the write
+    /// doors (`NoteStore.writeGuarded`/`CanvasStore.writeRepoint`) perform exactly this once a
+    /// caller has decided to.
     ///
     /// `titleChange` is `nil` for a move (a wikilink names a note by title, not by path -
     /// wikilink.md W-01 - so a move touches no card text) and `(oldTitle, newTitle)` for a
@@ -197,113 +200,9 @@ struct NoteFileOperations {
         return (changes, failures)
     }
 
-    /// Renames a note and rewrites every link that pointed at its old title.
-    ///
-    /// The file is moved first and the links after: the move is one operation that
-    /// either happens or does not, while the rewrite touches many files and can fail
-    /// on any of them. Doing it the other way round would leave the vault pointing at
-    /// a note that does not exist yet if the move then failed.
-    ///
-    /// What to change is `renamePlan`'s answer and nothing else (ADR-0041 §D5). The loop this
-    /// method used to keep read each note back from its new path *after* the move; the plan
-    /// performs the same substitution as `writePath` *before* it, over the same text, so the
-    /// bytes are the ones `NoteRenameCharacterizationTests` pinned down against the old loop.
-    /// The validation - invalid title, missing note, colliding destination - is the plan's own
-    /// too, and it still throws before anything has moved or been written.
-    func rename(
-        _ relativePath: String,
-        to newTitle: String,
-        knownPaths: [String]
-    ) throws -> Outcome {
-        let plan = try renamePlan(relativePath, to: newTitle, knownPaths: knownPaths)
-
-        if plan.newPath != relativePath {
-            do {
-                try FileManager.default.moveItem(
-                    at: try store.url(for: relativePath), to: try store.url(for: plan.newPath)
-                )
-            } catch {
-                throw FileOperationError.failed("rinomina: \(error.localizedDescription)")
-            }
-        }
-
-        var outcome = Outcome(newPath: plan.newPath, failures: plan.failures)
-        // The note half stays an unconditional `store.write`, out of this chain's scope
-        // (ADR-0054 §D8's named follow-up): a note open and dirty in the editor can still
-        // have its links rewritten from a plan read before the user's own edit.
-        let notes = VaultPlanApplication.apply(plan.noteChanges) {
-            try store.write($0.after, to: $0.path)
-        }
-        // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
-        // byte write - the same split `FolderFileOperations` and `BoardFileOperations`
-        // make, which is why the writer is injected (ADR-0041 §D4).
-        let boards = VaultPlanApplication.apply(
-            plan.boardChanges, writing: CanvasStore(root: store.root).writeRepoint
-        )
-        outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
-        outcome.failures.append(contentsOf: notes.failures + boards.failures)
-        outcome.refusals.append(contentsOf: boards.refusals)
-        return outcome
-    }
-
-    /// Moves a note to another folder.
-    ///
-    /// No link rewriting: a wikilink names a note by title, not by path, so moving a
-    /// note between folders breaks nothing (wikilink.md W-01).
-    func move(_ relativePath: String, toFolder folder: String) throws -> Outcome {
-        let fileName = (relativePath as NSString).lastPathComponent
-        let newPath = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
-        guard newPath != relativePath else { return Outcome(newPath: relativePath) }
-        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
-        guard !exists(newPath) else { throw FileOperationError.alreadyExists(newPath) }
-
-        do {
-            let destination = try store.url(for: newPath)
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try FileManager.default.moveItem(at: try store.url(for: relativePath), to: destination)
-        } catch {
-            throw FileOperationError.failed("spostamento: \(error.localizedDescription)")
-        }
-
-        var outcome = Outcome(newPath: newPath)
-        repointBoards(from: relativePath, to: newPath, into: &outcome)
-        return outcome
-    }
-
-    /// Points every board card that referenced `oldPath` at `newPath`, and rewrites `oldTitle`
-    /// wikilinks inside `.text`-kind card bodies when `titleChange` is given (see
-    /// `repointBoardsPlan`'s doc comment - the same `nil`-for-move/`(old,new)`-for-rename split).
-    ///
-    /// The document is decoded and re-encoded rather than patched as text, so a board
-    /// written by Obsidian keeps the keys this app does not know about.
-    private func repointBoards(
-        from oldPath: String, to newPath: String,
-        titleChange: (old: String, new: String)? = nil,
-        into outcome: inout Outcome
-    ) {
-        guard oldPath != newPath else { return }
-        for boardPath in boardPaths() {
-            guard let url = try? store.url(for: boardPath),
-                  let data = try? Data(contentsOf: url),
-                  let decoded = try? CanvasDocument(data: data),
-                  let document = repointedDocument(
-                      decoded, from: oldPath, to: newPath, titleChange: titleChange
-                  )
-            else { continue }
-
-            do {
-                try document.encoded().write(to: url, options: .atomic)
-                outcome.rewrittenPaths.append(boardPath)
-            } catch {
-                outcome.failures.append("\(boardPath): \(error)")
-            }
-        }
-    }
-
-    /// The node-rewrite rule itself, in one place: `repointBoardsPlan` reads its result and
-    /// `repointBoards` writes it, and neither owns a second copy of what a repoint means.
+    /// The node-rewrite rule itself, in one place: `repointBoardsPlan` above is its only caller
+    /// now (ADR-0055 §D6 deleted the direct-write `repointBoards` this used to serve too), and
+    /// this stays the one place that owns what a repoint means.
     ///
     /// Returns `nil` when the board mentions neither `oldPath` nor - for a rename -
     /// `titleChange.old`, which is the "nothing to write here" case both callers skip.
@@ -337,28 +236,6 @@ struct NoteFileOperations {
             }
         }
         return changed ? document : nil
-    }
-
-    /// Moves a note to the Finder's trash, and reports which notes now link to
-    /// nothing.
-    ///
-    /// The trash rather than an unlink: a note deleted by a misclick is recoverable
-    /// there, and nothing this app does is worth making that unrecoverable.
-    func trash(_ relativePath: String, knownPaths: [String]) throws -> [String] {
-        guard exists(relativePath) else { throw FileOperationError.missing(relativePath) }
-        let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
-
-        do {
-            try FileManager.default.trashItem(at: try store.url(for: relativePath), resultingItemURL: nil)
-        } catch {
-            throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
-        }
-
-        let needle = title.lowercased()
-        return knownPaths.filter { path in
-            guard path != relativePath, let text = try? store.text(path) else { return false }
-            return WikilinkParser.links(in: text).contains { $0.target.lowercased() == needle }
-        }
     }
 
     /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
