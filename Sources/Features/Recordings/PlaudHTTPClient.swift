@@ -49,10 +49,7 @@ struct PlaudHTTPClient: PlaudService, Sendable {
     }
 
     func process(id: String, force: Bool) async throws -> PlaudJobHandle {
-        let endpoint = Self.base
-            .appending(path: "recordings")
-            .appending(path: id)
-            .appending(path: "process")
+        let endpoint = try Self.endpoint("recordings", id, "process")
         // `force=1` is appended only when asked: an unconditional force would start real
         // transcription work on a recording that already has a proposal (plan, Risks).
         let url = force
@@ -62,19 +59,15 @@ struct PlaudHTTPClient: PlaudService, Sendable {
     }
 
     func job(id: String) async throws -> PlaudJob {
-        try await decoded(PlaudJob.self, from: get(Self.base.appending(path: "jobs").appending(path: id)))
+        try await decoded(PlaudJob.self, from: get(Self.endpoint("jobs", id)))
     }
 
     func proposal(recordingID: String) async throws -> PlaudProposal {
-        let url = Self.base.appending(path: "proposals").appending(path: recordingID)
-        return try await decoded(PlaudProposal.self, from: get(url))
+        try await decoded(PlaudProposal.self, from: get(Self.endpoint("proposals", recordingID)))
     }
 
     func confirmImported(recordingID: String, taskIDs: [String]) async throws {
-        let url = Self.base
-            .appending(path: "proposals")
-            .appending(path: recordingID)
-            .appending(path: "imported")
+        let url = try Self.endpoint("proposals", recordingID, "imported")
         var request = post(url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
@@ -102,6 +95,26 @@ struct PlaudHTTPClient: PlaudService, Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
+    }
+
+    /// PG-126. The only way to put a service-supplied identifier in a request path - a
+    /// caller cannot append one by hand without going around this. `appending(component:)`
+    /// percent-encodes a `/`, but a bare `.` or `..` stays a live dot-segment under either
+    /// appending call (measured live): RFC 3986 dot-segment removal runs on the finished URL
+    /// regardless of how a component was appended, so the charset check below is what
+    /// actually stops it, not the encoding.
+    private static func endpoint(_ collection: String, _ identifier: String, _ action: String? = nil) throws -> URL {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        guard !identifier.isEmpty,
+              identifier != ".", identifier != "..",
+              identifier.unicodeScalars.allSatisfy(allowed.contains) else {
+            throw PlaudError.invalidIdentifier(identifier)
+        }
+        var url = Self.base.appending(path: collection).appending(component: identifier)
+        if let action {
+            url = url.appending(path: action)
+        }
+        return url
     }
 
     /// A query string added through `URLComponents` rather than by string concatenation, so

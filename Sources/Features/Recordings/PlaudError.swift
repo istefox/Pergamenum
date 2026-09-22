@@ -24,6 +24,9 @@ enum PlaudError: Error, Equatable, Sendable {
     case invalidTaskIDs
     case transportFailure(String)
     case decodeFailure(String)
+    /// PG-126: a service-supplied id failed the path-safety charset check before any request
+    /// was built - never sent, so this never reaches the wire-status mapping below.
+    case invalidIdentifier(String)
     /// Any HTTP status/body combination the mapping table below does not name.
     case unrecognised(status: Int, body: String)
 
@@ -50,6 +53,8 @@ enum PlaudError: Error, Equatable, Sendable {
             return "Servizio Plaud non raggiungibile su 127.0.0.1:3777. Dettaglio: \(detail)"
         case let .decodeFailure(detail):
             return "Risposta del servizio non riconosciuta. Dettaglio: \(detail)"
+        case let .invalidIdentifier(raw):
+            return "Identificativo non valido restituito dal servizio: \"\(raw)\"."
         case let .unrecognised(status, body):
             // R-07's verbatim half: a status this table has never seen is shown labelled
             // rather than dressed up as one of the sentences above.

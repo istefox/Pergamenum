@@ -277,6 +277,12 @@ are safe for the reasons below, and both are exactly what §D1's proof is for.
   a folder card's own path; whether a card can carry the empty path is **not proven here**, so the
   PR that lands #1 adds a test on `""` and names the result in its description (§D1: an input
   named, and either unreachable or reported).
+  **2026-09-22 (PG-200):** it is reachable - a hand-written `.canvas` node can carry `file: ""`
+  (`Tests/WorkspaceEnterFolderTests.swift`'s `aFileCardWithAnEmptyPathIsAFolderCardForTheVaultRoot`),
+  and `subfolder(for:)` reads it as the vault root. The old/new spelling difference this bullet
+  found was never user-visible either way: `WorkspaceBrowser.rebuild()` drops a selection whose
+  path names no row on the next scan, and `.folder("")` never names one, so the old spelling
+  converged to `nil` on the following rescan.
 - `placePendingNote` (`WorkspaceView.swift:205-232`) is the only copy that reports. Its else-arm
   already reads `folder.isEmpty ? nil : .folder(folder)`, which is the shape `enter(folder:)`
   takes for everyone. It calls `enter`, then records the problem from the returned resolution,

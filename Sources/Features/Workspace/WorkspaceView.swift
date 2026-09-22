@@ -2,17 +2,20 @@ import SwiftUI
 
 /// The Workspace: a spatial view of one folder, with the board hierarchy above it.
 ///
-/// Split across four files along the seams the `// MARK:` comments already marked -
+/// Split across five files along the seams the `// MARK:` comments already marked -
 /// this one keeps the view's state, its body and the board itself, while the drawing
-/// overlay, the sidebar's folder verbs and item creation live in `WorkspaceView+Drawing`,
-/// `WorkspaceView+FolderVerbs` and `WorkspaceView+Creation`. A member read by one of
-/// those extensions is internal rather than `private` for that reason alone: `private`
-/// is file scope, so an extension in another file cannot see it.
+/// overlay, the sidebar's folder verbs, item creation and the toolbar live in
+/// `WorkspaceView+Drawing`, `WorkspaceView+FolderVerbs`, `WorkspaceView+Creation` and
+/// `WorkspaceView+Toolbar`. A member read by one of those extensions is internal
+/// rather than `private` for that reason alone: `private` is file scope, so an
+/// extension in another file cannot see it.
 struct WorkspaceView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) var vault
-    @Environment(Navigation.self) private var navigation
-    @Environment(ThemeEngine.self) private var themeEngine
+    // Internal rather than `private`: `WorkspaceView+Toolbar` is another file, and
+    // `private` is file scope.
+    @Environment(Navigation.self) var navigation
+    @Environment(ThemeEngine.self) var themeEngine
     /// The **window's** undo manager, which is the one `NSTextView` already registers its
     /// text edits on (ADR-0026 §D8): one window, one undo history, and Cmd+Z means "undo
     /// the last thing I did here" whatever had focus. Read here and handed to
@@ -32,7 +35,9 @@ struct WorkspaceView: View {
     /// rather than compounding on every frame of the gesture.
     @State private var pinchOrigin: CGFloat?
     @State var newItemDraft: NewItemDraft?
-    @State private var isShowingQuickLook = false
+    // Internal rather than `private`: `WorkspaceView+Toolbar` is another file, and
+    // `private` is file scope.
+    @State var isShowingQuickLook = false
     @State var importProposals: [WorkspaceController.ImportProposal] = []
     /// Pen settings for the Disegno tool (SPEC §6.4, tool 10).
     @State var penColor: ColorToken = .textPrimary
@@ -269,82 +274,6 @@ struct WorkspaceView: View {
     private func confirmImports(_ proposals: [WorkspaceController.ImportProposal]) {
         for proposal in proposals { _ = workspace.commitImport(proposal) }
         importProposals = []
-    }
-
-    /// The board's window-level commands.
-    ///
-    /// Undo and redo keep the shortcuts they had in the top bar. They are not in the
-    /// shortcut catalogue: the standard Modifica menu already shows Annulla and
-    /// Ripeti, they do not reach the board, and reconciling the two is a change to
-    /// the undo architecture rather than to a toolbar.
-    @ToolbarContentBuilder
-    private func toolbar(previewURLs: [URL]) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            Button { workspace.undo() } label: {
-                Label("Annulla", systemImage: "arrow.uturn.backward")
-            }
-            .help("Annulla")
-            .keyboardShortcut("z", modifiers: .command)
-            .disabled(!workspace.canUndo)
-
-            Button { workspace.redo() } label: {
-                Label("Ripeti", systemImage: "arrow.uturn.forward")
-            }
-            .help("Ripeti")
-            .keyboardShortcut("z", modifiers: [.command, .shift])
-            .disabled(!workspace.canRedo)
-        }
-
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button { isShowingQuickLook = true } label: {
-                Label("Anteprima", systemImage: "eye")
-            }
-            .help("Anteprima rapida del file selezionato (barra spaziatrice)")
-            .disabled(previewURLs.isEmpty)
-
-            // The same state the Vista menu's «Pannello Workspace» drives, now that it
-            // lives on `Navigation`: one toggle, two places to reach it.
-            // Label left as it was: `UITests/SectionToolbarsUITests.swift:132` finds this
-            // toggle by its words, and renaming it to match the menu entry would break a
-            // suite this task does not own. The identifier below is what a new test uses.
-            Toggle(isOn: Bindable(navigation).isShowingTray) {
-                Label("Nuovi elementi", systemImage: "tray")
-            }
-            .help("Nuovi elementi, task collegati e assegnati, note referenziate")
-            .accessibilityIdentifier("workspace-tray-toggle")
-
-            // Hides the app sidebar, the board list and the tray, leaving only the
-            // tool column and the board. Same reach pattern as the tray toggle above:
-            // one piece of state on `Navigation`, a toolbar toggle and a Vista entry.
-            Toggle(isOn: Bindable(navigation).isWorkspaceFocused) {
-                Label("Concentrazione", systemImage: "rectangle.expand.vertical")
-            }
-            .help("Nasconde la sidebar, l'elenco board e il tray per lasciare più spazio alla board")
-            .accessibilityIdentifier("workspace-focus-toggle")
-
-            // Same reach pattern again, one pane narrower: only the board-list tree,
-            // never the tray. Independent of «Concentrazione» above - the two flags
-            // are read with `&&` at the call site, so either one hides the tree.
-            //
-            // The binding is negated on purpose (2026-08-28): `isWorkspaceTreeCollapsed`
-            // itself is unchanged - `WorkspaceView.swift:133`'s `&&` and MenuCommands.swift's
-            // own checkbox still read it directly, "checked = hidden", the ordinary macOS
-            // menu convention. This toolbar icon is not a menu row, it is one of four glyphs
-            // with no words on them, and the other two here (Anteprima, Concentrazione) are
-            // lit exactly when the thing they name is showing. A toggle lit while its own
-            // tree is hidden read backwards next to them - lit now means "the tree is on
-            // screen", matching the pattern rather than the flag's own polarity.
-            Toggle(isOn: Binding(
-                get: { !navigation.isWorkspaceTreeCollapsed },
-                set: { navigation.isWorkspaceTreeCollapsed = !$0 }
-            )) {
-                Label("Albero", systemImage: "sidebar.left")
-            }
-            .help("Mostra o nasconde l'albero delle cartelle e delle board")
-            .accessibilityIdentifier("workspace-tree-toggle")
-
-            themeToggleToolbarItem(themeEngine)
-        }
     }
 
     // MARK: Board
