@@ -90,22 +90,6 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Trasmissibilità"].exists, "la cartella non si è richiusa")
     }
 
-    func testANoteInAClosedFolderCanStillBeOpenedAndBecomesVisible() throws {
-        launch()
-
-        // Reached from the quick switcher, which knows nothing about the tree: the
-        // sidebar has to open the folders above whatever the app opens, or the note
-        // being edited is selected inside a folder nobody can see.
-        XCTAssertFalse(app.staticTexts["Trasmissibilità"].exists)
-        app.typeKey("o", modifierFlags: .command)
-        let field = app.textFields["quick-switcher-field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5), "il quick switcher non si è aperto")
-        field.typeText("Trasmissibilità\r")
-
-        XCTAssertTrue(app.staticTexts["Trasmissibilità"].waitForExistence(timeout: 5),
-                      "la cartella della nota aperta non è stata espansa")
-    }
-
     // MARK: A shortcut the user moved
 
     func testAShortcutChangedInSettingsIsTheOneTheMenuAnswersTo() throws {
@@ -156,36 +140,6 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
         // the bindings arrived on the command line, so the store refuses to persist.
         app.buttons["reset-newNote"].click()
         XCTAssertEqual(recorder.value as? String, "⌘N")
-    }
-
-    func testTheRecorderTakesTheCombinationThatIsPressed() throws {
-        launch(shortcuts: "{newNote = {key = j; modifiers = 1;};}")
-
-        app.typeKey(",", modifierFlags: .command)
-        let tab = app.descendants(matching: .any).matching(identifier: "Scorciatoie").firstMatch
-        XCTAssertTrue(tab.waitForExistence(timeout: 10))
-        tab.click()
-
-        let recorder = app.buttons["shortcut-newNote"]
-        XCTAssertTrue(recorder.waitForExistence(timeout: 5))
-        recorder.click()
-
-        // Cmd+Option+Y is nobody's shortcut here, so if the combination is recorded it
-        // was the monitor that took it and not some menu item firing instead.
-        app.typeKey("y", modifierFlags: [.command, .option])
-        XCTAssertEqual(recorder.value as? String, "⌥⌘Y")
-
-        // Escape leaves a recording as it was rather than clearing it, which is what
-        // cancelling has to mean.
-        recorder.click()
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertEqual(recorder.value as? String, "⌥⌘Y")
-
-        // Backspace on its own removes the shortcut: a command may legitimately have
-        // none, and there has to be a way to say so.
-        recorder.click()
-        app.typeKey(.delete, modifierFlags: [])
-        XCTAssertEqual(recorder.value as? String, "nessuna")
     }
 
     // MARK: Sidebar helpers

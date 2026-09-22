@@ -197,6 +197,36 @@ func rejectsMalformedHex(_ input: String) {
 }
 
 @MainActor
+@Test func thePickerListsOnlyVaultThemesNeverTheTwoBundledOnes() throws {
+    // `SettingsView.swift`'s `Picker("Tema")` does not read `selectableThemes` bare -
+    // it filters `!$0.id.hasPrefix("pergamenum-")` first, the same predicate
+    // `detachVault` and `loadUserThemes` already use to tell a bundled theme apart
+    // from a vault one. `selectableThemes` alone (`ThemeCustomizationTests.swift`'s
+    // `aVaultThemeReachesTheEngineOnceTheVaultIsAttached`) is not what the control on
+    // screen shows.
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("pergamenum-themes-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let engine = ThemeEngine(defaults: isolatedDefaults())
+    // Before any vault theme loads, the filtered list is empty: both bundled themes
+    // carry the `pergamenum-` prefix and neither belongs in the custom section.
+    #expect(engine.selectableThemes.filter { !$0.id.hasPrefix("pergamenum-") }.isEmpty)
+
+    let vaultTheme = """
+    {
+      "meta": { "name": { "$type": "string", "$value": "Notte Vibrofer" },
+                "appearance": { "$type": "string", "$value": "dark" } }
+    }
+    """
+    try Data(vaultTheme.utf8).write(to: directory.appendingPathComponent("notte-vibrofer.json"))
+    engine.loadUserThemes(in: directory)
+
+    #expect(engine.selectableThemes.filter { !$0.id.hasPrefix("pergamenum-") }.map(\.id) == ["notte-vibrofer"])
+}
+
+@MainActor
 @Test func unreadableUserThemeIsReportedNotFatal() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("pergamenum-themes-\(UUID().uuidString)")

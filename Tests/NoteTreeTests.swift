@@ -91,6 +91,31 @@ private func note(_ path: String) -> NoteRecord {
     #expect(NoteTree.ancestors(of: "Appunti.md").isEmpty)
 }
 
+// MARK: - `NoteTree.revealed(_:isFolder:)` (ADR-0053 seam #11, `NoteListPane`'s two reveal
+// call sites: the breadcrumb's `.onChange(of: navigation.folderReveal)` and the private
+// `reveal(_:)` a note opened from a backlink, a wikilink or the quick switcher goes through)
+
+@Test func revealingANoteExpandsOnlyItsAncestorsNeverTheNoteItself() {
+    let result = NoteTree.revealed("01 Progetti/Vibrofer/Brief.md", isFolder: false)
+    #expect(result == ["01 Progetti", "01 Progetti/Vibrofer"])
+}
+
+@Test func revealingAFolderExpandsItsAncestorsAndTheFolderItself() {
+    // The breadcrumb's own case: the folder crumb clicked must itself end up open, not
+    // just the folders leading down to it - `expanded.formUnion(...)` used to add
+    // `[reveal.folder]` by hand alongside `ancestors(of:)` for exactly this reason.
+    let result = NoteTree.revealed("01 Progetti/Vibrofer", isFolder: true)
+    #expect(result == ["01 Progetti", "01 Progetti/Vibrofer"])
+}
+
+@Test func revealingARootLevelNoteAddsNothing() {
+    #expect(NoteTree.revealed("Appunti.md", isFolder: false).isEmpty)
+}
+
+@Test func revealingARootLevelFolderAddsOnlyItself() {
+    #expect(NoteTree.revealed("01 Progetti", isFolder: true) == ["01 Progetti"])
+}
+
 // MARK: - `NoteTree.build(from:folders:)` (2026-08-28, toolbar parity chain)
 //
 // Mirrors `WorkspaceTree.build(folders:boards:)`'s own coverage of the empty-folder case
