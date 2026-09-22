@@ -172,45 +172,10 @@ final class PraticheUITests: XCTestCase {
         XCTAssertTrue(element("pratiche-refresh").waitForExistence(timeout: 5), "manca «Aggiorna»")
     }
 
-    /// R-18: "Full Disk Access is probed per trigger, never at launch" - and the probe
-    /// (`FullDiskAccessProbe.state()`) is a real `open(2)` against
-    /// `<mailStoreRoot>/MailData/Envelope Index`. This suite's own `mailStoreRoot`
-    /// fixture (`setUpWithError`) is a readable, empty temporary directory: the file
-    /// does not exist there, `open(2)` fails `ENOENT`, and `FullDiskAccessProbe.state`
-    /// reads that as `.granted` ("every other failure ... answers `.granted`" -
-    /// `FullDiskAccessProbe.swift`'s own comment), never `.notGranted`. So
-    /// `pratiche-fda-banner` (`PratichePane.body`, shown only when
-    /// `pratiche.fullDiskAccessState == .notGranted`) is correctly absent here - this
-    /// is the readable-fixture path, not the denied path. `pratiche-fda-open-settings`
-    /// (`FullDiskAccessBanner.swift`) lives inside the same banner and so is absent
-    /// too; it is not asserted separately because it has nothing to be found on. The
-    /// `.notGranted`/EPERM path stays covered where it can be built without touching
-    /// `~/Library/Mail`: `Tests/PraticheControllerTests.swift`'s
-    /// `fullDiskAccessBannerClearsOnTheNextTriggerWithNoRestart` and
-    /// `FullDiskAccessProbeTests.stateReadsEPERMAsNotGranted` (a `chmod 000` fixture
-    /// file).
-    func testTheFullDiskAccessBannerIsAbsentWithAReadableMailStoreFixture() throws {
-        XCTAssertFalse(element("pratiche-fda-banner").waitForExistence(timeout: 2))
-    }
-
     func testTheFilterRowCarriesTheSenderMenuAndAttachmentsToggle() throws {
         XCTAssertTrue(element("pratiche-filter").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-sender-menu").waitForExistence(timeout: 5))
         XCTAssertTrue(element("pratiche-attachments-only").waitForExistence(timeout: 5))
-    }
-
-    // MARK: - R-33: the tray
-
-    /// R-30: "the strip is hidden when empty" - `PraticaTrayStrip.body` only draws
-    /// (and only then carries `pratiche-tray`) when `!PraticaTrayModel.isHidden(_:)`.
-    /// The fixture pratica has no dossier-followed conversation and this suite's
-    /// `mailStoreRoot` has no Envelope Index at all, so a sync run finds no tray
-    /// candidates and `pratiche.selectedTray` is empty - the strip must stay absent.
-    /// Faking a proposal to make it present would test a shape this pratica cannot
-    /// produce; the correct assertion is its absence.
-    func testTheTrayIsAbsentWithNoProposals() throws {
-        selectFirstPratica()
-        XCTAssertFalse(element("pratiche-tray").waitForExistence(timeout: 2))
     }
 
     // MARK: - R-39: the timeline and its inspector toggle
@@ -236,56 +201,4 @@ final class PraticheUITests: XCTestCase {
         XCTAssertTrue(element("pratiche-wizard-client").waitForExistence(timeout: 5))
     }
 
-    // MARK: - ADR-0036 §D21: «Rigenera» previews before it trashes/rewrites anything
-
-    /// Selects the one message this test's `seedMailStoreFixtureForRegeneration()`
-    /// synced into the timeline, opens its «Rigenera…» command, and asserts the sheet
-    /// (`pratiche-regenerate`) appears. Clicking «Annulla» must leave the note file on
-    /// disk untouched - nothing is trashed until the sheet's own confirm button runs
-    /// (`PratichePane.regenerationReadySheet`'s `pratiche-regenerate-confirm`, not
-    /// exercised here, since triggering the real write is exactly the destructive
-    /// step this test exists to confirm never happens on «Annulla»).
-    func testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk() throws {
-        selectFirstPratica()
-        let messageRow = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'pratiche-message-' AND NOT (identifier CONTAINS 'command')"))
-            .firstMatch
-        XCTAssertTrue(messageRow.waitForExistence(timeout: 10), "il messaggio sincronizzato non è comparso nella timeline")
-
-        let emailDirectory = vault
-            .appending(path: Self.praticaFolder, directoryHint: .isDirectory)
-            .appending(path: "email", directoryHint: .isDirectory)
-        // `email/` can hold both the message's `.md` note and, when `keepOriginalEML` is on
-        // (the default), an `.eml` sidecar written first for the same message (ADR-0036).
-        // `contentsOfDirectory` gives no ordering guarantee between the two, so picking `.first`
-        // can non-deterministically grab the sidecar instead of the note this test edits.
-        let notePathBefore = try XCTUnwrap(
-            FileManager.default.contentsOfDirectory(atPath: emailDirectory.path(percentEncoded: false))
-                .first { $0.hasSuffix(".md") },
-            "la sincronizzazione non ha scritto la nota del messaggio"
-        )
-        let noteFile = emailDirectory.appending(path: notePathBefore, directoryHint: .notDirectory)
-
-        // A freshly-synced note is byte-identical to what «Rigenera» would write, so the
-        // plan has no diff and the sheet renders its no-op "Chiudi" branch instead of
-        // "Annulla"/"Rigenera" (`PratichePane.regenerationReadySheet`). A hand-edit here is
-        // what makes the plan's `diff` non-nil, landing on the branch this test exercises.
-        let originalNote = try String(contentsOf: noteFile, encoding: .utf8)
-        try (originalNote + "\nModifica manuale di prova.\n").write(to: noteFile, atomically: true, encoding: .utf8)
-
-        messageRow.rightClick()
-        let regenerate = element("pratiche-message-command-regenerate")
-        XCTAssertTrue(regenerate.waitForExistence(timeout: 5), "manca «Rigenera…» nel menu del messaggio")
-        regenerate.click()
-
-        XCTAssertTrue(element("pratiche-regenerate").waitForExistence(timeout: 5), "il foglio di anteprima non si è aperto")
-
-        let cancel = app.buttons["Annulla"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
-        cancel.click()
-
-        XCTAssertFalse(element("pratiche-regenerate").waitForExistence(timeout: 2), "il foglio è rimasto aperto dopo «Annulla»")
-        let noteAfter = try String(contentsOf: noteFile, encoding: .utf8)
-        XCTAssertEqual(noteAfter, originalNote + "\nModifica manuale di prova.\n", "«Annulla» non deve toccare il file della nota")
-    }
 }

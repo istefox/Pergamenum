@@ -104,6 +104,23 @@ import Testing
         #expect(FullDiskAccessProbe.state(probing: readable) == .granted)
     }
 
+    /// R-18/`FullDiskAccessProbe.swift`'s own doc comment: "Every other failure, ENOENT
+    /// first among them, answers `.granted`" - a missing store is «Nessun archivio di
+    /// Mail trovato», never the Full Disk Access banner. Converts
+    /// `UITests/PraticheUITests.swift:192`
+    /// (`testTheFullDiskAccessBannerIsAbsentWithAReadableMailStoreFixture`)'s own
+    /// setup: a readable, empty temporary directory whose `Envelope Index` file was
+    /// never written, exactly what that UI test's `mailStoreRoot` fixture is.
+    @Test func stateReadsENOENTAsGranted() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-fda-probe-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let missing = directory.appending(path: "Envelope Index", directoryHint: .notDirectory)
+
+        #expect(FullDiskAccessProbe.state(probing: missing) == .granted)
+    }
+
     static func makeUnreadableFile() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pergamenum-fda-probe-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -167,6 +184,49 @@ import Testing
 
         #expect(syncCallCount == 0)
         #expect(controller.fullDiskAccessState == .notGranted)
+    }
+}
+
+// MARK: - R-30: `selectedTray`, the chosen pratica's own proposals
+
+// plan `docs/plans/ui-suite-replacement.md` Task 5, PR 3: converts
+// `UITests/PraticheUITests.swift:211` (`testTheTrayIsAbsentWithNoProposals`)'s own
+// claim - a pratica with no tray proposals reads back an empty `selectedTray`, which
+// is what makes `PraticaTrayStrip` (`PraticaTrayModel.isHidden(_:)`) absent - plus the
+// two neighbouring shapes `selectedTray`'s own guard covers: no selection at all, and
+// a selection that is not the only key `trayProposals` holds.
+@MainActor
+@Suite(.serialized) struct PraticheControllerSelectedTrayTests {
+    private static func proposal(conversationID: Int = 1) -> PraticaTrayModel.PraticaTrayProposal {
+        PraticaTrayModel.PraticaTrayProposal(
+            conversationID: conversationID, subject: "Richiesta offerta", counterpart: "m.rossi@rossi-spa.it",
+            dateRange: Date()...Date(), messageCount: 2
+        )
+    }
+
+    @Test func selectedTrayIsEmptyWithNoSelectionEvenWhenSomeOtherPraticaHasProposals() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        controller.trayProposals["01 Progetti/Rossi/Offerta"] = [Self.proposal()]
+
+        #expect(controller.selection == nil)
+        #expect(controller.selectedTray.isEmpty, "no pratica is selected, so nothing is that pratica's own tray")
+    }
+
+    @Test func selectedTrayIsEmptyWhenTheSelectedPraticaHasNoProposals() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        controller.selection = "01 Progetti/Rossi/Offerta"
+
+        #expect(controller.selectedTray.isEmpty)
+    }
+
+    @Test func selectedTrayReadsBackExactlyTheSelectedPraticasOwnProposalsNeverASiblings() {
+        let controller = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let mine = Self.proposal()
+        controller.trayProposals["01 Progetti/Rossi/Offerta"] = [mine]
+        controller.trayProposals["01 Progetti/Acme/Altra"] = [Self.proposal(conversationID: 2)]
+        controller.selection = "01 Progetti/Rossi/Offerta"
+
+        #expect(controller.selectedTray == [mine])
     }
 }
 

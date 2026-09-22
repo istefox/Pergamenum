@@ -107,6 +107,66 @@ import Testing
         )
     }
 
+    // MARK: - ADR-0036 §D21: `dismissRegeneration` never writes - the byte-identity guarantee
+
+    // plan `docs/plans/ui-suite-replacement.md` Task 5, PR 3: converts
+    // `UITests/PraticheUITests.swift:248`
+    // (`testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`)'s own claim that
+    // «Annulla» leaves the note file exactly as the hand edit left it.
+    // `dismissRegeneration` (`PraticheController+Ledger.swift:668`) never touches the
+    // filesystem at all - it only clears `regeneration` and releases the in-flight claim
+    // (`endRegeneration`) - so proving the guarantee means calling it and never calling
+    // `commitRegeneration`, unlike the `.ready`-state test above.
+
+    @Test @MainActor func dismissRegenerationFromTheReadyStateLeavesTheNoteFileByteIdenticalOnDisk() async throws {
+        let synced = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
+        let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+        let handEdited = originalText + "\n\nAggiunto a mano.\n"
+        try Data(handEdited.utf8).write(to: noteURL, options: .atomic)
+
+        let plan = try await synced.engine.regenerationPreview(synced.request, messageID: Self.messageID, rowID: nil)
+        #expect(plan.diff != nil, "a hand-edited file must still show a diff, or the sheet renders the no-op «Chiudi» branch instead")
+
+        // `PraticaLiveSync.prepareRegeneration`'s own ordering (§D21.1): the claim is
+        // taken before `regeneration` ever becomes `.ready`.
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        pratiche.beginRegeneration(Fixtures.praticaFolder)
+        pratiche.regeneration = .ready(plan)
+
+        pratiche.dismissRegeneration()
+
+        let bytesAfter = try Data(contentsOf: noteURL)
+        #expect(bytesAfter == Data(handEdited.utf8), "«Annulla» must not touch the file on disk")
+        #expect(pratiche.regeneration == nil, "the sheet must dismiss")
+        #expect(
+            !pratiche.regeneratingPraticaPaths.contains(Fixtures.praticaFolder),
+            "the in-flight claim `beginRegeneration` took must release, or the next «Rigenera…» on this pratica refuses"
+        )
+    }
+
+    /// «Annulla» is reachable from `.preparing` too (`PratichePane+Sheets.swift`'s
+    /// `regenerationPreparingSheet`), before any plan exists to be diffed - the
+    /// guarantee has to hold there as well, with nothing yet acquired to write.
+    @Test @MainActor func dismissRegenerationFromThePreparingStateReleasesTheClaimWithoutTouchingAnyFile() async throws {
+        let synced = try await Self.syncedFixtureAndVault()
+        let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
+        let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
+
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        pratiche.beginRegeneration(Fixtures.praticaFolder)
+        pratiche.regeneration = .preparing(
+            notePath: notePath, subject: "Richiesta offerta", praticaPath: Fixtures.praticaFolder
+        )
+
+        pratiche.dismissRegeneration()
+
+        let bytesAfter = try Data(contentsOf: noteURL)
+        #expect(bytesAfter == Data(originalText.utf8), "clicking «Annulla» while still acquiring the replacement must not touch the file either")
+        #expect(pratiche.regeneration == nil)
+        #expect(!pratiche.regeneratingPraticaPaths.contains(Fixtures.praticaFolder))
+    }
+
     // ADR §D4/§D21: the `.emlx` is genuinely gone - the acquisition must fail with
     // `.notInStore` specifically (never a bug, R-16's own case), and touch no file. A
     // test that only asserted "throws" would already pass against the stub for the
