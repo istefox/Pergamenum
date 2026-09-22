@@ -262,6 +262,15 @@ show_verdict() {
     done
 }
 
+# How many GUI tests the tree currently carries - informational only, never a failing check
+# (the UI-suite-replacement plan's stage 3, Task 6 decided the cap by hand, not by enforcing it
+# here). `DragSupport.swift` holds no test class, only the drag helper every other file shares,
+# so it is excluded rather than counted as zero.
+gui_test_count() {
+    grep -rhc '^    func test' UITests/*UITests.swift 2>/dev/null \
+        | awk '{sum += $1} END {print sum + 0}'
+}
+
 # Read-only and instant: it never touches the machine, so it can be asked at any moment by any
 # session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
 # a run is still owed.
@@ -270,6 +279,7 @@ status_report() {
     head_tree=$(tree_of HEAD)
     printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
         "$(is_clean && echo pulito || echo 'con modifiche non committate')"
+    printf 'uitests: %d test GUI (cap deciso 2026-09-21: 17)\n' "$(gui_test_count)"
     show_verdict HEAD "$head_tree"
     main_tree=$(tree_of main || tree_of origin/main || true)
     if [ -n "$main_tree" ] && [ "$main_tree" != "$head_tree" ]; then
