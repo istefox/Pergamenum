@@ -420,3 +420,52 @@ private func isUnique(_ resolution: WorkspaceBoardResolution) -> Bool {
     #expect(try vault.text(at: "Stale.canvas") == originalStale)
     #expect(try vault.text(at: "Fine.canvas").contains("B/x.canvas"))
 }
+
+// MARK: - ADR-0055 §D2: the note half of a board rename is guarded too
+//
+// `renamePlan`'s own read is synchronous and immediately followed by the write with no
+// controllable in-process window, so a refusal is forced the way ADR-0046 §D11 prescribes: at
+// the writer seam, by driving `store.writeGuarded` directly with a hand-built `VaultFileChange`
+// whose `before` disagrees with what is really on disk - not a re-spelling of `renameBoard`, the
+// production writer under test.
+
+@Test func aNoteWhoseBytesMovedOnIsRefusedThroughWriteGuardedOnRenameAndTheOtherNoteStillRewrites() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/vecchio.canvas")
+    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
+    try vault.write(header + "Vedi [[vecchio.canvas]].", to: "Altra.md")
+
+    let plan = try vault.operations.renamePlan(
+        "A/vecchio.canvas", to: "nuovo", knownPaths: ["Attività.md", "Altra.md"]
+    )
+    let changes = plan.noteChanges.map { change in
+        change.path == "Attività.md"
+            ? VaultFileChange(path: change.path, before: "questo non è quello che c'è su disco", after: change.after)
+            : change
+    }
+    let originalAttività = try vault.text(at: "Attività.md")
+
+    let result = VaultPlanApplication.apply(changes, writing: vault.store.writeGuarded)
+
+    #expect(result.refusals == ["Attività.md"])
+    #expect(result.rewrittenPaths == ["Altra.md"])
+    #expect(try vault.text(at: "Attività.md") == originalAttività)
+    #expect(try vault.text(at: "Altra.md").contains("[[nuovo.canvas]]"))
+}
+
+@Test func renameBoardWithNothingConcurrentLeavesRefusalsEmptyAndRewritesBothNotes() throws {
+    let vault = try BoardOpsVault()
+    try vault.write(sampleBoard, to: "A/vecchio.canvas")
+    try vault.write(header + "- [ ] Fare ^[[vecchio.canvas]]", to: "Attività.md")
+    try vault.write(header + "Vedi [[vecchio.canvas]].", to: "Altra.md")
+
+    let outcome = try vault.operations.renameBoard(
+        at: "A/vecchio.canvas", to: "nuovo", knownPaths: ["Attività.md", "Altra.md"]
+    )
+
+    #expect(outcome.newPath == "A/nuovo.canvas")
+    #expect(outcome.failures.isEmpty)
+    #expect(outcome.refusals.isEmpty)
+    #expect(try vault.text(at: "Attività.md").contains("^[[nuovo.canvas]]"))
+    #expect(try vault.text(at: "Altra.md").contains("[[nuovo.canvas]]"))
+}

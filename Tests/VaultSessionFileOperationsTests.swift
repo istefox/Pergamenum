@@ -288,3 +288,79 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(!session.isStarred("Vecchio titolo.md"))
     #expect(session.isStarred(plan.newPath))
 }
+
+// MARK: - Re-pointed from the deleted `NoteFileOperations.move` (ADR-0055 §D6)
+//
+// `NoteFileOperations.move`'s own performer is deleted; the app's one mover is
+// `VaultSession.moveNote`, which reads a plan from `NoteFileOperations.movePlan` (pinned in
+// `Tests/NoteFileOperationTests.swift`'s `movePlanRepointsTheCardsToo`) and performs it here.
+// This is the disk half: the file really moved, an unrelated wikilink really was left alone
+// (wikilink.md W-01), and the board card really was repointed.
+
+@MainActor
+@Test func movingANoteViaTheSessionLeavesLinksAloneAndRepointsTheBoards() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "00 Inbox/Nota.md")
+    try vault.write(note("Vedi [[Nota]]."), to: "Altra.md")
+    let board = """
+    {"nodes":[{"id":"a","type":"file","file":"00 Inbox/Nota.md","x":0,"y":0,"width":260,"height":180}],\
+    "edges":[]}
+    """
+    try vault.write(board, to: "Labs.canvas")
+    let session = try await armedSession(vault)
+
+    let outcome = try await session.moveNote(at: "00 Inbox/Nota.md", toFolder: "01 Progetti/vibrofer-emea")
+
+    #expect(outcome.newPath == "01 Progetti/vibrofer-emea/Nota.md")
+    #expect(outcome.failures.isEmpty)
+    #expect(session.exists("01 Progetti/vibrofer-emea/Nota.md"))
+    #expect(!session.exists("00 Inbox/Nota.md"))
+    // A wikilink names a note by title, not by path: rewriting here would be wrong.
+    let altra = try String(contentsOf: vault.root.appending(path: "Altra.md"), encoding: .utf8)
+    #expect(altra.contains("[[Nota]]"))
+    let canvas = try String(contentsOf: vault.root.appending(path: "Labs.canvas"), encoding: .utf8)
+    #expect(canvas.contains("01 Progetti/vibrofer-emea/Nota.md"))
+}
+
+// MARK: - Re-pointed from `Tests/NoteRenameCharacterizationTests.swift` (ADR-0055 §D6)
+//
+// The one case that asserted `rewrittenPaths` order *and* the final on-disk bytes of every
+// note a rename touches, moved here because a real performer exists here now -
+// `NoteFileOperations.rename`'s own loop is deleted. The read-failure case ("C.md: non
+// leggibile") stays a pure plan assertion in `Tests/NoteFileOperationTests.swift`'s
+// `renamePlanReportsAnUnreadableKnownPathAsAFailureRatherThanThrowing`: a real rename derives
+// its `knownPaths` from the index, and an unreadable note never joins the index, so C.md here
+// is simply never touched rather than reported.
+
+@MainActor
+@Test func renameCharacterization_completeOutcomeAndFinalBytesOfAllThreeNotes() async throws {
+    let vault = try TemporaryVault()
+    // A links to B by title.
+    try vault.write(note("Vedi [[Nota B]] per il dettaglio."), to: "A.md")
+    // B links to itself.
+    try vault.write(note("Questa è [[Nota B]], vedi anche [[Nota B]] più sotto."), to: "Nota B.md")
+    // C is unreadable: not valid UTF-8, so it never joins the index and stays exactly as it
+    // is regardless of what the rename does elsewhere in the vault.
+    let invalidUTF8 = Data([0xFF, 0xFE, 0xFD, 0x00, 0x01])
+    try invalidUTF8.write(to: vault.root.appending(path: "C.md"))
+    let cBefore = try Data(contentsOf: vault.root.appending(path: "C.md"))
+    let session = try await armedSession(vault)
+
+    let outcome = try await session.renameNote(at: "Nota B.md", to: "Nota B rinominata")
+
+    #expect(outcome.newPath == "Nota B rinominata.md")
+    // Order follows the index's title order: A, then B - found at its new path, since B is
+    // the note being renamed.
+    #expect(outcome.rewrittenPaths == ["A.md", "Nota B rinominata.md"])
+    #expect(outcome.failures.isEmpty)
+
+    #expect(session.exists("Nota B rinominata.md"))
+    #expect(!session.exists("Nota B.md"))
+
+    let a = try String(contentsOf: vault.root.appending(path: "A.md"), encoding: .utf8)
+    #expect(a == note("Vedi [[Nota B rinominata]] per il dettaglio."))
+    let renamed = try String(contentsOf: vault.root.appending(path: "Nota B rinominata.md"), encoding: .utf8)
+    #expect(renamed == note("Questa è [[Nota B rinominata]], vedi anche [[Nota B rinominata]] più sotto."))
+    // C was never touched: still unreadable, still exactly the same bytes.
+    #expect(try Data(contentsOf: vault.root.appending(path: "C.md")) == cBefore)
+}

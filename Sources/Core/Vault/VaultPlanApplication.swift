@@ -1,12 +1,14 @@
 import Foundation
 
 /// The one apply-plan loop meant to replace six hand-copied ones (ADR-0041 §D4/§D5):
-/// `NoteFileOperations.rename`'s own loop, `FolderFileOperations.renameFolder`'s two loops,
-/// `BoardFileOperations.renameBoard`'s two loops and `moveBoard`'s one, and the loops in
-/// `VaultSession+Files`'s `renameNote`/`moveNote`. Every one of those writes an ordinary note
-/// through `writing: { try store.write($0.after, to: $0.path) }` or, since ADR-0054 §D6, a
-/// `.canvas` document through the one guarded repoint door, `writing: canvas.writeRepoint` -
-/// `apply` itself must stay ignorant of which, so a caller supplies the writer.
+/// `FolderFileOperations.renameFolder`'s two loops, `BoardFileOperations.renameBoard`'s two
+/// loops and `moveBoard`'s one, and the loops in `VaultSession+Files`'s
+/// `renameNote`/`moveNote` (the sixth, `NoteFileOperations.rename`'s own loop, is deleted -
+/// ADR-0055 §D6 - along with the direct-write performer it belonged to). Every one of those
+/// writes an ordinary note through the one guarded note door, `writing: store.writeGuarded`
+/// (ADR-0055 §D1), or a `.canvas` document through the one guarded repoint door, `writing:
+/// canvas.writeRepoint` (ADR-0054 §D6) - `apply` itself must stay ignorant of which, so a
+/// caller supplies the writer.
 enum VaultPlanApplication {
     struct Outcome: Equatable, Sendable {
         var rewrittenPaths: [String] = []
@@ -14,11 +16,10 @@ enum VaultPlanApplication {
         /// Paths whose bytes moved on since the change's `before` was read, so nothing was
         /// written - a `VaultWriteRefusal` caught and classified apart from `failures`
         /// (ADR-0046 §D4). Declared after `failures` so every existing memberwise call stays
-        /// valid. Of the eight synchronous-overload callers, the three still writing a plain
-        /// `store.write` note (`FolderFileOperations.renameFolder`, `BoardFileOperations
-        /// .renameBoard`, `NoteFileOperations.rename`'s own note half) can never populate
-        /// this; the five now writing a `.canvas` through `canvas.writeRepoint` (ADR-0054
-        /// §D6) can.
+        /// valid. Every synchronous-overload call site now writes through a guarded door -
+        /// `store.writeGuarded` for a note (ADR-0055 §D1), `canvas.writeRepoint` for a
+        /// `.canvas` (ADR-0054 §D6) - so both a note change and a board change can populate
+        /// this.
         var refusals: [String] = []
     }
 

@@ -161,18 +161,19 @@ struct BoardFileOperations {
         }
 
         var outcome = RenameOutcome(newPath: plan.newPath, failures: plan.failures)
-        let notes = VaultPlanApplication.apply(plan.noteChanges) {
-            try store.write($0.after, to: $0.path)
-        }
+        // Guarded through the one note door (ADR-0055 §D1/§D2) rather than an unconditional
+        // byte write.
+        let notes = VaultPlanApplication.apply(plan.noteChanges, writing: store.writeGuarded)
         // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
         // byte write: `change.expectedHash` is valid at `change.path` even for the board
         // that is itself moving, since `renamePlan` already substitutes `writePath`.
         let boards = VaultPlanApplication.apply(plan.boardChanges, writing: canvas.writeRepoint)
         // `RenameOutcome` has no `rewrittenPaths` field, so only the failures/refusals are
-        // carried over - exactly what the two loops this replaced recorded, plus the new
-        // channel `writeRepoint` can now throw.
+        // carried over - exactly what the two loops this replaced recorded. Both loops can
+        // now populate `refusals`: the note half is guarded too, not only the board half
+        // (ADR-0055 §D2).
         outcome.failures.append(contentsOf: notes.failures + boards.failures)
-        outcome.refusals.append(contentsOf: boards.refusals)
+        outcome.refusals.append(contentsOf: notes.refusals + boards.refusals)
         return outcome
     }
 
