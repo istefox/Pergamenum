@@ -145,35 +145,6 @@ final class TaskCategoriesUITests: XCTestCase {
         )
     }
 
-    /// A defect where «Crea» stayed enabled with an empty slug and pressing it did
-    /// nothing visible (the registry's refusal rendered as an empty sentence): the button
-    /// must disable itself and name the reason under the slug field instead.
-    func testCreaStaysDisabledWithAnEmptySlugAndNamesTheReason() throws {
-        show("Attività")
-
-        let addButton = element("category-add-button")
-        XCTAssertTrue(addButton.waitForExistence(timeout: 5), "manca il bottone «Nuova categoria»")
-        addButton.click()
-
-        let nameField = element("category-editor-name")
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "manca il campo Nome del nuovo editor")
-        nameField.click()
-        nameField.typeText("Prova")
-
-        let slugField = element("category-editor-slug")
-        XCTAssertTrue(slugField.waitForExistence(timeout: 5), "manca il campo Slug")
-        slugField.click()
-        slugField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
-
-        let saveButton = element("category-editor-save")
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "manca il bottone di salvataggio")
-        XCTAssertFalse(saveButton.isEnabled, "«Crea» resta attivo con lo slug vuoto")
-        XCTAssertTrue(
-            element("category-editor-slug-problem").waitForExistence(timeout: 5),
-            "nessun avviso mostrato per lo slug vuoto"
-        )
-    }
-
     /// PG-166: a category with no home note offers «Collega una nota…», the picker writes
     /// the note's `pergamenum-category` key, and the view then offers «Vai alla nota».
     func testLinkingANoteFromTheCategoryViewMakesItTheHome() throws {

@@ -16,6 +16,13 @@ import Testing
     #expect(HourWindow.diaryDefault.hours == 18)
 }
 
+/// Oggi is a working day, 06:00 to 22:00 (SPEC §8.3); the Diario reaches midnight, since
+/// it is written about the evening it is written in.
+@Test func theTwoSectionsFallBackToTheirOwnDefaultsWithNoSettingsFile() {
+    #expect(HourWindow.dayDefault == HourWindow(first: 6, last: 22))
+    #expect(HourWindow.diaryDefault == HourWindow(first: 6, last: 24))
+}
+
 /// The setting says which hours are always drawn, not which hours may exist: a block
 /// outside the window widens it rather than disappearing.
 @Test func widensItselfToReachWhatIsDrawnOnIt() {
@@ -40,6 +47,26 @@ import Testing
         startMinutes: [23 * 60], endMinutes: [24 * 60]
     )
     #expect(widened.last == 24)
+}
+
+// MARK: The Oggi timeline's own widening (ADR-0053 §D2 seam #10)
+//
+// `DayTimeline.hours(for:startMinutes:endMinutes:)`, extracted from the view's private
+// `hours` so a test can hand it plain minute arrays instead of a `TimeBlock` or a
+// `CalendarEvent` - everything that turns those into minutes stays private to the view.
+
+@Test func dayTimelineWidensToABlockOutsideTheWindow() {
+    let widened = DayTimeline.hours(
+        for: HourWindow(first: 9, last: 14), startMinutes: [], endMinutes: [21 * 60 + 30]
+    )
+    #expect(widened.first == 9)
+    // The hour above, the same rounding `HourWindow.covering` itself uses.
+    #expect(widened.last == 22)
+}
+
+@Test func dayTimelineLeavesTheWindowAloneWithNothingOutsideIt() {
+    let window = HourWindow(first: 9, last: 14)
+    #expect(DayTimeline.hours(for: window, startMinutes: [10 * 60], endMinutes: [11 * 60]) == window)
 }
 
 // MARK: In the vault's settings

@@ -156,6 +156,48 @@ import Testing
     controller.close()
 }
 
+// MARK: - Opening the composer (ADR-0053 §D2 seam #6's caller)
+
+@MainActor
+@Test func beginTaskCaptureSetsTheDraftAndDefaultsToTheInbox() {
+    let vault = VaultController()
+    #expect(vault.taskDraft == nil)
+
+    vault.beginTaskCapture()
+    #expect(vault.taskDraft?.destination == .inbox)
+
+    vault.beginTaskCapture(into: .note("Nota.md"))
+    #expect(vault.taskDraft?.destination == .note("Nota.md"))
+}
+
+// MARK: - The view a capture lands in (ADR-0053 §D2 seam #6)
+//
+// `IndexSnapshot.TaskView.landing(forCapturedDay:today:)`, extracted from `TasksView
+// .followLastCapture` so it can be pinned with no view, no vault and no controller: the
+// switch itself is the whole rule.
+
+private let anOrdinaryToday = CalendarDate(iso: "2026-08-11")!
+
+@Test func aCaptureWithNoDayLandsInTheInbox() {
+    #expect(IndexSnapshot.TaskView.landing(forCapturedDay: nil, today: anOrdinaryToday) == .inbox)
+}
+
+@Test func aCaptureDueTodayOrEarlierLandsInOggi() {
+    #expect(IndexSnapshot.TaskView.landing(forCapturedDay: anOrdinaryToday, today: anOrdinaryToday) == .today)
+    #expect(
+        IndexSnapshot.TaskView.landing(forCapturedDay: CalendarDate(iso: "2026-08-05"), today: anOrdinaryToday)
+            == .today,
+        "un task in ritardo deve comunque apparire in Oggi"
+    )
+}
+
+@Test func aCaptureDueAfterTodayLandsInProssimi() {
+    #expect(
+        IndexSnapshot.TaskView.landing(forCapturedDay: CalendarDate(iso: "2026-08-14"), today: anOrdinaryToday)
+            == .upcoming
+    )
+}
+
 @MainActor
 @Test func aNewNoteStartsInTheFolderItWasAskedFor() async throws {
     let vault = try TemporaryVault()
@@ -174,6 +216,12 @@ import Testing
 }
 
 // MARK: Hours on the markers (ADR-0004)
+
+/// «Aggiungi» in `TaskTimeRow` sets this hour rather than leaving the field blank, which
+/// is what the panel writes when a task's date gets an hour with no other choice made.
+@Test func theTimeRowsDefaultIsNineInTheMorning() {
+    #expect(TaskTimeRow.defaultTime == TaskTime(hour: 9, minute: 0))
+}
 
 /// A day is what SPEC §7.1 spells; an hour is what a deadline at 15:00 needs. It goes
 /// after the date, so a reader that stops at the date still gets the day right.

@@ -120,6 +120,16 @@ private func actions() -> CommandActions {
     #expect(!actions.vault.consumePendingNewBoard())
 }
 
+@MainActor
+@Test func quickTaskOpensTheComposerOnTheInbox() {
+    let actions = actions()
+    #expect(actions.vault.taskDraft == nil)
+
+    actions.run(.quickTask)
+
+    #expect(actions.vault.taskDraft?.destination == .inbox)
+}
+
 // MARK: - ADR-0021 (plan 2026-08-24-workspace-tasks-notes-integration), Task 9
 //
 // "Aggiungi sotto-task" (UX blueprint's menu bar map): reachable only with a task

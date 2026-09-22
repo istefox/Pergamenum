@@ -250,6 +250,25 @@ struct IndexSnapshot: Sendable {
             case .all: TaskListOptions(grouping: .note, sorting: .text)
             }
         }
+
+        /// The view a captured task lands in, given the day it carries (ADR-0053 §D2 seam
+        /// #6). `TasksView.followLastCapture` calls this so the pane the composer worked
+        /// from ends up showing the task it just wrote.
+        ///
+        /// No date lands in Inbox, which is where SPEC §7.4 puts an undated task. A day
+        /// today or earlier lands in Oggi - a task that slipped is exactly what that view
+        /// exists to surface (SPEC §7.3). Anything later is Prossimi.
+        ///
+        /// Foundation-only: this file is in `sharedSources` (`Project.swift`) and compiles
+        /// into `perg` and `pergamenum-mcp` as well as the app (ADR-0001 §D1), and
+        /// `CalendarDate` is the only type this signature touches.
+        static func landing(forCapturedDay day: CalendarDate?, today: CalendarDate) -> TaskView {
+            switch day {
+            case .none: .inbox
+            case .some(let day) where day <= today: .today
+            default: .upcoming
+            }
+        }
     }
 
     /// Tasks for one view on a given day.

@@ -2,6 +2,39 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
+// MARK: `show(_:)` (`WindowPlace.apply`'s `.day` arm calls exactly this, never `moveSpan`)
+
+@MainActor
+@Test func showJumpsToTheDayAndReloadsItsBlocks() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
+    try vault.write(emptyDailyNote, to: "Calendar/20260820.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    dayController.show(CalendarDate(iso: "2026-08-20")!)
+
+    #expect(dayController.day == CalendarDate(iso: "2026-08-20"))
+    vaultController.close()
+}
+
+/// §D3's rule (`WindowPlace.isDrift`) reads exactly this flag, so `show` has to leave it
+/// false even right after a drift: a jump is a place gone to, never one scrolled past.
+@MainActor
+@Test func showClearsTheDriftFlagEvenRightAfterOne() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
+    let store = StubCalendarStore()
+    let (dayController, vaultController) = try await makeController(vault: vault, store: store)
+
+    dayController.moveSpan(by: 1)
+    #expect(dayController.lastDayMoveWasDrift)
+
+    dayController.show(CalendarDate(iso: "2026-09-01")!)
+    #expect(!dayController.lastDayMoveWasDrift)
+    vaultController.close()
+}
+
 @MainActor
 @Test func turnsATaskIntoABlockAndWritesItIntoTheNote() async throws {
     let vault = try TemporaryVault()

@@ -85,7 +85,7 @@ struct CategoryEditor: View {
                 Button("Annulla", action: onClose).keyboardShortcut(.cancelAction)
                 Button(isCreating ? "Crea" : "Salva", action: save)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || slugProblem != nil)
+                    .disabled(Self.isSaveDisabled(name: name, slug: slug, isCreating: isCreating))
                     .accessibilityIdentifier("category-editor-save")
             }
         }
@@ -297,6 +297,14 @@ struct CategoryEditor: View {
         guard !slug.isEmpty else { return "inserisci uno slug" }
         guard Tag.isWellFormedValue(slug) else { return "solo minuscole, cifre e trattini singoli" }
         return nil
+    }
+
+    /// Whether «Crea»/«Salva» should be disabled (ADR-0053 §D2 seam #9): an empty name, or
+    /// a slug problem while creating. The trim is `.whitespaces`, not
+    /// `.whitespacesAndNewlines` - the same trim `fields`'s own empty-name check at `:121`
+    /// uses to gate the problem text, and it is left alone: it gates a different thing.
+    static func isSaveDisabled(name: String, slug: String, isCreating: Bool) -> Bool {
+        name.trimmingCharacters(in: .whitespaces).isEmpty || slugProblem(slug: slug, isCreating: isCreating) != nil
     }
 
     /// A first proposal for the slug field (SPEC "Data model": "slug ... proposed from
