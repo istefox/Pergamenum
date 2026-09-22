@@ -228,17 +228,21 @@ struct NoteFileOperations {
         }
 
         var outcome = Outcome(newPath: plan.newPath, failures: plan.failures)
+        // The note half stays an unconditional `store.write`, out of this chain's scope
+        // (ADR-0054 §D8's named follow-up): a note open and dirty in the editor can still
+        // have its links rewritten from a plan read before the user's own edit.
         let notes = VaultPlanApplication.apply(plan.noteChanges) {
             try store.write($0.after, to: $0.path)
         }
-        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a note and
-        // the planned text is already the encoded document - the same split `FolderFileOperations`
-        // and `BoardFileOperations` make, which is why the writer is injected (ADR-0041 §D4).
-        let boards = VaultPlanApplication.apply(plan.boardChanges) {
-            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
-        }
+        // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
+        // byte write - the same split `FolderFileOperations` and `BoardFileOperations`
+        // make, which is why the writer is injected (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(
+            plan.boardChanges, writing: CanvasStore(root: store.root).writeRepoint
+        )
         outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
         outcome.failures.append(contentsOf: notes.failures + boards.failures)
+        outcome.refusals.append(contentsOf: boards.refusals)
         return outcome
     }
 

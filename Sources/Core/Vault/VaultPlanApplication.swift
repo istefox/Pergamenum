@@ -4,9 +4,9 @@ import Foundation
 /// `NoteFileOperations.rename`'s own loop, `FolderFileOperations.renameFolder`'s two loops,
 /// `BoardFileOperations.renameBoard`'s two loops and `moveBoard`'s one, and the loops in
 /// `VaultSession+Files`'s `renameNote`/`moveNote`. Every one of those writes an ordinary note
-/// through `writing: { try store.write($0.after, to: $0.path) }` or a `.canvas` document through
-/// `writing: { try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic) }`
-/// - `apply` itself must stay ignorant of which, so a caller supplies the writer.
+/// through `writing: { try store.write($0.after, to: $0.path) }` or, since ADR-0054 §D6, a
+/// `.canvas` document through the one guarded repoint door, `writing: canvas.writeRepoint` -
+/// `apply` itself must stay ignorant of which, so a caller supplies the writer.
 enum VaultPlanApplication {
     struct Outcome: Equatable, Sendable {
         var rewrittenPaths: [String] = []
@@ -14,8 +14,11 @@ enum VaultPlanApplication {
         /// Paths whose bytes moved on since the change's `before` was read, so nothing was
         /// written - a `VaultWriteRefusal` caught and classified apart from `failures`
         /// (ADR-0046 §D4). Declared after `failures` so every existing memberwise call stays
-        /// valid. The eight `store.write`-level callers of the synchronous overload below can
-        /// never populate this: `store.write` cannot throw `VaultWriteRefusal`.
+        /// valid. Of the eight synchronous-overload callers, the three still writing a plain
+        /// `store.write` note (`FolderFileOperations.renameFolder`, `BoardFileOperations
+        /// .renameBoard`, `NoteFileOperations.rename`'s own note half) can never populate
+        /// this; the five now writing a `.canvas` through `canvas.writeRepoint` (ADR-0054
+        /// §D6) can.
         var refusals: [String] = []
     }
 

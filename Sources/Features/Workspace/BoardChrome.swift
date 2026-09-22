@@ -31,11 +31,38 @@ struct BoardTopBar: View {
             identifierPrefix: "breadcrumb-crumb",
             onSelectAncestor: { open(ancestor: $0) }
         ) {
-            Label(
-                workspace.hasUnsavedChanges ? "Salvataggio…" : "Salvato",
-                systemImage: workspace.hasUnsavedChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
-            )
-            .themedText(.caption, color: .textSecondary)
+            saveIndicator
+        }
+    }
+
+    /// The "Salvato"/"Salvataggio…"/"Conflitto" indicator of §6.1 (ADR-0054 §D5). Non-modal:
+    /// a conflict is shown beside the two verbs that resolve it, never a sheet or an alert -
+    /// the board stays fully usable while it is up.
+    @ViewBuilder
+    private var saveIndicator: some View {
+        switch workspace.saveState {
+        case .saved:
+            Label("Salvato", systemImage: "checkmark.circle")
+                .themedText(.caption, color: .textSecondary)
+                .accessibilityIdentifier("board-save-indicator")
+        case .pending:
+            Label("Salvataggio…", systemImage: "arrow.triangle.2.circlepath")
+                .themedText(.caption, color: .textSecondary)
+                .accessibilityIdentifier("board-save-indicator")
+        case .conflicted:
+            HStack(spacing: 8) {
+                Label("Conflitto", systemImage: "exclamationmark.triangle")
+                    .themedText(.caption, color: .taskOverdue)
+                    .accessibilityIdentifier("board-save-indicator")
+                Button("Mantieni le mie modifiche") { workspace.keepLocalBoard() }
+                    .buttonStyle(.plain)
+                    .themedText(.caption, color: .accentPrimary)
+                    .accessibilityIdentifier("board-conflict-keep-local")
+                Button("Ricarica dal disco") { workspace.reloadBoardFromDisk() }
+                    .buttonStyle(.plain)
+                    .themedText(.caption, color: .accentPrimary)
+                    .accessibilityIdentifier("board-conflict-reload")
+            }
         }
     }
 

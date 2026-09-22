@@ -126,6 +126,10 @@ struct BoardFileOperations {
     struct RenameOutcome: Equatable, Sendable {
         var newPath: String
         var failures: [String] = []
+        /// Board paths whose bytes moved on between the plan and the write, refused
+        /// rather than clobbered (ADR-0054 §D6). Declared after `failures` so every
+        /// existing memberwise call stays valid (ADR-0046 §D4's compatibility rule).
+        var refusals: [String] = []
     }
 
     /// Renames `<folder>/<old>.canvas` to `<folder>/<new>.canvas` - same folder, never
@@ -160,16 +164,15 @@ struct BoardFileOperations {
         let notes = VaultPlanApplication.apply(plan.noteChanges) {
             try store.write($0.after, to: $0.path)
         }
-        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a
-        // note and the planned text is already the encoded document
-        // (`FolderFileOperations.renameFolder` writes its own the same way) - the split
-        // `apply` keeps at the call site by taking the writer (ADR-0041 §D4).
-        let boards = VaultPlanApplication.apply(plan.boardChanges) {
-            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
-        }
-        // `RenameOutcome` has no `rewrittenPaths` field, so only the failures are carried
-        // over - exactly what the two loops this replaced recorded.
+        // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
+        // byte write: `change.expectedHash` is valid at `change.path` even for the board
+        // that is itself moving, since `renamePlan` already substitutes `writePath`.
+        let boards = VaultPlanApplication.apply(plan.boardChanges, writing: canvas.writeRepoint)
+        // `RenameOutcome` has no `rewrittenPaths` field, so only the failures/refusals are
+        // carried over - exactly what the two loops this replaced recorded, plus the new
+        // channel `writeRepoint` can now throw.
         outcome.failures.append(contentsOf: notes.failures + boards.failures)
+        outcome.refusals.append(contentsOf: boards.refusals)
         return outcome
     }
 
@@ -241,6 +244,10 @@ struct BoardFileOperations {
     struct MoveOutcome: Equatable, Sendable {
         var newPath: String
         var failures: [String] = []
+        /// Board paths whose bytes moved on between the plan and the write, refused
+        /// rather than clobbered (ADR-0054 §D6). Declared after `failures` so every
+        /// existing memberwise call stays valid (ADR-0046 §D4's compatibility rule).
+        var refusals: [String] = []
     }
 
     /// Moves `<old folder>/<name>.canvas` to `<new folder>/<name>.canvas` - same file
@@ -273,15 +280,14 @@ struct BoardFileOperations {
         }
 
         var outcome = MoveOutcome(newPath: plan.newPath, failures: plan.failures)
-        // Written as bytes rather than through `NoteStore.write`, for `renameBoard`'s
-        // reason: a `.canvas` is not a note and the planned text is already the encoded
-        // document. The board that moved is written at its **new** path, which is what
-        // `repointBoardsPlan`'s `writePath` substitution already computed.
-        let boards = VaultPlanApplication.apply(plan.boardChanges) {
-            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
-        }
-        // `MoveOutcome` has no `rewrittenPaths` field, so only the failures are carried over.
+        // Guarded through the one repoint door (ADR-0054 §D6). The board that moved is
+        // written at its **new** path, which is what `repointBoardsPlan`'s `writePath`
+        // substitution already computed, and `expectedHash` is valid there too.
+        let boards = VaultPlanApplication.apply(plan.boardChanges, writing: canvas.writeRepoint)
+        // `MoveOutcome` has no `rewrittenPaths` field, so only the failures/refusals are
+        // carried over.
         outcome.failures.append(contentsOf: boards.failures)
+        outcome.refusals.append(contentsOf: boards.refusals)
         return outcome
     }
 

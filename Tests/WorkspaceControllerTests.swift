@@ -53,6 +53,107 @@ import Testing
     controller.detach()
 }
 
+// ADR-0054 §D2 (plan Task 3, R-05, R-06): `origin` records which bytes `document` came
+// from, so `save()`'s reconciliation on a refusal has a `base` to compare against.
+
+@MainActor
+@Test func openingABoardSetsOriginToLoadedWithTheHashOfTheFilesBytes() throws {
+    let root = try CanvasTemporaryRoot()
+    try root.makeDirectory("A")
+    let store = CanvasStore(root: root.url)
+    let boardPath = try store.createBoard(named: "A", in: "A")
+    let controller = WorkspaceController()
+    controller.attach(to: store)
+
+    controller.open(board: boardPath)
+
+    guard case .loaded(let board, let hash, let document) = controller.origin else {
+        Issue.record("expected .loaded")
+        return
+    }
+    #expect(board == boardPath)
+    let bytes = try Data(contentsOf: store.url(forBoard: boardPath))
+    #expect(hash == NoteStore.hash(bytes))
+    #expect(document == controller.document)
+    controller.detach()
+}
+
+@MainActor
+@Test func attachSelectNilSelectFolderAndDetachEachLeaveOriginNone() throws {
+    let root = try CanvasTemporaryRoot()
+    try root.makeDirectory("A")
+    let store = CanvasStore(root: root.url)
+    let boardPath = try store.createBoard(named: "A", in: "A")
+    let controller = WorkspaceController()
+
+    controller.attach(to: store)
+    #expect(controller.origin == .none)
+
+    controller.open(board: boardPath)
+    guard case .loaded = controller.origin else {
+        Issue.record("expected .loaded before select(nil)")
+        return
+    }
+    controller.select(nil)
+    #expect(controller.origin == .none)
+
+    controller.open(board: boardPath)
+    controller.select(.folder("A"))
+    #expect(controller.origin == .none)
+
+    controller.open(board: boardPath)
+    controller.detach()
+    #expect(controller.origin == .none)
+}
+
+@MainActor
+@Test func aMutateLeavesOriginUntouchedWhileDocumentChanges() throws {
+    let root = try CanvasTemporaryRoot()
+    let controller = try openedWorkspaceController(rootURL: root.url)
+    controller.flushPendingSave()
+    let originBefore = controller.origin
+
+    _ = controller.addStickyNote("appunto", at: .zero)
+
+    #expect(controller.origin == originBefore)
+    #expect(controller.document != .empty)
+    controller.detach()
+}
+
+@MainActor
+@Test func undoAndRedoLeaveOriginUntouched() throws {
+    let root = try CanvasTemporaryRoot()
+    let controller = try openedWorkspaceController(rootURL: root.url)
+    controller.flushPendingSave()
+    let originBefore = controller.origin
+
+    _ = controller.addStickyNote("appunto", at: .zero)
+    #expect(controller.undo())
+    #expect(controller.origin == originBefore)
+
+    #expect(controller.redo())
+    #expect(controller.origin == originBefore)
+    controller.detach()
+}
+
+@MainActor
+@Test func aLoadThatThrowsLeavesThePreviousBoardsOriginIntact() throws {
+    let root = try CanvasTemporaryRoot()
+    try root.makeDirectory("A")
+    let store = CanvasStore(root: root.url)
+    let boardPath = try store.createBoard(named: "A", in: "A")
+    let controller = WorkspaceController()
+    controller.attach(to: store)
+    controller.open(board: boardPath)
+    let originBefore = controller.origin
+
+    controller.open(board: "A/does-not-exist.canvas")
+
+    #expect(controller.origin == originBefore)
+    #expect(controller.board == boardPath)
+    controller.detach()
+}
+
 @MainActor
 @Test func deletingANodeAlsoRemovesItsEdges() throws {
     let root = try CanvasTemporaryRoot()
