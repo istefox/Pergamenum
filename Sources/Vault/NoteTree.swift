@@ -105,6 +105,16 @@ enum NoteTree {
         return result
     }
 
+    /// What must be added to the tree's expanded set for `path` to become visible
+    /// (`NoteListPane`'s two reveal call sites, ADR-0053 seam #11). Over `ancestors(of:)`
+    /// alone: a revealed folder's own row must stay open too, not just what leads down to
+    /// it, so it unions with `path` itself; a revealed note has no row of its own to open,
+    /// so its ancestors are all that is asked for.
+    static func revealed(_ path: String, isFolder: Bool) -> Set<String> {
+        let folders = Set(ancestors(of: path))
+        return isFolder ? folders.union([path]) : folders
+    }
+
     /// Accumulates one folder's contents while the leaves are walked.
     ///
     /// A leaf is a `(path, name)` pair rather than a `NoteRecord`, which is the whole of

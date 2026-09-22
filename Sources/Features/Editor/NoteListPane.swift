@@ -193,7 +193,7 @@ struct NoteListPane: View {
                 return
             }
             showsFolders = true
-            expanded.formUnion(NoteTree.ancestors(of: reveal.folder) + [reveal.folder])
+            expanded.formUnion(NoteTree.revealed(reveal.folder, isFolder: true))
             selectedRows = [reveal.folder]
         }
         .sheet(item: $renaming) { note in
@@ -564,6 +564,6 @@ struct NoteListPane: View {
     /// closed folder.
     private func reveal(_ path: String?) {
         guard let path else { return }
-        expanded.formUnion(NoteTree.ancestors(of: path))
+        expanded.formUnion(NoteTree.revealed(path, isFolder: false))
     }
 }

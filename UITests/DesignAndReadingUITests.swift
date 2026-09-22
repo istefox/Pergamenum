@@ -61,65 +61,6 @@ final class DesignAndReadingUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["mockup"].exists)
     }
 
-    // MARK: A theme file in the vault is a theme the app offers
-
-    func testAThemeFileInTheVaultReachesTheThemePicker() throws {
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-
-        // Scoped to the window and matched by label: app-wide, `firstMatch` picked
-        // the Touch Bar's own popup and the click failed on it.
-        let picker = app.windows["Pergamenum"].popUpButtons["Tema"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 5), "il selettore del tema non c'è")
-        picker.click()
-
-        // Written by hand into `.pergamenum/themes/`, which until now the app never
-        // read outside the test suite.
-        // `firstMatch`: the theme is offered in the sidebar picker and in Settings,
-        // so the query matches more than one item and a bare click cannot resolve it.
-        let custom = app.menuItems["Notte Vibrofer"].firstMatch
-        XCTAssertTrue(custom.waitForExistence(timeout: 5), "il tema del vault non è nell'elenco")
-        custom.click()
-
-        // Chosen, not merely listed: the accent the file declares is what the app
-        // now draws with.
-        XCTAssertTrue(app.windows["Pergamenum"].popUpButtons["Tema"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.windows["Pergamenum"].popUpButtons["Tema"].value as? String, "Notte Vibrofer")
-    }
-
-    // MARK: The design system is a setting, and its colours can be reset
-
-    func testTheDesignSystemPaneEditsTheVaultsOwnThemeFile() throws {
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-
-        app.typeKey(",", modifierFlags: .command)
-        let tab = app.buttons["Design system"]
-        XCTAssertTrue(tab.waitForExistence(timeout: 10), "la scheda Design system non c'è")
-        tab.click()
-
-        XCTAssertTrue(
-            text(withValue: "color.accent.primary").waitForExistence(timeout: 5),
-            "i token colore non sono elencati"
-        )
-        // Editable, not a gallery: every colour row carries a well.
-        XCTAssertGreaterThan(app.colorWells.count, 10, "i colori non sono selezionabili")
-
-        let reset = app.buttons["Ripristina"]
-        XCTAssertTrue(reset.waitForExistence(timeout: 5))
-        reset.click()
-
-        // The pane is wired to the file, not to a copy in memory: resetting removes
-        // the theme from the vault.
-        let file = themesDirectory.appending(path: "personalizzato.json")
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline, FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: file.path(percentEncoded: false)),
-            "il file del tema è ancora nel vault"
-        )
-    }
-
     // MARK: No Modifica/Lettura toggle
 
     /// ADR-0029 (R-01/R-02): the toggle is gone outright, not merely defaulted to one

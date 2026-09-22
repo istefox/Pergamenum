@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -266,4 +267,46 @@ private func makeDefaults() -> (UserDefaults, String) {
     // The stale entry is dropped and the rest of the file still arrives.
     #expect(store.binding(for: .save) == KeyBinding("y", .command))
     #expect(store.overrides.count == 1)
+}
+
+// MARK: - The recorder's event-to-outcome classification (ADR-0053 §D2 #12)
+//
+// `KeyRecorder.outcome(keyCode:flags:charactersIgnoringModifiers:)` is pure over the
+// three facts `handle(_:)` reads off an `NSEvent`, so each of its four outcomes is
+// driven here with no event, no monitor and no view.
+
+@Test func escapeAloneCancelsTheRecording() {
+    let outcome = KeyRecorder.outcome(keyCode: 53, flags: [], charactersIgnoringModifiers: "\u{1b}")
+    #expect(outcome == .cancel)
+}
+
+@Test func backspaceAloneClearsTheBinding() {
+    let outcome = KeyRecorder.outcome(keyCode: 51, flags: [], charactersIgnoringModifiers: "\u{8}")
+    #expect(outcome == .clear)
+}
+
+@Test func aValidCombinationRecords() {
+    let outcome = KeyRecorder.outcome(keyCode: 45, flags: .command, charactersIgnoringModifiers: "n")
+    #expect(outcome == .record(KeyBinding("n", .command)))
+}
+
+@Test func anOrdinaryLetterWithNoMenuModifierIsIgnored() {
+    // `KeyBinding("n").problem == .needsCommandOrControl`: it would fire while the
+    // user is typing that letter into a note, so recording leaves it alone.
+    let outcome = KeyRecorder.outcome(keyCode: 45, flags: [], charactersIgnoringModifiers: "n")
+    #expect(outcome == .ignore)
+}
+
+@Test func escapeWithAModifierHeldIsAnOrdinaryCombinationNotACancel() {
+    // Cancel and clear are only the bare keys: with a modifier held, Esc and
+    // Backspace are ordinary named-key shortcuts like any other.
+    let outcome = KeyRecorder.outcome(keyCode: 53, flags: .command, charactersIgnoringModifiers: "\u{1b}")
+    #expect(outcome == .record(KeyBinding("escape", .command)))
+}
+
+@Test func aKeyWithNoCharacterAndNoNameIsIgnored() {
+    // `charactersIgnoringModifiers` can be empty for a key `namedKeyCodes` does not
+    // carry - a modifier key pressed on its own, for instance.
+    let outcome = KeyRecorder.outcome(keyCode: 55, flags: .command, charactersIgnoringModifiers: "")
+    #expect(outcome == .ignore)
 }

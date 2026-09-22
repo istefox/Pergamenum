@@ -104,7 +104,7 @@ struct ShortcutSettings: View {
 /// menu shortcut, and the menu bar claims those before any view in the window sees
 /// them. A local monitor runs inside `NSApplication.sendEvent`, before that dispatch,
 /// and returning nil from it swallows the event so the menu does not also fire.
-private struct KeyRecorder: View {
+struct KeyRecorder: View {
     let binding: KeyBinding
     let onRecord: (KeyBinding) -> Void
 
@@ -158,30 +158,61 @@ private struct KeyRecorder: View {
     }
 
     private func handle(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch Self.outcome(
+            keyCode: event.keyCode,
+            flags: event.modifierFlags,
+            charactersIgnoringModifiers: event.charactersIgnoringModifiers
+        ) {
+        case .cancel:
+            stop()
+        case .clear:
+            stop()
+            onRecord(KeyBinding(""))
+        case .record(let recorded):
+            stop()
+            onRecord(recorded)
+        case .ignore:
+            break
+        }
+    }
+
+    /// What a key event means for the recording in progress (ADR-0053 seam #12), pure
+    /// over the three facts `handle(_:)` reads off the `NSEvent` - a test can drive it
+    /// with no event of its own. **The order below is the behaviour and is preserved:**
+    /// Escape with no modifier cancels, Backspace with no modifier clears, then
+    /// `key(keyCode:charactersIgnoringModifiers:)`, then an invalid binding is ignored,
+    /// else the combination records.
+    enum Outcome: Equatable {
+        /// Escape alone: leave the binding as it was.
+        case cancel
+        /// Backspace alone: remove the binding.
+        case clear
+        case record(KeyBinding)
+        /// No key this event can name, or a named key with no valid modifier - typing
+        /// continues, nothing changes.
+        case ignore
+    }
+
+    static func outcome(
+        keyCode: UInt16, flags: NSEvent.ModifierFlags, charactersIgnoringModifiers: String?
+    ) -> Outcome {
+        let deviceIndependent = flags.intersection(.deviceIndependentFlagsMask)
         var modifiers: KeyBinding.Modifiers = []
-        if flags.contains(.command) { modifiers.insert(.command) }
-        if flags.contains(.shift) { modifiers.insert(.shift) }
-        if flags.contains(.option) { modifiers.insert(.option) }
-        if flags.contains(.control) { modifiers.insert(.control) }
+        if deviceIndependent.contains(.command) { modifiers.insert(.command) }
+        if deviceIndependent.contains(.shift) { modifiers.insert(.shift) }
+        if deviceIndependent.contains(.option) { modifiers.insert(.option) }
+        if deviceIndependent.contains(.control) { modifiers.insert(.control) }
 
         // Escape alone leaves the binding as it was, and Backspace alone removes it.
         // Both are still available as shortcuts with a modifier held.
-        if modifiers.isEmpty, event.keyCode == 53 {
-            stop()
-            return
-        }
-        if modifiers.isEmpty, event.keyCode == 51 {
-            stop()
-            onRecord(KeyBinding(""))
-            return
-        }
+        if modifiers.isEmpty, keyCode == 53 { return .cancel }
+        if modifiers.isEmpty, keyCode == 51 { return .clear }
 
-        guard let key = Self.key(for: event) else { return }
+        guard let key = key(keyCode: keyCode, charactersIgnoringModifiers: charactersIgnoringModifiers)
+        else { return .ignore }
         let recorded = KeyBinding(key, modifiers)
-        guard recorded.isValid else { return }
-        stop()
-        onRecord(recorded)
+        guard recorded.isValid else { return .ignore }
+        return .record(recorded)
     }
 
     /// The key this event names, in the spelling `KeyBinding` stores.
@@ -190,9 +221,9 @@ private struct KeyRecorder: View {
     /// is a control code and the arrows have no character at all. For everything else
     /// the character *without* modifiers is what is wanted, so Cmd+Shift+2 records as
     /// `2` rather than as `"`.
-    private static func key(for event: NSEvent) -> String? {
-        if let named = namedKeyCodes[event.keyCode] { return named }
-        guard let characters = event.charactersIgnoringModifiers, let first = characters.first,
+    private static func key(keyCode: UInt16, charactersIgnoringModifiers characters: String?) -> String? {
+        if let named = namedKeyCodes[keyCode] { return named }
+        guard let characters, let first = characters.first,
               !first.isNewline, !first.isWhitespace
         else { return nil }
         return String(first)

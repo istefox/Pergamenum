@@ -159,6 +159,61 @@ private struct TemporaryDirectory: ~Copyable {
     #expect(engine.selection == .followSystem)
 }
 
+/// `ThemeEngine.resetCustomization()` on its own, not through `clearCustomColor`'s
+/// empty-draft branch above: it deletes the file, clears `customizationProblem`,
+/// drops `selection == .named(ThemeCustomization.id)` back to `.followSystem`, and
+/// reloads the vault's themes - none of which the branch above exercises with a
+/// stale problem or a second theme file waiting to be picked up.
+@MainActor
+@Test func resetCustomizationRemovesTheFileClearsTheProblemDropsTheSelectionAndReloads() throws {
+    let vault = try TemporaryDirectory()
+    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    engine.attach(vaultRoot: vault.url)
+    engine.setCustomColor(.accentPrimary, to: RGBA(hex: "#FF0000")!)
+
+    let directory = try #require(engine.userThemesDirectory)
+    let file = ThemeCustomization.url(in: directory)
+    #expect(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+    #expect(engine.selection == .named(ThemeCustomization.id))
+
+    // Dropped straight onto disk, after `attach`, so nothing has reloaded it into
+    // `selectableThemes` yet - which is what proves the reload below is real.
+    try """
+    { "meta": { "name": { "$type": "string", "$value": "Secondo" },
+        "appearance": { "$type": "string", "$value": "light" } } }
+    """.write(to: directory.appending(path: "secondo.json"), atomically: true, encoding: .utf8)
+    #expect(!engine.selectableThemes.contains { $0.id == "secondo" })
+
+    // `chmod 555` on the directory blocks the removal (`PraticaSyncRepairTests.swift`'s
+    // technique): the reset must report the failure rather than pretend it worked, and
+    // leave the customisation and the selection exactly as they were.
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o555], ofItemAtPath: directory.path(percentEncoded: false)
+    )
+    defer {
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: directory.path(percentEncoded: false)
+        )
+    }
+    engine.resetCustomization()
+    #expect(engine.customizationProblem != nil)
+    #expect(engine.customization != nil)
+    #expect(engine.selection == .named(ThemeCustomization.id))
+
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: directory.path(percentEncoded: false)
+    )
+    engine.resetCustomization()
+
+    #expect(!FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+    #expect(engine.customization == nil)
+    // The stale problem from the failed attempt above does not survive a successful one.
+    #expect(engine.customizationProblem == nil)
+    #expect(engine.selection == .followSystem)
+    // The reload is real: a file already on disk before this call is now visible.
+    #expect(engine.selectableThemes.contains { $0.id == "secondo" })
+}
+
 @MainActor
 @Test func withoutAVaultAColourCannotBeSavedAndSaysSo() {
     let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
