@@ -71,21 +71,42 @@ jobs:
         # relying on any tool's auto-detection of that file — none of
         # Tuist's current documented install paths (Homebrew, mise)
         # confirm they read .tuist-version automatically.
-        # Homebrew 6.0 (2026-06) refuses to load a versioned formula from a
-        # third-party tap until it is explicitly trusted (docs.brew.sh/Tap-Trust);
+        # Homebrew 6.0 (2026-06) refused to load a versioned formula from a
+        # third-party tap until it was explicitly trusted (docs.brew.sh/Tap-Trust);
         # `brew trust --formula` on the exact pinned formula was the minimal
-        # grant, and stopped being enough on 2026-09-21: installing
-        # tuist@4.208.0 also loads the tap's newer sibling formula
-        # (tuist@4.209.0 that day) to resolve versions, and brew refuses that
-        # one as untrusted ("Refusing to load formula ... from untrusted tap").
-        # The whole tap is trusted instead; it is Tuist's own tap, on an
-        # ephemeral runner whose workflow holds no secret (contents: read).
+        # grant, stopped being enough on 2026-09-21 (installing tuist@4.208.0
+        # also loaded the tap's newer sibling formula to resolve versions, and
+        # brew refused that one as untrusted), and on 2026-09-22 tapping failed
+        # outright ("Non-file alias: .../Aliases/tuist-app", "Cannot tap
+        # tuist/tuist: invalid syntax in tap!") — verified live against
+        # tuist/homebrew-tuist@main: Aliases/tuist-app is a symlink there, and a
+        # newer Homebrew rejects a tap containing one. That is the upstream
+        # tap's own file, not something this workflow can patch, so installation
+        # stops depending on Homebrew's tap format at all: download the pinned
+        # release's tuist.zip from GitHub, verify it against Tuist's own
+        # published SHASUMS256.txt, unzip it, and put it on PATH.
         run: |
+          set -euo pipefail
           TUIST_VERSION="$(cat .tuist-version)"
           echo "Pinned Tuist version: ${TUIST_VERSION}"
-          brew tap tuist/tuist
-          brew trust tuist/tuist
-          brew install --formula "tuist@${TUIST_VERSION}"
+          RELEASE_URL="https://github.com/tuist/tuist/releases/download/${TUIST_VERSION}"
+          INSTALL_DIR="${RUNNER_TEMP}/tuist-${TUIST_VERSION}"
+          mkdir -p "${INSTALL_DIR}"
+          curl -fsSL -o "${RUNNER_TEMP}/tuist.zip" "${RELEASE_URL}/tuist.zip"
+          curl -fsSL -o "${RUNNER_TEMP}/tuist.SHASUMS256.txt" "${RELEASE_URL}/SHASUMS256.txt"
+          EXPECTED="$(grep -F './tuist.zip' "${RUNNER_TEMP}/tuist.SHASUMS256.txt" | awk '{print $1}')"
+          if [ -z "${EXPECTED}" ]; then
+            echo "tuist.zip has no entry in SHASUMS256.txt for ${TUIST_VERSION}" >&2
+            exit 1
+          fi
+          ACTUAL="$(shasum -a 256 "${RUNNER_TEMP}/tuist.zip" | awk '{print $1}')"
+          if [ "${EXPECTED}" != "${ACTUAL}" ]; then
+            echo "tuist.zip checksum mismatch: expected ${EXPECTED}, got ${ACTUAL}" >&2
+            exit 1
+          fi
+          unzip -q "${RUNNER_TEMP}/tuist.zip" -d "${INSTALL_DIR}"
+          chmod +x "${INSTALL_DIR}/tuist"
+          echo "${INSTALL_DIR}" >> "${GITHUB_PATH}"
 
       - name: tuist install
         run: tuist install
