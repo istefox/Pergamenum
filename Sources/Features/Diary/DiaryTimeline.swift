@@ -14,8 +14,6 @@ struct DiaryTimeline: View {
     /// the last one - the grid the diary promises, drawn at a size a pointer can hit.
     private let hourHeight: CGFloat = 60
     private let gutter: CGFloat = 52
-    /// Under this a drag is a click, and a click blocks out an hour.
-    private let dragThreshold: CGFloat = 9
 
     /// The stretch of empty time being dragged over, before it becomes a block.
     @State private var creating: (start: Int, end: Int)?
@@ -35,7 +33,7 @@ struct DiaryTimeline: View {
                     gutter: gutter, width: proxy.size.width
                 )
                 ZStack(alignment: .topLeading) {
-                    hourLines
+                    hourLines(geometry)
                     creationPreview(geometry)
                     ForEach(controller.placements) { placement in
                         DiaryEntryCard(placement: placement, geometry: geometry, controller: controller)
@@ -91,7 +89,7 @@ struct DiaryTimeline: View {
 
     /// The hour lines, the half-hour marks between them, and the empty space that
     /// listens for a drag.
-    private var hourLines: some View {
+    private func hourLines(_ geometry: DiaryGeometry) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(firstHour..<lastHour, id: \.self) { hour in
                 hourLine(hour, withHalfHour: true)
@@ -106,7 +104,7 @@ struct DiaryTimeline: View {
         // Behind the blocks, so a click on one of them is never taken by this: the
         // topmost view wins hit testing, and the blocks are drawn after.
         .contentShape(Rectangle())
-        .gesture(createGesture)
+        .gesture(createGesture(geometry))
         .accessibilityIdentifier("diary-grid")
     }
 
@@ -130,25 +128,17 @@ struct DiaryTimeline: View {
     }
 
     /// Drag over empty time to block it out; a click blocks out an hour.
-    private var createGesture: some Gesture {
+    private func createGesture(_ geometry: DiaryGeometry) -> some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { value in creating = range(of: value) }
+            .onChanged { value in
+                creating = geometry.range(fromY: value.startLocation.y, toY: value.location.y)
+            }
             .onEnded { value in
-                let dragged = range(of: value)
+                let dragged = geometry.range(fromY: value.startLocation.y, toY: value.location.y)
                 creating = nil
-                let duration = abs(value.translation.height) > dragThreshold
-                    ? dragged.end - dragged.start
-                    : 60
+                let duration = geometry.creationDuration(dragged: dragged, translationHeight: value.translation.height)
                 controller.compose(startMinutes: dragged.start, durationMinutes: duration)
             }
-    }
-
-    /// The stretch a drag covers, in whole ten-minute marks, whichever way it went.
-    private func range(of value: DragGesture.Value) -> (start: Int, end: Int) {
-        let anchor = minutes(at: value.startLocation.y)
-        let current = minutes(at: value.location.y)
-        let start = DiaryGrid.snapDown(min(anchor, current))
-        return (start, max(start + DiaryGrid.step, DiaryGrid.snap(max(anchor, current))))
     }
 
     @ViewBuilder
@@ -192,12 +182,6 @@ struct DiaryTimeline: View {
     }
 
     // MARK: Geometry
-
-    /// The minute of the day at a point in the grid.
-    private func minutes(at y: CGFloat) -> Int {
-        let raw = Int((y / minuteHeight).rounded(.down)) + firstHour * 60
-        return min(max(0, raw), DiaryGrid.dayMinutes - DiaryGrid.step)
-    }
 
     private func minutesOfDay(_ date: Date) -> Int {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)

@@ -61,6 +61,29 @@ private func diaryOnDisk(_ root: URL) -> String? {
     controller.close()
 }
 
+/// Diary `:110` (`testABlockIsOpenedAndRenamed`): a click opens the block, and what changes
+/// there reaches the file, not just memory - `editingAnEntryReplacesItRatherThanAddingAnother`
+/// above stops at `diary.entries`.
+@MainActor
+@Test func editingAnEntryWritesTheRenamedTitleToTheFileInPlaceOfTheOldOne() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let (diary, controller) = try await makeDiary(vault)
+
+    let entry = diary.add(title: "Primo nome", startMinutes: 540, durationMinutes: 60)
+    try await waitUntil { diaryOnDisk(root)?.contains("Primo nome") == true }
+
+    diary.edit(entry)
+    diary.draft?.entry.title = "Secondo nome"
+    diary.commitDraft()
+
+    try await waitUntil { diaryOnDisk(root)?.contains("Secondo nome") == true }
+    let onDisk = try #require(diaryOnDisk(root))
+    #expect(onDisk.contains("Secondo nome"))
+    #expect(!onDisk.contains("Primo nome"))
+    controller.close()
+}
+
 @MainActor
 @Test func cancellingTheComposerWritesNothing() async throws {
     let vault = try TemporaryVault()
@@ -120,5 +143,26 @@ private func diaryOnDisk(_ root: URL) -> String? {
     #expect(diary.entries[0].title == "Quello che è successo")
     // The Timeline section is not the diary's to rewrite, so it stays in the prose.
     #expect(diary.prose.contains("- 09:00-09:30 Blocco del piano [published]"))
+    controller.close()
+}
+
+/// Diary `:163` (`testTwoBlocksAtTheSameHourAreBothKept`): what overlaps on screen also both
+/// reach the file - `DiaryControllerTests.allowsTwoEntriesAtTheSameHour` stops at
+/// `diary.entries` and the placement columns.
+@MainActor
+@Test func writesBothOverlappingEntriesToTheFile() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let (diary, controller) = try await makeDiary(vault)
+
+    diary.add(title: "Riunione", startMinutes: 540, durationMinutes: 120)
+    diary.add(title: "Telefonata", startMinutes: 570, durationMinutes: 30)
+
+    try await waitUntil {
+        diaryOnDisk(root)?.contains("Riunione") == true && diaryOnDisk(root)?.contains("Telefonata") == true
+    }
+    let onDisk = try #require(diaryOnDisk(root))
+    #expect(onDisk.contains("Riunione"))
+    #expect(onDisk.contains("Telefonata"))
     controller.close()
 }
