@@ -145,6 +145,26 @@ private func walked(_ destinations: [Destination]) -> NavigationHistory {
     #expect(history.goBack(reachable: anywhere) == .workspaceBoard("prova.canvas"))
 }
 
+// MARK: - `.taskSelection` (ADR-0015 §D1 amendment, PG-206)
+
+@MainActor
+@Test func goingToTheHomeNoteFromACategoryAndBackReturnsToTheCategory() {
+    let visited: [Destination] = [.taskSelection(.category("project-vibrofer")), .note("Note/vibrofer.md")]
+    let history = walked(visited)
+
+    #expect(history.goBack(reachable: anywhere) == .taskSelection(.category("project-vibrofer")))
+    #expect(history.goForward(reachable: anywhere) == .note("Note/vibrofer.md"))
+}
+
+@MainActor
+@Test func switchingBetweenTwoCategoriesIsAStep() {
+    let visited: [Destination] = [.taskSelection(.category("project-a")), .taskSelection(.category("project-b"))]
+    let history = walked(visited)
+
+    #expect(history.goBack(reachable: anywhere) == .taskSelection(.category("project-a")))
+    #expect(!history.canGoBack)
+}
+
 // MARK: - Places that stopped existing
 
 @MainActor

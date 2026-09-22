@@ -61,6 +61,19 @@ private func makePlace(
     vaultController.close()
 }
 
+@MainActor
+@Test func destinationOnTheTasksPaneIsItsSelection() async throws {
+    let vault = try TemporaryVault()
+    let (place, _, vaultController, navigation) = try await makePlace(vault)
+
+    navigation.pane = .tasks
+    #expect(place.destination == .taskSelection(.view(.today)))
+
+    navigation.taskSelection = .category("project-vibrofer")
+    #expect(place.destination == .taskSelection(.category("project-vibrofer")))
+    vaultController.close()
+}
+
 // MARK: `isDrift` (§D3)
 
 @MainActor
@@ -140,5 +153,16 @@ private func makePlace(
     place.apply(.workspaceBoard("Board/prova.canvas"))
     #expect(navigation.pane == .workspace)
     #expect(vaultController.routeState.pendingCanvas?.path == "Board/prova.canvas")
+    vaultController.close()
+}
+
+@MainActor
+@Test func applyATaskSelectionSwitchesToTasksAndRestoresTheCategory() async throws {
+    let vault = try TemporaryVault()
+    let (place, _, vaultController, navigation) = try await makePlace(vault)
+
+    place.apply(.taskSelection(.category("project-vibrofer")))
+    #expect(navigation.pane == .tasks)
+    #expect(navigation.taskSelection == .category("project-vibrofer"))
     vaultController.close()
 }

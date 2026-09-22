@@ -121,20 +121,24 @@ struct CategoryView<Row: View>: View {
         }
     }
 
-    /// The linked-note row (SPEC "Note ↔ category"): «Vai alla nota» and «Scollega la
-    /// nota» when the category has a home, and always the affordance that sets one -
-    /// «Collega una nota…» or, once there is a home, «Cambia nota…». A registered category
-    /// only: an implicit one has no registry entry for a note to point at yet (the
-    /// «Registra» button above comes first).
+    /// The linked-note row (SPEC "Note ↔ category"): the home note's own title (PG-205 -
+    /// the row used to say «Vai alla nota» with nothing naming which note that was) and
+    /// «Scollega la nota» when the category has a home, and always the affordance that
+    /// sets one - «Collega una nota…» or, once there is a home, «Cambia nota…». A
+    /// registered category only: an implicit one has no registry entry for a note to
+    /// point at yet (the «Registra» button above comes first).
     @ViewBuilder
     private var homeNoteControls: some View {
         let home = vault.index.homeNote(ofCategory: category.slug)
         HStack(spacing: theme.spacing(.m)) {
             if let home {
-                Button("Vai alla nota") {
+                Button {
                     vault.openNote(at: home.relativePath)
                     navigation.pane = .notes
+                } label: {
+                    Label(home.title, systemImage: "doc.text")
                 }
+                .help("Vai alla nota collegata")
                 .accessibilityIdentifier("category-view-go-to-note")
             }
             if isRegistered {

@@ -26,6 +26,12 @@ enum Destination: Equatable, Sendable {
     /// The Oggi pane, at a day and a scale. Both, because ADR-0013 §D4 makes the three scales
     /// three ways of looking at one anchor: the day alone would not say which one you were in.
     case day(CalendarDate, DayScale)
+    /// The Attività pane, at a view or a category (ADR-0047 §D6's `TaskPaneSelection`). Added
+    /// PG-206, the same amendment to §D1 `workspaceBoard` already made for the Workspace: the
+    /// pane used to fall into `.pane(.tasks)` with no anchor, so "Indietro" after "Vai alla
+    /// nota" from a category landed on whatever selection `TasksView` was reborn with, never
+    /// the category actually left.
+    case taskSelection(TaskPaneSelection)
 }
 
 /// The places the window has been, and the way back to them (ADR-0015).
