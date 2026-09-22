@@ -57,7 +57,7 @@
 # Usage:  scripts/uitests.sh [-only-testing:...]
 #         with no arguments the whole bundle runs; an argument REPLACES that selection
 #         rather than adding to it, so a single suite can be run:
-#         scripts/uitests.sh -only-testing:PergamenumUITests/TaskTimeUITests
+#         scripts/uitests.sh -only-testing:PergamenumUITests/TaskCategoriesUITests
 #
 #         scripts/uitests.sh --status
 #         says whether this tree, and `main`, already has a verdict, and what changed since the
@@ -145,9 +145,9 @@ classes_for_path() {
         Sources/Features/Pratiche/*|Sources/Core/Pratiche/*|Sources/Core/Email/*)
             echo "PraticheUITests" ;;
         Sources/Features/Tasks/*|Sources/Core/Tasks/*|Sources/Core/Categories/*)
-            echo "TaskTimeUITests TaskCategoriesUITests" ;;
+            echo "TaskCategoriesUITests" ;;
         Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
-            echo "DayViewUITests DiaryUITests TimeBlockUITests TaskTimeUITests" ;;
+            echo "DayViewUITests DiaryUITests" ;;
         Sources/App/SparkleUpdateController*) echo "UpdateMenuUITests" ;;
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;
