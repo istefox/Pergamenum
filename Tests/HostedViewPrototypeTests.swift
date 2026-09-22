@@ -80,6 +80,7 @@ struct HostedViewPrototypeTests {
         #expect(cancelled == 1)
         #expect(confirmed.isEmpty)
         #expect(host.neverShown)
+        #expect(host.refusals.isEmpty)
     }
 
     // MARK: Workspace views
@@ -108,6 +109,7 @@ struct HostedViewPrototypeTests {
         #expect(!unbound)
         #expect(workspace.tool == .text)
         #expect(host.neverShown)
+        #expect(host.refusals.isEmpty)
     }
 
     @Test func aWorkspaceBoardDrawsAndRedrawsWithTheControllersZoomAndPan() async throws {
@@ -144,6 +146,7 @@ struct HostedViewPrototypeTests {
         #expect(zoomed.png != whole.png)
         #expect(workspace.zoom == 0.5)
         #expect(host.neverShown)
+        #expect(host.refusals.isEmpty)
     }
 
     // MARK: The harness itself (R-15)
@@ -179,5 +182,11 @@ struct HostedViewPrototypeTests {
         withKnownIssue { host.window.order(.above, relativeTo: 0) }
         withKnownIssue { host.window.sendEvent(event) }
         #expect(host.neverShown)
+        // PG-201: pins the refusal count from inside this test's own task, independent of
+        // whether `withKnownIssue`/`Issue.record` end up attributed to it by `xcodebuild`.
+        #expect(host.refusals == [
+            "orderFront", "orderFrontRegardless", "makeKeyAndOrderFront", "order(_:relativeTo:)",
+            "sendEvent",
+        ])
     }
 }

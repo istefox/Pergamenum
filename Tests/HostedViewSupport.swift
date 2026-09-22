@@ -10,6 +10,14 @@ import Testing
 /// nothing, so a test that reaches for one fails loudly and takes nothing from the person at the
 /// keyboard.
 private final class NeverKeyWindow: NSWindow {
+    /// Every refused call, by name. `Issue.record` below is called from AppKit's own run-loop
+    /// callbacks, outside the test's task context (PG-201): Swift Testing attributes that issue
+    /// to `Test «unknown»`, and one observed `xcodebuild` run printed "failed with 11 issues" and
+    /// still exited `** TEST SUCCEEDED **`. This array is read back inside the test's own task
+    /// through `HostedView.neverShown`, so a refusal fails the test through an ordinary `#expect`
+    /// instead of depending on `Issue.record`'s attribution.
+    private(set) var refusals: [String] = []
+
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -34,6 +42,7 @@ private final class NeverKeyWindow: NSWindow {
 
     private func refuse(_ call: String) {
         let why = "was called on a hosted-view window, which is never shown or sent events"
+        refusals.append(call)
         Issue.record("R-15: `NSWindow.\(call)` \(why). Nothing was done.")
     }
 }
@@ -116,6 +125,16 @@ final class HostedView<Content: View> {
     var neverShown: Bool {
         !window.isVisible && !window.isKeyWindow
             && NSApp.isActive == wasActive && NSApp.keyWindow === keyWindowAtStart
+    }
+
+    /// Every `NeverKeyWindow` call refused so far, by name (empty on a test that never provokes
+    /// one). `Issue.record` inside `refuse(_:)` runs from an AppKit run-loop callback, outside the
+    /// test's task context, and is not reliably attributed to the running test - one `xcodebuild`
+    /// run printed "failed with 11 issues" and still exited `** TEST SUCCEEDED **` (PG-201). A
+    /// test that does not deliberately provoke a refusal should `#expect(host.refusals.isEmpty)`
+    /// as well as `neverShown`, so the check runs inside its own task and fails the run for real.
+    var refusals: [String] {
+        (window as? NeverKeyWindow)?.refusals ?? []
     }
 
     /// Lets the view graph and the main run loop catch up with whatever was just sent.
