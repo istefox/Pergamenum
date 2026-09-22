@@ -262,4 +262,21 @@ extension WorkspaceBrowser {
             item.kind == .folder && (folder == item.path || folder.hasPrefix("\(item.path)/"))
         }
     }
+
+    /// The disabled state of a «Sposta in ▸» entry (ADR-0053 §D2 #7): a destination is
+    /// offered only when it is not the folder the item already sits in - a move that
+    /// would move nothing - and `canDrop` above does not refuse it for the cycle rule.
+    ///
+    /// One function replacing two copies, `WorkspaceRow+Move.swift`'s own
+    /// `canMove(to:)` (over the row's `effectiveItems`, its multi-selection) and
+    /// `NoteTreeRow.swift`'s (over `[reference]`, a folder row's own single item) -
+    /// `destination != parentFolder && canDrop(items, onFolder: destination)` written
+    /// out twice, word for word, over a different `items` and a different derivation of
+    /// `parentFolder`. Each call site keeps computing its own `items` and
+    /// `parentFolder` and hands both in; nothing about either site's answer changes.
+    nonisolated static func canMove(
+        _ items: [VaultItemRef], to destination: String, from parentFolder: String
+    ) -> Bool {
+        destination != parentFolder && canDrop(items, onFolder: destination)
+    }
 }

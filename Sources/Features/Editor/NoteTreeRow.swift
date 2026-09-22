@@ -202,7 +202,7 @@ struct NoteTreeRow: View {
     }
 
     private func canMove(to destination: String) -> Bool {
-        destination != parentFolder && WorkspaceBrowser.canDrop([reference], onFolder: destination)
+        WorkspaceBrowser.canMove([reference], to: destination, from: parentFolder)
     }
 
     /// The menu's move, which is the drop's move: the same reference, through the same
