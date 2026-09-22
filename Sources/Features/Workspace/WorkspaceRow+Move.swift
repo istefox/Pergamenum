@@ -139,7 +139,7 @@ extension WorkspaceRow {
     }
 
     private func canMove(to destination: String) -> Bool {
-        destination != parentFolder && WorkspaceBrowser.canDrop(effectiveItems, onFolder: destination)
+        WorkspaceBrowser.canMove(effectiveItems, to: destination, from: parentFolder)
     }
 
     /// The menu's move, which is the drop's move: the same effective set, through the same

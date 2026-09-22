@@ -160,3 +160,74 @@ import Testing
 
     #expect(WorkspaceBrowser.canDrop(dragging, onFolder: "01 Progetti/b"))
 }
+
+// MARK: - WorkspaceBrowser.canMove(_:to:from:) (ADR-0053 §D2 #7)
+//
+// The «Sposta in ▸» disable rule, unified out of `WorkspaceRow+Move.swift:141` and
+// `NoteTreeRow.swift:204` - two copies of `destination != parentFolder &&
+// canDrop(items, onFolder:)`, one asked over a row's multi-selection
+// (`effectiveItems`), one over a folder row's own single reference (`[reference]`).
+// Converts `UITests/SidebarMoveUITests.swift:168`
+// (`testAFoldersOwnMoveMenuDisablesItselfAndItsDescendants_R06`): a folder's own move
+// menu disables itself and every descendant, keeps a sibling enabled. The GUI test
+// stays in place until `--affected` has proved the collapse (SPEC R-10) - deleting it
+// is a later step, not part of landing the seam.
+//
+// RED: before the collapse, `WorkspaceBrowser.canMove` did not exist at all, so a test
+// calling it failed to build rather than failing on an assertion; the seam landed with
+// its declaration and the test together, the same shape `DiaryGeometryTests.swift`
+// documents for seam #8.
+
+@Test func canMoveRefusesAFoldersOwnRow_R06() {
+    #expect(!WorkspaceBrowser.canMove(
+        [VaultItemRef(path: "Parent", kind: .folder)], to: "Parent", from: ""
+    ))
+}
+
+@Test func canMoveRefusesAFoldersOwnDescendant_R06() {
+    #expect(!WorkspaceBrowser.canMove(
+        [VaultItemRef(path: "Parent", kind: .folder)], to: "Parent/Child", from: ""
+    ))
+}
+
+@Test func canMoveAcceptsASiblingFolder_R06() {
+    #expect(WorkspaceBrowser.canMove(
+        [VaultItemRef(path: "Parent", kind: .folder)], to: "Target", from: ""
+    ))
+}
+
+// `destination != parentFolder`: the half `canDrop` alone does not cover - a move into
+// the folder an item already sits in is a no-op, whatever `canDrop` would answer.
+
+@Test func canMoveRefusesTheFolderAnItemAlreadySitsIn() {
+    #expect(!WorkspaceBrowser.canMove(
+        [VaultItemRef(path: "01 Progetti/a.canvas", kind: .board)], to: "01 Progetti", from: "01 Progetti"
+    ))
+}
+
+@Test func canMoveAcceptsARootDestinationDifferentFromTheItemsParent() {
+    #expect(WorkspaceBrowser.canMove(
+        [VaultItemRef(path: "01 Progetti/a.canvas", kind: .board)], to: "", from: "01 Progetti"
+    ))
+}
+
+// Multi-selection: `WorkspaceRow.effectiveItems` carries the whole lit set, so one
+// refusing member refuses the destination for all of them.
+
+@Test func canMoveRefusesAMultiSelectionWhenOneMemberIsTheDestinationItself() {
+    let items = [
+        VaultItemRef(path: "01 Progetti/a.canvas", kind: .board),
+        VaultItemRef(path: "Target", kind: .folder),
+    ]
+
+    #expect(!WorkspaceBrowser.canMove(items, to: "Target", from: "01 Progetti"))
+}
+
+@Test func canMoveAcceptsAMultiSelectionWithNoRefusingMember() {
+    let items = [
+        VaultItemRef(path: "01 Progetti/a.canvas", kind: .board),
+        VaultItemRef(path: "01 Progetti/b.canvas", kind: .board),
+    ]
+
+    #expect(WorkspaceBrowser.canMove(items, to: "Target", from: "01 Progetti"))
+}

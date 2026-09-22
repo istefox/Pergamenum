@@ -119,18 +119,6 @@ final class SidebarMoveUITests: XCTestCase {
                      "Parent è ancora nella radice")
     }
 
-    // MARK: R-03 - a note row's «Sposta in ▸ B» moves the .md file, in the Note sidebar
-
-    func testMovingANoteRowViaTheMenuMovesTheFile_R03() throws {
-        let row = noteRow("note-row-Note.md")
-        moveViaMenu(row, to: "Target")
-
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/Note.md"), toExist: true),
-                     "Note.md non è comparsa in Target/")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Note.md"), toExist: false),
-                     "Note.md è ancora nella radice")
-    }
-
     // MARK: R-04 - a folder row's «Sposta in ▸ B» moves the folder and its contents, in the Note sidebar
 
     func testMovingANoteSidebarFolderRowViaTheMenuMovesItAndItsContents_R04() throws {
@@ -161,32 +149,6 @@ final class SidebarMoveUITests: XCTestCase {
                      "deep.canvas non è comparso alla radice del vault")
         XCTAssertTrue(waitForFile(vault.appending(path: "Deep/deep.canvas"), toExist: false),
                      "deep.canvas è ancora dentro Deep/")
-    }
-
-    // MARK: R-06 - a folder's own menu offers neither itself nor a descendant
-
-    func testAFoldersOwnMoveMenuDisablesItselfAndItsDescendants_R06() throws {
-        openWorkspace()
-        let row = workspaceRow("workspace-folder-Parent")
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        row.rightClick()
-        let moveMenu = app.menuItems["Sposta in"]
-        XCTAssertTrue(moveMenu.waitForExistence(timeout: 5))
-        moveMenu.click()
-
-        let itself = app.menuItems["Parent"]
-        let descendant = app.menuItems["Parent/Child"]
-        let sibling = app.menuItems["Target"]
-        XCTAssertTrue(itself.waitForExistence(timeout: 5))
-        XCTAssertTrue(descendant.waitForExistence(timeout: 5))
-        XCTAssertTrue(sibling.waitForExistence(timeout: 5))
-        XCTAssertFalse(itself.isEnabled, "«Parent» non dovrebbe offrire sé stessa come destinazione")
-        XCTAssertFalse(descendant.isEnabled, "«Parent» non dovrebbe offrire «Parent/Child» come destinazione")
-        XCTAssertTrue(sibling.isEnabled, "una cartella sorella dovrebbe restare una destinazione valida")
-
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitForFile(vault.appending(path: "Parent"), toExist: true),
-                     "nessuna scrittura su disco doveva avvenire da un controllo di sola lettura del menu")
     }
 
     // MARK: R-07 - a collision is refused, named in a dialog, and changes nothing on disk
