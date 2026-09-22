@@ -9,9 +9,11 @@
 # its sixty-seven tests turned out to have been red since before the milestone that was
 # about to be merged, and nothing had said so (PG-033).
 #
-# This script is the other half of the answer. The written rule is in CLAUDE.md: the suite
-# runs before every merge to `main`. What is here is everything about that run which is
-# easy to get wrong:
+# This script is the other half of the answer. That per-turn gap is now closed a different
+# way (the UI-suite-replacement plan, stage 3): the written rule in CLAUDE.md is that the
+# merge gate is the unit suite plus the in-process hosted-view tests, and only `--affected`
+# runs at merge time. What is here is everything about a run of this script which is easy
+# to get wrong:
 #
 #   - **Stale instances are killed first.** A full run started with one alive gives 18
 #     failures that are not real, every one at exactly 60.2 s - the launch timeout - and

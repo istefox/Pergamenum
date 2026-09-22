@@ -123,10 +123,9 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 - No branch protection is configured: the discipline above is the only guard.
 - **CI (ADR-0044, `.github/workflows/ci.yml`) builds `Pergamenum`, `perg` and `pergamenum-mcp` from a
   clean checkout and runs `PergamenumTests`, on every PR and on push to `main`.** It is advisory, not
-  a required check, and it verifies nothing else: the UI suite (`scripts/uitests.sh`, still by hand
-  before every merge), SwiftLint and the release pipeline are not on it. A green CI badge means those
-  three targets build and the unit suite passes — nothing about the UI suite, which is where the last
-  several merges' real regressions were.
+  a required check, and it verifies nothing else: the UI suite (`scripts/uitests.sh`, run through
+  `--affected` at merge per the rule below), SwiftLint and the release pipeline are not on it. A green
+  CI badge means those three targets build and the unit suite passes — nothing about the UI suite.
 
 ## Commands
 
@@ -268,12 +267,19 @@ move the previous copy aside rather than deleting it.
   holding the global hot key exclusively - so the next launch was refused. Two hours went
   into hunting an external culprit for something the assistant was doing itself. The UI
   tests still exist and are run deliberately, by hand.
-- **The UI suite runs before every merge to `main`, through `scripts/uitests.sh`.** That
-  rule is the price of the one above, and it was bought on 2026-08-21: three of the
-  sixty-seven UI tests had been red since before the milestone about to be merged, and
-  nothing had said so, because a suite outside `test-cmd` is a suite whose state is
-  unknown between deliberate runs (`PG-033`). A merge is the one moment that is rare
-  enough to afford twelve minutes and important enough to deserve them.
+- **The merge gate is the unit suite (`PergamenumTests`) plus the in-process tests
+  (`Tests/HostedViewPrototypeTests.swift` and siblings), not the GUI suite.** This
+  supersedes the rule bought on 2026-08-21 after three of the sixty-seven UI tests had
+  been red since before a milestone merge and nothing had said so (`PG-033`) — the fix for
+  that gap is now the hosted-view conversions themselves (`docs/plans/ui-suite-replacement.md`),
+  not a mandatory full GUI run on every merge. The seventeen GUI tests that remain run
+  through `scripts/uitests.sh --affected` at merge time and do not block it; a full run of
+  all seventeen is required only before a release (`scripts/release.sh`), not before every
+  merge. `--status`'s `contaminated` verdict counts as neither green nor red — the run is
+  disturbed, not conclusive, and is rerun rather than acted on either way. A new feature
+  carries at most two or three GUI tests, and each one is justified in the feature's own
+  ADR: the GUI suite is a bounded, deliberately small backstop, not the default place a new
+  test lands.
   The script is not a convenience wrapper: it kills stale instances first, refuses to run
   while a copy out of `/Applications` is open, prints the seconds beside each failure so a
   launch timeout is not mistaken for a defect, and cleans up after itself. Run it with no
@@ -323,8 +329,9 @@ move the previous copy aside rather than deleting it.
   `scripts/uitests.sh --status`** - it answers instantly whether this tree or `main` is already
   verified and what changed since the last full green; a full run over a verified tree is skipped
   (`--force` overrides), and a second session cannot start one while another holds the lock.
-  `--affected` runs only the classes a change since that green can reach, and nothing when none can.
-  The whole suite is run once by whoever merges to `main`; every other session reads the verdict.
+  `--affected` runs only the classes a change since that green can reach, and nothing when none can,
+  and is what a merge to `main` runs — not the whole suite (see the merge-gate rule above). The
+  full suite is run once before a release, by whoever ships it; every other session reads the verdict.
 - **A UI-test instance outlives its run.** After `xcodebuild test`, one or more copies of
   the app are usually still running on a vault inside
   `~/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/Data/tmp/`, which is not

@@ -88,6 +88,17 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-09-22: **UI-suite-replacement, stage 3 (Task 6 and Task 7) — merge gate rule changed.**
+  The remaining 62 census-approved GUI tests were retired across 13 per-file groups (one commit
+  each), leaving 17 GUI tests, the hand-decided cap from 2026-09-21. The mandated full
+  `scripts/uitests.sh --force` run over the 17 survivors was green (17/17, 0 failures, 202s) —
+  the last full run the old merge rule requires. `CLAUDE.md`'s "Working agreements" and "Git
+  conventions" sections are amended in place (not appended beside): the merge gate is now the
+  unit suite plus the in-process hosted-view tests, not the GUI suite; the 17 GUI tests run
+  through `scripts/uitests.sh --affected` at merge and do not block it; a full run of all 17 is
+  required only before a release; `--status`'s `contaminated` verdict counts as neither green nor
+  red; a new feature carries at most 2-3 GUI tests, justified in its own ADR. `scripts/uitests.sh`'s
+  header is amended to match. See `docs/plans/ui-suite-replacement.md` (R-18, R-19).
 - 2026-09-18: **A pratica links to notes, tasks and boards (ADR-0049) — all 8 plan tasks
   implemented on `feat-note-project`.** Three foreign `pergamenum-dossier-links-*` keys on
   `pratica.md` (`PraticaLinks`, kept out of `Dossier` so `Dossier.merging` cannot erase them) plus
