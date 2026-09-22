@@ -12,9 +12,6 @@ import Testing
 // out of reach in-process is the label *as read from the accessibility tree* (R-08: the tree is
 // one childless group) - these tests read the string, and `.accessibilityLabel(...)` attaching it
 // to the row is not tested by anything but the GUI tests that stay.
-//
-// RED: the seam is a placeholder answering "" for every row, so each assertion below fails on its
-// `#expect`, not on a build error.
 
 @Test func aBoardRowReadsItsNameAndSaysOpenOnlyWhenItIsTheOpenOne() {
     let kind = WorkspaceTree.Node.Kind.board(path: "A/x.canvas")
