@@ -213,8 +213,8 @@ private final class StopSpy {
         let vault = try TemporaryVault()
         try vault.write(dossierNote, to: "\(Self.folder)/pratica.md")
         let fixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -263,8 +263,8 @@ private final class StopSpy {
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         // Seeded directly, `PraticaLiveSyncRelocatedMidRunTests`' own pattern: a real
         // membership-rule sync is not what this test is about.

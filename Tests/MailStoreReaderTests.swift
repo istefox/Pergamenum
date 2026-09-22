@@ -17,39 +17,53 @@ import Testing
 @Suite(.serialized) struct MailStoreReaderTests {
     // MARK: - R-19: MailStoreLocation
 
-    @Test func resolveNeverPointsAtTheRealMailLibraryUnderTest() {
+    @Test func resolveNeverPointsAtTheRealMailLibraryUnderTest() async {
         // Real behaviour (ADR §D7): under xctest, with no override, `resolve()`
         // returns a per-process temporary fixture root - never
         // `~/Library/Mail/V10`. The stub returns a fixed placeholder outside the
         // temporary directory, so this fails until the coder implements §D7.
+        //
+        // `MailStoreLocation.overrideKey` is process-global (PG-208) - a concurrent
+        // suite's override must not leak into this "no override" assertion, so this
+        // still takes the gate even though it never sets anything through it.
+        await MailStoreOverride.acquireWithoutOverride()
+        defer { MailStoreOverride.release() }
+
         let resolved = MailStoreLocation.resolve()
         let temporaryDirectory = FileManager.default.temporaryDirectory.path(percentEncoded: false)
         #expect(resolved.path(percentEncoded: false).hasPrefix(temporaryDirectory))
     }
 
-    @Test func resolveIsStablePerProcessNotPerCall() {
+    @Test func resolveIsStablePerProcessNotPerCall() async {
         // Real behaviour (ADR §D7, mirroring `VaultState.testProcessBase`): the same
         // per-process fixture root is returned on every call within one process, or
         // a session that calls `resolve()` twice loses state written by the first
         // call. This is expected to already hold for the current constant stub -
         // kept as a guard against a future implementation that resolves a *new*
         // temporary directory per call.
+        await MailStoreOverride.acquireWithoutOverride()
+        defer { MailStoreOverride.release() }
+
         #expect(MailStoreLocation.resolve() == MailStoreLocation.resolve())
     }
 
-    @Test func resolveHonoursTheMailStoreRootOverride() {
+    @Test func resolveHonoursTheMailStoreRootOverride() async {
         // R-19: `-mailStoreRoot <path>` must redirect the reader to a fixture store.
         // `MailStoreLocation.resolve()` reads `UserDefaults.standard` directly
         // (mirroring `VaultState.processDefaultBase()`'s own `-stateBase` read), and
         // a custom `UserDefaults(suiteName:)` is not in `.standard`'s search list -
-        // `resolve()` would never see a key set anywhere else. Writing to `.standard`
-        // is therefore required, not a shortcut; the suite is `.serialized` (Swift
-        // Testing runs tests in parallel by default) so this write cannot race the
-        // two sibling `resolve()` tests above, and the key is removed in `defer` so
-        // it cannot leak into either of them on a later run.
+        // `resolve()` would never see a key set anywhere else. The key is
+        // process-global (PG-208): `.serialized` only serializes tests within this
+        // suite, not against the five other files that touch the same key while
+        // Swift Testing runs suites in parallel, so `MailStoreOverride`'s gate - not
+        // the suite trait - is what makes this write safe.
+        // Built with no `directoryHint`, unlike `expected` below: `acquire` stores
+        // `root.path(percentEncoded: false)` verbatim, and a `.isDirectory` hint here
+        // would append the trailing slash `resolve()` is responsible for adding, not
+        // this test's setup.
         let overridePath = "/tmp/pergamenum-mailstore-reader-tests-override"
-        UserDefaults.standard.set(overridePath, forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: URL(filePath: overridePath))
+        defer { MailStoreOverride.release() }
 
         // `resolve()` builds its result as `URL(filePath:directoryHint: .isDirectory)`
         // (see its own implementation), which appends a trailing slash to the path -

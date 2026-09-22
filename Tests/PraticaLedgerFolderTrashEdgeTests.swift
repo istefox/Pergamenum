@@ -267,8 +267,8 @@ private func stop(continuing path: String, on controller: PraticheController) ->
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -341,8 +341,8 @@ private func stop(continuing path: String, on controller: PraticheController) ->
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
         let seedEngine = PraticaSyncFixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vault.root)
         _ = try await seedEngine.sync(PraticaSyncEngine.SyncRequest(
             praticaFolder: Self.folder, dossier: PraticaSyncFixtures.sampleDossier(),
