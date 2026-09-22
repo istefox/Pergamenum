@@ -82,6 +82,60 @@ struct PlaudHTTPClientTests {
         #expect(decoded == ["task_ids": ["t1", "t2"]])
     }
 
+    // MARK: - PG-126: path-safety charset
+
+    @Test func processRejectsAnIDContainingADotSegmentAndSendsNothing() async throws {
+        let capture = RecordingCaptureProtocol.expect(responding: Self.with200(json: "{}"))
+        let client = PlaudHTTPClient(session: Self.makeSession())
+
+        await #expect(throws: PlaudError.invalidIdentifier("../health")) {
+            _ = try await client.process(id: "../health", force: false)
+        }
+        #expect(capture.lastRequest == nil)
+    }
+
+    @Test func jobRejectsABareDotSegment() async throws {
+        let capture = RecordingCaptureProtocol.expect(responding: Self.with200(json: "{}"))
+        let client = PlaudHTTPClient(session: Self.makeSession())
+
+        await #expect(throws: PlaudError.invalidIdentifier("..")) {
+            _ = try await client.job(id: "..")
+        }
+        #expect(capture.lastRequest == nil)
+    }
+
+    @Test func proposalRejectsAnIDContainingASlash() async throws {
+        let capture = RecordingCaptureProtocol.expect(responding: Self.with200(json: "{}"))
+        let client = PlaudHTTPClient(session: Self.makeSession())
+
+        await #expect(throws: PlaudError.invalidIdentifier("a/b")) {
+            _ = try await client.proposal(recordingID: "a/b")
+        }
+        #expect(capture.lastRequest == nil)
+    }
+
+    @Test func confirmImportedRejectsAnIDContainingADotSegment() async throws {
+        let capture = RecordingCaptureProtocol.expect(responding: Self.noContent())
+        let client = PlaudHTTPClient(session: Self.makeSession())
+
+        await #expect(throws: PlaudError.invalidIdentifier("../x")) {
+            try await client.confirmImported(recordingID: "../x", taskIDs: [])
+        }
+        #expect(capture.lastRequest == nil)
+    }
+
+    @Test func aRealWireShapedIDStillReachesTheIntendedPath() async throws {
+        let capture = RecordingCaptureProtocol.expect(
+            responding: Self.with200(json: #"{"job_id":"j1","state":"queued"}"#)
+        )
+        let client = PlaudHTTPClient(session: Self.makeSession())
+
+        _ = try await client.process(id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", force: false)
+
+        let request = try #require(capture.lastRequest)
+        #expect(request.url?.path == "/recordings/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/process")
+    }
+
     // MARK: - Fixtures
 
     private static func makeSession() -> URLSession {
