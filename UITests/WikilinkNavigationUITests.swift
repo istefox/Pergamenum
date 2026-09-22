@@ -1,8 +1,16 @@
 import XCTest
 
-/// Issue #188 (R-12, R-13): Cmd+click on a wikilink navigates to the linked note; a plain
-/// click on the same text places the caret and does not navigate, preserving ADR-0029's
-/// always-editable model.
+/// Issue #188 (R-12, R-13): Cmd+click on a wikilink navigates to the linked note, exercising
+/// the real `AXLink` click with real modifier flags - the editor's central interaction and
+/// the one path a synthetic click could actually reproduce.
+///
+/// The two plain-click tests retired here per the UI-suite-replacement census (stage 3,
+/// Task 6) were vacuous by their own comments: synthetic XCUITest clicks never reproduced
+/// the underlying AppKit gesture regardless of click sequencing, so what they asserted was
+/// the absence of navigation from a click that was never a real click to begin with. Both
+/// are replaced by the plain-click-refused unit test the injectable Cmd-state closure
+/// (`NoteTextView+Coordinator.swift:411`) makes possible, named in the census's
+/// WorkspaceFocusUITests/WikilinkNavigationUITests entry.
 final class WikilinkNavigationUITests: XCTestCase {
     private var vault: URL!
     private var stateBase: URL!
@@ -119,49 +127,4 @@ final class WikilinkNavigationUITests: XCTestCase {
         )
     }
 
-    /// Mirrors the exact sequence that reproduced the reported regression on a real mouse
-    /// (issue #188): a click elsewhere in the note first, so the view has already become first
-    /// responder, THEN a plain click on the wikilink - not the wikilink as the very first click.
-    /// Synthetic XCUITest clicks never reproduced the underlying AppKit gesture regardless of
-    /// this sequencing, but the assertion still guards the behavior the fix defends: even if
-    /// AppKit's own automatic "clickedOnLink" fires here on its own, the Cmd-liveness check in
-    /// `textView(_:clickedOnLink:at:)` must refuse it.
-    func testAPlainClickOnAWikilinkAfterAPriorUnrelatedClickDoesNotNavigate() throws {
-        let editor = openOriginAndReturnEditor()
-
-        // Click near the top-left, on the frontmatter "---" - far from the wikilink line -
-        // first, mirroring "clicco in un punto diverso e la nota renderizza".
-        let origin = editor.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        origin.withOffset(CGVector(dx: 40, dy: 30)).click()
-
-        wikilinkElement().click()
-
-        let source = editor.value as? String ?? ""
-        XCTAssertFalse(
-            source.contains("Nota di arrivo"),
-            "un click semplice sul wikilink, dopo un click precedente altrove, ha navigato"
-        )
-    }
-
-    func testAPlainClickOnAWikilinkPlacesTheCaretAndDoesNotNavigate() throws {
-        let editor = openOriginAndReturnEditor()
-
-        wikilinkElement().click()
-
-        // ADR-0029: the editor stays always-editable, so a plain click on link text is an
-        // ordinary caret placement, never a navigation - typing right after the click must
-        // land in "Origine", not silently in a note that was never opened. "Destinazione"
-        // is not a usable navigation signal here: its own sidebar row exists regardless of
-        // whether it is open, so the check must read the editor's own content instead.
-        editor.typeText("X")
-        let source = editor.value as? String ?? ""
-        XCTAssertTrue(
-            source.contains("X"),
-            "il click semplice non ha posizionato il cursore nell'editor di 'Origine'"
-        )
-        XCTAssertFalse(
-            source.contains("Nota di arrivo"),
-            "un click semplice sul wikilink ha navigato, invece di posizionare solo il cursore"
-        )
-    }
 }
