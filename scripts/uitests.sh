@@ -148,7 +148,7 @@ classes_for_path() {
             echo "TaskCategoriesUITests" ;;
         Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
             echo "DayViewUITests DiaryUITests" ;;
-        Sources/App/SparkleUpdateController*) echo "UpdateMenuUITests" ;;
+        Sources/App/SparkleUpdateController*) echo NONE ;;
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;
     esac
