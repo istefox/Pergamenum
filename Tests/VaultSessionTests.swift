@@ -188,6 +188,57 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     #expect(text.contains("- [ ] Beta"))
 }
 
+// ADR-0054 §D6 (plan `docs/plans/pg-213-workspace-autosave-race.md`, Task 6):
+// `writeTaskSource`'s board branch re-reads the board immediately before writing and
+// saves with that fresh read's own hash as `expecting`, rather than reusing whatever it
+// or the caller read earlier. Written between the task's capture off the index and the
+// toggle itself (never a timing-based interleaving - ADR-0046 §D11), a change to a
+// *different* node is invisible to `TaskParser.rewrite`'s own line-match guard, so this
+// is the one shape that would silently clobber a concurrently-added node if the board
+// branch instead wrote back whatever it held in memory from before the external change.
+// It does not: the fresh read/write means the added node survives.
+//
+// An actual *refusal* from this specific writer - the other half of "refuses rather than
+// clobbering" - needs a write landing between that fresh read and the save immediately
+// following it, and there is no `await` between them for a synchronous test to land a
+// second writer inside (the same in-process-atomicity shape as the Workspace autosave's
+// retry, `Tests/WorkspaceAutosaveRaceTests.swift`'s documented limitation). The guard
+// itself - `CanvasStore.save`'s `expecting:` precondition throwing `VaultWriteRefusal` -
+// is exercised directly in `Tests/CanvasStoreTests.swift`; what is left to prove here is
+// only that this call site's read-modify-write does not clobber, which the test below
+// does.
+@MainActor
+@Test func aBoardSourcedTaskToggleReadsFreshSoAConcurrentlyAddedNodeSurvivesTheWrite() async throws {
+    let vault = try TemporaryVault()
+    let canvasStore = CanvasStore(root: vault.root)
+    let node = CanvasNode(id: "node1", kind: .text("- [ ] Alfa"), x: 0, y: 0, width: 260, height: 120)
+    try canvasStore.save(CanvasDocument(nodes: [node]), board: "Lavagna.canvas")
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    let task = try #require(session.index.allTasks.first { $0.sourcePath == "Lavagna.canvas" })
+
+    // Someone else adds an unrelated node - written between the task's capture and the
+    // toggle below, in this one synchronous test body, not raced against it.
+    var withAddedNode = try canvasStore.load(board: "Lavagna.canvas")
+    withAddedNode.nodes.append(CanvasNode(
+        id: "external", kind: .text("- [ ] Nuovo"), x: 400, y: 400, width: 200, height: 100
+    ))
+    try canvasStore.save(withAddedNode, board: "Lavagna.canvas")
+
+    guard case .written = await session.apply(.state(.done), to: task) else {
+        Issue.record("la scrittura non è avvenuta: \(session.problems)")
+        return
+    }
+
+    let onDisk = try canvasStore.load(board: "Lavagna.canvas")
+    guard case .text(let alfaText) = onDisk.node(id: "node1")?.kind else {
+        Issue.record("il nodo del task non è più .text")
+        return
+    }
+    #expect(alfaText.contains("- [x] Alfa"))
+    // The concurrently-added node was not clobbered by the toggle's write.
+    #expect(onDisk.node(id: "external") != nil)
+}
+
 // MARK: - The day
 
 @MainActor

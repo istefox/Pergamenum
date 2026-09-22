@@ -342,6 +342,10 @@ struct FolderFileOperations {
         var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
         var failures: [String] = []
+        /// Board paths whose bytes moved on between the plan and the write, refused
+        /// rather than clobbered (ADR-0054 §D6). Declared after `failures` so every
+        /// existing memberwise call stays valid (ADR-0046 §D4's compatibility rule).
+        var refusals: [String] = []
     }
 
     /// Moves the directory and writes every planned change - in that order, and the
@@ -398,14 +402,13 @@ struct FolderFileOperations {
         let notes = VaultPlanApplication.apply(plan.noteChanges) {
             try store.write($0.after, to: $0.path)
         }
-        // Written as bytes rather than through `NoteStore.write`: a `.canvas` is not a note and
-        // the planned text is already the encoded document - which is why `apply` takes the
-        // writer rather than assuming one (ADR-0041 §D4).
-        let boards = VaultPlanApplication.apply(plan.boardChanges) {
-            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
-        }
+        // Guarded through the one repoint door (ADR-0054 §D6) rather than an unconditional
+        // byte write - which is why `apply` takes the writer rather than assuming one
+        // (ADR-0041 §D4).
+        let boards = VaultPlanApplication.apply(plan.boardChanges, writing: canvas.writeRepoint)
         outcome.rewrittenPaths = notes.rewrittenPaths + boards.rewrittenPaths
         outcome.failures.append(contentsOf: notes.failures + boards.failures)
+        outcome.refusals.append(contentsOf: boards.refusals)
         return outcome
     }
 

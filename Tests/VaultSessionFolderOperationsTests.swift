@@ -116,6 +116,47 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(session.journalOnDisk.entries().isEmpty)
 }
 
+// ADR-0054 §D6 (plan `docs/plans/pg-213-workspace-autosave-race.md`, Task 6, R-07): the
+// two tests above only exercise a folder with no `.canvas` referencing it, so they never
+// reach `canvas.writeRepoint` - Task 2/6's new write door. A folder rename that *does*
+// carry a board repoint (the same fixture shape as
+// `Tests/FolderFileOperationTests.swift`'s `renamePlanRepointsCanvasNodesByPrefix…`) must
+// stay just as unjournalled: ADR-0025 §D6 says board writes never touch the journal, the
+// index or either connector, and that has to remain true of the new door, not only of the
+// old direct `Data.write` it replaced.
+@MainActor
+@Test func renamingAFolderWithABoardReferencingItRepointsTheBoardWithNoJournalEntry() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "01 Progetti/vecchio/Nota.md")
+    let canvas = CanvasStore(root: vault.root)
+    _ = try canvas.save(
+        CanvasDocument(nodes: [
+            CanvasNode(
+                id: "a", kind: .file(path: "01 Progetti/vecchio/Nota.md", subpath: nil),
+                x: 0, y: 0, width: 260, height: 180
+            ),
+        ]),
+        board: "Labs.canvas"
+    )
+    let session = try await armedSession(vault)
+
+    let outcome = try session.renameFolder(at: "01 Progetti/vecchio", to: "nuovo")
+
+    // The repoint actually ran through `writeRepoint` - not a vacuous pass because the
+    // board never changed.
+    let onDisk = try canvas.load(board: "Labs.canvas")
+    guard case .file(let path, _) = onDisk.node(id: "a")?.kind else {
+        Issue.record("expected node a to stay a .file node")
+        return
+    }
+    #expect(path == "01 Progetti/nuovo/Nota.md")
+    #expect(outcome.newPath == "01 Progetti/nuovo")
+    #expect(
+        session.journalOnDisk.entries().isEmpty,
+        "a board repoint through the new writeRepoint door must never touch the journal (ADR-0025 §D6, R-07)"
+    )
+}
+
 // MARK: - The facade refuses while a note under the folder has unsaved edits
 
 @MainActor

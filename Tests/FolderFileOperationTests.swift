@@ -601,3 +601,56 @@ private let sampleBoard = """
     #expect(isDirectory("A", in: vault.root))
     #expect(!isDirectory("B/A", in: vault.root))
 }
+
+// MARK: - ADR-0054 §D6: writeRepoint refusals on folder rename/move
+
+@Test func aSiblingBoardWhoseBytesMovedOnIsRefusedThroughWriteRepointOnFolderRename() throws {
+    let vault = try FolderOpsVault()
+    try vault.createDirectory("01 Progetti/vecchio")
+    let rootBoard = """
+    {"nodes":[{"id":"a","type":"file","file":"01 Progetti/vecchio/Nota.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(rootBoard, to: "Labs.canvas")
+
+    let plan = try vault.operations.renamePlan("01 Progetti/vecchio", to: "nuovo", knownPaths: [])
+    let staleChanges = plan.boardChanges.map {
+        VaultFileChange(path: $0.path, before: "{\"nodes\":[],\"stale\":true}", after: $0.after)
+    }
+    let originalBoard = try vault.text(at: "Labs.canvas")
+
+    let canvas = CanvasStore(root: vault.root)
+    let result = VaultPlanApplication.apply(staleChanges, writing: canvas.writeRepoint)
+
+    #expect(result.refusals == ["Labs.canvas"])
+    #expect(result.rewrittenPaths.isEmpty)
+    #expect(try vault.text(at: "Labs.canvas") == originalBoard)
+}
+
+@Test func theRepointLoopOnAFolderMoveReportsARefusalAndStillRepointsTheOtherSiblings() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+    let stale = """
+    {"nodes":[{"id":"a","type":"file","file":"A/n.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    let fine = """
+    {"nodes":[{"id":"b","type":"file","file":"A/n.md","x":0,"y":0,"width":260,"height":180}],"edges":[]}
+    """
+    try vault.write(stale, to: "Stale.canvas")
+    try vault.write(fine, to: "Fine.canvas")
+
+    let plan = try vault.operations.movePlan("A", toParent: "B")
+    let changes = plan.boardChanges.map { change in
+        change.path == "Stale.canvas"
+            ? VaultFileChange(path: change.path, before: "{\"nodes\":[],\"stale\":true}", after: change.after)
+            : change
+    }
+    let originalStale = try vault.text(at: "Stale.canvas")
+
+    let canvas = CanvasStore(root: vault.root)
+    let result = VaultPlanApplication.apply(changes, writing: canvas.writeRepoint)
+
+    #expect(result.refusals == ["Stale.canvas"])
+    #expect(result.rewrittenPaths == ["Fine.canvas"])
+    #expect(try vault.text(at: "Stale.canvas") == originalStale)
+    #expect(try vault.text(at: "Fine.canvas").contains("B/A/n.md"))
+}

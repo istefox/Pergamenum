@@ -69,6 +69,10 @@ extension FolderFileOperations {
         var movedNotes: [MovedNote] = []
         var rewrittenPaths: [String] = []
         var failures: [String] = []
+        /// Board paths whose bytes moved on between the plan and the write, refused
+        /// rather than clobbered (ADR-0054 §D6). Declared after `failures` so every
+        /// existing memberwise call stays valid (ADR-0046 §D4's compatibility rule).
+        var refusals: [String] = []
     }
 
     /// Moves the directory under a different parent - same folder name, never a rename -
@@ -116,11 +120,15 @@ extension FolderFileOperations {
         var outcome = MoveOutcome(
             newPath: plan.newPath, movedNotes: movedNotes, failures: plan.failures
         )
-        let boards = VaultPlanApplication.apply(plan.boardChanges) {
-            try Data($0.after.utf8).write(to: try store.url(for: $0.path), options: .atomic)
-        }
+        // Guarded through the one repoint door (ADR-0054 §D6). `canvas` is `private` to
+        // `FolderFileOperations.swift`, so this file builds its own value over the same
+        // root - the same thing that property does, not a second implementation of it.
+        let boards = VaultPlanApplication.apply(
+            plan.boardChanges, writing: CanvasStore(root: store.root).writeRepoint
+        )
         outcome.rewrittenPaths.append(contentsOf: boards.rewrittenPaths)
         outcome.failures.append(contentsOf: boards.failures)
+        outcome.refusals.append(contentsOf: boards.refusals)
         return outcome
     }
 }

@@ -135,6 +135,10 @@ extension VaultSession {
                         // `renameBoard` is not `renameFolder` with a different path).
                         let board = try boardOperations.moveBoard(at: move.item.path, toFolder: move.to)
                         report(board.failures)
+                        // The open Workspace board can hold this exact file's unsaved
+                        // edits (ADR-0054 §D6) - the same shape `.note` above already
+                        // reports apart from `report`'s failure wording.
+                        reportRefusals(board.refusals)
 
                     case .folder:
                         let folder = try folderOperations.moveFolder(at: move.item.path, toParent: move.to)
@@ -149,6 +153,9 @@ extension VaultSession {
                         outcome.movedNotes.append(contentsOf: folder.movedNotes)
                         outcome.movedFolders.append(MovedNote(old: move.item.path, new: folder.newPath))
                         report(folder.failures)
+                        // Any board inside the moved folder can be open the same way
+                        // (ADR-0054 §D6).
+                        reportRefusals(folder.refusals)
                     }
                 } catch {
                     // The file never moved, so a star taken from it above belongs back
