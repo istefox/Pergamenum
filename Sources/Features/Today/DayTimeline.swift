@@ -19,11 +19,22 @@ struct DayTimeline: View {
     /// The window widened to reach everything on the day: an event at 23:00 under a
     /// window ending at 18:00 would otherwise be drawn below the grid and never seen.
     private var hours: HourWindow {
-        window.covering(
+        Self.hours(
+            for: window,
             startMinutes: blocks.map(\.startMinutes) + timedEvents.map { minutes(from: $0.start) },
             endMinutes: blocks.map(\.endMinutes)
                 + timedEvents.map { minutes(from: $0.start) + duration(of: $0) }
         )
+    }
+
+    /// The widening itself (ADR-0053 §D2 seam #10), pulled out of the computed property
+    /// above so a test can call it with plain integers rather than building a `TimeBlock`
+    /// or a `CalendarEvent`: `hours` is not a function of `window` alone, but everything
+    /// else it reads - `timedEvents`, `minutes(from:)`, `duration(of:)` - is private to
+    /// this view and over `CalendarEvent`, so those stay here and hand this the minutes
+    /// already converted.
+    static func hours(for window: HourWindow, startMinutes: [Int], endMinutes: [Int]) -> HourWindow {
+        window.covering(startMinutes: startMinutes, endMinutes: endMinutes)
     }
 
     private var firstHour: Int { hours.first }

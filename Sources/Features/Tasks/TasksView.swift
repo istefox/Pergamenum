@@ -65,12 +65,7 @@ struct TasksView: View {
 
     private func followLastCapture() {
         guard let capture = vault.consumeLastCapture() else { return }
-        let view: IndexSnapshot.TaskView = switch capture.day {
-        case .none: .inbox
-        case .some(let day) where day <= today: .today
-        default: .upcoming
-        }
-        selection = .view(view)
+        selection = .view(.landing(forCapturedDay: capture.day, today: today))
     }
 
     private func followPendingCategorySelection() {

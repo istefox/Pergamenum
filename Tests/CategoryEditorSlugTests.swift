@@ -29,3 +29,24 @@ import Testing
     #expect(CategoryEditor.slugProblem(slug: "", isCreating: false) == nil)
     #expect(CategoryEditor.slugProblem(slug: "not valid", isCreating: false) == nil)
 }
+
+// `CategoryEditor.isSaveDisabled(name:slug:isCreating:)` (ADR-0053 §D2 seam #9): the
+// defect it fixed was «Crea» staying enabled with an empty slug, so an empty name and a
+// slug problem both have to disable it on their own, and neither should while editing.
+
+@Test func isSaveDisabledOnAnEmptyNameEvenWithAFineSlug() {
+    #expect(CategoryEditor.isSaveDisabled(name: "", slug: "stampo-nexion", isCreating: true))
+    #expect(CategoryEditor.isSaveDisabled(name: "   ", slug: "stampo-nexion", isCreating: true))
+}
+
+@Test func isSaveDisabledOnASlugProblemEvenWithAName() {
+    #expect(CategoryEditor.isSaveDisabled(name: "Stampo Nexion", slug: "", isCreating: true))
+    #expect(CategoryEditor.isSaveDisabled(name: "Stampo Nexion", slug: "Not Valid", isCreating: true))
+}
+
+@Test func isSaveDisabledIsFalseOnlyWithBothAName() {
+    #expect(!CategoryEditor.isSaveDisabled(name: "Stampo Nexion", slug: "stampo-nexion", isCreating: true))
+    // While editing the slug field is disabled and already valid, so only the name matters.
+    #expect(!CategoryEditor.isSaveDisabled(name: "Stampo Nexion", slug: "not valid", isCreating: false))
+    #expect(CategoryEditor.isSaveDisabled(name: "", slug: "not valid", isCreating: false))
+}

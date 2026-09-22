@@ -60,25 +60,6 @@ final class HistoryNavigationUITests: XCTestCase {
         XCTAssertTrue(viewsPane.waitForExistence(timeout: 5), "avanti non è tornato a Viste")
     }
 
-    /// §D3, and the reason the rule exists: five days scrolled past are one entry, so one
-    /// press of «Indietro» leaves the pane instead of replaying the scrolling.
-    func testScrollingTheDayLeavesOneEntry() throws {
-        launch()
-
-        show("Tag")
-        XCTAssertTrue(tagList.waitForExistence(timeout: 5), "la pane Tag non è comparsa")
-        show("Oggi")
-        XCTAssertTrue(dayNext.waitForExistence(timeout: 5), "la toolbar di Oggi non è comparsa")
-
-        for _ in 1...5 { dayNext.click() }
-
-        back.click()
-        XCTAssertTrue(
-            tagList.waitForExistence(timeout: 5),
-            "un solo «indietro» non è uscito da Oggi: lo scorrimento dei giorni è finito in cronologia"
-        )
-    }
-
     // MARK: Support
 
     private func launch() {

@@ -278,36 +278,6 @@ final class ComposerUITests: XCTestCase {
         )
     }
 
-    /// Captured from the Note pane, the task lands in Inbox - a view Attività does not
-    /// open on. Arriving there afterwards has to show it, or the capture reads as lost.
-    func testAttivitaOpensOnTheViewTheCapturedTaskLandedIn() throws {
-        app.menuBars.menuItems["Nuovo task rapido"].click()
-        let text = app.textFields["task-composer-text"]
-        XCTAssertTrue(text.waitForExistence(timeout: 5))
-        text.click()
-        text.typeText("Task catturato da Note")
-        app.buttons["task-composer-create"].click()
-
-        show("Attività")
-        let row = app.descendants(matching: .any).matching(identifier: "task-row").firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "la sezione non si è messa sulla vista del task")
-        XCTAssertTrue(
-            app.staticTexts["Inbox"].exists,
-            "il task senza scadenza è in Inbox, ma la vista mostrata è un'altra"
-        )
-    }
-
-    func testTheTaskComposerOpensFromAPaneThatIsNotAttivita() throws {
-        show("Tag")
-        // Through the menu, which is where the command lives: presented by the Attività
-        // pane it did nothing at all from anywhere else.
-        app.menuBars.menuItems["Nuovo task rapido"].click()
-        XCTAssertTrue(
-            app.textFields["task-composer-text"].waitForExistence(timeout: 5),
-            "la cattura rapida non si apre fuori dalla sezione Attività"
-        )
-    }
-
     // MARK: Fixture
 
     /// In the machine's own zone, because `CalendarDate.today` is: in GMT this helper

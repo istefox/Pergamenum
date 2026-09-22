@@ -338,6 +338,32 @@ private func diaryOnDisk(_ root: URL) -> String? {
     controller.close()
 }
 
+/// The widening reaches an entry read off the note itself, not only one added through
+/// `add(...)`: `readsADayWrittenByHand` above pins the parse, this pins that the parsed
+/// entry then widens the grid the same way (ADR-0053 §D2 seam #10's Diario half).
+@MainActor
+@Test func widensToAnEntryParsedFromTheDayItself() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("""
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    ---
+
+    ## Diario
+
+    - 21:00-22:00 Serata
+    """, to: "Diario/20260811.md")
+    let root = vault.root
+    let (diary, controller) = try await makeDiary(vault)
+
+    controller.updateSettings { $0.diaryHours = HourWindow(first: 8, last: 18) }
+    #expect(diary.firstHour == 8)
+    #expect(diary.lastHour == 22)
+    controller.close()
+}
+
 /// An entry before the usual hours must not be invisible: the grid grows up to it.
 @MainActor
 @Test func growsTheGridToReachAnEntryBeforeTheUsualHours() async throws {
