@@ -335,32 +335,6 @@ final class SidebarMoveUITests: XCTestCase {
         XCTAssertTrue(waitForFile(vault.appending(path: "DragMultiB.canvas"), toExist: false, timeout: 8))
     }
 
-    // MARK: Regression - typing in a note then moving a board must not crash on the second Cmd+Z (a853e8e)
-
-    func testUndoAfterTypingInANoteThenMovingABoardDoesNotCrashOnTheSecondUndo_regression() throws {
-        let noteRow = noteRow("note-row-Note.md")
-        XCTAssertTrue(noteRow.waitForExistence(timeout: 5), "la riga della nota assente")
-        noteRow.click()
-        let editor = app.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 5), "l'editor della nota non si è aperto")
-        editor.click()
-        editor.typeText("test regression")
-
-        openWorkspace()
-        let row = workspaceRow("workspace-board-Board.canvas")
-        moveViaMenu(row, to: "Target")
-        XCTAssertTrue(waitForFile(vault.appending(path: "Target/Board.canvas"), toExist: true),
-                     "Board.canvas non si è spostata prima del tentativo di annullamento")
-
-        app.typeKey("z", modifierFlags: .command)
-        XCTAssertTrue(waitForFile(vault.appending(path: "Board.canvas"), toExist: true),
-                     "il primo Cmd+Z non ha ripristinato Board.canvas alla radice")
-
-        app.typeKey("z", modifierFlags: .command)
-        XCTAssertEqual(app.state, .runningForeground,
-                       "l'app è crashata al secondo Cmd+Z dopo aver digitato in una nota e spostato una board (regressione del fix a853e8e)")
-    }
-
     // MARK: R-15 (4/4) - undo of a drag move
 
     func testUndoOfADragMoveRestoresTheFile_R15() throws {

@@ -12,6 +12,11 @@ extension NoteTextView {
     final class Coordinator: NSObject, NSTextViewDelegate, LinkNavigatingDelegate {
         var parent: NoteTextView
         weak var textView: NSTextView?
+        /// Read live, at the moment `textView(_:clickedOnLink:at:)` runs, never captured at
+        /// init (ADR-0053 §D2 seam #4) - the method's own comment above it explains why the
+        /// check has to be live. A test injects a fixed value here instead of driving a real
+        /// `NSEvent`; production never overrides the default.
+        var modifierFlags: () -> NSEvent.ModifierFlags = { NSEvent.modifierFlags }
         /// The window's `undoManager` as of the last update, captured here because
         /// `dismantleNSView` runs after SwiftUI has already detached the text view from
         /// its window - `textView.undoManager` resolves through the responder chain and
@@ -408,7 +413,7 @@ extension NoteTextView {
         // collegamento" (R-07) deliberately does NOT go through this method at all, since it
         // is the one gesture that must navigate without Cmd.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard NSEvent.modifierFlags.contains(.command) else { return false }
+            guard modifierFlags().contains(.command) else { return false }
             return performLinkNavigation(link)
         }
 

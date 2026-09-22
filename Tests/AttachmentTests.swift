@@ -23,6 +23,15 @@ import Testing
     #expect(Attachment.embed(inLine: "![[]]") == nil)
 }
 
+@Test func theEmbedLabelIsTheCaptionOrTheFileName() {
+    // The two accessibility labels `NoteImageUITests:63` used to assert on screen
+    // (ADR-0053 §D2 seam #13, `Embed.label`, moved out of
+    // `CompletingTextView+Accessibility.swift:129`): a CommonMark caption reads as the
+    // caption, a wikilink embed - which carries no caption - reads as its own file name.
+    #expect(Attachment.embed(inLine: "![Pressa 4](foto.png)")?.label == "Pressa 4")
+    #expect(Attachment.embed(inLine: "![[assente.png]]")?.label == "assente.png")
+}
+
 @Test func recognisesARemoteTargetSoItIsNeverFetched() {
     #expect(Attachment.isRemote("https://vibrofer.it/foto.png"))
     #expect(Attachment.isRemote("HTTP://vibrofer.it/foto.png"))
