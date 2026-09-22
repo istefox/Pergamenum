@@ -12,10 +12,6 @@ import Testing
 // double click) and `:405` and `:425` (a breadcrumb ancestor), and from
 // `UITests/WorkspaceIntegrationUITests.swift` `:166` (a note sent from a folder with no boards).
 // The GUI tests stay until `--affected` has proved the collapse (SPEC R-10).
-//
-// RED: `enter(folder:)` resolves and returns but selects nothing, and `placementProblem` answers
-// nil, so the assertions below that read the selection or the sentence fail on their `#expect`.
-// The ones that read only the returned resolution already pass.
 
 // MARK: - The three resolutions (ADR-0025 §D5)
 
@@ -33,6 +29,30 @@ import Testing
     workspace.detach()
 }
 
+@MainActor
+@Test func enteringAFolderThatHoldsMoreThanOneBoardIsAmbiguous() throws {
+    let root = try CanvasTemporaryRoot()
+    try OpenStateFixture.write(in: root.url)
+    let workspace = OpenStateFixture.attachedWorkspace(in: root.url)
+
+    let resolution = workspace.enter(folder: OpenStateFixture.boardFolder)
+
+    #expect(resolution == .ambiguous)
+    workspace.detach()
+}
+
+@MainActor
+@Test func enteringAFolderThatHoldsNoBoardsIsNotFound() throws {
+    let root = try CanvasTemporaryRoot()
+    try OpenStateFixture.write(in: root.url)
+    let workspace = OpenStateFixture.attachedWorkspace(in: root.url)
+
+    let resolution = workspace.enter(folder: OpenStateFixture.emptyFolder)
+
+    #expect(resolution == .notFound)
+    workspace.detach()
+}
+
 // MARK: - A folder card's double click (OpenState :370, :383)
 
 @MainActor
@@ -43,13 +63,13 @@ import Testing
     workspace.open(board: rootBoard)
     #expect(workspace.isShowingBoard)
 
-    // What `BoardCardActions.open(_:)` asks of the card before it enters anything.
     let card = try #require(workspace.document.node(id: OpenStateFixture.ambiguousFolderCardID))
     let folder = try #require(workspace.subfolder(for: card))
-    let resolution = workspace.enter(folder: folder)
-
     #expect(folder == OpenStateFixture.boardFolder)
-    #expect(resolution == .ambiguous)
+
+    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()))
+    actions.open(card)
+
     #expect(workspace.current == .folder("Vibrofer"))
     // "Nessuna board aperta" is what the pane draws when no board is showing.
     #expect(!workspace.isShowingBoard)
@@ -68,10 +88,11 @@ import Testing
 
     let card = try #require(workspace.document.node(id: OpenStateFixture.notFoundFolderCardID))
     let folder = try #require(workspace.subfolder(for: card))
-    let resolution = workspace.enter(folder: folder)
-
     #expect(folder == OpenStateFixture.emptyFolder)
-    #expect(resolution == .notFound)
+
+    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()))
+    actions.open(card)
+
     #expect(workspace.current == .folder("Vuota"))
     #expect(!workspace.isShowingBoard)
     let lit = OpenStateFixture.litLabels(in: OpenStateFixture.tree(in: root.url), selection: workspace.current)
@@ -137,6 +158,13 @@ import Testing
 /// that guard at its call site. The folder card's copy had none, and on `""` selected
 /// `.folder("")` when the resolver said `.ambiguous` or `.notFound`, a spelling ADR-0025 §D3 says
 /// the app never produces. `enter(folder:)` selects `nil` there.
+///
+/// That old difference was never user-visible: `WorkspaceBrowser.rebuild()`
+/// (`WorkspaceBrowser+Tree.swift`'s `if let selection, WorkspaceTree.node(withID:...) == nil {
+/// onSelect(nil) }`) drops a selection whose path names no row on every rescan
+/// (`WorkspaceBrowser.swift`'s `.task(id: vault.scanGeneration)`), and `.folder("")` names no row.
+/// The old spelling converged to `nil` on the next scan, exactly what `enter(folder:)` now does
+/// immediately.
 @MainActor
 @Test func enteringTheEmptyPathNeverSelectsTheFolderNamedEmpty() throws {
     let ambiguous = try CanvasTemporaryRoot()

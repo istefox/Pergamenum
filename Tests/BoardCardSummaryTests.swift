@@ -18,9 +18,6 @@ import Testing
 // `isFolder` is the seam's departure from the plan's `(CanvasNode) -> String`: the `.file` arm
 // reads the disk through `workspace.subfolder(for:)`, so the call site passes
 // `workspace.subfolder(for: node) != nil` and the function stays pure.
-//
-// RED: the seam is a placeholder answering "" for every card, so each assertion below fails on its
-// `#expect`, not on a build error.
 
 private func node(_ kind: CanvasNode.Kind, unknown: [String: JSONValue] = [:]) -> CanvasNode {
     CanvasNode(id: "aaaa000000000001", kind: kind, x: 0, y: 0, width: 240, height: 140, unknown: unknown)
