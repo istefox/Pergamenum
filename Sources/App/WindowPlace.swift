@@ -36,6 +36,8 @@ struct WindowPlace {
             // observer never sees `.pane(.workspace)` as an intermediate, spurious step.
             (vault.routeState.pendingCanvas?.path ?? vault.openBoardPath)
                 .map { .workspaceBoard($0) } ?? .pane(.workspace)
+        case .tasks:
+            .taskSelection(navigation.taskSelection)
         default:
             .pane(navigation.pane)
         }
@@ -96,6 +98,12 @@ struct WindowPlace {
             // the gesture that first recorded it was (§D3).
             day.show(date)
             day.scale = scale
+        case .taskSelection(let selection):
+            // Pane first, anchor second, the same rule the note and workspace-board cases
+            // above already follow - a pane that arrives after its anchor is a pane that
+            // draws once with the old one.
+            navigation.pane = .tasks
+            navigation.taskSelection = selection
         }
     }
 

@@ -253,16 +253,21 @@ final class Navigation {
     /// menu, and `RootView` is the one place a sheet reaches every surface from.
     var categoryLinkingNote: CategoryNotePicker.Request?
 
-    /// A category slug the Attività pane should select once it is on screen, the
-    /// `pendingCanvas`-style shape (`VaultController+Routes.swift:151`) applied to a
-    /// destination that lives in `Navigation` rather than `VaultController.routeState`:
-    /// the inspector's "Vai alla categoria" (`VaultBrowser.swift`'s `categoryLink`) only
-    /// used to set `pane = .tasks`, landing on whatever `TasksView`'s own `@State
-    /// selection` already held rather than on the linked category. `TasksView` consumes
-    /// this the same double-registered way `WorkspaceView` consumes `pendingCanvas`
-    /// (`.task` for the case it is already the pane on screen, `.onChange` for the case
-    /// it becomes one) — the view that acts on it only exists once its pane is shown.
-    var pendingCategorySelection: String?
+    /// The Attività pane's one derived selection (ADR-0047 §D6: one of the five views of
+    /// SPEC §7.4, or a category row) - *what* the selection is stays that ADR's decision,
+    /// only *where it is held* changes here (PG-206).
+    ///
+    /// Here rather than `@State` in `TasksView`, where it started: that view is recreated
+    /// every time `navigation.pane` becomes `.tasks` again (`RootView.tasksPane`), so a
+    /// `@State` there forgets which category was showing the moment the pane is left -
+    /// the inspector's "Vai alla categoria" landed on whatever `.view(.today)` default
+    /// `TasksView` was reborn with, and so did "Indietro" after "Vai alla nota" (PG-206).
+    /// Held here for the same reason `isShowingInspector` is: window state a pane's own
+    /// view cannot outlive belongs on `Navigation`, which does. `WindowPlace.destination`
+    /// reads this to give the Attività pane the anchor `Destination.taskSelection` needs,
+    /// the same amendment to ADR-0015 §D1 that `workspaceBoard` already made for the
+    /// Workspace's board.
+    var taskSelection: TaskPaneSelection = .view(.today)
 
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
