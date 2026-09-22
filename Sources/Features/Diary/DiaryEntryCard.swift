@@ -33,6 +33,32 @@ struct DiaryGeometry: Equatable, Sendable {
     func columnWidth(_ columns: Int) -> CGFloat {
         max(0, width - gutter - 8) / CGFloat(max(1, columns))
     }
+
+    // MARK: Dragging (ADR-0053 §D2 #8)
+
+    /// Under this a drag is a click, and a click blocks out an hour.
+    static let dragThreshold: CGFloat = 9
+
+    /// The stretch a drag covers, in whole ten-minute marks, whichever way it went.
+    func range(fromY start: CGFloat, toY current: CGFloat) -> (start: Int, end: Int) {
+        let anchor = minute(atY: start)
+        let point = minute(atY: current)
+        let lower = DiaryGrid.snapDown(min(anchor, point))
+        return (lower, max(lower + DiaryGrid.step, DiaryGrid.snap(max(anchor, point))))
+    }
+
+    /// Under the threshold a drag is a click, which blocks out an hour instead of the
+    /// stretch it actually covers.
+    func creationDuration(dragged: (start: Int, end: Int), translationHeight: CGFloat) -> Int {
+        abs(translationHeight) > Self.dragThreshold ? dragged.end - dragged.start : 60
+    }
+
+    /// How far a block has moved, in whole ten-minute marks, without falling off the
+    /// top of the day.
+    func snappedDelta(_ translationHeight: CGFloat, notBefore startMinutes: Int) -> Int {
+        let raw = Int((translationHeight / minuteHeight).rounded())
+        return max(-startMinutes, (raw / DiaryGrid.step) * DiaryGrid.step)
+    }
 }
 
 /// One block on the diary's day: what it was, when, and the three things that can be
@@ -144,9 +170,9 @@ struct DiaryEntryCard: View {
         // Four points before it counts as a drag, so an ordinary click still opens the
         // block instead of nudging it by one mark.
         DragGesture(minimumDistance: 4)
-            .onChanged { draggedMinutes = snappedDelta($0.translation.height) }
+            .onChanged { draggedMinutes = geometry.snappedDelta($0.translation.height, notBefore: entry.startMinutes) }
             .onEnded { value in
-                let delta = snappedDelta(value.translation.height)
+                let delta = geometry.snappedDelta(value.translation.height, notBefore: entry.startMinutes)
                 draggedMinutes = 0
                 guard delta != 0 else { return }
                 controller.move(entry, toStart: entry.startMinutes + delta)
@@ -161,13 +187,6 @@ struct DiaryEntryCard: View {
                 draggedDuration = nil
                 controller.resize(entry, toDuration: pulled)
             }
-    }
-
-    /// How far the block has moved, in whole ten-minute marks, without falling off the
-    /// top of the day.
-    private func snappedDelta(_ translation: CGFloat) -> Int {
-        let raw = Int((translation / geometry.minuteHeight).rounded())
-        return max(-entry.startMinutes, (raw / DiaryGrid.step) * DiaryGrid.step)
     }
 
     /// The pulled length, on the grid and never under one mark.

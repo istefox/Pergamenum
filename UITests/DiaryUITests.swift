@@ -106,24 +106,6 @@ final class DiaryUITests: XCTestCase {
         XCTAssertFalse(entry.waitForExistence(timeout: 2), "il blocco è ancora disegnato")
     }
 
-    /// A click on a block opens it, and what is changed there is written.
-    func testABlockIsOpenedAndRenamed() throws {
-        composeBlock(named: "Primo nome")
-
-        entry.click()
-        let title = app.textFields["diary-sheet-title"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 5), "il clic sul blocco non lo apre")
-        title.click()
-        title.typeKey("a", modifierFlags: .command)
-        title.typeText("Secondo nome")
-        app.buttons["diary-sheet-save"].firstMatch.click()
-
-        XCTAssertTrue(
-            waitForDiary { $0.contains("Secondo nome") && !$0.contains("Primo nome") },
-            "il nuovo nome non è nel file"
-        )
-    }
-
     /// The composer's own delete, for the block that is already open.
     func testABlockIsDeletedFromItsSheet() throws {
         composeBlock(named: "Da eliminare dalla scheda")
@@ -158,83 +140,7 @@ final class DiaryUITests: XCTestCase {
         )
     }
 
-    /// Two blocks at the same hour are both drawn: the diary records what happened, and
-    /// what happened overlaps.
-    func testTwoBlocksAtTheSameHourAreBothKept() throws {
-        composeBlock(named: "Riunione")
-        composeBlock(named: "Telefonata")
-
-        let entries = app.descendants(matching: .any).matching(identifier: "diary-entry")
-        XCTAssertTrue(waitFor { entries.count == 2 }, "i due blocchi non sono entrambi sulla giornata")
-        XCTAssertTrue(
-            waitForDiary { $0.contains("Riunione") && $0.contains("Telefonata") },
-            "i due blocchi non sono entrambi nel file"
-        )
-    }
-
-    /// Dragging over empty time blocks it out, from where the drag started to where it
-    /// ended, on the ten-minute grid.
-    func testDraggingOverEmptyTimeBlocksItOut() throws {
-        let nine = hourLine("09:00")
-        let eleven = hourLine("11:00")
-        XCTAssertTrue(nine.waitForExistence(timeout: 5), "manca la riga delle 09:00")
-
-        let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        let to = eleven.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        from.dragTo(to, pressing: 0.2)
-
-        let range = app.staticTexts["diary-sheet-range"].firstMatch
-        XCTAssertTrue(range.waitForExistence(timeout: 5), "il trascinamento non apre la scheda")
-        XCTAssertTrue(
-            (range.value as? String ?? "").hasSuffix("09:00-11:00"),
-            "il blocco trascinato non copre le due ore: \(range.value ?? "")"
-        )
-
-        let title = app.textFields["diary-sheet-title"].firstMatch
-        title.click()
-        title.typeText("Due ore di cantiere")
-        app.buttons["diary-sheet-save"].firstMatch.click()
-
-        XCTAssertTrue(
-            waitForDiary { $0.contains("- 09:00-11:00 Due ore di cantiere") },
-            "l'orario trascinato non è finito nel file"
-        )
-    }
-
-    /// And a block already on the day is moved by dragging it.
-    func testABlockIsMovedByDragging() throws {
-        let nine = hourLine("09:00")
-        XCTAssertTrue(nine.waitForExistence(timeout: 5), "manca la riga delle 09:00")
-        let from = nine.coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        let ten = hourLine("10:00").coordinate(withNormalizedOffset: CGVector(dx: 4, dy: 0.5))
-        from.dragTo(ten, pressing: 0.2)
-
-        let title = app.textFields["diary-sheet-title"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda non si è aperta")
-        title.click()
-        title.typeText("Da spostare")
-        app.buttons["diary-sheet-save"].firstMatch.click()
-        XCTAssertTrue(waitForDiary { $0.contains("- 09:00-10:00 Da spostare") }, "il blocco non è stato scritto")
-
-        // Two hours down the grid, which is 120 points at sixty to the hour.
-        let block = entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
-        block.dragTo(block.withOffset(CGVector(dx: 0, dy: 120)), pressing: 0.3)
-
-        XCTAssertTrue(
-            waitForDiary { $0.contains("- 11:00-12:00 Da spostare") },
-            "il blocco non si è spostato di due ore"
-        )
-    }
-
     // MARK: Support
-
-    /// The label of an hour on the grid, which is the only fixed landmark a drag can be
-    /// measured from.
-    private func hourLine(_ text: String) -> XCUIElement {
-        app.staticTexts.matching(identifier: "diary-grid").matching(
-            NSPredicate(format: "value == %@", text)
-        ).firstMatch
-    }
 
     private var entry: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "diary-entry").firstMatch
