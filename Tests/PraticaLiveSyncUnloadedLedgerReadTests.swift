@@ -59,8 +59,8 @@ private func dossierNoteText(conversations: [Int]) -> String {
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)

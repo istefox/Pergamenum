@@ -68,8 +68,8 @@ private func dossierNoteText(conversations: [Int]) -> String {
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -138,8 +138,8 @@ private func dossierNoteText(conversations: [Int]) -> String {
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -177,8 +177,8 @@ private func dossierNoteText(conversations: [Int]) -> String {
         try vault.write(dossierNoteText(conversations: [112_409]), to: "\(Self.old)/pratica.md")
 
         let fixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -217,8 +217,8 @@ private func dossierNoteText(conversations: [Int]) -> String {
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         // Seeded directly (`PraticaRegenerationSupersededPreviewTests`'s own pattern): a
         // real membership-rule sync is not what this test is about.

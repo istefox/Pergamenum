@@ -346,8 +346,8 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
                 emlxBody: EmailFixtureCorpus.completeMessageRFC822
             )]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -409,8 +409,8 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         // The store has no message at all - nothing was ever imported for 112409, so
         // an empty result is not evidence of renumbering (§D23.3's own comment).
         let fixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -431,8 +431,8 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         // The store holds no message at all any more - the ledger's one known member
         // of 112409 has vanished from Mail entirely.
         let fixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
         await vaultController.open(vault.root)
@@ -934,8 +934,8 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
                 ),
             ]
         )
-        UserDefaults.standard.set(fixture.root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey) }
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
 
         // Both notes seeded directly (`PraticaRegenerationTests`'s own pattern) - a real
         // membership-rule sync is not what this race is about.
@@ -974,6 +974,10 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 
         guard case .ready(let planB) = pratiche.regeneration else {
             Issue.record("expected B's own preview to resolve to .ready, got \(String(describing: pratiche.regeneration))")
+            // taskA still needs the override held by `defer { MailStoreOverride.release() }`
+            // above - await it before returning, or this early exit releases the gate while
+            // taskA is still resolving against it.
+            _ = await taskA.value
             vaultController.close()
             return
         }
