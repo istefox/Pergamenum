@@ -464,9 +464,15 @@ extension NoteTextView {
             /// no marker at all and `applyViewBlocks` is what turns it into the opening
             /// line's own `.viewBlock` marker plus the lines that leave the layout.
             var viewBlockRuns: [NSRange] = []
+            // One memoised `StyleContext` for the whole pass (Task 2, PG-139/#239) rather
+            // than a fresh heading/bold/italic/mono/codeBlock dictionary rebuilt per span -
+            // this loop, not `MarkdownAttributedText.attributed(_:theme:)`, is the actual hot
+            // caller: it restyles the whole note on every keystroke (this function's own
+            // header comment above).
+            var context = MarkdownAttributedText.StyleContext(theme: theme, links: true)
             storage.beginEditing()
             storage.setAttributes(
-                MarkdownAttributedText.base(theme: theme),
+                context.base,
                 range: NSRange(location: 0, length: nsText.length)
             )
             for styled in MarkdownStyler.spans(in: text) {
@@ -475,7 +481,7 @@ extension NoteTextView {
                       NSMaxRange(nsRange) <= nsText.length
                 else { continue }
                 storage.addAttributes(
-                    MarkdownAttributedText.attributes(for: styled.span, theme: theme),
+                    context.attributes(for: styled.span),
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }

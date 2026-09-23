@@ -4,8 +4,15 @@ import Foundation
 /// what makes `trf` find "Trasmissibilità e rapporto di frequenza".
 enum FuzzyMatch {
     static func score(query: String, candidate: String) -> Int? {
-        let needle = Array(query.lowercased())
-        let haystack = Array(candidate.lowercased())
+        score(needle: Array(query.lowercased()), haystack: Array(candidate.lowercased()))
+    }
+
+    /// `score(query:candidate:)`'s own body, taking each side already lowercased and split
+    /// into `[Character]` - the shape a caller ranking one query against many candidates
+    /// needs so the query is lowercased once rather than once per candidate (PG-139/#239:
+    /// `EntryRanking.matching`'s fuzzy tier is exactly this shape, over up to 96 entries per
+    /// keystroke). Semantics identical to the wrapper above by construction.
+    static func score(needle: [Character], haystack: [Character]) -> Int? {
         guard !needle.isEmpty, needle.count <= haystack.count else {
             return needle.isEmpty ? 0 : nil
         }

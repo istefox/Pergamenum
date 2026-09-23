@@ -127,10 +127,15 @@ enum MarkdownStyler {
             }
         }
 
+        // One forward pass over the whole note (PG-139/#239), so `listMarkerSpan` below does
+        // not walk backward to the top of the document for every list line in it - see
+        // `ListNesting.levels(in:)`'s own header for why this is not a replacement for
+        // `ListNesting.level(in:lineStart:indent:)`, only a per-note cache of the same answer.
+        let levels = ListNesting.levels(in: text)
         for lineRange in lineRanges(in: text, from: bodyStart) {
             guard !fences.contains(where: { $0.range.overlaps(lineRange) }) else { continue }
             let line = String(text[lineRange])
-            result.append(contentsOf: spans(inLine: line, at: lineRange, in: text))
+            result.append(contentsOf: spans(inLine: line, at: lineRange, in: text, levels: levels))
         }
 
         result.append(contentsOf: wikilinkSpans(in: text, from: bodyStart, outside: fences))
@@ -213,7 +218,8 @@ enum MarkdownStyler {
     private static func spans(
         inLine line: String,
         at lineRange: Range<String.Index>,
-        in text: String
+        in text: String,
+        levels: [String.Index: Int]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
 
@@ -262,7 +268,7 @@ enum MarkdownStyler {
         // for it is the whole of R-06: with no marker to conceal there is no bullet to
         // put in its place, so `- [ ] fai` keeps exactly today's appearance.
         if task == nil, let list = listMarkerSpan(
-            inLine: line, at: lineRange.lowerBound, in: text, absolute: absolute
+            inLine: line, at: lineRange.lowerBound, in: text, levels: levels, absolute: absolute
         ) {
             result.append(list)
         }
@@ -693,10 +699,18 @@ private func markdownLinkSpans(
 /// to `ListNesting.level` (PG-085) for the CommonMark content-column depth - the classifier
 /// is no longer line-local, since a child's level depends on its enclosing item's marker
 /// width, not just its own indentation.
+///
+/// `levels` is `spans(in:)`'s own one-per-note `ListNesting.levels(in:)` result (PG-139/
+/// #239): a hit there is today's answer for free, computed once for the whole note rather
+/// than by this call's own backward walk. A miss falls back to `ListNesting.level(...)`
+/// rather than any fixed default - `bodyStart` after frontmatter lands just past `---`,
+/// mid-line, so `lineRanges` can yield a `lowerBound` that is not a real line start and so
+/// is never a key `levels` holds; coalescing to `1` there would silently misclassify it.
 private func listMarkerSpan(
     inLine line: String,
     at lineStart: String.Index,
     in text: String,
+    levels: [String.Index: Int],
     absolute: (Int, Int) -> Range<String.Index>
 ) -> MarkdownStyler.StyledRange? {
     let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
@@ -704,7 +718,7 @@ private func listMarkerSpan(
     guard taskMarker(in: content) == nil, let marker = listMarkerLength(in: content) else { return nil }
 
     let columns = indent.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
-    let level = ListNesting.level(in: text, lineStart: lineStart, indent: columns)
+    let level = levels[lineStart] ?? ListNesting.level(in: text, lineStart: lineStart, indent: columns)
     return MarkdownStyler.StyledRange(
         range: absolute(indent.count, marker.length),
         span: .listMarker(kind: marker.kind, level: level)
