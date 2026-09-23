@@ -104,7 +104,7 @@ extension VaultController {
                 recordProblem("\(dangling.count) note linkavano «\(title)»: ora il link non risolve")
             }
             trashedNote(at: relativePath)
-            Task { await rescan() }
+            await rescan()
             return true
         } catch {
             recordProblem("eliminazione: \(error)")
