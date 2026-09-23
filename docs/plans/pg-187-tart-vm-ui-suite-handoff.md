@@ -4,6 +4,14 @@ Date written: 2026-09-20. Ledger entry: `PG-187` (Not yet specified, `kind:roadm
 Status: research done, nothing installed, nothing downloaded, no decision taken.
 Decision owner: Stefano.
 
+**Scope note (2026-09-23, PG-215/#430):** this spike's own question, VM isolation, is still open
+and `PG-187` is still open in the ledger — `SPEC.md:27` puts it explicitly out of scope rather than
+deciding it. What no longer holds is the payoff this spike was costed against: the "full UI suite
+before every merge" rule (CLAUDE.md, Working agreements) was replaced on 2026-09-21 (`SPEC.md`,
+Approved; `docs/adr/0053-test-seams-for-the-in-process-merge-gate.md`, Accepted), so section 2's
+motivation and section 11's question 1 no longer hold as priced. The census recorded the spike as
+on hold in favour of the in-process route. Section 4's facts, verified live on 2026-09-20, stand.
+
 This document is self-contained. It is meant to be read cold, days later, by a person or a
 fresh session, and to be enough to decide and to start. Facts are separated from assumptions:
 section 4 holds what was checked live on 2026-09-20 with its source, section 5 holds what is
@@ -17,6 +25,11 @@ its own focus. The person at the keyboard keeps working, and nothing on the host
 run.
 
 ## 2. Why this is on the table
+
+**Void as of 2026-09-23:** the first bullet's premise and the closing line below both price the
+"full UI suite before every merge" rule, which was replaced on 2026-09-21 — see the scope note
+above. The pointer-sharing evidence (`PG-180`) and the two unexplained observations (`PG-182`,
+`PG-186`) are unaffected.
 
 - A full run takes the machine for about 25 minutes. The rule "run the full UI suite before every
   merge to `main`" (CLAUDE.md, Working agreements) has been skipped five times for that reason
@@ -285,6 +298,8 @@ Design questions, none decided:
 - **A second user session on the same Mac:** speculative, not researched.
 
 ## 11. Questions for Stefano
+
+**Q1 void as of 2026-09-23:** the rule it prices was replaced — see the scope note above.
 
 1. Is having the rule "full UI suite before every merge" actually followed worth roughly two
    hours of spike plus recurring VM upkeep? The alternative is to accept the machine being busy for
