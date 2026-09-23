@@ -59,9 +59,22 @@ for tool in "${TOOLS[@]}"; do
     xcodebuild -workspace Pergamenum.xcworkspace -scheme "$tool" \
         -destination 'platform=macOS' -configuration Release build >/dev/null
 
-    built="$(find ~/Library/Developer/Xcode/DerivedData/Pergamenum-*/Build/Products/Release \
-        -maxdepth 1 -name "$tool" -type f 2>/dev/null | head -1)"
-    [ -n "$built" ] || fail "non trovo il binario di $tool: la build è andata a buon fine?"
+    # ls -dt, non find | head -1: find enumera le cartelle Pergamenum-<hash> stale in
+    # ordine di glob, non del binario più recente (CLAUDE.md documenta la stessa
+    # trappola per le build Debug). Qui l'esito finisce copiato in /usr/local/bin ed
+    # eseguito, quindi più di un candidato non si risolve indovinando il primo: si
+    # ferma e si chiede di ripulire.
+    candidates=()
+    while IFS= read -r path; do
+        candidates+=("$path")
+    done < <(ls -dt ~/Library/Developer/Xcode/DerivedData/Pergamenum-*/Build/Products/Release/"$tool" 2>/dev/null)
+
+    case "${#candidates[@]}" in
+        0) fail "non trovo il binario di $tool: la build è andata a buon fine?" ;;
+        1) built="${candidates[0]}" ;;
+        *) fail "trovo più di un binario di $tool sotto DerivedData: ${candidates[*]}
+   pulisci le cartelle Pergamenum-* stale e ricompila, così ce n'è uno solo da installare" ;;
+    esac
 
     # Moved aside rather than overwritten, like the app bundle: a tool you can go back to
     # is worth the one file it costs.

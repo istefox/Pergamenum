@@ -37,7 +37,8 @@ import tempfile
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
+from urllib.parse import urlsplit
 
 SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 
@@ -49,6 +50,12 @@ FEED_TITLE = "Pergamenum"
 FEED_DESCRIPTION = "Aggiornamenti di Pergamenum"
 FEED_LANGUAGE = "it"
 
+# PG-129: unico prefisso da cui un enclosure può scaricare, nuovo o già pubblicato che
+# sia. Coincide con come release.sh costruisce --download-url (UPDATES_REPO più
+# "/releases/download/"), quindi non è una scelta indipendente da tenere sincronizzata
+# a mano altrove.
+ALLOWED_DOWNLOAD_PREFIX = "https://github.com/istefox/pergamenum-updates/releases/download/"
+
 
 class AppcastError(Exception):
     """Un errore che l'utente deve vedere: `main` lo stampa su stderr ed esce non-zero."""
@@ -56,6 +63,21 @@ class AppcastError(Exception):
 
 def fail(message):
     raise AppcastError(message)
+
+
+def require_https(url, label):
+    """--feed-url arriva da rete: uno schema diverso da https non va nemmeno scaricato."""
+    if urlsplit(url).scheme != "https":
+        fail("%s non è https: %r rifiutato prima di essere raggiunto" % (label, url))
+
+
+def validate_download_url(url):
+    """Un enclosure, nuovo o già presente nel feed scaricato, deve puntare sotto il
+    repository delle release pubblicate. La firma EdDSA copre solo il binario del nuovo
+    item: senza questo controllo un feed compromesso o un vecchio item manomesso
+    verrebbe ripubblicato così com'è."""
+    if not url.startswith(ALLOWED_DOWNLOAD_PREFIX):
+        fail("l'URL di download %r non è sotto %s: rifiutato" % (url, ALLOWED_DOWNLOAD_PREFIX))
 
 
 def sparkle(name):
@@ -152,12 +174,25 @@ def make_item(spec):
     return item
 
 
+def validate_existing_items(channel):
+    """Un item già pubblicato viene ripubblicato tale e quale: se il suo enclosure non è
+    sotto ALLOWED_DOWNLOAD_PREFIX, il feed scaricato non è fidato e l'intera run si ferma
+    invece di far viaggiare in avanti un link manomesso o un feed compromesso."""
+    for candidate in channel.findall("item"):
+        enclosure = candidate.find("enclosure")
+        if enclosure is None:
+            continue
+        validate_download_url(enclosure.get("url", ""))
+
+
 def build_feed(raw, feed_url, spec):
     """Restituisce la radice del feed con l'item di questa build inserito o sostituito."""
+    validate_download_url(spec.download_url)
     root = skeleton(feed_url) if raw is None else parse_feed(raw)
     channel = root.find("channel")
     if channel is None:
         fail("il feed pubblicato non ha un <channel>")
+    validate_existing_items(channel)
 
     item = make_item(spec)
 
@@ -278,16 +313,63 @@ def _case_5(report):
            "un feed con <!DOCTYPE è rifiutato senza essere parsato")
 
 
+def _case_6(report):
+    """--feed-url non-https -> rifiutato prima di provare a scaricarlo."""
+    try:
+        require_https("http://istefox.github.io/pergamenum-updates/appcast.xml", "--feed-url")
+    except AppcastError as exc:
+        message = str(exc)
+    else:
+        message = ""
+    _check(report, "non è https" in message,
+           "un --feed-url non-https è rifiutato (%s)" % message)
+
+
+def _case_7(report):
+    """--download-url fuori da ALLOWED_DOWNLOAD_PREFIX -> rifiutato, schema e host inclusi."""
+    bad_spec = replace(
+        AppcastItem(version="60", short_version="1.5", **ITEM_DEFAULTS),
+        download_url="https://evil.example.com/Pergamenum-1.5-60.zip",
+    )
+    try:
+        build_feed(None, FEED_URL, bad_spec)
+    except AppcastError as exc:
+        message = str(exc)
+    else:
+        message = ""
+    _check(report, "non è sotto" in message,
+           "un --download-url fuori dal prefisso fidato è rifiutato (%s)" % message)
+
+
+def _case_8(report, first):
+    """Un enclosure manomesso già presente nel feed scaricato -> l'intera run si ferma,
+    l'item nuovo non viene inserito sopra a quello compromesso."""
+    tampered = first.replace(
+        ALLOWED_DOWNLOAD_PREFIX.encode(), b"https://evil.example.com/releases/download/"
+    )
+    try:
+        _feed(tampered, "61", "1.6")
+    except AppcastError as exc:
+        message = str(exc)
+    else:
+        message = ""
+    _check(report, "non è sotto" in message,
+           "un feed scaricato con un enclosure manomesso è rifiutato (%s)" % message)
+
+
 def self_test():
     """Asserzioni in-process, senza rete e senza un secondo runner (ADR-0031 §D10)."""
     report = []
 
-    # Il feed del caso 1 alimenta i casi 2 e 3, e viene scritto su disco alla fine.
+    # Il feed del caso 1 alimenta i casi 2, 3 e 8, e viene scritto su disco alla fine.
     first = _case_1(report)
     _case_2(report, first)
     _case_3(report, first)
     _case_4(report)
     _case_5(report)
+    _case_6(report)
+    _case_7(report)
+    _case_8(report, first)
 
     handle, path = tempfile.mkstemp(prefix="appcast-selftest-", suffix=".xml")
     with os.fdopen(handle, "wb") as out:
@@ -336,6 +418,7 @@ def main(argv=None):
         if missing:
             fail("argomenti mancanti: %s" % ", ".join("--" + n.replace("_", "-") for n in missing))
 
+        require_https(args.feed_url, "--feed-url")
         spec = AppcastItem(**{name: getattr(args, name) for name in ITEM_FIELDS})
         root = build_feed(load_feed(args.feed_url), args.feed_url, spec)
         with open(args.output, "wb") as handle:
