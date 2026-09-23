@@ -56,14 +56,6 @@ struct CategorySidebarSection: View {
         HStack {
             Text("CATEGORIE").themedText(.caption, color: .textTertiary)
             Spacer()
-            Button {
-                navigation.categoryEditorTarget = .new(parent: nil)
-            } label: {
-                Image(systemName: "plus.circle").themedText(.caption, color: .accentPrimary)
-            }
-            .buttonStyle(.plain)
-            .help("Nuova categoria")
-            .accessibilityIdentifier("category-add-button")
         }
     }
 

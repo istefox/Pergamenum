@@ -80,6 +80,15 @@ struct TasksView: View {
             .disabled(vault.root == nil)
         }
 
+        ToolbarItem(placement: .navigation) {
+            Button { navigation.categoryEditorTarget = .new(parent: nil) } label: {
+                Label("Nuova categoria", systemImage: "folder.badge.plus")
+            }
+            .help("Nuova categoria")
+            .disabled(vault.root == nil)
+            .accessibilityIdentifier("category-add-button")
+        }
+
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 if let task = selected { Task { await vault.toggle(task) } }
