@@ -141,8 +141,14 @@ final class HostedView<Content: View> {
     ///
     /// A suspension rather than a nested run loop: the main run loop turns while the test is
     /// suspended, and no other test's job can start inside this one's stack.
+    ///
+    /// The budget is 10 iterations, not the original 3 (PG-214/#424): a concurrent `xcodebuild`
+    /// process from another worktree, sharing this machine's CPU with the Stop hook's own run,
+    /// can starve the layout/draw pass past a 60ms budget without any source change, reading back
+    /// a stale `tool` or `snapshot()`. Each extra iteration is a yielding sleep, not spinning, so
+    /// an unloaded machine pays only the wall time of the sleeps already needed to settle.
     func settle() async {
-        for _ in 0..<3 {
+        for _ in 0..<10 {
             try? await Task.sleep(for: .milliseconds(20))
             hosting.layoutSubtreeIfNeeded()
         }
