@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=215 -->
+<!-- project-tasks: prefix=PG lastId=216 -->
 # PROJECT TASKS
 
 Updated: 2026-09-23 · Open: 55 (P1: 0) · In progress: 0
@@ -104,6 +104,8 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
   - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 ## Backlog / To Add
+
+- [ ] `PG-216` **P3** [roadmap] Concurrent Claude Code sessions on this repo repeatedly race the same `TODO.md`/GitHub-issue-promotion window: at least 3-4 sessions run `/project-tasks`+`/ship` cycles in parallel, causing recurring `TODO.md` merge conflicts (several "resolve TODO.md merge conflict with origin/main" commits already in history) and a duplicate GitHub issue promotion for the same ledger entry (PG-211 promoted independently to both #415 and #417 on 2026-09-22/23, #417 closed as duplicate). Proposed fix: a `.pergamenum-todo.lock` file (gitignored, PID+timestamp+branch), acquired by `project-tasks` Step 1b/2 before reading the ledger and released after Step 7's write or on abort; a session finding it held waits with backoff (as already done for `xcodebuild` contention) or aborts with a clear message rather than writing blind; a stale-lock timeout (~20 min) covers a session that dies mid-run. Scoped to the `project-tasks` skill only, no Swift source touched. Does not address the separate `xcodebuild`/DerivedData build-system contention (`PG-214`), which needs its own fix (isolated DerivedData per worktree, not a ledger lock). <!-- src:session kind:roadmap opened:2026-09-23 -->
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
