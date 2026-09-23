@@ -141,7 +141,7 @@ scripts/fetch-sparkle-tools.sh                                                  
 scripts/appcast.py --self-test                                                                  # the appcast generator's own assertions, offline, writes no feed
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
-scripts/uitests.sh                                                                              # the UI suite, run the way it has to be - before every merge to main
+scripts/uitests.sh                                                                              # the GUI suite: --affected at merge, a full run before a release
 ```
 
 ## AI connector

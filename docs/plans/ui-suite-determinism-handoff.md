@@ -3,6 +3,15 @@
 Written 2026-09-20 at the end of a long working session. Author: the previous Claude session.
 Audience: the next Claude session, and Stefano.
 
+**Scope note (2026-09-23, PG-215/#430):** the merge-gate question this handoff opens is closed.
+`SPEC.md` ("Replace the UI suite as the merge gate", Approved 2026-09-21) and
+`docs/adr/0053-test-seams-for-the-in-process-merge-gate.md` (Accepted 2026-09-21) decided and
+implemented it: the gate is the unit suite plus the in-process tests, seventeen GUI tests survive
+and run through `scripts/uitests.sh --affected` at merge without blocking it. Sections 0, 4 and 9
+are spent — do not run the interview in section 9 again. Sections 2, 3, 5 and 6 (evidence, failure
+analysis, the 32-test census, what in-process hosting can do) stand and are still cited by
+`docs/plans/ui-suite-replacement-census.md`.
+
 ## 0. Read this first: how to start this session
 
 **Do not implement anything yet.** Your first job is to interview Stefano about this problem,
@@ -99,6 +108,9 @@ Hypotheses, not established:
   Which test emitted it was not identified.
 
 ## 4. Options considered so far (none chosen)
+
+**Disposition (2026-09-23):** 2 and 4 were adopted; 3 was adopted in the stronger form, replaced
+rather than tiered; 1 is on hold per the census; 5 was never checked.
 
 1. **Isolate the machine: run the UI suite in a Tart macOS 27 VM (PG-187).** A separate handoff
    already exists: `docs/plans/pg-187-tart-vm-ui-suite-handoff.md` (10 unverified assumptions, a
@@ -216,6 +228,7 @@ A caution that must not be lost: moving logic into unit tests does not cover the
 `List(selection:)` row, so `.tag` on it silently binds nothing. A couple of UI tests for "a click on
 a tree row really selects it" should stay. `CLAUDE.md` also says the last several merges' real
 regressions were found in the UI suite, so a full replacement is not on the table; a tiering is.
+[Corrected 2026-09-23: a full replacement is what was decided, `SPEC.md`, Approved 2026-09-21.]
 
 Not deterministic by nature: real drawing, TextKit 2 lazy layout (`firstRect(forCharacterRange:)` is
 a zero rectangle for a range not yet laid out), real gesture synthesis, the real key-window and
@@ -263,6 +276,9 @@ display (would remove the PG-188 external monitor effect). Not verified to fix t
   avoided; the hook runs the unit suite at the end of every turn.
 
 ## 9. Questions to ask Stefano before proposing a design
+
+**Answered 2026-09-21, recorded at `docs/plans/ui-suite-replacement-census.md` §1. Do not ask
+these again.**
 
 Ask these in Italian, one group at a time, and record the answers before any planning.
 
