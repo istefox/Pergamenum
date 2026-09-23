@@ -36,14 +36,85 @@ extension CompletingTextView {
         // Cmd+click on a link/wikilink navigates instead of placing the caret (issue #188).
         // AppKit's own automatic "clickedOnLink" `mouseDown` convenience never fires here:
         // `NoteTextView` runs TextKit 2 with a content-storage delegate that substitutes a
-        // fresh `NSTextParagraph` per paragraph on every layout pass, and that convenience
-        // does not reliably re-derive `.link` through the substitution. So this is detected
-        // explicitly, at mouse-down (never mouse-up: Cmd released mid-click reads as a plain
-        // click, matching what `NSEvent.modifierFlags` is sampled for everywhere else in this
-        // file), and the event is consumed either way once Cmd is held over a link - a
-        // Cmd+click on a link is a distinct gesture, never a caret placement.
+        // fresh `NSTextParagraph` per paragraph on every layout pass, and that convenience was
+        // unreliable under the substitution even when clickable spans carried the standard
+        // `.link` attribute - liable to fire on a plain click nowhere near a link and abort
+        // AppKit's own drag-tracking (issue #191's real cause, `MarkdownAttributedText.swift`'s
+        // `.editorLink` doc comment has the full story). Clickable spans carry `.editorLink`
+        // now, not `.link`, so that convenience cannot engage at all any more - this is
+        // detected explicitly, by hand, at mouse-down (never mouse-up: Cmd released mid-click
+        // reads as a plain click, matching what `NSEvent.modifierFlags` is sampled for
+        // everywhere else in this file), and the event is consumed either way once Cmd is held
+        // over a link - a Cmd+click on a link is a distinct gesture, never a caret placement.
         if event.modifierFlags.contains(.command), followLinkIfPresent(at: point) { return }
+        // Click 1 of what might become a double-click: remember which character the point
+        // resolved to *before* `super` places the caret and reveal-on-caret reflows the line
+        // (issue #191 follow-up). Markup is concealed by attribute, never by deletion
+        // (`EditorDecorationDelegate`'s zero-size `collapsedFont`), so revealing `[[` turns
+        // two zero-width characters into two full-width glyphs and pushes every glyph after
+        // them to the right - while the string's own character offsets stay exactly where
+        // they were. A character index is therefore the one currency the reflow cannot
+        // invalidate, and the only one click 2 can trust. `nil` when the click was not on a
+        // link, which both records "nothing to restore" and clears any stale value.
+        if event.clickCount == 1 {
+            revealedLinkClick = linkCharacterIndex(at: point)
+        } else if selectRevealedLink(clickCount: event.clickCount) {
+            // Click 2 (or 3) of a double/triple click on a link this gesture already
+            // revealed: selected by content above, so the event is consumed here rather
+            // than handed to `super`, whose own word resolution would read the same screen
+            // point against the *reflowed* layout and land on the `[[` instead of the word.
+            return
+        }
         super.mouseDown(with: event)
+    }
+
+    /// The character index under `point` when the character there is clickable, otherwise
+    /// nil - `.editorLink`'s presence is exactly "this span is clickable", the same signal
+    /// `followLinkIfPresent(at:)` keys off.
+    ///
+    /// Shared by `mouseDown`'s click-1 branch above and `placeCaretForPlainClick(at:)`
+    /// below, both issue-#191-chain code needing the same answer from the same point. The
+    /// three #188-era resolution sites (`rightMouseDown`, `followLinkIfPresent`, `menu(for:)`)
+    /// deliberately keep their own copies: folding them in would widen a bugfix into a
+    /// refactor of code this defect does not touch.
+    func linkCharacterIndex(at point: CGPoint) -> Int? {
+        guard let storage = textStorage else { return nil }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
+        else { return nil }
+        return index
+    }
+
+    /// Selects the word (or, above two clicks, the paragraph) around the index click 1 of
+    /// this same gesture stored in `revealedLinkClick`, returning whether it did.
+    ///
+    /// The selection itself comes from `NSTextView.selectionRange(forProposedRange:
+    /// granularity:)` - the very tokenizer `super.mouseDown` would have used, asked about the
+    /// right index instead of about a screen point the reveal has since moved the text under.
+    /// Triple-click was never reported broken, but it resolves that same point through that
+    /// same reflowed layout and would drift the same way, so one expression covers both.
+    ///
+    /// The stored index is honoured only while it is still in bounds and the character it
+    /// names still carries `.editorLink`: a stale value degrades to today's behaviour (the
+    /// caller falls through to `super`), never to a wrong selection. It is not cleared on
+    /// use - click 3 of a triple-click needs the same value click 2 just read - and every
+    /// fresh single click overwrites it regardless.
+    @discardableResult
+    func selectRevealedLink(clickCount: Int) -> Bool {
+        guard clickCount >= 2, let index = revealedLinkClick, let storage = textStorage else {
+            return false
+        }
+        guard index < storage.length,
+              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
+        else { return false }
+        let granularity: NSSelectionGranularity = clickCount == 2 ? .selectByWord : .selectByParagraph
+        setSelectedRange(
+            selectionRange(
+                forProposedRange: NSRange(location: index, length: 0), granularity: granularity
+            )
+        )
+        return true
     }
 
     /// A right-click on a link shows "Apri collegamento" without leaving the link's
@@ -69,7 +140,7 @@ extension CompletingTextView {
         }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              storage.attribute(.link, at: index, effectiveRange: nil) is URL
+              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
         else {
             super.rightMouseDown(with: event)
             return
@@ -81,18 +152,45 @@ extension CompletingTextView {
     }
 
     /// Resolves the character under `point` the same TextKit-2-safe way `linkTitle(_:at:)`
-    /// below already does, reads `.link` off the real `textStorage` there, and - if one is
-    /// present - invokes the delegate method AppKit's own gesture was supposed to call.
-    /// Shared between the Cmd+click handling above and the "Apri collegamento" context-menu
-    /// item below, so the two can never resolve a click point two different ways.
+    /// below already does, reads `.editorLink` off the real `textStorage` there, and - if one
+    /// is present - invokes `clickedOnLink`. This is the method's only caller now that
+    /// nothing on this text view carries the standard `.link` (issue #191): AppKit's own
+    /// automatic link-click gesture has nothing to engage with any more. Shared between the
+    /// Cmd+click handling above and the "Apri collegamento" context-menu item below, so the
+    /// two can never resolve a click point two different ways.
     @discardableResult
     func followLinkIfPresent(at point: CGPoint) -> Bool {
         guard let storage = textStorage else { return false }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return false }
         return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
+    }
+
+    /// Places the caret at `point` and returns `true` when it sits over link-attributed text,
+    /// otherwise does nothing and returns `false` (issue #191).
+    ///
+    /// The same TextKit-2-safe point resolution `mouseDown`'s click-1 branch uses, through
+    /// the one `linkCharacterIndex(at:)` helper, so the two halves of this chain's own
+    /// click handling can never resolve a point two different ways. `setSelectedRange` is the
+    /// whole of the fix: it is what posts `NSTextView.didChangeSelectionNotification`,
+    /// reveal-on-caret's only trigger.
+    ///
+    /// Called from `mouseUp`, not `mouseDown` (see the comment there for why): by the time
+    /// this runs, the whole gesture - a plain click or a click that became a drag - is
+    /// already over. The non-empty-selection guard is what tells the two apart: a real drag
+    /// leaves a non-empty selection, which this leaves untouched, and a plain click leaves
+    /// an empty one at wherever `super` already placed the caret, which this only moves if
+    /// it is not already sitting at the clicked index.
+    @discardableResult
+    func placeCaretForPlainClick(at point: CGPoint) -> Bool {
+        guard textStorage != nil else { return false }
+        guard selectedRange().length == 0 else { return true }
+        guard let index = linkCharacterIndex(at: point) else { return false }
+        guard selectedRange().location != index else { return true }
+        setSelectedRange(NSRange(location: index, length: 0))
+        return true
     }
 
     /// The middle and the end of the one drag this editor has (ADR-0019 §D6).
@@ -119,6 +217,32 @@ extension CompletingTextView {
         let point = convert(event.locationInWindow, from: nil)
         if onEmbedResize?(.ended(point)) == true { return }
         super.mouseUp(with: event)
+        // A plain click on link-attributed text (issue #191): reveal-on-caret's only trigger
+        // is `NSTextView.didChangeSelectionNotification` (`applyReveal`, `NoteTextView
+        // +Coordinator.swift`), and on this exact quirk's first click that notification does
+        // not reliably arrive from `super.mouseDown` alone - the same AppKit link-click
+        // gesture the comment above `mouseDown`'s Cmd+click branch documents as unreliable
+        // under this view's TextKit 2 content-storage substitution contends with the
+        // ordinary caret-placement path on click 1, so the wikilink's `[[…]]` stayed
+        // concealed until a second click, no longer racing that gesture, went through
+        // cleanly.
+        //
+        // Deliberately here, in `mouseUp`, not in `mouseDown`: `mouseDown` does not block for
+        // a drag - AppKit delivers a plain click's press and a drag's own extending
+        // `mouseDragged` events as separate calls over time, so forcing the caret/reveal from
+        // inside `mouseDown` would run before any drag had even started. By `mouseUp` the
+        // whole gesture, drag or plain click, is over. (The drag-select breakage actually
+        // hand-tested during this chain turned out to have a different cause entirely - see
+        // `.editorLink`'s doc comment - but `mouseUp` is still the more defensible place for
+        // this: nothing is left tracking the gesture for a layout change to interfere with.)
+        // `placeCaretForPlainClick` itself still declines to touch a selection that is not
+        // empty, which is what protects a real drag's result here. Still gated to a plain
+        // click only - Shift+click extends from the existing selection anchor, which
+        // forcing the caret here would destroy, and a double/triple click expands to
+        // word/paragraph, which this would override.
+        if event.modifierFlags.isDisjoint(with: .deviceIndependentFlagsMask), event.clickCount == 1 {
+            placeCaretForPlainClick(at: point)
+        }
     }
 
     /// The contextual menu for a secondary click: a drawn embed's own where one landed on
@@ -144,7 +268,7 @@ extension CompletingTextView {
         guard let storage = textStorage else { return base }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return base }
         let menu = base ?? NSMenu()
         let item = NSMenuItem(

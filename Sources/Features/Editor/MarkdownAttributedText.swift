@@ -11,6 +11,22 @@ import SwiftUI
 ///
 /// Not in `Core`: it needs `Theme` and AppKit, and `Sources/Core/**` is compiled by the two
 /// command-line tools, which have neither (ADR-0001 §D1).
+extension NSAttributedString.Key {
+    /// A wikilink target's or a CommonMark label's URL (issue #191). Deliberately not the
+    /// standard `.link`: that attribute is what makes AppKit recognize a click as "on a
+    /// link" and engage its own automatic click-navigation gesture, which this app's custom
+    /// TextKit 2 content-storage substitution makes unreliable (`NoteTextView
+    /// +Coordinator.swift`'s `textView(_:clickedOnLink:at:)` carries the full history) - it
+    /// fires even on a plain click nowhere near a link, and AppKit then aborts its own
+    /// text-selection drag-tracking for that method's return value alone, breaking
+    /// drag-to-select everywhere, not just on links. Every click this app cares about is
+    /// already resolved by hand (`characterIndexForInsertion(at:)` plus a storage lookup at
+    /// `CompletingTextView+Pasteboard.swift`'s `followLinkIfPresent(at:)` and its
+    /// `FormattingTextView.swift` twin), so nothing depended on AppKit's own gesture - this
+    /// key just stops offering it one to misfire on.
+    static let editorLink = NSAttributedString.Key("editorLink")
+}
+
 enum MarkdownAttributedText {
     /// The editor's base attributes: everything else is applied on top of these.
     ///
@@ -200,7 +216,7 @@ enum MarkdownAttributedText {
     private static func clickable(_ color: Color, url: URL?) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor(color)]
         if let url {
-            attributes[.link] = url
+            attributes[.editorLink] = url
             attributes[.cursor] = NSCursor.pointingHand
         }
         return attributes

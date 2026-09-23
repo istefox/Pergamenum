@@ -41,6 +41,30 @@ final class CompletingTextView: NSTextView {
     /// `private`: the override that owns this cache lives in its own file, at the length
     /// the linter already caps this one at.
     var embedAccessibilityElements: [Int: NSAccessibilityElement] = [:]
+    /// The link elements from the previous `accessibilityChildren()` query, by character
+    /// offset - reused for exactly the reason the embed cache above is
+    /// (`CompletingTextView+Accessibility.swift`).
+    var linkAccessibilityElements: [Int: NSAccessibilityElement] = [:]
+    /// One `NSTrackingArea` per `.editorLink` span, rebuilt on every restyle
+    /// (`CompletingTextView+CursorRects.swift`) - `addCursorRect` never took effect in this
+    /// app's SwiftUI-hosted window (issue #191 follow-up), so the pointing-hand cursor is
+    /// driven by real `mouseEntered`/`mouseExited` events instead, the mechanism
+    /// `EditorColumns.swift`'s divider already proves works here.
+    var linkTrackingAreas: [NSTrackingArea] = []
+    /// How many of `linkTrackingAreas` the mouse is currently inside, so a push/pop pair only
+    /// fires on the 0→1/1→0 transition - moving straight from one link into an adjacent one
+    /// must not flicker the cursor back to the arrow in between.
+    var hoveredLinkCount = 0
+    /// The link character index the first click of what might become a double-click resolved
+    /// to, recorded by `CompletingTextView+Pasteboard.swift`'s `mouseDown` before `super`
+    /// places the caret and reveal-on-caret runs (issue #191 follow-up). Revealing does not
+    /// change the string's length, but it does change the on-screen layout - the concealed
+    /// characters become visible glyphs, pushing everything after them sideways - so a second
+    /// click at the *same screen point* a moment later resolves to a different character than
+    /// the first one did. `nil` whenever the last single click was not on a link; overwritten
+    /// by every fresh single click, and deliberately not cleared on use, since click 3 of a
+    /// triple-click needs the same value click 2 read.
+    var revealedLinkClick: Int?
     /// Called with pasted text; returns true when it handled the paste itself.
     var onPasteURL: ((String) -> Bool)?
     /// Called with the PNG bytes of a pasted image; returns the name it was saved under.

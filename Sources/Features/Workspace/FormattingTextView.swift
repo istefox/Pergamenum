@@ -20,6 +20,13 @@ final class FormattingTextView: NSTextView {
     /// live where the responder is, or Esc silently stops leaving the card.
     var onCancel: (() -> Void)?
 
+    /// `CompletingTextView`'s twin state for the same reason
+    /// (`FormattingTextView+CursorRects.swift`) - never shared, per this file's own header:
+    /// no fork, no common base.
+    var linkTrackingAreas: [NSTrackingArea] = []
+    /// The mirror of `CompletingTextView.hoveredLinkCount`.
+    var hoveredLinkCount = 0
+
     /// A click landed on a folded heading's badge, naming the entry ordinal it stands for
     /// (ADR-0028 §D8). Nil on a card whose board never asked to be told, which is a preview or a
     /// test - and nil is also what makes the click fall through to `super` untouched.
@@ -170,8 +177,11 @@ final class FormattingTextView: NSTextView {
         // Cmd+click on a link/wikilink navigates instead of placing the caret (issue #188,
         // R-06) - the card's half of `CompletingTextView.mouseDown(with:)`'s own addition, for
         // the identical reason: this view runs TextKit 2 with the same shared content-storage
-        // delegate (`EditorDecorationDelegate`, ADR-0028 §D1), so AppKit's automatic
-        // "clickedOnLink" gesture is equally unreachable here.
+        // delegate (`EditorDecorationDelegate`, ADR-0028 §D1). Clickable spans carry the app's
+        // own `.editorLink` attribute, not the standard `.link` (issue #191, `.editorLink`'s
+        // doc comment has the full history), so AppKit's automatic "clickedOnLink" gesture
+        // cannot engage here at all - this is detected explicitly, by hand, the same as the
+        // note editor's own twin.
         if event.modifierFlags.contains(.command), followLinkIfPresent(at: point) { return }
         super.mouseDown(with: event)
     }
@@ -189,7 +199,7 @@ final class FormattingTextView: NSTextView {
         }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              storage.attribute(.link, at: index, effectiveRange: nil) is URL
+              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
         else {
             super.rightMouseDown(with: event)
             return
@@ -210,7 +220,7 @@ final class FormattingTextView: NSTextView {
         guard let storage = textStorage else { return false }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return false }
         return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
     }
@@ -223,7 +233,7 @@ final class FormattingTextView: NSTextView {
         guard let storage = textStorage else { return base }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,
-              let url = storage.attribute(.link, at: index, effectiveRange: nil) as? URL
+              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return base }
         let menu = base ?? NSMenu()
         let item = NSMenuItem(

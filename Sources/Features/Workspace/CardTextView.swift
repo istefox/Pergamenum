@@ -303,12 +303,17 @@ struct CardTextView: NSViewRepresentable {
             parent.onEndEditing()
         }
 
-        /// Self-defending, like `NoteTextView.Coordinator`'s twin (issue #188's plain-click
-        /// regression fix): AppKit can invoke this delegate method on its own, on a plain click,
-        /// bypassing its own documented Cmd requirement under this app's custom TextKit 2
-        /// substitution - so the live modifier state is checked here rather than trusted from
-        /// the caller. "Apri collegamento" bypasses this gate on purpose, through
-        /// `performLinkNavigation(_:)` directly (see `LinkNavigatingDelegate`).
+        /// Like `NoteTextView.Coordinator`'s twin (issue #191, `.editorLink`'s doc comment has
+        /// the full history): AppKit can no longer invoke this delegate method on its own -
+        /// clickable spans carry the app's own `.editorLink` attribute, never the standard
+        /// `.link` that used to make AppKit's own unreliable click-navigation gesture engage.
+        /// Reachable only from this app's own explicit call site in `followLinkIfPresent(at:)`,
+        /// already Cmd-gated before calling in; the live modifier check here is defense in
+        /// depth, not a live necessity. "Apri collegamento" bypasses this gate on purpose,
+        /// through `performLinkNavigation(_:)` directly (see `LinkNavigatingDelegate`).
+        ///
+        /// `false`/`true` are back to their plain `NSTextViewDelegate` meaning ("did this
+        /// navigate") - nothing depends any more on the refusal path returning `true`.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard NSEvent.modifierFlags.contains(.command) else { return false }
             return performLinkNavigation(link)
@@ -421,6 +426,13 @@ struct CardTextView: NSViewRepresentable {
             // runs unconditionally on every `updateNSView`.
             decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
+            // `.editorLink` spans can have moved without the view resizing - a tracking area
+            // does not follow that on its own the way it follows a resize, so this is the seam
+            // that asks `FormattingTextView+CursorRects.swift` to rebuild them (issue #191
+            // follow-up), the same placement `NoteTextView+Coordinator.applyStyling` uses.
+            // `NSView` has no settable "needs update" flag for tracking areas the way it does
+            // for layout/display - `updateTrackingAreas()` is itself the public call.
+            textView.updateTrackingAreas()
         }
 
         /// Lets go of everything the shared delegate is holding on this card's behalf (R-11).

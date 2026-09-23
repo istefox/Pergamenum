@@ -13,19 +13,22 @@ import Testing
 /// with nowhere to land.
 @MainActor
 @Suite struct WikilinkClickNavigation {
-    @Test func aPlainClickIsRefusedAndACmdClickFollowsTheSameLink() {
+    @Test func aPlainClickDoesNotNavigateAndACmdClickFollowsTheSameLink() {
         let fixture = EmbedEditorFixtures.editor(
             text: "Vedi Destinazione qui", hidesMarkup: false, root: nil, thumbnails: nil
         )
         let coordinator = fixture.coordinator
         let url = MarkdownAttributedText.noteURL(for: "Destinazione")
 
-        // No Cmd held: AppKit's own automatic gesture can and does call this delegate
-        // method unprompted (the comment above `textView(_:clickedOnLink:at:)` explains
-        // why), and it must refuse to navigate - the whole of issue #188's fix.
+        // No Cmd held: this method is never invoked by AppKit on its own any more (issue
+        // #191, `.editorLink`'s doc comment has the full history - clickable spans no
+        // longer carry the standard `.link` AppKit keys its own automatic gesture off of),
+        // so the only caller is this app's own Cmd-gated `followLinkIfPresent(at:)`. The
+        // `false`/`true` returned here are back to their plain `NSTextViewDelegate` meaning
+        // ("did this navigate"), with no `NSWorkspace.open(url)` fallback to defend against.
         coordinator.modifierFlags = { [] }
-        let refused = coordinator.textView(fixture.textView, clickedOnLink: url, at: 5)
-        #expect(!refused)
+        let navigated = coordinator.textView(fixture.textView, clickedOnLink: url, at: 5)
+        #expect(!navigated)
         #expect(fixture.followedLinks.titles.isEmpty)
 
         // Cmd held, read live at the moment the method runs - the same closure, a
@@ -36,7 +39,7 @@ import Testing
         #expect(fixture.followedLinks.titles == ["Destinazione"])
     }
 
-    @Test func otherModifiersHeldWithoutCommandStillRefuse() {
+    @Test func otherModifiersHeldWithoutCommandDoNotNavigate() {
         let fixture = EmbedEditorFixtures.editor(
             text: "Vedi Destinazione qui", hidesMarkup: false, root: nil, thumbnails: nil
         )
@@ -44,9 +47,143 @@ import Testing
         let url = MarkdownAttributedText.noteURL(for: "Destinazione")
 
         coordinator.modifierFlags = { [.shift, .option] }
-        let refused = coordinator.textView(fixture.textView, clickedOnLink: url, at: 5)
-        #expect(!refused)
+        let navigated = coordinator.textView(fixture.textView, clickedOnLink: url, at: 5)
+        #expect(!navigated)
         #expect(fixture.followedLinks.titles.isEmpty)
+    }
+}
+
+/// `CompletingTextView.placeCaretForPlainClick(at:)` (issue #191): a plain single click on
+/// link-attributed text must place the caret and reveal-on-caret on that first click, since
+/// `applyReveal`'s only trigger is the selection-changed notification `setSelectedRange`
+/// posts. Every prior reveal test is pure `MarkupReveal`/`InlineSpanReveal` arithmetic with no
+/// `NSTextView`, and `WikilinkClickNavigation` above bypasses reveal entirely by calling the
+/// delegate method directly - this suite is the first to assert the two meet.
+@MainActor
+@Suite struct WikilinkPlainClickCaretReveal {
+    @Test func aPlainClickOnAWikilinkTargetPlacesTheCaretAndReveals() {
+        let fixture = Self.wikilinkFixture()
+        let frame = EmbedEditorFixtures.fragmentFrame(at: 0, in: fixture.textView)
+        // This window is never ordered front (`EmbedEditorFixtures.editor`'s own doc
+        // comment), so nothing has yet forced the legacy `NSLayoutManager` bridge
+        // `characterIndexForInsertion(at:)` reads through to sync with the TextKit 2
+        // layout `fragmentFrame` above already computed - without this, the first
+        // hit-test in a test run resolves past the last character (measured: index equal
+        // to the string's own length) and only a second one, after this sync, lands
+        // inside the word. A real, visible window's own display pass already does this
+        // before any click reaches it, so production code needs no equivalent call.
+        fixture.textView.layoutSubtreeIfNeeded()
+
+        let placed = fixture.textView.placeCaretForPlainClick(at: CGPoint(x: frame.midX, y: frame.midY))
+
+        #expect(placed)
+        let selection = fixture.textView.selectedRange()
+        #expect(selection.length == 0)
+        #expect(selection.location < (fixture.textView.string as NSString).length)
+        #expect(fixture.coordinator.decorations.revealedParagraphs.contains(0))
+    }
+
+    @Test func aPlainClickOnACommonMarkLinkLabelPlacesTheCaretAndReveals() {
+        // A one-word line carrying a real `.editorLink`, the same shape `clickable(...)`
+        // produces for a CommonMark label's own span (`MarkdownAttributedText.swift:104-141`)
+        // - the attribute is what the fix and this test key on, not the raw `[text](url)`
+        // source.
+        let fixture = EmbedEditorFixtures.editor(
+            text: "testo", hidesMarkup: false, root: nil, thumbnails: nil
+        )
+        fixture.textView.delegate = fixture.coordinator
+        fixture.textView.textStorage?.addAttribute(
+            .editorLink, value: URL(string: "https://example.com")!,
+            range: NSRange(location: 0, length: (fixture.textView.string as NSString).length)
+        )
+        fixture.textView.textLayoutManager?.ensureLayout(
+            for: fixture.textView.textLayoutManager!.documentRange
+        )
+        let frame = EmbedEditorFixtures.fragmentFrame(at: 0, in: fixture.textView)
+        fixture.textView.layoutSubtreeIfNeeded() // see the comment above, same reason
+
+        let placed = fixture.textView.placeCaretForPlainClick(at: CGPoint(x: frame.midX, y: frame.midY))
+
+        #expect(placed)
+        #expect(fixture.coordinator.decorations.revealedParagraphs.contains(0))
+    }
+
+    @Test func aPlainClickAwayFromAnyLinkPlacesNothing() {
+        let fixture = EmbedEditorFixtures.editor(
+            text: "Nessun link qui", hidesMarkup: false, root: nil, thumbnails: nil
+        )
+        fixture.textView.delegate = fixture.coordinator
+        fixture.textView.textLayoutManager?.ensureLayout(
+            for: fixture.textView.textLayoutManager!.documentRange
+        )
+        let frame = EmbedEditorFixtures.fragmentFrame(at: 0, in: fixture.textView)
+
+        let placed = fixture.textView.placeCaretForPlainClick(at: CGPoint(x: frame.midX, y: frame.midY))
+
+        #expect(!placed)
+    }
+
+    /// The reflow case (issue #191 follow-up): click 1 reveals `[[…]]`, which pushes every
+    /// glyph after it sideways, so click 2 at the same screen point resolves elsewhere.
+    /// `selectRevealedLink(clickCount:)` must select from the *stored* index instead - proved
+    /// here by never handing it a point at all, only the index click 1 recorded.
+    ///
+    /// Driven through the helper directly, never through `mouseDown`: `NSTextView.mouseDown`
+    /// runs its own nested mouse-tracking loop until a `mouseUp` arrives, which a unit test
+    /// has no way to deliver - calling it would hang the suite rather than fail it.
+    @Test func aDoubleClickSelectsTheWordAtTheIndexTheFirstClickStored() {
+        let fixture = Self.wikilinkFixture()
+        fixture.textView.layoutSubtreeIfNeeded()
+        // What `mouseDown`'s click-1 branch records, taken from the link's own range rather
+        // than from a point, so the assertion below cannot pass by the point happening to
+        // resolve correctly.
+        fixture.textView.revealedLinkClick = 4
+        fixture.textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        let selected = fixture.textView.selectRevealedLink(clickCount: 2)
+
+        #expect(selected)
+        let selection = fixture.textView.selectedRange()
+        #expect(selection.length == (fixture.textView.string as NSString).length)
+        #expect(selection.location == 0)
+    }
+
+    @Test func aStaleStoredIndexSelectsNothingAndLeavesTheSelectionAlone() {
+        let fixture = EmbedEditorFixtures.editor(
+            text: "Nessun link qui", hidesMarkup: false, root: nil, thumbnails: nil
+        )
+        fixture.textView.delegate = fixture.coordinator
+        fixture.textView.textLayoutManager?.ensureLayout(
+            for: fixture.textView.textLayoutManager!.documentRange
+        )
+        // An index with no `.editorLink` at it - a value the text moved on from. The guard
+        // must degrade to "not handled", so the caller falls through to `super`.
+        fixture.textView.revealedLinkClick = 3
+        let before = NSRange(location: 2, length: 0)
+        fixture.textView.setSelectedRange(before)
+
+        let selected = fixture.textView.selectRevealedLink(clickCount: 2)
+
+        #expect(!selected)
+        #expect(fixture.textView.selectedRange() == before)
+    }
+
+    /// A one-word line with a real `.editorLink` over its own whole range -
+    /// `WikilinkContextMenu.linkedFixture()`'s shape, wired the same way so a click
+    /// anywhere on the fragment resolves inside the link.
+    private static func wikilinkFixture() -> EmbedEditorFixtures.Fixture {
+        let fixture = EmbedEditorFixtures.editor(
+            text: "Destinazione", hidesMarkup: false, root: nil, thumbnails: nil
+        )
+        fixture.textView.delegate = fixture.coordinator
+        fixture.textView.textStorage?.addAttribute(
+            .editorLink, value: MarkdownAttributedText.noteURL(for: "Destinazione"),
+            range: NSRange(location: 0, length: (fixture.textView.string as NSString).length)
+        )
+        fixture.textView.textLayoutManager?.ensureLayout(
+            for: fixture.textView.textLayoutManager!.documentRange
+        )
+        return fixture
     }
 }
 
@@ -66,7 +203,7 @@ import Testing
         )
         fixture.textView.delegate = fixture.coordinator
         fixture.textView.textStorage?.addAttribute(
-            .link, value: MarkdownAttributedText.noteURL(for: "Destinazione"),
+            .editorLink, value: MarkdownAttributedText.noteURL(for: "Destinazione"),
             range: NSRange(location: 0, length: (fixture.textView.string as NSString).length)
         )
         fixture.textView.textLayoutManager?.ensureLayout(

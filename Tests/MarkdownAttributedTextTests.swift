@@ -308,7 +308,7 @@ import Testing
         let theme = Theme.emergency
         let attributed = MarkdownAttributedText.attributed("[apri](https://example.com)", theme: theme)
         let labelRange = ("[apri](https://example.com)" as NSString).range(of: "apri")
-        let link = attributed.attribute(.link, at: labelRange.location, effectiveRange: nil) as? URL
+        let link = attributed.attribute(.editorLink, at: labelRange.location, effectiveRange: nil) as? URL
         #expect(link?.absoluteString == "https://example.com")
         #expect(attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) != nil)
     }
@@ -318,7 +318,7 @@ import Testing
         let attributed = MarkdownAttributedText.attributed("[vedi](Nota.md)", theme: theme)
         let labelRange = ("[vedi](Nota.md)" as NSString).range(of: "vedi")
         let link = try #require(
-            attributed.attribute(.link, at: labelRange.location, effectiveRange: nil) as? URL
+            attributed.attribute(.editorLink, at: labelRange.location, effectiveRange: nil) as? URL
         )
         #expect(MarkdownAttributedText.clickTarget(for: link) == .note(title: "Nota"))
     }

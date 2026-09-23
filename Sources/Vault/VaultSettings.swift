@@ -158,7 +158,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
         spellCheck: .off,
         hidesMarkup: true,
         readableWidth: true,
-        revealsInlineSpans: false,
+        // On by default (ADR-0037 amended 2026-09-23): word-grained reveal is the
+        // behavior actually wanted for reveal-on-caret; paragraph-wide reveal is the
+        // fallback for a settings.json written before this key existed, not the goal.
+        revealsInlineSpans: true,
         rollover: false,
         rolloverDays: VaultSettings.defaultRolloverDays,
         patronSaint: nil,
@@ -244,7 +247,7 @@ struct VaultSettings: Codable, Equatable, Sendable {
         spellCheck: SpellCheck = .off,
         hidesMarkup: Bool = true,
         readableWidth: Bool = true,
-        revealsInlineSpans: Bool = false,
+        revealsInlineSpans: Bool = true,
         rollover: Bool = false,
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
         patronSaint: PatronSaint? = nil,
