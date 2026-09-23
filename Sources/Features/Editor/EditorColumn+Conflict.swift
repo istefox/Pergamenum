@@ -14,8 +14,12 @@ extension EditorColumnView {
             Text("La nota è cambiata su disco mentre la stavi modificando.")
                 .themedText(.caption)
             Spacer()
-            Button("Ricarica da disco", action: vault.acceptExternalChange)
-            Button("Tieni la mia versione", action: vault.keepLocalVersion)
+            // `focused { }` first, like every other action in this file (`EditorColumnView
+            // .focused(_:)`): since ADR-0056 the banner can appear in a column that is not
+            // the one with the focus, and `acceptExternalChange`/`keepLocalVersion` both act
+            // on the focused tab.
+            Button("Ricarica da disco") { focused(vault.acceptExternalChange) }
+            Button("Tieni la mia versione") { focused(vault.keepLocalVersion) }
         }
         .padding(theme.spacing(.s))
         .background(theme.color(.accentMuted))

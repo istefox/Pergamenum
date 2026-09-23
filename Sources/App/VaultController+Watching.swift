@@ -21,19 +21,24 @@ extension VaultController {
     /// ADR-0043 §D3: `session.reconcile` moved its per-path read off the main actor and
     /// into `VaultDisk`, so this is `async` now. The call above is already inside
     /// `Task { @MainActor … }`, so this costs no new asynchrony at that call site.
+    ///
+    /// Every tab showing the path, in every column - not only the focused one. Reading
+    /// `openNote` here dropped an external change to a note open in a background tab or in
+    /// the other column: no reload when clean, no conflict banner when dirty, and the next
+    /// save overwrote the change (`PG-211`, #415; named by ADR-0055 §D5).
     func reconcile(_ paths: [String]) async {
         guard let session else { return }
 
         for change in await session.reconcile(paths) {
-            guard var note = openNote, note.relativePath == change.path else { continue }
-            if note.hasUnsavedChanges {
-                // Never merge, never discard: ask.
-                note.externalChangePending = change.text
-            } else {
-                note.text = change.text
-                note.savedText = change.text
+            updateTabs(showing: change.path) { tab in
+                if tab.note.hasUnsavedChanges {
+                    // Never merge, never discard: ask.
+                    tab.note.externalChangePending = change.text
+                } else {
+                    tab.note.text = change.text
+                    tab.note.savedText = change.text
+                }
             }
-            replaceOpenNote(note)
         }
     }
 }
