@@ -41,6 +41,10 @@ final class CompletingTextView: NSTextView {
     /// `private`: the override that owns this cache lives in its own file, at the length
     /// the linter already caps this one at.
     var embedAccessibilityElements: [Int: NSAccessibilityElement] = [:]
+    /// The link elements from the previous `accessibilityChildren()` query, by character
+    /// offset - reused for exactly the reason the embed cache above is
+    /// (`CompletingTextView+Accessibility.swift`).
+    var linkAccessibilityElements: [Int: NSAccessibilityElement] = [:]
     /// One `NSTrackingArea` per `.editorLink` span, rebuilt on every restyle
     /// (`CompletingTextView+CursorRects.swift`) - `addCursorRect` never took effect in this
     /// app's SwiftUI-hosted window (issue #191 follow-up), so the pointing-hand cursor is
