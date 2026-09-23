@@ -33,104 +33,167 @@ enum MarkdownAttributedText {
     /// picture of another file, and a link attribute inside it would offer a click the text
     /// view cannot route, since the characters under it belong to no note it has open.
     static func attributed(_ text: String, theme: Theme, links: Bool = true) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: base(theme: theme))
+        var context = StyleContext(theme: theme, links: links)
+        let result = NSMutableAttributedString(string: text, attributes: context.base)
         let length = (text as NSString).length
         for styled in MarkdownStyler.spans(in: text) {
             let range = NSRange(styled.range, in: text)
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
-            result.addAttributes(attributes(for: styled.span, theme: theme, links: links), range: range)
+            result.addAttributes(context.attributes(for: styled.span), range: range)
         }
         return result
     }
 
     /// The spans that need more than a colour: a font, a background, a link.
     ///
-    /// Everything else falls to `colorToken(for:)`, and the `default` here is safe for the
-    /// reason that switch has no default of its own: a span added later reaches it and the
-    /// compiler asks what colour it is.
+    /// A two-line wrapper over one fresh `StyleContext` (Task 2, PG-139/#239) - kept with
+    /// this exact static signature because `Tests/TranscludedLineTests.swift:163` and
+    /// `Tests/MarkdownAttributedTextTests.swift` call it directly, one span at a time, with
+    /// no context of their own to reuse. Everything the switch used to do inline now lives
+    /// on `StyleContext.attributes(for:)`, memoised per pass rather than rebuilt per span -
+    /// see that type's own header for why the memoisation could not live inside
+    /// `ProseTypography` instead.
     static func attributes(
         for span: MarkdownStyler.Span,
         theme: Theme,
         links: Bool = true
     ) -> [NSAttributedString.Key: Any] {
-        switch span {
-        case .heading(let level):
-            // The paragraph style is named here and not left to `base(theme:)`: that one carries
-            // `font.prose`'s line-height multiple, and a multiple applies to the run's *own* font,
-            // so a 24pt H1 under a 16pt-derived multiple reserves body-proportioned slack against
-            // a much taller face — surplus AppKit puts above the glyphs, which is what pushed the
-            // fold badge `FoldedHeadingFragment` centres in the line box away from the heading it
-            // marks. Composed onto the base style rather than replacing it, per ADR-0030 §D5.
-            [
-                .font: ProseTypography.heading(level: level, theme),
-                .foregroundColor: NSColor(theme.color(.textPrimary)),
-                .paragraphStyle: ProseTypography.paragraphStyle(
-                    theme,
-                    font: ProseTypography.heading(level: level, theme),
-                    basedOn: base(theme: theme)[.paragraphStyle] as? NSParagraphStyle
-                ),
-            ]
-        case .bold:
-            [.font: ProseTypography.proseBold(theme)]
-        case .italic:
-            // The prose family's own italic face where it has one, `[.obliqueness: 0.2]` on
-            // the upright face where it does not (ADR-0030 §D6) - the blanket obliqueness this
-            // used to return is a slanted roman, which is what the page stops looking like.
-            ProseTypography.proseItalicAttributes(theme)
-        case .strikethrough:
-            // A line through the whole run, markers included - true of strikethrough, which
-            // is what SPEC §5's styled source means for this span. It is not universal any
-            // more: ADR-0018 narrows it for three cases across its three slices (headings,
-            // emphasis, and the image/PDF embed), and strikethrough is not one.
-            [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
-        case .codeBlock:
-            // A background and the mono face. The *colour* is still left to whatever the
-            // grammar found inside, and to `textPrimary` where it found nothing - a fence in
-            // a language nobody wrote a grammar for still reads as code because of this.
-            //
-            // The face has to be named here since ADR-0030 §D2: with the base now `font.prose`
-            // there is no longer an incidental monospaced background for code to inherit, so
-            // every code-carrying span asks for `font.mono` explicitly (R-02).
-            [
-                .font: ProseTypography.mono(theme),
-                .backgroundColor: NSColor(theme.color(.surfaceSunken)),
-            ]
-        case .code, .frontmatter, .codeToken:
-            // `.codeBlock`'s reasoning, for the spans that used to fall through to `default`
-            // and take a colour alone. The colour each of them already had is unchanged - it
-            // still comes from the one exhaustive table below.
-            [
-                .font: ProseTypography.mono(theme),
-                .foregroundColor: NSColor(theme.color(colorToken(for: span))),
-            ]
-        case .linkTarget(let target):
-            clickable(theme.color(.accentPrimary), url: links ? targetURL(for: target) : nil)
-        case .embedTarget(let target):
-            // Where the click goes depends on what the target is, by the same rule the
-            // reading view uses (ADR-0010 §D2): a note opens, a file is previewed. Sending
-            // every `![[…]]` to the file preview is the editor's half of PG-020 - it
-            // answered "file non trovato nel vault" for a note that exists.
-            clickable(
-                theme.color(.accentPrimary),
-                url: links
-                    ? (Transclusion.isNoteReference(target) ? noteURL(for: target) : embedURL(for: target))
-                    : nil
-            )
-        case .embedRun:
-            // No attributes yet, on purpose: `.embedRun` spans the whole `![[foto.png]]`
-            // or `![alt](foto.png)`, wider than the marker-sized spans `default` below is
-            // safe for, and the collapse into a preview is Step 3's, not this one's. An
-            // explicit `[:]` here keeps this step from painting a colour over a range
-            // `default` was never asked to cover.
-            [:]
-        case .tableRun:
-            // `.embedRun`'s arm above, verbatim and for the same reason: a `.tableRun` spans
-            // a whole table - several lines of it - and `default`'s single colour would grey
-            // out every cell's text. The grid that replaces those characters is Task 4's
-            // (ADR-0029 §D4); until then the pipes look exactly as they do today.
-            [:]
-        default:
-            [.foregroundColor: NSColor(theme.color(colorToken(for: span)))]
+        var context = StyleContext(theme: theme, links: links)
+        return context.attributes(for: span)
+    }
+
+    /// One styling pass's memoised attribute pieces (Task 2, PG-139/#239).
+    ///
+    /// `attributes(for:theme:links:)`'s old body rebuilt every one of these per call: a
+    /// heading resolved `ProseTypography.heading(level:theme)` **twice** and rebuilt the
+    /// whole `base(theme:)` dictionary just to read its `.paragraphStyle` back out, and
+    /// `.bold`/`.italic`/`.codeBlock` and the mono-faced arms each re-resolved their own font
+    /// on every span that used them - once per span, per keystroke, since
+    /// `NoteTextView+Coordinator.applyStyling` (the actual hot caller) calls
+    /// `attributes(for:theme:)` directly in its span loop, not through `attributed` above -
+    /// a scratch confined to `attributed` alone would have fixed nothing there.
+    ///
+    /// Per-pass scratch, not a cache inside `ProseTypography`: `Theme` is `Equatable` but not
+    /// `Hashable`, its `==` compares five token dictionaries, and it is runtime-customisable
+    /// so its `id` is not identity-stable either - any keyed cache would need a key that is
+    /// expensive or wrong, plus a `static var` Swift 6 rejects without a `Mutex` (and it
+    /// cannot be `@MainActor`: `EditorDecorationDelegate`, `FoldedHeadingFragment` and
+    /// `TableGridView` call `ProseTypography` off the main actor, ADR-0030 §D5). A value
+    /// scoped to one styling pass has no invalidation question at all - a theme change makes
+    /// a new pass, and a new context with it.
+    struct StyleContext {
+        let theme: Theme
+        let links: Bool
+        /// Built once per pass rather than once per heading span, which used to rebuild this
+        /// whole dictionary just to read `.paragraphStyle` back out of it.
+        let base: [NSAttributedString.Key: Any]
+
+        private var headings: [Int: [NSAttributedString.Key: Any]] = [:]
+        private lazy var boldAttributes: [NSAttributedString.Key: Any] = [.font: ProseTypography.proseBold(theme)]
+        private lazy var italicAttributes: [NSAttributedString.Key: Any] = ProseTypography.proseItalicAttributes(theme)
+        /// Shared by both mono-faced arms below, so the face itself is resolved once - the
+        /// colour that goes with it still varies per span (`.codeBlock`'s background versus
+        /// `.code`/`.frontmatter`/`.codeToken`'s foreground, which itself varies by token).
+        private lazy var monoFont: NSFont = ProseTypography.mono(theme)
+        private lazy var codeBlockAttributes: [NSAttributedString.Key: Any] = [
+            .font: monoFont,
+            .backgroundColor: NSColor(theme.color(.surfaceSunken)),
+        ]
+
+        init(theme: Theme, links: Bool) {
+            self.theme = theme
+            self.links = links
+            self.base = MarkdownAttributedText.base(theme: theme)
+        }
+
+        /// Today's `attributes(for:theme:links:)` switch, with every rebuild memoised.
+        mutating func attributes(for span: MarkdownStyler.Span) -> [NSAttributedString.Key: Any] {
+            switch span {
+            case .heading(let level):
+                if let cached = headings[level] { return cached }
+                // The paragraph style is named here and not left to `base`: that one carries
+                // `font.prose`'s line-height multiple, and a multiple applies to the run's
+                // *own* font, so a 24pt H1 under a 16pt-derived multiple reserves
+                // body-proportioned slack against a much taller face — surplus AppKit puts
+                // above the glyphs, which is what pushed the fold badge
+                // `FoldedHeadingFragment` centres in the line box away from the heading it
+                // marks. Composed onto the base style rather than replacing it, per
+                // ADR-0030 §D5. Resolved once (not twice, as the pre-Task-2 body did) and
+                // based on `base[.paragraphStyle]` rather than a freshly rebuilt `base(theme:)`.
+                let font = ProseTypography.heading(level: level, theme)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: NSColor(theme.color(.textPrimary)),
+                    .paragraphStyle: ProseTypography.paragraphStyle(
+                        theme, font: font, basedOn: base[.paragraphStyle] as? NSParagraphStyle
+                    ),
+                ]
+                headings[level] = attributes
+                return attributes
+            case .bold:
+                return boldAttributes
+            case .italic:
+                // The prose family's own italic face where it has one, `[.obliqueness: 0.2]`
+                // on the upright face where it does not (ADR-0030 §D6) - the blanket
+                // obliqueness this used to return is a slanted roman, which is what the page
+                // stops looking like.
+                return italicAttributes
+            case .strikethrough:
+                // A line through the whole run, markers included - true of strikethrough,
+                // which is what SPEC §5's styled source means for this span. It is not
+                // universal any more: ADR-0018 narrows it for three cases across its three
+                // slices (headings, emphasis, and the image/PDF embed), and strikethrough is
+                // not one.
+                return [.strikethroughStyle: NSUnderlineStyle.single.rawValue]
+            case .codeBlock:
+                // A background and the mono face. The *colour* is still left to whatever the
+                // grammar found inside, and to `textPrimary` where it found nothing - a
+                // fence in a language nobody wrote a grammar for still reads as code because
+                // of this.
+                return codeBlockAttributes
+            case .code, .frontmatter, .codeToken:
+                // `.codeBlock`'s reasoning, for the spans that used to fall through to
+                // `default` and take a colour alone. The colour each of them already had is
+                // unchanged - it still comes from the one exhaustive table below.
+                return [
+                    .font: monoFont,
+                    .foregroundColor: NSColor(theme.color(MarkdownAttributedText.colorToken(for: span))),
+                ]
+            case .linkTarget(let target):
+                return MarkdownAttributedText.clickable(
+                    theme.color(.accentPrimary),
+                    url: links ? MarkdownAttributedText.targetURL(for: target) : nil
+                )
+            case .embedTarget(let target):
+                // Where the click goes depends on what the target is, by the same rule the
+                // reading view uses (ADR-0010 §D2): a note opens, a file is previewed.
+                // Sending every `![[…]]` to the file preview is the editor's half of PG-020
+                // - it answered "file non trovato nel vault" for a note that exists.
+                return MarkdownAttributedText.clickable(
+                    theme.color(.accentPrimary),
+                    url: links
+                        ? (Transclusion.isNoteReference(target)
+                            ? MarkdownAttributedText.noteURL(for: target)
+                            : MarkdownAttributedText.embedURL(for: target))
+                        : nil
+                )
+            case .embedRun:
+                // No attributes yet, on purpose: `.embedRun` spans the whole `![[foto.png]]`
+                // or `![alt](foto.png)`, wider than the marker-sized spans `default` below
+                // is safe for, and the collapse into a preview is Step 3's, not this one's.
+                // An explicit `[:]` here keeps this step from painting a colour over a range
+                // `default` was never asked to cover.
+                return [:]
+            case .tableRun:
+                // `.embedRun`'s arm above, verbatim and for the same reason: a `.tableRun`
+                // spans a whole table - several lines of it - and `default`'s single colour
+                // would grey out every cell's text. The grid that replaces those characters
+                // is Task 4's (ADR-0029 §D4); until then the pipes look exactly as they do
+                // today.
+                return [:]
+            default:
+                return [.foregroundColor: NSColor(theme.color(MarkdownAttributedText.colorToken(for: span)))]
+            }
         }
     }
 

@@ -532,6 +532,39 @@ private func hasAnyListMarker(_ line: String) -> Bool {
     #expect(!hasAnyListMarker(note))
 }
 
+@Test func listMarkerLevelsAreUnaffectedByFrontmatterAndAFenceAheadOfTheList() {
+    // PG-139 (issue #239), Task 1: `ListNesting.levels(in:)` scans the whole note from
+    // `text.startIndex`, frontmatter and fences included, exactly as the backward walk it
+    // now precomputes for already did, one line at a time. This fixture puts a YAML list
+    // inside the frontmatter and a list-looking line inside a fence ahead of a real nested
+    // list, so a regression that let either leak an "open ancestor" past its own closing
+    // `---`/fence boundary would show up as a wrong *level* below, not merely a spurious
+    // styled marker (already guarded by `aListMarkerInsideAFenceHasNoListMarkerSpan` above).
+    let note = """
+    ---
+    tags:
+      - uno
+      - due
+    ---
+
+    ```md
+    - non è una lista qui
+    ```
+
+    - primo
+      - secondo
+        - terzo
+    """
+    let listMarkers = spans(note).filter { if case .listMarker = $0 { true } else { false } }
+    #expect(
+        listMarkers.count == 3,
+        "the frontmatter's YAML list and the fenced list-looking line must not gain a styled marker"
+    )
+    #expect(listMarkers.contains(.listMarker(kind: .bullet, level: 1)))
+    #expect(listMarkers.contains(.listMarker(kind: .bullet, level: 2)))
+    #expect(listMarkers.contains(.listMarker(kind: .bullet, level: 3)))
+}
+
 @Test func aMarkerWithNoTrailingSpaceIsNotAListMarker() {
     // A marker needs its trailing space: a lone dash, a dash immediately followed by a
     // letter, and an ordered marker with no space or no text after it are all plain text.
