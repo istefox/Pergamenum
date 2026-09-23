@@ -160,7 +160,7 @@ import Testing
         // both used to carry the embed URL and a click on a note asked Quick Look for a
         // file that does not exist.
         func url(of target: String) -> URL? {
-            MarkdownAttributedText.attributes(for: .embedTarget(target), theme: .emergency)[.link] as? URL
+            MarkdownAttributedText.attributes(for: .embedTarget(target), theme: .emergency)[.editorLink] as? URL
         }
         #expect(url(of: "Prove in laboratorio")?.host == "note")
         #expect(url(of: "foto.png")?.host == MarkdownAttributedText.embedHost)

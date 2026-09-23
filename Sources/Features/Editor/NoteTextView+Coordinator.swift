@@ -399,19 +399,22 @@ extension NoteTextView {
             completing.refreshCompletion(theme: parent.theme)
         }
 
-        // AppKit's own automatic "clickedOnLink" gesture is unreliable under this view's
-        // custom TextKit 2 content-storage substitution (issue #188's original root cause) -
-        // not simply dormant, it turns out, but liable to fire on a PLAIN click too once a
-        // click has already made the view first responder, bypassing the Cmd requirement an
-        // editable `NSTextView` is supposed to enforce (confirmed on-screen, 2026-09-09,
-        // after the initial fix landed). Rather than chase that quirk inside AppKit, this
-        // delegate method - which AppKit can invoke on its own, unpredictably - refuses to
-        // navigate unless Cmd is actually down *at the moment it runs*, checked live off
-        // `NSEvent.modifierFlags` rather than trusted from whichever caller invoked it. Only
-        // this method's own explicit call site in `followLinkIfPresent(at:)` (mouseDown,
-        // already Cmd-gated before calling in) can ever satisfy this a second time; "Apri
+        // AppKit can no longer invoke this method on its own (issue #191): clickable spans
+        // carry the app's own `.editorLink` attribute now, never the standard `.link`
+        // (`MarkdownAttributedText.editorLink`'s doc comment has the full history, including
+        // why `.link` used to make AppKit's own unreliable click-navigation gesture engage -
+        // sometimes on a plain click nowhere near a link - and abort its drag-tracking loop
+        // for the whole gesture). This method is reachable only from this app's own explicit
+        // call site, `followLinkIfPresent(at:)` in `mouseDown`, which already checked Cmd
+        // before calling in; the `guard` here is defense in depth, not a live necessity, kept
+        // live off `NSEvent.modifierFlags` rather than trusted from the caller. "Apri
         // collegamento" (R-07) deliberately does NOT go through this method at all, since it
         // is the one gesture that must navigate without Cmd.
+        //
+        // `false`/`true` are back to their plain `NSTextViewDelegate` meaning ("did this
+        // navigate") - nothing depends any more on the refusal path returning `true` to stop
+        // AppKit's own default unclaimed-link handling, because AppKit never reaches this
+        // method on an unclaimed link any more.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard modifierFlags().contains(.command) else { return false }
             return performLinkNavigation(link)
@@ -552,6 +555,13 @@ extension NoteTextView {
             // Same rule, same reason (ADR-0033 §D15): a host lays SwiftUI out and the caret
             // rescue moves the selection.
             refreshViewBlockHosts(in: textView, theme: theme)
+            // `.editorLink` spans can have moved without the view resizing (an edit above or
+            // beside one, a reveal toggling a marker's width) - a tracking area does not
+            // follow that on its own the way it follows a resize, so this is the seam that asks
+            // `CompletingTextView+CursorRects.swift` to rebuild them (issue #191 follow-up).
+            // `NSView` has no settable "needs update" flag for tracking areas the way it does
+            // for layout/display - `updateTrackingAreas()` is itself the public call.
+            textView.updateTrackingAreas()
         }
 
         /// One span's hidden marker, its range relative to its own paragraph's start - the

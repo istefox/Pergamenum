@@ -1182,6 +1182,32 @@ private final class NotificationCounter: @unchecked Sendable {
         )
     }
 
+    // MARK: Regression (issue #191 follow-up) - a paragraph entirely covered by a drag
+    // reveals every inline marker in it, not just the ones whose own edges happen to line
+    // up with the synthetic span
+
+    /// `MarkupReveal.addSpans`'s own "entirely covered" shortcut (ADR-0037 §D5) hands back
+    /// one span spanning the whole paragraph instead of parsing it for its real constructs -
+    /// found hand-testing a drag from a paragraph's own start through the paragraph after
+    /// it, which is exactly what makes that shortcut fire. Before the fix, `collapsing`'s
+    /// edge-match (R-01/R-02 above) only revealed `firstLinkOpen`/`firstLinkClose`, since
+    /// those alone happen to sit at the whole-paragraph span's own edges (0 and the
+    /// paragraph's length) - `secondLinkOpen`/`secondLinkClose`, further inside the same
+    /// paragraph, stayed collapsed despite the whole paragraph supposedly being revealed.
+    @Test func aParagraphEntirelyCoveredRevealsEveryInlineMarkerNotJustEdgeAlignedOnes() {
+        let note = "[[Uno]] e [[Due]]\n"
+        let wholeParagraph = NSRange(location: 0, length: (note as NSString).length)
+        let displayed = displayedParagraph(
+            note,
+            markers: [Self.firstLinkOpen, Self.firstLinkClose, Self.secondLinkOpen, Self.secondLinkClose],
+            revealed: [0],
+            spans: [0: [wholeParagraph]],
+            revealsInlineSpans: true
+        )
+
+        #expect(displayed == nil)
+    }
+
     // MARK: R-05 - nested spans, innermost revealed, only the outer collapses
 
     @Test func onlyTheOuterRunsMarkersCollapseWhenTheInnerSpanIsRevealed() {
@@ -1288,6 +1314,23 @@ private final class NotificationCounter: @unchecked Sendable {
 
         let clearedAgain = delegate.apply(revealedSpans: [:])
         #expect(clearedAgain.isEmpty)
+    }
+
+    /// A key present on both sides of the call is not "unchanged" on its own - its value
+    /// can still grow or shrink, the shape a drag-to-select produces as the selection keeps
+    /// extending *inside* a paragraph already in the table (issue #191 follow-up: this
+    /// paragraph never got told to redraw, and kept showing the first, smaller answer, for
+    /// exactly this reason before the fix). A plain `symmetricDifference` of the two key
+    /// sets would answer `[]` here, since key `3` is in both tables.
+    @Test func applyRevealedSpansFlagsAKeyWhoseValueChangedEvenThoughItStaysPresent() {
+        let delegate = EditorDecorationDelegate()
+        _ = delegate.apply(revealedSpans: [3: [NSRange(location: 0, length: 2)]])
+
+        let changed = delegate.apply(
+            revealedSpans: [3: [NSRange(location: 0, length: 2), NSRange(location: 5, length: 3)]]
+        )
+
+        #expect(changed == Set([3]))
     }
 }
 

@@ -188,14 +188,16 @@ import Testing
 
     @Test func linkTargetCarriesLinkAndCursorForAResolvableTarget() throws {
         let attributes = CardTextAttributes.attributes(for: .linkTarget("Nota"), theme: theme)
-        let url = try #require(attributes[.link] as? URL, ".linkTarget must now carry .link (R-06)")
+        let url = try #require(
+            attributes[.editorLink] as? URL, ".linkTarget must now carry .editorLink (issue #191)"
+        )
         #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota"))
         #expect(attributes[.cursor] != nil, ".linkTarget must now carry .cursor (R-06)")
     }
 
     @Test func embedTargetCarriesLinkAndCursorForAFileReference() {
         let attributes = CardTextAttributes.attributes(for: .embedTarget("foto.png"), theme: theme)
-        #expect(attributes[.link] as? URL == MarkdownAttributedText.embedURL(for: "foto.png"))
+        #expect(attributes[.editorLink] as? URL == MarkdownAttributedText.embedURL(for: "foto.png"))
         #expect(attributes[.cursor] != nil, ".embedTarget must now carry .cursor (R-06)")
     }
 

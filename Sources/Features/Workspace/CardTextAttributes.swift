@@ -27,12 +27,15 @@ import SwiftUI
 ///   hardcoded `NSColor` - this table *is* a view choosing a colour, so the design-system rule
 ///   ("no hardcoded colour in a view") holds here exactly as it does in `MarkdownAttributedText`.
 /// - `.linkTarget` / `.embedTarget` are styled (a distinct colour, matching the note editor's own
-///   `MarkdownAttributedText.clickable(_:url:)`, never underlined) but must **never** carry
-///   `.link` as a key and must never be clickable: a canvas card's text
-///   view has no note open to route a click to, so there is no navigation surface to offer
-///   (ADR §D1). Unlike `MarkdownAttributedText.attributes(for:theme:links:)`, this table takes
-///   no `links:` toggle at all - there is nothing to switch, because a card's links are never
-///   navigable.
+///   `MarkdownAttributedText.clickable(_:url:)`, never underlined) and carry a URL under
+///   `.editorLink`, never the standard `.link` (issue #191): `.link` is what makes AppKit engage
+///   its own automatic, unreliable click-navigation gesture under this app's TextKit 2
+///   substitution, which this file's own `FormattingTextView.swift` twin resolves by hand
+///   instead - `.link` bought nothing here but a misfire risk. Unlike
+///   `MarkdownAttributedText.attributes(for:theme:links:)`, this table takes no `links:` toggle
+///   at all - there is nothing to switch, because whether a card's links navigate is decided
+///   entirely by `FormattingTextView`'s own click handling, not by which attribute key is
+///   present.
 /// - Nothing in this table may look at what precedes or follows a span's own range. A `.bold`
 ///   span three characters into a line and a `.bold` span three characters into
 ///   `"- [ ] "`-prefixed line must attribute identically (R-09, "no special-casing that excludes
@@ -158,7 +161,7 @@ enum CardTextAttributes {
             if let url = MarkdownAttributedText.targetURL(for: target) {
                 [
                     .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                    .link: url,
+                    .editorLink: url,
                     .cursor: NSCursor.pointingHand,
                 ]
             } else {
@@ -167,7 +170,7 @@ enum CardTextAttributes {
         case .embedTarget(let target):
             [
                 .foregroundColor: NSColor(theme.color(.accentPrimary)),
-                .link: Transclusion.isNoteReference(target)
+                .editorLink: Transclusion.isNoteReference(target)
                     ? MarkdownAttributedText.noteURL(for: target)
                     : MarkdownAttributedText.embedURL(for: target),
                 .cursor: NSCursor.pointingHand,

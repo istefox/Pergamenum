@@ -336,8 +336,19 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// returns-what-changed shape `apply(revealedParagraphs:)` has above, so the caller
     /// invalidates two paragraphs and not a document (ADR-0037 §D1). No logging: this runs
     /// on every arrow key, the same reason `apply(revealedParagraphs:)` has none.
+    ///
+    /// A key added or removed is not the only way a paragraph's answer changes: a drag that
+    /// keeps extending *inside* a paragraph already in the table (into a second construct
+    /// further along the same line, say) leaves that key present on both sides while its
+    /// `[NSRange]` value grows - a plain `symmetricDifference` of the two key sets misses
+    /// this entirely, since the key was never added or removed, and that paragraph then
+    /// never gets told to redraw: it keeps showing whichever spans were revealed the moment
+    /// its key first appeared, not the current, larger answer (issue #191 follow-up, found
+    /// hand-testing drag-to-select spanning a wikilink's own paragraph). Every key present in
+    /// either table is compared by value, not just by membership.
     func apply(revealedSpans spans: [Int: [NSRange]]) -> Set<Int> {
-        let changed = Set(revealedSpans.keys).symmetricDifference(spans.keys)
+        let keys = Set(revealedSpans.keys).union(spans.keys)
+        let changed = keys.filter { revealedSpans[$0] != spans[$0] }
         revealedSpans = spans
         return changed
     }
@@ -507,16 +518,36 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
         let text = storage.string as NSString
         let survivors = Self.survivors(among: markers, of: range, in: text)
+        // A missing key means "no span was revealed in this paragraph", never "the setting
+        // is off" - the latter is exactly what `revealsInlineSpans` already tests. Handing
+        // the dictionary's own `nil` through unchanged made a caret sitting in the paragraph
+        // but outside every span read as the setting-off case in `collapsing`, which falls
+        // back to `paragraphIsRevealed` and reveals every inline marker in the paragraph
+        // regardless of the caret's span.
+        let paragraphSpans = revealsInlineSpans ? (revealedSpans[range.location] ?? []) : nil
+        // `MarkupReveal.addSpans`'s own "entirely covered" shortcut (ADR-0037 §D5) hands back
+        // one synthetic span for the whole paragraph, `(0, paragraph.length)`, instead of
+        // parsing it - a drag-selected paragraph never reaches the per-construct branch
+        // below at all. That synthetic span's own edges almost never line up with any real
+        // marker's edges (a wikilink starting mid-line, say), so `collapsing`'s edge-match
+        // silently kept every marker in this paragraph collapsed regardless (issue #191
+        // follow-up, found hand-testing a drag from a paragraph's own start through the
+        // paragraph after it - the earlier fix to `apply(revealedSpans:)`'s change tracking
+        // made the paragraph redraw at all, which is what made this second, independent bug
+        // visible in the first place). Recognised by shape here rather than by widening
+        // `collapsing`'s own contract: this paragraph is already unconditionally a member of
+        // `revealedParagraphs` whenever `addSpans` took that branch - both walk the same
+        // triggers (§D6) and `add` inserts a paragraph an intersects at all - so handing
+        // `collapsing` a `nil` table for it takes the exact same "setting off" branch that
+        // already reveals every marker when `paragraphIsRevealed` is true, with no new case
+        // to test for that function on its own.
+        let wholeParagraphRevealed = paragraphSpans?.contains {
+            $0.location == 0 && $0.length == range.length
+        } ?? false
         let collapsing = Self.collapsing(
             among: survivors,
             paragraphIsRevealed: revealedParagraphs.contains(range.location),
-            // A missing key means "no span was revealed in this paragraph", never "the
-            // setting is off" - the latter is exactly what `revealsInlineSpans` already
-            // tests. Handing the dictionary's own `nil` through unchanged made a caret
-            // sitting in the paragraph but outside every span read as the setting-off
-            // case in `collapsing`, which falls back to `paragraphIsRevealed` and reveals
-            // every inline marker in the paragraph regardless of the caret's span.
-            revealedSpans: revealsInlineSpans ? (revealedSpans[range.location] ?? []) : nil
+            revealedSpans: wholeParagraphRevealed ? nil : paragraphSpans
         )
         guard !collapsing.isEmpty else { return nil }
 
