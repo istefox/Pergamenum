@@ -322,4 +322,71 @@ import Testing
         )
         #expect(MarkdownAttributedText.clickTarget(for: link) == .note(title: "Nota"))
     }
+
+    // MARK: - StyleContext (Task 2, PG-139/#239)
+    //
+    // `attributes(for:theme:links:)` is now a two-line wrapper over a fresh `StyleContext` -
+    // these pin that the wrapper and the context it builds never drift apart, one span kind
+    // at a time, and that the memoised heading dictionary answers the same thing twice.
+
+    /// Structural equality for two attribute dictionaries - `[NSAttributedString.Key: Any]`
+    /// is not itself `Equatable`, so this bridges both sides to `NSDictionary`, whose
+    /// `isEqual` deep-compares every value (`NSFont`/`NSColor`/`NSParagraphStyle`/`NSCursor`/
+    /// `URL`/`NSNumber` all support it).
+    private static func attributesMatch(
+        _ lhs: [NSAttributedString.Key: Any], _ rhs: [NSAttributedString.Key: Any]
+    ) -> Bool {
+        let left = Dictionary(uniqueKeysWithValues: lhs.map { ($0.key.rawValue, $0.value) })
+        let right = Dictionary(uniqueKeysWithValues: rhs.map { ($0.key.rawValue, $0.value) })
+        return NSDictionary(dictionary: left).isEqual(NSDictionary(dictionary: right))
+    }
+
+    /// One example of every `MarkdownStyler.Span` case - the exhaustive list this suite must
+    /// keep in step with the enum, the same discipline `colorToken(for:)`'s own switch (no
+    /// `default`) already enforces in production.
+    private static let everySpanKind: [MarkdownStyler.Span] = [
+        .frontmatter,
+        .heading(level: 3),
+        .headingMarker,
+        .bold,
+        .italic,
+        .emphasisMarker,
+        .strikethrough,
+        .code,
+        .linkSyntax,
+        .linkTarget("Nota"),
+        .embedTarget("foto.png"),
+        .embedRun,
+        .tag("#project-pergamenum"),
+        .codeBlock,
+        .codeToken(.keyword),
+        .taskMarker(state: .open),
+        .scheduled,
+        .due,
+        .annotation,
+        .listMarker(kind: .bullet, level: 2),
+        .blockquoteMarker(level: 1),
+        .strikethroughMarker,
+        .horizontalRule,
+        .tableRun,
+        .viewBlockRun,
+    ]
+
+    @Test func styleContextAttributesMatchTheStaticWrapperForEverySpanKind() {
+        let theme = Theme.emergency
+        for span in Self.everySpanKind {
+            var context = MarkdownAttributedText.StyleContext(theme: theme, links: true)
+            let fromContext = context.attributes(for: span)
+            let fromWrapper = MarkdownAttributedText.attributes(for: span, theme: theme)
+            #expect(Self.attributesMatch(fromContext, fromWrapper), "\(span)")
+        }
+    }
+
+    @Test func aRepeatedHeadingLevelReturnsEqualAttributesTwice() {
+        let theme = Theme.emergency
+        var context = MarkdownAttributedText.StyleContext(theme: theme, links: true)
+        let first = context.attributes(for: .heading(level: 2))
+        let second = context.attributes(for: .heading(level: 2))
+        #expect(Self.attributesMatch(first, second))
+    }
 }

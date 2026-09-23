@@ -25,6 +25,57 @@ enum ListNesting {
         return min(1 + openBelow, 6)
     }
 
+    /// Every list line's CommonMark nesting level, in one forward pass over `text`
+    /// (PG-139/#239) - equivalent to, but not a replacement for, calling `level(in:lineStart:
+    /// indent:)` at every list line: that walks backward to the top of the document and
+    /// rebuilds the ancestor stack from scratch each time, which is the O(n²) this exists to
+    /// avoid on a long list restyled on every keystroke.
+    ///
+    /// Keyed by each list line's own start index. The indices belong to *this* `String`; the
+    /// map is meaningless against any other value, which is why the one caller that holds
+    /// `text` throughout is the only one given it.
+    ///
+    /// Scans from `text.startIndex` - frontmatter included, no fence filter - exactly what
+    /// `level(in:lineStart:indent:)`'s own backward walk already sees, and folds the same
+    /// stack `ancestorContentColumns(in:before:)` rebuilds per line incrementally instead: a
+    /// list line pops every entry whose content column is greater than its own indent,
+    /// reports `min(1 + stack.count, 6)`, then pushes its own content column; a blank line
+    /// changes nothing; an indented non-list line changes nothing (still inside the nearest
+    /// open item); a non-list, non-blank line at column 0 clears the stack (nothing stays
+    /// open across a top-level paragraph). `markerWidth` is the same shared grammar, so a
+    /// checkbox line is still counted as an ancestor here, exactly as it is today.
+    static func levels(in text: String) -> [String.Index: Int] {
+        var levels: [String.Index: Int] = [:]
+        var stack: [Int] = []
+
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let line = text[lineStart..<lineEnd]
+
+            if !line.isEmpty {
+                let indentPrefix = line.prefix(while: { $0 == " " || $0 == "\t" })
+                let indentColumns = indentPrefix.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+                let content = line.dropFirst(indentPrefix.count)
+
+                if let marker = markerWidth(in: content) {
+                    while let top = stack.last, top > indentColumns {
+                        stack.removeLast()
+                    }
+                    levels[lineStart] = min(1 + stack.count, 6)
+                    stack.append(indentColumns + marker)
+                } else if indentColumns == 0 {
+                    stack.removeAll()
+                }
+            }
+
+            guard lineEnd < text.endIndex else { break }
+            lineStart = text.index(after: lineEnd)
+        }
+
+        return levels
+    }
+
     /// The content columns of every list item still open just before `lineStart`, in
     /// document order (outermost first).
     ///

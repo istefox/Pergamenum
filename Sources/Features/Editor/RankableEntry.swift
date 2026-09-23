@@ -15,34 +15,6 @@ protocol RankableEntry {
     var keywords: [String] { get }
 }
 
-extension RankableEntry {
-    /// How well `needle` starts this entry, or nil when it starts no word of it.
-    ///
-    /// Three tiers, and the order is what a person expects: the title itself, then a word
-    /// inside the title, then a keyword. `tit` reaches "Titolo 1" before "Pianifica il task
-    /// domani" ever reaches it through "tit" - which it does not, and that is the point.
-    /// The best subsequence score across the name and the keywords, or nil when the query is
-    /// not even a subsequence of any of them.
-    ///
-    /// `FuzzyMatch` is the same function the wikilink completion ranks note titles with: one
-    /// definition of "close enough", not two.
-    func fuzzyCloseness(to needle: String) -> Int? {
-        var best: Int?
-        for candidate in [rankingTitle] + keywords {
-            guard let score = FuzzyMatch.score(query: needle, candidate: candidate) else { continue }
-            best = max(best ?? score, score)
-        }
-        return best
-    }
-
-    func rank(startingWith needle: String) -> Int? {
-        if rankingTitle.lowercased().hasPrefix(needle) { return 3 }
-        if EntryRanking.aWord(of: rankingTitle, startsWith: needle) { return 2 }
-        if keywords.contains(where: { EntryRanking.aWord(of: $0, startsWith: needle) }) { return 1 }
-        return nil
-    }
-}
-
 /// The filter behind every closed catalogue the completion panel offers.
 enum EntryRanking {
     /// The entries matching what has been typed, best first.
@@ -67,15 +39,33 @@ enum EntryRanking {
     ) -> [Entry] {
         guard !query.isEmpty else { return catalogue }
         let needle = query.lowercased()
+        let needleCharacters = Array(needle)
 
         // Built in steps rather than as one chained expression: the type checker gives up
         // on the chained form, which is the same note `CompletingTextView` already carries
         // for the wikilink scoring.
         var scored: [Ranked<Entry>] = []
         for (order, entry) in catalogue.enumerated() {
-            if let rank = entry.rank(startingWith: needle) {
+            // Lowercased and split once per entry per call (PG-139/#239), not once per tier:
+            // the title used to be lowercased for the prefix check, lowercased again inside
+            // `aWord`, and a third time inside `FuzzyMatch.score` for whichever entries
+            // reached the fuzzy tier below - every keyword paid the same twice.
+            // `wordStartRank` and `fuzzyCloseness` below take these forms in rather than
+            // deriving them from the entry themselves.
+            let lowercasedTitle = entry.rankingTitle.lowercased()
+            let titleWords = words(of: lowercasedTitle)
+            let lowercasedKeywords = entry.keywords.map { $0.lowercased() }
+
+            if let rank = wordStartRank(
+                startingWith: needle,
+                lowercasedTitle: lowercasedTitle,
+                titleWords: titleWords,
+                lowercasedKeywords: lowercasedKeywords
+            ) {
                 scored.append(Ranked(entry: entry, rank: rank, order: order))
-            } else if allowingFuzzy, let closeness = entry.fuzzyCloseness(to: needle) {
+            } else if allowingFuzzy, let closeness = fuzzyCloseness(
+                to: needleCharacters, lowercasedTitle: lowercasedTitle, lowercasedKeywords: lowercasedKeywords
+            ) {
                 // Tier 0, and the fuzzy score decides only the order *within* it: a
                 // subsequence match never climbs above a word-start one, however good it is.
                 scored.append(Ranked(entry: entry, rank: 0, order: order, closeness: closeness))
@@ -106,12 +96,56 @@ enum EntryRanking {
         var closeness: Int = 0
     }
 
+    /// How well `needle` starts an entry, given its lowercased title, that title's own words,
+    /// and its lowercased keywords, all built once by `matching` above rather than
+    /// re-lowercased here per tier (PG-139/#239). Three tiers, and the order is what a
+    /// person expects: the title itself, then a word inside the title, then a keyword. `tit`
+    /// reaches "Titolo 1" before "Pianifica il task domani" ever reaches it through "tit" -
+    /// which it does not, and that is the point.
+    private static func wordStartRank(
+        startingWith needle: String,
+        lowercasedTitle: String,
+        titleWords: [String],
+        lowercasedKeywords: [String]
+    ) -> Int? {
+        if lowercasedTitle.hasPrefix(needle) { return 3 }
+        if titleWords.contains(where: { $0.hasPrefix(needle) }) { return 2 }
+        if lowercasedKeywords.contains(where: { words(of: $0).contains { $0.hasPrefix(needle) } }) { return 1 }
+        return nil
+    }
+
+    /// The best subsequence score across the title and the keywords, or nil when `needle` is
+    /// not even a subsequence of any of them - the fourth tier `matching(allowingFuzzy:)`
+    /// adds below the three `wordStartRank` above already tried.
+    ///
+    /// `FuzzyMatch` is the same function the wikilink completion ranks note titles with: one
+    /// definition of "close enough", not two. Takes the same precomputed lowercased forms
+    /// `wordStartRank` does and no longer builds `[rankingTitle] + keywords` to loop over -
+    /// the title is scored, then each keyword, without concatenating the two into a fresh
+    /// array first.
+    private static func fuzzyCloseness(
+        to needle: [Character], lowercasedTitle: String, lowercasedKeywords: [String]
+    ) -> Int? {
+        var best = FuzzyMatch.score(needle: needle, haystack: Array(lowercasedTitle))
+        for keyword in lowercasedKeywords {
+            guard let score = FuzzyMatch.score(needle: needle, haystack: Array(keyword)) else { continue }
+            best = max(best ?? score, score)
+        }
+        return best
+    }
+
     /// Words are runs of letters and digits, so "h2" is one word and "da fare" is two.
     /// Anything else separates, which keeps punctuation in a title from hiding the word
-    /// after it.
+    /// after it. Takes text already in the caller's own case - `aWord` below lowercases its
+    /// own argument first, `matching` above passes text it already lowercased once itself.
+    static func words(of text: String) -> [String] {
+        text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+    }
+
+    /// Kept at its old shape - same name, same signature - and reimplemented over `words(of:)`
+    /// above, the one definition of the splitting rule both this and `matching`'s own
+    /// per-entry precomputation now share.
     static func aWord(of text: String, startsWith needle: String) -> Bool {
-        text.lowercased()
-            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-            .contains { $0.hasPrefix(needle) }
+        words(of: text.lowercased()).contains { $0.hasPrefix(needle) }
     }
 }
