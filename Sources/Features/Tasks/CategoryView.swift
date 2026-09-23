@@ -5,13 +5,13 @@ import SwiftUI
 /// group per child.
 ///
 /// **The tasks are drawn by the caller's own row, not a second row view.** `TasksView`'s
-/// `row(_:isRolledOver:)` (`TasksView+Row.swift`) already carries the selection
+/// `row(_:isRolledOver:praticaLookup:)` (`TasksView+Row.swift`) already carries the selection
 /// highlight, the checkbox, the context menu and the due-date sheet every task in this
 /// pane needs, and it closes over `TasksView`'s own `@State` (`selectedTaskID`,
 /// `addingDueFor`) to do it - state this view has no business holding a second copy of.
 /// `TasksView+List.swift`'s `list` passes `row` itself as `taskRow`, so a category task
 /// is selectable, completable and right-clickable exactly like every other task in the
-/// pane (the same reasoning `project(_:parent:rolledIDs:)` already gives for reusing
+/// pane (the same reasoning `project(_:parent:rolledIDs:praticaLookup:)` already gives for reusing
 /// `row` on a "Progetti" heading).
 ///
 /// `category` is a real registry entry for a registered slug, or a synthesized stand-in
@@ -25,7 +25,7 @@ import SwiftUI
 /// another, exactly as `TaskArrangement.groups(_:options:)` already arranges a flat list
 /// for `list`. A `.subtasks`/"Progetti" grouping renders its parent groups as a plain
 /// heading here rather than `list`'s own `DisclosureGroup`-free but still-nested
-/// `project(_:parent:rolledIDs:)` row - a deliberately plainer render for one grouping,
+/// `project(_:parent:rolledIDs:praticaLookup:)` row - a deliberately plainer render for one grouping,
 /// not a second row view to keep in step with that one.
 struct CategoryView<Row: View>: View {
     @Environment(\.theme) private var theme
@@ -36,7 +36,7 @@ struct CategoryView<Row: View>: View {
     let isRegistered: Bool
     let options: TaskListOptions
     /// A plain closure, not `@ViewBuilder` - it is called once per task rather than once
-    /// for a single content block, and `row(_:isRolledOver:)`'s call already returns one
+    /// for a single content block, and `row(_:isRolledOver:praticaLookup:)`'s call already returns one
     /// opaque `some View`, so there is nothing here for the builder syntax to combine.
     let taskRow: (TaskItem) -> Row
 

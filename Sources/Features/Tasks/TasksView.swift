@@ -8,6 +8,8 @@ struct TasksView: View {
     @Environment(ThemeEngine.self) private var themeEngine
     @Environment(Navigation.self) var navigation
     @Environment(CommandActions.self) var actions
+    /// The pratiche list the rows' pratica badges are read against (`TasksView+Pratiche.swift`).
+    @Environment(PraticheController.self) var pratiche
     /// One derived selection (ADR-0047 §D6): a view of SPEC §7.4, or a category row. Held
     /// on `Navigation` (PG-206), not here, since this view is recreated every time the
     /// pane is shown again and a `@State` here would forget it each time.
@@ -51,6 +53,13 @@ struct TasksView: View {
         }
         .task(id: vault.scanGeneration) {
             boards = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+            // The pratiche list is filled only by whoever calls `load(from:)`, and the
+            // Pratiche pane does so only in its own `.task` - so without this a fresh launch
+            // would draw no pratica badge until that pane had been opened once. The same
+            // call `PraticheSettingsTab` makes; it reads the ledger, the index and the
+            // `pratica.md` files, never the Mail store (ADR-0036 §D10 holds). With no vault
+            // open, the no-vault reset stays with the Pratiche surfaces that own it.
+            if vault.session != nil { pratiche.load(from: vault) }
         }
         // A captured task belongs to a view that may not be the one showing, and a
         // capture that appears nowhere reads as a capture that failed. So the pane
