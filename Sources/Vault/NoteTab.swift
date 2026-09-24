@@ -87,5 +87,21 @@ extension VaultController {
         var externalChangePending: String?
 
         var hasUnsavedChanges: Bool { text != savedText }
+
+        /// Catches this buffer up with a newer text on disk: ADR-0001 §D3.4 for one buffer (ADR-0058 §D1).
+        ///
+        /// A dirty buffer is the person's work: never merged, never discarded - it gets the
+        /// prompt, with `incoming` as the other side. A clean one adopts `incoming`, and a
+        /// prompt still pending on it goes too: a buffer undone back to `savedText` after the
+        /// banner appeared now holds the newest text, so the older one has nothing to ask.
+        mutating func catchUp(to incoming: String) {
+            if hasUnsavedChanges {
+                externalChangePending = incoming
+            } else {
+                text = incoming
+                savedText = incoming
+                externalChangePending = nil
+            }
+        }
     }
 }

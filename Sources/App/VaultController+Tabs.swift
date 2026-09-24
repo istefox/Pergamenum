@@ -255,9 +255,10 @@ extension VaultController {
     }
 
     /// Applies `change` to every tab showing `relativePath`, in every column - not only in
-    /// the focused one. An external change, a rename and a trash do not know which tab, if
-    /// any, has the focus: `canOperate(on:)` (`VaultController+Files.swift`) already asks the
-    /// question of every column, and these three used to ask it of the first one only.
+    /// the focused one. An external change, an in-process write (`syncOpenNote`, ADR-0058), a
+    /// rename and a trash do not know which tab, if any, has the focus: `canOperate(on:)`
+    /// (`VaultController+Files.swift`) already asks the question of every column, and these
+    /// four used to ask it of the first one only.
     func updateTabs(showing relativePath: String, _ change: (inout NoteTab) -> Void) {
         for columnIndex in columns.indices {
             for tabIndex in columns[columnIndex].tabs.indices
@@ -295,16 +296,6 @@ extension VaultController {
         guard let note = readForEditing(relativePath) else { return }
         show(note)
         isComposingNote = false
-    }
-
-    /// Reads the focused tab's note from disk again, replacing the buffer.
-    ///
-    /// For the callers that mean "the file changed underneath, catch up" rather than "open
-    /// this": `openNote(at:)` cannot serve them any more, because for them the note being
-    /// already open is the normal case and it now short-circuits.
-    func reloadFocusedNote() {
-        guard let path = openNote?.relativePath, let note = readForEditing(path) else { return }
-        replaceOpenNote(note)
     }
 
     /// Follows a renamed or moved note in every tab that was showing it.

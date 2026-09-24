@@ -30,14 +30,9 @@ extension VaultController {
         guard let session else { return }
 
         for change in await session.reconcile(paths) {
+            // Never merge, never discard: ask - the rule `catchUp(to:)` holds (ADR-0058 §D1).
             updateTabs(showing: change.path) { tab in
-                if tab.note.hasUnsavedChanges {
-                    // Never merge, never discard: ask.
-                    tab.note.externalChangePending = change.text
-                } else {
-                    tab.note.text = change.text
-                    tab.note.savedText = change.text
-                }
+                tab.note.catchUp(to: change.text)
             }
         }
     }

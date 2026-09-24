@@ -169,16 +169,20 @@ extension VaultSession {
         to targetTitle: String,
         reason: String,
         reverseReason: String
-    ) async -> Bool {
+    ) async -> (created: Bool, written: [WriteResult]) {
         guard let targetPath = index.resolve(title: targetTitle).first else {
             recordProblem("nessuna nota si chiama «\(targetTitle)»")
-            return false
+            return (false, [])
         }
         guard targetPath != sourcePath else {
             recordProblem("\(RelatedLink.Error.linkingToItself)")
-            return false
+            return (false, [])
         }
 
+        // Every write that reached disk, in order, even when a later one fails: the editor
+        // catches up with the half that landed, or a stale buffer's next save undoes it
+        // (ADR-0058 §D5).
+        var written: [WriteResult] = []
         do {
             let source = try read(sourcePath)
             let target = try read(targetPath)
@@ -193,12 +197,12 @@ extension VaultSession {
                 to: target.text, selfTitle: target.record.title
             )
 
-            try await write(updatedSource, to: sourcePath)
-            try await write(updatedTarget, to: targetPath)
-            return true
+            written.append(try await write(updatedSource, to: sourcePath))
+            written.append(try await write(updatedTarget, to: targetPath))
+            return (true, written)
         } catch {
             recordProblem("legame strutturale: \(error)")
-            return false
+            return (false, written)
         }
     }
 }
