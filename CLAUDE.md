@@ -231,6 +231,15 @@ move the previous copy aside rather than deleting it.
   the time the write and its hand-off ran, the tab it refused to find dirty had become dirty. The
   guard belongs on the same side of the suspension as the action it protects: ask again after the
   `await`, or act on state read after it, never on a check made before it.
+- **The opposite failure of the rule above: a `@State` a confirmation dialog nils on its own
+  dismissal cannot be read back inside the confirm button's `Task`.** `NoteListPane`'s
+  «Sposta nel Cestino» button did `Task { if let note = deleting, ... }` — pressing the button
+  dismisses the dialog first, which runs the `isPresented` binding's setter and nils `deleting`,
+  so by the time the `Task` body ran it always saw `nil` and silently skipped the trash call: the
+  note reappeared in the sidebar with no alert and no file in the Finder Trash. Capture the value
+  before the `Task`, or receive it as the closure's own parameter via `.confirmationDialog(...,
+  presenting: state) { value in ... }` — the shape `WorkspaceBrowser`'s own delete dialog and
+  `NoteListPane+FolderVerbs`'s folder-delete dialog already used, and the one this fix adopted.
 - **A ledger, cache or registry the app holds in memory and saves back must record which file it
   was read from.** A writer that cannot prove it is writing over the file it loaded reads first, and
   never saves over a file it could not read. `PraticheController.ledger` could be written back from
