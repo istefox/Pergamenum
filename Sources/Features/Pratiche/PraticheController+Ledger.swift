@@ -189,10 +189,16 @@ extension PraticheController {
 
     /// Choosing a row: reads its timeline and marks it opened, which is what makes the
     /// badge go out (R-33 - the count is "since `lastOpenedAt`").
+    ///
+    /// `markOpened` runs FIRST, before `selection`/`expansion` are touched (ADR-0052 §D8):
+    /// it goes through the ledger door, which can reset `selection` to `nil` when the
+    /// marker names another vault. The reverse order let that reset land right after this
+    /// function had just set `selection` to the row that was clicked, silently dropping it
+    /// on a vault switch (PG-191).
     func select(_ praticaPath: String?, in vault: VaultController) {
+        if let praticaPath { markOpened(praticaPath, in: vault) }
         selection = praticaPath
         expansion = PraticaTimelineModel.ExpansionState()
-        if let praticaPath { markOpened(praticaPath, in: vault) }
         reloadTimeline(from: vault)
         pratiche = Self.listItems(
             in: vault, ledger: ledger, trayCounts: trayCounts,

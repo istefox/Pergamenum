@@ -388,7 +388,11 @@ extension PraticheController {
         /// not come from this vault's file is replaced by it first.
         case live(VaultSession?)
         /// A session that is no longer the live one (a sync that outlived a vault switch): its own
-        /// file, read fresh and written back, never `ledger` and never `ledgerOrigin`.
+        /// file, read fresh and written back, never `ledger` and never `ledgerOrigin` - UNLESS
+        /// `session`'s own ledger file turns out to be the one `ledgerOrigin` already names (PG-191):
+        /// a vault closed and reopened on the same root during a run gets a brand-new `VaultSession`
+        /// with a different identity but the same file, and `updateLedger` reroutes that case to
+        /// `.live` so the write also lands in memory, not only on disk.
         case stale(VaultSession)
     }
 
@@ -420,7 +424,16 @@ extension PraticheController {
     func updateLedger(_ target: LedgerTarget, _ change: (inout PraticaLedger) -> Void) -> LedgerWrite {
         switch target {
         case .stale(let session):
-            return updateStaleLedger(at: Self.ledgerURL(for: session), change)
+            let url = Self.ledgerURL(for: session)
+            // PG-191: `session` may be a brand-new identity for the SAME file (a vault closed
+            // and reopened on the same root while a run was still in flight) - the marker
+            // compares by URL (§D1's own rule), so this is indistinguishable from the live
+            // vault's own file and must go through `.live`, or this write lands on disk without
+            // updating `ledger`, and the next `.live` writer saves its older memory back over it.
+            if url == ledgerOrigin.url {
+                return updateLedger(.live(session), change)
+            }
+            return updateStaleLedger(at: url, change)
         case .live(let session):
             let url = session.map(Self.ledgerURL(for:))
             ensureLedgerLoaded(from: url)
@@ -508,8 +521,10 @@ extension PraticheController {
         }
     }
 
-    /// `.stale`'s half of the door: `url`'s own file read fresh, changed, written back, and neither
-    /// `ledger` nor `ledgerOrigin` ever touched - they describe the live vault alone. A save failure
+    /// `.stale`'s half of the door, for a genuinely different file: `url`'s own file read fresh,
+    /// changed, written back, and neither `ledger` nor `ledgerOrigin` ever touched - they describe
+    /// the live vault alone. Never reached when `url` is the one `ledgerOrigin` already names
+    /// (`updateLedger`'s `.stale` case reroutes that to `.live` instead, PG-191). A save failure
     /// stays unreported here, as it was before the door existed: `problem` is the live pane's, and
     /// this write is not for the live vault.
     private func updateStaleLedger(at url: URL, _ change: (inout PraticaLedger) -> Void) -> LedgerWrite {

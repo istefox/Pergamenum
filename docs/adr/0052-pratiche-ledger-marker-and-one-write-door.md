@@ -268,6 +268,22 @@ one pass. Since the door can now *reset* those dictionaries, **the door is calle
 each of them** and the sibling assignments follow it. This is mechanical but load-bearing:
 the reverse order silently drops the tray proposals a sync just computed.
 
+*Amended 2026-09-24 (PG-191, #351).* `select(_:in:)` was the one writer that had not been
+brought into this rule: it set `selection`/`expansion` and only then called `markOpened`,
+whose `updateLedger(.live(vault.session))` can reset `selection` to `nil` when the marker
+names another vault. The reverse order let that reset land right after `select` had just
+set `selection` to the clicked row, on a vault switch - the click read as silently dropped.
+Fixed by calling `markOpened` first, joining `updateTray`/`forgetLedgerState`/
+`moveLedgerState` above. The same PG-191 report named a second, independent gap: `.stale`
+(§D2) is decided by session identity by every caller (`recordSyncOutcome`'s
+`isCurrentVault`), but a vault closed and reopened on the same root mid-run gets a new
+`VaultSession` identity for the *same* file, so a genuinely-current write was landing on
+disk without updating `ledger`, only to be overwritten by the next `.live` writer's older
+memory - one re-sync lost, the shape §D1-§D7 exist to prevent. `updateLedger`'s `.stale`
+case now compares `Self.ledgerURL(for: session)` against `ledgerOrigin.url` and reroutes to
+`.live` when they match, since the marker is defined by the file (§D1), not by which
+`VaultSession` object asked.
+
 ### §D9 - Acceptance is behavioural, and the tests seed from disk
 
 `SPEC.md`'s seam is used as-is: `PraticheController` driven directly, a real `ledger.json`
