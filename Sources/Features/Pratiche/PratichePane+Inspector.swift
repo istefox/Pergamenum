@@ -1,9 +1,10 @@
 import SwiftUI
 
-// ADR-0045 §D3 (PG-143 structure refactor): the empty state, the sync progress bar and
-// the read-only note inspector, split out of `PratichePane.swift` for its own
-// struct-body length - moved verbatim, `NoteListPane.swift:23-30`'s convention for
-// every member this file widens.
+// ADR-0045 §D3 (PG-143 structure refactor): the empty state and the read-only note
+// inspector, split out of `PratichePane.swift` for its own struct-body length - moved
+// verbatim, `NoteListPane.swift:23-30`'s convention for every member this file widens.
+// The sync progress bar this file used to hold moved to `PraticaTopBar.syncStatus`
+// (2026-09-24, `docs/specs/pratiche.spec.md:386`).
 
 extension PratichePane {
     /// Screen 1g: text plus the two buttons, no illustration. Both are a second
@@ -30,28 +31,6 @@ extension PratichePane {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pratiche-empty")
-    }
-
-    /// A thin bar with «12 di 80 · Annulla» (DESIGN.md "Binding decisions").
-    func syncProgress(_ progress: PraticaSyncEngine.Progress) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ProgressView(value: Double(progress.completed), total: Double(max(progress.total, 1)))
-                .progressViewStyle(.linear)
-            HStack(spacing: theme.spacing(.s)) {
-                Text("\(progress.completed) di \(progress.total)")
-                    .themedText(.caption, color: .textSecondary)
-                Button("Annulla") { pratiche.cancelSync() }
-                    .buttonStyle(.plain)
-                    .themedText(.caption, color: .accentPrimary)
-                    .disabled(pratiche.requestSyncCancellation == nil)
-                    .accessibilityIdentifier("pratiche-sync-cancel")
-                Spacer()
-            }
-        }
-        .padding(.horizontal, theme.spacing(.m))
-        .padding(.bottom, theme.spacing(.xs))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-sync-progress")
     }
 
     /// `pratica.md` as it is on disk, read-only here. **The inspector is the one place

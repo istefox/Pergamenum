@@ -50,9 +50,6 @@ struct PratichePane: View {
             if pratiche.fullDiskAccessState == .notGranted {
                 FullDiskAccessBanner()
             }
-            if let progress = pratiche.syncProgress, pratiche.syncingPraticaPath != nil {
-                syncProgress(progress)
-            }
             if let problem = pratiche.problem {
                 Text(problem)
                     .themedText(.caption, color: .taskOverdue)

@@ -33,6 +33,7 @@ struct PraticaTopBar: View {
             HStack(spacing: theme.spacing(.s)) {
                 statusPill
                 refreshButton
+                syncStatus
                 filterField($pratiche.filter.text)
                 senderMenu
                 attachmentsToggle($pratiche.filter.attachmentsOnly)
@@ -103,8 +104,8 @@ struct PraticaTopBar: View {
             Task { await pratiche.refreshNow(selection, in: vault) }
         } label: {
             Image(systemName: "arrow.clockwise")
-                // The one moving part of the pane while a sync runs; the thin bar
-                // under this strip carries the numbers (screen 1a).
+                // The one moving part of the pane while a sync runs; `syncStatus`
+                // right next to it carries the numbers (screen 1a).
                 .symbolEffect(.rotate, isActive: pratiche.syncingPraticaPath != nil)
         }
         .buttonStyle(.borderless)
@@ -112,6 +113,28 @@ struct PraticaTopBar: View {
         .help("Aggiorna ora")
         .accessibilityLabel("Aggiorna ora")
         .accessibilityIdentifier("pratiche-refresh")
+    }
+
+    /// «n di N · Annulla», next to the spinning refresh icon rather than a separate
+    /// bar under the toolbar (2026-09-24, `docs/specs/pratiche.spec.md:386`) - a
+    /// conditional row in the pane's own `VStack` reflowed the timeline below it
+    /// every time a sync started or ended. Fixed-height chrome, no reflow.
+    @ViewBuilder
+    private var syncStatus: some View {
+        if let progress = pratiche.syncProgress, pratiche.syncingPraticaPath != nil {
+            HStack(spacing: theme.spacing(.xs)) {
+                Text("\(progress.completed) di \(progress.total)")
+                    .themedText(.caption, color: .textSecondary)
+                Button("Annulla") { pratiche.cancelSync() }
+                    .buttonStyle(.plain)
+                    .themedText(.caption, color: .accentPrimary)
+                    .disabled(pratiche.requestSyncCancellation == nil)
+                    .accessibilityIdentifier("pratiche-sync-cancel")
+            }
+            .fixedSize()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pratiche-sync-progress")
+        }
     }
 
     private func filterField(_ text: Binding<String>) -> some View {
