@@ -1,249 +1,197 @@
-Status: Approved (2026-09-21)
+Status: Approved (2026-09-23)
 
-# SPEC — Replace the UI suite as the merge gate
+# SPEC — Show pratica links on the task side, and lift them to the top of the pratica inspector
 
 ## Destination
 
-A SPEC handed to `/workplan`: three stages, each a useful stopping point. When the work is done the
-check that guards a merge to `main` is the unit suite plus in-process tests, no longer the 121-test
-UI suite; 17 targeted GUI tests remain, run through `--affected` at merge and never blocking; a run
-disturbed by the machine is recorded as `contaminated`, neither green nor red; and a new feature
-carries at most 2 or 3 GUI tests of its own.
+A SPEC handed to `/workplan`. Today a pratica can link to notes, tasks and boards (ADR-0049), and
+the pratica inspector already shows read-only "NOTE COLLEGATE" / "TASK COLLEGATI" / "BOARD
+COLLEGATE" sections — but only at the *bottom* of the inspector, under `pratica.md`'s body, and
+only from the pratica's side. A task linked by one or more pratiche shows nothing about it. This
+SPEC closes that gap: a task row shows which pratica(che) point at it, and the pratica inspector
+gets a summary of its links visible without scrolling.
 
 ## Objectives
 
-The merge gate must give the same answer whatever the Mac is doing. Today a full run takes about 26
-minutes and its verdict depends on focus stolen by another app, an installed copy of the app
-appearing mid-run, an external monitor and automation timeouts, so a red is often nobody's defect
-(PG-182, PG-186, PG-188, PG-194). Given up first: full coverage of gestures and layout, then speed.
-The per-test triage of all 121 tests, approved file by file on 2026-09-21, is the source of truth
-for what leaves the suite; this SPEC does not re-decide it.
+- Opening a task tells you, at a glance, which pratica(che) reference it — without opening every
+  pratica to check.
+- Opening a pratica tells you, without scrolling past `pratica.md`'s body, how many notes/tasks/
+  boards it is linked to.
+- No new way to create a link: `linkTask`/`linkNote`/`linkBoard` (ADR-0049) are unchanged. This is
+  a read-only display addition on both sides.
 
 ## Scope and non-goals
 
-In: the `contaminated` verdict and its detection; one ADR for the package of test seams; the seam
-refactors; the replacement unit and in-process tests; deleting the approved GUI tests; the rule
-change in `CLAUDE.md`; the regime for future features.
-Out: a Tart VM (PG-187), running the GUI suite in CI, a rewrite of the runner script, PG-195, any
-new feature (full list in Out of scope).
+In: a reverse (task → pratica) lookup and its display on the task row; a link-count summary at the
+top of the pratica inspector that scrolls to the existing sections.
+Out: writing a task→pratica link from the task side (a task still gets linked only by editing the
+pratica's own links, per ADR-0049's one-way model); changing how notes/boards are linked; any
+change to `pergamenum-dossier-links-*` frontmatter shape; a precomputed/cached reverse index in
+`IndexCache` (see Decisions).
 
 ## Decisions
 
-- **Replace the merge gate, not reduce it.** The gate becomes the unit suite plus in-process tests
-  (real views hosted in a never-shown window, events sent directly). Rejected: a reduced gate with a
-  UI smoke set: it keeps a machine-dependent step in every merge.
-- **Per-test triage, then retire.** Every one of the 121 tests is Keep, Convert or Retire, approved
-  by Stefano file by file. Result: 17 keep, 42 convert (2 of them stay GUI until their replacement
-  exists), 62 retire outright, so 104 leave the GUI suite. Rejected: keeping the suite whole and
-  fixing its determinism: it does not remove the dependence on the machine.
-- **Stage order: verdict, then seams and tests, then the gate.** Stage 1 is the `contaminated`
-  verdict (relief with no production code). Stage 2 is seams and replacement tests, deleting each
-  converted GUI test in the PR that adds its replacement. Stage 3 is the outright retirements and the
-  `CLAUDE.md` rule change. No test is retired before its replacement exists. Rejected: the rule
-  change first (for a period the gate would cover less than before); one chain with no stopping point.
-- **The 17 GUI tests that remain are not a blocking gate.** The person merging runs
-  `uitests.sh --affected`; a green or red is information, `contaminated` does not block. The full
-  run of the 17 happens before a release. Rejected: only before a release (no GUI signal at merge at
-  all); blocking as today (the cost grows with the set).
-- **Retiring a test deletes it from the source**; git history keeps it. Each PR lists what it
-  deleted and points at the approved census entry. Rejected: moving files to an excluded folder
-  (dead code that ages).
-- **Unit suite time budget: under 60 s** for the whole suite (about 18 s today), because it runs at
-  the end of every turn through the Stop hook. Over budget, a block moves to a group run at merge.
-  Rejected: no fixed number; 30 s (would cap how many hosted tests can exist).
-- **If hosting a SwiftUI or Workspace view in-process fails**, the tests that depend on it stay GUI
-  until replaced, and the cap of 17 rises only with Stefano's approval, test by test. Rejected:
-  retiring them on their logic cover alone (declares the wiring lost without a decision); stopping
-  the work to reopen the direction.
-- **One ADR for the whole package of seams, written and Accepted before the first production
-  refactor** (start of stage 2). A seam found later amends it. Rejected: an ADR written at the end
-  as a register (a seam with no decision written first); one ADR per stage (contradicts the single
-  ADR Stefano chose).
-- **Seams are accepted only if behaviour is unchanged.** The proof is `uitests.sh --affected` on the
-  seam commit before its GUI test is deleted: green, or `contaminated` then green on the rerun.
-  Rejected: proof by the replacement test alone (written by the author of the seam, so circular);
-  diff review alone (not repeatable).
-- **Disturbance signals: installed copy appeared mid-run, launch failure or timeout, focus taken by
-  another app, external monitor connected.** Rejected: none; the monitor signal needs a new
-  detector, which is accepted.
-- **A run with reds and at least one signal is `contaminated`, and only the failed tests are rerun
-  once.** Rerun green gives `green`; rerun red with no signal gives `red`. Rejected: `contaminated`
-  with no rerun (leaves the decision to the person merging); staying `red` with a note (does not
-  solve the problem).
-- **Exit codes: 0 green, 1 red, 2 contaminated.** `--status` shows it and does not count it as
-  verified. Rejected: 0 (hides that it is not a green); 1 (blocks whoever reads only the exit code,
-  against the rule that it does not block).
-- **Stage 1 also fixes PG-194 (a 0-test run is not a red) and saves log evidence for PG-182.**
-  Rejected: adding PG-195 (merge with no verdict), a new check, not part of the verdict.
-- **The verdict logic gets an offline `--self-test` mode**, on the model of the appcast script's.
-  Rejected: a hand check only (not repeatable); rewriting the 581-line runner in Python (out of
-  proportion for this stage).
-- **One PR per functional area in stage 2**, roughly six to eight. Rejected: one PR per UI test file
-  (about 16 small PRs, more merge rounds); a single PR (one huge diff, no stop).
-- **The cap of 17 is informational, and the future regime is convention.** `--status` prints the GUI
-  test count against 17; `CLAUDE.md` and the plan template carry the rule of at most 2 or 3 GUI tests
-  per new feature, justified in the feature's ADR. Rejected: a check that fails above the cap (one
-  more thing to maintain); text only.
-- **VM (PG-187) on hold.** The in-process route comes first. Rejected: starting the VM now.
-- **A `contaminated` verdict does not block a merge on its own.** Rejected: treating it as red.
+- **The task→pratica relation is computed at read time from the pratica side, not stored.**
+  `PraticaLinks.tasks` (`noteTitle` + `^id`) is the only source of truth (ADR-0049 §D3); nothing
+  new is written to any file. Rejected: a new frontmatter key or index field mirroring the link
+  back onto the task's note — ADR-0049 already rejected a symmetric backlink for exactly this
+  reason (ADR-0049, "A frontmatter wikilink produces no backlink"), and duplicating the same fact
+  in two places is a second source of truth that can drift.
+- **The reverse lookup is computed once per `TasksView` body render, not per row and not cached.**
+  For every pratica in `PraticheController.pratiche`, parse its `pratica.md` for `PraticaLinks`
+  (`PraticaLinks.parse(praticaFileAt:)`), resolve each `TaskReference` against the task being
+  drawn via the existing `PraticaLinkResolver.task`, and pass the resulting map down to rows.
+  Mirrors the stated precedent in `PratichePane+Links.swift` ("resolution happens here, per draw
+  ... costs less than a cached copy that could go stale"), applied symmetrically. Rejected: a
+  cached reverse index invalidated on vault reload — more moving parts than a personal vault's
+  scale (tens of pratiche) justifies, and a second cache is a second place to go stale.
+- **A task linked by more than one pratica shows one badge per pratica, side by side** — same
+  shape already used for multiple `#tag` chips on a row. Rejected: showing only the first with a
+  "+N" counter — hides which other pratica it is without a second click, and multi-pratica links
+  are rare in practice.
+- **The task-side badge reuses the existing "resolved link" visual pattern** (`workspaceSegment`'s
+  shape in `TasksView+Row.swift`: an icon + name as a plain-color `Button` when the pratica
+  resolves uniquely, muted/disabled styling when it does not). Rejected: a new `ViewTagChip`-style
+  chip — introduces a second visual language for "a task points at something" next to the one
+  that already exists for boards.
+- **Clicking a pratica badge on a task navigates to the Pratiche pane with that pratica selected**
+  (`navigation.pane = .pratiche`, `pratiche.selection` set to it) — the same action shape used by
+  the pratica inspector's own note/task/board rows to open their target. Rejected: opening
+  `pratica.md` as a plain note in the editor — the pratica has exactly one editor, its own
+  inspector (ADR-0036), and a plain note view would bypass it.
+- **The pratica inspector gains one summary line above `pratica.md`'s body**: total counts, e.g.
+  "🔗 3 note · 2 task · 1 board", clicking it scrolls the inspector's `ScrollView` down to the
+  existing `praticaLinksSection`. The three detailed sections stay exactly where they are today,
+  at the bottom. Rejected: moving the three sections themselves to the top — pushes `pratica.md`'s
+  own content, the thing actually being read, below a block that is usually empty or small;
+  rejected: a summary with no click action — loses the one useful thing a summary should do,
+  which is get you to the detail.
+- **The summary line is present but reads a muted "nessun collegamento" when all three counts are
+  zero** (consistent with the existing per-section empty text), rather than being hidden — so its
+  position stays predictable.
 
 ## Constraints
 
-- **No test is retired without Stefano's approval of its entry** — origin: user mandate. The
-  triage in the census is that approval; a new candidate needs a new one.
-- **A seam changes no behaviour** — origin: user mandate.
-- **A test is never disabled to make a suite pass** — origin: global rules. Deleting an approved
-  test is not disabling; disabling stays forbidden.
-- **The Stop hook runs the unit target only** — origin: the repository's working agreements, after
-  UI launches killed the app in use. Hosted tests join that target and must never show a window or
-  take focus.
-- **Files shared with the two command line tools must not import SwiftUI** — origin: ADR-0001 §D1.
-  A seam placed there stays Foundation-only.
-- **Every UI-test file keeps its launch flags** (calendar, updater, Mail store, and the others in the
-  working agreements) — origin: existing rules.
-- **The generated project is never edited by hand**; a change that adds or removes a file is
-  followed by regeneration — origin: working agreements.
-- **Work happens on a feature branch, never on `main`**, with `/plan` and `/build` in separate
-  sessions — origin: user mandate.
+- **`pergamenum-dossier-links-*` frontmatter shape is unchanged** — origin: ADR-0049 §D2/§D4,
+  reopened by nothing in this SPEC.
+- **No new field on `TaskItem`** — the reverse lookup is a view-time computation, not a stored
+  property, consistent with the Decisions above.
+- **Files shared with `perg`/`pergamenum-mcp` stay Foundation-only** — origin: ADR-0001 §D1. The
+  reverse-lookup pure function (candidate list in, resolved pratiche out) belongs in
+  `Sources/Core`, same rule `PraticaLinkResolver` itself already follows; only its SwiftUI callers
+  live in `Sources/Features`.
+- **Never disable or delete a test to make a suite pass** — origin: global rules.
+- **Work happens on a feature branch, `/plan` and `/build` in separate sessions** — origin: user
+  mandate (CLAUDE.md workflow invariants).
 
 ## Stack
 
-Swift 6 with Swift Testing for the unit and hosted tests, on the existing unit target; XCTest for
-the surviving GUI tests; the shell runner script for verdicts; Tuist for regeneration.
+Swift 6, SwiftUI, existing `PraticheController` / `PraticaLinks` / `PraticaLinkResolver` types.
+No new dependency.
 
 ## Data model
 
-The verdict record, one per tree and scope, gains a third result and its reasons.
+No schema change. New pure type: a per-task resolution result, e.g.
 
-| Field | Values |
-|---|---|
-| result | green, red, contaminated |
-| scope | full, partial (unchanged) |
-| reasons | zero or more of: installed copy, launch failure, focus taken, external monitor |
-| executed | number of tests that ran |
+```
+struct TaskPraticaLink {
+    let praticaID: String      // PraticaListItem.id, used to select it on click
+    let praticaTitle: String
+}
+```
 
-A run that executes zero tests is an error state: reported, never stored as `red`, and it does not
-overwrite the tree's existing verdict.
+produced by a new pure function (exact name/home decided in `/workplan`), shape:
 
-Classification after a run: all tests passed gives `green` whatever the signals (they are recorded);
-reds and no signal gives `red`; reds and at least one signal gives `contaminated` and triggers one
-rerun of the failed tests; the rerun settles it (green, red with no signal), or leaves it
-`contaminated` if the rerun was disturbed again.
+```
+func praticheLinking(taskSourcePath: String, taskLocalID: Int?, pratiche: [(id: String, links: PraticaLinks)]) -> [TaskPraticaLink]
+```
+
+mirroring `IndexSnapshot.tasks(linkingTo:)`'s existing linear-scan style (`Sources/Index/IndexSnapshot.swift:184-189`).
 
 ## API / interfaces
 
-The runner script: a third exit code (2), `--status` output naming `contaminated` and its reasons,
-the GUI test count against the cap, and a `--self-test` mode. Production interfaces are the seams the
-ADR lists; each is a refactor with unchanged behaviour: entering a folder from the Workspace
-controller (replacing three copies of the resolver switch), the row label, the drawn embed's
-accessibility summary, the Cmd-state at the editor coordinator, focus derivation on navigation,
-the Task view's day-to-view mapping, whether a row can move to a destination, the diary drag
-geometry, the category editor's disable predicate, and the day timeline's hours as a pure function.
-Protected interfaces named in the working agreements stay untouched.
+- `TasksView+Row.swift`: `details(_:)` gains a segment listing `TaskPraticaLink`s, styled like
+  `workspaceSegment(_:)` (icon `"folder.badge.person.crop"`-style TBD in `/workplan`, exact SF
+  Symbol chosen there), one `Button` per resolved pratica.
+- `PratichePane+Inspector.swift`: `inspector` gains a summary view above the body, reusing
+  `theme.spacing`/`themedText` tokens already used throughout `PratichePane+Links.swift`.
+- No change to `PraticaLinksWriter`, `PraticaCommand`, `PraticaLinkPicker`, `VaultPraticheLinks`,
+  or the MCP connector — this SPEC touches display only.
 
 ## Edge cases
 
-- A run over a dirty tree records no verdict (existing behaviour, kept).
-- An installed copy already open before the run still refuses the run (existing behaviour, kept); one
-  that appears during the run is a signal, and its surrounding launch log is saved.
-- The rerun is itself disturbed: the verdict stays `contaminated`.
-- A green run with signals stays green; the signals are recorded, not acted on.
-- The external monitor is connected for the whole run: it counts as a signal only alongside reds.
-- Two hosted tests share a window or a controller: each test builds its own; nothing is shared.
-- A converted test whose replacement cannot be written: it stays as a GUI test and the cap
-  conversation is reopened with Stefano.
+- A pratica's `TaskReference` whose note title is ambiguous or missing: the badge is not shown at
+  all on the task row (rather than shown as broken) — the task can't be identified as "this one"
+  with confidence, unlike the pratica-side rows which always know their own reference and can mark
+  it broken. A `^id` that resolves to a *different* task in the same note is excluded, not shown.
+- A task with zero linking pratiche: no badge, no empty-state text (consistent with how the
+  `workspaceSegment` badge is simply absent for an unassigned task today).
+- A pratica with all three counts at zero: summary line shows muted "nessun collegamento", still
+  present, no click action (nothing to scroll to that isn't already visible).
+- Two or more pratiche linking the same task: one badge per pratica, order follows
+  `PraticheController.pratiche`'s existing display order.
+- A pratica renamed/moved: `PraticaListItem.id` used by the click-to-navigate action is read fresh
+  on every `TasksView` render (per the no-cache decision above), so it can't point at a stale path.
 
 ## Test seams
 
-Existing over new, highest possible, few:
-1. The unit target: logic and the pure functions the seams extract.
-2. The same target for hosted views, reusing the existing editor and Workspace harnesses. The first
-   step of stage 2 is a prototype proving that a SwiftUI view and a Workspace view can be hosted.
-3. An offline self-test of the runner script's verdict logic, the only new seam.
-4. The affected GUI tests, used as the proof that a seam changed nothing, not as a new test.
+Existing over new, highest possible:
+1. The new pure reverse-lookup function: a Swift Testing unit test, same pattern as
+   `Tests/PraticaLinksTests.swift` (`@Suite`/`@Test`/`#expect`, no mocks) — candidate pratiche and
+   a task identity in, `[TaskPraticaLink]` out.
+2. No new GUI test: this is a read-only display of data already covered by ADR-0049's write-path
+   and resolver tests; the visual result is checked by Stefano manually, per the project's
+   "milestone verified by hand" convention. (no-test: visual-only addition, no new interaction to
+   automate — a click that navigates reuses `navigation.pane`/`pratiche.selection`, both already
+   covered by existing pratica-link-row tests.)
 
 ## Success criteria
 
-Stage 1: the verdict.
-- [ ] R-01 — A run records `contaminated` as a third result, with its reasons, in the same per-tree
-  record as green and red.
-- [ ] R-02 — The four signals are detected during a run: installed copy appeared, launch failure or
-  timeout, focus taken by another app, external monitor connected.
-- [ ] R-03 — Reds and at least one signal produce one rerun of only the failed tests; rerun green
-  gives `green`, rerun red with no signal gives `red`, a disturbed rerun leaves `contaminated`. A run
-  with no reds is `green` whatever the signals.
-- [ ] R-04 — Exit code is 0 for green, 1 for red, 2 for contaminated; `--status` shows the reasons and
-  never treats `contaminated` as verified; only `green` lets a later run be skipped.
-- [ ] R-05 — A run that executes zero tests is reported as an error, is never stored as `red`, and
-  does not overwrite the tree's existing verdict (PG-194).
-- [ ] R-06 — When an installed copy appears mid-run, about 10 seconds of the launch log around that
-  moment are saved next to the run's evidence (PG-182).
-- [ ] R-07 — The offline self-test asserts R-03, R-04 and R-05 with fabricated logs and signals, and
-  needs neither a build nor a GUI.
-
-Stage 2: seams and replacement tests.
-- [ ] R-08 — A prototype hosts one SwiftUI view and one Workspace view in a never-shown window with
-  events sent directly, inside the unit target, and its outcome is recorded before any dependent test
-  is converted. A view that cannot be hosted keeps its GUI test (cap changes need approval).
-- [ ] R-09 — One ADR, Accepted before the first production refactor, lists every seam of the census
-  and the rule that a seam changes no behaviour; a later seam amends it.
-- [ ] R-10 — Each seam is proved neutral by `--affected` on its commit before its GUI test is
-  deleted: green, or contaminated then green on the rerun.
-- [ ] R-11 — Every converted test has its replacement (unit or hosted) in the same PR that deletes
-  its GUI test; the two keep-until-replaced tests are deleted only when theirs exists.
-- [ ] R-12 — The unit tests the census names as coverage to add (for the day and task controllers,
-  `WindowPlace` and `DiaryGeometry`, among others) exist and pass.
-- [ ] R-13 — Each PR covers one functional area and lists the tests it deleted with their census
-  entry and the wiring lost.
-- [ ] R-14 — The whole unit suite stays under 60 seconds after every PR; over that, a block moves to
-  a merge-only group.
-- [ ] R-15 — No hosted test shows a window, takes focus or reads calendar, Mail or update state.
-
-Stage 3: the gate.
-- [ ] R-16 — The 62 outright retirements are deleted in their approved groups, only after stage 2's
-  replacements exist; afterwards exactly 17 GUI tests remain.
-- [ ] R-17 — `--status` prints the GUI test count against the cap of 17.
-- [ ] R-18 — `CLAUDE.md` states: the merge gate is the unit suite and in-process tests; the 17 GUI
-  tests run through `--affected` at merge and do not block; the full 17 run before a release;
-  `contaminated` is neither green nor red; a new feature carries at most 2 or 3 GUI tests, justified
-  in its ADR. (no-test: documentation obligation, checked by review)
-- [ ] R-19 — The rule text about the UI suite that now contradicts the above (run before every merge,
-  the last regressions found there) is amended, not left beside it. (no-test: documentation
-  obligation, checked by review)
+- [ ] R-01 — A task row shows one badge per pratica whose `PraticaLinks.tasks` resolves uniquely
+  to that task (matching `sourcePath` + `^id`), styled like the existing board-link badge, and
+  shows none when no pratica links to it.
+- [ ] R-02 — Clicking a task's pratica badge navigates to the Pratiche pane with that pratica
+  selected.
+- [ ] R-03 — The reverse lookup is computed once per `TasksView` render (not per row, not cached
+  in `@State` or in `PraticheController`), reusing `PraticaLinks.parse` and
+  `PraticaLinkResolver.task`.
+- [ ] R-04 — The pratica inspector shows a link-count summary line above `pratica.md`'s body,
+  reading total notes/tasks/boards linked, or a muted "nessun collegamento" when all three are
+  zero.
+- [ ] R-05 — Clicking the summary line (when non-empty) scrolls the inspector to the existing
+  `praticaLinksSection` at the bottom; the three detailed sections and their content, order and
+  accessibility identifiers are unchanged.
+- [ ] R-06 — A `TaskReference` that is ambiguous or missing produces no badge on any task row
+  (never a "broken link" badge on the task side).
+- [ ] R-07 — The new reverse-lookup function has a passing Swift Testing unit suite covering: one
+  matching pratica, two matching pratiche (order preserved), zero matches, an ambiguous note
+  title, a `^id` that exists in the note but for a different task.
+- [ ] R-08 — No `pergamenum-dossier-links-*` frontmatter shape, `PraticaLinks`, `PraticaLinkResolver`
+  signature, or write path (`PraticaLinksWriter`, `PraticaCommand`, `PraticaLinkPicker`) changes.
+  (no-test: negative/absence criterion, checked by diff review.)
 
 ## Not yet specified
 
-- Whether SwiftUI and Workspace views can be hosted in-process at all: proven only for one SwiftUI
-  entry point today; R-08 is the way to find out.
-- The detection method for the external monitor, a new detector with no precedent here.
-- Who sends the launch request that starts the installed copy: seen once in the log, sender not
-  visible (PG-182); R-06 collects evidence, it does not promise a cause.
-- Whether the surviving GUI suite can run on the hosted macOS 27 runner (label `xcode-27`, public
-  preview, checked 2026-09-21 in the images repository): a trial run is needed, and CI does not run
-  the GUI suite in this SPEC.
-- Several converted tests rest on seams or existing tests the census marks "to verify in `/plan`":
-  those checks belong to planning, not to this SPEC.
+- The exact SF Symbol for the task-row pratica badge — chosen in `/workplan` or `/build`,
+  consistent with the existing icon set (`folder`/`tray.full`-family, not `checklist` or
+  `doc.text` which are already claimed by task/note badges elsewhere).
+- Exact wording/format of the inspector's summary line (e.g. whether zero-count categories are
+  omitted from a non-empty summary, "3 note · 1 board" vs "3 note · 0 task · 1 board") — a small
+  copy decision, resolved in `/build` against the same tone as the existing "NOTE COLLEGATE" /
+  empty-state strings.
 
 ## Out of scope
 
-- **A Tart VM (PG-187):** on hold by Stefano's choice, in favour of the in-process route.
-- **The GUI suite in CI:** the runner exists, but whether it gives a usable GUI session is
-  unverified, and the gate no longer needs it.
-- **Rewriting the runner script in another language:** out of proportion for a verdict change.
-- **PG-195 (a merge with no verdict for the tree):** a separate check, not part of the verdict.
-- **A check that fails above the cap:** the cap is informational by decision.
-- **Enforcing the full run of the 17 inside the release script:** a documented process step, not a
-  change to the release pipeline.
-- **New features:** none, apart from the regime that governs their GUI tests once they exist.
-- **Changing what the 17 surviving tests assert:** two defects noted in the census (a negative check
-  with no wait, a fixed sleep) are fixed only when those files are next touched.
+- **Linking a task to a pratica from the task side** (a reverse write path): ADR-0049's one-way
+  model is unchanged by this SPEC; a task is still linked only by editing the pratica.
+- **A precomputed/cached reverse index** in `IndexCache` or `PraticheController`: ruled out in
+  Decisions as disproportionate at this vault's scale.
+- **Editing or removing a link from the task row or the inspector summary**: both stay read-only
+  entry points into the existing pratica-side editing flow (`PraticaCommand`), unchanged.
+- **Any change to the per-message note relation** (`pergamenum-mail-note`, ADR-0049): unaffected.
 
 ## Domain terms
 
-- **Contaminated:** a run with reds and at least one machine-disturbance signal that the rerun did
-  not settle; neither green nor red, and it does not block a merge by itself.
-- **Hosted test:** a test that builds a real AppKit or SwiftUI view in a window that is never shown
-  and sends it events directly, inside the unit target.
-- **Seam:** a small production refactor whose only purpose is to make behaviour testable, with no
-  change in what the app does.
-- **Keep-until-replaced:** a test that stays a GUI test only until its hosted replacement exists.
+- **Reverse lookup / backlink display:** showing, on a task, which pratiche point at it — computed
+  from the pratiche's own stored links, not a second stored fact. Distinct from a true backlink
+  index (rejected by ADR-0049 and not reopened here).

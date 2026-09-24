@@ -587,3 +587,14 @@ file's `type_body_length` warning is gone; its pre-existing `file_length` warnin
 400 lines at baseline, unrelated to this chain) grows from 407 to 417, which is measured debt
 growth on an existing warning, not a new one. Both files re-lint clean of any new warning; the app
 target was rebuilt to confirm.
+
+## Addendum (2026-09-23): the task side reads the relation back
+
+The Negative consequence "a frontmatter wikilink produces no backlink" still holds for the index
+and for notes. A *task* row now shows the pratiche that link it (`TaskPraticaLookup`,
+`TasksView+Pratiche.swift`), computed once per `TasksView` render from each `pratica.md` through
+`PraticaLinks.parse(praticaFileAt:)` and `PraticaLinkResolver.task`, and never stored: §D3, §D4
+(`IndexCache.schemaVersion` stays 4) and §D5 are unchanged, and nothing in this ADR's body is
+reopened. The pratica inspector also gains a link-count line above `pratica.md`'s body that
+scrolls to the three sections of Task 5, which stay as they are. Plan:
+`docs/plans/pratiche-links-task-side-and-inspector-summary.md`.
