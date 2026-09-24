@@ -289,6 +289,12 @@ extension Theme {
             .categoryBlue: RGBA(hex: "#1F6FEB")!,
             .categoryPink: RGBA(hex: "#DB3F6F")!,
             .categoryGrey: RGBA(hex: "#6E7378")!,
+            // PG-225: same hazard as `.surfaceReceived` above - without these a
+            // partial theme resolving a calendar token force-unwraps `nil`.
+            // Values mirror `pergamenum-light.json`.
+            .calendarPrefestive: RGBA(hex: "#C98B84")!,
+            .calendarFestive: RGBA(hex: "#B3261E")!,
+            .calendarHoliday: RGBA(hex: "#D62828")!,
         ],
         fonts: [
             .title: TypographyValue(family: .system, size: 22, weight: 600, lineHeight: 1.2),
