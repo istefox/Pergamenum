@@ -5,7 +5,9 @@ import SwiftUI
 /// `TasksView.swift`, which had drifted to `file_length`/`type_body_length` warnings,
 /// the second of which crossed into an error).
 extension TasksView {
-    func row(_ task: TaskItem, isRolledOver: Bool = false) -> some View {
+    /// `praticaLookup` has no default on purpose: a row drawn without it would silently
+    /// lose its pratica badges, and the compiler is what finds every call site.
+    func row(_ task: TaskItem, isRolledOver: Bool = false, praticaLookup: TaskPraticaLookup) -> some View {
         let isSelected = selectedTaskID == task.id
         return ThemedCard(padding: .s) {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
@@ -27,7 +29,7 @@ extension TasksView {
                     // The second line is what the compact density drops (ADR-0013 §D6): the
                     // task itself and its marker are what a list is read for, and the note it
                     // came from is what it is worked from.
-                    if options.density == .expanded { details(task) }
+                    if options.density == .expanded { details(task, praticaLookup: praticaLookup) }
                 }
 
                 Spacer()
@@ -75,9 +77,10 @@ extension TasksView {
     }
 
     /// The row's second line: where the task is written, what it links to, its project, its
-    /// assigned Workspace and its tags. Its own function so `row` stays inside the length
-    /// SwiftLint asks for, which is the same reason the controls are their own view.
-    func details(_ task: TaskItem) -> some View {
+    /// assigned Workspace, the pratiche that link it and its tags. Its own function so `row`
+    /// stays inside the length SwiftLint asks for, which is the same reason the controls are
+    /// their own view.
+    func details(_ task: TaskItem, praticaLookup: TaskPraticaLookup) -> some View {
         HStack(spacing: theme.spacing(.xs)) {
             Button {
                 actions.run(.goToNote, on: task)
@@ -102,6 +105,8 @@ extension TasksView {
             }
 
             workspaceSegment(task)
+            // Beside the Workspace segment: both name a container this task belongs to.
+            praticaSegment(task, lookup: praticaLookup)
 
             ForEach(task.tags, id: \.self) { tag in
                 ViewTagChip(text: "#\(tag.description)")

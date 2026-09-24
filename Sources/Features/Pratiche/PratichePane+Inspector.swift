@@ -59,40 +59,55 @@ extension PratichePane {
     /// rather than growing a second text view bound to the same bytes - the shape of
     /// every text-loss defect this repo has documented.
     var inspector: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-                HStack {
-                    Text("Nota della pratica").themedText(.heading)
-                    Spacer()
-                    Button("Apri nell'editor", action: openPraticaNote)
-                        .buttonStyle(.plain)
-                        .themedText(.caption, color: .accentPrimary)
-                        .disabled(pratiche.selection == nil)
-                        .accessibilityIdentifier("pratiche-inspector-open")
+        // The reader exists only for the links summary's jump (SPEC R-05); the proxy is
+        // used inside that action and never while building the content.
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+                    HStack {
+                        Text("Nota della pratica").themedText(.heading)
+                        Spacer()
+                        Button("Apri nell'editor", action: openPraticaNote)
+                            .buttonStyle(.plain)
+                            .themedText(.caption, color: .accentPrimary)
+                            .disabled(pratiche.selection == nil)
+                            .accessibilityIdentifier("pratiche-inspector-open")
+                    }
+                    // SPEC R-04: the link counts above the body, so they are seen without
+                    // scrolling past it; a click scrolls to the sections below (R-05).
+                    if pratiche.selection != nil {
+                        praticaLinksSummary {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(Self.praticaLinksAnchor, anchor: .top)
+                            }
+                        }
+                    }
+                    if inspectorBody.isEmpty {
+                        Text("Nessuna pratica scelta.").themedText(.caption, color: .textTertiary)
+                    } else {
+                        MarkdownBlocksView(
+                            blocks: MarkdownBlockParser.blocks(in: inspectorBody),
+                            notePath: praticaNotePath ?? "",
+                            vaultRoot: vault.root,
+                            expandsTransclusions: false
+                        )
+                    }
+                    // ADR-0049 Task 5 (R-04): under `pratica.md`'s body, still inside this
+                    // same scroll view - `pratiche.selection`, never the timeline's row
+                    // selection, is what gates it (R-09). The scroll anchor is set here, at
+                    // the call site, so `PratichePane+Links.swift` stays untouched.
+                    if pratiche.selection != nil {
+                        praticaLinksSection
+                            .id(Self.praticaLinksAnchor)
+                    }
                 }
-                if inspectorBody.isEmpty {
-                    Text("Nessuna pratica scelta.").themedText(.caption, color: .textTertiary)
-                } else {
-                    MarkdownBlocksView(
-                        blocks: MarkdownBlockParser.blocks(in: inspectorBody),
-                        notePath: praticaNotePath ?? "",
-                        vaultRoot: vault.root,
-                        expandsTransclusions: false
-                    )
-                }
-                // ADR-0049 Task 5 (R-04): under `pratica.md`'s body, still inside this
-                // same scroll view - `pratiche.selection`, never the timeline's row
-                // selection, is what gates it (R-09).
-                if pratiche.selection != nil {
-                    praticaLinksSection
-                }
+                .padding(theme.spacing(.m))
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(theme.spacing(.m))
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.color(.backgroundSecondary))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pratiche-inspector")
         }
-        .background(theme.color(.backgroundSecondary))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pratiche-inspector")
     }
 
     private var praticaNotePath: String? {

@@ -8,17 +8,23 @@ extension TasksView {
     /// Branches on the pane's one selection (ADR-0047 §D6): one of the five views, drawn
     /// exactly as before, or a category - `CategoryView`, fed this same `row` so a
     /// category's tasks behave exactly like every other task in the pane.
+    ///
+    /// The task -> pratica lookup is built here, once per render and never per row (SPEC
+    /// R-03), and handed down to every `row`.
     @ViewBuilder
     var list: some View {
+        let praticaLookup = taskPraticaLookup()
         switch selection {
         case .view(let taskView):
-            taskViewList(taskView)
+            taskViewList(taskView, praticaLookup: praticaLookup)
         case .category(let slug):
-            categoryList(slug)
+            categoryList(slug, praticaLookup: praticaLookup)
         }
     }
 
-    private func taskViewList(_ taskView: IndexSnapshot.TaskView) -> some View {
+    private func taskViewList(
+        _ taskView: IndexSnapshot.TaskView, praticaLookup: TaskPraticaLookup
+    ) -> some View {
         // Both halves computed once here rather than read twice from the body: the rows need
         // to know which of them are rolled over, and asking a second time would be a second
         // pass over every task in the vault on every redraw.
@@ -38,7 +44,9 @@ extension TasksView {
                     ForEach(arranged) { group in
                         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
                             if case .project(let parent, _) = group.kind {
-                                project(group, parent: parent, rolledIDs: rolledIDs)
+                                project(
+                                    group, parent: parent, rolledIDs: rolledIDs, praticaLookup: praticaLookup
+                                )
                             } else {
                                 // An ungrouped list has one group with no title, and no
                                 // heading is drawn for it: a single "Oggi" above the day's
@@ -47,7 +55,10 @@ extension TasksView {
                                     Text(group.title).themedText(.heading)
                                 }
                                 ForEach(group.tasks) { task in
-                                    row(task, isRolledOver: rolledIDs.contains(task.id))
+                                    row(
+                                        task, isRolledOver: rolledIDs.contains(task.id),
+                                        praticaLookup: praticaLookup
+                                    )
                                 }
                             }
                         }
@@ -69,7 +80,7 @@ extension TasksView {
     /// for a registered slug, or a synthesized stand-in for an implicit one - the same
     /// fallback `CategorySidebarSection`'s "Registra" affordance implies exists, so
     /// clicking either kind of row always opens something rather than nothing.
-    private func categoryList(_ slug: String) -> some View {
+    private func categoryList(_ slug: String, praticaLookup: TaskPraticaLookup) -> some View {
         let category = vault.categories.entries.first { $0.slug == slug }
             ?? Category(slug: slug, name: slug, color: CategoryColor.grigio.rawValue)
         return VStack(alignment: .leading, spacing: 0) {
@@ -81,7 +92,7 @@ extension TasksView {
                 isRegistered: vault.categories.entries.contains { $0.slug == slug },
                 options: options(for: .category(slug))
             ) { task in
-                row(task)
+                row(task, praticaLookup: praticaLookup)
             }
         }
     }
@@ -129,7 +140,7 @@ extension TasksView {
     }
 
     /// The controls of whatever is showing right now - not `private`, since
-    /// `TasksView+Row.swift`'s `row(_:isRolledOver:)` reads `options.density` to decide
+    /// `TasksView+Row.swift`'s `row(_:isRolledOver:praticaLookup:)` reads `options.density` to decide
     /// whether to draw a task's second line, and a row is only ever drawn while the
     /// selection it belongs to is the one showing.
     var options: TaskListOptions { options(for: selection) }
@@ -183,7 +194,7 @@ extension TasksView {
     /// a task, and a heading that only looked like one would be a second row view to keep
     /// in step with this one.
     func project(
-        _ group: TaskGroup, parent: TaskItem, rolledIDs: Set<String>
+        _ group: TaskGroup, parent: TaskItem, rolledIDs: Set<String>, praticaLookup: TaskPraticaLookup
     ) -> some View {
         DisclosureGroup(
             isExpanded: Binding(
@@ -199,14 +210,14 @@ extension TasksView {
         ) {
             VStack(alignment: .leading, spacing: theme.spacing(.s)) {
                 ForEach(group.tasks) { task in
-                    row(task, isRolledOver: rolledIDs.contains(task.id))
+                    row(task, isRolledOver: rolledIDs.contains(task.id), praticaLookup: praticaLookup)
                 }
             }
             .padding(.leading, theme.spacing(.m))
             .padding(.top, theme.spacing(.xs))
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
-                row(parent)
+                row(parent, praticaLookup: praticaLookup)
                 if case .project(_, let progress) = group.kind {
                     Text("\(progress.done)/\(progress.total)")
                         .themedText(.mono, color: .textTertiary)
@@ -227,7 +238,7 @@ extension TasksView {
                         // sibling of row(parent) rather than a container of it - is
                         // what keeps it from touching anything else. Progress is always
                         // present here because `group.kind` is `.project`, which is why
-                        // this branch runs whenever `project(_:parent:rolledIDs:)` does -
+                        // this branch runs whenever `project(_:parent:rolledIDs:praticaLookup:)` does -
                         // the enum makes that a compile-time pairing (ADR-0021 D6),
                         // not a convention `bySubtasks(_:)` merely has to remember.
                         .accessibilityIdentifier("task-project-group")
