@@ -12,6 +12,14 @@ struct DiaryToolbar: ToolbarContent {
     @Bindable var controller: DiaryController
     let themeEngine: ThemeEngine
 
+    /// A conflicted day is not left (ADR-0057 §D6): the controller's own refusal in
+    /// `show(_:)` is the guard, the disabled navigators only the affordance. «Nuovo
+    /// blocco» stays enabled - editing memory while conflicted is allowed.
+    private var isConflicted: Bool {
+        if case .conflicted = controller.saveState { return true }
+        return false
+    }
+
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
             Button { controller.move(by: -1) } label: {
@@ -19,23 +27,26 @@ struct DiaryToolbar: ToolbarContent {
             }
             .help("Giorno precedente")
             .accessibilityIdentifier("diary-previous-day")
+            .disabled(isConflicted)
 
             Button { controller.show(.today) } label: {
                 Label("Oggi", systemImage: "smallcircle.filled.circle")
             }
             .help("Torna a oggi")
-            .disabled(controller.day == .today)
+            .disabled(controller.day == .today || isConflicted)
 
             Button { controller.move(by: 1) } label: {
                 Label("Giorno successivo", systemImage: "chevron.right")
             }
             .help("Giorno successivo")
             .accessibilityIdentifier("diary-next-day")
+            .disabled(isConflicted)
 
             Button { controller.isChoosingDate = true } label: {
                 Label("Vai a data", systemImage: "calendar")
             }
             .help("Vai a una data")
+            .disabled(isConflicted)
         }
 
         ToolbarItemGroup(placement: .primaryAction) {

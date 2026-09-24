@@ -115,7 +115,7 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
     let day = try #require(CalendarDate(iso: "2026-09-13"))
     let entry = DiaryEntry(startMinutes: 1439, durationMinutes: 1, title: "Day end")
 
-    guard case .written = try await write(session.emptyDiaryNote(for: day), [entry], day) else {
+    guard case .written = try await write(session.emptyDiaryNote(for: day), [entry], day, .absent) else {
         Issue.record("The diary write must finish before returning written")
         return
     }

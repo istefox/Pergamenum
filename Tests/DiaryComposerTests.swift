@@ -5,20 +5,9 @@ import Testing
 /// The diary's composer: the sheet that names a block, and what it writes when it is
 /// confirmed. Split from `DiaryControllerTests` to keep both files inside the length
 /// SwiftLint allows.
-@MainActor
-private func makeDiary(_ vault: borrowing TemporaryVault) async throws -> (DiaryController, VaultController) {
-    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
-    await controller.open(vault.root)
-    let diary = DiaryController(vault: controller)
-    diary.show(testDay)
-    return (diary, controller)
-}
-
-/// Takes the root rather than the vault: `TemporaryVault` is noncopyable, and a `#expect`
-/// or `#require` that borrows one does not compile.
-private func diaryOnDisk(_ root: URL) -> String? {
-    try? String(contentsOf: root.appending(path: "Diario/20260811.md"), encoding: .utf8)
-}
+//
+// `makeDiary`/`diaryOnDisk` now live in `Tests/DiaryTestSupport.swift` (ADR-0051 §D2):
+// shared rather than copied a second time.
 
 @MainActor
 @Test func composesAnEntryAtTheTimeThatWasClicked() async throws {

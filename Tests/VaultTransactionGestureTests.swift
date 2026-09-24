@@ -23,26 +23,8 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     return session
 }
 
-/// A one-shot latch on the main actor: `wait()` suspends until `open()` has been called, and
-/// returns at once afterwards. Being `@MainActor` it needs no lock, and being explicit it makes
-/// the order the two tasks run in a fact the test states rather than a coincidence it observes.
-@MainActor
-private final class Gate {
-    private var opened = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func open() {
-        opened = true
-        let resumed = waiters
-        waiters.removeAll()
-        resumed.forEach { $0.resume() }
-    }
-
-    func wait() async {
-        if opened { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
+// `Gate`, the one-shot main-actor latch used below, now lives in `Tests/GateSupport.swift`
+// (ADR-0051 §D2): shared rather than copied a second time.
 
 // MARK: - §D2: two gestures open at once, each on its own task
 

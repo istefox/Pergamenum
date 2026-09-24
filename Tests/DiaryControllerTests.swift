@@ -23,23 +23,8 @@ private enum FireAndForgetWaitError: Error {
     case timedOut
 }
 
-/// The diary's controller against a real vault on disk: what it writes, when it writes
-/// it, and the days it leaves alone.
-@MainActor
-private func makeDiary(_ vault: borrowing TemporaryVault) async throws -> (DiaryController, VaultController) {
-    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
-    await controller.open(vault.root)
-    let diary = DiaryController(vault: controller)
-    diary.show(testDay)
-    return (diary, controller)
-}
-
-/// Takes the root rather than the vault: `TemporaryVault` is noncopyable, and a `#expect`
-/// or `#require` that borrows one does not compile - the macro's autoclosure wants a
-/// copy.
-private func diaryOnDisk(_ root: URL) -> String? {
-    try? String(contentsOf: root.appending(path: "Diario/20260811.md"), encoding: .utf8)
-}
+// `makeDiary`/`diaryOnDisk` now live in `Tests/DiaryTestSupport.swift` (ADR-0051 §D2):
+// shared rather than copied a second time.
 
 @MainActor
 @Test func writesANewEntryIntoTheDayFile() async throws {
@@ -105,6 +90,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
             && diaryOnDisk(root)?.contains("Prosa.") == true
     }
 
+    try await waitUntil { diary.isSettled }
     diary.move(by: 1)
     diary.move(by: -1)
 
@@ -131,6 +117,8 @@ private func diaryOnDisk(_ root: URL) -> String? {
     try await waitUntil { diaryOnDisk(root)?.contains("Ultima frase.") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("Ultima frase."))
+    // The day now changes only after the flush has landed (ADR-0057 §D5).
+    try await waitUntil { diary.day == testDay.adding(days: 1) }
     // And the new day starts empty rather than showing the previous one's text.
     #expect(!diary.prose.contains("Ultima frase."))
     controller.close()
@@ -212,6 +200,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
 
     diary.add(title: "Trasferta", startMinutes: 14 * 60, durationMinutes: 180)
     try await waitUntil { diaryOnDisk(root)?.contains("- 14:00-17:00 Trasferta") == true }
+    try await waitUntil { diary.isSettled }
     diary.move(by: 1)
     diary.move(by: -1)
 
@@ -398,6 +387,7 @@ private func diaryOnDisk(_ root: URL) -> String? {
     try await waitUntil { diaryOnDisk(root)?.contains("- 23:00-24:00 Chiusura") == true }
     let onDisk = try #require(diaryOnDisk(root))
     #expect(onDisk.contains("- 23:00-24:00 Chiusura"))
+    try await waitUntil { diary.isSettled }
     diary.move(by: 1)
     diary.move(by: -1)
     try await waitUntil { diary.entries.count == 1 }
