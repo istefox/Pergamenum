@@ -130,9 +130,14 @@ struct CategorySidebarSection: View {
         .contentShape(Rectangle())
         .overlay(alignment: .leading) {
             if hasChildren {
+                // PG-226: the 8pt band alone read as too cramped against the dot on a
+                // hand check - widened 4pt into the outer padding, at the cost of a 4pt
+                // overhang outside the selection highlight on expanded parent rows only
+                // (the trade-off the plan named for this exact fallback).
                 disclosureButton(for: category.slug)
                     .frame(width: theme.spacing(.s))
                     .contentShape(Rectangle())
+                    .offset(x: -4)
             }
         }
     }
