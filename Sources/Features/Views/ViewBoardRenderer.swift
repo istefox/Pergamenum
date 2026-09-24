@@ -236,7 +236,7 @@ private struct ColumnDropTarget<Content: View>: View {
                     RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                         .stroke(isTargeted ? theme.color(.accentPrimary) : .clear, lineWidth: 1)
                 )
-                .dropDestination(for: String.self) { payloads, _ in
+                .dropDestination(for: String.self) { (payloads: [String], _: CGPoint) -> Bool in
                     payloads.first.map(onDrop) ?? false
                 } isTargeted: { isTargeted = $0 }
         } else {
