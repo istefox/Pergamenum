@@ -64,6 +64,13 @@ struct DesignGalleryView: View {
                     (.stickyPink, "sticky.pink"),
                     (.stickyGrey, "sticky.grey"),
                 ])
+                colorSection("Categorie", [
+                    (.categoryYellow, "category.yellow"),
+                    (.categoryGreen, "category.green"),
+                    (.categoryBlue, "category.blue"),
+                    (.categoryPink, "category.pink"),
+                    (.categoryGrey, "category.grey"),
+                ])
                 typography
                 metrics
             }

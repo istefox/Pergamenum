@@ -65,6 +65,13 @@
       "blue": { "$value": "#26374A" },
       "pink": { "$value": "#4A2E32" },
       "grey": { "$value": "#33312D" }
+    },
+    "category": {
+      "yellow": { "$value": "#F5C542" },
+      "green": { "$value": "#4CC26A" },
+      "blue": { "$value": "#5A9EFF" },
+      "pink": { "$value": "#FF6B8A" },
+      "grey": { "$value": "#9AA0A6" }
     }
   },
   "font": {

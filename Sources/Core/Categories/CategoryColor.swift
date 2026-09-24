@@ -13,12 +13,12 @@ import Foundation
 /// version's wider palette) reads as `nil`, and the caller falls back to a neutral token
 /// rather than refusing to render the category at all (`CategoryColor+Token.swift`).
 ///
-/// Reuses the same five hues `DiaryColour` already names rather than widening
-/// `ColorToken`'s palette with new cases: SPEC "Not yet specified" leaves the exact
-/// palette to implementation, and every token this app can draw already lives in exactly
-/// two theme files (`Resources/Themes/pergamenum-*.json`) - five names is a small fixed
-/// palette either way, and reusing them costs no new token, no new theme entry in either
-/// file, and no new emergency-palette fallback to keep in step.
+/// Names the same five hues `DiaryColour` names, but resolves to its own
+/// `color.category.*` tokens rather than `DiaryColour`'s `color.sticky.*`
+/// (`CategoryColor+Token.swift`): those are sticky-note *background* pastels, chosen to
+/// stay readable under a card's worth of text, and were unreadable as the 8pt dot a
+/// category paints in the sidebar and elsewhere. SPEC "Not yet specified" leaves the
+/// exact palette to implementation; five names is a small fixed palette either way.
 enum CategoryColor: String, CaseIterable, Identifiable, Sendable {
     case giallo, verde, blu, rosa, grigio
 
