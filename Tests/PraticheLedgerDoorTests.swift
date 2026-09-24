@@ -326,6 +326,29 @@ private func run(
         #expect(onDisk(sessionB) == expectedB, "B's own file was read fresh, changed and written back")
     }
 
+    /// PG-191: a vault closed and reopened on the SAME root mid-run gets a brand-new
+    /// `VaultSession` identity for the file `ledgerOrigin` already names. `.stale` must reroute
+    /// to `.live` for that session, or the write lands on disk without updating `ledger`, and the
+    /// next `.live` writer overwrites it with older in-memory state (one re-sync lost, PG-172's
+    /// loss again). Contrast with `aStaleSessionWriteNeverTouchesTheLiveLedgerOrItsMarker` above,
+    /// where the session names a genuinely different vault and must NOT reroute.
+    @Test func aStaleSessionForTheSameFileAsTheLiveMarkerReroutesToLive() throws {
+        let vault = try TemporaryVault()
+        let sessionA = session(of: vault)
+        let sessionAReopened = session(of: vault)
+        try write(twoPratiche(), for: sessionA)
+        let controller = newController()
+        controller.updateLedger(.live(sessionA)) { $0.byPraticaPath[pathX]?.trayCount = 9 }
+        let liveOrigin = controller.ledgerOrigin
+
+        let result = controller.updateLedger(.stale(sessionAReopened)) { $0.byPraticaPath[pathX]?.trayCount = 6 }
+
+        #expect(result == .saved)
+        #expect(controller.ledgerOrigin == liveOrigin, "still the same file, so the marker does not move")
+        #expect(controller.ledger.byPraticaPath[pathX]?.trayCount == 6, "the write must land in memory, not only on disk")
+        #expect(onDisk(sessionA).byPraticaPath[pathX]?.trayCount == 6)
+    }
+
     @Test func aStaleSessionWriteOnANeverLoadedControllerStillLeavesTheMarkerAlone() throws {
         let vault = try TemporaryVault()
         let session = session(of: vault)
@@ -399,6 +422,35 @@ private func run(
         #expect(controller.ledger == .empty)
         #expect(controller.ledgerOrigin == .none)
         #expect(try bytes(of: session) == bytesBefore, "and the vault's own file is not the closed vault's to rewrite")
+    }
+
+    // MARK: PG-191: select must not let the door's own reset erase the click
+
+    /// The click that started this bug report: a row tap delivered after the environment's
+    /// `vault` has already switched, but before this controller has loaded THAT vault's own
+    /// ledger. `select` used to set `selection` and only then call `markOpened`, whose door can
+    /// reset `selection` to `nil` on exactly this marker mismatch - dropping the click right
+    /// after it landed. Two vaults share the same pratica path on purpose (the ADR-0052 §D5
+    /// comment's own example - "01 Progetti/Tifone is not an unusual name") so a passing
+    /// `selection` is unambiguous proof it names the row this call was actually given.
+    @Test func selectSurvivesAVaultSwitchInsteadOfBeingSilentlyDropped() async throws {
+        let vaultA = try TemporaryVault()
+        let vaultB = try TemporaryVault()
+        try vaultA.write(praticaNote(client: "rossi"), to: "\(pathX)/pratica.md")
+        try vaultB.write(praticaNote(client: "bianchi"), to: "\(pathX)/pratica.md")
+        let (vaultControllerA, sessionA) = try await openedController(on: vaultA)
+        let (vaultControllerB, sessionB) = try await openedController(on: vaultB)
+        let pratiche = newController()
+        pratiche.load(from: vaultControllerA)
+        #expect(pratiche.ledgerOrigin == .loaded(url(of: sessionA)), "precondition: memory came from A's file")
+
+        pratiche.select(pathX, in: vaultControllerB)
+
+        #expect(pratiche.selection == pathX, "the click must not be dropped by the door's own reset")
+        #expect(pratiche.ledgerOrigin == .loaded(url(of: sessionB)), "the door has adopted B's file by the time select returns")
+
+        vaultControllerA.close()
+        vaultControllerB.close()
     }
 
     // MARK: R-03: no file at all is not a refusal
