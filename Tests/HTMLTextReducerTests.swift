@@ -35,6 +35,19 @@ import Testing
         #expect(reduced.contains("[il sito](https://vibrofer.it)"))
     }
 
+    @Test func keepsAnOpenableLinkUnchanged() {
+        let reduced = HTMLTextReducer.reduce("<p><a href=\"https://example.com\">testo</a></p>")
+        #expect(reduced.contains("[testo](https://example.com)"))
+    }
+
+    @Test func reducesALinkWithARefusedSchemeToItsText() {
+        // PG-124: the href never reaches the note, so no surface downstream can open it.
+        let reduced = HTMLTextReducer.reduce("<p><a href=\"javascript:alert(1)\">testo</a></p>")
+        #expect(reduced.contains("testo"))
+        #expect(!reduced.contains("]("))
+        #expect(!reduced.contains("javascript"))
+    }
+
     @Test func rendersBoldAsDoubleAsterisks() {
         let reduced = HTMLTextReducer.reduce(EmailFixtureCorpus.htmlBold)
         #expect(reduced.contains("**importante**"))

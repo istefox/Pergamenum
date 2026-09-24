@@ -248,8 +248,14 @@ struct MarkdownBlocksView: View {
                 piece.foregroundColor = theme.color(.accentPrimary)
                 piece.underlineStyle = .single
             case .url(let target):
-                piece.link = URL(string: target)
-                piece.foregroundColor = theme.color(.accentPrimary)
+                // Refused here, where the link is made, rather than by an `openURL`
+                // override at each caller: the Pratiche rows install none, and a caller
+                // added later would inherit the hole by omission (PG-124). A refused
+                // scheme renders as the plain text it is.
+                if let url = URL(string: target), LinkPolicy.isOpenable(url) {
+                    piece.link = url
+                    piece.foregroundColor = theme.color(.accentPrimary)
+                }
             case nil:
                 break
             }

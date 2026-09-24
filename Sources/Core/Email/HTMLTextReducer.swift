@@ -276,10 +276,12 @@ private struct HTMLWalk {
             let text = popBuffer()
             let href = hrefs.popLast() ?? ""
             // A link with no text of its own, or pointing nowhere, is written as plain
-            // text: `[](url)` renders as nothing at all.
+            // text: `[](url)` renders as nothing at all. A scheme `LinkPolicy` refuses
+            // (`javascript:`, `file:`, a custom app's) keeps its text and loses the link,
+            // so the note never carries something a click would hand to the system.
             if text.isEmpty {
                 append(href)
-            } else if href.isEmpty {
+            } else if href.isEmpty || !LinkPolicy.isOpenable(href) {
                 append(text)
             } else {
                 append("[\(text)](\(href))")

@@ -72,11 +72,21 @@ enum NoteExport {
         """
     }
 
+    /// Quotes are escaped as well as angle brackets because `MarkdownHTML` writes a link's
+    /// URL into a quoted `href` attribute after this pass: a literal `"` there would end
+    /// the attribute and let the rest of the href become markup (PG-124). `&` goes first,
+    /// or it would re-escape the entities the later lines introduce.
+    ///
+    /// `'` becomes `&apos;` rather than `&#39;` on purpose: `MarkdownHTML.inline` splits a
+    /// wikilink at `#` after this pass, so a numeric reference would cut `[[Nota d'Arco]]`
+    /// to `Nota d&`. The document is HTML5, where `&apos;` is defined.
     static func escape(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
     }
 }
 
@@ -257,7 +267,9 @@ enum MarkdownHTML {
         replacePairs(in: text, open: "`", close: "`") { "<code>\($0)</code>" }
     }
 
-    /// `[testo](url)` becomes an anchor.
+    /// `[testo](url)` becomes an anchor, or just its label when `LinkPolicy` refuses the
+    /// scheme: an exported page is read in a browser or rendered by WebKit for the PDF,
+    /// and neither should be handed a `javascript:` or `file:` link out of a note.
     private static func replaceMarkdownLinks(in text: String) -> String {
         var result = ""
         var rest = Substring(text)
@@ -270,7 +282,9 @@ enum MarkdownHTML {
             let label = String(rest[rest.index(after: open)..<close])
             let url = String(rest[rest.index(close, offsetBy: 2)..<end])
             result += rest[rest.startIndex..<open]
-            result += "<a href=\"\(url)\">\(label)</a>"
+            // `url` is already escaped by `inline`; the scheme it starts with is not
+            // affected by that, so the check reads the same string the anchor would.
+            result += LinkPolicy.isOpenable(url) ? "<a href=\"\(url)\">\(label)</a>" : label
             rest = rest[rest.index(after: end)...]
         }
         return result + rest
