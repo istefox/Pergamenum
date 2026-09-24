@@ -540,12 +540,21 @@ extension VaultSession {
     /// `expecting:`, checked inside the actor (`VaultDisk.write`). The refusal is thrown from
     /// `disk.write` below, so the `catch` that follows already removes the provisional
     /// `selfWrittenHashes` entry: a refused write never leaves a hash nothing will match.
+    ///
+    /// **ADR-0057 §D3:** `expectingAbsent`, when `true`, refuses (`WriteRefusal.movedOn`) if
+    /// a file already exists at `relativePath` - the creation-case sibling of `expecting:`,
+    /// for a read-modify-write whose read found nothing (the diary's first write), checked
+    /// inside the actor (`VaultDisk.write`) on existence rather than readability. Passing it
+    /// with a non-nil `expecting` is a contradiction: asserted against in Debug, and
+    /// `expecting` wins in Release. The refusal goes through the same `catch` below.
     @discardableResult
     func write(
         _ text: String, to relativePath: String,
         expecting: String? = nil,
+        expectingAbsent: Bool = false,
         requiringExistingFolder: Bool = false
     ) async throws -> WriteResult {
+        assert(!(expecting != nil && expectingAbsent), "expecting and expectingAbsent contradict each other")
         // ADR-0007 §D6's first guardrail: a dry run must never reach the actor.
         guard !isDryRun else { return WriteResult(path: relativePath, text: text) }
 
@@ -577,6 +586,7 @@ extension VaultSession {
                 text, to: relativePath,
                 precomputedHash: hash,
                 expecting: expecting,
+                expectingAbsent: expectingAbsent && expecting == nil,
                 requiringExistingFolder: requiringExistingFolder,
                 journalDescriptor: journalDescriptor,
                 journal: journal,

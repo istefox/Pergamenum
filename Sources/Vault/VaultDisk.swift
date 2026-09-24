@@ -204,10 +204,18 @@ extension VaultDisk {
     /// case, which is where the defect lives. Losing the race between this check and
     /// `store.write` is survivable by construction: in this mode `NoteStore.write` does not
     /// create intermediates, so the byte write fails rather than recreating the folder.
+    ///
+    /// `expectingAbsent` (ADR-0057 §D3) is the creation-case sibling of `expecting`: when
+    /// `true`, a file already at `relativePath` throws `WriteRefusal.movedOn` before any byte
+    /// is written. It tests existence (`FileManager.fileExists`), not `textBefore == nil`, so
+    /// a file that exists but cannot be read as UTF-8 is refused rather than overwritten -
+    /// ADR-0052's «never save over a file you could not read». `VaultSession.write` never
+    /// passes it together with a non-nil `expecting`.
     func write(
         _ text: String, to relativePath: String,
         precomputedHash: String,
         expecting: String? = nil,
+        expectingAbsent: Bool = false,
         requiringExistingFolder: Bool = false,
         journalDescriptor: JournalDescriptor?,
         journal: WriteJournal?,
@@ -220,6 +228,11 @@ extension VaultDisk {
         let hashBefore = textBefore.map { NoteStore.hash(Data($0.utf8)) }
 
         if let expecting, hashBefore != expecting {
+            throw VaultSession.WriteRefusal.movedOn(relativePath)
+        }
+        // Existence, not readability (ADR-0057 §D3): a file that is there but not UTF-8
+        // leaves `textBefore` nil, and treating that as absent would overwrite it.
+        if expectingAbsent, try fileExists(relativePath) {
             throw VaultSession.WriteRefusal.movedOn(relativePath)
         }
 
@@ -269,6 +282,11 @@ extension VaultDisk {
             hash: hash,
             journalProblem: journalProblem
         )
+    }
+
+    /// Whether anything is at `relativePath` at all, readable or not (ADR-0057 §D3).
+    private func fileExists(_ relativePath: String) throws -> Bool {
+        try FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
     }
 }
 

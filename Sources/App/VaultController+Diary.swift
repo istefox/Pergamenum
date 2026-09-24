@@ -11,7 +11,7 @@ extension VaultController {
     }
 
     /// A day's diary, or nil when nothing has been written for that day yet.
-    func readDiary(on day: CalendarDate) -> (prose: String, entries: [DiaryEntry])? {
+    func readDiary(on day: CalendarDate) -> (prose: String, entries: [DiaryEntry], disk: VaultSession.DiaryDiskState)? {
         guard let session else { return nil }
         return session.readDiary(on: day, preferring: bufferText(for: diaryNotePath(for: day)))
     }
@@ -21,12 +21,18 @@ extension VaultController {
         session?.emptyDiaryNote(for: day) ?? ""
     }
 
-    /// Writes a day's diary, creating the file and its folder when they are missing.
+    /// Writes a day's diary over the disk state it was derived from (ADR-0057 §D3),
+    /// creating the file and its folder when they are missing and the file is still
+    /// absent. Answers the session's outcome rather than a `Bool`, since the one caller
+    /// must tell a refusal (`.stale`, a conflict) from a failure (`.failed`); `.failed`
+    /// too when no vault is open.
     @discardableResult
-    func writeDiary(prose: String, entries: [DiaryEntry], on day: CalendarDate) async -> Bool {
-        guard let session else { return false }
-        let outcome = await session.writeDiary(prose: prose, entries: entries, on: day)
+    func writeDiary(
+        prose: String, entries: [DiaryEntry], on day: CalendarDate, over disk: VaultSession.DiaryDiskState
+    ) async -> VaultSession.WriteOutcome {
+        guard let session else { return .failed }
+        let outcome = await session.writeDiary(prose: prose, entries: entries, on: day, over: disk)
         if let result = outcome.result { syncOpenNote(with: result) }
-        return outcome.succeeded
+        return outcome
     }
 }

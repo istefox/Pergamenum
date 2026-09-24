@@ -8,6 +8,11 @@ import Observation
 /// falling off the end of the day, not writing a file for a day nobody wrote anything
 /// on - is exercised by tests rather than by clicking.
 ///
+/// It holds the day's file in memory while a person writes, so (ADR-0057) every write goes
+/// through **one serial door** (§D4), proves it still replaces the **origin** it was read
+/// from (§D2, §D3, §D7), and a refusal is a **conflict** (§D6) that writes nothing and
+/// leaves no day until `keepLocalDiary()` or `reloadDiaryFromDisk()` is chosen.
+///
 /// Nothing here touches EventKit. The diary is the app's own record of a day and
 /// answers to nothing outside the vault.
 @MainActor
@@ -16,17 +21,16 @@ final class DiaryController {
     private(set) var day: CalendarDate = .today
     /// The day's text without its `## Diario` section, which is what the editor edits.
     ///
-    /// Settable because it is bound straight to the editor; every write goes through
-    /// `noteProseEdited` so the save can be scheduled.
+    /// Settable because it is bound straight to the editor; every change goes through
+    /// `didSet`, which counts it as an edit and schedules the save.
     var prose: String = "" {
         didSet {
             guard prose != oldValue, isLoaded else { return }
-            isDirty = true
+            noteEdited()
             scheduleSave()
         }
     }
     private(set) var entries: [DiaryEntry] = []
-    private(set) var problems: [String] = []
 
     /// The entry being composed or edited, and the sheet that shows it. Nil is closed.
     var draft: DiaryDraft?
@@ -37,8 +41,36 @@ final class DiaryController {
     /// False until the first load, so the initial assignment to `prose` is not read as
     /// an edit and does not schedule a write of a file that may not exist.
     private var isLoaded = false
-    private var isDirty = false
     private var saveTask: Task<Void, Never>?
+
+    /// A test seam, nil in production: awaited before each write and after its outcome has
+    /// been acted on, so `.didWrite` counts writes whose consequences are visible (§D9).
+    @ObservationIgnored var testOnlyWriteHook: (@MainActor (DiaryWritePhase) async -> Void)?
+
+    /// Whether the day on screen is safely on disk (ADR-0057 §D6).
+    private(set) var saveState: SaveState = .saved
+
+    /// Nothing owed and no write operation queued or running (ADR-0057 §D5): the condition
+    /// for `show(_:)`'s synchronous path, and what a test waits on before a round trip.
+    var isSettled: Bool { saveState == .saved && runner == nil }
+
+    /// Which file the day was last read from, and what it held (ADR-0057 §D2). Written by
+    /// a read, a successful write and the two resolution verbs; never by an edit.
+    private(set) var origin: DiaryOrigin = .none
+
+    /// Bumped by every edit; a write marks the day saved only if it has not moved since the
+    /// write's snapshot (ADR-0057 §D4). A flag cleared after an `await` describes the snapshot.
+    private var editGeneration = 0
+
+    /// The day a navigation asked for while a write was owed or in flight (ADR-0057 §D5).
+    /// `move(by:)` counts from it, and the queued switch reads it when it runs.
+    private var destination: CalendarDate?
+
+    /// The serial write door (ADR-0057 §D4): one queue drained by one runner task, so at
+    /// most one write is ever in flight and each starts once the previous one has settled.
+    private enum Operation { case write, switchDay }
+    private var operations: [Operation] = []
+    private var runner: Task<Void, Never>?
 
     /// How long typing pauses before the day is written. Long enough not to write on
     /// every keystroke, short enough that no realistic switch away loses a sentence -
@@ -51,71 +83,73 @@ final class DiaryController {
 
     // MARK: Loading and saving
 
-    /// Reads the day being shown. Creates nothing: a day only becomes a file once
-    /// something is written on it.
+    /// Reads the day being shown when that is safe (ADR-0057 §D5, §D7); creates nothing.
+    /// Conflicted: nothing, so coming back finds the same conflict. A write owed or in
+    /// flight: write it, no re-read - memory is what the file is about to say, and the write
+    /// catches a vault or folder change. Settled: re-read, picking up another process's change.
     func load() {
-        // Anything still owed to the day being left is written before it is replaced.
-        // Cancelling the pending save instead - which is what this did - threw away the
-        // last sentence typed whenever the pane was reopened quickly enough.
-        //
-        // `wasDirty` is read before `flush()` starts that write asynchronously
-        // (ADR-0043 follow-up): `load()` re-reading `day`'s own file right after
-        // flushing it races that write, and very likely wins the race, reading back
-        // whatever was on disk *before* it landed and discarding the very sentence the
-        // flush is about to persist. When the day being reloaded is the one just
-        // flushed, `prose`/`entries` already hold what the write will make the file
-        // say, so `reload` leaves them alone instead of overwriting them with a stale
-        // read.
-        let wasDirty = isDirty
-        flush()
-        reload(skipDiskReadBecauseJustFlushed: wasDirty)
+        if case .conflicted = saveState { return }
+        guard isSettled else {
+            cancelScheduledSave()
+            enqueue(.write)
+            return
+        }
+        reload()
     }
 
+    /// Shows another day (ADR-0057 §D5). With nothing owed and nothing in flight the day
+    /// changes and is read at once. Otherwise the day being left is flushed and the switch
+    /// waits behind that write - and a conflicted day is not left at all (§D6). Asking for
+    /// the day on screen meanwhile cancels the switch without re-reading.
     func show(_ newDay: CalendarDate) {
-        guard newDay != day else { return }
+        if case .conflicted = saveState { return }
+        guard newDay != day else {
+            destination = nil
+            return
+        }
+        guard !isSettled else {
+            day = newDay
+            reload()
+            return
+        }
+        destination = newDay
         flush()
-        day = newDay
-        // Not `load()`: its own `flush()` would re-fire here, and since the async write
-        // `flush()` just started above has not completed yet, `isDirty` is often still
-        // true - re-entering `save()` would snapshot the *old* day's leftover prose
-        // against `self.day`, which is already `newDay`, and write it to the wrong
-        // file. The flush above already owns whatever was pending for the day being
-        // left; the day being shown was never dirty to begin with.
-        reload(skipDiskReadBecauseJustFlushed: false)
+        enqueue(.switchDay)
     }
 
-    /// The read half of `load()`: never called before a matching `flush()` for the day
-    /// it is about to (maybe) read, and never on a day it might race.
-    private func reload(skipDiskReadBecauseJustFlushed wasDirty: Bool) {
+    /// Counts from where the pane is going, so two clicks during a flush go two days.
+    func move(by days: Int) { show((destination ?? day).adding(days: days)) }
+
+    /// Replaces memory with the day's file and records where it came from. Only called
+    /// with nothing owed, or to drop what was owed by choice.
+    private func reload() {
+        cancelScheduledSave()
         isLoaded = false
         defer { isLoaded = true }
-
-        guard vault.root != nil else {
+        saveState = .saved
+        guard let root = vault.root else {
             prose = ""
             entries = []
+            origin = .none
             return
         }
-        guard !wasDirty else {
-            isDirty = false
-            return
-        }
+        let file = root.appending(path: vault.diaryNotePath(for: day))
         if let diary = vault.readDiary(on: day) {
             prose = diary.prose
             entries = diary.entries
+            origin = .read(file: file, disk: diary.disk)
         } else {
             prose = vault.emptyDiaryNote(for: day)
             entries = []
+            origin = .read(file: file, disk: .absent)
         }
-        isDirty = false
     }
 
-    func move(by days: Int) { show(day.adding(days: days)) }
-
     /// Writes now, if there is anything to write. Called when the pane goes away, when
-    /// the app stops being frontmost, and before changing day.
+    /// the app stops being frontmost, and before changing day. Does nothing while
+    /// conflicted: a retry per keystroke would refuse per keystroke.
     func flush() {
-        saveTask?.cancel()
-        saveTask = nil
+        cancelScheduledSave()
         save()
     }
 
@@ -128,31 +162,158 @@ final class DiaryController {
         }
     }
 
+    private func cancelScheduledSave() {
+        saveTask?.cancel()
+        saveTask = nil
+    }
+
+    /// Queues a write when one is owed. What it writes is decided when it runs.
     private func save() {
-        guard isDirty, isLoaded, vault.root != nil else { return }
-        // A day nobody wrote anything on is not a file. Without this, opening the pane
-        // and walking through a week would leave seven empty notes behind.
-        guard hasContent || vault.readDiary(on: day) != nil else {
-            isDirty = false
+        guard saveState == .pending, isLoaded, vault.root != nil else { return }
+        enqueue(.write)
+    }
+
+    private func noteEdited() {
+        editGeneration += 1
+        if saveState == .saved { saveState = .pending }
+    }
+}
+
+// MARK: The serial write door - a same-file extension, since every member below writes
+// `origin`, `saveState`, `prose` or `entries`, whose setters `private(set)` keeps here.
+extension DiaryController {
+    private func enqueue(_ operation: Operation) {
+        operations.append(operation)
+        guard runner == nil else { return }
+        runner = Task { await drain() }
+    }
+
+    private func drain() async {
+        while !operations.isEmpty {
+            switch operations.removeFirst() {
+            case .write: await performWrite()
+            case .switchDay: performSwitch()
+            }
+        }
+        runner = nil
+    }
+
+    /// One write, run with its predecessor already settled (ADR-0057 §D4). What it writes
+    /// is read here, not when it was asked for: `day` cannot change under a pending write,
+    /// since `show(_:)` queues its switch behind this, so `prose`/`entries` are the newest
+    /// text for this day and `origin` already holds what the previous write left on disk.
+    private func performWrite() async {
+        if case .conflicted = saveState { return }
+        guard let root = vault.root else {
+            // No vault, no file: nothing written can ever be owed to it.
+            saveState = .saved
             return
         }
-        // The failure branch and the flag both move inside the hop (ADR-0043 §D2): a diary
-        // marked clean before its file holds the text is a diary the next save skips.
-        //
-        // Snapshotted before the Task starts, not read from `self` inside it: `show(_:)`
-        // calls `flush()` (which lands here) and then overwrites `day`/`prose`/`entries`
-        // with the new day's values *synchronously*, before this Task's body ever runs -
-        // so reading `self.…` inside the closure would write the wrong day's content.
+        let file = root.appending(path: vault.diaryNotePath(for: day))
+        guard origin.file == file else {
+            abandonForeignFile(reporting: saveState == .pending)
+            return
+        }
+        guard saveState == .pending else { return }
+
         let day = day
         let prose = prose
         let entries = entries
-        Task { @MainActor in
-            guard await vault.writeDiary(prose: prose, entries: entries, on: day) else {
-                problems.append("diario del \(day.compactForm): scrittura non riuscita")
-                return
-            }
-            isDirty = false
+        let generation = editGeneration
+        let disk = origin.disk
+        // A day nobody wrote anything on is not a file. Without this, opening the pane
+        // and walking through a week would leave seven empty notes behind.
+        guard hasContent || disk != .absent else {
+            saveState = .saved
+            return
         }
+
+        await testOnlyWriteHook?(.willWrite)
+        let outcome = await vault.writeDiary(prose: prose, entries: entries, on: day, over: disk)
+        switch outcome {
+        case .written(let result):
+            origin = .read(file: file, disk: .present(hash: NoteStore.hash(Data(result.text.utf8))))
+            settle(after: generation)
+        case .unchanged:
+            settle(after: generation)
+        case .stale:
+            enterConflict()
+        case .failed:
+            // Not a refusal (disk full, permissions): reported, and the day is not pinned
+            // to a disk that is failing (ADR-0057 §D5). The next edit tries again.
+            vault.recordProblem("diario del \(day.compactForm): scrittura non riuscita")
+            settle(after: generation)
+        }
+        await testOnlyWriteHook?(.didWrite)
+    }
+
+    /// Saved when no edit arrived during the write; otherwise still pending, and nothing is
+    /// queued here: that edit already owns a write (`entriesChanged` queued it, a keystroke
+    /// scheduled it after the typing pause), and a waiting day switch queues its own.
+    private func settle(after generation: Int) {
+        if editGeneration == generation { saveState = .saved }
+    }
+
+    /// The queued half of `show(_:)`.
+    private func performSwitch() {
+        guard let target = destination else { return }
+        if saveState == .pending {
+            // An edit arrived while the switch waited: write it before leaving.
+            enqueue(.write)
+            enqueue(.switchDay)
+            return
+        }
+        destination = nil
+        // A refused write pins the day (§D6): the switch is dropped.
+        if case .conflicted = saveState { return }
+        day = target
+        reload()
+    }
+
+    /// §D7: the vault or `diaryFolder` changed since the read, so writing would put this
+    /// day's text into a file it was never read from. Reports what is dropped, if anything,
+    /// and shows the day from the file that is current now.
+    private func abandonForeignFile(reporting owed: Bool) {
+        if owed {
+            vault.recordProblem(
+                "modifiche al diario del \(day.compactForm), non salvate: il file non è più quello letto"
+            )
+        }
+        reload()
+    }
+
+    /// The one door into `.conflicted` (ADR-0057 §D6), which reports it once.
+    private func enterConflict() {
+        let reason = VaultWriteRefusal.movedOn(vault.diaryNotePath(for: day)).description
+        saveState = .conflicted(reason: reason)
+        destination = nil
+        vault.recordProblem(reason)
+    }
+
+    // MARK: Resolving a conflict
+
+    /// «Tieni la mia versione» (ADR-0057 §D6): adopts what is on disk now as the origin,
+    /// without touching the text in memory, and writes that text over it - once. A third
+    /// writer landing between this read and the write is refused again and re-enters the
+    /// conflict: one attempt per click, never a loop.
+    func keepLocalDiary() {
+        guard case .conflicted = saveState, let root = vault.root else { return }
+        let file = root.appending(path: vault.diaryNotePath(for: day))
+        guard origin.file == file else {
+            abandonForeignFile(reporting: true)
+            return
+        }
+        cancelScheduledSave()
+        origin = .read(file: file, disk: vault.readDiary(on: day)?.disk ?? .absent)
+        saveState = .pending
+        enqueue(.write)
+    }
+
+    /// «Ricarica da disco» (ADR-0057 §D6): drops the text in memory by explicit choice and
+    /// reads the day again; a file that is gone reloads as an empty day.
+    func reloadDiaryFromDisk() {
+        guard case .conflicted = saveState else { return }
+        reload()
     }
 
     /// Whether the day holds anything at all, frontmatter aside.
@@ -168,11 +329,7 @@ final class DiaryController {
     /// happened does overlap. The timeline draws them side by side.
     @discardableResult
     func add(
-        title: String,
-        note: String = "",
-        startMinutes: Int,
-        durationMinutes: Int,
-        colour: DiaryColour = .blu
+        title: String, note: String = "", startMinutes: Int, durationMinutes: Int, colour: DiaryColour = .blu
     ) -> DiaryEntry {
         let duration = DiaryGrid.clampDuration(durationMinutes)
         let entry = DiaryEntry(
@@ -223,93 +380,21 @@ final class DiaryController {
     /// the typing pause, so nothing on the timeline is ever newer than the file.
     private func entriesChanged() {
         entries.sort { $0.startMinutes < $1.startMinutes }
-        isDirty = true
-        saveTask?.cancel()
-        saveTask = nil
+        noteEdited()
+        cancelScheduledSave()
         save()
-    }
-
-    // MARK: Composing
-
-    /// The sheet's state: a new entry or an existing one, and the fields being edited.
-    struct DiaryDraft: Identifiable, Equatable {
-        var id: UUID { entry.id }
-        var entry: DiaryEntry
-        /// False for an entry that is not on the timeline yet, which is what decides
-        /// whether the sheet offers "Elimina" and what its title says.
-        var isExisting: Bool
-    }
-
-    /// Opens the composer on a free-standing new entry.
-    ///
-    /// The start is where the user clicked, or the next ten-minute mark from now when
-    /// the toolbar asked - a diary is usually written about the hour it is.
-    func compose(startMinutes: Int? = nil, durationMinutes: Int = 60) {
-        let start = startMinutes ?? suggestedStart
-        let duration = DiaryGrid.clampDuration(durationMinutes)
-        draft = DiaryDraft(
-            entry: DiaryEntry(
-                startMinutes: DiaryGrid.clampStart(start, duration: duration),
-                durationMinutes: duration,
-                title: ""
-            ),
-            isExisting: false
-        )
-    }
-
-    func edit(_ entry: DiaryEntry) {
-        draft = DiaryDraft(entry: entry, isExisting: true)
-    }
-
-    /// Commits the sheet: an update when the entry is already on the timeline, an
-    /// insertion when it is not.
-    func commitDraft() {
-        guard let draft else { return }
-        if draft.isExisting {
-            update(draft.entry)
-        } else {
-            add(
-                title: draft.entry.title,
-                note: draft.entry.note,
-                startMinutes: draft.entry.startMinutes,
-                durationMinutes: draft.entry.durationMinutes,
-                colour: draft.entry.colour
-            )
-        }
-        self.draft = nil
-    }
-
-    func cancelDraft() { draft = nil }
-
-    /// The current ten-minute mark on the day being shown, or 09:00 on any other day.
-    var suggestedStart: Int {
-        guard day == .today else { return 9 * 60 }
-        let components = Calendar.current.dateComponents([.hour, .minute], from: Date())
-        let now = (components.hour ?? 9) * 60 + (components.minute ?? 0)
-        return DiaryGrid.clampStart(DiaryGrid.snapDown(now), duration: 60)
     }
 
     // MARK: Timeline geometry
 
-    /// The hours the grid draws: what Impostazioni says, widened to reach every block
-    /// on the day.
-    ///
-    /// The setting says which hours are always there; it does not decide which hours
-    /// exist. A block at 05:30 under a window starting at eight would be drawn above
-    /// the grid, where nothing is - invisible, and impossible to move back.
+    /// The hours the grid draws: what Impostazioni says, widened to reach every block on
+    /// the day (the rest of the geometry is in `DiaryController+Geometry.swift`). A block at
+    /// 05:30 under a window starting at eight would otherwise be drawn above the grid,
+    /// where nothing is - invisible, and impossible to move back.
     var hours: HourWindow {
         vault.settings.diaryHours.covering(
             startMinutes: entries.map(\.startMinutes),
             endMinutes: entries.map(\.endMinutes)
         )
     }
-
-    var firstHour: Int { hours.first }
-    var lastHour: Int { hours.last }
-
-    var placements: [DiaryLayout.Placement] { DiaryLayout.place(entries) }
-
-    /// How much of the day is accounted for, which is the one number a diary is asked
-    /// for at the end of an evening.
-    var totalMinutes: Int { entries.reduce(0) { $0 + $1.durationMinutes } }
 }

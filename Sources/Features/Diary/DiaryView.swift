@@ -16,10 +16,12 @@ import SwiftUI
 /// the hour window, the `## Diario` section, the pane saving itself, the key it takes -
 /// all stand as written, `DiaryTimeline` included.
 struct DiaryView: View {
-    @Environment(\.theme) private var theme
+    // Internal, not private: read by `DiaryView+Conflict.swift`.
+    @Environment(\.theme) var theme
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
-    @Environment(DiaryController.self) private var controller
+    // Internal, not private: read by `DiaryView+Conflict.swift`.
+    @Environment(DiaryController.self) var controller
     @Environment(ThemeEngine.self) private var themeEngine
 
     /// Every board's vault-relative path, for the editor's `[[` completion.
@@ -39,7 +41,9 @@ struct DiaryView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { DiaryToolbar(controller: controller, themeEngine: themeEngine) }
-        .task { controller.load() }
+        // Keyed on the vault so a vault switch with the pane on screen reloads at the
+        // switch rather than at the next keystroke (ADR-0057 §D7).
+        .task(id: vault.root) { controller.load() }
         .task(id: vault.scanGeneration) {
             boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
         }
@@ -73,6 +77,9 @@ struct DiaryView: View {
     private var writingColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if case .conflicted = controller.saveState {
+                conflictBanner
+            }
             Divider()
             editor
         }

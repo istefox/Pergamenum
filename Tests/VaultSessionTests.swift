@@ -280,7 +280,9 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     let day = CalendarDate(iso: "2026-08-11")!
 
     let entry = DiaryEntry(startMinutes: 10 * 60, durationMinutes: 45, title: "Sopralluogo")
-    guard case .written = await session.writeDiary(prose: session.emptyDiaryNote(for: day), entries: [entry], on: day) else {
+    guard case .written = await session.writeDiary(
+        prose: session.emptyDiaryNote(for: day), entries: [entry], on: day, over: .absent
+    ) else {
         Issue.record("il diario non è stato scritto: \(session.problems)")
         return
     }
