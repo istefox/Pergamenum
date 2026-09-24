@@ -3,9 +3,12 @@ import SwiftUI
 /// The tag browser (ADR-0012, slice 3; mockup approved on 2026-08-19).
 ///
 /// The tags on the left, grouped by the namespaces SPEC §4.4 closes the grammar to, each with
-/// the number of notes carrying it; the notes that survive the choice on the right. Choosing a
-/// second tag **narrows**: what is left carries all of them, because a tag added that took
-/// nothing away would not be narrowing anything.
+/// the number of notes carrying it; the notes that survive the choice on the right. A plain
+/// click **replaces** the choice with that one tag - single choice by default, changed
+/// 2026-09-24 from the AND-narrowing this comment described until then, since a plain click
+/// narrowing surprised the person clicking a second tag expecting it to replace the first.
+/// Cmd+click keeps the narrowing: what is left carries every Cmd-clicked tag, because a tag
+/// added that took nothing away would not be narrowing anything. See `choose(_:)`.
 ///
 /// Everything here is read off `IndexSnapshot.tagUsage()` and `allNotes`, computed per draw.
 /// No new structure in the index and no new column in the cache: `IndexCache`'s schema version
@@ -267,8 +270,9 @@ struct TagBrowserView: View {
         usage.filter { $0.key.namespace == namespace }.values.reduce(0, +)
     }
 
-    /// The notes carrying **every** chosen tag. AND and not OR: approved on 2026-08-19, and the
-    /// only reading under which a second tag narrows anything.
+    /// The notes carrying **every** chosen tag. AND and not OR, approved on 2026-08-19 and
+    /// unchanged by the 2026-09-24 click-behaviour change above: `chosen` still holds one tag
+    /// after a plain click or several after Cmd+click, and this reads the same either way.
     private var notes: [NoteRecord] { vault.index.notes(carryingAll: chosen) }
 
     private func noteColumnTitle(count: Int) -> String {
@@ -285,7 +289,21 @@ struct TagBrowserView: View {
 
     // MARK: I gesti
 
+    /// A plain click **replaces** the filter (single choice); Cmd+click **narrows** it, adding
+    /// or removing just that tag from the existing set - the AND-narrowing this file's own doc
+    /// comment described until 2026-09-24, now gated behind the modifier rather than the default.
+    /// Read live off `NSEvent.modifierFlags` at the call site, the same pattern already used for
+    /// a tap gesture's modifier in `WorkspaceBrowser.swift`/`CardTextView.swift`, since
+    /// `.onTapGesture` exposes no modifier of its own.
+    ///
+    /// A plain click on the only chosen tag clears the filter instead of leaving it selected:
+    /// the alternative (a no-op) would make deselecting a single tag a two-step trip through
+    /// "Azzera", the button already directly above it.
     private func choose(_ tag: Tag) {
+        guard NSEvent.modifierFlags.contains(.command) else {
+            chosen = chosen == [tag] ? [] : [tag]
+            return
+        }
         if chosen.contains(tag) {
             chosen.remove(tag)
         } else {
