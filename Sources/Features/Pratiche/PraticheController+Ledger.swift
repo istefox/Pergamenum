@@ -738,6 +738,29 @@ extension PraticheController {
         }
     }
 
+    /// PG-109/ADR-0036 §D23.5: persists what `MailStorePreparation.prepare` found
+    /// unrecoverable THIS run, so `PraticaTrayStrip`'s row survives past the one-shot
+    /// `problem` banner. A full replace, never a union: `prepare` re-derives the whole
+    /// set from `dossier.conversations` every sync (`MailStorePreparation.swift`'s
+    /// `resolveFollowedConversations`), so a conversation that got remapped or was
+    /// unfollowed since the last successful sync is simply absent from `conversations`
+    /// here already - the same "next sync recomputes it" reasoning `recordSyncOutcome`
+    /// already relies on for `notInStore`/the §D3 bridge, applied to this field too.
+    ///
+    /// Takes `session`/`isCurrentVault` like `recordSyncOutcome`/`remapLedgerConversations`
+    /// (ADR-0052 §D7): called from the same call site, right after `recordSyncOutcome`,
+    /// so a vault switch or relocation mid-sync is already resolved identically for both.
+    func recordUnrecoverableConversations(
+        _ conversations: [Int], of praticaPath: String, session: VaultSession, isCurrentVault: Bool
+    ) {
+        updateLedger(isCurrentVault ? .live(session) : .stale(session)) { ledger in
+            var state = ledger.byPraticaPath[praticaPath] ?? .empty
+            guard state.unrecoverableConversations != conversations else { return }
+            state.unrecoverableConversations = conversations
+            ledger.byPraticaPath[praticaPath] = state
+        }
+    }
+
     // MARK: - Paths
 
     static func ledgerURL(for session: VaultSession) -> URL {

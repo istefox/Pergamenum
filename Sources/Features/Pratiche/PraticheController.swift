@@ -243,6 +243,18 @@ final class PraticheController {
         return trayProposals[selection] ?? []
     }
 
+    /// PG-109/ADR-0036 §D23.5: how many of the chosen pratica's followed conversations
+    /// the last successful sync found unrecoverable - read from `ledger`, not from an
+    /// in-memory field like `trayProposals`, because this must survive past the one
+    /// sync that discovered it (unlike a proposal, which only exists in memory for the
+    /// window a sync is being watched). `PraticaLedger.PraticaState
+    /// .unrecoverableConversations` is a full replace each sync, so this count is
+    /// already correct as of the last sync with no separate invalidation to apply here.
+    var selectedUnrecoverableConversationCount: Int {
+        guard let selection else { return 0 }
+        return ledger.byPraticaPath[selection]?.unrecoverableConversations.count ?? 0
+    }
+
     /// `pratica.md`, `email/`, `allegati/` - the three names the sync engine already
     /// writes to (`PraticaSyncEngine`), spelled once on this side too.
     ///

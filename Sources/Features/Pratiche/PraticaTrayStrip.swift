@@ -24,13 +24,23 @@ struct PraticaTrayStrip: View {
     let onIgnore: (PraticaTrayModel.PraticaTrayProposal) -> Void
 
     var body: some View {
-        if !PraticaTrayModel.isHidden(proposals) {
+        let unrecoverableCount = pratiche.selectedUnrecoverableConversationCount
+        if !PraticaTrayModel.isHidden(proposals) || unrecoverableCount > 0 {
             VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-                header
-                if !pratiche.isTrayCollapsed {
-                    ForEach(proposals, id: \.conversationID) { proposal in
-                        row(proposal)
+                if !PraticaTrayModel.isHidden(proposals) {
+                    header
+                    if !pratiche.isTrayCollapsed {
+                        ForEach(proposals, id: \.conversationID) { proposal in
+                            row(proposal)
+                        }
                     }
+                }
+                // PG-109/ADR-0036 §D23.5: independent of the «Da smistare» strip above
+                // - this is not a proposal to triage, has no collapse state of its
+                // own, and must stay visible even on the sync that leaves `proposals`
+                // empty.
+                if unrecoverableCount > 0 {
+                    unrecoverableRow(unrecoverableCount)
                 }
             }
             .padding(.horizontal, theme.spacing(.m))
@@ -39,6 +49,28 @@ struct PraticaTrayStrip: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pratiche-tray")
         }
+    }
+
+    /// PG-109/ADR-0036 §D23.5: a non-actionable row - no «Aggiungi»/«Ignora», since
+    /// there is nothing to follow or ignore. Persists past the one-shot `problem`
+    /// banner and clears itself once a later sync recovers or unfollows the
+    /// conversation (`PraticheController.selectedUnrecoverableConversationCount`'s own
+    /// doc comment), so this row carries no dismiss action of its own.
+    private func unrecoverableRow(_ count: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
+            Text(unrecoverableText(count))
+                .themedText(.caption, color: .textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pratiche-tray-unrecoverable")
+    }
+
+    private func unrecoverableText(_ count: Int) -> String {
+        count == 1
+            ? "Una conversazione seguita non è più ricostruibile in Mail."
+            : "\(count) conversazioni seguite non sono più ricostruibili in Mail."
     }
 
     /// «Da smistare · 2 conversazioni proposte» (screen 1a), with the whole line as the

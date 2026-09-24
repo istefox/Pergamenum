@@ -461,6 +461,62 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
         let dossier = try #require(PraticheController.dossier(at: praticaPath, vaultRoot: vault.root))
         #expect(dossier.conversations == [112_409], "R-14: an unrecoverable conversation is never dropped from the dossier")
     }
+
+    /// PG-109/§D23.5: the ledger persistence and tray row the banner-only fix left
+    /// out. Same fixture shape as the test above - a followed conversation whose one
+    /// known member has vanished - but this one checks what survives past the run
+    /// that found it, and what happens once the conversation is no longer empty.
+    @Test func unrecoverableConversationsPersistToTheLedgerAndClearOnceRecovered() async throws {
+        let praticaPath = "01 Progetti/Rossi/Offerta 2026"
+        let vault = try TemporaryVault()
+        try vault.write(dossierNote(conversations: [112_409]), to: "\(praticaPath)/pratica.md")
+
+        let fixture = try MailStoreFixture.build(mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")], messages: [])
+        await MailStoreOverride.acquire(settingRootTo: fixture.root)
+        defer { MailStoreOverride.release() }
+
+        let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+        await vaultController.open(vault.root)
+        let session = try #require(vaultController.session)
+
+        var ledger = PraticaLedger.empty
+        ledger.byPraticaPath[praticaPath] = .empty
+        ledger.byPraticaPath[praticaPath]?.entries = [
+            PraticaLedger.Entry(messageID: "<vanished@rossi-spa.it>", rowID: 1, conversationID: 112_409),
+        ]
+        try ledger.save(to: PraticheController.ledgerURL(for: session))
+
+        let pratiche = PraticheController.live(vault: vaultController)
+        pratiche.load(from: vaultController)
+
+        await pratiche.trigger(praticaPath, kind: .manualRefresh, eligibility: .automatic)
+
+        #expect(
+            pratiche.ledger.byPraticaPath[praticaPath]?.unrecoverableConversations == [112_409],
+            "the run that found it unrecoverable must persist it, not just report it once"
+        )
+
+        // The member is back (Mail's index rebuilt, or the message simply reappeared):
+        // rebuilt in the SAME directory, exactly as `MailStoreFixture.build`'s own doc
+        // comment describes for simulating a store change across two syncs.
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [
+                .init(
+                    rowID: 1, subject: "Re: Preventivo", senderAddress: "mario@rossi-spa.it",
+                    mailboxRowID: 1, conversationID: 112_409, dateSent: Date(), dateReceived: Date()
+                ),
+            ],
+            in: fixture.root
+        )
+
+        await pratiche.trigger(praticaPath, kind: .manualRefresh, eligibility: .automatic)
+
+        #expect(
+            pratiche.ledger.byPraticaPath[praticaPath]?.unrecoverableConversations == [],
+            "recovered on its own the next sync - no dismiss action, no separate invalidation rule needed"
+        )
+    }
 }
 
 // ADR-0040 §D8 (R-08): a pending attachment entry (the bare name, no `[[…]]`) must not

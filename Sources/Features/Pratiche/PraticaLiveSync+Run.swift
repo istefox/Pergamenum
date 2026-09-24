@@ -124,7 +124,8 @@ extension PraticaLiveSync {
 
             guard try await runEngine(
                 dossier: effectiveDossier, candidates: evaluated.candidates.messages, onDisk: onDisk,
-                ledgerEntries: state.entries, indexURL: prepared.indexURL, context: context
+                ledgerEntries: state.entries, indexURL: prepared.indexURL,
+                unrecoverableConversations: prepared.unrecoverableConversations, context: context
             ) else { return .finished }
 
             try refreshTray(effectiveDossier: effectiveDossier, prepared: prepared, window: window, claimed: claimed, context: context)
@@ -273,7 +274,8 @@ extension PraticaLiveSync {
     /// same check `runExclusive` used to make right after this block, inline.
     private func runEngine(
         dossier: Dossier, candidates: [MailMessageRow], onDisk: Set<String>,
-        ledgerEntries: [PraticaLedger.Entry], indexURL: URL, context: RunContext
+        ledgerEntries: [PraticaLedger.Entry], indexURL: URL, unrecoverableConversations: [Int],
+        context: RunContext
     ) async throws -> Bool {
         let session = context.session
         // Round-4 review, §2: resolved before building `SyncRequest` below - the
@@ -334,6 +336,14 @@ extension PraticaLiveSync {
             // completed import unrecorded OR bleed into whatever vault is live now.
             context.controller.recordSyncOutcome(
                 result, for: currentPraticaPath, session: session, isCurrentVault: vault.session === session
+            )
+            // PG-109/§D23.5: same currentPraticaPath/session/isCurrentVault triple as
+            // `recordSyncOutcome` just above, so this run's own unrecoverable set is
+            // discarded on a mid-sync relocation exactly the way `notInStore`/the
+            // bridge already are - the next sync recomputes it from scratch either way.
+            context.controller.recordUnrecoverableConversations(
+                unrecoverableConversations, of: currentPraticaPath, session: session,
+                isCurrentVault: vault.session === session
             )
         } catch let stop as PraticaRunStop {
             throw stop

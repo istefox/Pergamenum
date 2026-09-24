@@ -49,24 +49,38 @@ struct PraticaLedger: Equatable, Sendable, Codable {
         /// history reads as "nothing pending" rather than failing to decode.
         var trayCount: Int
 
+        /// PG-109/ADR-0036 §D23.5: the followed conversations `MailStorePreparation
+        /// .prepare` found unrecoverable in the LAST successful sync - a full replace
+        /// each time, never a union. `prepare` already re-derives this set from
+        /// scratch against the pratica's current `dossier.conversations` every run, so
+        /// a conversation that got recovered (a remap succeeded) or was unfollowed
+        /// drops out on its own the next time this is written - no separate
+        /// invalidation rule or dismiss action needed. `PraticaTrayStrip`'s
+        /// non-actionable row reads this to survive past the one-shot `problem`
+        /// banner (`PraticheController.report(_:)`), which a later sync's own message
+        /// can overwrite before anyone sees it.
+        var unrecoverableConversations: [Int]
+
         static let empty = PraticaState(
             lastSyncAt: nil, lastOpenedAt: nil, importedMessageIDs: [], pending: [], entries: [],
-            notInStore: [], trayCount: 0
+            notInStore: [], trayCount: 0, unrecoverableConversations: []
         )
 
-        // Manual `Codable` rather than the synthesised one: `notInStore`/`trayCount`
-        // are fields added after this struct's first shipped shape, and a ledger
-        // written by an earlier build of this branch (no key for either at all) must
-        // still decode instead of silently resetting the whole ledger to `.empty`
-        // (`PraticaLedger.load(from:)`'s own fallback would otherwise discard every
-        // other field too, costing a full re-sync for a one-field addition).
+        // Manual `Codable` rather than the synthesised one: `notInStore`/`trayCount`/
+        // `unrecoverableConversations` are fields added after this struct's first
+        // shipped shape, and a ledger written by an earlier build of this branch (no
+        // key for any of them at all) must still decode instead of silently resetting
+        // the whole ledger to `.empty` (`PraticaLedger.load(from:)`'s own fallback
+        // would otherwise discard every other field too, costing a full re-sync for a
+        // one-field addition).
         private enum CodingKeys: String, CodingKey {
             case lastSyncAt, lastOpenedAt, importedMessageIDs, pending, entries, notInStore, trayCount
+            case unrecoverableConversations
         }
 
         init(
             lastSyncAt: Date?, lastOpenedAt: Date?, importedMessageIDs: [String], pending: [String],
-            entries: [Entry], notInStore: [String], trayCount: Int
+            entries: [Entry], notInStore: [String], trayCount: Int, unrecoverableConversations: [Int]
         ) {
             self.lastSyncAt = lastSyncAt
             self.lastOpenedAt = lastOpenedAt
@@ -75,6 +89,7 @@ struct PraticaLedger: Equatable, Sendable, Codable {
             self.entries = entries
             self.notInStore = notInStore
             self.trayCount = trayCount
+            self.unrecoverableConversations = unrecoverableConversations
         }
 
         init(from decoder: Decoder) throws {
@@ -86,6 +101,9 @@ struct PraticaLedger: Equatable, Sendable, Codable {
             entries = try container.decodeIfPresent([Entry].self, forKey: .entries) ?? []
             notInStore = try container.decodeIfPresent([String].self, forKey: .notInStore) ?? []
             trayCount = try container.decodeIfPresent(Int.self, forKey: .trayCount) ?? 0
+            unrecoverableConversations = try container.decodeIfPresent(
+                [Int].self, forKey: .unrecoverableConversations
+            ) ?? []
         }
     }
 
