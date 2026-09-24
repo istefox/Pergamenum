@@ -18,13 +18,25 @@ extension VaultController {
     ///
     /// Not `private`, since ADR-0026 §D10: "a folder move reuses `canOperateOnFolder`,
     /// whose guard is already written for exactly this".
+    ///
+    /// Asks of every column, like `canOperate(on:)` (`VaultController+Files.swift`) already
+    /// does — not only `openNote` (ADR-0056 §D7): `renameFolder`/`trashFolder` now reach a
+    /// note in any column through `movedNote`/`trashedNote`, so a dirty tab this check
+    /// missed in another column would have its buffer silently replaced or its tab closed
+    /// with no dialogue.
     func canOperateOnFolder(_ relativePath: String) -> Bool {
         let folder = relativePath.trimmingCharacters(in: .pathSlashes)
-        guard let note = openNote, note.hasUnsavedChanges,
-              note.relativePath == folder || note.relativePath.hasPrefix("\(folder)/")
-        else { return true }
-        recordProblem(Self.unsavedNoteInFolderRefusal)
-        return false
+        let hasDirtyTab = columns.contains { column in
+            column.tabs.contains { tab in
+                tab.note.hasUnsavedChanges
+                    && (tab.note.relativePath == folder || tab.note.relativePath.hasPrefix("\(folder)/"))
+            }
+        }
+        guard !hasDirtyTab else {
+            recordProblem(Self.unsavedNoteInFolderRefusal)
+            return false
+        }
+        return true
     }
 
     /// The exact sentence `canOperateOnFolder(_:)` records, kept as one value for the

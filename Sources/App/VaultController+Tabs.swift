@@ -214,23 +214,25 @@ extension VaultController {
         rememberTabs()
     }
 
-    /// Closes one tab by id, whether or not it is the focused one.
+    /// Closes one tab by id, focused or not, in whichever column holds it.
     ///
-    /// Closing the focused tab moves focus to the one before it, which is where the eye
-    /// already is; closing any other leaves focus alone. Unsaved changes are not this
-    /// method's business - ADR-0012 D3's dialog asks before it gets here.
+    /// Closing a column's active tab moves that column's front to the one before it, which is
+    /// where the eye already is; `focusedColumnIndex` is never touched. Unsaved changes are
+    /// not this method's business - ADR-0012 D3's dialog asks before it gets here.
     func closeTab(_ id: NoteTab.ID) {
-        guard columns.indices.contains(focusedColumnIndex),
-              let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
+        guard let columnIndex = columns.firstIndex(where: { $0.tabs.contains { $0.id == id } }),
+              let index = columns[columnIndex].tabs.firstIndex(where: { $0.id == id })
         else { return }
-        let wasFocused = columns[focusedColumnIndex].activeID == id
-        closedTabPaths.append(columns[focusedColumnIndex].tabs[index].note.relativePath)
-        columns[focusedColumnIndex].tabs.remove(at: index)
-        guard wasFocused else { return }
-        let neighbour = columns[focusedColumnIndex].tabs.indices.contains(index - 1) ? index - 1 : 0
-        columns[focusedColumnIndex].activeID = columns[focusedColumnIndex].tabs.indices.contains(neighbour)
-            ? columns[focusedColumnIndex].tabs[neighbour].id
-            : nil
+        let wasActive = columns[columnIndex].activeID == id
+        closedTabPaths.append(columns[columnIndex].tabs[index].note.relativePath)
+        columns[columnIndex].tabs.remove(at: index)
+        if wasActive {
+            let neighbour = columns[columnIndex].tabs.indices.contains(index - 1) ? index - 1 : 0
+            columns[columnIndex].activeID = columns[columnIndex].tabs.indices.contains(neighbour)
+                ? columns[columnIndex].tabs[neighbour].id
+                : nil
+        }
+        // Every close, not only the active tab's; after the neighbour, as the session stores it.
         rememberTabs()
     }
 
@@ -242,13 +244,27 @@ extension VaultController {
 
     /// Changes any tab of the focused column by id, focused or not.
     ///
-    /// A rename reaches a tab nobody is looking at, which is exactly the case the
-    /// one-open-note version of this app could not have.
+    /// A caller that already knows a tab's id and its column is the focused one - a rename
+    /// or a trash reaching every column goes through `updateTabs(showing:_:)` instead
+    /// (ADR-0056 §D1).
     func updateTab(_ id: NoteTab.ID, _ change: (inout NoteTab) -> Void) {
         guard columns.indices.contains(focusedColumnIndex),
               let index = columns[focusedColumnIndex].tabs.firstIndex(where: { $0.id == id })
         else { return }
         change(&columns[focusedColumnIndex].tabs[index])
+    }
+
+    /// Applies `change` to every tab showing `relativePath`, in every column - not only in
+    /// the focused one. An external change, a rename and a trash do not know which tab, if
+    /// any, has the focus: `canOperate(on:)` (`VaultController+Files.swift`) already asks the
+    /// question of every column, and these three used to ask it of the first one only.
+    func updateTabs(showing relativePath: String, _ change: (inout NoteTab) -> Void) {
+        for columnIndex in columns.indices {
+            for tabIndex in columns[columnIndex].tabs.indices
+            where columns[columnIndex].tabs[tabIndex].note.relativePath == relativePath {
+                change(&columns[columnIndex].tabs[tabIndex])
+            }
+        }
     }
 
     /// Replaces the open note wholesale, keeping the tab and everything it knows.
@@ -295,24 +311,27 @@ extension VaultController {
     ///
     /// Not "the open note" any more: before tabs there was one buffer to put back in step,
     /// and a rename now has to reach a note sitting in a tab nobody is looking at, or that
-    /// tab keeps a path with no file behind it.
+    /// tab keeps a path with no file behind it. Every column, not only the focused one: the
+    /// same note can be open in both.
     func movedNote(from oldPath: String, to newPath: String) {
         // The recent list is paths, so a rename has to be followed here too - the same
         // follow-up `VaultSession.moveStar` performs for the star.
         if let index = recentNotePaths.firstIndex(of: oldPath) { recentNotePaths[index] = newPath }
-        guard columns.indices.contains(focusedColumnIndex) else { return }
-        guard tabs.contains(where: { $0.note.relativePath == oldPath }),
+        guard columns.contains(where: { $0.tabs.contains { $0.note.relativePath == oldPath } }),
               let note = readForEditing(newPath)
         else { return }
-        for tab in tabs where tab.note.relativePath == oldPath {
-            updateTab(tab.id) { $0 = tab.showing(note) }
-        }
+        updateTabs(showing: oldPath) { $0 = $0.showing(note) }
     }
 
-    /// Closes every tab showing a note that is no longer there.
+    /// Closes every tab showing a note that is no longer there, in every column.
     func trashedNote(at relativePath: String) {
-        for tab in tabs where tab.note.relativePath == relativePath {
-            closeTab(tab.id)
+        // Ids first, then close: removing a tab shifts the indices a loop over the columns
+        // would still be walking.
+        let ids = columns.flatMap { column in
+            column.tabs.filter { $0.note.relativePath == relativePath }.map(\.id)
+        }
+        for id in ids {
+            closeTab(id)
         }
         // A trashed note is not one to offer back with Cmd+Shift+T, nor one to list among
         // the recent ones: both would be a row that opens nothing.
