@@ -871,10 +871,12 @@ extension PraticaSyncEngine {
 
         if let originalBytes = prepared.originalBytes {
             let baseName = (prepared.fileName as NSString).deletingPathExtension
-            try Self.writeAtomically(
-                originalBytes,
-                to: emailDirectory.appending(path: "\(baseName).eml", directoryHint: .notDirectory)
-            )
+            let emlTarget = emailDirectory.appending(path: "\(baseName).eml", directoryHint: .notDirectory)
+            try Self.writeAtomically(originalBytes, to: emlTarget)
+            // PG-155: same rationale as PG-123 above - the bytes came out of a mail
+            // store, so the sidecar `.eml` is a download as far as Gatekeeper is
+            // concerned, and the xattr must be stamped after the rename.
+            try AttachmentQuarantine.apply(to: emlTarget)
         }
 
         // §D8 excludes this by name: `prepared.noteText` is composed from Mail, not from

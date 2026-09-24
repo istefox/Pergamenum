@@ -97,6 +97,10 @@ import Testing
         if let mdName, let baseName {
             let text = try? String(contentsOf: emailDir.appending(path: mdName), encoding: .utf8)
             #expect(text?.contains("pergamenum-mail-original: \"\(baseName).eml\"") == true)
+            // PG-155: the sidecar .eml came out of a mail store, same as an allegati/
+            // copy (PG-123) - it must carry com.apple.quarantine too.
+            let emlCopy = emailDir.appending(path: "\(baseName).eml", directoryHint: .notDirectory)
+            #expect(AttachmentQuarantine.isApplied(to: emlCopy), "the .eml sidecar must carry com.apple.quarantine")
         } else {
             Issue.record("no .md file was written at all")
         }
