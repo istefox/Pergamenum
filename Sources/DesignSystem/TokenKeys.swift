@@ -72,6 +72,14 @@ enum ColorToken: String, TokenKey {
     case stickyPink = "color.sticky.pink"
     case stickyGrey = "color.sticky.grey"
 
+    // A category's own palette, saturated for an 8pt dot rather than a card
+    // background - distinct from `sticky*` above on purpose (CategoryColor.swift).
+    case categoryYellow = "color.category.yellow"
+    case categoryGreen = "color.category.green"
+    case categoryBlue = "color.category.blue"
+    case categoryPink = "color.category.pink"
+    case categoryGrey = "color.category.grey"
+
     var path: String { rawValue }
 }
 

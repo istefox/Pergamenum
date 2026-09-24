@@ -9,15 +9,16 @@ import Foundation
 /// type depend on the theme (ADR-0001 §D1). Both connector targets would refuse to
 /// compile the moment this lived beside `CategoryColor` instead.
 extension CategoryColor {
-    /// The sticky family, reused rather than widened: five names were already a small
-    /// fixed palette before a category needed one (`CategoryColor.swift`).
+    /// The category's own saturated family, not the `sticky*` pastels: those are card
+    /// backgrounds, this paints an 8pt dot, a swatch or a glyph tint - never a fill
+    /// (`CategoryColor.swift`).
     var token: ColorToken {
         switch self {
-        case .giallo: .stickyYellow
-        case .verde: .stickyGreen
-        case .blu: .stickyBlue
-        case .rosa: .stickyPink
-        case .grigio: .stickyGrey
+        case .giallo: .categoryYellow
+        case .verde: .categoryGreen
+        case .blu: .categoryBlue
+        case .rosa: .categoryPink
+        case .grigio: .categoryGrey
         }
     }
 }

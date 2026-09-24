@@ -112,6 +112,14 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("color.surface.received"), "\(id) should define color.surface.received")
         #expect(!theme.inheritedTokens.contains("color.surface.sent"), "\(id) should define color.surface.sent")
         #expect(!theme.inheritedTokens.contains("color.surface.entry"), "\(id) should define color.surface.entry")
+
+        // The category dot's own saturated palette, distinct from `color.sticky.*`
+        // (`CategoryColor+Token.swift`). Both bundled themes must define all five.
+        #expect(!theme.inheritedTokens.contains("color.category.yellow"), "\(id) should define color.category.yellow")
+        #expect(!theme.inheritedTokens.contains("color.category.green"), "\(id) should define color.category.green")
+        #expect(!theme.inheritedTokens.contains("color.category.blue"), "\(id) should define color.category.blue")
+        #expect(!theme.inheritedTokens.contains("color.category.pink"), "\(id) should define color.category.pink")
+        #expect(!theme.inheritedTokens.contains("color.category.grey"), "\(id) should define color.category.grey")
     }
 }
 

@@ -284,6 +284,11 @@ extension Theme {
             .stickyBlue: RGBA(hex: "#D8E5F0")!,
             .stickyPink: RGBA(hex: "#F6DEE0")!,
             .stickyGrey: RGBA(hex: "#E8E8E8")!,
+            .categoryYellow: RGBA(hex: "#D99A00")!,
+            .categoryGreen: RGBA(hex: "#2E9E4F")!,
+            .categoryBlue: RGBA(hex: "#1F6FEB")!,
+            .categoryPink: RGBA(hex: "#DB3F6F")!,
+            .categoryGrey: RGBA(hex: "#6E7378")!,
         ],
         fonts: [
             .title: TypographyValue(family: .system, size: 22, weight: 600, lineHeight: 1.2),

@@ -27,6 +27,7 @@ struct DesignSystemSettings: View {
         ("Workspace", [.canvasBackground, .canvasGrid, .canvasSelection]),
         ("Task", [.taskOpen, .taskScheduled, .taskOverdue, .taskDone, .taskCancelled]),
         ("Note adesive", [.stickyYellow, .stickyGreen, .stickyBlue, .stickyPink, .stickyGrey]),
+        ("Categorie", [.categoryYellow, .categoryGreen, .categoryBlue, .categoryPink, .categoryGrey]),
     ]
 
     var body: some View {
