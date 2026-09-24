@@ -211,18 +211,22 @@ struct NoteListPane: View {
         .confirmationDialog(
             "Eliminare «\(deleting?.title ?? "")»?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible
-        ) {
+            titleVisibility: .visible,
+            presenting: deleting
+        ) { note in
+            // `note` is captured here, not read back from `deleting` inside the `Task` -
+            // the dialog's own `isPresented` setter above already nils `deleting` on
+            // dismissal, so a `Task` reading it after the `await` hop always saw `nil`
+            // and silently skipped the trash call.
             Button("Sposta nel Cestino", role: .destructive) {
                 Task { @MainActor in
-                    if let note = deleting, !(await vault.trashNote(at: note.relativePath)) {
+                    if !(await vault.trashNote(at: note.relativePath)) {
                         trashRefused = vault.problems.last
                     }
-                    deleting = nil
                 }
             }
             Button("Annulla", role: .cancel) { deleting = nil }
-        } message: {
+        } message: { _ in
             Text("Va nel Cestino del Finder, non è una cancellazione definitiva. I link che puntavano qui resteranno non risolti.")
         }
     }
