@@ -280,7 +280,7 @@ struct TagBrowserView: View {
     private func subtitle(_ note: NoteRecord) -> String {
         let folder = note.folder.isEmpty ? "(radice)" : note.folder
         guard let date = note.frontmatter.date else { return folder }
-        return "\(folder) · \(date.description)"
+        return "\(folder) · \(date.italianForm)"
     }
 
     // MARK: I gesti
