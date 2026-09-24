@@ -383,7 +383,9 @@ Filters (toolbar): text (subject, sender, body of expanded and collapsed rows al
 «Solo con allegati» toggle. Filters never hide manual entries unless the text filter is active.
 Tray («Da smistare»): a collapsible strip at the top listing proposed conversations (subject of the
 first message, counterpart, date range, count) with «Aggiungi» / «Ignora»; hidden when empty.
-Progress: a thin bar under the toolbar during sync with «n di N» and «Annulla».
+Progress: «n di N» and «Annulla» next to the spinning refresh icon in the toolbar itself
+(amended 2026-09-24: a separate thin bar under the toolbar reflowed the timeline below it
+every time a sync started or ended).
 Empty pratica: an illustration-free placeholder with the three ways to add mail.
 
 ### Sidebar
