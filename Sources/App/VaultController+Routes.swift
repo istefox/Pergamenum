@@ -21,7 +21,7 @@ extension VaultController {
 
     @discardableResult
     func handle(_ route: PergamenumRoute) async -> Bool {
-        Self.routeLog.notice("route ricevuta: \(String(describing: route), privacy: .public)")
+        Self.routeLog.notice("route ricevuta: \(route.kind, privacy: .public) \(String(describing: route))")
         let outcome = await perform(route)
         Self.routeLog.notice("route esito: \(outcome, privacy: .public)")
         return outcome
@@ -90,7 +90,7 @@ extension VaultController {
             _ = try await openDailyNote(for: date)
             return true
         } catch {
-            Self.routeLog.error("daily note fallita: \(String(describing: error), privacy: .public)")
+            Self.routeLog.error("daily note fallita: \(String(describing: error))")
             recordProblem("nota giornaliera: \(error)")
             return false
         }

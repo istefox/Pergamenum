@@ -91,6 +91,22 @@ enum PergamenumRoute: Equatable, Sendable {
         if case .capture = self { return false }
         return true
     }
+
+    /// The case name alone, with no associated value (PG-125) - safe to log with
+    /// `privacy: .public`, unlike the route itself, which carries capture text, search
+    /// queries and note paths.
+    var kind: String {
+        switch self {
+        case .note: "note"
+        case .noteID: "noteID"
+        case .canvas: "canvas"
+        case .day: "day"
+        case .today: "today"
+        case .search: "search"
+        case .capture: "capture"
+        case .addTask: "addTask"
+        }
+    }
 }
 
 /// Builds `pergamenum://` links, for the "Copia link Pergamenum" command (SPEC §9).
