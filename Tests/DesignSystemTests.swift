@@ -123,6 +123,21 @@ func rejectsMalformedHex(_ input: String) {
     }
 }
 
+/// PG-225: the same fallback contract from the other side. `rawColor(_:)` force-unwraps
+/// `Theme.emergency`'s entry for any token the active theme lacks, so a token missing
+/// from the emergency dictionary crashes the xctest process instead of falling back.
+@Test func emergencyThemeDefinesTheCalendarTokens() throws {
+    let expected: [(ColorToken, String)] = [
+        (.calendarPrefestive, "#C98B84"),
+        (.calendarFestive, "#B3261E"),
+        (.calendarHoliday, "#D62828"),
+    ]
+    for (token, hex) in expected {
+        let rgba = try #require(RGBA(hex: hex))
+        #expect(Theme.emergency.rawColor(token) == rgba, "\(token.rawValue) should resolve to \(hex)")
+    }
+}
+
 @MainActor
 @Test func bundledThemesDeclareOppositeAppearances() {
     let engine = ThemeEngine(defaults: isolatedDefaults())
