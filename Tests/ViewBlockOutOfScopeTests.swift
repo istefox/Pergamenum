@@ -165,7 +165,7 @@ private func parseErrorDescription(_ source: String) -> String {
         <h1>Nota con vista</h1>
         <p>Testo introduttivo.</p>
         <pre><code>render: table
-        where: tag("topic-produzione")</code></pre>
+        where: tag(&quot;topic-produzione&quot;)</code></pre>
         <p>Testo dopo.</p>
         </body>
         </html>

@@ -77,6 +77,28 @@ Misura con `accelerometro` triassiale.
         == "<a href=\"https://vibrofer.it\">Vibrofer</a>")
 }
 
+@Test func aQuoteInAnHrefCannotLeaveTheAttribute() {
+    // PG-124: before quotes were escaped, this closed the attribute and the rest of the
+    // href became an `<img>` the PDF renderer would fetch.
+    let html = MarkdownHTML.inline("[x](https://x\"><img src=y)")
+    #expect(html == "<a href=\"https://x&quot;&gt;&lt;img src=y\">x</a>")
+    #expect(!html.contains("<img"))
+}
+
+@Test func aLinkWithARefusedSchemeExportsAsItsLabel() {
+    // PG-124: no anchor at all, not one pointing at `javascript:`.
+    let html = MarkdownHTML.inline("[testo](javascript:alert(1))")
+    #expect(!html.contains("<a"))
+    #expect(!html.contains("href"))
+    #expect(html.hasPrefix("testo"))
+}
+
+@Test func anApostropheIsEscapedWithoutCuttingAWikilink() {
+    // The wikilink pass splits at `#` after escaping, so `&#39;` would leave `Nota d&`.
+    #expect(MarkdownHTML.inline("l'articolo") == "l&apos;articolo")
+    #expect(MarkdownHTML.inline("[[Nota d'Arco]]") == "Nota d&apos;Arco")
+}
+
 @Test func aBulletListBecomesAList() {
     let html = MarkdownHTML.render("- uno\n- due")
     #expect(html == "<ul>\n<li>uno</li>\n<li>due</li>\n</ul>")

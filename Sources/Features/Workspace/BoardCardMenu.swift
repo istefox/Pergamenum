@@ -192,7 +192,11 @@ struct BoardCardActions {
                 NSWorkspace.shared.open(url)
             }
         case .link(let url):
-            if let target = URL(string: url) { NSWorkspace.shared.open(target) }
+            // Refused silently for the reason `resolvedOpenURL(for:root:)` gives: a double
+            // click has nobody to report to (PG-124).
+            if let target = URL(string: url), LinkPolicy.isOpenable(target) {
+                NSWorkspace.shared.open(target)
+            }
         case .text:
             workspace.beginTextEdit(nodeID: node.id)
         case .group, .unknown:
