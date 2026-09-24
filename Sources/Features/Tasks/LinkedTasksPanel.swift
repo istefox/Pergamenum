@@ -88,9 +88,9 @@ struct TaskPanelRow: View {
             if let due = task.due {
                 // `verbatim`: a plain interpolation here goes through LocalizedStringKey,
                 // which renders a date as its debug description.
-                Text(verbatim: "!\(due)").themedText(.caption, color: .taskOverdue)
+                Text(verbatim: "!\(due.italianForm)").themedText(.caption, color: .taskOverdue)
             } else if let scheduled = task.scheduled {
-                Text(verbatim: ">\(scheduled)").themedText(.caption, color: .taskScheduled)
+                Text(verbatim: ">\(scheduled.italianForm)").themedText(.caption, color: .taskScheduled)
             }
         }
         .contextMenu {
