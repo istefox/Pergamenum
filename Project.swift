@@ -133,6 +133,12 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+Identity.swift",
     "Sources/Vault/VaultSession+Journal.swift",
     "Sources/Vault/VaultSession+Notes.swift",
+    // The stable note-id registry's vault-side store and lifecycle (ADR-0059 §D2/§D3/§D9),
+    // named by hand per ADR-0007 §D2 the same way `CategoryRegistryStore.swift` above is:
+    // `VaultSession+Journal.swift`'s `moveFile`/`trashFile` call the doors from Task 3 on,
+    // and `perg`/`pergamenum-mcp` stop linking at that point without these two.
+    "Sources/Vault/NoteIDStore.swift",
+    "Sources/Vault/VaultSession+NoteIDs.swift",
     "Sources/Vault/VaultSession+Search.swift",
     "Sources/Vault/VaultSession+Starred.swift",
     "Sources/Vault/VaultSession+TagRename.swift",

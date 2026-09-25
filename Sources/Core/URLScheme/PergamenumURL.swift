@@ -109,12 +109,21 @@ enum PergamenumRoute: Equatable, Sendable {
     }
 }
 
-/// Builds `pergamenum://` links, for the "Copia link Pergamenum" command (SPEC §9).
+/// Builds `pergamenum://` links (SPEC §9), in two forms for a note. The stable id form
+/// (`note(id:)`) is what «Copia link Pergamenum» copies (ADR-0059 §D8); the path form
+/// (`note(path:)`) stays where a path is the point - `perg app open note`, the MCP note
+/// resources, reminder notifications - and is the fallback when no id can be minted.
 enum PergamenumLink {
     /// Percent-encodes a path so a note whose name contains `&`, `?`, `#` or a space
     /// survives the round-trip through a URL.
     static func note(path: String) -> URL? {
         build(host: "note", queryItems: [URLQueryItem(name: "file", value: path)])
+    }
+
+    /// A `pergamenum://note?id=<id>` link (ADR-0059 §D8), the durable form: it survives
+    /// every rename and move the app performs.
+    static func note(id: String) -> URL? {
+        build(host: "note", queryItems: [URLQueryItem(name: "id", value: id)])
     }
 
     static func canvas(path: String, nodeID: String? = nil) -> URL? {

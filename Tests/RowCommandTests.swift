@@ -90,6 +90,14 @@ Nota B.
     #expect(actions.vault.isChoosingTemplate)
 }
 
+// ADR-0059 §D8 (gate B, "accept"): «Copia link Pergamenum» now copies the id-form
+// link, not the path-form one - this changes the observable clipboard contract, and
+// this is the one existing test CLAUDE.md's "state the reason before changing a test"
+// rule names (`docs/plans/pg-130-stable-note-id.md`, "Staleness sweep").
+//
+// RED at Task 1: `CommandActions.copyLinkToOpenNote()` still builds
+// `PergamenumLink.note(path:)` directly until Task 6 routes it through
+// `VaultController.pergamenumLink(toNoteAt:)`.
 @MainActor
 @Test func runningCopyLinkOnAClosedRowOpensItThenPutsItsLinkOnThePasteboard() async throws {
     let vault = try TemporaryVault()
@@ -101,8 +109,34 @@ Nota B.
     actions.run(.copyLink, on: "b.md")
 
     #expect(actions.vault.openNote?.relativePath == "b.md")
+    let id = try #require(actions.vault.session?.mintNoteID(for: "b.md"))
+    let link = try #require(PergamenumLink.note(id: id))
+    #expect(actions.pasteboard.string(forType: .string) == link.absoluteString)
+
+    #expect(await actions.vault.renameNote(at: "b.md", to: "B rinominata"))
+    let route = try #require(PergamenumRoute(link))
+    #expect(await actions.vault.handle(route))
+    #expect(actions.vault.openNote?.relativePath == "B rinominata.md")
+}
+
+// ADR-0059 §D8: when the registry cannot be read, the copied link falls back to the
+// path form and the reason is recorded, rather than the gesture failing silently.
+//
+// RED at Task 1: same reason as the test above.
+@MainActor
+@Test func copyLinkWithAMalformedRegistryFallsBackToThePathLinkAndRecordsAProblem() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(noteA, to: "a.md")
+    try vault.write(noteB, to: "b.md")
+    try vault.write("non è json", to: ".pergamenum/note-ids.json")
+    let actions = await makeActions(vault: vault.root)
+    actions.vault.openNote(at: "a.md")
+
+    actions.run(.copyLink, on: "b.md")
+
     let link = try #require(PergamenumLink.note(path: "b.md"))
     #expect(actions.pasteboard.string(forType: .string) == link.absoluteString)
+    #expect(actions.vault.problems.contains { $0.contains("note-ids.json") })
 }
 
 // MARK: - R-04: no implicit re-open on the note that is already open

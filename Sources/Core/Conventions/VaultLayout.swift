@@ -16,6 +16,10 @@ enum VaultLayout {
     /// that travels with the vault, and not an index - deleting it loses the registry
     /// and no task.
     static let categoriesFile = "categories.json"
+    /// The stable note-id registry of ADR-0059 §D1, beside `starred.json` and
+    /// `categories.json`: in the vault because an id names a note on every Mac that
+    /// opens it, and it is not an index - `cache.db` is rebuildable and this is not.
+    static let noteIDsFile = "note-ids.json"
 
     /// Directory names never scanned for notes.
     ///

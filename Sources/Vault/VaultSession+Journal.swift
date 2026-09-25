@@ -59,6 +59,10 @@ extension VaultSession {
     ///
     /// The bytes do not change, so both hashes are the file's own: what makes this reversible is
     /// `pathBefore`, not the text. There is no `textBefore` - a move has nothing to restore.
+    ///
+    /// The note-id registry follows here rather than in `renameNote`/`moveNote` (ADR-0059 §D5):
+    /// this is after the dry-run return and after the disk move has succeeded, and it is also
+    /// the door a connector undo of a move takes, so the id follows that undo too.
     func moveFile(from oldPath: String, to newPath: String) async throws {
         guard oldPath != newPath else { return }
         guard exists(oldPath) else { throw FileOperationError.missing(oldPath) }
@@ -78,6 +82,7 @@ extension VaultSession {
             )
         }
         apply(mutations)
+        relocateNoteIDs([MovedNote(old: oldPath, new: newPath)])
 
         let newMutation = mutations.first { $0.path == newPath }
         let hash = newMutation?.record?.contentHash ?? ""
@@ -109,6 +114,10 @@ extension VaultSession {
     /// emptied - a net that depends on it is a net this app cannot promise.
     ///
     /// `hashAfter` is empty, and that is the honest value: there is no file after this.
+    ///
+    /// The note's id is forgotten here, after the dry-run return and once the trash has
+    /// succeeded (ADR-0059 §D5/§D6), so a later note created at this path never inherits an
+    /// old link. An undo writes the text back, not the registry line.
     func trashFile(at relativePath: String) async throws {
         guard exists(relativePath) else {
             throw FileOperationError.missing(relativePath)
@@ -130,6 +139,7 @@ extension VaultSession {
             )
         }
         apply([mutation])
+        forgetNoteIDs([relativePath])
         selfWrittenHashes.removeValue(forKey: relativePath)
 
         record(WriteJournal.Entry(

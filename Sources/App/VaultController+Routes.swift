@@ -39,9 +39,7 @@ extension VaultController {
 
         switch route {
         case .note(let path):
-            guard let url = try? store.url(for: path),
-                  FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
-            else {
+            guard noteExists(at: path, in: store) else {
                 recordProblem("il link punta a una nota che non esiste: \(path)")
                 return false
             }
@@ -49,14 +47,7 @@ extension VaultController {
             return true
 
         case .noteID(let id):
-            // IDs live in the index, not in the frontmatter (SPEC §9), so an unknown
-            // one means the note was renamed outside the app.
-            guard let path = routeState.noteIDs[id] else {
-                recordProblem("nessuna nota con id \(id)")
-                return false
-            }
-            openNote(at: path)
-            return true
+            return openNote(id: id, in: store)
 
         case .canvas(let path, let nodeID):
             routeState.pendingCanvas = (path, nodeID)
@@ -79,6 +70,60 @@ extension VaultController {
         case .addTask(let text):
             return await captureTask(text)
         }
+    }
+
+    /// The `.noteID` route. Ids live in `.pergamenum/note-ids.json`, read through the
+    /// session on every route rather than copied onto the controller (ADR-0059 §D1/§D7).
+    /// They follow every rename the app makes, so a miss means an id nobody minted, an
+    /// unreadable registry, or a note moved or deleted outside the app - each said in its
+    /// own words, and each returning false.
+    private func openNote(id: String, in store: NoteStore) -> Bool {
+        switch session?.lookUpNote(id: id) ?? .unknown {
+        case .unknown:
+            recordProblem("nessuna nota con id \(id)")
+            return false
+        case .unreadable:
+            recordProblem(
+                "il registro degli id delle note (\(VaultLayout.noteIDsFile)) non è leggibile: "
+                    + "impossibile aprire la nota con id \(id)"
+            )
+            return false
+        case .found(let path):
+            guard noteExists(at: path, in: store) else {
+                recordProblem(
+                    "la nota con id \(id) era in \(path), che non esiste più: "
+                        + "è stata spostata o eliminata fuori dall'app"
+                )
+                return false
+            }
+            openNote(at: path)
+            return true
+        }
+    }
+
+    /// Whether a route's path names a file inside the vault. One check for `.note` and
+    /// `.noteID` alike (ADR-0059 §D7): a registry path is hand-editable, so it goes
+    /// through `store.url(for:)` - `VaultBoundary`, ADR-0041 §D1 - exactly as a `file=`
+    /// argument does, and an id never opens a tab on a missing file.
+    private func noteExists(at path: String, in store: NoteStore) -> Bool {
+        guard let url = try? store.url(for: path) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+    }
+
+    /// The link «Copia link Pergamenum» copies for `path` (ADR-0059 §D8): the id form,
+    /// minted through the session the first time (§D2), so it survives every rename and
+    /// move the app makes. When no id can be minted, the path form - a link that still
+    /// works today - with one problem saying it will not survive a rename. Lives here,
+    /// not in `CommandActions`, so that file stays under the `file_length` warning.
+    func pergamenumLink(toNoteAt path: String) -> URL? {
+        if let id = session?.mintNoteID(for: path), let url = PergamenumLink.note(id: id) {
+            return url
+        }
+        recordProblem(
+            "il link copiato per \(path) è nella forma a percorso e non sopravvive a una rinomina: "
+                + "non è stato possibile assegnare un id alla nota"
+        )
+        return PergamenumLink.note(path: path)
     }
 
     /// Opens the daily note for a route, reporting why when it cannot.
@@ -141,7 +186,7 @@ extension VaultController {
 }
 
 /// Everything the routes hold between arriving and being acted on (SPEC §9). One value
-/// rather than four properties on the controller, so this extension owns its own state
+/// rather than three properties on the controller, so this extension owns its own state
 /// instead of reaching into it.
 extension VaultController {
     struct RouteState {
@@ -151,7 +196,5 @@ extension VaultController {
         var pendingCanvas: (path: String, nodeID: String?)?
         /// A query the quick switcher should start from.
         var pendingSearch: String?
-        /// Stable ids for `pergamenum://note?id=`, held here rather than in the files.
-        var noteIDs: [String: String] = [:]
     }
 }

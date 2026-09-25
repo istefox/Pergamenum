@@ -362,9 +362,10 @@ final class CommandActions {
     // MARK: The three that need more than a line
 
     /// Puts a `pergamenum://` link to the open note on the pasteboard, for pasting into
-    /// Obsidian, DEVONthink, Mail or Calendar (SPEC §9).
+    /// Obsidian, DEVONthink, Mail or Calendar (SPEC §9) - the id form, which survives a
+    /// rename in the app (ADR-0059 §D8, `VaultController.pergamenumLink(toNoteAt:)`).
     private func copyLinkToOpenNote() {
-        guard let note = vault.openNote, let url = PergamenumLink.note(path: note.relativePath) else { return }
+        guard let note = vault.openNote, let url = vault.pergamenumLink(toNoteAt: note.relativePath) else { return }
         pasteboard.clearContents()
         pasteboard.setString(url.absoluteString, forType: .string)
     }
