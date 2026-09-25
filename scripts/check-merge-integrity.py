@@ -998,6 +998,21 @@ def _scenario_landing_override_accepted(base_dir, report):
            "L6: Restore-override su un commit vuoto nel range vale lo stesso (trovato: %s %r)"
            % (r.status, r.overridden))
 
+    # Uno squash di GitHub con squash_merge_commit_message = COMMIT_MESSAGES concatena i
+    # messaggi del branch: il blocco finisce in mezzo, non nell'ultimo paragrafo.
+    f = _build_stale_modify_repo(base_dir, squash=True)
+    head = _amend_message(
+        f["repo"],
+        "fix: ripristina kept.txt (#999)\n\n"
+        "* fix: ripristina kept.txt\n\n"
+        "Restore-override: kept.txt\nRestore-override-reason: ripristino voluto\n\n"
+        "* chore: aggiorna TODO.md\n\nNessun trailer qui.\n",
+    )
+    r = check_landing(f["repo"], f["main"], head)
+    _check(report, r.status == "ok" and r.overridden == [("kept.txt", "ripristino voluto")],
+           "L6: Restore-override in mezzo a un messaggio di squash GitHub vale lo stesso (trovato: %s %r)"
+           % (r.status, r.overridden))
+
 
 def _scenario_landing_override_rejected(base_dir, report):
     """L7: `Restore-override: all` e i path senza motivo sono errori d'uso."""
