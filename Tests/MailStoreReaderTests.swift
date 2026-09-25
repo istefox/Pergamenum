@@ -75,6 +75,27 @@ import Testing
         #expect(resolved == expected)
     }
 
+    @Test func theOverrideStaysInThisProcessAndNeverReachesThePersistentDomain() async throws {
+        // PG-249: the persistent domain is shared by every process with the host's bundle
+        // id, so an override written there is one another test run can replace or remove
+        // mid-sync. Held in the argument domain it is local to this process and outranks
+        // the persistent one; release takes it out again and leaves other arguments alone.
+        let bundleID = try #require(Bundle.main.bundleIdentifier)
+        let key = MailStoreLocation.overrideKey
+        let argumentsBefore = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+
+        await MailStoreOverride.acquire(settingRootTo: URL(filePath: "/tmp/pergamenum-pg249-override"))
+        let persistentDuring = UserDefaults.standard.persistentDomain(forName: bundleID)?[key]
+        let argumentDuring = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)[key]
+        MailStoreOverride.release()
+
+        #expect(persistentDuring == nil)
+        #expect(argumentDuring as? String == "/tmp/pergamenum-pg249-override")
+        let argumentsAfter = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        #expect(argumentsAfter[key] == nil)
+        #expect(Set(argumentsAfter.keys) == Set(argumentsBefore.keys).subtracting([key]))
+    }
+
     // MARK: - R-02: MailStoreCopy
 
     @Test func publishCopiesOnTheFirstCallAndProducesAReadableIndex() throws {
