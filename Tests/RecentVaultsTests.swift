@@ -47,3 +47,27 @@ private func makeVaultDirectory() throws -> URL {
         .path(percentEncoded: false)
     #expect(defaults.stringArray(forKey: RecentVaults.key) == [expected])
 }
+
+/// PG-131: the `maximum` cap used to drop the oldest entry with no way for a caller to
+/// react, which is exactly what orphaned an `OpenTabsStore` session forever. `remember`
+/// now hands the evicted path back instead of discarding it silently.
+@Test func rememberReportsThePathTheMaximumCapEvicts() throws {
+    let (defaults, name) = makeDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    let recents = RecentVaults(defaults: defaults, isOverridden: false)
+
+    var vaults: [URL] = []
+    for _ in 0..<RecentVaults.maximum {
+        let vault = try makeVaultDirectory()
+        vaults.append(vault)
+        #expect(recents.remember(vault) == nil)
+    }
+
+    let oneMore = try makeVaultDirectory()
+    let evicted = recents.remember(oneMore)
+
+    let oldestExpected = vaults[0].resolvingSymlinksInPath().standardizedFileURL
+        .path(percentEncoded: false)
+    #expect(evicted == oldestExpected)
+    #expect(defaults.stringArray(forKey: RecentVaults.key)?.count == RecentVaults.maximum)
+}

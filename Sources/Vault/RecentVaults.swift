@@ -65,16 +65,24 @@ struct RecentVaults {
     var mostRecent: URL? { urls.first }
 
     /// Moves a vault to the front of the list.
-    func remember(_ url: URL) {
+    ///
+    /// Returns the path evicted by the `maximum` cap, if any - the one path-keyed state
+    /// (`OpenTabsStore`'s tab session) this silent overflow would otherwise orphan
+    /// forever in `UserDefaults` (PG-131). `nil` for every ordinary call, since the list
+    /// rarely reaches the cap.
+    @discardableResult
+    func remember(_ url: URL) -> String? {
         // A temporary override stays temporary: promoting it to permanent user data is
         // not something a command-line argument should be able to do.
-        guard !isOverridden else { return }
+        guard !isOverridden else { return nil }
         // Symlinks resolved: /tmp and /private/tmp are the same vault, and listing it
         // twice would offer the user a choice that is not one.
         let path = url.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
         var updated = paths.filter { $0 != path }
         updated.insert(path, at: 0)
+        let evicted = updated.count > Self.maximum ? updated[Self.maximum...] : []
         defaults.set(Array(updated.prefix(Self.maximum)), forKey: Self.key)
+        return evicted.first
     }
 
     func forgetAll() {

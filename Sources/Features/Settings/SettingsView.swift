@@ -299,6 +299,7 @@ struct SettingsView: View {
                     ForEach(vault.problems.suffix(10), id: \.self) { problem in
                         Text(problem).themedText(.caption, color: .textSecondary)
                     }
+                    Button("Svuota") { vault.clearProblems() }
                 }
             }
         }
