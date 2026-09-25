@@ -16,8 +16,10 @@ struct FileImportProposal: Identifiable, Sendable {
 /// from a drag onto an open board, so it lands in the Inbox rather than on a card.
 extension VaultController {
     /// Proposes names for files chosen from outside the vault. Only `.eml` gets the
-    /// naming.md rename assist (§4.2/7.3); everything else keeps its name, uniquified
-    /// against the Inbox.
+    /// naming.md rename assist (§4.2/7.3); everything else keeps its name, sanitized
+    /// against `NoteName.forbiddenCharacters` (PG-134/#234 - a dropped name carrying
+    /// `#`/`[`/`]`/… would otherwise break a future `[[…]]` embed of the file) and
+    /// uniquified against the Inbox.
     func proposeImport(_ urls: [URL]) -> [FileImportProposal] {
         guard let root else { return [] }
         let directory = root.appending(
@@ -35,6 +37,8 @@ extension VaultController {
                     currentFileName: original,
                     today: .today
                 )
+            } else {
+                proposed = ImportNaming.sanitizedFileName(original)
             }
             return FileImportProposal(
                 source: url,

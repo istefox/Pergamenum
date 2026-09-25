@@ -158,3 +158,27 @@ func rejectsVersionSuffixes(_ title: String) {
     // And distinct from "today" (this suite is not run on 2026-08-11 itself).
     #expect(localDate != .today)
 }
+
+// MARK: - Sanitizing a dropped/imported file name (PG-134/#234)
+
+/// `NoteName.sanitized`'s missing caller: `VaultController.proposeImport` and
+/// `WorkspaceController.importFiles` used to keep a non-`.eml` dropped file's name
+/// verbatim, so a name carrying a wikilink-reserved character reached the vault intact
+/// and would break a future `[[…]]` embed of that file.
+@Test func sanitizedFileNameStripsForbiddenCharactersButKeepsTheExtension() {
+    #expect(ImportNaming.sanitizedFileName("Report [draft] #2.pdf") == "Report draft 2.pdf")
+}
+
+@Test func sanitizedFileNameLeavesAnAlreadyConformantNameUntouched() {
+    #expect(ImportNaming.sanitizedFileName("immagine-20260814.png") == "immagine-20260814.png")
+}
+
+@Test func sanitizedFileNameFallsBackWhenTheStemIsAllForbiddenCharacters() {
+    // "###" sanitizes to nothing - falling back to the unsanitized stem would
+    // reintroduce exactly what this exists to strip.
+    #expect(ImportNaming.sanitizedFileName("###.pdf") == "file.pdf")
+}
+
+@Test func sanitizedFileNameHandlesAnExtensionlessName() {
+    #expect(ImportNaming.sanitizedFileName("Nota #1") == "Nota 1")
+}

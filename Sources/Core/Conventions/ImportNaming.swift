@@ -181,6 +181,25 @@ enum ImportNaming {
         return kept.joined(separator: "-")
     }
 
+    /// `NoteName.sanitized`'s missing caller (PG-134/#234): a file dropped or chosen
+    /// from outside the vault keeps its own name verbatim except for `.eml`, which gets
+    /// the assisted rename above - so a name carrying a wikilink-reserved character
+    /// (`#`, `^`, `[`, `]`, …) used to reach the vault unsanitized, breaking any future
+    /// `[[…]]` embed of that file. Sanitizes the stem only, never the extension: `NoteName
+    /// .sanitized`'s own `maximumLength` truncation operates on the whole string it is
+    /// given, and applying it to `proposed` as a whole could cut the extension off a
+    /// long name instead of shortening the part the person actually typed.
+    static func sanitizedFileName(_ proposed: String) -> String {
+        let stem = (proposed as NSString).deletingPathExtension
+        let ext = (proposed as NSString).pathExtension
+        let sanitizedStem = NoteName.sanitized(stem)
+        // A name made entirely of forbidden characters (`"###.pdf"`) sanitizes to
+        // nothing: falling back to the unsanitized stem would reintroduce exactly what
+        // this exists to strip, so a fixed, always-conformant stem takes its place.
+        let finalStem = sanitizedStem.isEmpty ? "file" : sanitizedStem
+        return ext.isEmpty ? finalStem : "\(finalStem).\(ext)"
+    }
+
     static func uniqueFileName(
         _ proposed: String,
         in directory: URL,

@@ -192,7 +192,16 @@ struct PraticaLedger: Equatable, Sendable, Codable {
     /// `MembershipRule.recoverConversationID` resolves against the store snapshot.
     func memberMessageIDs(forConversation conversationID: Int, praticaPath: String) -> [String] {
         guard let state = byPraticaPath[praticaPath] else { return [] }
-        return state.entries
+        return Self.memberMessageIDs(in: state.entries, forConversation: conversationID)
+    }
+
+    /// The same filter as the instance method above, over entries a caller already
+    /// holds rather than a whole ledger plus a path - `MailStorePreparation
+    /// .resolveFollowedConversations` is handed exactly one pratica's `state.entries`
+    /// (`PraticaLiveSync+Run.swift`), not a `PraticaLedger`, and used to keep its own
+    /// hand-written copy of this filter rather than reach for one it could not call.
+    static func memberMessageIDs(in entries: [Entry], forConversation conversationID: Int) -> [String] {
+        entries
             .filter { $0.conversationID == conversationID }
             .map(\.messageID)
     }

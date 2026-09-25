@@ -7,7 +7,9 @@ extension WorkspaceController {
     ///
     /// `.eml` files go through the assisted rename of SPEC §4.2: the proposal comes
     /// from the message's own headers, and the caller confirms it. Everything else
-    /// keeps its name, deduplicated so an import never overwrites an earlier one.
+    /// keeps its name, sanitized against `NoteName.forbiddenCharacters` (PG-134/#234 -
+    /// a dropped name carrying `#`/`[`/`]`/… would otherwise break a future `[[…]]`
+    /// embed of the file) and deduplicated so an import never overwrites an earlier one.
     @discardableResult
     func importFiles(_ urls: [URL], at point: CGPoint) -> [ImportProposal] {
         guard let store else { return [] }
@@ -30,6 +32,8 @@ extension WorkspaceController {
                     currentFileName: original,
                     today: .today
                 )
+            } else {
+                proposed = ImportNaming.sanitizedFileName(original)
             }
             proposals.append(ImportProposal(
                 source: url,
