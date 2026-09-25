@@ -17,12 +17,18 @@ import Foundation
 // call site inherits the exclusion instead of needing to remember it (ADR-0041's shape, applied to
 // a global rather than a file). The gate design mirrors `ReleasePipelineTests.ProcessOutcomeBox`:
 // `NSLock`-guarded state in a class, `CheckedContinuation` waiters, resumed only after unlocking.
+//
+// PG-249. The gate serializes one process only, and the persistent domain is shared by every
+// process with the host's bundle id: two test runs at once (two worktrees, or a Stop-hook run
+// beside a manual one) clobbered each other's value mid-sync. The override therefore lives in the
+// argument domain, where a `-mailStoreRoot` launch argument would put it: volatile, local to this
+// process, and searched before the persistent domain, so no other process can see or replace it.
 enum MailStoreOverride {
     /// Waits for exclusive use of the `mailStoreRoot` override, then points it at `root`. Pair
     /// with `defer { MailStoreOverride.release() }` registered immediately after this returns.
     static func acquire(settingRootTo root: URL) async {
         await gate.acquire()
-        UserDefaults.standard.set(root.path(percentEncoded: false), forKey: MailStoreLocation.overrideKey)
+        setArgument(root.path(percentEncoded: false))
     }
 
     /// Waits for exclusive use of the override without setting it, for a test asserting what
@@ -34,8 +40,16 @@ enum MailStoreOverride {
     /// Synchronous, so it is callable from a plain `defer`: removes the override, then lets the
     /// next waiter, if any, proceed.
     static func release() {
-        UserDefaults.standard.removeObject(forKey: MailStoreLocation.overrideKey)
+        setArgument(nil)
         gate.release()
+    }
+
+    /// Read-modify-write of the argument domain, keeping every other launch argument in it.
+    private static func setArgument(_ path: String?) {
+        let defaults = UserDefaults.standard
+        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments[MailStoreLocation.overrideKey] = path
+        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
 
     private final class Gate: @unchecked Sendable {
