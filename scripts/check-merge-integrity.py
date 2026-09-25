@@ -49,7 +49,7 @@ comando.
 Uso:
     scripts/check-merge-integrity.py [--range A..B] [--verbose]
     scripts/check-merge-integrity.py --pr-base <sha> --pr-head <sha>
-    scripts/check-merge-integrity.py --landing <base> <head> [--verbose]
+    scripts/check-merge-integrity.py --landing <base> <head>
     scripts/check-merge-integrity.py --landings A..B [--verbose]
     scripts/check-merge-integrity.py --self-test
 
@@ -135,8 +135,15 @@ def diff_name_only(repo, tree_a, tree_b):
 
 
 def merges_in_range(repo, range_spec):
-    r = _git(repo, "rev-list", "--merges", range_spec)
-    return [line.strip() for line in r.stdout.splitlines() if line.strip()]
+    """Ritorna (merges, error). error non-None => il range non si risolve (exit 2).
+
+    PG-244: con check=True un range come origin/main..X senza origin/main finiva
+    in un traceback, che l'hook leggeva come un fallimento e bloccava il push.
+    """
+    r = _git(repo, "rev-list", "--merges", range_spec, check=False)
+    if r.returncode != 0:
+        return [], (r.stderr.strip().splitlines() or ["rc=%d" % r.returncode])[0]
+    return [line.strip() for line in r.stdout.splitlines() if line.strip()], None
 
 
 # --- override trailer ------------------------------------------------------------
@@ -1238,6 +1245,52 @@ def _scenario_cli_mode_mutual_exclusion(base_dir, report):
            "--landings insieme a --pr-base/--pr-head: exit 2 (trovato: %d)" % r.returncode)
 
 
+def _scenario_landing_cannot_verify(base_dir, report):
+    """PG-248: HEAD non discende da BASE e git merge-tree non riesce a produrre un
+    albero. Provocato togliendo un blob dall'object store del repo usa e getta:
+    merge-tree esce con 128 e stdout vuoto, mentre merge-base --is-ancestor, che
+    legge solo i commit, risponde ancora."""
+    repo = _init_repo(base_dir, "cannot-verify")
+    _write(repo, "f.txt", "".join("%d\n" % i for i in range(1, 9)))
+    _commit_all(repo, "base")
+    _sh(repo, "checkout", "-q", "-b", "branch")
+    _write(repo, "f.txt", "".join("%d\n" % i for i in range(1, 8)) + "8 del branch\n")
+    head = _commit_all(repo, "branch: cambia l'ultima riga")
+    _sh(repo, "checkout", "-q", "main")
+    _write(repo, "f.txt", "1 di main\n" + "".join("%d\n" % i for i in range(2, 9)))
+    tip = _commit_all(repo, "main: cambia la prima riga")
+
+    blob = _sh(repo, "rev-parse", "%s:f.txt" % head).stdout.strip()
+    loose = os.path.join(repo, ".git", "objects", blob[:2], blob[2:])
+    if not os.path.isfile(loose):
+        # Un gc che ha già impacchettato il blob: la fixture non vale, lo si dice
+        # come un controllo fallito invece di far saltare l'intero self-test.
+        _check(report, False, "PG-248: blob %s non più loose, fixture non costruibile" % blob[:10])
+        return
+    os.chmod(loose, 0o644)
+    os.remove(loose)
+
+    r = check_landing(repo, tip, head)
+    _check(report, r.status == "cannot_verify" and "merge-tree" in (r.note or ""),
+           "PG-248: merge-tree senza albero dà cannot_verify (trovato: %s %r)" % (r.status, r.note))
+    cli = _run_cli(repo, "--landing", tip, head)
+    _check(report, cli.returncode == 2 and "Traceback" not in cli.stderr,
+           "PG-248: CLI --landing non verificabile esce con 2 (trovato: %d)" % cli.returncode)
+
+
+def _scenario_cli_range_unresolvable(base_dir, report):
+    """PG-244: un --range la cui base non esiste (origin/main in un repo senza
+    remote) esce con 2 e un messaggio, mai con un traceback."""
+    repo = _init_repo(base_dir, "range-unresolvable")
+    _write(repo, "a.txt", "a\n")
+    _commit_all(repo, "base")
+    r = _run_cli(repo, "--range", "origin/main..HEAD")
+    _check(report, r.returncode == 2 and "Traceback" not in r.stderr
+           and "range non risolvibile" in r.stderr,
+           "PG-244: --range con base assente esce con 2 senza traceback (trovato: %d %r)"
+           % (r.returncode, r.stderr[-200:]))
+
+
 def self_test():
     report = []
     tmp = tempfile.mkdtemp(prefix="pergamenum-merge-integrity-selftest-")
@@ -1265,6 +1318,8 @@ def self_test():
         _scenario_landing_rename_and_mode_only(tmp, report)
         _scenario_cli_landing_exit_codes(tmp, report)
         _scenario_cli_mode_mutual_exclusion(tmp, report)
+        _scenario_landing_cannot_verify(tmp, report)
+        _scenario_cli_range_unresolvable(tmp, report)
     finally:
         # Guardia: non cancellare mai nulla fuori dalla nostra directory temporanea.
         if tmp.startswith(tempfile.gettempdir()) and os.path.basename(tmp).startswith(
@@ -1375,7 +1430,11 @@ def main(argv=None):
     else:
         range_spec = "origin/main..HEAD"
 
-    merges = merges_in_range(repo, range_spec)
+    merges, error = merges_in_range(repo, range_spec)
+    if error:
+        print("check-merge-integrity.py: range non risolvibile: %s (%s)" % (range_spec, error),
+              file=sys.stderr)
+        return 2
     if not merges:
         print("check-merge-integrity.py: nessun merge commit in %s" % range_spec)
         return 0

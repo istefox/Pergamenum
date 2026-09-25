@@ -570,7 +570,10 @@ check. It comes from ADR-0061's unchanged merge scan, whose hardcoded `origin/ma
 range makes `git rev-list` fail. The checker exits with a traceback, and the hook then prints
 the merge-check refusal. That contradicts ADR-0061's own "never fail a push it cannot
 evaluate". It predates this chain, and the plan keeps the merge scan unchanged. It is worth a
-small issue of its own.
+small issue of its own. *Closed 2026-09-25 as PG-244:* the hook now resolves
+`refs/remotes/<remote>/main` before the merge scan and skips it with a notice when absent,
+and the checker answers an unresolvable `--range` with exit 2 and one sentence, not a
+traceback.
 
 ### Follow-ups after merge (PG-246, 2026-09-25)
 
