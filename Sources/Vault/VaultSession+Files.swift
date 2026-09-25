@@ -38,11 +38,8 @@ extension VaultSession {
         }
 
         // The star is a path, so it moves with the file or it points at nothing (ADR-0012 D6).
-        // Skipped on a dry run: nothing on disk moved, and moving the star for real would be the
-        // one part of a rehearsal that was not a rehearsal.
-        if !isDryRun {
-            moveStar(from: relativePath, to: outcome.newPath)
-        }
+        // `moveFile` itself carries the star along now (PG-238/#526), the same door it already
+        // carries the note id through - so this also reaches a connector undo of the move.
         return outcome
     }
 
@@ -63,9 +60,6 @@ extension VaultSession {
             outcome.refusals.append(contentsOf: boards.refusals)
         }
 
-        if !isDryRun {
-            moveStar(from: relativePath, to: outcome.newPath)
-        }
         return outcome
     }
 

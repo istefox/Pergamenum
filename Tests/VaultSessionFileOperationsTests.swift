@@ -289,6 +289,26 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(session.isStarred(plan.newPath))
 }
 
+// MARK: - PG-238/#526: a connector undo of a move carries the star back too
+
+@MainActor
+@Test func undoingAConnectorRenameMovesTheStarBack() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "Vecchio titolo.md")
+    let session = try await armedSession(vault)
+    session.toggleStar("Vecchio titolo.md")
+
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    #expect(!session.isStarred("Vecchio titolo.md"))
+    #expect(session.isStarred(outcome.newPath))
+
+    let operation = try #require(session.journalOnDisk.entries().last?.operation)
+    _ = await session.undo(operation: operation)
+
+    #expect(session.isStarred("Vecchio titolo.md"), "l'undo di un move deve riportare la stella sul path originale")
+    #expect(!session.isStarred(outcome.newPath))
+}
+
 // MARK: - Re-pointed from the deleted `NoteFileOperations.move` (ADR-0055 §D6)
 //
 // `NoteFileOperations.move`'s own performer is deleted; the app's one mover is

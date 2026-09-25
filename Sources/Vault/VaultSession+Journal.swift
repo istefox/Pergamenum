@@ -99,6 +99,10 @@ extension VaultSession {
         }
         apply(mutations)
         relocateNoteIDs([MovedNote(old: oldPath, new: newPath)])
+        // Same door as the note-id relocation above (ADR-0059 §D5): this is also what a
+        // connector undo of a move attends, since `undo` reverses through `moveFile` directly
+        // rather than through `renameNote`/`moveNote` (PG-238/#526).
+        moveStar(from: oldPath, to: newPath)
 
         let newMutation = mutations.first { $0.path == newPath }
         let hash = newMutation?.record?.contentHash ?? ""
