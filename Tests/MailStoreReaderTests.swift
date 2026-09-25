@@ -49,10 +49,8 @@ import Testing
 
     @Test func resolveHonoursTheMailStoreRootOverride() async {
         // R-19: `-mailStoreRoot <path>` must redirect the reader to a fixture store.
-        // `MailStoreLocation.resolve()` reads `UserDefaults.standard` directly
-        // (mirroring `VaultState.processDefaultBase()`'s own `-stateBase` read), and
-        // a custom `UserDefaults(suiteName:)` is not in `.standard`'s search list -
-        // `resolve()` would never see a key set anywhere else. The key is
+        // `MailStoreLocation.resolve()` reads the argument domain alone (PG-250),
+        // which is where `MailStoreOverride` puts the value. The key is
         // process-global (PG-208): `.serialized` only serializes tests within this
         // suite, not against the five other files that touch the same key while
         // Swift Testing runs suites in parallel, so `MailStoreOverride`'s gate - not
@@ -94,6 +92,24 @@ import Testing
         let argumentsAfter = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
         #expect(argumentsAfter[key] == nil)
         #expect(Set(argumentsAfter.keys) == Set(argumentsBefore.keys).subtracting([key]))
+    }
+
+    @Test func aPersistentMailStoreRootIsIgnored() throws {
+        // PG-250: a value in the persistent domain - a stray `defaults write`, or an older
+        // test run on another branch - must not redirect the Mail read; only the launch
+        // argument may. A throwaway suite shares the process-wide argument domain but not
+        // the app's persistent one, so this touches no other process. The check is against
+        // this test's own unique path, so a concurrent `MailStoreOverride` holder cannot
+        // make it pass or fail.
+        let suiteName = "pergamenum.tests.pg250.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let persistentPath = "/tmp/pergamenum-pg250-\(UUID())"
+        defaults.set(persistentPath, forKey: MailStoreLocation.overrideKey)
+
+        // The old read, `string(forKey:)`, would have found it.
+        #expect(defaults.string(forKey: MailStoreLocation.overrideKey) == persistentPath)
+        #expect(MailStoreLocation.overridePath(in: defaults) != persistentPath)
     }
 
     // MARK: - R-02: MailStoreCopy
