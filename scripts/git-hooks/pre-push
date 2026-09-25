@@ -23,6 +23,13 @@
 # cannot evaluate. The hook does not fetch; see ADR-0062 §D5 for why a stale
 # remote-tracking ref costs no detection in the shape this check exists for.
 #
+# The checker's exit code is read, not just its truthiness (PG-251): 1 is a
+# finding and gets the refusal that explains it; 2 is a check that could not
+# be evaluated (a malformed Merge-override or Restore-override trailer, or a
+# merge git cannot recompute). The push still stops on a 2, since it is almost
+# always a trailer to fix, but under its own message, never the one claiming a
+# parent's content was discarded.
+#
 # The installed hook is a copy: after this file changes, rerun
 # scripts/install-git-hooks.sh --force (the checker warns until you do).
 
@@ -40,6 +47,8 @@ fi
 zero="0000000000000000000000000000000000000000"
 merge_failed=0
 landing_failed=0
+merge_unevaluable=0
+landing_unevaluable=0
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     if [ "$local_sha" = "$zero" ]; then
@@ -62,9 +71,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
     if [ -n "$range" ]; then
         echo "pre-push: check-merge-integrity su $range ($remote_ref)"
-        if ! python3 "$checker" --range "$range"; then
-            merge_failed=1
-        fi
+        rc=0
+        python3 "$checker" --range "$range" || rc=$?
+        case "$rc" in
+            0) ;;
+            1) merge_failed=1 ;;
+            *) merge_unevaluable=1 ;;
+        esac
     fi
 
     # --- landing check (ADR-0062) ---
@@ -90,9 +103,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         continue
     fi
     echo "pre-push: controllo di landing di $local_sha su $base ($base_rev)"
-    if ! python3 "$checker" --landing "$base" "$local_sha"; then
-        landing_failed=1
-    fi
+    rc=0
+    python3 "$checker" --landing "$base" "$local_sha" || rc=$?
+    case "$rc" in
+        0) ;;
+        1) landing_failed=1 ;;
+        *) landing_unevaluable=1 ;;
+    esac
 done
 
 if [ "$merge_failed" -ne 0 ]; then
@@ -107,6 +124,16 @@ if [ "$merge_failed" -ne 0 ]; then
         echo "poi 'git commit --amend' sul merge e riprova."
     } >&2
 fi
+if [ "$merge_unevaluable" -ne 0 ]; then
+    {
+        echo ""
+        echo "pre-push RIFIUTATO (controllo dei merge, ADR-0061): un merge non è stato"
+        echo "valutato, il controllo è uscito con 2. Di solito è un trailer Merge-override"
+        echo "malformato (manca Merge-override-reason, oppure 'all' al posto dei path);"
+        echo "più raramente un merge che git merge-tree non riesce a ricalcolare."
+        echo "Il motivo esatto è stampato qui sopra."
+    } >&2
+fi
 if [ "$landing_failed" -ne 0 ]; then
     {
         echo ""
@@ -119,7 +146,18 @@ if [ "$landing_failed" -ne 0 ]; then
         echo "Il blocco pronto da incollare, con ogni path, è stampato qui sopra."
     } >&2
 fi
-if [ "$merge_failed" -ne 0 ] || [ "$landing_failed" -ne 0 ]; then
+if [ "$landing_unevaluable" -ne 0 ]; then
+    {
+        echo ""
+        echo "pre-push RIFIUTATO (controllo di landing, ADR-0062): il landing non è stato"
+        echo "valutato, il controllo è uscito con 2. Di solito è un trailer Restore-override"
+        echo "malformato (manca Restore-override-reason, oppure 'all' al posto dei path);"
+        echo "più raramente un landing che git merge-tree non riesce a ricalcolare."
+        echo "Il motivo esatto è stampato qui sopra."
+    } >&2
+fi
+if [ "$merge_failed" -ne 0 ] || [ "$landing_failed" -ne 0 ] \
+    || [ "$merge_unevaluable" -ne 0 ] || [ "$landing_unevaluable" -ne 0 ]; then
     exit 1
 fi
 
