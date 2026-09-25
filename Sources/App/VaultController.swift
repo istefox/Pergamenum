@@ -207,8 +207,13 @@ final class VaultController {
         // the session just built, so both land in the same place (ADR-0017).
         thumbnails = ThumbnailStore(root: url, directory: newSession.state.thumbnails)
         // Recorded on open rather than on close, so a crash still leaves the vault
-        // reachable from the recents menu next launch.
-        recents.remember(url)
+        // reachable from the recents menu next launch. A vault the `maximum` cap
+        // silently evicts also loses its tab session here, or it would sit in
+        // `UserDefaults` forever with no vault left in the recents list to trigger a
+        // cleanup (PG-131).
+        if let evictedPath = recents.remember(url) {
+            openTabs.forget(URL(filePath: evictedPath, directoryHint: .isDirectory))
+        }
         await rescan()
         startWatching(url)
         restoreTabs()
@@ -338,13 +343,22 @@ final class VaultController {
     //
 
     /// Empties `.pergamenum/cache.db` and rebuilds the index from the vault
-    /// (SPEC §12, Avanzate › svuota cache).
+    /// (SPEC §12, Avanzate › svuota cache). Also drops the rendered-thumbnail cache
+    /// (`ThumbnailStore`), in memory and on disk - both caches share the same button
+    /// and the same "disposable, never source of truth" promise (PG-131).
     func clearCache() async {
         guard let session else { return }
         isScanning = true
         defer { isScanning = false }
         await session.clearCache()
+        await thumbnails?.forgetAll()
+        try? await thumbnails?.clearCacheOnDisk()
         scanGeneration += 1
         taskGeneration += 1
+    }
+
+    /// Dismisses the "Problemi" list in Impostazioni › Avanzate (PG-131).
+    func clearProblems() {
+        session?.clearProblems()
     }
 }

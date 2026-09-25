@@ -94,7 +94,13 @@ struct VaultCommands: Commands {
                         .disabled(url.standardizedFileURL == vault.root?.standardizedFileURL)
                     }
                     Divider()
-                    Button("Svuota elenco") { RecentVaults().forgetAll() }
+                    Button("Svuota elenco") {
+                        // Every vault leaving the recents list this way loses its tab
+                        // session too, or it stays in UserDefaults with nothing left to
+                        // ever forget it (PG-131).
+                        for url in recents { vault.openTabs.forget(url) }
+                        RecentVaults().forgetAll()
+                    }
                 }
             }
             Button("Importa file…") {
