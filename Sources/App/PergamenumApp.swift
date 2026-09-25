@@ -118,8 +118,14 @@ struct PergamenumApp: App {
         _capture = State(initialValue: capture)
         _hotkey = State(initialValue: hotkey)
         _day = State(initialValue: day)
-        _diary = State(initialValue: DiaryController(vault: vault))
+        let diary = DiaryController(vault: vault)
+        _diary = State(initialValue: diary)
         _recordings = State(initialValue: recordings)
+
+        // ADR-0057 §D8: a clean pane's file changing under another process's hand should
+        // reload it rather than wait to be reopened - `weak` since the controller, not
+        // this closure, owns the lifetime.
+        vault.didChangeExternally = { [weak diary] path in diary?.externalChange(at: path) }
 
         let pratiche = PraticheController.live(vault: vault)
         // ADR-0026 §D7: the choke point for every folder move and rename, forward and

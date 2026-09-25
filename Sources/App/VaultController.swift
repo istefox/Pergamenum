@@ -138,6 +138,12 @@ final class VaultController {
     /// really went to the Trash. `nil` in every test that builds a bare `VaultController`.
     @ObservationIgnored var didTrashFolder: ((String) -> Void)?
 
+    /// Wired once by `PergamenumApp.init`, after `DiaryController` exists - same reason and
+    /// shape as the two above. `reconcile(_:)` hands every genuinely external change here
+    /// (ADR-0057 §D8), so a clean Diario pane showing that file can pick it up without
+    /// waiting to be reopened. `nil` in every test that builds a bare `VaultController`.
+    @ObservationIgnored var didChangeExternally: ((String) -> Void)?
+
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()
