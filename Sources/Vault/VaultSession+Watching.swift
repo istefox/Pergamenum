@@ -8,9 +8,19 @@ import Foundation
 /// longer only the user in Obsidian.
 extension VaultSession {
     /// A note that changed on disk without this session writing it.
+    ///
+    /// `content` says what the disk holds now: `.text` with the note's new text, or
+    /// `.deleted` when nothing is left at the path (ADR-0061 §D1). There is deliberately no
+    /// `text` accessor: every reader switches on `content`, so a deletion can never be read
+    /// as an empty string by a caller that forgot the second case.
     struct ExternalChange: Equatable, Sendable {
+        enum Content: Equatable, Sendable {
+            case text(String)
+            case deleted
+        }
+
         let path: String
-        let text: String
+        let content: Content
     }
 
     /// Applies external changes to the index, one path at a time, and reports the ones
@@ -34,6 +44,15 @@ extension VaultSession {
     /// older than that can still be waiting to be observed - and never applies the
     /// mutation: a self-write reconciliation changes nothing the write itself did not
     /// already apply.
+    ///
+    /// A path with nothing left at it is reported as `.deleted` (ADR-0061 §D2), unless it
+    /// matches an absence `moveFile` recorded for the source it vacated (§D6), which is
+    /// this session's own and reported no more than a hash is. An **unmatched**
+    /// reconciliation drops that path's absence entries stamped below its own sequence: the
+    /// disk was read after the vacancy they describe and did not find it, and a marker left
+    /// behind would swallow a later real deletion of a note recreated there. A provisional
+    /// marker, numbered down from `UInt64.max`, stays out of reach of a read that ran
+    /// before its move landed.
     func reconcile(_ paths: [String]) async -> [ExternalChange] {
         var changes: [ExternalChange] = []
 
@@ -50,12 +69,27 @@ extension VaultSession {
                 continue
             }
 
+            dropStaleAbsences(at: path, below: result.mutation.sequence)
             apply([result.mutation])
             if let change = result.change {
                 changes.append(change)
             }
         }
         return changes
+    }
+
+    /// Removes `path`'s absence entries stamped below `sequence` (ADR-0061 §D6, a stale
+    /// absence). Hash entries are left alone: they describe particular bytes and are pruned
+    /// only by a match, as before.
+    private func dropStaleAbsences(at path: String, below sequence: UInt64) {
+        guard let entries = selfWrittenHashes[path] else { return }
+        let remaining = entries.filter { $0.hash != Self.absenceMarker || $0.sequence >= sequence }
+        guard remaining.count != entries.count else { return }
+        if remaining.isEmpty {
+            selfWrittenHashes.removeValue(forKey: path)
+        } else {
+            selfWrittenHashes[path] = remaining
+        }
     }
 
     /// Appends text to a note, for the capture route of SPEC §9.

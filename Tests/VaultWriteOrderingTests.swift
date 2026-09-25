@@ -278,7 +278,7 @@ private func orderingDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
     #expect(missing.mutation.path == "N.md")
     #expect(missing.mutation.record == nil)
     #expect(missing.mutation.sequence == written.sequence + 1)
-    #expect(missing.change == nil)
+    #expect(missing.change == VaultSession.ExternalChange(path: "N.md", content: .deleted))
     #expect(missing.matchedSequence == nil)
     #expect(session.apply([missing.mutation]) == 1)
     #expect(session.apply([written]) == 0)
@@ -294,13 +294,13 @@ private func orderingDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
     // R-04: awaiting the session door returns parsed changes and updates the index.
     let changes = await session.reconcile(["N.md"])
     #expect(changes.map(\.path) == ["N.md"])
-    #expect(changes.first?.text == note("External."))
+    #expect(changes.first?.content == .text(note("External.")))
     #expect(session.index.note(at: "N.md")?.contentHash == NoteStore.hash(Data(note("External.").utf8)))
     try FileManager.default.moveItem(
         at: vault.root.appending(path: "N.md"), to: vault.root.appending(path: "Moved.md")
     )
     let missing = await session.reconcile(["N.md"])
-    #expect(missing.isEmpty)
+    #expect(missing == [VaultSession.ExternalChange(path: "N.md", content: .deleted)])
     #expect(session.index.note(at: "N.md") == nil)
 }
 

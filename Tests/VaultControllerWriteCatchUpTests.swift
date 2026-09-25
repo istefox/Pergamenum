@@ -61,9 +61,9 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
         relativePath: "A.md", title: "A", text: "mine", savedText: "disk"
     )
 
-    buffer.catchUp(to: "incoming")
+    buffer.catchUp(to: .text("incoming"))
 
-    #expect(buffer.externalChangePending == "incoming")
+    #expect(buffer.externalChangePending == .text("incoming"))
     #expect(buffer.text == "mine")
     #expect(buffer.savedText == "disk")
 }
@@ -73,7 +73,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
         relativePath: "A.md", title: "A", text: "disk", savedText: "disk"
     )
 
-    buffer.catchUp(to: "incoming")
+    buffer.catchUp(to: .text("incoming"))
 
     #expect(buffer.text == "incoming")
     #expect(buffer.savedText == "incoming")
@@ -86,10 +86,10 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     // nothing left to ask about (ADR-0058 §D1, last paragraph).
     var buffer = VaultController.OpenNote(
         relativePath: "A.md", title: "A", text: "disk", savedText: "disk",
-        externalChangePending: "stale"
+        externalChangePending: .text("stale")
     )
 
-    buffer.catchUp(to: "incoming")
+    buffer.catchUp(to: .text("incoming"))
 
     #expect(buffer.text == "incoming")
     #expect(buffer.externalChangePending == nil)
@@ -110,7 +110,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     controller.syncOpenNote(with: result)
 
     let dirty = try tab(showing: "A.md", in: controller.columns[0])
-    #expect(dirty.note.externalChangePending == result.text)
+    #expect(dirty.note.externalChangePending == .text(result.text))
     #expect(dirty.note.text == note("A, non salvato."), "il testo non salvato non viene toccato")
 }
 
@@ -144,7 +144,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     controller.syncOpenNote(with: result)
 
     let background = try #require(controller.tabs.first { $0.id == backgroundID })
-    #expect(background.note.externalChangePending == result.text)
+    #expect(background.note.externalChangePending == .text(result.text))
     #expect(background.note.text == note("A, non salvato in secondo piano."))
 }
 
@@ -220,7 +220,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     await controller.saveOpenNote()
 
     let copy = try tab(showing: "A.md", in: controller.columns[1])
-    #expect(copy.note.externalChangePending == saved)
+    #expect(copy.note.externalChangePending == .text(saved))
     #expect(copy.note.text == note("A, non salvato nella seconda colonna."))
     #expect(controller.openNote?.hasUnsavedChanges == false)
     #expect(controller.openNote?.externalChangePending == nil, "il proprio salvataggio non è un conflitto")
@@ -313,7 +313,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     let onDisk = try String(contentsOf: vault.root.appending(path: "Origine.md"), encoding: .utf8)
     try #require(onDisk.contains("- [[Destinazione]] — usa i dati"))
     #expect(controller.openNote?.text == unsaved, "le modifiche non salvate non vengono scartate")
-    #expect(controller.openNote?.externalChangePending == onDisk)
+    #expect(controller.openNote?.externalChangePending == .text(onDisk))
 }
 
 @MainActor

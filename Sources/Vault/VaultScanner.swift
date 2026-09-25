@@ -179,6 +179,14 @@ struct VaultScanner: Sendable {
         return note
     }
 
+    /// The iCloud placeholder's file name for a note file name - the inverse of
+    /// `evictedNoteName(from:)`, so the naming rule lives in one file, both directions
+    /// (ADR-0061 §D2). `VaultDisk.reconcile` asks for it to tell an evicted note from a
+    /// deleted one.
+    static func evictedPlaceholderName(for noteFileName: String) -> String {
+        "." + noteFileName + ".icloud"
+    }
+
     /// Percent-decoded, separator-normalised path of `url` relative to `root`.
     ///
     /// No walk calls this any more - `VaultWalk` drops a prefix it computed once, which is

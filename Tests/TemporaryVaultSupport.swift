@@ -55,4 +55,10 @@ struct TemporaryVault: ~Copyable {
         try Data(contents.utf8).write(to: url)
         return url
     }
+
+    /// Deletes a file the way another writer would: straight through `FileManager`, never
+    /// through a session door, so the deletion is never one of the session's own writes.
+    func remove(_ relativePath: String) throws {
+        try FileManager.default.removeItem(at: root.appending(path: relativePath, directoryHint: .notDirectory))
+    }
 }
