@@ -272,7 +272,7 @@ struct PergamenumApp: App {
                 // trying to diff them.
                 .task(id: vault.taskGeneration) {
                     await reminders.refreshAccessStatus()
-                    await reminders.reschedule(for: vault.index.allTasks)
+                    await reminders.reschedule(for: vault.index.allTasks, session: vault.session)
                     await reminders.refreshPending()
                 }
                 .task {

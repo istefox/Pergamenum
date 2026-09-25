@@ -83,13 +83,27 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// Replacing wholesale rather than diffing: the source of truth is the set of
     /// tasks on disk, and a diff that drifted would leave a notification firing for a
     /// task the user deleted.
-    func reschedule(for tasks: [TaskItem], now: Date = Date()) async {
+    ///
+    /// `session` mints a stable note id for each task's source note (ADR-0059 §D2)
+    /// before the route is built, the same id-first-then-path pattern
+    /// `VaultController.pergamenumLink(toNoteAt:)` already uses - so a note renamed
+    /// in-app between scheduling and firing is still found (PG-237). `nil` (no vault
+    /// open, or a `.canvas`-sourced task, which `mintNoteID` always refuses) falls
+    /// back to the path route unchanged.
+    func reschedule(for tasks: [TaskItem], session: VaultSession?, now: Date = Date()) async {
         guard access.isGranted else { return }
 
         center.removePendingNotificationRequests(withIdentifiers: Array(scheduledIDs))
         scheduledIDs.removeAll()
 
-        for request in Self.requests(for: tasks, after: now) {
+        var noteIDs: [String: String] = [:]
+        if let session {
+            for path in Set(tasks.map(\.sourcePath)) {
+                if let id = session.mintNoteID(for: path) { noteIDs[path] = id }
+            }
+        }
+
+        for request in Self.requests(for: tasks, after: now, noteIDs: noteIDs) {
             do {
                 try await center.add(request)
                 scheduledIDs.insert(request.identifier)
@@ -144,8 +158,12 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// The notification requests a task set implies.
     ///
     /// Separated from the scheduling so the selection rules are testable without the
-    /// notification centre, which needs a permission dialog.
-    nonisolated static func requests(for tasks: [TaskItem], after now: Date) -> [UNNotificationRequest] {
+    /// notification centre, which needs a permission dialog. `noteIDs` (path → stable
+    /// id, ADR-0059) is likewise a plain value the caller minted beforehand, not a
+    /// `VaultSession` reached from here, for the same testability reason.
+    nonisolated static func requests(
+        for tasks: [TaskItem], after now: Date, noteIDs: [String: String] = [:]
+    ) -> [UNNotificationRequest] {
         tasks.compactMap { task in
             // A completed or cancelled task must not still ring.
             guard task.state.isOpen, let reminder = task.reminder else { return nil }
@@ -160,8 +178,12 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
             )
             content.sound = .default
             // Carries the route so tapping the notification opens the note it came
-            // from rather than just the app.
-            content.userInfo = ["route": PergamenumLink.note(path: task.sourcePath)?.absoluteString ?? ""]
+            // from rather than just the app. The id route (PG-237) survives a rename
+            // between scheduling and firing; the path route is the fallback when no
+            // id was minted (no vault open, or a `.canvas`-sourced task).
+            let route = noteIDs[task.sourcePath].flatMap(PergamenumLink.note(id:))
+                ?? PergamenumLink.note(path: task.sourcePath)
+            content.userInfo = ["route": route?.absoluteString ?? ""]
 
             let components = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute], from: fireDate
