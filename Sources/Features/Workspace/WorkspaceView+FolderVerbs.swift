@@ -38,6 +38,7 @@ extension WorkspaceView {
     /// note, not the collision. That guard has to be cleared before disk either way.
     private func moveItems(_ items: [VaultItemRef], into destination: String) async -> [String] {
         flushBoard()
+        guard workspace.canLeaveOpenBoardForVerb() else { return [] }
         // `undoManager` is the **window's**, read from the environment and handed down as
         // an argument (ADR-0026 §D8) - the same stack `NSTextView` registers text edits
         // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
@@ -180,6 +181,7 @@ extension WorkspaceView {
     ///     `mutate` answered with.
     private func performFolderVerb<T>(_ mutate: () -> T?, landing: (_ open: String, _ result: T) -> String) {
         flushBoard()
+        guard workspace.canLeaveOpenBoardForVerb() else { return }
         guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - with
         // nothing chosen there is nothing to move.
@@ -228,6 +230,7 @@ extension WorkspaceView {
         _ mutate: () -> T?, landing: (_ open: String, _ result: T) -> WorkspaceSelection
     ) {
         flushBoard()
+        guard workspace.canLeaveOpenBoardForVerb() else { return }
         guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - a rename
         // of one that is merely selected in the tree moves no document on screen.
