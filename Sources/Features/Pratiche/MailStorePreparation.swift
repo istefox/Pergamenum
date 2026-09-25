@@ -155,7 +155,7 @@ enum MailStorePreparation {
         for conversation in dossier.conversations {
             let rows = reader.messages(inConversation: conversation)
             guard rows.isEmpty else { conversations[conversation] = rows; continue }
-            let members = ledgerEntries.filter { $0.conversationID == conversation }.map(\.messageID)
+            let members = PraticaLedger.memberMessageIDs(in: ledgerEntries, forConversation: conversation)
             guard !members.isEmpty else { conversations[conversation] = []; continue }
             switch MembershipRule.recoverConversationID(knownMemberMessageIDs: members, store: resolved) {
             case .recovered(let recovered) where recovered != conversation:

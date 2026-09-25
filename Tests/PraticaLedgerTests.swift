@@ -240,3 +240,41 @@ import Testing
         #expect(PraticaLedger.load(from: url) == ledger)
     }
 }
+
+// PG-134/#234: `MailStorePreparation.resolveFollowedConversations` used to hand-copy
+// `memberMessageIDs`'s own filter over `state.entries` instead of calling it, because
+// its call site only has flat `[PraticaLedger.Entry]` (already scoped to one pratica),
+// never a whole `PraticaLedger` plus a path. `memberMessageIDs(in:forConversation:)` is
+// the entries-only overload that closes that gap; the instance method now calls it too.
+@Suite struct PraticaLedgerMemberMessageIDsTests {
+    private static func entry(_ messageID: String, conversation: Int) -> PraticaLedger.Entry {
+        PraticaLedger.Entry(messageID: messageID, rowID: 1, conversationID: conversation)
+    }
+
+    @Test func returnsOnlyTheEntriesOfTheRequestedConversation() {
+        let entries = [
+            Self.entry("<a@rossi-spa.it>", conversation: 1),
+            Self.entry("<b@rossi-spa.it>", conversation: 2),
+            Self.entry("<c@rossi-spa.it>", conversation: 1),
+        ]
+        #expect(
+            Set(PraticaLedger.memberMessageIDs(in: entries, forConversation: 1))
+                == Set(["<a@rossi-spa.it>", "<c@rossi-spa.it>"])
+        )
+    }
+
+    @Test func theInstanceMethodAgreesWithTheEntriesOnlyOverload() {
+        var ledger = PraticaLedger.empty
+        var state = PraticaLedger.PraticaState.empty
+        state.entries = [
+            Self.entry("<a@rossi-spa.it>", conversation: 1),
+            Self.entry("<b@rossi-spa.it>", conversation: 2),
+        ]
+        ledger.byPraticaPath["01 Progetti/Rossi/Offerta"] = state
+
+        #expect(
+            ledger.memberMessageIDs(forConversation: 1, praticaPath: "01 Progetti/Rossi/Offerta")
+                == PraticaLedger.memberMessageIDs(in: state.entries, forConversation: 1)
+        )
+    }
+}

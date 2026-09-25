@@ -62,9 +62,9 @@ struct AttachmentChip: View {
                 .disabled(previewURL == nil)
             Button("Apri") { openWithDefaultApp() }
                 .disabled(openURL == nil)
-            Button("Mostra nel Finder") { showInFinder() }
+            Button(AttachmentChipModel.contextMenuTitles[0]) { showInFinder() }
                 .disabled(revealURL == nil)
-            Button("Copia") { copy() }
+            Button(AttachmentChipModel.contextMenuTitles[1]) { copy() }
         }
     }
 

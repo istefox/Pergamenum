@@ -16,7 +16,6 @@ extension PraticaSyncEngine {
     fileprivate struct PreparedAttachment: Sendable {
         var fileName: String
         var bytes: Data
-        var digest: String
     }
 
     /// `Sendable`: holds only value types (ADR §D21) - what lets a `RegenerationPlan`
@@ -78,7 +77,7 @@ extension PraticaSyncEngine {
         )
         nameByDigest[digest] = fileName
         taken.insert(fileName)
-        return (fileName, PreparedAttachment(fileName: fileName, bytes: bytes, digest: digest))
+        return (fileName, PreparedAttachment(fileName: fileName, bytes: bytes))
     }
 
     // MARK: - Externalized attachments (ADR-0048)

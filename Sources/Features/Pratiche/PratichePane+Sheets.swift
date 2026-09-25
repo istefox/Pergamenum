@@ -90,6 +90,27 @@ extension PratichePane {
         .accessibilityIdentifier("pratiche-regenerate")
     }
 
+    /// R-? (ADR §D21): the two consequences `RegenerationPlan` already carried but the
+    /// sheet never showed - which attachments this «Rigenera» (re)writes, and whether
+    /// it also rewrites the retained original `.eml`. Drawn only when there is
+    /// something to say, right above the diff both describe.
+    @ViewBuilder
+    private func regenerationConsequences(_ plan: PraticaSyncEngine.RegenerationPlan) -> some View {
+        if !plan.attachmentFileNames.isEmpty || plan.rewritesOriginalEML {
+            VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+                if !plan.attachmentFileNames.isEmpty {
+                    Text("Allegati riscritti: \(plan.attachmentFileNames.joined(separator: ", "))")
+                        .themedText(.caption, color: .textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if plan.rewritesOriginalEML {
+                    Text("Riscrive anche il file .eml originale conservato.")
+                        .themedText(.caption, color: .textSecondary)
+                }
+            }
+        }
+    }
+
     private func regenerationReadySheet(_ plan: PraticaSyncEngine.RegenerationPlan) -> some View {
         let fileName = (plan.notePath as NSString).lastPathComponent
         return VStack(alignment: .leading, spacing: theme.spacing(.m)) {
@@ -98,6 +119,7 @@ extension PratichePane {
                 Text("Le modifiche fatte a mano in «\(plan.notePath)» vanno perse.")
                     .themedText(.caption, color: .textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                regenerationConsequences(plan)
                 DiffView(path: plan.notePath, diff: diff)
             } else {
                 Text("Il file è già identico al messaggio in Mail: non c'è nulla da rigenerare.")
