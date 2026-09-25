@@ -23,6 +23,9 @@ import Foundation
 // beside a manual one) clobbered each other's value mid-sync. The override therefore lives in the
 // argument domain, where a `-mailStoreRoot` launch argument would put it: volatile, local to this
 // process, and searched before the persistent domain, so no other process can see or replace it.
+// PG-250 closed the other half: `resolve()` now reads the argument domain alone, so a value
+// another process leaves in the persistent domain no longer reaches an `acquireWithoutOverride`
+// test either.
 enum MailStoreOverride {
     /// Waits for exclusive use of the `mailStoreRoot` override, then points it at `root`. Pair
     /// with `defer { MailStoreOverride.release() }` registered immediately after this returns.
