@@ -16,11 +16,10 @@ enum MailStoreLocation {
     /// Resolves, in order: the `-mailStoreRoot` launch argument (R-19), a per-process
     /// temporary fixture root under xctest, and only then `~/Library/Mail/V10`.
     static func resolve() -> URL {
-        // Read from the argument domain the way `VaultState.processDefaultBase()`
-        // reads `-stateBase`: `XCTestConfigurationFilePath` is set for the *host*
-        // XCTest process and not for the app a UI test launches, so the launch
-        // argument is the only thing that reaches the app itself.
-        if let override = UserDefaults.standard.string(forKey: overrideKey) {
+        // `XCTestConfigurationFilePath` is set for the *host* XCTest process and not
+        // for the app a UI test launches, so the launch argument is the only thing
+        // that reaches the app itself.
+        if let override = overridePath() {
             return URL(filePath: override, directoryHint: .isDirectory)
         }
         if VaultState.isRunningUnderTest {
@@ -32,6 +31,15 @@ enum MailStoreLocation {
         }
         return FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Mail/V10", directoryHint: .isDirectory)
+    }
+
+    /// The `-mailStoreRoot` launch argument, read from the argument domain alone (PG-250).
+    /// `string(forKey:)` would fall through to the app's persistent domain, which every
+    /// process with the bundle id shares: a stray `defaults write`, or another test run
+    /// writing there, would redirect this process's Mail read. R-19 names a launch
+    /// argument and nothing else, so nothing else is read.
+    static func overridePath(in defaults: UserDefaults = .standard) -> String? {
+        defaults.volatileDomain(forName: UserDefaults.argumentDomain)[overrideKey] as? String
     }
 
     /// One directory per test process, not per call - `VaultState.testProcessBase`'s
