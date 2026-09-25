@@ -31,8 +31,10 @@ extension VaultController {
         // A link can arrive before the vault has finished opening - the app may have
         // been launched *by* the link. Holding the route and replaying it is the
         // difference between a link that works from cold and one that only works when
-        // the app happened to be running.
-        guard let store else {
+        // the app happened to be running. "Not open" includes "still opening": a route
+        // acted on during the rescan would open a tab, `rememberTabs()` would overwrite
+        // the saved tab session, and `restoreTabs()` would then find tabs and bail out.
+        guard let store, !routeState.isOpeningVault else {
             routeState.pending = route
             return false
         }
@@ -196,5 +198,7 @@ extension VaultController {
         var pendingCanvas: (path: String, nodeID: String?)?
         /// A query the quick switcher should start from.
         var pendingSearch: String?
+        /// True while `open(_:)` is between installing the session and restoring the tabs.
+        var isOpeningVault = false
     }
 }
