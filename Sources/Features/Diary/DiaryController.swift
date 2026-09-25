@@ -97,6 +97,15 @@ final class DiaryController {
         reload()
     }
 
+    /// Picks up a change another process made to the file the pane is currently showing
+    /// (ADR-0057 §D8), fed by `VaultController.didChangeExternally`. Only when the pane is
+    /// clean: a pending edit or a conflict is left untouched here and is caught, as today,
+    /// by the precondition on its own next write. UX, not correctness.
+    func externalChange(at path: String) {
+        guard isSettled, let root = vault.root, origin.file == root.appending(path: path) else { return }
+        reload()
+    }
+
     /// Shows another day (ADR-0057 §D5). With nothing owed and nothing in flight the day
     /// changes and is read at once. Otherwise the day being left is flushed and the switch
     /// waits behind that write - and a conflicted day is not left at all (§D6). Asking for

@@ -34,6 +34,7 @@ extension VaultController {
             updateTabs(showing: change.path) { tab in
                 tab.note.catchUp(to: change.text)
             }
+            didChangeExternally?(change.path)
         }
     }
 }
