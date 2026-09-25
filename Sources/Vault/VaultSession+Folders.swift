@@ -6,7 +6,8 @@ import Foundation
 /// No `transaction`: a directory has no journal representation (ADR-0022 §D6, F7), so
 /// unlike `VaultSession+Files` this file writes directly, through
 /// `FolderFileOperations`, and carries the stars along by hand (`moveStar`,
-/// `forgetStar`, ADR-0012 §D6).
+/// `forgetStar`, ADR-0012 §D6) and the stable note ids too (`relocateNoteIDs`,
+/// `forgetNoteIDs`, ADR-0059 §D5): no `moveFile`/`trashFile` runs here to carry them.
 ///
 /// Not reachable from `VaultAPI`, and therefore not from `perg` or the MCP server:
 /// a write that `--dry-run` cannot rehearse and `undo` cannot reverse would break the
@@ -29,6 +30,9 @@ extension VaultSession {
         for moved in outcome.movedNotes {
             moveStar(from: moved.old, to: moved.new)
         }
+        // The folder's own pair, not `movedNotes` (ADR-0059 §D4): the prefix rule also
+        // reaches an entry whose note is only an iCloud placeholder, in no index.
+        relocateNoteIDs([MovedNote(old: relativePath, new: outcome.newPath)])
         return outcome
     }
 
@@ -40,6 +44,7 @@ extension VaultSession {
         for path in result.trashedNotePaths {
             forgetStar(path)
         }
+        forgetNoteIDs([relativePath])
         return result
     }
 

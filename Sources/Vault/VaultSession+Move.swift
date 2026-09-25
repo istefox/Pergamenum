@@ -152,6 +152,9 @@ extension VaultSession {
                         }
                         outcome.movedNotes.append(contentsOf: folder.movedNotes)
                         outcome.movedFolders.append(MovedNote(old: move.item.path, new: folder.newPath))
+                        // The folder's own pair, not `folder.movedNotes` (ADR-0059 §D4): it
+                        // also reaches an id whose note is only an iCloud placeholder.
+                        relocateNoteIDs([MovedNote(old: move.item.path, new: folder.newPath)])
                         report(folder.failures)
                         // Any board inside the moved folder can be open the same way
                         // (ADR-0054 §D6).

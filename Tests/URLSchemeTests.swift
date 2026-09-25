@@ -85,6 +85,16 @@ func refusesRoutesItDoesNotAnswer(_ string: String) {
     #expect(url.flatMap(PergamenumRoute.init) == .note(path: path))
 }
 
+// ADR-0059 §D8, Acceptance test 34: the durable id-form builder, pinned the same way
+// `buildsLinksThatParseBackToTheSameRoute` above pins the path-form one.
+//
+// RED at Task 1: `PergamenumLink.note(id:)` is a stub returning nil until Task 6.
+@Test func theIDFormBuilderParsesBackToTheNoteIDRoute() {
+    let url = PergamenumLink.note(id: "abc-123")
+    #expect(url != nil)
+    #expect(url.flatMap(PergamenumRoute.init) == .noteID("abc-123"))
+}
+
 @Test func buildsCanvasAndDayAndSearchLinks() {
     #expect(PergamenumLink.canvas(path: "Area/Area.canvas", nodeID: "7a1f")
         .flatMap(PergamenumRoute.init) == .canvas(path: "Area/Area.canvas", nodeID: "7a1f"))

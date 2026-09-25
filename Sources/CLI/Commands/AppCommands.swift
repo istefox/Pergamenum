@@ -8,7 +8,9 @@ import Foundation
 /// to be invented for the half of the job that is "put this on screen".
 ///
 /// The URLs are built with `PergamenumLink`, the same builder the app's "Copia link"
-/// command uses, so a path with a space, an ampersand or a hash survives the trip.
+/// command uses, so a path with a space, an ampersand or a hash survives the trip - in its
+/// path form, deliberately: the app copies the id form (ADR-0059 §D8), but here the caller
+/// names a note by path and nothing should be minted for it.
 enum AppCommands {
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {

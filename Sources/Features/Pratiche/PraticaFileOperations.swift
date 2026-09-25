@@ -170,6 +170,13 @@ struct PraticaFileOperations {
                 pratiche.report("«\(relativePath)» non è stato spostato: \(error.localizedDescription)")
             }
         }
+        // A `FileManager` move, so no session door carries the note's id: this does, to the
+        // collision-renamed name too (ADR-0059 §D5).
+        if let movedMD {
+            vault.session?.relocateNoteIDs([
+                MovedNote(old: detail.notePath, new: VaultScanner.relativePath(of: movedMD, under: root)),
+            ])
+        }
         if let movedMD, baseName != originalBaseName {
             Self.updateOriginalReference(at: movedMD, to: "\(baseName).eml")
             rewrites.renamedBaseName = baseName
@@ -287,6 +294,17 @@ struct PraticaFileOperations {
                     "«\(file.to.lastPathComponent)» non è tornato al suo posto: \(error.localizedDescription)"
                 )
             }
+        }
+        // The id goes home with the note, and only for a note actually restored, for the
+        // reason this method's doc comment gives (ADR-0059 §D5).
+        if let root = vault.root {
+            let homes = files.filter { restored.contains($0.from) && $0.from.pathExtension == "md" }
+            vault.session?.relocateNoteIDs(homes.map {
+                MovedNote(
+                    old: VaultScanner.relativePath(of: $0.to, under: root),
+                    new: VaultScanner.relativePath(of: $0.from, under: root)
+                )
+            })
         }
         return restored
     }

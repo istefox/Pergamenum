@@ -269,9 +269,10 @@ final class VaultHost {
     /// The vault's notes as MCP resources, so a client can attach one without spending a
     /// tool call on it.
     ///
-    /// The URI is the app's own `pergamenum://note?file=…` - the very link "Copia link
-    /// Pergamenum" puts on the clipboard. One builder, one parser, and a URI that also
-    /// happens to open the note in the app if anyone clicks it.
+    /// The URI is the app's own `pergamenum://note?file=…`, the **path** form of its link -
+    /// deliberately not the id form «Copia link Pergamenum» copies (ADR-0059 §D8): a
+    /// resource names the note where it is now, and listing one must not mint an id. One
+    /// builder, one parser, and a URI that also opens the note in the app if clicked.
     func resources(after cursor: String?) -> ListResources.Result {
         let notes = session.index.allNotes
         let start = cursor.flatMap(Int.init) ?? 0
