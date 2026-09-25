@@ -242,7 +242,9 @@ private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")
     #expect(requests.count == 1)
 }
 
-@Test func theNotificationNamesItsSourceNoteAndCarriesItsRoute() throws {
+@Test func theNotificationNamesItsSourceNoteAndCarriesAPathRouteWithNoIDMinted() throws {
+    // No `noteIDs` entry for the source note - the fallback route (PG-237), used when
+    // no vault is open or the task is `.canvas`-sourced.
     let requests = ReminderScheduler.requests(
         for: [task("- [ ] Richiamare @remind(2026-08-15 09:00)")], after: beforeReminders
     )
@@ -252,6 +254,19 @@ private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")
     let route = try #require(request.content.userInfo["route"] as? String)
     // Tapping it must open the note it came from, not just the app.
     #expect(URL(string: route).flatMap(PergamenumRoute.init) == .note(path: "01 Progetti/Nota.md"))
+}
+
+@Test func theNotificationCarriesTheStableIDRouteWhenOneWasMinted() throws {
+    // A note renamed in-app between scheduling and firing must still be found
+    // (PG-237): the id route (ADR-0059), not the path, wins when `noteIDs` has one.
+    let requests = ReminderScheduler.requests(
+        for: [task("- [ ] Richiamare @remind(2026-08-15 09:00)")],
+        after: beforeReminders,
+        noteIDs: ["01 Progetti/Nota.md": "3f2c1b4a-0000-4000-8000-000000000000"]
+    )
+    let request = try #require(requests.first)
+    let route = try #require(request.content.userInfo["route"] as? String)
+    #expect(URL(string: route).flatMap(PergamenumRoute.init) == .noteID("3f2c1b4a-0000-4000-8000-000000000000"))
 }
 
 @Test func identifiersAreStablePerTask() {

@@ -179,7 +179,7 @@ struct SettingsView: View {
                 Button("Richiedi accesso alle notifiche") {
                     Task {
                         await reminders.requestAccess()
-                        await reminders.reschedule(for: vault.index.allTasks)
+                        await reminders.reschedule(for: vault.index.allTasks, session: vault.session)
                     }
                 }
             } else if reminders.access == .denied {
