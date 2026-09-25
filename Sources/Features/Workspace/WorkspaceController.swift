@@ -304,7 +304,6 @@ final class WorkspaceController {
     @discardableResult
     private func load(board newBoard: String) -> Bool {
         guard let store else { return false }
-        guard !refusesToLeaveConflictedBoard() else { return false }
         let loaded: (document: CanvasDocument, hash: String)
         do {
             loaded = try store.read(board: newBoard)
@@ -359,10 +358,6 @@ final class WorkspaceController {
     /// thing the user was looking at (ADR-0024 §D4).
     func select(_ new: WorkspaceSelection?) {
         guard new != current else { return }
-        // Before either branch: the `.board` one is also caught inside `load`, but the
-        // folder/nil one below never reaches `load` and would wipe `document` and `origin`
-        // under a `.conflicted` state, leaving a conflict nothing can resolve.
-        guard !refusesToLeaveConflictedBoard() else { return }
         if case .board(let path)? = new {
             open(board: path)
             return
@@ -381,29 +376,6 @@ final class WorkspaceController {
         replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
-    }
-
-    /// A conflicted board is not left (ADR-0057 §D8, #498): `flushPendingSave()` skips it by
-    /// design (ADR-0054 §D5), so navigating away replaced its document and dropped the edit
-    /// without a word. Refused and reported instead, the diary's rule (ADR-0057 §D5/§D6);
-    /// `detach()` stays the one exit that is not refused, and reports the loss.
-    private func refusesToLeaveConflictedBoard() -> Bool {
-        guard case .conflicted = saveState else { return false }
-        recordProblem(
-            "«\(board)» ha un conflitto di salvataggio non risolto: resta aperta finché non scegli "
-                + "«Mantieni le mie modifiche» o «Ricarica dal disco»"
-        )
-        return true
-    }
-
-    /// The sidebar's rename/move/trash verbs (`WorkspaceView+FolderVerbs.swift`) still
-    /// perform their disk operation on a conflicted open board even though `load`/`select`
-    /// now refuse the follow-up navigation: the file moves, `board` keeps naming the old
-    /// path, and «Mantieni»/«Ricarica» can no longer read it - the conflict becomes
-    /// unrecoverable rather than merely stranded. Checked before the disk operation, not
-    /// after, so the file never moves out from under an unresolved conflict.
-    func canLeaveOpenBoardForVerb() -> Bool {
-        !refusesToLeaveConflictedBoard()
     }
 
     /// Records a problem for the UI to show. Used where a failure should not stop the

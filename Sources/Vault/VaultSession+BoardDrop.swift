@@ -74,14 +74,8 @@ extension VaultSession {
             journalCommand = previousCommand
         }
 
-        // `expecting:` the hash `existing` was read with (ADR-0057 §D8, #496): a writer
-        // landing between the read and this write is refused, never overwritten.
         do {
-            try await write(rewritten, to: path, expecting: existing.record.contentHash)
-        } catch let refusal as VaultSession.WriteRefusal {
-            // Its own sentence: `localizedDescription` on this type is Foundation's generic one.
-            outcome.problem = refusal.description
-            return outcome
+            try await write(rewritten, to: path)
         } catch {
             outcome.problem = error.localizedDescription
             return outcome

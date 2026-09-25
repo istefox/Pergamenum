@@ -88,16 +88,10 @@ extension VaultAPI {
         }
         guard session.exists(path) else { throw ConnectorError("«\(path)» non esiste") }
 
-        switch await session.append(text: text, to: path) {
-        case .written(let result):
-            return summarise(result, session: session)
-        case .stale:
-            // A refusal records no problem (the file is intact), so `problems.last` would
-            // name somebody else's failure: the refusal says its own sentence.
-            throw ConnectorError("non scritto: \(VaultWriteRefusal.movedOn(path).description)")
-        case .unchanged, .failed:
+        guard case .written(let result) = await session.append(text: text, to: path) else {
             throw ConnectorError("non scritto: \(session.problems.last ?? "motivo sconosciuto")")
         }
+        return summarise(result, session: session)
     }
 
     // MARK: Renaming, moving, trashing (ADR-0016)

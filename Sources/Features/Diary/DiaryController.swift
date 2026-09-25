@@ -162,17 +162,6 @@ final class DiaryController {
         save()
     }
 
-    /// Flushes and waits for every pending write to land, for the app-quit path (ADR-0057
-    /// §D8, #497): `willTerminateNotification` is the last notification before the process
-    /// exits, too late to delay anything, so `applicationShouldTerminate` awaits this instead.
-    /// Loops rather than awaiting once: an operation queued after a runner finished starts a new one.
-    func settle() async {
-        flush()
-        while let runner {
-            await runner.value
-        }
-    }
-
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task { [saveDelay] in

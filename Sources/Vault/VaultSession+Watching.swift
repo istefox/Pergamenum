@@ -65,23 +65,13 @@ extension VaultSession {
     /// makes the text a lazy continuation of that bullet in CommonMark: the capture is
     /// swallowed into the last time block instead of standing on its own, and lands
     /// inside a section this app rewrites.
-    ///
-    /// `expecting:` the hash of the read the text was built on (ADR-0057 §D8, #496): a
-    /// writer landing between the read and the write is refused rather than overwritten,
-    /// and the refusal is `.stale`, not `.failed` - the caller says which, and records
-    /// nothing here, since the file is intact.
     @discardableResult
     func append(text: String, to relativePath: String) async -> WriteOutcome {
         do {
-            let existing = try read(relativePath)
-            var body = existing.text
+            var body = try read(relativePath).text
             while body.hasSuffix("\n") { body.removeLast() }
             let separator = body.isEmpty ? "" : "\n\n"
-            return .written(try await write(
-                body + separator + text + "\n", to: relativePath, expecting: existing.record.contentHash
-            ))
-        } catch is VaultSession.WriteRefusal {
-            return .stale
+            return .written(try await write(body + separator + text + "\n", to: relativePath))
         } catch {
             recordProblem("capture: \(error)")
             return .failed

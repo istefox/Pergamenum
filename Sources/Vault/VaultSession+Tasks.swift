@@ -250,17 +250,11 @@ extension VaultSession {
                 line = TaskParser.line(for: freshTask, assigningCategory: category)
             }
             let separator = body.hasSuffix("\n") ? "" : "\n"
-            // Guarded both ways. An existing note: `expecting:` its own hash (ADR-0043 §D8,
-            // Task 9). No note: `expectingAbsent:` (ADR-0057 §D3), since the text was built
-            // from the template *because* the read found nothing, so a file another writer
-            // created in between must be refused, not overwritten. This supersedes the old
-            // «§D8 excludes creation by name» rationale for writing a new inbox note
-            // unguarded: that exclusion is for «make the file say this» writes, and this is a
-            // read-modify-write whose read came back empty (ADR-0057 §D8, #496).
+            // `expecting:` (ADR-0043 §D8, Task 9): nil when `existing` is nil - a brand
+            // new inbox note has no "before" to expect (§D8 excludes creation by name) -
+            // the existing note's own hash otherwise.
             return try await write(
-                body + separator + line + "\n", to: relativePath,
-                expecting: existing?.record.contentHash,
-                expectingAbsent: existing == nil
+                body + separator + line + "\n", to: relativePath, expecting: existing?.record.contentHash
             )
         } catch is VaultSession.WriteRefusal {
             recordProblem("cattura rapida: «\(relativePath)» è cambiato nel frattempo")
