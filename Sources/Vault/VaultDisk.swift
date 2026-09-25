@@ -288,6 +288,16 @@ extension VaultDisk {
     private func fileExists(_ relativePath: String) throws -> Bool {
         try FileManager.default.fileExists(atPath: store.url(for: relativePath).path(percentEncoded: false))
     }
+
+    /// Whether iCloud left its `.Nota.md.icloud` stub where `relativePath` was - an evicted
+    /// note, not a deleted one (ADR-0061 §D2). A path that fails the boundary answers `false`;
+    /// `reconcile` has already asked `fileExists` about the same directory by then.
+    private func evictedPlaceholderExists(for relativePath: String) -> Bool {
+        let directory = (relativePath as NSString).deletingLastPathComponent
+        let name = VaultScanner.evictedPlaceholderName(for: (relativePath as NSString).lastPathComponent)
+        let placeholder = directory.isEmpty ? name : directory + "/" + name
+        return (try? fileExists(placeholder)) ?? false
+    }
 }
 
 // MARK: - The non-note byte write, the move and the trash (ADR-0043 §D1)
@@ -427,25 +437,42 @@ extension VaultDisk {
     /// write that lands afterwards is newer and must win, one that already landed before is
     /// older and must lose.
     ///
-    /// `selfWritten`/the returned `matchedSequence` are for a later task in this chain
-    /// (ADR-0043 §D6's pruned, sequence-tagged list); this task's caller passes `[]` and
-    /// ignores `matchedSequence`, and the signature is final so that later task is a body
-    /// change here, not a second signature migration.
+    /// `selfWritten` is the session's `selfWrittenHashes` list for this path (ADR-0043 §D6):
+    /// a file read here whose content hash matches an entry is the session's own write,
+    /// and `matchedSequence` names that entry so the caller can prune. An absence marker
+    /// (`VaultSession.absenceMarker`, ADR-0061 §D6) is matched only when nothing at all is
+    /// at the path - a move this session made vacated it - and never against a file read.
+    ///
+    /// A path that cannot be read reports `.deleted` only when it is absent (ADR-0061 §D2):
+    /// nothing at the path, no iCloud placeholder for it, no matching absence. A file that
+    /// is there but unreadable, an evicted note, or a path outside the vault reports
+    /// nothing.
     func reconcile(
         _ relativePath: String, selfWritten: [(sequence: UInt64, hash: String)]
     ) async -> (mutation: IndexMutation, change: VaultSession.ExternalChange?, matchedSequence: UInt64?) {
         guard let (record, text) = try? store.read(relativePath) else {
-            // Missing, or unreadable for a reason other than absence (e.g. invalid UTF-8):
-            // either way there is nothing usable to index, and the previous behaviour of
-            // skipping an unreadable path is preserved by nothing ever applying this
-            // mutation's `record: nil` over a real one it did not observe.
-            return (IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath)), nil, nil)
+            // Nothing usable to index either way, so the mutation is the same for every
+            // reason the read failed: `record: nil`, the clock advanced once. Nothing ever
+            // applies it over a real record it did not observe.
+            let mutation = IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath))
+            // What is reported is decided on existence, not readability (§D2, the rule
+            // ADR-0057 §D3 applies to `expectingAbsent`): a file that is there but not
+            // UTF-8 is not a deletion, and neither is a path that fails the boundary.
+            guard let present = try? fileExists(relativePath), !present,
+                  !evictedPlaceholderExists(for: relativePath)
+            else {
+                return (mutation, nil, nil)
+            }
+            if let matched = selfWritten.last(where: { $0.hash == VaultSession.absenceMarker }) {
+                return (mutation, nil, matched.sequence)
+            }
+            return (mutation, VaultSession.ExternalChange(path: relativePath, content: .deleted), nil)
         }
 
         let mutation = IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
         if let matched = selfWritten.last(where: { $0.hash == record.contentHash }) {
             return (mutation, nil, matched.sequence)
         }
-        return (mutation, VaultSession.ExternalChange(path: relativePath, text: text), nil)
+        return (mutation, VaultSession.ExternalChange(path: relativePath, content: .text(text)), nil)
     }
 }

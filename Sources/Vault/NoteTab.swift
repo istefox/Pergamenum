@@ -84,23 +84,50 @@ extension VaultController {
         var savedText: String
         /// An external change arrived while this note had unsaved edits. The editor
         /// must ask rather than merging or discarding either side (ADR-0001 §D3.4).
-        var externalChangePending: String?
+        ///
+        /// One value, not two optionals (ADR-0061 §D3): `nil` is no conflict, `.text` the
+        /// note changed on disk, `.deleted` the note is gone from disk.
+        var externalChangePending: VaultSession.ExternalChange.Content?
 
         var hasUnsavedChanges: Bool { text != savedText }
 
-        /// Catches this buffer up with a newer text on disk: ADR-0001 §D3.4 for one buffer (ADR-0058 §D1).
+        /// What `catchUp(to:)` did with the incoming content (ADR-0061 §D3).
+        enum CatchUp: Equatable {
+            /// The buffer took the disk's side, or had nothing to take.
+            case adopted
+            /// The buffer is dirty: the prompt is pending with the incoming content.
+            case asked
+            /// The buffer is clean and its file is gone: the caller closes the tab.
+            case vanished
+        }
+
+        /// Catches this buffer up with what the disk now holds: ADR-0001 §D3.4 for one buffer
+        /// (ADR-0058 §D1), and says what it did (ADR-0061 §D3).
         ///
-        /// A dirty buffer is the person's work: never merged, never discarded - it gets the
-        /// prompt, with `incoming` as the other side. A clean one adopts `incoming`, and a
-        /// prompt still pending on it goes too: a buffer undone back to `savedText` after the
-        /// banner appeared now holds the newest text, so the older one has nothing to ask.
-        mutating func catchUp(to incoming: String) {
+        /// - `.asked`: the buffer is dirty, whatever `incoming` is. It is the person's work:
+        ///   never merged, never discarded - the prompt becomes pending with `incoming` as the
+        ///   other side. Newest wins: a deletion replaces a pending text, and a recreation
+        ///   replaces a pending deletion, so the banner describes the disk as of the last call.
+        /// - `.adopted`: the buffer is clean and `incoming` is a text. It takes that text, and a
+        ///   prompt still pending on it goes too: a buffer undone back to `savedText` after the
+        ///   banner appeared now holds the newest text, so the older one has nothing to ask.
+        /// - `.vanished`: the buffer is clean and its file is gone. Nothing on the buffer
+        ///   changes; closing the tab is the caller's job (`closeTabs(_:ofVanishedNote:)`).
+        ///   An in-process write passes `.text` and can never get this answer.
+        @discardableResult
+        mutating func catchUp(to incoming: VaultSession.ExternalChange.Content) -> CatchUp {
             if hasUnsavedChanges {
                 externalChangePending = incoming
-            } else {
-                text = incoming
-                savedText = incoming
+                return .asked
+            }
+            switch incoming {
+            case .text(let incomingText):
+                text = incomingText
+                savedText = incomingText
                 externalChangePending = nil
+                return .adopted
+            case .deleted:
+                return .vanished
             }
         }
     }

@@ -110,7 +110,23 @@ final class VaultSession {
     /// the other way around, or the window §D10 exists to close would reopen: a watcher
     /// racing the write must never find the file on disk before this session already
     /// holds its hash, under some sequence.
+    ///
+    /// Since ADR-0061 §D6 an entry is either a content hash or `absenceMarker`: the
+    /// source path a `moveFile` vacated, recorded the same way (provisional before the
+    /// hop, corrected after, removed if the move throws) so the watcher's reconciliation
+    /// of that vacated path is recognised as this session's own and not reported as a
+    /// deletion. An absence is pruned by the same rule as a hash, and additionally
+    /// dropped by any unmatched reconciliation of its path that read the disk after it
+    /// (`VaultSession+Watching.swift`'s `reconcile`).
     var selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]] = [:]
+
+    /// The `selfWrittenHashes` value that stands for «this session left nothing at this
+    /// path» rather than for particular bytes (ADR-0061 §D6). Not a hex digit in it, so
+    /// `NoteStore.hash` (SHA-256 hex) can never produce it, and not `""`, which
+    /// `moveFile` already records as the fallback hash of a moved file with no record.
+    /// `VaultDisk.reconcile` matches it only in its absent branch - nothing at the path,
+    /// no iCloud placeholder - never against a file it read.
+    nonisolated static let absenceMarker = "<absent>"
 
     /// Provisional sequence tags handed to a write's `selfWrittenHashes` entry before
     /// its actor hop resumes and the real sequence is known (§D10). Counts down from
@@ -118,7 +134,9 @@ final class VaultSession {
     /// sequence, which counts up from 1 per path (`VaultDisk.nextSequence(for:)`).
     @ObservationIgnored private var nextProvisionalSequence: UInt64 = .max
 
-    private func reserveProvisionalSequence() -> UInt64 {
+    /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which records its
+    /// absence marker under a provisional sequence (ADR-0061 §D6).
+    func reserveProvisionalSequence() -> UInt64 {
         defer { nextProvisionalSequence -= 1 }
         return nextProvisionalSequence
     }
@@ -126,7 +144,10 @@ final class VaultSession {
     /// Corrects a provisional entry to the sequence the actor actually stamped it
     /// with. A no-op if the entry is gone - a concurrent reconciliation already
     /// matched and pruned it by hash, which needs no correction to still be correct.
-    private func reconcileProvisionalSequence(at path: String, provisional: UInt64, actual: UInt64) {
+    ///
+    /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which corrects its
+    /// absence marker to the removal's sequence (ADR-0061 §D6).
+    func reconcileProvisionalSequence(at path: String, provisional: UInt64, actual: UInt64) {
         guard var entries = selfWrittenHashes[path],
               let index = entries.firstIndex(where: { $0.sequence == provisional })
         else { return }
@@ -138,7 +159,10 @@ final class VaultSession {
     /// `WriteRefusal` refuses before a byte moves, and a phantom hash for bytes that
     /// were never written would leak in `selfWrittenHashes` forever (no watcher event
     /// will ever match it, since it was never true).
-    private func removeSelfWrittenEntry(at path: String, sequence: UInt64) {
+    ///
+    /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which rolls its
+    /// absence marker back when the move throws (ADR-0061 §D6).
+    func removeSelfWrittenEntry(at path: String, sequence: UInt64) {
         guard var entries = selfWrittenHashes[path] else { return }
         entries.removeAll { $0.sequence == sequence }
         if entries.isEmpty {

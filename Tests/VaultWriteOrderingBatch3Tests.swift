@@ -80,7 +80,7 @@ func matchedReconciliationPrunesOnlyHashesAtOrBelowItsSequence(matched: UInt64) 
     let changes = await session.reconcile(["N.md"])
 
     #expect(changes.map(\.path) == ["N.md"])
-    #expect(changes.first?.text == external)
+    #expect(changes.first?.content == .text(external))
     #expect(session.selfWrittenHashes["N.md"]?.map(\.sequence) == [1])
     #expect(session.selfWrittenHashes["N.md"]?.map(\.hash) == [ownHash])
 }
@@ -128,7 +128,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
 
     controller.syncOpenNote(with: result)
 
-    #expect(controller.openNote?.externalChangePending == result.text)
+    #expect(controller.openNote?.externalChangePending == .text(result.text))
     #expect(controller.openNote?.text == buffer)
     #expect(controller.openNote?.savedText == original)
 }
@@ -174,7 +174,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
 
     composer.handOff(insertion, notePath: "N.md", result: result)
 
-    #expect(controller.openNote?.externalChangePending == result.text)
+    #expect(controller.openNote?.externalChangePending == .text(result.text))
     #expect(controller.openNote?.text == buffer)
 }
 

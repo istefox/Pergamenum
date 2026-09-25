@@ -52,7 +52,7 @@ private func controller(
     await controller.reconcile(["A.md"])
 
     let backgroundTab = try #require(controller.columns[0].tabs.first)
-    #expect(backgroundTab.note.externalChangePending == note("A, cambiato da un altro scrittore."))
+    #expect(backgroundTab.note.externalChangePending == .text(note("A, cambiato da un altro scrittore.")))
     #expect(backgroundTab.note.text == note("A, non salvato."), "il testo non salvato non viene toccato")
     controller.close()
 }
@@ -106,7 +106,7 @@ private func controller(
     await controller.reconcile(["A.md"])
 
     let backgroundAfter = try #require(controller.tabs.first { $0.id == backgroundID })
-    #expect(backgroundAfter.note.externalChangePending == newText)
+    #expect(backgroundAfter.note.externalChangePending == .text(newText))
     #expect(backgroundAfter.note.text == note("A, non salvato in secondo piano."))
     controller.close()
 }
@@ -125,7 +125,7 @@ private func controller(
     try vault.write(newText, to: "A.md")
     await controller.reconcile(["A.md"])
 
-    #expect(controller.openNote?.externalChangePending == newText)
+    #expect(controller.openNote?.externalChangePending == .text(newText))
     #expect(controller.openNote?.text == note("A, non salvato."))
     controller.close()
 }

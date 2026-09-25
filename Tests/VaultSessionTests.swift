@@ -391,11 +391,11 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nTre.\n", to: "N.md")
     let changes = await session.reconcile(["N.md"])
     #expect(changes.map(\.path) == ["N.md"])
-    #expect(changes.first?.text.contains("Tre.") == true)
+    #expect(changes.first?.content == .text("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nTre.\n"))
 
     // A file that went away leaves the index rather than lingering in it.
     try FileManager.default.removeItem(at: vault.root.appending(path: "N.md"))
-    #expect(await session.reconcile(["N.md"]).isEmpty)
+    #expect(await session.reconcile(["N.md"]) == [VaultSession.ExternalChange(path: "N.md", content: .deleted)])
     #expect(session.index.note(at: "N.md") == nil)
 }
 

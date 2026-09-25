@@ -63,6 +63,11 @@ extension VaultSession {
     /// The note-id registry follows here rather than in `renameNote`/`moveNote` (ADR-0059 §D5):
     /// this is after the dry-run return and after the disk move has succeeded, and it is also
     /// the door a connector undo of a move takes, so the id follows that undo too.
+    ///
+    /// The source path goes into `selfWrittenHashes` under `absenceMarker` (ADR-0061 §D6), so
+    /// the watcher's reconciliation of the path this move vacated is this session's own and
+    /// reports nothing; `movedNote` is the tab's follow-up. `trashFile` below records no such
+    /// marker on purpose: an in-app trash still reaches the watcher as `.deleted` (R-09).
     func moveFile(from oldPath: String, to newPath: String) async throws {
         guard oldPath != newPath else { return }
         guard exists(oldPath) else { throw FileOperationError.missing(oldPath) }
@@ -71,15 +76,26 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
+        // ADR-0061 §D6: the vacated source is this session's own absence, recorded before
+        // the hop like a write's hash (ADR-0041 §D10), so a watcher racing the move never
+        // finds the source gone before this session holds its record of it - otherwise it
+        // is reported `.deleted` and closes the tab `movedNote` is about to follow.
+        let provisional = reserveProvisionalSequence()
+        selfWrittenHashes[oldPath, default: []].append((sequence: provisional, hash: Self.absenceMarker))
+
         // ADR-0043 §D1: the `FileManager.moveItem` and the record derivation on the far
         // side both move inside `VaultDisk`, stamped from that path's own clock.
         let mutations: [VaultDisk.IndexMutation]
         do {
             mutations = try await disk.moveFile(from: oldPath, to: newPath)
         } catch {
+            removeSelfWrittenEntry(at: oldPath, sequence: provisional)
             throw FileOperationError.failed(
                 "spostamento: \(error.localizedDescription)"
             )
+        }
+        if let removal = mutations.first(where: { $0.path == oldPath }) {
+            reconcileProvisionalSequence(at: oldPath, provisional: provisional, actual: removal.sequence)
         }
         apply(mutations)
         relocateNoteIDs([MovedNote(old: oldPath, new: newPath)])

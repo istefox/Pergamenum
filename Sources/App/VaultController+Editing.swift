@@ -7,8 +7,8 @@ import Foundation
 /// Every one of these reaches a buffer through a door that stayed behind with the stored
 /// `columns` - `updateTabs(showing:_:)` for the catch-up after a write, which every tab showing
 /// the path needs (ADR-0058), and `replaceOpenNote` or `updateFocusedTab` for settling the
-/// banner the person clicked - so the rule that a view cannot swap the buffer under the
-/// editor survives the move.
+/// banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0061
+/// §D5) - so the rule that a view cannot swap the buffer under the editor survives the move.
 extension VaultController {
     /// Writes the open note.
     ///
@@ -90,7 +90,7 @@ extension VaultController {
     /// dirty one was never asked (`PG-223`, #461). Each tab decides dirty or clean for
     /// itself through `catchUp(to:)`; no tab's state decides for another.
     func syncOpenNote(with result: VaultSession.WriteResult) {
-        updateTabs(showing: result.path) { $0.note.catchUp(to: result.text) }
+        updateTabs(showing: result.path) { $0.note.catchUp(to: .text(result.text)) }
     }
 
     /// The half of `saveOpenNote()` that runs after the `await` (ADR-0058 §D3).
@@ -116,22 +116,44 @@ extension VaultController {
                 tab.note.savedText = result.text
                 tab.note.externalChangePending = nil
             } else {
-                tab.note.catchUp(to: result.text)
+                tab.note.catchUp(to: .text(result.text))
             }
         }
     }
 
-    /// Resolves an external change the user chose to accept, replacing the buffer.
+    /// Resolves the focused tab's pending external change the way the disk has it - the
+    /// banner's first button, «Ricarica da disco» or «Scarta ed elimina» (ADR-0061 §D5).
+    ///
+    /// - `.text`: the buffer takes the incoming text, which also becomes its saved text.
+    /// - `.deleted`: the unsaved text is discarded and the focused tab closes through
+    ///   `closeTabs(_:ofVanishedNote:)`, the one door for a tab whose file is gone (§D4).
+    ///   Nothing is written: the file stays deleted.
     func acceptExternalChange() {
-        guard var note = openNote, let incoming = note.externalChangePending else { return }
-        note.text = incoming
-        note.savedText = incoming
-        note.externalChangePending = nil
-        replaceOpenNote(note)
+        guard let tab = focusedTab, let pending = tab.note.externalChangePending else { return }
+        switch pending {
+        case .text(let incoming):
+            var note = tab.note
+            note.text = incoming
+            note.savedText = incoming
+            note.externalChangePending = nil
+            replaceOpenNote(note)
+        case .deleted:
+            closeTabs([tab.id], ofVanishedNote: tab.note.relativePath)
+        }
     }
 
-    /// Keeps the in-app version and clears the prompt. The next save overwrites disk.
+    /// Keeps the in-app version and clears the prompt - the banner's second button, «Tieni la
+    /// mia versione» (ADR-0061 §D5).
+    ///
+    /// - `.text`: the buffer is untouched; the next save overwrites the disk.
+    /// - `.deleted`: `savedText` also becomes `""`, the honest answer to «what the disk last
+    ///   held» once it holds nothing. That keeps a non-empty buffer dirty even when it was
+    ///   undone back to its old saved text, so the next save recreates the file and closing
+    ///   the tab asks first, instead of leaving a clean tab on a missing file nothing can save.
     func keepLocalVersion() {
-        updateFocusedTab { $0.note.externalChangePending = nil }
+        updateFocusedTab { tab in
+            if tab.note.externalChangePending == .deleted { tab.note.savedText = "" }
+            tab.note.externalChangePending = nil
+        }
     }
 }

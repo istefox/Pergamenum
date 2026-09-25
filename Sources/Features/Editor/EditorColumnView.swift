@@ -73,7 +73,7 @@ struct EditorColumnView: View {
             // moves when a second arrives (ADR-0012 D1, mockup of 2026-08-19).
             NoteTabBar(columnIndex: columnIndex, onCloseRequested: requestClose)
             if let note = tab?.note {
-                if note.externalChangePending != nil { conflictBanner }
+                if let pending = note.externalChangePending { conflictBanner(pending) }
                 Divider()
                 if find.isOpen {
                     findBar(note)
