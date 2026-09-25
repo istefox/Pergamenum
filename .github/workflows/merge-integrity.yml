@@ -15,6 +15,17 @@ name: Merge integrity
 # Advisory, mai un required check (ADR-0044 §D11): main resta senza branch
 # protection, la disciplina resta l'unica guardia. Il blocco vero è
 # scripts/install-git-hooks.sh, sulla macchina, prima del push — vedi §D3.
+#
+# ADR-0062 (PG-242, issue #535) aggiunge il controllo di landing: uno squash o
+# un rebase non lascia merge commit da ispezionare, quindi si guarda il
+# contenuto che atterrerebbe su main (`--landing BASE HEAD`) e si fallisce su
+# un path che torna a un blob che main aveva già superato. Lo step della PR
+# NON usa pull_request.base.sha come base: GitHub non documenta quando viene
+# aggiornato, e una base stantia attribuirebbe alla PR i landing successivi di
+# main (compresi i suoi ripristini voluti). Risolve invece origin/<base.ref>
+# dentro il job, dopo il checkout con fetch-depth 0 (§D3), e stampa entrambi.
+# Gli step di landing girano anche se lo scan dei merge è rosso (!cancelled()):
+# un fallimento non deve nasconderne un altro (§D7).
 
 on:
   pull_request:
@@ -68,6 +79,40 @@ jobs:
             range="${before}..${after}"
           fi
           python3 scripts/check-merge-integrity.py --range "$range" --verbose
+
+      - name: Check landing (pull_request)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse --verify "refs/remotes/origin/$BASE_REF")"
+          git --version
+          echo "base.sha dell'evento: $PR_BASE_SHA"
+          echo "base risolta (origin/$BASE_REF): $base"
+          python3 scripts/check-merge-integrity.py --landing "$base" "$PR_HEAD_SHA"
+
+      - name: Check landing (push to main)
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+          PUSH_FORCED: ${{ github.event.forced }}
+        run: |
+          set -euo pipefail
+          before="$PUSH_BEFORE"
+          after="$PUSH_AFTER"
+          forced="$PUSH_FORCED"
+          if [ "$before" = "0000000000000000000000000000000000000000" ] || [ "$forced" = "true" ]; then
+            # Stesso ripiego dello step dei merge: "before" non è un antenato
+            # affidabile, si valuta il solo commit in punta sul suo primo genitore.
+            base="$(git rev-parse "${after}^1")"
+          else
+            base="$before"
+          fi
+          python3 scripts/check-merge-integrity.py --landing "$base" "$after"
 
       - name: Check merge integrity (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
