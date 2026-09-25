@@ -91,6 +91,20 @@ extension VaultSession {
         changeNoteIDs(paths: paths) { $0.removing(paths) }
     }
 
+    /// The id `relativePath` has now, without ever minting one; nil when it has none or the
+    /// registry cannot be read. What `trashFile` records before it forgets.
+    func existingNoteID(for relativePath: String) -> String? {
+        let (registry, state) = noteIDStore.load()
+        guard state == .absent || state == .loaded else { return nil }
+        return registry.id(forPath: relativePath)
+    }
+
+    /// Puts back the id a trash forgot, once an undo has written the note back at the same
+    /// path (ADR-0059 §D6), so a link copied before the trash resolves again.
+    func restoreNoteID(_ id: String, to relativePath: String) {
+        changeNoteIDs(paths: [relativePath]) { $0.assigning(id, to: relativePath) }
+    }
+
     /// The four steps every changing door shares (§D3): read the file now rather than
     /// trust a copy, apply one pure change, and save only when it changed something.
     /// `paths` only names what the refusal sentence is about.

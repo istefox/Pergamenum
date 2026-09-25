@@ -490,7 +490,8 @@ can add it on top of `lookUpNote(id:)`.
 - **Entries at dead paths are never pruned** (§D5). If a note is deleted outside the app and a new
   note is later created at the same path by any means other than a move, the new note inherits the
   old id. A move onto that path clears it (§D4).
-- **A connector undo of a trash restores the note without its id** (§D6).
+- **A connector undo of a trash restores the note without its id** (§D6). Closed later, see
+  Implementation note 6.
 - **Two Macs minting at the same moment** produce an iCloud conflict copy of `note-ids.json`. The
   app does not merge it. `VaultState.conflictCopies(of:in:)` already detects that shape for
   other files, and a follow-up could report it.
@@ -671,3 +672,16 @@ session's, so one copy lands two sentences in the same list. A failed save does 
 is applied as written, and the plan's "a problem is recorded" simply undercounted. Test 33
 (`copyLinkWithAMalformedRegistryFallsBackToThePathLinkAndRecordsAProblem`) asserts the path link
 and a problem that names `note-ids.json`. It does not assert a count.
+
+### 6. A connector undo of a trash now puts the id back (PG-235, #523)
+
+§D6 and the Negative consequences named this gap and left it open. It is closed without changing
+§D6's rule: a trash still forgets. `trashFile` reads the id the path has just before
+`forgetNoteIDs` and stores it in the removal's journal entry, in a new optional field `idBefore`.
+It is optional like ADR-0016's three, so journal lines already on disk decode unchanged.
+`performUndo`'s removal branch writes the text back and then calls `restoreNoteID(_:to:)`, which
+goes through the same load/change/save door as every other registry change (§D3). The undo gets
+the **same** id back, not a freshly minted one, so a link copied before the trash resolves again.
+A note that had no id gets none. `preflightRemoval` already refuses when the path is occupied, so
+the restored id cannot land on a different note. Folder trash is not journalled (ADR-0022) and
+stays outside this.
