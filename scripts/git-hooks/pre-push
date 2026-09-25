@@ -18,7 +18,8 @@
 # old tip when pushing main itself, otherwise refs/remotes/<remote>/main, with
 # <remote> read from $1 rather than hardcoded. A base that cannot be resolved
 # locally, or a checkout whose checker predates --landing, prints a notice and
-# skips the landing check instead of blocking: never fail a push the hook
+# skips the landing check instead of blocking — and, since PG-244, the merge
+# scan of a brand-new remote ref does the same: never fail a push the hook
 # cannot evaluate. The hook does not fetch; see ADR-0062 §D5 for why a stale
 # remote-tracking ref costs no detection in the shape this check exists for.
 #
@@ -45,13 +46,25 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         continue  # deleting a remote ref: nothing is being pushed
     fi
     if [ "$remote_sha" = "$zero" ]; then
-        range="origin/main..$local_sha"
+        # A brand-new remote ref: scan against the remote's main rather than the
+        # full history (ADR-0061 §D3). PG-244: that ref was hardcoded as
+        # origin/main, and when it is absent git rev-list failed and blocked the
+        # push; now it follows $1 and a missing one skips with a notice.
+        range_base="refs/remotes/$remote_name/main"
+        if git rev-parse --verify --quiet "$range_base^{commit}" >/dev/null; then
+            range="$range_base..$local_sha"
+        else
+            range=""
+            echo "pre-push: AVVISO — base $range_base non disponibile in locale, scan dei merge saltato per $remote_ref"
+        fi
     else
         range="$remote_sha..$local_sha"
     fi
-    echo "pre-push: check-merge-integrity su $range ($remote_ref)"
-    if ! python3 "$checker" --range "$range"; then
-        merge_failed=1
+    if [ -n "$range" ]; then
+        echo "pre-push: check-merge-integrity su $range ($remote_ref)"
+        if ! python3 "$checker" --range "$range"; then
+            merge_failed=1
+        fi
     fi
 
     # --- landing check (ADR-0062) ---

@@ -171,7 +171,10 @@ stock `*.sample` files before this chain, and one install covers every worktree.
 The hook reads `<local_ref> <local_sha> <remote_ref> <remote_sha>` per line from stdin
 and checks `<remote_sha>..<local_sha>` (falling back to `origin/main..<local_sha>` on a
 brand-new remote ref, rather than scanning the full history — 434 `merge-tree` calls take
-roughly a minute and a half locally, which is not acceptable push latency). If the checker
+roughly a minute and a half locally, which is not acceptable push latency). *Amended
+2026-09-25 (PG-244):* the fallback base is `refs/remotes/<remote>/main`, with `<remote>` read
+from the hook's `$1`; when that ref does not resolve locally the merge scan prints a notice
+and is skipped, instead of failing inside `git rev-list` and blocking the push. If the checker
 script is missing from the pushing worktree's checkout (an older commit, from before this
 guard existed), the hook exits 0 rather than failing a push it cannot evaluate.
 

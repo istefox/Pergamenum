@@ -26,6 +26,13 @@ name: Merge integrity
 # dentro il job, dopo il checkout con fetch-depth 0 (§D3), e stampa entrambi.
 # Gli step di landing girano anche se lo scan dei merge è rosso (!cancelled()):
 # un fallimento non deve nasconderne un altro (§D7).
+#
+# Una base di landing che non si risolve nel job (origin/<base.ref> assente, o
+# un commit radice senza genitore) stampa un ::warning:: e salta lo step, come
+# fa l'hook: mai un rosso per un landing che non si può valutare (PG-247).
+# Il lancio manuale guarda il branch rispetto a origin/main, come una PR: una
+# finestra fissa sulla storia di main (era origin/main~200..HEAD) conteneva il
+# caso storico 14d8851 e finiva rossa a ogni lancio (PG-245).
 
 on:
   pull_request:
@@ -88,7 +95,10 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          base="$(git rev-parse --verify "refs/remotes/origin/$BASE_REF")"
+          if ! base="$(git rev-parse --verify --quiet "refs/remotes/origin/$BASE_REF^{commit}")"; then
+            echo "::warning::base origin/$BASE_REF non disponibile nel job, controllo di landing saltato"
+            exit 0
+          fi
           git --version
           echo "base.sha dell'evento: $PR_BASE_SHA"
           echo "base risolta (origin/$BASE_REF): $base"
@@ -108,7 +118,10 @@ jobs:
           if [ "$before" = "0000000000000000000000000000000000000000" ] || [ "$forced" = "true" ]; then
             # Stesso ripiego dello step dei merge: "before" non è un antenato
             # affidabile, si valuta il solo commit in punta sul suo primo genitore.
-            base="$(git rev-parse "${after}^1")"
+            if ! base="$(git rev-parse --verify --quiet "${after}^1")"; then
+              echo "::warning::${after} non ha un primo genitore, controllo di landing saltato"
+              exit 0
+            fi
           else
             base="$before"
           fi
@@ -118,4 +131,15 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
-          python3 scripts/check-merge-integrity.py --range "origin/main~200..HEAD" --verbose
+          python3 scripts/check-merge-integrity.py --range "origin/main..HEAD" --verbose
+
+      - name: Check landing (manual dispatch)
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          if ! base="$(git rev-parse --verify --quiet "refs/remotes/origin/main^{commit}")"; then
+            echo "::warning::base origin/main non disponibile nel job, controllo di landing saltato"
+            exit 0
+          fi
+          echo "base risolta (origin/main): $base"
+          python3 scripts/check-merge-integrity.py --landing "$base" HEAD
