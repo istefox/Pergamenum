@@ -5,7 +5,7 @@ import Testing
 /// PG-131: `forgetAll()` and `clearCacheOnDisk()` had zero callers before `VaultController
 /// .clearCache()` was wired to call both. These pin the disk half directly - `forgetAll()`'s
 /// body is one line (`tasks.removeAll()`) and is exercised through the wiring test instead.
-@Test func clearCacheOnDiskRemovesEveryRenderedThumbnail() throws {
+@Test func clearCacheOnDiskRemovesEveryRenderedThumbnail() async throws {
     let root = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-thumb-root-\(UUID().uuidString)", directoryHint: .isDirectory)
     let cacheDirectory = FileManager.default.temporaryDirectory
@@ -27,7 +27,7 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: cacheDirectory.path(percentEncoded: false)))
 }
 
-@Test func clearCacheOnDiskIsANoOpWhenNothingWasEverRendered() throws {
+@Test func clearCacheOnDiskIsANoOpWhenNothingWasEverRendered() async throws {
     let root = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-thumb-root-\(UUID().uuidString)", directoryHint: .isDirectory)
     let cacheDirectory = FileManager.default.temporaryDirectory
