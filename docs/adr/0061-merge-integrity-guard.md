@@ -219,6 +219,8 @@ a merge commit for either the pre-push hook or the PR-time job to see. Named her
 deliberately not fixed in this chain — the mitigation (diffing a PR's net change against
 what the fork point actually reverted) is a different, heavier check and is out of scope.
 
+**Closed by ADR-0062** (the landing check): `docs/adr/0062-landing-check-closes-the-squash-gap.md`.
+
 ### §D6 — A second wholesale-ours merge was found, and is not folded into this fix
 
 `7b984f1` ("Merge remote-tracking branch 'origin/main' into

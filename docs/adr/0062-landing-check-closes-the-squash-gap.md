@@ -1,6 +1,6 @@
 # ADR-0062: A landing that restores a version `main` already moved past is refused, whatever the merge method
 
-- Status: proposed. Accepted when the implementing PR merges.
+- Status: accepted. The implementing PR, #541, merged on 2026-09-25 as `fa08cb9`.
 - Date: 2026-09-25. Every count below comes from a read-only walk of `main` at `e5ba01a`
   (412 first-parent landings) in the design session: `git log --first-parent --raw
   --no-abbrev --no-renames` over the whole line, filtered by a throwaway text filter. **Not**
@@ -572,10 +572,27 @@ the merge-check refusal. That contradicts ADR-0061's own "never fail a push it c
 evaluate". It predates this chain, and the plan keeps the merge scan unchanged. It is worth a
 small issue of its own.
 
-### Still open, HITL
+### Follow-ups after merge (PG-246, 2026-09-25)
 
-- `gh api repos/istefox/Pergamenum --jq '.squash_merge_commit_message'` (§D6 post-hoc
-  caveat) has **not** been checked. It needs an authenticated call and is Stefano's check.
-- Every machine with the ADR-0061 hook must run `scripts/install-git-hooks.sh --force` after
-  merge. The installed hook in this repository's common dir is still the ADR-0061 copy, so
-  every run of the checker from this checkout prints the stale-hook warning until then.
+All three HITL items this chain left open are closed. Nothing is still open.
+
+- **`squash_merge_commit_message` is `COMMIT_MESSAGES`.** Checked with an authenticated
+  `gh api repos/istefox/Pergamenum` on 2026-09-25. That is the favourable value, and §D6's
+  post-hoc caveat does not fire. A GitHub squash copies every branch commit's message into
+  the squashed commit, so a `Restore-override:` block written on a PR commit reaches `main`.
+  The `push: main` step then reads it and does not report the overridden restore again. In
+  that concatenation the block sits in a middle paragraph, not in the final trailer
+  paragraph. `parse_overrides` scans every line of the message, not only git's trailer block,
+  so the position does not matter. A real squash on `main` (`c41df79`, #455) shows that GitHub
+  prefixes each commit subject with `* ` and leaves body lines at column 0. A third L6
+  self-test case pins the concatenated shape.
+- **The installed hook is current.** `scripts/install-git-hooks.sh --force` was run after the
+  merge. The hook in the common dir is byte-identical to `scripts/git-hooks/pre-push`, and
+  `--landing` no longer prints `AVVISO HOOK`. Every *other* machine with the ADR-0061 hook
+  still needs the same command.
+- **Open question 1, branch protection: decided no.** Stefano decided on 2026-09-25 to keep
+  ADR-0044 §D11 as it is. `main` stays unprotected, and `merge-integrity.yml` stays advisory.
+  The pre-push hook stays the only blocking gate. At the time of the decision the live
+  settings showed no branch protection and no rulesets.
+- **Open question 3, the forward pointer: accepted.** ADR-0061 §D5 now ends with a single
+  line pointing here. The rest of ADR-0061's body is untouched.
