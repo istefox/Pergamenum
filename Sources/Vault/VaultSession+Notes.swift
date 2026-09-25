@@ -160,9 +160,16 @@ extension VaultSession {
 
     /// Creates a structural link in both directions (wikilink.md W-05).
     ///
-    /// Atomic by construction: both files are rendered in memory first and neither is
-    /// written unless both can be. A half-created link is worse than none, because the
-    /// linter would then report a discrepancy the app itself caused.
+    /// Both files are rendered in memory first, so a link neither side can take - an
+    /// unreadable file, a render that refuses - writes nothing. A half-created link is worse
+    /// than none, because the linter would then report a discrepancy the app itself caused.
+    ///
+    /// **Not atomic across the two writes** (ADR-0057 §D8, #496). Each write carries
+    /// `expecting:` its own file's read hash, so a writer landing between a read and its
+    /// write is refused rather than overwritten. A refusal on the first write leaves both
+    /// files untouched; a refusal on the second leaves the source already linked and the
+    /// target not - named in the problem list, not rolled back, since the rollback would be
+    /// one more guarded write that can itself be refused.
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
@@ -193,8 +200,21 @@ extension VaultSession {
                 to: target.text, selfTitle: target.record.title
             )
 
-            try await write(updatedSource, to: sourcePath)
-            try await write(updatedTarget, to: targetPath)
+            do {
+                try await write(updatedSource, to: sourcePath, expecting: source.record.contentHash)
+            } catch let refusal as VaultSession.WriteRefusal {
+                recordProblem("legame strutturale non scritto: \(refusal)")
+                return false
+            }
+            do {
+                try await write(updatedTarget, to: targetPath, expecting: target.record.contentHash)
+            } catch let refusal as VaultSession.WriteRefusal {
+                recordProblem(
+                    "legame strutturale scritto a metà: «\(sourcePath)» punta a «\(targetPath)», "
+                        + "ma il ritorno no - \(refusal)"
+                )
+                return false
+            }
             return true
         } catch {
             recordProblem("legame strutturale: \(error)")
