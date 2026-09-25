@@ -2,8 +2,16 @@
 #
 # Installs scripts/git-hooks/pre-push into this repository's shared hooks
 # directory, so a merge that silently overrides a parent's content (PG-240,
-# ADR-0061) is refused before it leaves the machine, not just reported after
-# the fact by the advisory merge-integrity.yml workflow.
+# ADR-0061) and a landing that puts a path back to a version main already
+# moved past, squashed or rebased included (PG-242, ADR-0062), are refused
+# before they leave the machine, not just reported after the fact by the
+# advisory merge-integrity.yml workflow.
+#
+# The hook is copied, not linked: a machine that installed the ADR-0061 hook
+# keeps running that copy, without the landing check, until this is rerun with
+# --force (the installer cannot tell its own older copy from a foreign hook, so
+# it refuses a differing one without it). check-merge-integrity.py warns on
+# every run while the installed copy differs from scripts/git-hooks/pre-push.
 #
 # git worktrees share one hooks directory (the common dir), so running this
 # once from any worktree covers all of them.
