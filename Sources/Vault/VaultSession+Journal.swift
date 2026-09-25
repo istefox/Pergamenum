@@ -137,7 +137,7 @@ extension VaultSession {
     ///
     /// The note's id is forgotten here, after the dry-run return and once the trash has
     /// succeeded (ADR-0059 §D5/§D6), so a later note created at this path never inherits an
-    /// old link. An undo writes the text back, not the registry line.
+    /// old link. The forgotten id travels in the entry's `idBefore`, and an undo puts it back.
     func trashFile(at relativePath: String) async throws {
         guard exists(relativePath) else {
             throw FileOperationError.missing(relativePath)
@@ -159,6 +159,7 @@ extension VaultSession {
             )
         }
         apply([mutation])
+        let idBefore = existingNoteID(for: relativePath)
         forgetNoteIDs([relativePath])
         selfWrittenHashes.removeValue(forKey: relativePath)
 
@@ -171,7 +172,8 @@ extension VaultSession {
             textBefore: data.flatMap { String(data: $0, encoding: .utf8) },
             command: journalCommand,
             operation: currentOperation,
-            kind: .removal
+            kind: .removal,
+            idBefore: idBefore
         ))
     }
 
@@ -341,6 +343,9 @@ extension VaultSession {
                         continue
                     }
                     try await write(textBefore, to: entry.path)
+                    if let idBefore = entry.idBefore {
+                        restoreNoteID(idBefore, to: entry.path)
+                    }
                     changed.append(entry.path)
                 case .move:
                     guard let pathBefore = entry.pathBefore else {

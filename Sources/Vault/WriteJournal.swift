@@ -65,6 +65,9 @@ struct WriteJournal {
         var storedKind: Kind?
         /// Where a moved file came from. Nil for anything that did not move.
         var pathBefore: String?
+        /// The note id a removal forgot (ADR-0059 §D6), so undoing the trash puts the same id
+        /// back. Nil for anything but a removal, and for a note that never had an id.
+        var idBefore: String?
 
         var kind: Kind { storedKind ?? .textReplacement }
 
@@ -76,6 +79,7 @@ struct WriteJournal {
             case operation
             case storedKind = "kind"
             case pathBefore
+            case idBefore
         }
 
         /// Written out rather than synthesised so the three ADR-0016 fields carry defaults: the
@@ -85,7 +89,8 @@ struct WriteJournal {
         init(
             id: String, timestamp: Date, path: String,
             hashBefore: String?, hashAfter: String, textBefore: String?, command: String,
-            operation: String? = nil, kind: Kind? = nil, pathBefore: String? = nil
+            operation: String? = nil, kind: Kind? = nil, pathBefore: String? = nil,
+            idBefore: String? = nil
         ) {
             self.id = id
             self.timestamp = timestamp
@@ -97,6 +102,7 @@ struct WriteJournal {
             self.operation = operation
             self.storedKind = kind
             self.pathBefore = pathBefore
+            self.idBefore = idBefore
         }
     }
 

@@ -228,6 +228,49 @@ private func openSession(_ vault: borrowing TemporaryVault, notes paths: [String
     #expect(rawPath(forID: seedID, in: registryAfterUndo) == "Nota.md")
 }
 
+// MARK: 21b. A connector trash, then `VaultAPI.undo`, puts the same id back (#523)
+
+@MainActor
+@Test func aConnectorTrashFollowedByUndoRestoresTheSameId() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openSession(vault, notes: ["Nota.md", "Altra.md"])
+    try seedRegistry(root: vault.root, [seedID: "Nota.md", seedID2: "Altra.md"])
+
+    VaultAPI.arm(session, command: "trash_note", dryRun: false)
+    _ = try await VaultAPI.trashNote(session, at: "Nota.md")
+
+    let registryAfterTrash = try decodeRegistry(root: vault.root)
+    #expect(rawPath(forID: seedID, in: registryAfterTrash) == nil)
+
+    let operation = try #require(session.journalOnDisk.entries().last?.operation)
+    VaultAPI.arm(session, command: "undo_write", dryRun: false)
+    _ = try await VaultAPI.undo(session, id: operation)
+
+    let registryAfterUndo = try decodeRegistry(root: vault.root)
+    #expect(rawPath(forID: seedID, in: registryAfterUndo) == "Nota.md")
+    #expect(rawPath(forID: seedID2, in: registryAfterUndo) == "Altra.md")
+    #expect(registryAfterUndo.notes.count == 2)
+}
+
+// MARK: 21c. Undoing the trash of a note that never had an id mints none
+
+@MainActor
+@Test func undoingTheTrashOfANoteWithNoIdLeavesItWithoutOne() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openSession(vault, notes: ["Nota.md", "Altra.md"])
+    try seedRegistry(root: vault.root, [seedID2: "Altra.md"])
+
+    VaultAPI.arm(session, command: "trash_note", dryRun: false)
+    _ = try await VaultAPI.trashNote(session, at: "Nota.md")
+    let operation = try #require(session.journalOnDisk.entries().last?.operation)
+    VaultAPI.arm(session, command: "undo_write", dryRun: false)
+    _ = try await VaultAPI.undo(session, id: operation)
+
+    let registry = try decodeRegistry(root: vault.root)
+    #expect(rawID(forPath: "Nota.md", in: registry) == nil)
+    #expect(registry.notes == [seedID2: "Altra.md"])
+}
+
 // MARK: 22. A dry run leaves the registry bytes as they were (GREEN: nothing writes yet)
 
 @MainActor
