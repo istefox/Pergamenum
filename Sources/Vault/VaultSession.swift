@@ -221,6 +221,13 @@ final class VaultSession {
 
         problems.append(contentsOf: state.migrateIfNeeded(from: privateDirectory, root: root))
 
+        // Two Macs minting an id at the same moment can leave an iCloud conflict copy
+        // beside `note-ids.json` - `migrateIfNeeded` never looks at this name, since it
+        // only walks files it is migrating away. Checked on every open, not once like a
+        // migration step, since the copy can appear at any later sync (ADR-0059 §D3,
+        // PG-236/#524).
+        problems.append(contentsOf: VaultState.conflictCopies(of: VaultLayout.noteIDsFile, in: privateDirectory))
+
         loadVocabulary()
         starred = starredStore.load()
 
