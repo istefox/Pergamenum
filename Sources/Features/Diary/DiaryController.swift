@@ -145,12 +145,48 @@ final class DiaryController {
         }
     }
 
+    /// An external write reached the day currently open (ADR-0057 §D8, #495). Ignored for
+    /// any other day, while conflicted (the conflict already pins the pane, §D6), and when
+    /// the text is what `origin` already says the file holds. Otherwise:
+    ///
+    /// - **nothing owed** → re-read, so a clean pane shows the change at once;
+    /// - **owed, nothing in flight** → conflict now, rather than silently dropping the
+    ///   edit or silently dropping the change, instead of waiting for the next write to be
+    ///   refused into the same conflict;
+    /// - **owed, a write queued or in flight** → nothing here. That write carries the
+    ///   precondition and refuses into the conflict itself; entering it from here could be
+    ///   undone by a write that landed before the change and then marks the day saved.
+    func handleExternalChange(path: String, text: String) {
+        guard path == vault.diaryNotePath(for: day) else { return }
+        if case .conflicted = saveState { return }
+        if case .read(_, .present(let hash)) = origin, NoteStore.hash(Data(text.utf8)) == hash { return }
+        switch saveState {
+        case .saved:
+            reload()
+        case .pending where runner == nil:
+            enterConflict()
+        case .pending, .conflicted:
+            return
+        }
+    }
+
     /// Writes now, if there is anything to write. Called when the pane goes away, when
     /// the app stops being frontmost, and before changing day. Does nothing while
     /// conflicted: a retry per keystroke would refuse per keystroke.
     func flush() {
         cancelScheduledSave()
         save()
+    }
+
+    /// Flushes and waits for every pending write to land, for the app-quit path (ADR-0057
+    /// §D8, #497): `willTerminateNotification` is the last notification before the process
+    /// exits, too late to delay anything, so `applicationShouldTerminate` awaits this instead.
+    /// Loops rather than awaiting once: an operation queued after a runner finished starts a new one.
+    func settle() async {
+        flush()
+        while let runner {
+            await runner.value
+        }
     }
 
     private func scheduleSave() {

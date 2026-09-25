@@ -48,13 +48,12 @@ struct DiaryView: View {
             boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
         }
         // Every way out of this pane writes the day: switching pane takes the view
-        // away, and quitting or clicking on another app does not go through here at
-        // all. A diary that loses the last sentence typed is not a diary.
+        // away, and clicking on another app does not go through here at all. A diary
+        // that loses the last sentence typed is not a diary. Quitting is not here: it is
+        // `AppDelegate.applicationShouldTerminate`, which waits for the write to land
+        // (ADR-0057 §D8, #497) where a flush on `willTerminateNotification` only started it.
         .onDisappear { controller.flush() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
-            controller.flush()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             controller.flush()
         }
         .sheet(isPresented: Bindable(controller).isChoosingDate) {

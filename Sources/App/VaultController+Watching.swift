@@ -39,6 +39,8 @@ extension VaultController {
                     tab.note.savedText = change.text
                 }
             }
+            // And the Diario pane, which is not a tab (ADR-0057 §D8, #495).
+            didObserveExternalChange?(change.path, change.text)
         }
     }
 }

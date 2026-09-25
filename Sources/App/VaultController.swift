@@ -138,6 +138,13 @@ final class VaultController {
     /// really went to the Trash. `nil` in every test that builds a bare `VaultController`.
     @ObservationIgnored var didTrashFolder: ((String) -> Void)?
 
+    /// Every external change `reconcile(_:)` hands the editor's tabs, handed here too as
+    /// (vault-relative path, new text) - wired by `PergamenumApp.init` to the Diario pane,
+    /// the one in-memory holder of a `.md` outside the tab model (ADR-0057 §D8, #495). The
+    /// watcher already reaches diary files; what was missing was this fan-out. `nil` in
+    /// every test that builds a bare `VaultController`.
+    @ObservationIgnored var didObserveExternalChange: ((String, String) -> Void)?
+
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()
