@@ -64,8 +64,10 @@ extension VaultController {
     /// The tags the editor offers after a `#`, most useful first.
     var tagSuggestions: [String] { session?.tagSuggestions ?? [] }
 
-    /// Creates a structural link in both directions (wikilink.md W-05), and puts the
-    /// editor back in step when it is showing the note that gained one.
+    /// Creates a structural link in both directions (wikilink.md W-05), and catches up every
+    /// tab showing either note, in every column, with each write that landed (ADR-0058 §D5).
+    /// A dirty buffer gets the prompt rather than being replaced: the link is built from the
+    /// text on disk, and the unsaved edits are the person's to keep or drop.
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
@@ -74,13 +76,10 @@ extension VaultController {
         reverseReason: String
     ) async -> Bool {
         guard let session else { return false }
-        let created = await session.addStructuralLink(
+        let (created, written) = await session.addStructuralLink(
             from: sourcePath, to: targetTitle, reason: reason, reverseReason: reverseReason
         )
-        // `reloadFocusedNote` and not `openNote(at:)`: this is a re-read of a note that is
-        // already open, and opening it now means focusing its tab, which would leave the
-        // editor showing the text from before the link was written.
-        if created, openNote?.relativePath == sourcePath { reloadFocusedNote() }
+        for result in written { syncOpenNote(with: result) }
         return created
     }
 
