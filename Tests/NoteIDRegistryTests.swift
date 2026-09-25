@@ -157,3 +157,25 @@ private let seedID = "3f2c9a4e-8b1d-4c67-9e2a-5d1b7c0e4f13"
 
     #expect(NoteIDStore(root: vault.root).load().state == .evicted)
 }
+
+// MARK: 12. iCloud conflict copy (PG-236/#524)
+
+/// Two Macs minting an id at the same moment can leave an iCloud conflict copy beside
+/// `note-ids.json` - `NoteIDStore.load()` never looks past the one file it reads, so
+/// nothing previously reported this. `VaultSession` now runs the same detection
+/// `migrateIfNeeded` already uses for `cache.db`/`thumbnails`/`history`/`ai-journal`.
+@MainActor
+@Test func aNoteIDsConflictCopyIsReportedAndLeftAlone() throws {
+    let vault = try TemporaryVault()
+    try vault.write(#"{"version":1,"notes":{}}"#, to: ".pergamenum/note-ids.json")
+    try vault.write(#"{"version":1,"notes":{"\#(seedID)":"Nota.md"}}"#, to: ".pergamenum/note-ids 2.json")
+
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+
+    #expect(session.problems.contains { $0.contains("note-ids 2.json") })
+    // Left alone, not merged or deleted: the same policy `conflictCopies` already
+    // documents for the other files it detects (ADR-0017 §D3).
+    #expect(FileManager.default.fileExists(
+        atPath: vault.root.appending(path: ".pergamenum/note-ids 2.json").path(percentEncoded: false)
+    ))
+}
