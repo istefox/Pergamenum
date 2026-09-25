@@ -11,6 +11,40 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set by the App at launch; the delegate is created before it exists.
     weak var vault: VaultController?
+    /// Set beside `vault`, for the same reason: the quit path below waits on it.
+    weak var diary: DiaryController?
+
+    /// Holds quit until the Diario's owed writes have landed (ADR-0057 §D8, #497).
+    /// `willTerminateNotification` fires after the decision to exit, so a flush started
+    /// there is an async write nothing waits for. Capped at two seconds: a disk that does
+    /// not answer must not turn «Esci» into a hang.
+    ///
+    /// Two independent tasks rather than a task group: a group waits for every child when
+    /// it ends, and `settle()` awaits a write that ignores cancellation, so a group would
+    /// wait out a hung write and the cap would cap nothing. Whichever finishes first
+    /// replies; `replyToTerminate()` makes the second a no-op.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let diary, !diary.isSettled else { return .terminateNow }
+        owesTerminateReply = true
+        Task { [weak self] in
+            await diary.settle()
+            self?.replyToTerminate()
+        }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            self?.replyToTerminate()
+        }
+        return .terminateLater
+    }
+
+    /// True between a `.terminateLater` and its one reply.
+    private var owesTerminateReply = false
+
+    private func replyToTerminate() {
+        guard owesTerminateReply else { return }
+        owesTerminateReply = false
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         let routes = urls.compactMap(PergamenumRoute.init)
@@ -216,7 +250,10 @@ struct PergamenumApp: App {
                 // «Pergamenum» exactly on the seam between the two columns - and the note you
                 // are looking at is named on its tab, one row below, where it belongs.
                 .toolbar(removing: .title)
-                .onAppear { appDelegate.vault = vault }
+                .onAppear {
+                    appDelegate.vault = vault
+                    appDelegate.diary = diary
+                }
                 // Not in `init`: window work and `NSApp` must not happen while the app
                 // is still coming up, and neither the theme nor the vault the panel
                 // reads exists there yet.
