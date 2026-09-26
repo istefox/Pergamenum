@@ -300,3 +300,80 @@ import Testing
         #expect(parsed.frontmatter.pendingAttachmentNames == [nameWithQuote])
     }
 }
+
+// ADR-0065 (Every on-disk format round-trips faithfully or is refused), plan
+// docs/plans/format-edge-hardening.md, Task 5 - R-14, R-15, G1.5.
+
+@Suite struct MessageDocumentExactnessTests {
+    private static func document(subject: String = "Offerta", date: Date, dateOffset: Int?) -> MessageDocument {
+        MessageDocument(
+            frontmatter: .init(
+                schemaVersion: 1, messageID: "<abc@rossi-spa.it>", conversationID: nil, direction: .received,
+                date: date, dateOffset: dateOffset, received: date, from: "m.rossi@rossi-spa.it",
+                to: [], cc: [], subject: subject, attachments: [], body: .complete, original: nil
+            ),
+            newText: "Corpo.", quotedHistory: nil, signature: nil
+        )
+    }
+
+    /// 2026-09-26T01:00:00Z - built from its text so no local zone is involved (plan Rule 3).
+    private static func instant() throws -> Date {
+        try #require(ISO8601DateFormatter().date(from: "2026-09-26T01:00:00Z"))
+    }
+
+    private static func render(_ document: MessageDocument) throws -> String {
+        MessageDocument.render(document, tags: [try #require(Tag("type-note"))])
+    }
+
+    private static func line(_ key: String, in text: String) -> String? {
+        text.components(separatedBy: "\n").first { $0.hasPrefix("\(key):") }
+    }
+
+    // MARK: R-14 - `unquoted` is the exact inverse of `quoted`
+
+    @Test func aBackslashNSubjectRoundTrips() throws {
+        let subject = #"C:\nuovo"#
+        let text = try Self.render(Self.document(subject: subject, date: Self.instant(), dateOffset: nil))
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.subject == subject)
+        #expect(try Self.render(parsed) == text)
+    }
+
+    @Test(arguments: ["a\"b", #"x\y"#, #"x\\y"#, "riga\nriga", #"a\nb"#, #"fine\"#, #"\t"#, "\t"])
+    func escapeAndUnescapeAreInverses(_ subject: String) throws {
+        let text = try Self.render(Self.document(subject: subject, date: Self.instant(), dateOffset: nil))
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.subject == subject)
+    }
+
+    // MARK: R-15 - the date is written in the sender's offset, never the machine's
+
+    @Test func theMailDateCarriesTheSendersOffset() throws {
+        let text = try Self.render(Self.document(date: Self.instant(), dateOffset: 32400))
+        #expect(Self.line("pergamenum-mail-date", in: text) == "pergamenum-mail-date: 2026-09-26T10:00:00+09:00")
+    }
+
+    @Test func theMailDateWithoutAnOffsetIsUTC() throws {
+        let text = try Self.render(Self.document(date: Self.instant(), dateOffset: nil))
+        #expect(Self.line("pergamenum-mail-date", in: text) == "pergamenum-mail-date: 2026-09-26T01:00:00Z")
+    }
+
+    @Test func theMailDateSurvivesParseAndRender() throws {
+        let text = try Self.render(Self.document(date: Self.instant(), dateOffset: 32400))
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.dateOffset == 32400)
+        #expect(parsed.frontmatter.date == (try Self.instant()))
+        #expect(try Self.render(parsed) == text)
+
+        let utc = try Self.render(Self.document(date: Self.instant(), dateOffset: nil))
+        let parsedUTC = try #require(MessageDocument.parse(utc))
+        #expect(parsedUTC.frontmatter.dateOffset == nil)
+        #expect(try Self.render(parsedUTC) == utc)
+    }
+
+    @Test func receivedIsWrittenInUTC() throws {
+        let text = try Self.render(Self.document(date: Self.instant(), dateOffset: 32400))
+        let received = try #require(Self.line("pergamenum-mail-received", in: text))
+        #expect(received == "pergamenum-mail-received: 2026-09-26T01:00:00Z")
+    }
+}

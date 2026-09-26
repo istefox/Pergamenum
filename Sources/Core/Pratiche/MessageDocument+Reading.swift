@@ -25,6 +25,7 @@ extension MessageDocument {
                 // A message whose date this app cannot read still has to be findable by
                 // its `Message-ID`: it sorts to the beginning rather than disappearing.
                 date: scalar("pergamenum-mail-date", lines).flatMap(isoDate) ?? .distantPast,
+                dateOffset: scalar("pergamenum-mail-date", lines).flatMap(isoOffset),
                 received: scalar("pergamenum-mail-received", lines).flatMap(isoDate),
                 from: scalar("pergamenum-mail-from", lines).map(unquoted) ?? "",
                 to: list("pergamenum-mail-to", lines),
@@ -53,6 +54,19 @@ extension MessageDocument {
         if let date = formatter.date(from: text) { return date }
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: text)
+    }
+
+    /// The offset a stored date was written in (ADR-0065 §D8.2): `±hh:mm` as seconds east of
+    /// UTC, and `Z` - or a zero offset, which renders as `Z` - as `nil`, so render → parse →
+    /// render stays identical.
+    private static func isoOffset(_ text: String) -> Int? {
+        let zone = text.suffix(6)
+        guard zone.count == 6, let sign = zone.first, sign == "+" || sign == "-",
+              zone[zone.index(zone.startIndex, offsetBy: 3)] == ":",
+              let hours = Int(zone.dropFirst().prefix(2)), let minutes = Int(zone.suffix(2))
+        else { return nil }
+        let seconds = (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60)
+        return seconds == 0 ? nil : seconds
     }
 
     private static func scalar(_ key: String, _ lines: [String]) -> String? {
@@ -138,12 +152,33 @@ extension MessageDocument {
         return pieces
     }
 
+    /// The exact inverse of `quoted()` (ADR-0065 §D8.1, R-14): one left-to-right scan that
+    /// decodes `\\`, `\"` and `\n` as pairs and leaves any other backslash as it is. Chained
+    /// replacements are not an inverse in either order: `C:\nuovo` is written `C:\\nuovo`, and
+    /// once `\\` is back to `\`, the `\n` that follows reads as a line break.
     private static func unquoted(_ value: String) -> String {
         guard value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") else { return value }
-        return String(value.dropFirst().dropLast())
-            .replacingOccurrences(of: "\\n", with: "\n")
-            .replacingOccurrences(of: "\\\"", with: "\"")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        var result = ""
+        var pendingBackslash = false
+        for character in value.dropFirst().dropLast() {
+            if pendingBackslash {
+                pendingBackslash = false
+                switch character {
+                case "\\": result.append("\\")
+                case "\"": result.append("\"")
+                case "n": result.append("\n")
+                default:
+                    result.append("\\")
+                    result.append(character)
+                }
+            } else if character == "\\" {
+                pendingBackslash = true
+            } else {
+                result.append(character)
+            }
+        }
+        if pendingBackslash { result.append("\\") }
+        return result
     }
 
     /// The three parts `splitBody` reads a body back into - a named type rather than a

@@ -87,8 +87,16 @@ enum TranscriptNote {
             with: transcriptLines(of: proposal, speakerRenames: speakerRenames), in: &body
         )
 
-        return FrontmatterSerializer.render(mergedFrontmatter(for: proposal, existing: existing))
-            + body.lines.joined(separator: "\n")
+        let frontmatter = mergedFrontmatter(for: proposal, existing: existing)
+        let bodyText = body.lines.joined(separator: "\n")
+        // ADR-0065 §D1.8: an existing block is edited in place, so a comment or any other line
+        // the person wrote survives a re-import. A new note is rendered fresh, as before.
+        if var document = existing, document.hasFrontmatterBlock {
+            document.frontmatter = frontmatter
+            document.body = bodyText
+            return document.serialized()
+        }
+        return FrontmatterSerializer.render(frontmatter) + bodyText
     }
 
     // MARK: - Frontmatter (D6, D7)

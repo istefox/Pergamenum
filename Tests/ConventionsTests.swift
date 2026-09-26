@@ -196,7 +196,11 @@ Il corpo della nota.
     #expect(document.serialized().contains(#"pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6""#))
 }
 
-@Test func reordersTagsOnSave() {
+// ADR-0065 §D1.6 (gate G2): this used to be `reordersTagsOnSave`, which pinned a re-sort of
+// an untouched tags key on every save - exactly the unasked diff R-01 forbids. The canonical
+// order still applies whenever the app writes the tags key; its counterpart,
+// `anUnchangedTagsKeyKeepsItsSourceOrder`, lives in `FrontmatterRoundTripTests`.
+@Test func reordersTagsWhenTheTagsKeyIsWritten() throws {
     let note = """
     ---
     date: 2026-08-11
@@ -207,9 +211,11 @@ Il corpo della nota.
     ---
     corpo
     """
-    let saved = NoteDocument.parse(note).serialized()
+    var document = NoteDocument.parse(note)
+    document.frontmatter.tags.append(try #require(Tag("topic-alfa")))
+    let saved = document.serialized()
     let tagBlock = saved.components(separatedBy: "\n").filter { $0.hasPrefix("  - ") }
-    #expect(tagBlock == ["  - client-alfa", "  - type-note", "  - topic-zeta"])
+    #expect(tagBlock == ["  - client-alfa", "  - type-note", "  - topic-alfa", "  - topic-zeta"])
 }
 
 @Test func reportsTheInlineTagListForm() {

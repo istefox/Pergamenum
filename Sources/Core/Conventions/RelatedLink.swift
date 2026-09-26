@@ -53,7 +53,9 @@ enum RelatedLink {
             document.frontmatter.related.append(quoted)
             document.frontmatter.related.sort()
         }
-        document.body = addBullet(target: target, reason: trimmedReason, to: document.body)
+        document.body = addBullet(
+            target: target, reason: trimmedReason, to: document.body, lineBreak: lineBreak(of: document)
+        )
         return document.serialized()
     }
 
@@ -61,54 +63,63 @@ enum RelatedLink {
     static func remove(target: String, from text: String) -> String {
         var document = NoteDocument.parse(text)
         document.frontmatter.related.removeAll { normalised($0) == target }
-        document.body = removeBullet(target: target, from: document.body)
+        document.body = removeBullet(target: target, from: document.body, lineBreak: lineBreak(of: document))
         return document.serialized()
+    }
+
+    /// The note's own line break (ADR-0065 §D3, R-01): «Collega» on a CRLF note writes CRLF.
+    private static func lineBreak(of document: NoteDocument) -> LineBreak {
+        document.source?.lineBreak ?? .lf
     }
 
     /// Adds the bullet under `## Note correlate`, creating the section when absent and
     /// keeping the bullets in the same alphabetical order as `related` (W-06).
-    private static func addBullet(target: String, reason: String, to body: String) -> String {
+    private static func addBullet(target: String, reason: String, to body: String, lineBreak: LineBreak) -> String {
         let bullet = "- [[\(target)]] — \(reason)"
+        let newline = lineBreak.characters
 
-        guard let heading = body.range(of: RelatedSection.heading) else {
-            let separator = body.hasSuffix("\n") ? "\n" : "\n\n"
-            return body + separator + RelatedSection.heading + "\n\n" + bullet + "\n"
+        guard let section = RelatedSection.sectionRange(in: body) else {
+            // Scalar-level: a CRLF body ends in one `\r\n` Character, which is not `"\n"`.
+            let separator = body.unicodeScalars.last == "\n" ? newline : newline + newline
+            return body + separator + RelatedSection.heading + newline + newline + bullet + newline
         }
-
-        let afterHeading = body[heading.upperBound...]
-        let sectionEnd = afterHeading.range(of: "\n#")?.lowerBound ?? body.endIndex
-
-        var bullets = body[heading.upperBound..<sectionEnd]
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix("-") }
+        var bullets = Self.bullets(in: body, section: section)
         bullets.append(bullet)
         bullets.sort()
-
-        var result = body
-        result.replaceSubrange(
-            heading.upperBound..<sectionEnd,
-            with: "\n\n" + bullets.joined(separator: "\n") + "\n"
-        )
-        return result
+        return rewritingBullets(of: body, section: section, as: bullets, lineBreak: lineBreak)
     }
 
-    private static func removeBullet(target: String, from body: String) -> String {
-        guard let heading = body.range(of: RelatedSection.heading) else { return body }
-        let afterHeading = body[heading.upperBound...]
-        let sectionEnd = afterHeading.range(of: "\n#")?.lowerBound ?? body.endIndex
+    private static func removeBullet(target: String, from body: String, lineBreak: LineBreak) -> String {
+        guard let section = RelatedSection.sectionRange(in: body) else { return body }
+        let bullets = Self.bullets(in: body, section: section).filter { !$0.contains("[[\(target)]]") }
+        return rewritingBullets(of: body, section: section, as: bullets, lineBreak: lineBreak)
+    }
 
-        let bullets = body[heading.upperBound..<sectionEnd]
+    /// The section's bullet lines, trimmed - a CRLF line's `\r` included.
+    private static func bullets(in body: String, section: Range<String.Index>) -> [String] {
+        guard let start = RelatedSection.bulletsStart(in: body, section: section) else { return [] }
+        return body[start..<section.upperBound]
             .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.hasPrefix("-") }
-            .filter { !$0.contains("[[\(target)]]") }
+    }
+
+    /// The heading line stays as written; below it, a blank line, the bullets, and a blank line
+    /// before the next heading when one follows - every line ended in the note's own line break
+    /// (ADR-0065 §D9.3, R-01).
+    private static func rewritingBullets(
+        of body: String, section: Range<String.Index>, as bullets: [String], lineBreak: LineBreak
+    ) -> String {
+        let newline = lineBreak.characters
+        let start = RelatedSection.bulletsStart(in: body, section: section)
+        var replacement = start == nil ? newline : ""
+        if !bullets.isEmpty {
+            replacement += newline + bullets.joined(separator: newline) + newline
+        }
+        if section.upperBound < body.endIndex { replacement += newline }
 
         var result = body
-        result.replaceSubrange(
-            heading.upperBound..<sectionEnd,
-            with: bullets.isEmpty ? "\n" : "\n\n" + bullets.joined(separator: "\n") + "\n"
-        )
+        result.replaceSubrange((start ?? section.upperBound)..<section.upperBound, with: replacement)
         return result
     }
 

@@ -31,7 +31,7 @@ extension CanvasDocument {
     /// refusal that triggered this call came from bytes that re-encode differently, not
     /// from a content change (ADR-0054's own risk note on `encoded()`'s determinism).
     static func reconcile(mine: Self, base: Self, theirs: Self) -> Reconciliation {
-        guard base != theirs else { return .adopted(mine) }
+        if let settled = Self.settledEarly(mine: mine, base: base, theirs: theirs) { return settled }
 
         var merged = mine
         var reasons: [String] = []
@@ -72,7 +72,47 @@ extension CanvasDocument {
             reasons.append(key)
         }
 
+        // ADR-0065 §D6.3: `mine` carries `base`'s opaque elements, so adopting it over an
+        // external change to one of them would silently overwrite that change.
+        reasons.append(contentsOf: Self.opaqueDifferences("nodes", base.opaqueNodes, theirs.opaqueNodes))
+        reasons.append(contentsOf: Self.opaqueDifferences("edges", base.opaqueEdges, theirs.opaqueEdges))
+
         return reasons.isEmpty ? .adopted(merged) : .diverged(reasons)
+    }
+
+    /// The two answers `reconcile` gives before comparing anything: `base == theirs` adopts
+    /// `mine` as it is, and a duplicated node or edge id in any of the three documents
+    /// (ADR-0065 §D6.1) has no single node to fold a repoint into and would trap the id-keyed
+    /// dictionaries, so nothing is decided automatically and the caller enters the conflicted
+    /// state. `nil` when neither applies.
+    private static func settledEarly(mine: Self, base: Self, theirs: Self) -> Reconciliation? {
+        guard base != theirs else { return .adopted(mine) }
+        let duplicates = Self.duplicatedIDs(in: [mine, base, theirs])
+        return duplicates.isEmpty ? nil : .diverged(duplicates)
+    }
+
+    /// Every node or edge id that appears more than once in any of `documents`, each named once.
+    private static func duplicatedIDs(in documents: [Self]) -> [String] {
+        var duplicated = Set<String>()
+        for document in documents {
+            for ids in [document.nodes.map(\.id), document.edges.map(\.id)] {
+                var seen = Set<String>()
+                for id in ids where !seen.insert(id).inserted { duplicated.insert(id) }
+            }
+        }
+        return duplicated.sorted()
+    }
+
+    /// `nodes[3]`-style names for every index whose opaque element differs between the two lists.
+    private static func opaqueDifferences(
+        _ key: String, _ base: [CanvasOpaqueElement], _ theirs: [CanvasOpaqueElement]
+    ) -> [String] {
+        guard base != theirs else { return [] }
+        let before = Dictionary(base.map { ($0.index, $0.value) }, uniquingKeysWith: { first, _ in first })
+        let after = Dictionary(theirs.map { ($0.index, $0.value) }, uniquingKeysWith: { first, _ in first })
+        return Set(before.keys).union(after.keys).sorted()
+            .filter { before[$0] != after[$0] }
+            .map { "\(key)[\($0)]" }
     }
 
     /// Whether `before` and `after` - the same node id in `base` and in `theirs` - differ

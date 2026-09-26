@@ -148,3 +148,31 @@ private func textNode(id: String, text: String, x: CGFloat = 0, y: CGFloat = 0) 
     }
     #expect(merged == theirs)
 }
+
+// MARK: - Duplicate ids diverge instead of trapping (ADR-0065 §D6.1, R-09)
+//
+// Written in the same change as the fix (plan Rule 1): before it, each of these reached
+// `Dictionary(uniqueKeysWithValues:)` with a repeated key and killed the test host.
+
+@Test func reconcilingDuplicateNodeIdsDiverges() {
+    let base = CanvasDocument(nodes: [textNode(id: "a", text: "uno"), textNode(id: "a", text: "due")])
+    let theirs = CanvasDocument(nodes: [textNode(id: "a", text: "uno"), textNode(id: "a", text: "tre")])
+
+    #expect(CanvasDocument.reconcile(mine: base, base: base, theirs: theirs) == .diverged(["a"]))
+}
+
+@Test func reconcilingDuplicateEdgeIdsDiverges() {
+    let nodes = [textNode(id: "a", text: "uno"), textNode(id: "b", text: "due")]
+    let edge = CanvasEdge(id: "e", fromNode: "a", toNode: "b")
+    let base = CanvasDocument(nodes: nodes, edges: [edge, edge])
+    let theirs = CanvasDocument(nodes: nodes, edges: [edge, CanvasEdge(id: "e", fromNode: "b", toNode: "a")])
+
+    #expect(CanvasDocument.reconcile(mine: base, base: base, theirs: theirs) == .diverged(["e"]))
+}
+
+@Test func aDuplicateIdInTheirsAloneDiverges() {
+    let base = CanvasDocument(nodes: [textNode(id: "a", text: "uno")])
+    let theirs = CanvasDocument(nodes: [textNode(id: "a", text: "uno"), textNode(id: "a", text: "due")])
+
+    #expect(CanvasDocument.reconcile(mine: base, base: base, theirs: theirs) == .diverged(["a"]))
+}

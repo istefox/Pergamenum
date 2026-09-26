@@ -27,14 +27,25 @@ struct Wikilink: Equatable, Hashable, Sendable {
     /// leading/trailing `*` of a `**` pair must not be peeled off on its own, which would leave a
     /// stray asterisk in the resolved title instead of removing the whole pair.
     var resolvedTitle: String {
-        for marker in ["**", "~~", "*"] {
-            guard target.count > marker.count * 2,
-                  target.hasPrefix(marker), target.hasSuffix(marker)
-            else { continue }
-            let inner = target.dropFirst(marker.count).dropLast(marker.count)
-            if !inner.isEmpty { return String(inner) }
+        guard let marker = emphasisMarker else { return target }
+        return String(target.dropFirst(marker.count).dropLast(marker.count))
+    }
+
+    /// The link with its title replaced inside the emphasis pair `resolvedTitle` stripped:
+    /// `[[**Forno tunnel**#Sez|alias]]` retitled `Nuovo nome` is `[[**Nuovo nome**#Sez|alias]]`.
+    /// The section and the alias are the reader's and stay (ADR-0065 §D9.4, R-19).
+    func retitled(_ newTitle: String) -> Wikilink {
+        var link = self
+        let marker = emphasisMarker ?? ""
+        link.target = marker + newTitle + marker
+        return link
+    }
+
+    /// The one pair of emphasis delimiters wrapping `target`, if any.
+    private var emphasisMarker: String? {
+        ["**", "~~", "*"].first { marker in
+            target.count > marker.count * 2 && target.hasPrefix(marker) && target.hasSuffix(marker)
         }
-        return target
     }
 
     var rendered: String {
@@ -202,6 +213,47 @@ enum RelatedSection {
     /// W-09: at most five structural links, except on an index note.
     static let maximumLinks = 5
 
+    /// The section, from the start of its heading line to the start of the next line beginning
+    /// with `#`, or to the end of the body (ADR-0065 §D9.3, R-18).
+    ///
+    /// The heading is a line that is exactly `## Note correlate` once one trailing `\r` and any
+    /// trailing spaces or tabs are removed. A search for the heading's text matched it anywhere -
+    /// inside `### Note correlate operative`, or mid-sentence - so the linter read bullets from a
+    /// section that was not there, and «Collega» wrote under it. Lines are walked on unicode
+    /// scalars, because a CRLF pair is one `Character` and a `Character` search for `\n` finds no
+    /// line end in a CRLF note at all (ADR-0065 §D3).
+    static func sectionRange(in body: String) -> Range<String.Index>? {
+        let scalars = body.unicodeScalars
+        var start: String.Index?
+        var lineStart = scalars.startIndex
+        while lineStart < scalars.endIndex {
+            let lineEnd = scalars[lineStart...].firstIndex(of: "\n") ?? scalars.endIndex
+            let line = String(scalars[lineStart..<lineEnd])
+            if let start {
+                if line.hasPrefix("#") { return start..<lineStart }
+            } else if isHeading(line) {
+                start = lineStart
+            }
+            guard lineEnd < scalars.endIndex else { break }
+            lineStart = scalars.index(after: lineEnd)
+        }
+        return start.map { $0..<body.endIndex }
+    }
+
+    /// Where the section's bullets begin: just past the heading line's own line break, or nil
+    /// when the heading is the body's last line and has none.
+    static func bulletsStart(in body: String, section: Range<String.Index>) -> String.Index? {
+        let scalars = body.unicodeScalars
+        return scalars[section].firstIndex(of: "\n").map { scalars.index(after: $0) }
+    }
+
+    private static func isHeading(_ line: String) -> Bool {
+        var scalars = Substring(line).unicodeScalars
+        if scalars.last == "\r" { scalars.removeLast() }
+        while let last = scalars.last, last == " " || last == "\t" { scalars.removeLast() }
+        return String(scalars) == heading
+    }
+
     /// Reads the bullets under `## Note correlate`.
     ///
     /// The expected line shape is `- [[Titolo]] — motivo`. Both the em dash and a
@@ -209,13 +261,15 @@ enum RelatedSection {
     /// have whichever the keyboard produced, and rejecting one would report a
     /// conformant note as broken.
     static func parse(from body: String) -> [StructuralLink] {
-        guard let sectionRange = body.range(of: heading) else { return [] }
-        let afterHeading = body[sectionRange.upperBound...]
+        guard let section = sectionRange(in: body),
+              let start = bulletsStart(in: body, section: section)
+        else { return [] }
 
         var links: [StructuralLink] = []
-        for line in afterHeading.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("#") { break }  // next heading ends the section
+        // The section already ends at the next heading. A CRLF line keeps its `\r` through the
+        // split, so it is trimmed with the newlines.
+        for line in body[start..<section.upperBound].components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.hasPrefix("-") else { continue }
 
             let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
