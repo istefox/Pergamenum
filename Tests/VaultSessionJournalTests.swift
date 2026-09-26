@@ -264,3 +264,90 @@ private func boardText(_ vault: borrowing TemporaryVault, _ relativePath: String
     let entry = try #require(session.journalOnDisk.entries().last)
     #expect(entry.textBefore == "{\"nodes\":[]}")
 }
+
+// MARK: - ADR-0063 §D4: the session's board-creation door
+
+private func emptyBoardText() throws -> String {
+    String(decoding: try CanvasDocument.empty.encoded(), as: UTF8.self)
+}
+
+@MainActor
+@Test func createBoardWritesTheStoresBytesAndJournalsACreation() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    session.journalCommand = "t"
+
+    let path = try await session.createBoard(named: "Preventivo", in: "")
+
+    #expect(path == "Preventivo.canvas")
+    // The same bytes `CanvasStore.createBoard` writes: one spelling for the empty board too.
+    #expect(try boardText(vault, "Preventivo.canvas") == emptyBoardText())
+    let entries = session.journalOnDisk.entries()
+    #expect(entries.count == 1)
+    #expect(entries.first?.path == "Preventivo.canvas")
+    #expect(entries.first?.textBefore == nil)
+    #expect(entries.first?.command == "t")
+}
+
+@MainActor
+@Test func createBoardOnARehearsalWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    session.journalCommand = "t"
+    session.isDryRun = true
+
+    let path = try await session.createBoard(named: "Preventivo", in: "")
+
+    #expect(path == "Preventivo.canvas")
+    #expect(!session.exists("Preventivo.canvas"))
+    #expect(session.journalOnDisk.entries().isEmpty)
+}
+
+@MainActor
+@Test func createBoardRefusesATakenNameOnARehearsalAndARealRun() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+    session.journalCommand = "t"
+    try vault.write("{\"nodes\":[]}", to: "Preventivo.canvas")
+
+    for dryRun in [true, false] {
+        session.isDryRun = dryRun
+        // A rehearsal that said it would create a board that is already there would be false.
+        await #expect(throws: VaultSession.CreationError.self) {
+            try await session.createBoard(named: "Preventivo", in: "")
+        }
+    }
+
+    #expect(try boardText(vault, "Preventivo.canvas") == "{\"nodes\":[]}")
+    #expect(session.journalOnDisk.entries().isEmpty)
+}
+
+@MainActor
+@Test func createBoardRefusesAnInvalidName() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+
+    for name in ["a/b", ".", "..", ""] {
+        do {
+            _ = try await session.createBoard(named: name, in: "")
+            Issue.record("«\(name)» è stato accettato")
+        } catch VaultSession.CreationError.invalidTitle {
+            // The Workspace sheet's rule, `.`/`..` clause included.
+        } catch {
+            Issue.record("«\(name)»: \(error)")
+        }
+    }
+}
+
+@MainActor
+@Test func createBoardCreatesAMissingParentFolder() async throws {
+    let vault = try TemporaryVault()
+    let session = try await armedSession(vault)
+
+    // Unlike `CanvasStore.createBoard`: a connector's folder is typed text, and the door
+    // is modelled on `createNote`, which creates its folder (ADR-0063 §D4.7).
+    let path = try await session.createBoard(named: "X", in: "Nuova/Sotto")
+
+    #expect(path == "Nuova/Sotto/X.canvas")
+    #expect(try boardText(vault, "Nuova/Sotto/X.canvas") == emptyBoardText())
+}

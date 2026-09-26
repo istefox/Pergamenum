@@ -62,23 +62,44 @@ enum Attachment {
     /// user drops in; then from the vault root, for a note that spells the whole path;
     /// then by name anywhere in the vault, so moving a picture in the Finder does not
     /// blank it out in the note.
+    ///
+    /// Builds one `VaultBoundary` per call, which resolves the root's symlinks once. For
+    /// the callers off the keystroke path; the editor's `EmbedTable` keeps its own
+    /// boundary and calls `resolve(_:nearNoteAt:within:)` (ADR-0063 §D7).
     static func resolve(
         _ target: String,
         nearNoteAt notePath: String,
         inVaultAt root: URL
     ) -> String? {
+        resolve(target, nearNoteAt: notePath, within: VaultBoundary(root: root))
+    }
+
+    /// The same resolution against a boundary the caller already built (ADR-0063 §D7).
+    ///
+    /// Every probe goes through `boundary.url(for:)`. A note whose folder resolves
+    /// outside the vault answers nil **before any probe at all** - not beside it, not
+    /// from the root, not by name - so a file of the same name inside the vault cannot
+    /// make an escaping note look like it resolved.
+    static func resolve(
+        _ target: String,
+        nearNoteAt notePath: String,
+        within boundary: VaultBoundary
+    ) -> String? {
         guard !isRemote(target) else { return nil }
+        let folder = (notePath as NSString).deletingLastPathComponent
+        // An empty folder is the vault root, which the resolver refuses by design.
+        if !folder.isEmpty, (try? boundary.url(for: folder)) == nil { return nil }
         let decoded = target.removingPercentEncoding ?? target
         for candidate in [decoded, target] where !candidate.isEmpty {
-            if let found = search(candidate, nearNoteAt: notePath, inVaultAt: root) { return found }
+            if let found = search(candidate, inFolder: folder, within: boundary) { return found }
         }
         return nil
     }
 
     private static func search(
         _ target: String,
-        nearNoteAt notePath: String,
-        inVaultAt root: URL
+        inFolder folder: String,
+        within boundary: VaultBoundary
     ) -> String? {
         // An absolute path, or one that climbs out of the vault, is not something a note
         // in this vault is allowed to point at.
@@ -86,19 +107,17 @@ enum Attachment {
               !target.split(separator: "/").contains("..")
         else { return nil }
 
-        let folder = (notePath as NSString).deletingLastPathComponent
         let beside = folder.isEmpty ? target : "\(folder)/\(target)"
-        for relative in [beside, target] where exists(relative, in: root) {
+        for relative in [beside, target] where exists(relative, within: boundary) {
             return relative
         }
-        return byName((target as NSString).lastPathComponent, in: root)
+        return byName((target as NSString).lastPathComponent, within: boundary)
     }
 
-    private static func exists(_ relativePath: String, in root: URL) -> Bool {
+    private static func exists(_ relativePath: String, within boundary: VaultBoundary) -> Bool {
+        guard let url = try? boundary.url(for: relativePath) else { return false }
         var isDirectory: ObjCBool = false
-        let path = root.appending(path: relativePath, directoryHint: .notDirectory)
-            .path(percentEncoded: false)
-        let found = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        let found = FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory)
         return found && !isDirectory.boolValue
     }
 
@@ -106,16 +125,18 @@ enum Attachment {
     ///
     /// Skips hidden directories, which is what keeps the app's own `.pergamenum` cache -
     /// full of generated thumbnails with names of their own - out of the answer.
-    private static func byName(_ fileName: String, in root: URL) -> String? {
+    private static func byName(_ fileName: String, within boundary: VaultBoundary) -> String? {
         guard !fileName.isEmpty else { return nil }
-        // Both sides through the same normalisation, because the enumerator hands back
-        // paths the root does not spell the same way: a vault under `/var/…` comes back
-        // as `/private/var/…`, and a plain prefix check would match nothing at all. Any
-        // vault reached through a symlink has the same problem.
-        let base = normalisedFolderPath(root)
+        // Walked from the boundary's root, whose symlinks were resolved once when the
+        // boundary was built, so the enumerator hands back paths spelled the same way (a
+        // vault under `/var/…` is already `/private/var/…` there) and the root needs no
+        // second resolution here. A match is still resolved on its own, so a symlinked
+        // file pointing outside the vault fails the prefix test.
+        let rootPath = boundary.root.path(percentEncoded: false)
+        let base = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
 
         let enumerator = FileManager.default.enumerator(
-            at: root,
+            at: boundary.root,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         )
@@ -128,12 +149,5 @@ enum Attachment {
             return String(full.dropFirst(base.count))
         }
         return nil
-    }
-
-    /// A folder's path with symlinks resolved and a trailing separator, so one path is
-    /// a prefix of another exactly when one folder contains the other.
-    private static func normalisedFolderPath(_ url: URL) -> String {
-        let path = url.resolvingSymlinksInPath().path(percentEncoded: false)
-        return path.hasSuffix("/") ? path : path + "/"
     }
 }

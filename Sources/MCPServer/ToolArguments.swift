@@ -42,10 +42,37 @@ struct ToolArguments {
         guard let value = values[name] else { return nil }
         switch value {
         case .int(let number): return number
-        case .double(let number): return Int(number)
+        case .double(let number): return Self.truncated(number)
         case .string(let raw): return Int(raw)
         default: return nil
         }
+    }
+
+    /// An integer that keeps «absent» apart from «unreadable» (ADR-0063 §D1.4), for a
+    /// `limit`: a bad number is refused with the shared sentence rather than read as «no
+    /// limit given», which is the leniency the rest of this file allows elsewhere.
+    func checkedInt(_ name: String) throws -> Int? {
+        guard let value = values[name] else { return nil }
+        switch value {
+        case .null: return nil
+        case .int(let number): return number
+        // The refusals go through the text rule so the sentence is the shared one. An
+        // out-of-range double prints in exponent form and a bool, array, object or data
+        // value never prints as an integer, so none of them can read as a number there.
+        case .double(let number):
+            guard let whole = Self.truncated(number) else {
+                return try VaultAPI.limit(parsing: String(number), named: name)
+            }
+            return whole
+        case .string(let raw): return try VaultAPI.limit(parsing: raw, named: name)
+        default: return try VaultAPI.limit(parsing: "\(value)", named: name)
+        }
+    }
+
+    /// A JSON number toward zero, or nil when it has no `Int` to land on. `Int(_:)` on a
+    /// `Double` traps outside `Int`'s range, and `1e300` is valid JSON (ADR-0063 §D1.5).
+    private static func truncated(_ number: Double) -> Int? {
+        Int(exactly: number.rounded(.towardZero))
     }
 
     /// A boolean, falling back to what the tool declared as its default.

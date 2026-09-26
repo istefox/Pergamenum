@@ -31,19 +31,9 @@ struct FolderFileOperations {
 
     // MARK: - Task 1: validation, collision, content counts (R-03, R-04, R-10)
 
-    /// Delegates to `NoteName.validate`: a folder name follows the same rules a note
-    /// title does (`/` is already in `NoteName.forbiddenCharacters`).
-    ///
-    /// A delegation rather than a second rule set, deliberately: the sheets render the
-    /// violations through `ConformanceText.lines`, so a folder that answered to
-    /// different rules would produce violation text describing a rule the user has
-    /// never seen anywhere else in the app. `.`/`..` are the one exception: reused as
-    /// `.containsForbiddenCharacter` rather than a new `NoteName.Violation` case (PG-045).
-    static func validate(_ name: String) -> [NoteName.Violation] {
-        var violations = NoteName.validate(name)
-        if name == "." || name == ".." { violations.append(.containsForbiddenCharacter(".")) }
-        return violations
-    }
+    /// The folder-name rule, which lives on `FolderName` since ADR-0063 §D4.1 moved it to
+    /// the shared sources; kept under this name so no caller changes.
+    static func validate(_ name: String) -> [NoteName.Violation] { FolderName.validate(name) }
 
     /// Whether `name` is free inside `parent` - false for a directory *or* a file
     /// already there.
@@ -384,14 +374,15 @@ struct FolderFileOperations {
         // own move the same way on a no-op.
         if plan.newPath != oldFolder {
             do {
-                let destination = store.root.appending(path: plan.newPath, directoryHint: .isDirectory)
+                // Both ends through the boundary (ADR-0063 §D7). Defence in depth:
+                // `renamePlan`'s `isDirectory` already refuses an escaping source, and the
+                // destination is a validated name under the source's own parent.
+                let destination = try store.url(for: plan.newPath)
+                let source = try store.url(for: oldFolder)
                 try FileManager.default.createDirectory(
                     at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
                 )
-                try FileManager.default.moveItem(
-                    at: store.root.appending(path: oldFolder, directoryHint: .isDirectory),
-                    to: destination
-                )
+                try FileManager.default.moveItem(at: source, to: destination)
             } catch {
                 throw FileOperationError.failed("rinomina cartella: \(error.localizedDescription)")
             }
@@ -436,10 +427,8 @@ struct FolderFileOperations {
         let trashedNotePaths = walk(folder)?.notePaths ?? []
         var resulting: NSURL?
         do {
-            try FileManager.default.trashItem(
-                at: store.root.appending(path: folder, directoryHint: .isDirectory),
-                resultingItemURL: &resulting
-            )
+            // Through the boundary (ADR-0063 §D7), defence in depth behind `isDirectory`.
+            try FileManager.default.trashItem(at: try store.url(for: folder), resultingItemURL: &resulting)
         } catch {
             throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
         }

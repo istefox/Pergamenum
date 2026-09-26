@@ -13,10 +13,13 @@ enum JournalCommands {
     }
 
     private static func log(_ arguments: Arguments) throws -> ExitCode {
+        // Read before the vault is resolved: a malformed number is the caller's mistake and
+        // is said first (ADR-0063 §D1).
+        let limit = try VaultAPI.limit(parsing: arguments["limit"])
         let rows = try VaultAPI.journalLog(
             at: try VaultResolution.root(from: arguments),
             base: try VaultState.applicationSupportBase(),
-            limit: arguments["limit"].flatMap(Int.init)
+            limit: limit
         )
 
         if arguments.has("json") {

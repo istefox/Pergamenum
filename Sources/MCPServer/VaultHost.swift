@@ -79,7 +79,7 @@ final class VaultHost {
         switch name {
         case "search_vault":
             return reply(try VaultAPI.search(
-                session, try arguments.required("query"), limit: arguments.int("limit")
+                session, try arguments.required("query"), limit: try arguments.checkedInt("limit")
             ))
         case "read_note":
             return reply(try VaultAPI.note(session, at: try arguments.required("path")))
@@ -121,8 +121,9 @@ final class VaultHost {
         case "vault_stats":
             return reply(VaultAPI.stats(session))
         case "journal_log":
+            let limit = try arguments.checkedInt("limit")
             return reply(try VaultAPI.journalLog(
-                at: session.root, base: try VaultState.applicationSupportBase(), limit: arguments.int("limit")
+                at: session.root, base: try VaultState.applicationSupportBase(), limit: limit
             ))
         default:
             return nil
@@ -273,11 +274,23 @@ final class VaultHost {
     /// deliberately not the id form «Copia link Pergamenum» copies (ADR-0059 §D8): a
     /// resource names the note where it is now, and listing one must not mint an id. One
     /// builder, one parser, and a URI that also opens the note in the app if clicked.
-    func resources(after cursor: String?) -> ListResources.Result {
+    ///
+    /// The cursor is parsed, not trusted (ADR-0063 §D2): one that is not a non-negative
+    /// integer is JSON-RPC `-32602`, as the MCP specification asks, rather than a trap on
+    /// `-1` or a silent restart at page zero that a client mis-echoing it would loop on.
+    /// A cursor past the end is an empty page, answered before any arithmetic, and `end`
+    /// is built from what is left so `Int.max` cannot overflow.
+    func resources(after cursor: String?) throws -> ListResources.Result {
         let notes = session.index.allNotes
-        let start = cursor.flatMap(Int.init) ?? 0
-        let end = min(start + Self.pageSize, notes.count)
-        guard start < end else { return ListResources.Result(resources: []) }
+        var start = 0
+        if let cursor {
+            guard let parsed = Int(cursor), parsed >= 0 else {
+                throw MCPError.invalidParams("cursore «\(cursor)» non valido: serve quello dell'ultima pagina")
+            }
+            start = parsed
+        }
+        guard start < notes.count else { return ListResources.Result(resources: []) }
+        let end = start + min(Self.pageSize, notes.count - start)
 
         let page = notes[start..<end].compactMap { record -> Resource? in
             guard let uri = PergamenumLink.note(path: record.relativePath) else { return nil }

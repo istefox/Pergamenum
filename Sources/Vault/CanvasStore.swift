@@ -208,7 +208,11 @@ struct CanvasStore: Sendable {
     /// the check and the write cannot disagree about which file they mean. It takes the
     /// board's own name and never a folder's: the folder→board rule is what ADR-0025 §D1
     /// deletes.
-    private static func boardFilePath(named name: String, in parent: String) -> String {
+    ///
+    /// Internal rather than private since ADR-0063 §D4.2: `VaultSession.createBoard`
+    /// spells its path through this too, so the connector's board door and this store can
+    /// never mean two different files by one name.
+    static func boardFilePath(named name: String, in parent: String) -> String {
         let fileName = "\(name).\(fileExtension)"
         return parent.isEmpty ? fileName : "\(parent)/\(fileName)"
     }
@@ -292,7 +296,9 @@ struct CanvasStore: Sendable {
     /// Creates a real directory for a folder card (SPEC §6.4, tool 4).
     func createFolder(named name: String, in parent: String) throws -> String {
         let relativePath = parent.isEmpty ? name : "\(parent)/\(name)"
-        let directory = root.appending(path: relativePath, directoryHint: .isDirectory)
+        // Through the boundary (ADR-0063 §D7): `../../fuori` created a directory outside
+        // the vault. An empty name at the root is `""`, which the resolver rightly refuses.
+        let directory = try boundary.url(for: relativePath)
         guard !FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)) else {
             throw StoreError.alreadyExists(relativePath)
         }

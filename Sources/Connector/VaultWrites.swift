@@ -333,7 +333,11 @@ extension VaultAPI {
     /// resolve. Reported rather than minting one from a read-only log command, which is
     /// as far as this call site goes for now - wiring `base` in from the two callers'
     /// own `VaultState.applicationSupportBase()` is slice 3.
+    ///
+    /// The limit is checked first (ADR-0063 §D1.1): a negative one reached
+    /// `suffix(_:)`, which traps, and the caller's mistake outranks «vault mai aperto».
     static func journalLog(at root: URL, base: URL, limit: Int?) throws -> [JournalRow] {
+        let limit = try checkedLimit(limit)
         guard let state = VaultState.resolve(root: root, base: base) else {
             throw ConnectorError("vault mai aperto: nessun journal da leggere")
         }

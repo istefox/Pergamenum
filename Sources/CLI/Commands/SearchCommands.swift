@@ -8,10 +8,11 @@ import Foundation
 enum SearchCommands {
     @MainActor
     static func run(_ arguments: Arguments) async throws -> ExitCode {
+        // Read before the vault is opened: a malformed number is the caller's mistake and
+        // is said first (ADR-0063 §D1).
+        let limit = try VaultAPI.limit(parsing: arguments["limit"])
         let session = try await VaultResolution.session(at: try VaultResolution.root(from: arguments))
-        let hits = try VaultAPI.search(
-            session, arguments.rest(from: 1), limit: arguments["limit"].flatMap(Int.init)
-        )
+        let hits = try VaultAPI.search(session, arguments.rest(from: 1), limit: limit)
 
         if arguments.has("json") {
             Output.json(hits)

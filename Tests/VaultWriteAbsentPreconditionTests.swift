@@ -76,3 +76,45 @@ private func absentPreconditionSession(_ vault: borrowing TemporaryVault) async 
     let bytesOnDisk = try Data(contentsOf: url)
     #expect(bytesOnDisk == Data([0xFF, 0xFE, 0x00, 0x01]))
 }
+
+// MARK: - ADR-0063 §D4.5: the same precondition on the `.canvas` door
+
+@MainActor
+private func armedAbsentPreconditionSession(_ vault: borrowing TemporaryVault) async -> VaultSession {
+    let session = await absentPreconditionSession(vault)
+    // Armed exactly as a connector arms it, so a refused write can be shown to journal nothing.
+    session.journal = session.journalOnDisk
+    session.journalCommand = "t"
+    return session
+}
+
+/// Red on today's code: the `.canvas` door takes `expectingAbsent` but the placeholder
+/// ignores it, so the board is overwritten instead of the creation being refused.
+@MainActor
+@Test func writeFileExpectingAbsentOverAnExistingFileRefuses() async throws {
+    let vault = try TemporaryVault()
+    let session = await armedAbsentPreconditionSession(vault)
+    try vault.write("{\"nodes\":[]}", to: "B.canvas")
+    let journalBefore = session.journalOnDisk.entries().map(\.id)
+
+    await #expect(throws: VaultWriteRefusal.movedOn("B.canvas")) {
+        try await session.writeFile("{\"nodes\":[],\"x\":1}", to: "B.canvas", expectingAbsent: true)
+    }
+
+    #expect(try String(contentsOf: vault.root.appending(path: "B.canvas"), encoding: .utf8) == "{\"nodes\":[]}")
+    #expect(session.journalOnDisk.entries().map(\.id) == journalBefore)
+}
+
+/// Green today: on a free path the creation writes and is journalled as a creation.
+@MainActor
+@Test func writeFileExpectingAbsentOnAFreePathWrites() async throws {
+    let vault = try TemporaryVault()
+    let session = await armedAbsentPreconditionSession(vault)
+
+    try await session.writeFile("{\"nodes\":[]}", to: "B.canvas", expectingAbsent: true)
+
+    #expect(try String(contentsOf: vault.root.appending(path: "B.canvas"), encoding: .utf8) == "{\"nodes\":[]}")
+    let entry = try #require(session.journalOnDisk.entries().last)
+    #expect(entry.path == "B.canvas")
+    #expect(entry.textBefore == nil)
+}

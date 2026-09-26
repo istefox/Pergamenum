@@ -476,13 +476,89 @@ def resources(binary, vault, check):
         server.close()
 
 
+def hardening(binary, vault, check):
+    """ADR-0063: malformed numbers and cursors are refused as sentences, never as a dead
+    process, and `pratica_create_board` honours dryRun and the journal.
+
+    Last in the stage list on purpose: before the fix several of these calls killed the
+    server, and `send()`'s own `sys.exit` is the crash assertion - placed last, it stops
+    the run only once every other stage has reported.
+    """
+    print("input malformati")
+    folder = os.path.join(vault, "01 Progetti", "Rossi", "Offerta")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "pratica.md"), "w", encoding="utf-8") as handle:
+        handle.write(PRATICA_NOTE)
+
+    server = Server(binary, vault, allow_write=True)
+    try:
+        # The sentence the shared layer says for a bad limit, read off the first refusal
+        # so every later one is compared with the same words.
+        refused = server.payload("journal_log", {"limit": -1})
+        check(refused.get("isError") is True, "journal_log con limit -1 è rifiutato, il server vive")
+        sentence = refused.get("text", "")
+        check("limit" in sentence and "-1" in sentence, "il rifiuto nomina limit e il valore")
+
+        refused = server.payload("search_vault", {"query": "Corpo", "limit": -1})
+        check(refused.get("isError") is True and refused.get("text") == sentence,
+              "search_vault con limit -1 dice la stessa frase")
+
+        for tool, extra in (("search_vault", {"query": "Corpo"}), ("journal_log", {})):
+            for raw in ("abc", ""):
+                refused = server.payload(tool, dict(extra, limit=raw))
+                check(refused.get("isError") is True
+                      and refused.get("text") == sentence.replace("-1", raw),
+                      "%s con limit %r è la stessa frase" % (tool, raw))
+
+        refused = server.payload("search_vault", {"query": "Corpo", "limit": 1e300})
+        check(refused.get("isError") is True, "un limit fuori dall'intervallo di Int è rifiutato")
+        check(server.payload("vault_stats").get("notes") is not None, "e la richiesta dopo risponde")
+
+        server.call("run_view", {"path": "Nota.md", "ordinal": 1e300})
+        check(server.payload("vault_stats").get("notes") is not None,
+              "un ordinal enorme non fa morire il server")
+
+        check(server.payload("search_vault", {"query": "Corpo", "limit": 0}) == [],
+              "search_vault con limit 0 risponde vuoto")
+        check(server.payload("journal_log", {"limit": 0}) == [], "journal_log con limit 0 risponde vuoto")
+
+        for cursor in ("-1", "abc"):
+            answer = server.send("resources/list", {"cursor": cursor})
+            check(answer.get("error", {}).get("code") == -32602,
+                  "un cursore %r è -32602" % cursor)
+            check("result" in server.send("resources/list", {}), "e l'elenco dopo risponde")
+
+        for cursor in ("100000", "9223372036854775807"):
+            answer = server.send("resources/list", {"cursor": cursor}).get("result", {})
+            check(answer.get("resources") == [] and "nextCursor" not in answer,
+                  "un cursore %s oltre la fine è una pagina vuota senza seguito" % cursor)
+
+        canvas = os.path.join(vault, "Preventivo.canvas")
+        rehearsal = server.payload("pratica_create_board", {"pratica": "Offerta", "name": "Preventivo"})
+        check(rehearsal.get("applied") is False, "pratica_create_board senza dryRun non applica")
+        check("Preventivo.canvas" in (rehearsal.get("note") or ""), "la prova nomina la board che creerebbe")
+        check(not os.path.exists(canvas), "la prova non crea nessun .canvas")
+
+        applied = server.payload(
+            "pratica_create_board", {"pratica": "Offerta", "name": "Preventivo", "dryRun": False})
+        check(applied.get("applied") is True, "con dryRun false la board si crea")
+        check(os.path.exists(canvas), "il .canvas è sul disco")
+        log = server.payload("journal_log")
+        check(any(row["path"] == "Preventivo.canvas" and row["created"] is True
+                  and row["command"] == "pratica_create_board" for row in log),
+              "la creazione della board è nel journal")
+    finally:
+        server.close()
+
+
 def main(argv):
     binary = find_binary(argv)
     print("binario: %s\n" % binary)
 
     failures = []
     check = make_check(failures)
-    for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources):
+    for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources,
+                  hardening):
         vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
         try:
             with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

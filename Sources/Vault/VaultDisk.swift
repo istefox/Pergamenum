@@ -349,6 +349,7 @@ extension VaultDisk {
     func writeFile(
         _ text: String, to relativePath: String,
         expecting: String? = nil,
+        expectingAbsent: Bool = false,
         journalDescriptor: JournalDescriptor?,
         journal: WriteJournal?
     ) async throws -> (mutation: IndexMutation, journalProblem: String?) {
@@ -356,6 +357,12 @@ extension VaultDisk {
         let hashBefore = textBefore.map { NoteStore.hash(Data($0.utf8)) }
 
         if let expecting, hashBefore != expecting {
+            throw VaultWriteRefusal.movedOn(relativePath)
+        }
+        // ADR-0063 §D4.5: a creation that must not land on anything. Decided on existence,
+        // not on `textBefore` - an unreadable file is still a file (ADR-0057 §D3) - and here,
+        // inside the actor, so no suspension separates the check from the write.
+        if expectingAbsent, try fileExists(relativePath) {
             throw VaultWriteRefusal.movedOn(relativePath)
         }
 

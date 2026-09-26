@@ -184,7 +184,10 @@ private extension VaultAPI {
 
     @MainActor
     static func timeline(ofPraticaFolder folder: String, session: VaultSession) -> [PraticaTimelinePayload.Entry] {
-        let directory = session.root.appending(path: folder, directoryHint: .isDirectory)
+        // Through the boundary (ADR-0063 §D7). A pratica folder is never empty, since
+        // `praticaNotes` admits only paths ending in `/pratica.md`, so the root never
+        // reaches the resolver.
+        guard let directory = try? session.store.url(for: folder) else { return [] }
         let rows = messageRows(in: directory, session: session) + manualEntryRows(in: directory)
         return rows
             .sorted { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
