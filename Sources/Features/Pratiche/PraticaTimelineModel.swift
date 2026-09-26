@@ -11,10 +11,6 @@ import Foundation
 // heading grammar, and this file must not race that declaration. A caller (the
 // coder's view layer) maps a `MessageDocument`/manual entry into a
 // `PraticaTimelineEntry` before handing it here.
-//
-// Every function below is a tester-declared boundary (ADR-0155 §D1): stubbed to a
-// wrong-but-safe constant or a pass-through, never `fatalError`, so a test that calls
-// one exercises a real (failing) assertion instead of crashing the process.
 
 /// One row of the timeline - a message or a manual entry (SPEC "Timeline model").
 struct PraticaTimelineEntry: Equatable, Sendable, Identifiable {

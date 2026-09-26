@@ -12,7 +12,7 @@
 
 ## Status
 
-Proposed — awaiting Gate 2.
+Accepted — landed on `main` via PR #113 (merge `6a47ea5`, 2026-08-30).
 
 ## Context
 

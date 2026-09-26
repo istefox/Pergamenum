@@ -111,7 +111,7 @@ final class VaultSession {
     /// racing the write must never find the file on disk before this session already
     /// holds its hash, under some sequence.
     ///
-    /// Since ADR-0061 §D6 an entry is either a content hash or `absenceMarker`: the
+    /// Since ADR-0064 §D6 an entry is either a content hash or `absenceMarker`: the
     /// source path a `moveFile` vacated, recorded the same way (provisional before the
     /// hop, corrected after, removed if the move throws) so the watcher's reconciliation
     /// of that vacated path is recognised as this session's own and not reported as a
@@ -121,7 +121,7 @@ final class VaultSession {
     var selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]] = [:]
 
     /// The `selfWrittenHashes` value that stands for «this session left nothing at this
-    /// path» rather than for particular bytes (ADR-0061 §D6). Not a hex digit in it, so
+    /// path» rather than for particular bytes (ADR-0064 §D6). Not a hex digit in it, so
     /// `NoteStore.hash` (SHA-256 hex) can never produce it, and not `""`, which
     /// `moveFile` already records as the fallback hash of a moved file with no record.
     /// `VaultDisk.reconcile` matches it only in its absent branch - nothing at the path,
@@ -135,7 +135,7 @@ final class VaultSession {
     @ObservationIgnored private var nextProvisionalSequence: UInt64 = .max
 
     /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which records its
-    /// absence marker under a provisional sequence (ADR-0061 §D6).
+    /// absence marker under a provisional sequence (ADR-0064 §D6).
     func reserveProvisionalSequence() -> UInt64 {
         defer { nextProvisionalSequence -= 1 }
         return nextProvisionalSequence
@@ -146,7 +146,7 @@ final class VaultSession {
     /// matched and pruned it by hash, which needs no correction to still be correct.
     ///
     /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which corrects its
-    /// absence marker to the removal's sequence (ADR-0061 §D6).
+    /// absence marker to the removal's sequence (ADR-0064 §D6).
     func reconcileProvisionalSequence(at path: String, provisional: UInt64, actual: UInt64) {
         guard var entries = selfWrittenHashes[path],
               let index = entries.firstIndex(where: { $0.sequence == provisional })
@@ -161,7 +161,7 @@ final class VaultSession {
     /// will ever match it, since it was never true).
     ///
     /// Not private: read by `VaultSession+Journal.swift`'s `moveFile`, which rolls its
-    /// absence marker back when the move throws (ADR-0061 §D6).
+    /// absence marker back when the move throws (ADR-0064 §D6).
     func removeSelfWrittenEntry(at path: String, sequence: UInt64) {
         guard var entries = selfWrittenHashes[path] else { return }
         entries.removeAll { $0.sequence == sequence }

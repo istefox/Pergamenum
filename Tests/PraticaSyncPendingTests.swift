@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncPendingTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -123,11 +118,8 @@ import Testing
     // MARK: §D23.1 - the bridge triple is recorded at the write boundary
 
     // ADR §D23, plan docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 1
-    // - `SyncOutcome.bridge` is declared by this batch's tester (ADR-0155 §D1);
-    // `commit` does not append to it yet, so `outcome.bridge` stays empty regardless
-    // of what was imported. Both tests below are red until the coder wires the
-    // `PreparedMessage.rowID`/`.conversationID` fields and the `commit`-time append
-    // (§D23.1's own two numbered steps).
+    // - `SyncOutcome.bridge`, filled from the `PreparedMessage.rowID`/`.conversationID`
+    // fields by the `commit`-time append (§D23.1's own two numbered steps).
     @Test func recordsOneBridgeEntryPerImportedMessageAndNoneForAMessageWithNoConversationID() async throws {
         let messageWithConversation = EmailFixtureCorpus.completeMessageRFC822
         let messageWithoutConversation = EmailFixtureCorpus.completeMessageRFC822

@@ -1,6 +1,7 @@
 # ADR-0017: The derived stores leave the vault; what a person chose stays in it
 
-- Status: proposed
+- Status: accepted. This record landed on `main` via PR #82 (merge `336d8b3`,
+  2026-08-21); its implementation (`PG-004`) via PR #83 (merge `9fe5a45`, 2026-08-22).
 - Date: 2026-08-21. Written from `PG-004` as widened the same day, without an interview:
   every question it raises is answerable from the code and from principles 3 and 6, and
   the one place a person's preference decides something (D3's migration of `history/`) is

@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncWritePathTests {
     private typealias Fixtures = PraticaSyncFixtures

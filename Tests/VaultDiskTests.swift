@@ -5,14 +5,6 @@ import Testing
 // ADR-0041 (vault layer consistency and security), plan
 // docs/superpowers/plans/2026-09-12-vault-layer-consistency-and-security-cha.md, Task 8 -
 // R-07: the disk work of a write moves to one actor, and ordering stops being an accident.
-//
-// **Tester-only stub (ADR-0155/ADR-0049), declared in `Sources/Vault/VaultDisk.swift`.**
-// `VaultDisk.write(_:to:precomputedHash:journalEntry:journal:recordsHistory:)` is a stub
-// that always throws before touching disk - the boundary check, the atomic write, the
-// stat, the record derivation, the history write, the journal append and the per-path
-// sequence stamping (§D9-§D11) are the coder's implementation and have not landed. Every
-// test below that calls `disk.write` is red for that reason; that is the point of this
-// file existing before the coder's task.
 
 private func note(_ body: String = "Corpo.") -> String {
     "---\ndate: 2026-08-21\ntags:\n  - type-note\n---\n\n\(body)\n"
@@ -24,7 +16,7 @@ private func makeDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
     return VaultDisk(store: store, history: history)
 }
 
-// MARK: - A basic write (red: the stub never touches disk)
+// MARK: - A basic write
 
 @Test func aWriteProducesTheFileAndARecordMatchingAFreshRead() async throws {
     let vault = try TemporaryVault()
@@ -41,7 +33,6 @@ private func makeDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
             recordsHistory: true
         )
 
-        // Only reached once the coder's real actor body exists.
         #expect(FileManager.default.fileExists(
             atPath: vault.root.appending(path: "N.md").path(percentEncoded: false)
         ))
@@ -55,7 +46,7 @@ private func makeDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
     }
 }
 
-// MARK: - `recordsHistory: false` (red: the stub throws before recording anything either way)
+// MARK: - `recordsHistory: false`
 
 @Test func recordsHistoryFalseWritesNoVersionForACanvasPath() async throws {
     let vault = try TemporaryVault()
@@ -129,10 +120,8 @@ private func makeDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
         )
         Issue.record("un percorso «../» avrebbe dovuto lanciare prima di scrivere qualunque byte")
     } catch {
-        // Expected either way right now: the stub always throws (`StubError.notImplemented`)
-        // and the coder's real boundary check will throw `VaultBoundary.Violation` for this
-        // specific input - this assertion does not pin the error type down, on purpose, so
-        // it stays meaningful once the real body lands.
+        // The boundary check throws `VaultBoundary.Violation` for this specific input; this
+        // assertion does not pin the error type down, on purpose.
     }
 
     let escaped = vault.root.deletingLastPathComponent().appending(path: "fuori.md")

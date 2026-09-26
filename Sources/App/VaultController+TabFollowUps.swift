@@ -2,7 +2,7 @@ import Foundation
 
 /// What the tabs do after their note's file moved or went away.
 ///
-/// Moved out of `VaultController+Tabs.swift` unchanged when ADR-0061 §D4's door took that file
+/// Moved out of `VaultController+Tabs.swift` unchanged when ADR-0064 §D4's door took that file
 /// past SwiftLint's 400 lines (ADR-0045's shape: a pure move into an extension of the same type).
 extension VaultController {
     /// Follows a renamed or moved note in every tab that was showing it.
@@ -32,7 +32,7 @@ extension VaultController {
     }
 
     /// Closes the given tabs because their note's file is gone: the one place a tab closes for
-    /// that reason (ADR-0061 §D4).
+    /// that reason (ADR-0064 §D4).
     ///
     /// An in-app trash (`trashedNote(at:)`), an external deletion of a clean tab's file
     /// (`reconcile(_:)`) and «Scarta ed elimina» all come here, so the three cannot drift.

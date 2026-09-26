@@ -62,9 +62,6 @@ extension PraticaSyncEngine {
         /// regeneration alike, since a regeneration is exactly when a stale ROWID gets
         /// corrected. A row Mail did not thread (`conversationID == nil`) produces no
         /// triple: there is no conversation for R-14 to re-derive.
-        ///
-        /// Declared here (ADR-0155 §D1); `commit` does not append to it yet - that is
-        /// the coder's job (ADR §D23.1).
         var bridge: [PraticaLedger.Entry]
         /// Note paths whose attachment list this run amended - a pending entry that
         /// resolved, or a corrupt file that was trashed and downgraded (ADR-0040 §D5,

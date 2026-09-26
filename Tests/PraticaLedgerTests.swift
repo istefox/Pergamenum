@@ -6,15 +6,12 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 7/8 -
 // "R-16/R-26 gap left by batch 4" (ADR follow-up "Task 5/6 implementation notes").
 //
-// `PraticaLedger.PraticaState` gained `notInStore` this batch so a sync can eventually
-// record R-16's outcome and `PraticheController.readTimeline` can read it back into
-// R-26's «non più in Mail» caption. The field itself is real (a JSON shape addition,
-// not business logic), so its own round trip is green; `readTimeline`'s use of it is
-// the tester-declared RED stub (ADR-0155 §D1) - it now takes a `notInStore` parameter
-// but still hardcodes `isInMail: true`, ignoring it.
+// `PraticaLedger.PraticaState` carries `notInStore` so a sync can record R-16's outcome
+// and `PraticheController.readTimeline` can read it back into R-26's «non più in Mail»
+// caption.
 
 @Suite struct PraticaLedgerNotInStoreTests {
-    // MARK: - The field itself round-trips (real code, not a stub)
+    // MARK: - The field itself round-trips
 
     @Test func aStateCarryingNotInStoreRoundTripsThroughJSON() throws {
         var state = PraticaLedger.PraticaState.empty
@@ -55,7 +52,7 @@ import Testing
         #expect(state.importedMessageIDs == ["<a@rossi-spa.it>"])
     }
 
-    // MARK: - `PraticheController.readTimeline` reading it back (RED: R-16/R-26)
+    // MARK: - `PraticheController.readTimeline` reading it back (R-16/R-26)
 
     @Test func readTimelineStillReportsInMailForAMessageTheLedgerHasMarkedNotInStore() throws {
         let root = FileManager.default.temporaryDirectory
@@ -86,9 +83,8 @@ import Testing
         )
 
         #expect(read.entries.count == 1)
-        // RED: the ledger says this message is gone from Mail, but `readMessages`
-        // still hardcodes `isInMail: true` - this must become `false` once the coder
-        // reads `notInStore` for real (R-16/R-26).
+        // The ledger says this message is gone from Mail, so `readMessages` must answer
+        // `isInMail == false` (R-16/R-26).
         #expect(
             read.entries.first?.isInMail == false,
             "readTimeline must mark a message in `notInStore` as no longer in Mail"

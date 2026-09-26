@@ -100,7 +100,7 @@ shape and its «never drop on a guess» comment style.
 Budget: `Sources/Core/Email/AttachmentIntegrity.swift`, `Tests/AttachmentIntegrityTests.swift`
 (~220 lines)
 
-**Tester declares** (ADR-0155 — the declaration is the tester's, the body is the coder's):
+**Tester declares** (ADR-0155 of the retired concept-to-code workflow, not a Pergamenum ADR — the declaration is the tester's, the body is the coder's):
 
 ```swift
 enum AttachmentIntegrity {

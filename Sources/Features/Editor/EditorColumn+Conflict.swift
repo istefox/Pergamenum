@@ -7,7 +7,7 @@ import SwiftUI
 /// two buttons and no state, and it is the only part of that view that is about the file
 /// rather than about the editor.
 ///
-/// **What it says is decided elsewhere (ADR-0061 §D5).** The message and both labels come from
+/// **What it says is decided elsewhere (ADR-0064 §D5).** The message and both labels come from
 /// `ConflictBannerCopy`, built from the pending change of *this column's* tab - a text change
 /// offers «Ricarica da disco», a deletion «Scarta ed elimina», and the view only renders that.
 /// The strings go through `LocalizedStringKey` so they stay localizable like the literals they

@@ -10,10 +10,6 @@ import Foundation
 /// `import Foundation` only, deliberately: a pure catalogue a test can read without
 /// pulling in SwiftUI, matching `CardCommand`'s own header. Not in `sharedSources` -
 /// the connectors have no pratica-row UI (SPEC "AI connector" boundary, R-36).
-///
-/// Every declaration below is a tester-declared boundary (ADR-0155 §D1): `available`
-/// is stubbed to `[]`, the same wrong-but-safe constant `CardCommand`'s own RED phase
-/// used, never `fatalError`.
 enum PraticaCommand: String, CaseIterable, Sendable {
     case open
     case rename

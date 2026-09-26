@@ -1,6 +1,8 @@
 # ADR-0030: The note is a page, and its faces come from the token file
 
-- Status: proposed
+- Status: accepted. This record reached `main` via PR #167 (merge `6e5b5f9`,
+  2026-09-04), whose branch carried it; its implementation via PR #169 (merge `1c254fa`,
+  2026-09-05).
 - Date: 2026-09-04. Written after reading every file it names, at the line, on the working
   tree at `main`. The font facts in D3 were **measured on this machine** with a compiled
   AppKit probe (`NSFontManager`/`NSFontDescriptor`, macOS 26 / Darwin 25.6) rather than

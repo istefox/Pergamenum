@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the conflict banner says, decided from the pending change it answers (ADR-0061 §D5).
+/// What the conflict banner says, decided from the pending change it answers (ADR-0064 §D5).
 ///
 /// Lifted out of the view's `body` so a unit test can read it (ADR-0053's seam shape): the
 /// banner renders these three strings and decides nothing itself.

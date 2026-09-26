@@ -6,8 +6,6 @@ import Testing
 // `MessageDocument.StoreReference` rather than copied - R-10), plan
 // docs/superpowers/plans/2026-09-09-pratiche.md Task 6 - R-27; ADR-0040 §D8 (R-08, R-09).
 //
-// `AttachmentChipModel` is a tester-declared boundary (ADR-0155): every test below exercises
-// the real (non-stubbed) implementation, since the extraction needed no placeholder body.
 // A temporary directory stands in for `allegati/` and for Mail's own store - never
 // `~/Library/Mail`.
 //

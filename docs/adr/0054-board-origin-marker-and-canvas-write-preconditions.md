@@ -1,6 +1,6 @@
 # ADR-0054: The open board proves what it is writing over
 
-- Status: proposed, on the branch `fix/pg-213`. Accepted when that branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #396 (merge `cc60ca6`, 2026-09-22).
 - Date: 2026-09-22. Written on the worktree `Pergamenum.worktrees/fix__pg-213` at
   `0b739d8f` (clean tree). Every signature, line number and call-site count below was
   grepped in that tree, not recalled.

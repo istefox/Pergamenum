@@ -10,7 +10,7 @@
 
 ## Status
 
-Proposed — awaiting Gate 2.
+Accepted — landed on `main` via PR #111 (merge `2ea6a0c`, 2026-08-29).
 
 **Scope note (2026-09-16, ADR-0047):** the Obsidian round-trip is no longer a binding
 constraint. The decision below stands as taken and the format it chose is unchanged; what no

@@ -6,9 +6,6 @@ import Foundation
 // One command a message row offers, named once so the row footer and its context menu
 // (ADR-0023 §D1) read the same catalogue. `import Foundation` only, matching
 // `PraticaCommand`'s own header, for the same reason - not in `sharedSources`.
-//
-// Every declaration below is a tester-declared boundary (ADR-0155 §D1): `available` is
-// stubbed to `[]`, never `fatalError`.
 enum MessageCommand: String, CaseIterable, Sendable {
     case openInMail
     case previewAttachment

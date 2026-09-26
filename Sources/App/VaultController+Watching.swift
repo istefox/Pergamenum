@@ -27,7 +27,7 @@ extension VaultController {
     /// the other column: no reload when clean, no conflict banner when dirty, and the next
     /// save overwrote the change (`PG-211`, #415; named by ADR-0055 §D5).
     ///
-    /// A file gone from disk (ADR-0061 §D4): a dirty tab gets the prompt like any change, a
+    /// A file gone from disk (ADR-0064 §D4): a dirty tab gets the prompt like any change, a
     /// clean one answers `.vanished` and is closed afterwards - ids first, then close, since
     /// closing shifts the indices `updateTabs` walks. `closeTabs(_:ofVanishedNote:)` runs for
     /// every deletion, even with no clean tab, so the closed and recent lists never keep a row

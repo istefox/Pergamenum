@@ -13,8 +13,6 @@ import Foundation
 // Pratiche/PraticheSidebarGrouping.swift`), which is `private` and serves a different
 // surface (the pane's own sidebar list, grouped by client) - the two happen to share a
 // sort key today, but nothing here depends on that staying true.
-///
-/// Tester-declared boundary (ADR-0155 §D1): stubbed to a wrong-but-safe constant.
 enum AddToPraticaOrdering {
     /// Most recent `lastActivity` first, ties broken by `id` for a deterministic order
     /// across runs (`PraticheSidebarGrouping.byRecency`'s own tie-break, applied here

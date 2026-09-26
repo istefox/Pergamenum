@@ -28,11 +28,8 @@ struct MembershipStoreSnapshot: Equatable, Sendable {
 
     static let empty = MembershipStoreSnapshot(conversations: [:], messagesByID: [:])
 
-    /// One conversation's messages, followed or not (ADR §D22.1). Tester stub
-    /// (ADR-0155 §D1): trivial and pure, implemented for real rather than left as a
-    /// no-op stub, since there is no judgment call in a one-line union of two
-    /// dictionary lookups. `MembershipRule.everyMessage(in:)` does not call this yet -
-    /// that rewiring is coder work per §D22.1.
+    /// One conversation's messages, followed or not (ADR §D22.1). A one-line union of
+    /// two dictionary lookups.
     func messages(inConversation id: Int) -> [MailMessageRow] {
         conversations[id] ?? unfollowed[id] ?? []
     }

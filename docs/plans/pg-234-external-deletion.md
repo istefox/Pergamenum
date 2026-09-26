@@ -1,17 +1,20 @@
 # Plan: PG-234 / #511, an external deletion reaches the editor tabs and the Diario pane
 
+- **Renumbered 2026-09-26:** the ADR this plan implements was ADR-0061 when the plan was written
+  and is ADR-0064 since issue #581 (register: `docs/adr/README.md`); every reference below was
+  updated to match, nothing else changed.
 - SPEC: `SPEC.md` (Approved 2026-09-25), success criteria R-01…R-09. Its Decisions and Constraints
-  are registered as settled; the one place this plan goes past the SPEC's letter (ADR-0061 §D6, the
+  are registered as settled; the one place this plan goes past the SPEC's letter (ADR-0064 §D6, the
   move race) waits on gate G1 below and is not decided on Stefano's behalf.
-- ADR: **new, ADR-0061**,
-  `docs/adr/0061-external-deletion-reaches-the-tabs-and-the-diary.md` (status proposed). Why an
+- ADR: **new, ADR-0064**,
+  `docs/adr/0064-external-deletion-reaches-the-tabs-and-the-diary.md` (status proposed). Why an
   ADR: the change widens a shared signal every consumer switches on (hard to reverse), deliberately
   suppresses the deletion signal for a move while leaving it for a trash (surprising without
   context), picks one pending-state shape over another the SPEC left open, and records several
   explicit "not fixed" items a later reader would otherwise reopen. Every prior change to this
   reconcile/write plumbing got one (ADR-0043, 0046, 0054, 0055, 0056, 0057, 0058).
 - Written against `5531f72`. Every file:line below was read from that tree on 2026-09-25.
-- UI budget: **zero GUI tests**. Everything is asserted in-process (ADR-0061 Acceptance).
+- UI budget: **zero GUI tests**. Everything is asserted in-process (ADR-0064 Acceptance).
 
 ## Before `/build` (orchestrator, each item a HITL point)
 
@@ -21,10 +24,10 @@
    has no commits of its own (`5531f72..HEAD` is empty; the work is `SPEC.md` modified plus two
    untracked files), so this is a fast-forward. The restore touches `SPEC.md` nowhere and, among
    the files this plan edits, only `VaultSession+Watching.swift` (`append`, from `:65`, below
-   every line cited here) and `CLAUDE.md` (the ADR-0060 index line; Task 6 adds ADR-0061's after
+   every line cited here) and `CLAUDE.md` (the ADR-0060 index line; Task 6 adds ADR-0064's after
    it). `PergamenumApp.swift:128` becomes `:162`; nothing in this plan edits it.
 2. `tuist install` (once per fresh worktree) and `tuist generate --no-open`.
-3. **Gate G1: approve ADR-0061 §D6** (the absence marker at `VaultSession.moveFile`) or pick
+3. **Gate G1: approve ADR-0064 §D6** (the absence marker at `VaultSession.moveFile`) or pick
    Alternative 4b (relocation claims on `VaultController`). The finding: once a missing path is
    reported as `.deleted` (R-07), the watcher's reconcile for a rename's or move's vacated source
    runs at the rename's first `await`, before `movedNote`, and would close the renamed note's tab
@@ -58,7 +61,7 @@ Signatures:
 
 - `Sources/Vault/VaultSession+Watching.swift:10-14`: `ExternalChange` gains the nested
   `enum Content: Equatable, Sendable { case text(String); case deleted }` and `let content:
-  Content` replaces `let text: String` (ADR-0061 §D1). No `text` accessor. Doc comment updated to
+  Content` replaces `let text: String` (ADR-0064 §D1). No `text` accessor. Doc comment updated to
   name both cases.
 - `Sources/Vault/NoteTab.swift:87-105`: `externalChangePending: VaultSession.ExternalChange
   .Content?`; a nested `enum CatchUp: Equatable { case adopted, asked, vanished }`; `@discardableResult
@@ -212,7 +215,7 @@ targets build, and `VaultControllerMoveNoteTests.swift:81` is still green.
 
 ### Task 4 (coder): the controller closes a vanished clean tab (R-01, R-02, R-03, R-04, R-09)
 
-- `Sources/Vault/NoteTab.swift`: `catchUp(to:)`'s body per ADR-0061 §D3's table. Dirty: pending takes
+- `Sources/Vault/NoteTab.swift`: `catchUp(to:)`'s body per ADR-0064 §D3's table. Dirty: pending takes
   the incoming content, `.asked`. Clean `.text`: today's adoption, `.adopted`. Clean `.deleted`:
   nothing changes, `.vanished`. Doc comment names all three results.
 - `Sources/App/VaultController+Tabs.swift:317-331`: extract the door, `func closeTabs(_ ids:
@@ -221,7 +224,7 @@ targets build, and `VaultControllerMoveNoteTests.swift:81` is still green.
   as today and calls it. Doc comment: the one place a tab closes because its file is gone.
 - `Sources/App/VaultController+Watching.swift:29-39` (`reconcile`): for each change, collect the
   ids `catchUp` answers `.vanished` for inside `updateTabs(showing:)`; for a `.deleted` change call
-  `closeTabs(_:ofVanishedNote:)` after the loop, **even with no ids** (ADR-0061 §D4), then
+  `closeTabs(_:ofVanishedNote:)` after the loop, **even with no ids** (ADR-0064 §D4), then
   `didChangeExternally?(change.path)` as today, for every change. Doc comment updated.
 - `VaultController+Tabs.swift` is 390 lines; SwiftLint warns at 400. If the file crosses it,
   `movedNote`, `trashedNote` and the new door move together, unchanged, into a new
@@ -240,7 +243,7 @@ the follow-up on every exit path, and `reconcile` skips closing a claimed path's
 - `Sources/App/VaultController+Editing.swift:125-131` (`acceptExternalChange`): `.text` as today;
   `.deleted` closes the focused tab through `closeTabs(_:ofVanishedNote:)` and writes nothing.
 - `Sources/App/VaultController+Editing.swift:134-136` (`keepLocalVersion`): `.text` as today;
-  `.deleted` clears pending **and sets `savedText = ""`** (ADR-0061 §D5). Doc comments on both say
+  `.deleted` clears pending **and sets `savedText = ""`** (ADR-0064 §D5). Doc comments on both say
   what each does for each case.
 - `Sources/Features/Editor/ConflictBannerCopy.swift`: the real body. `.text` returns today's three
   strings unchanged; `.deleted` returns the new message plus «Scarta ed elimina» and «Tieni la mia
@@ -268,8 +271,8 @@ the follow-up on every exit path, and `reconcile` skips closing a claimed path's
   (`externalChangePending`, `catchUp`), `VaultController+Editing.swift`'s two verbs,
   `EditorColumn+Conflict.swift`'s header, `trashedNote`, `moveFile`. Tasks 3-5 each own theirs;
   this is the check that none was missed.
-- `CLAUDE.md`: one line for ADR-0061 in the chain decision index, after ADR-0060's (restored).
-- ADR-0061: status to accepted at merge; if G1 went to 4b, rewrite §D6 and Alternative 4 to match
+- `CLAUDE.md`: one line for ADR-0064 in the chain decision index, after ADR-0060's (restored).
+- ADR-0064: status to accepted at merge; if G1 went to 4b, rewrite §D6 and Alternative 4 to match
   before merging, never leave the ADR describing a mechanism that was not built.
 - R-09 is an ordering argument (no-test in the SPEC). Tests 8 and 18 pin what can be pinned: a
   trash is still reported, and both orders end in the same state.
@@ -300,7 +303,7 @@ the follow-up on every exit path, and `reconcile` skips closing a claimed path's
   header, not reproduced; confidence it is real is high because the suite's own
   `VaultControllerMoveNoteTests.swift:81` exercises exactly that path with a live watcher.
 - **A duplicate FSEvents delivery of a vacated path**, after the first one consumed the marker and
-  before `movedNote`, would still close the tab (ADR-0061 §D6, named, not engineered around).
+  before `movedNote`, would still close the tab (ADR-0064 §D6, named, not engineered around).
 - **Folder moves: assumption, not verified.** A batch move of a folder (`VaultSession+Move.swift:144`)
   moves a directory, and its tab follow-up (`follow(_:)`) runs after the batch's awaits. The plan
   assumes FSEvents reports the directory path only, which `VaultWatcher`'s `.md` filter drops; if it
@@ -308,7 +311,7 @@ the follow-up on every exit path, and `reconcile` skips closing a claimed path's
   (`VaultController+Folders.swift:63-65`) follows synchronously and is not exposed. The last hand
   check in Task 6 is the way to find out.
 - **Pratiche direct `FileManager` moves** (`PraticaFileOperations.swift:48,166`) now close a clean
-  tab on a message instead of leaving it on a dead path (ADR-0061 §D7). Behaviour change, arguably
+  tab on a message instead of leaving it on a dead path (ADR-0064 §D7). Behaviour change, arguably
   better, not asked for by the SPEC.
 - **External renames close the tab** rather than follow it (§D7). Today they leave it on a dead
   path, so this is not a regression.

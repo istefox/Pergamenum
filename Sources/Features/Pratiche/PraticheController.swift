@@ -68,8 +68,8 @@ final class PraticheController {
     /// markdown body, the quoted history, the attachments and the pending flag.
     ///
     /// A side table rather than more fields on the entry: `PraticaTimelineEntry` is
-    /// the tester-declared shape the ordering, filtering and lane rules are written
-    /// against (ADR-0155), and widening it to carry a file's whole body would make
+    /// the shape the ordering, filtering and lane rules are written against, and
+    /// widening it to carry a file's whole body would make
     /// every one of those pure functions carry a payload none of them reads.
     var details: [String: PraticaRowDetail] = [:]
 
@@ -284,8 +284,8 @@ final class PraticheController {
     /// boundary and never mid-write.
     ///
     /// A settable property rather than a third `init` parameter: `init(probe:
-    /// performSync:)` is the tester-declared signature (ADR-0155) and widening it
-    /// would break every test that builds this controller. `nil` means nothing is
+    /// performSync:)` is the signature the tests were written against, and widening
+    /// it would break every test that builds this controller. `nil` means nothing is
     /// wired, and the button is disabled rather than lying about stopping a sync.
     @ObservationIgnored var requestSyncCancellation: (@MainActor () -> Void)?
 
@@ -302,7 +302,7 @@ final class PraticheController {
     /// the path the run captured moved or went to the Trash does not change what the engine
     /// has to do, so one closure serves both. Same shape and justification as
     /// `requestSyncCancellation` just above: a settable property, not a third `init`
-    /// parameter, so it cannot break `init(probe:performSync:)` (ADR-0155). `nil` means
+    /// parameter, so it cannot break `init(probe:performSync:)`. `nil` means
     /// nothing is wired, and a relocation or trash runs with nothing to stop. Wired by
     /// `live(vault:)` to `PraticaLiveSync.stopForVanishedPath()`, called from
     /// `moveLedgerState` and `forgetLedgerState` - deliberately NOT the same closure as

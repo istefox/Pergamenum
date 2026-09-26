@@ -85,13 +85,13 @@ extension VaultController {
         /// An external change arrived while this note had unsaved edits. The editor
         /// must ask rather than merging or discarding either side (ADR-0001 §D3.4).
         ///
-        /// One value, not two optionals (ADR-0061 §D3): `nil` is no conflict, `.text` the
+        /// One value, not two optionals (ADR-0064 §D3): `nil` is no conflict, `.text` the
         /// note changed on disk, `.deleted` the note is gone from disk.
         var externalChangePending: VaultSession.ExternalChange.Content?
 
         var hasUnsavedChanges: Bool { text != savedText }
 
-        /// What `catchUp(to:)` did with the incoming content (ADR-0061 §D3).
+        /// What `catchUp(to:)` did with the incoming content (ADR-0064 §D3).
         enum CatchUp: Equatable {
             /// The buffer took the disk's side, or had nothing to take.
             case adopted
@@ -102,7 +102,7 @@ extension VaultController {
         }
 
         /// Catches this buffer up with what the disk now holds: ADR-0001 §D3.4 for one buffer
-        /// (ADR-0058 §D1), and says what it did (ADR-0061 §D3).
+        /// (ADR-0058 §D1), and says what it did (ADR-0064 §D3).
         ///
         /// - `.asked`: the buffer is dirty, whatever `incoming` is. It is the person's work:
         ///   never merged, never discarded - the prompt becomes pending with `incoming` as the

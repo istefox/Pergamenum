@@ -10,14 +10,9 @@ import Testing
 // already covers `NoteStore.read`/`write` themselves; this file is the other nine, plus the
 // gap, for ten guarded sites in total (the SPEC's R-02, stated exactly).
 //
-// **Tester-only signature cascade (ADR-0155).** `NoteStore.url(for:)` becoming `throws` is
-// declared here, mechanically, at every one of its 31 call sites (`try`/`try?` added, no
-// behaviour changed) so the whole target still compiles; the four `Bool`/`URL?`-returning
-// sites answer `false`/`nil` on a violation, per the plan's own decision. None of that wiring
-// routes anything through `VaultBoundary` for real - every test below is red until the coder
-// does that. `BoardCardActions.resolvedOpenURL(for:root:)` is a new, `nonisolated`, pure
-// function extracted from `open(_:)` for the same reason the brief allows it: there is no
-// other seam that does not drive `NSWorkspace` for real.
+// The four `Bool`/`URL?`-returning sites answer `false`/`nil` on a violation.
+// `BoardCardActions.resolvedOpenURL(for:root:)` is a `nonisolated`, pure function extracted
+// from `open(_:)`: there is no other seam that does not drive `NSWorkspace` for real.
 //
 // Every test asserts on the file system (or the returned value, where nothing could have
 // been written), not only on the thrown error - a guard that throws after writing is not a
@@ -84,8 +79,7 @@ private struct CallSiteFixture: ~Copyable {
             "load(board:) must refuse ../../evil.canvas; instead it read \(loaded.nodes.count) node(s) from outside the vault"
         )
     } catch {
-        // Any thrown error is the refusal this test asks for - `CanvasStore.url(forBoard:)`
-        // does not yet route through a boundary, so today nothing throws at all.
+        // Any thrown error is the refusal this test asks for.
     }
 }
 
@@ -231,10 +225,7 @@ private struct CallSiteFixture: ~Copyable {
 
 // `BoardCardActions.open(_:)` itself drives `NSWorkspace.shared.open`, a real Finder/app
 // launch with no return value to assert on - not a testable seam. `resolvedOpenURL(for:
-// root:)` is the pure decision `open(_:)` now delegates to (declared by this task's tester,
-// per the brief's own "extract a testable pure function" allowance); it still reproduces
-// `open(_:)`'s exact prior behaviour, so this test is red until the coder wires it through
-// `VaultBoundary`.
+// root:)` is the pure decision `open(_:)` delegates to, resolved through `VaultBoundary`.
 @Test func resolvedOpenURLAnswersNilForAPathEscapingTheVault() {
     let root = URL(fileURLWithPath: "/tmp/pergamenum-fixture-vault-\(UUID().uuidString)", isDirectory: true)
 
@@ -371,8 +362,8 @@ private struct CallSiteFixture: ~Copyable {
 // MARK: - The tenth gap: the three raw-bytes writers (`Data(...).write(to: store.url(for:…))`)
 
 // `FolderFileOperations.swift:322`, `BoardFileOperations.swift:172` and `:286` all write a
-// repointed board's re-encoded JSON straight to disk, bypassing `NoteStore.write` and, until
-// the coder wires `NoteStore.url(for:)` through `VaultBoundary`, its guard too. Reaching one
+// repointed board's re-encoded JSON straight to disk, bypassing `NoteStore.write` though not
+// `NoteStore.url(for:)`'s `VaultBoundary` guard. Reaching one
 // of those three lines specifically with a caller-controlled escaping `change.path` needs a
 // board that references another board being renamed/moved - and every path that could name
 // is validated upstream (`NoteName.validate` rejects "/" in a new name, which is what

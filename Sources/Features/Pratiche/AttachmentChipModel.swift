@@ -8,9 +8,8 @@ import UniformTypeIdentifiers
 // `AttachmentChip`'s decisions - which symbol it draws, what Quick Look/double-click/
 // "Mostra nel Finder"/"Copia" target, and whether that target exists at all - depend only
 // on its `Content` plus whether a candidate file is really on disk and, once there,
-// whether its bytes are usable. Pulled out of the SwiftUI view (ADR-0155: this
-// declaration is tester-owned, the coder fills gaps) so those decisions are testable
-// with Foundation alone, no AppKit/SwiftUI in the loop.
+// whether its bytes are usable. Pulled out of the SwiftUI view so those decisions are
+// testable with Foundation alone, no AppKit/SwiftUI in the loop.
 //
 // `state` is injected rather than read from `FileManager`/`AttachmentIntegrity` directly:
 // the states under test (usable, missing, unusable) are otherwise unreachable without

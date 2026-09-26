@@ -1,4 +1,4 @@
-# ADR-0061: An external deletion reaches the editor tabs and the Diario pane, not just the index
+# ADR-0064: An external deletion reaches the editor tabs and the Diario pane, not just the index
 
 - Status: **accepted**. Merged to `main` via PR #530 (`c2cf19b`, 2026-09-25). **§D6 confirmed by
   Stefano at gate G1 (2026-09-25)**: the absence-marker fix on `VaultSession.moveFile`, not
@@ -18,6 +18,12 @@
   (`0060-adr0057-followups-five-write-sites-quit-flush-board-navigation.md`) was merged by #515,
   lost by #519 and is carried by the restore branch. No ref has a `docs/adr/0061*` (`git log --all
   -- 'docs/adr/0061*'` is empty). This chain lands after the restore, or the sequence shows a gap.
+- **Renumbering note (2026-09-26).** Written, merged and cited as ADR-0061 (PR #530, merge
+  `638f5e4`, 2026-09-25). The merge-integrity guard, `0061-merge-integrity-guard.md` (PR #529,
+  merge `15a0df7`), landed the same day before it and keeps 0061, because the tooling cites that
+  number. This record took the next free number, 0064 (0063 was already ADR-0063), on issue #581.
+  Commits, PR bodies and closed tickets from before this date call it ADR-0061. Register:
+  `docs/adr/README.md`.
 - **Path note:** the architect's write scope names `docs/architecture/**`. That directory does not
   exist in this repo; every ADR lives at `docs/adr/NNNN-<slug>.md` and `CLAUDE.md`'s chain index
   links them there. ADR-0054, 0055 and 0058's plans recorded the same deviation.

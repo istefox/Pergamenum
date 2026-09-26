@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncRetryTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -17,14 +12,9 @@ import Testing
     // MARK: Task 6 (ADR-0040 §D4, §D5, §D6) - every sync revisits a message that is
     // still waiting, and amends one line when it resolves (R-05, R-06)
     //
-    // `PraticaSyncEngine.FolderContext.ExistingMessage.text` (§D6 - needed to compare a
-    // patch against the file already read) does not exist yet, and neither does
-    // `SyncOutcome.resolvedAttachmentFiles`/`.attachmentProblems` (§D10). Most tests
-    // below are red because they fail to COMPILE against the current
-    // `PraticaSyncEngine.swift`, not merely because the logic is wrong - this batch's
-    // tester does not touch `Sources/` at all (per this dispatch's explicit scope); the
-    // coder both declares those symbols and fills in Task 6's guard clause, selection
-    // clause and write-mode fork.
+    // The tests below read `PraticaSyncEngine.FolderContext.ExistingMessage.text` (§D6 -
+    // needed to compare a patch against the file already read) and
+    // `SyncOutcome.resolvedAttachmentFiles`/`.attachmentProblems` (§D10).
 
     /// `text` with its `pergamenum-mail-attachments:` line removed - the one line §D4's
     /// patch mode may ever touch. Two texts equal after this strip differ, if at all,

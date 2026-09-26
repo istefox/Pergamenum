@@ -1,7 +1,7 @@
 # ADR-0056: An external change, a rename and a trash reach every tab that shows the note
 
-- Status: proposed, on the branch `kepler/fix/415-vaultcontroller-reconcile-drops-edits`.
-  Accepted when that branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #453 (squash commit `616c5ad`,
+  2026-09-24).
 - Date: 2026-09-23. Written **after** the implementation, against `1a56ed99` plus its
   uncommitted diff (`Sources/App/VaultController+Tabs.swift`,
   `Sources/App/VaultController+Watching.swift`, new `Tests/VaultControllerReconcileTests.swift`).

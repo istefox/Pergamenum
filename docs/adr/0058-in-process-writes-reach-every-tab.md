@@ -1,7 +1,6 @@
 # ADR-0058: An in-process write, a save and a restore reach every tab that shows the note
 
-- Status: proposed, on the branch `kepler/461-pg-223-syncopennote-focused-tab`. Accepted when that
-  branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #500 (merge `b390000`, 2026-09-25).
 - Date: 2026-09-24. Written **before** the implementation, against `2e529c14` (clean tree). Every
   line number below was read from that tree. None is recalled from the ticket.
 - **Numbering note:** `0056` is the highest file under `docs/adr/` on this branch, but

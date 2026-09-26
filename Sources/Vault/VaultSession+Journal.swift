@@ -64,7 +64,7 @@ extension VaultSession {
     /// this is after the dry-run return and after the disk move has succeeded, and it is also
     /// the door a connector undo of a move takes, so the id follows that undo too.
     ///
-    /// The source path goes into `selfWrittenHashes` under `absenceMarker` (ADR-0061 §D6), so
+    /// The source path goes into `selfWrittenHashes` under `absenceMarker` (ADR-0064 §D6), so
     /// the watcher's reconciliation of the path this move vacated is this session's own and
     /// reports nothing; `movedNote` is the tab's follow-up. `trashFile` below records no such
     /// marker on purpose: an in-app trash still reaches the watcher as `.deleted` (R-09).
@@ -76,7 +76,7 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
-        // ADR-0061 §D6: the vacated source is this session's own absence, recorded before
+        // ADR-0064 §D6: the vacated source is this session's own absence, recorded before
         // the hop like a write's hash (ADR-0041 §D10), so a watcher racing the move never
         // finds the source gone before this session holds its record of it - otherwise it
         // is reported `.deleted` and closes the tab `movedNote` is about to follow.

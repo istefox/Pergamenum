@@ -1,6 +1,8 @@
 # ADR-0044: CI checks that the three targets compile from a clean checkout, and nothing else
 
-- Status: proposed — **decided, not implemented** (see §D13 and the implementation plan)
+- Status: accepted. The workflow it decides, `.github/workflows/ci.yml`, landed on `main` with this
+  record via PR #261 (merge `41939a6`, 2026-09-14); §D13 is the decision as written before the
+  workflow existed.
 - Date: 2026-09-13. Written after reading the generated schemes, `Project.swift`, `.claude/test-cmd`,
   `scripts/uitests.sh`, `.swiftlint.yml`, `.gitignore` and the open UI-test tickets in `TODO.md`, on
   the working tree at `790bbca` (`emdash/fix-pg-072-composeruitests-zythq`, PR #258 merged). Every
