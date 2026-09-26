@@ -149,7 +149,7 @@ private func textNode(id: String, text: String, x: CGFloat = 0, y: CGFloat = 0) 
     #expect(merged == theirs)
 }
 
-// MARK: - Duplicate ids diverge instead of trapping (ADR-0064 §D6.1, R-09)
+// MARK: - Duplicate ids diverge instead of trapping (ADR-0065 §D6.1, R-09)
 //
 // Written in the same change as the fix (plan Rule 1): before it, each of these reached
 // `Dictionary(uniqueKeysWithValues:)` with a repeated key and killed the test host.

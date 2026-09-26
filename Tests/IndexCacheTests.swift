@@ -163,7 +163,7 @@ Corpo con [[Altra nota]].
     #expect(cache.load().isEmpty)
 }
 
-/// ADR-0064 §D12 (G1.1): a version 4 row read a CRLF note's frontmatter as empty and counted a
+/// ADR-0065 §D12 (G1.1): a version 4 row read a CRLF note's frontmatter as empty and counted a
 /// `.canvas` link target, so a cache stamped 4 is dropped and rebuilt, never reused.
 @Test func aCacheStampedFourIsNotReused() throws {
     let vault = try TemporaryVault()
@@ -222,7 +222,7 @@ private let taskMarkerNote = """
     // Literal, so a coder who bumps the schema to carry *this* feature turns this test
     // red (ADR-0021 D4: "There is no schema change, no version bump"). The value itself
     // moved to 4 for an unrelated reason (ADR-0047 §D5, `categorySlug`), and to 5 for
-    // another (ADR-0064 §D12, CRLF frontmatter and `.canvas` link targets) - this pin is
+    // another (ADR-0065 §D12, CRLF frontmatter and `.canvas` link targets) - this pin is
     // about ADR-0021 spending no bump of its own, not about the version staying 3
     // forever.
     #expect(IndexCache.schemaVersion == 5)

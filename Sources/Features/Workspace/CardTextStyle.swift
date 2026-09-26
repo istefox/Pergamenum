@@ -77,7 +77,7 @@ struct CardTextStyle: Equatable, Sendable {
             guard presetHex.indices.contains(index - 1) else { return nil }
             return RGBA(hex: presetHex[index - 1])
         case .unrecognised:
-            // Kept for the file (ADR-0064 §D5.2), never drawn: no tint.
+            // Kept for the file (ADR-0065 §D5.2), never drawn: no tint.
             return nil
         }
     }

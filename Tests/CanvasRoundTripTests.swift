@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D5-§D6, plan docs/plans/format-edge-hardening.md, Task 3 - R-06, R-07, R-08, R-23.
+// ADR-0065 §D5-§D6, plan docs/plans/format-edge-hardening.md, Task 3 - R-06, R-07, R-08, R-23.
 //
 // JSON Canvas carries what it cannot read. "Round-trips" for `.canvas` means identical to the
-// codec's canonical encoding of the same JSON value (ADR-0064 §Context): a fixture is
+// codec's canonical encoding of the same JSON value (ADR-0065 §Context): a fixture is
 // canonicalised once, with the codec's options, and compared to `encoded()`.
 
 private func decoded(_ json: String) throws -> CanvasDocument {

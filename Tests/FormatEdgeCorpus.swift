@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR-0064 (Every on-disk format round-trips faithfully or is refused), plan
+// ADR-0065 (Every on-disk format round-trips faithfully or is refused), plan
 // docs/plans/format-edge-hardening.md, Tasks 1-5 and 8 - R-01 to R-15, R-23.
 //
 // The chain's in-code corpus (SPEC Decision 10), in `EmailFixtureCorpus`'s shape: one enum of
@@ -101,7 +101,7 @@ enum FormatEdgeCorpus {
     // MARK: - JSON Canvas (Task 3)
 
     /// A `.canvas` fixture. `refusedKey` names the key whose `notAList` refusal is the expected
-    /// outcome; nil means the fixture must re-encode to its own canonical form (ADR-0064 §Context).
+    /// outcome; nil means the fixture must re-encode to its own canonical form (ADR-0065 §Context).
     struct CanvasCase: Sendable, CustomStringConvertible {
         let name: String
         let json: String
@@ -153,7 +153,7 @@ enum FormatEdgeCorpus {
     ]
 
     /// A fixture canonicalised once through `JSONSerialization` with the codec's own options
-    /// (`JSONCanvas.swift`, `encoded()`): what "round-trips" means for `.canvas` (ADR-0064
+    /// (`JSONCanvas.swift`, `encoded()`): what "round-trips" means for `.canvas` (ADR-0065
     /// §Context). A fixture without `edges` gains the `"edges": []` the codec always writes.
     static func canonicalCanvas(_ json: String) throws -> Data {
         guard var object = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else {
@@ -169,7 +169,7 @@ enum FormatEdgeCorpus {
     // MARK: - Mail (Task 4)
 
     /// Mail is an input format: nothing writes it back, so a case passes when it decodes to the
-    /// value it was meant to carry (ADR-0064 §Context).
+    /// value it was meant to carry (ADR-0065 §Context).
     struct MailCase: Sendable, CustomStringConvertible {
         enum Input: Sendable {
             /// One header value through `EncodedWord.decode`.
@@ -233,7 +233,7 @@ enum FormatEdgeCorpus {
     // MARK: - Message documents (Task 5)
 
     /// A message file is written by this app, so it round-trips: render → parse gives the same
-    /// subject and offset back, and rendering again is byte-identical (ADR-0064 §D8).
+    /// subject and offset back, and rendering again is byte-identical (ADR-0065 §D8).
     struct MessageCase: Sendable, CustomStringConvertible {
         let name: String
         let subject: String
@@ -252,7 +252,7 @@ enum FormatEdgeCorpus {
 
     // MARK: - Byte-level BOM notes (Task 2)
 
-    /// The BOM belongs to the file, not to the text (ADR-0064 §D4): these go through
+    /// The BOM belongs to the file, not to the text (ADR-0065 §D4): these go through
     /// `NoteStore.write`/`read` on disk, since no `String` carries the bytes `EF BB BF` once decoded.
     static let bomNotes: [(name: String, bytes: Data)] = [
         ("bomCRLFWithFrontmatter", Data([0xEF, 0xBB, 0xBF]) + Data(crlfWithFrontmatter.text.utf8)),

@@ -56,7 +56,7 @@ extension MessageDocument {
         return formatter.date(from: text)
     }
 
-    /// The offset a stored date was written in (ADR-0064 §D8.2): `±hh:mm` as seconds east of
+    /// The offset a stored date was written in (ADR-0065 §D8.2): `±hh:mm` as seconds east of
     /// UTC, and `Z` - or a zero offset, which renders as `Z` - as `nil`, so render → parse →
     /// render stays identical.
     private static func isoOffset(_ text: String) -> Int? {
@@ -152,7 +152,7 @@ extension MessageDocument {
         return pieces
     }
 
-    /// The exact inverse of `quoted()` (ADR-0064 §D8.1, R-14): one left-to-right scan that
+    /// The exact inverse of `quoted()` (ADR-0065 §D8.1, R-14): one left-to-right scan that
     /// decodes `\\`, `\"` and `\n` as pairs and leaves any other backslash as it is. Chained
     /// replacements are not an inverse in either order: `C:\nuovo` is written `C:\\nuovo`, and
     /// once `\\` is back to `\`, the `\n` that follows reads as a line break.

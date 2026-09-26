@@ -72,7 +72,7 @@ extension CanvasDocument {
             reasons.append(key)
         }
 
-        // ADR-0064 §D6.3: `mine` carries `base`'s opaque elements, so adopting it over an
+        // ADR-0065 §D6.3: `mine` carries `base`'s opaque elements, so adopting it over an
         // external change to one of them would silently overwrite that change.
         reasons.append(contentsOf: Self.opaqueDifferences("nodes", base.opaqueNodes, theirs.opaqueNodes))
         reasons.append(contentsOf: Self.opaqueDifferences("edges", base.opaqueEdges, theirs.opaqueEdges))
@@ -82,7 +82,7 @@ extension CanvasDocument {
 
     /// The two answers `reconcile` gives before comparing anything: `base == theirs` adopts
     /// `mine` as it is, and a duplicated node or edge id in any of the three documents
-    /// (ADR-0064 §D6.1) has no single node to fold a repoint into and would trap the id-keyed
+    /// (ADR-0065 §D6.1) has no single node to fold a repoint into and would trap the id-keyed
     /// dictionaries, so nothing is decided automatically and the caller enters the conflicted
     /// state. `nil` when neither applies.
     private static func settledEarly(mine: Self, base: Self, theirs: Self) -> Reconciliation? {

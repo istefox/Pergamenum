@@ -410,7 +410,7 @@ private func conflictedBoard(
     vaultController.close()
 }
 
-// MARK: - ADR-0064 §D6.1 (R-09): a duplicate-id board goes conflicted instead of trapping
+// MARK: - ADR-0065 §D6.1 (R-09): a duplicate-id board goes conflicted instead of trapping
 //
 // Written in the same change as the fix (plan Rule 1): before it, the refused autosave's
 // reconciliation reached `Dictionary(uniqueKeysWithValues:)` with a repeated id and killed

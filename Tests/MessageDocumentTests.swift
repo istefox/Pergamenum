@@ -303,7 +303,7 @@ import Testing
     }
 }
 
-// ADR-0064 (Every on-disk format round-trips faithfully or is refused), plan
+// ADR-0065 (Every on-disk format round-trips faithfully or is refused), plan
 // docs/plans/format-edge-hardening.md, Task 5 - R-14, R-15, G1.5.
 
 @Suite struct MessageDocumentExactnessTests {

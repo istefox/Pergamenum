@@ -263,7 +263,7 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     #expect(try session.read("Uno.md").text.contains("topic-gomma"))
 }
 
-// MARK: CRLF (ADR-0064 §D3, G1.3)
+// MARK: CRLF (ADR-0065 §D3, G1.3)
 
 @Test func tagRenameReachesACRLFNote() throws {
     let text = FormatEdgeCorpus.crlfWithFrontmatter.text

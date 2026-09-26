@@ -27,7 +27,7 @@ extension NoteStore {
     ///
     /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
     /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
-    /// neighbour or `links` value (ADR-0064 §D9.5, R-20).
+    /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
     static func linkTargets(in document: NoteDocument) -> [String] {
         var seen = Set<String>()
         var ordered: [String] = []

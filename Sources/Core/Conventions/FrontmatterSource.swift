@@ -1,6 +1,6 @@
 import Foundation
 
-/// The line break a note's text uses (ADR-0064 §D3).
+/// The line break a note's text uses (ADR-0065 §D3).
 ///
 /// Detected once, from the text's first line break, and used only for the lines the app writes:
 /// an existing line keeps its own ending, so a mixed file stays mixed.
@@ -34,7 +34,7 @@ enum LineBreak: Equatable, Sendable {
     }
 }
 
-/// The frontmatter block exactly as it was read (ADR-0064 §D1.1).
+/// The frontmatter block exactly as it was read (ADR-0065 §D1.1).
 ///
 /// `NoteDocument.frontmatter` is what the block *means*; this is what it *was*, line by line, so a
 /// write can change the keys the app meant to change and emit every other byte verbatim - a
@@ -136,7 +136,7 @@ struct FrontmatterSource: Equatable, Sendable {
     }
 }
 
-// MARK: - Serializing in place (ADR-0064 §D1.3, §D2)
+// MARK: - Serializing in place (ADR-0065 §D1.3, §D2)
 
 extension NoteDocument {
     /// Rebuilds the file text, changing only what the caller changed.
@@ -266,7 +266,7 @@ extension NoteDocument {
     }
 }
 
-// MARK: - Damage the block carries, as advisory findings (ADR-0064 §D11, R-22)
+// MARK: - Damage the block carries, as advisory findings (ADR-0065 §D11, R-22)
 
 extension FrontmatterRules {
     /// The three advisory damage findings, read from the block as written. `validate` asks only

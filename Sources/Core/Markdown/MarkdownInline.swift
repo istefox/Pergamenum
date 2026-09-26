@@ -19,7 +19,7 @@ struct MarkdownSpan: Equatable, Sendable {
         /// `[testo](url)`: anything else, opened by the system.
         case url(String)
         /// `![[foto.png]]` or `![[foto.png|300]]`: an embed, by its reference - the part before
-        /// `|`, so a size suffix never shows (ADR-0064 §D9.2, R-17).
+        /// `|`, so a size suffix never shows (ADR-0065 §D9.2, R-17).
         case embed(target: String)
     }
 
@@ -70,7 +70,7 @@ enum MarkdownInlineParser {
     private static func match(at rest: Substring) -> Match? {
         // Code first: inside backticks nothing else is markup.
         // An embed before the wikilink and link fallbacks: neither reads `![[`, so the `!` was
-        // left behind as plain text beside a note link (ADR-0064 §D9.2, R-17).
+        // left behind as plain text beside a note link (ADR-0065 §D9.2, R-17).
         code(at: rest) ?? embed(at: rest) ?? wikilink(at: rest) ?? link(at: rest) ?? emphasis(at: rest)
     }
 

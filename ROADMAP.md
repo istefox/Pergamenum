@@ -27,10 +27,10 @@ Part 2 at the end is the short schedule.
 
 ### Chain 1 — Format-edge hardening (P1, data loss on ordinary input)
 
-**Shipped** as ADR-0064 (`docs/adr/0064-format-round-trip-faithful-or-refused.md`), branch
+**Shipped** as ADR-0065 (`docs/adr/0065-format-round-trip-faithful-or-refused.md`), branch
 `fix/chain-1-format-edge-hardening`, PR #593. It closes all 17 items below. Item 17 needed no code
 change: Swift's `String` comparison already equates NFD and NFC, and regression tests now pin that
-(ADR-0064 §D10). The residuals the chain found and did not fix are in ADR-0064 §D13 and are filed
+(ADR-0065 §D10). The residuals the chain found and did not fix are in ADR-0065 §D13 and are filed
 separately.
 
 Root cause: the parsers for the on-disk formats were written for the happy path and lose or

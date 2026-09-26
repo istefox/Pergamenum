@@ -17,7 +17,7 @@ struct EmailHeaders: Equatable, Sendable {
     /// Every field as it appeared, unfolded, for anything this app does not model.
     var all: [(name: String, value: String)]
     /// The sender's zone offset in seconds east of UTC, read from the raw `Date` field
-    /// (ADR-0064 §D8.2, R-15). `nil` when the field carries none a reader can trust:
+    /// (ADR-0065 §D8.2, R-15). `nil` when the field carries none a reader can trust:
     /// `-0000`, a military letter, an unknown name, or no `Date` at all.
     var dateOffset: Int?
 
@@ -155,7 +155,7 @@ enum EmailHeaderParser {
 /// Not optional in practice: any Italian correspondent's subject line with an accent
 /// arrives encoded, and showing the raw form on a card is worse than showing nothing.
 enum EncodedWord {
-    /// RFC 2047 §6.2 (ADR-0064 §D7.3): linear whitespace between two encoded-words is dropped
+    /// RFC 2047 §6.2 (ADR-0065 §D7.3): linear whitespace between two encoded-words is dropped
     /// when both decode - a folded subject's unfold puts exactly that whitespace between the two
     /// halves of a word. Whitespace next to plain text stays, and so does whitespace next to a
     /// word that fails and is shown raw.
@@ -211,7 +211,7 @@ enum EncodedWord {
         let data: Data?
         switch encoding {
         case "B":
-            // ADR-0064 §D7.3: padding is normalised before decoding - every `=` removed, the
+            // ADR-0065 §D7.3: padding is normalised before decoding - every `=` removed, the
             // payload re-padded to a multiple of four - so a sender that drops or misplaces it
             // still decodes.
             let unpadded = payload.replacingOccurrences(of: "=", with: "")
@@ -280,7 +280,7 @@ enum RFC5322Date {
         "d MMM yyyy HH:mm:ss zzz",
     ]
 
-    /// The zone of a `Date` field in seconds east of UTC (ADR-0064 §D8.2, R-15): `±hhmm` as
+    /// The zone of a `Date` field in seconds east of UTC (ADR-0065 §D8.2, R-15): `±hhmm` as
     /// written, `UT`/`GMT`/`Z` as 0, the eight US names of RFC 5322 §4.3 by their value. `-0000`
     /// means "zone unknown" (RFC 5322 §3.3), and a military letter or any other name is not one
     /// a reader can trust, so all of those are `nil`.

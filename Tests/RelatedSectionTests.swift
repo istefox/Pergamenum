@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D9.3, plan docs/plans/format-edge-hardening.md, Task 6 - R-18, R-01, G1.4.
+// ADR-0065 §D9.3, plan docs/plans/format-edge-hardening.md, Task 6 - R-18, R-01, G1.4.
 //
 // One locator for `## Note correlate`, shared by the linter (`RelatedSection.parse`), the export
 // (`NoteExport`) and «Collega» (`RelatedLink`): the heading is a whole line, a CRLF note is read

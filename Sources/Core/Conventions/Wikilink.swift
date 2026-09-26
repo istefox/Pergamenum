@@ -33,7 +33,7 @@ struct Wikilink: Equatable, Hashable, Sendable {
 
     /// The link with its title replaced inside the emphasis pair `resolvedTitle` stripped:
     /// `[[**Forno tunnel**#Sez|alias]]` retitled `Nuovo nome` is `[[**Nuovo nome**#Sez|alias]]`.
-    /// The section and the alias are the reader's and stay (ADR-0064 §D9.4, R-19).
+    /// The section and the alias are the reader's and stay (ADR-0065 §D9.4, R-19).
     func retitled(_ newTitle: String) -> Wikilink {
         var link = self
         let marker = emphasisMarker ?? ""
@@ -214,14 +214,14 @@ enum RelatedSection {
     static let maximumLinks = 5
 
     /// The section, from the start of its heading line to the start of the next line beginning
-    /// with `#`, or to the end of the body (ADR-0064 §D9.3, R-18).
+    /// with `#`, or to the end of the body (ADR-0065 §D9.3, R-18).
     ///
     /// The heading is a line that is exactly `## Note correlate` once one trailing `\r` and any
     /// trailing spaces or tabs are removed. A search for the heading's text matched it anywhere -
     /// inside `### Note correlate operative`, or mid-sentence - so the linter read bullets from a
     /// section that was not there, and «Collega» wrote under it. Lines are walked on unicode
     /// scalars, because a CRLF pair is one `Character` and a `Character` search for `\n` finds no
-    /// line end in a CRLF note at all (ADR-0064 §D3).
+    /// line end in a CRLF note at all (ADR-0065 §D3).
     static func sectionRange(in body: String) -> Range<String.Index>? {
         let scalars = body.unicodeScalars
         var start: String.Index?

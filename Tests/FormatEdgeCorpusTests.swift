@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §Context, plan docs/plans/format-edge-hardening.md, Tasks 1-5 and 8 - R-23.
+// ADR-0065 §Context, plan docs/plans/format-edge-hardening.md, Tasks 1-5 and 8 - R-23.
 //
 // Every case of every format either round-trips or is refused with a named error or a recorded
 // problem; none is dropped. "Round-trips" is read per format (plan, Departures 3): a note is
@@ -16,7 +16,7 @@ func everyCorpusCaseRoundTripsOrIsRefused(_ corpusCase: FormatEdgeCorpus.Case) t
     case .note(let note):
         #expect(NoteDocument.parse(note.text).serialized() == note.text)
     case .bom(_, let bytes):
-        // The BOM belongs to the file (ADR-0064 §D4): read strips it, write puts it back.
+        // The BOM belongs to the file (ADR-0065 §D4): read strips it, write puts it back.
         let vault = try TemporaryVault()
         try bytes.write(to: vault.root.appending(path: "Nota.md"))
         let store = NoteStore(root: vault.root)

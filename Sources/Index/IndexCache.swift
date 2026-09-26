@@ -209,7 +209,7 @@ struct IndexCache {
     /// 4 (ADR-0047 §D5): adds `StoredRecord.categorySlug`, since `StoredFrontmatter` keeps
     /// none of `foreignKeys` and a reused record would otherwise lose `pergamenum-category`
     /// from the second scan onward. This chain gets no second bump (ADR-0047 "Risks"). 5
-    /// (ADR-0064 §D12): meaning only - version 4 rows hold an empty frontmatter for a CRLF note
+    /// (ADR-0065 §D12): meaning only - version 4 rows hold an empty frontmatter for a CRLF note
     /// and count `.canvas` link targets.
     static let schemaVersion: Int32 = 5
 

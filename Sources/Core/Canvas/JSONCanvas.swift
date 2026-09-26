@@ -15,7 +15,7 @@ struct CanvasDocument: Equatable, Sendable {
     var unknown: [String: JSONValue]
     /// Elements of `nodes`/`edges` the codec cannot read - an object without `id` or `type`
     /// (nodes), without `id`, `fromNode` or `toNode` (edges), or anything that is not an object -
-    /// kept with their original index and written back there (ADR-0064 §D5.4, R-08).
+    /// kept with their original index and written back there (ADR-0065 §D5.4, R-08).
     var opaqueNodes: [CanvasOpaqueElement]
     var opaqueEdges: [CanvasOpaqueElement]
 
@@ -24,7 +24,7 @@ struct CanvasDocument: Equatable, Sendable {
     enum DecodingError: Error, CustomStringConvertible {
         case notAnObject
         case unreadable(String)
-        /// `nodes` or `edges` is present and is not an array (ADR-0064 §D5.5): such a file cannot
+        /// `nodes` or `edges` is present and is not an array (ADR-0065 §D5.5): such a file cannot
         /// be written back consistently, because `encoded()` always writes an array.
         case notAList(String)
 
@@ -74,7 +74,7 @@ struct CanvasDocument: Equatable, Sendable {
     }
 
     /// Reads one array element by element, so one element the codec cannot read is kept as an
-    /// opaque value instead of emptying the whole board (ADR-0064 §D5.4). An absent key reads as
+    /// opaque value instead of emptying the whole board (ADR-0065 §D5.4). An absent key reads as
     /// empty - JSON Canvas makes both optional - and a present non-array refuses the open (§D5.5).
     private static func elements<Element>(
         of key: String,
@@ -115,7 +115,7 @@ struct CanvasDocument: Equatable, Sendable {
 }
 
 /// An element of `nodes` or `edges` the codec cannot read, with the index it had in the file
-/// (ADR-0064 §D5.4).
+/// (ADR-0065 §D5.4).
 struct CanvasOpaqueElement: Equatable, Sendable {
     var index: Int
     var value: JSONValue
@@ -137,7 +137,7 @@ enum CanvasColor: Equatable, Sendable {
     case preset(Int)
     case hex(String)
     /// A colour string that is neither a preset nor a valid hex (`"7"`, `"#GGG"`, `"red"`), kept
-    /// verbatim so it round-trips (ADR-0064 §D5.2, R-07). `init?` never produces it: a caller that
+    /// verbatim so it round-trips (ADR-0065 §D5.2, R-07). `init?` never produces it: a caller that
     /// wants to keep an unreadable value writes `CanvasColor(raw) ?? .unrecognised(raw)`.
     case unrecognised(String)
 
@@ -161,7 +161,7 @@ enum CanvasColor: Equatable, Sendable {
     }
 
     /// A node's or an edge's `color` value as the codec keeps it: a string always becomes a
-    /// colour, understood or not; any other JSON type is not consumed (ADR-0064 §D5.3).
+    /// colour, understood or not; any other JSON type is not consumed (ADR-0065 §D5.3).
     static func kept(_ value: Any?) -> CanvasColor? {
         guard let raw = value as? String else { return nil }
         return CanvasColor(raw) ?? .unrecognised(raw)
@@ -245,7 +245,7 @@ struct CanvasNode: Identifiable, Equatable, Sendable {
         height = CGFloat((object["height"] as? NSNumber)?.doubleValue ?? 120)
         color = CanvasColor.kept(object["color"])
 
-        // ADR-0064 §D5.1/§D5.3: each kind consumes only its own payload, an unknown kind none, and
+        // ADR-0065 §D5.1/§D5.3: each kind consumes only its own payload, an unknown kind none, and
         // an optional key only when it is understood. Everything else stays in `unknown`.
         var consumed: Set<String> = ["id", "type", "x", "y", "width", "height"]
         if color != nil { consumed.insert("color") }
@@ -358,7 +358,7 @@ struct CanvasEdge: Identifiable, Equatable, Sendable {
         color = CanvasColor.kept(object["color"])
         label = object["label"] as? String
 
-        // ADR-0064 §D5.3 (G1.7): an optional key is consumed only when it was understood; a side
+        // ADR-0065 §D5.3 (G1.7): an optional key is consumed only when it was understood; a side
         // or an end this app does not know, and a non-string colour or label, stay in `unknown`.
         var consumed: Set<String> = ["id", "fromNode", "toNode"]
         let understood: [(String, Bool)] = [

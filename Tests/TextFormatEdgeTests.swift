@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D9/§D10, plan docs/plans/format-edge-hardening.md, Task 6 - R-16, R-17, R-20, R-21.
+// ADR-0065 §D9/§D10, plan docs/plans/format-edge-hardening.md, Task 6 - R-16, R-17, R-20, R-21.
 //
 // The text-level formats a note carries inside its body: a task line's tags, an inline embed,
 // a link target, and the Unicode normalisation of a title.
@@ -76,7 +76,7 @@ import Testing
     }
 }
 
-// MARK: - R-21: NFD and NFC are the same title (pinned, ADR-0064 §D10)
+// MARK: - R-21: NFD and NFC are the same title (pinned, ADR-0065 §D10)
 
 private let nfcCitta = "Citt\u{00E0}"
 private let nfdCitta = "Citta\u{0300}"

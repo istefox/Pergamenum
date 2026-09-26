@@ -140,7 +140,7 @@ struct NoteDocument: Equatable, Sendable {
     var body: String
     /// False when the file had no frontmatter block at all.
     var hasFrontmatterBlock: Bool
-    /// The lines the block was read from (ADR-0064 §D1.1): nil for a document built in code,
+    /// The lines the block was read from (ADR-0065 §D1.1): nil for a document built in code,
     /// present on every parsed one. `serialized()` (in `FrontmatterSource.swift`) uses it to
     /// write back only what changed.
     var source: FrontmatterSource?
@@ -148,14 +148,14 @@ struct NoteDocument: Equatable, Sendable {
     /// Splits a note's text. Never throws: an unterminated or malformed block yields
     /// an empty frontmatter and the whole text as body, because a note the app cannot
     /// parse must still open and still be editable. A CRLF line and a leading U+FEFF are
-    /// read without their extra characters and kept for the write (ADR-0064 §D1.2).
+    /// read without their extra characters and kept for the write (ADR-0065 §D1.2).
     static func parse(_ text: String) -> NoteDocument {
         FrontmatterSource.document(from: text)
     }
 }
 
 enum FrontmatterParser {
-    /// Takes interpreted lines: no trailing `\r`, no leading U+FEFF (ADR-0064 §D1.2).
+    /// Takes interpreted lines: no trailing `\r`, no leading U+FEFF (ADR-0065 §D1.2).
     static func parse(_ lines: [String]) -> Frontmatter {
         var result = Frontmatter.empty
         var index = 0
@@ -270,7 +270,7 @@ enum FrontmatterSerializer {
     /// Writes the block in the fixed key order of SPEC §4.3, omitting optional keys
     /// that have no value (F-08 forbids an empty `related:` or `[]`).
     /// Tags that failed validation follow the valid ones verbatim (R-03), and every line ends in
-    /// `lineBreak` (ADR-0064 §D1.5).
+    /// `lineBreak` (ADR-0065 §D1.5).
     static func render(_ frontmatter: Frontmatter, lineBreak: LineBreak = .lf) -> String {
         var lines = ["---"]
         for key in schemaKeys {
@@ -335,7 +335,7 @@ enum FrontmatterViolation: Equatable, Sendable {
     /// `related` and the `## Note correlate` section disagree (W-06).
     case relatedOutOfSyncWithSection(missingInSection: [String], missingInFrontmatter: [String])
     /// The body opens with a second block: the prepend defect's trace, an empty block and then
-    /// the original one (ADR-0064 §D11, R-22). Advisory, like the two below.
+    /// the original one (ADR-0065 §D11, R-22). Advisory, like the two below.
     case secondFrontmatterBlock
     /// A key, schema or foreign, written more than once; one finding per name.
     case duplicateKey(String)
@@ -365,7 +365,7 @@ enum FrontmatterRules {
         if frontmatter.aliases.count > Frontmatter.maximumAliases {
             violations.append(.tooManyAliases(count: frontmatter.aliases.count))
         }
-        // ADR-0064 §D11 (R-22), in `FrontmatterSource.swift`: they read the block as written.
+        // ADR-0065 §D11 (R-22), in `FrontmatterSource.swift`: they read the block as written.
         violations.append(contentsOf: damageFindings(of: document))
         return violations
     }

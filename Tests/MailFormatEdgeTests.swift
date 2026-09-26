@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D7/§D8.2, plan docs/plans/format-edge-hardening.md, Tasks 4 and 5 - R-10, R-11,
+// ADR-0065 §D7/§D8.2, plan docs/plans/format-edge-hardening.md, Tasks 4 and 5 - R-10, R-11,
 // R-12, R-13, R-15.
 //
 // Mail input is read only: faithful means the decoded value is the one the sender meant
-// (ADR-0064 §Context). Every fixture is synthetic, in `EmailFixtureCorpus`'s spirit.
+// (ADR-0065 §Context). Every fixture is synthetic, in `EmailFixtureCorpus`'s spirit.
 
 private let latin9 = String.Encoding(
     rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.isoLatin9.rawValue))
@@ -143,7 +143,7 @@ private let latin9 = String.Encoding(
     #expect(parts.first { $0.kind == .textPlain }?.decodedText?.contains("Ciao") == true)
 }
 
-// MARK: - R-15 (Task 5): the sender's zone offset, ADR-0064 §D8.2
+// MARK: - R-15 (Task 5): the sender's zone offset, ADR-0065 §D8.2
 
 @Test func numericZoneOffsets() {
     #expect(RFC5322Date.offset(of: "Sat, 26 Sep 2026 10:00:00 +0900") == 32400)

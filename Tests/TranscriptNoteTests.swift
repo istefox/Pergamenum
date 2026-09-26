@@ -301,7 +301,7 @@ func omitsSourceMeetingForAnyOtherKind(_ kind: PlaudRecordingKind) {
     #expect(violations.isEmpty, "\(violations)")
 }
 
-// MARK: - A person's comment survives a re-import (ADR-0064 §D1.8, R-04)
+// MARK: - A person's comment survives a re-import (ADR-0065 §D1.8, R-04)
 
 @Test func aTranscriptReimportKeepsAComment() {
     let existing = "---\n# importato da Plaud\ndate: 2026-09-04\ntags:\n  - type-note\n  - topic-trascrizione\n---\n\n## Trascrizione\n\nSpeaker 1: vecchio.\n"

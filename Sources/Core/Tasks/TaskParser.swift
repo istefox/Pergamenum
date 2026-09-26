@@ -232,7 +232,7 @@ enum TaskParser {
     }
 
     /// Every tag with the character range it was read from, so `displayText` can remove the
-    /// tag it found rather than every occurrence of its text (ADR-0064 §D9.1, R-16).
+    /// tag it found rather than every occurrence of its text (ADR-0065 §D9.1, R-16).
     private static func tagMatches(in characters: [Character]) -> [(range: Range<Int>, tag: Tag)] {
         var found: [(range: Range<Int>, tag: Tag)] = []
         var index = 0
@@ -264,7 +264,7 @@ enum TaskParser {
     static func displayText(from body: String) -> String {
         // Each tag leaves by the range the scan read it from, last first so the earlier ranges
         // stay valid: replacing its text everywhere cut `#topic-forni` out of the middle of
-        // `#topic-forni-tunnel` and left `-tunnel` behind (ADR-0064 §D9.1, R-16).
+        // `#topic-forni-tunnel` and left `-tunnel` behind (ADR-0065 §D9.1, R-16).
         var characters = Array(body)
         for match in tagMatches(in: characters).reversed() {
             characters.removeSubrange(match.range)

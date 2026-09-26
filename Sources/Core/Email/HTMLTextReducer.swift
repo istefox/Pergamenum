@@ -393,7 +393,7 @@ private struct HTMLWalk {
     }
 
     /// The walk with every element still open at the end of input closed, innermost first, the
-    /// way its matching close tag would have (ADR-0064 §D7.1, R-10): text after an unclosed `<a>`
+    /// way its matching close tag would have (ADR-0065 §D7.1, R-10): text after an unclosed `<a>`
     /// or `<td>` is kept, in order, instead of staying in a buffer nothing reads.
     private func drained() -> HTMLWalk {
         var walk = self

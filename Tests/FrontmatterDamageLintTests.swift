@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D11, plan docs/plans/format-edge-hardening.md, Task 7 - R-22.
+// ADR-0065 §D11, plan docs/plans/format-edge-hardening.md, Task 7 - R-22.
 //
 // Frontmatter damage the lossless serializer now keeps verbatim becomes an advisory finding:
 // a second block at the head of the body, a repeated key, a line with no colon. Nothing blocks

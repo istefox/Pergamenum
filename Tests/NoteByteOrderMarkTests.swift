@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D4, plan docs/plans/format-edge-hardening.md, Task 2 - R-01, R-02 (G1.2).
+// ADR-0065 §D4, plan docs/plans/format-edge-hardening.md, Task 2 - R-01, R-02 (G1.2).
 //
 // The byte-order mark belongs to the file, not to the text: one decode door strips it, the
 // content hash skips it, and the write keeps it. The vault-level cases go through the session's
@@ -57,7 +57,7 @@ private var crlfWithCategory: String {
 }
 
 /// Characterization, measured on the first run (macOS 27, 2026-09-26): the platform's UTF-8
-/// decode strips a leading BOM. ADR-0064 §D4 does not depend on this answer - the decode door
+/// decode strips a leading BOM. ADR-0065 §D4 does not depend on this answer - the decode door
 /// strips it itself - the test only records which world this OS is in.
 @Test func platformUTF8DecodeOfABOMIsRecorded() {
     let decoded = String(data: bom + Data("---\n".utf8), encoding: .utf8)

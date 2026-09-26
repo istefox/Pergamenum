@@ -67,7 +67,7 @@ enum RelatedLink {
         return document.serialized()
     }
 
-    /// The note's own line break (ADR-0064 §D3, R-01): «Collega» on a CRLF note writes CRLF.
+    /// The note's own line break (ADR-0065 §D3, R-01): «Collega» on a CRLF note writes CRLF.
     private static func lineBreak(of document: NoteDocument) -> LineBreak {
         document.source?.lineBreak ?? .lf
     }
@@ -106,7 +106,7 @@ enum RelatedLink {
 
     /// The heading line stays as written; below it, a blank line, the bullets, and a blank line
     /// before the next heading when one follows - every line ended in the note's own line break
-    /// (ADR-0064 §D9.3, R-01).
+    /// (ADR-0065 §D9.3, R-01).
     private static func rewritingBullets(
         of body: String, section: Range<String.Index>, as bullets: [String], lineBreak: LineBreak
     ) -> String {

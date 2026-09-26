@@ -159,7 +159,7 @@ import Testing
         #expect(!outcome.writtenFiles.contains { $0.hasSuffix(".eml") }, "§D18: no complete RFC 822 bytes exist yet")
     }
 
-    // MARK: ADR-0064 §D8.2 (R-15) - the date is written in the sender's offset
+    // MARK: ADR-0065 §D8.2 (R-15) - the date is written in the sender's offset
 
     /// A `Date` carrying `+0900` writes `+09:00` on any machine, whatever its own zone; a message
     /// with no `Date` header falls back to the Envelope Index's epoch, which has no zone, so `Z`.

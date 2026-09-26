@@ -40,7 +40,7 @@ enum Transclusion {
     /// The extensions that name a note: how a note is named on disk.
     static let noteExtensions: Set<String> = ["md"]
 
-    /// The extensions that name a file, never a note (ADR-0064 §D9.5): the attachment types the
+    /// The extensions that name a file, never a note (ADR-0065 §D9.5): the attachment types the
     /// app renders or previews, plus `canvas`. Lowercase; `isNoteReference` lowercases before
     /// asking.
     static let fileExtensions: Set<String> = [
@@ -78,7 +78,7 @@ enum Transclusion {
     /// `.md` is the one extension that still means a note: it is how a note is named on
     /// disk, so `![[Progetti/Forno.md]]` is a note written as a path.
     ///
-    /// Every extension the app knows is decided by name first (ADR-0064 §D9.5, R-20): the shape
+    /// Every extension the app knows is decided by name first (ADR-0065 §D9.5, R-20): the shape
     /// rule answered `true` for anything longer than five characters, which made `Q4.canvas` a
     /// note. The shape rule stays only for the long tail, so an attachment with an unlisted short
     /// extension does not become a phantom note.

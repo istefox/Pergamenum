@@ -1,4 +1,4 @@
-# ADR-0064: Every on-disk format round-trips faithfully or is refused
+# ADR-0065: Every on-disk format round-trips faithfully or is refused
 
 - Status: **accepted**, 2026-09-26. Stefano approved all seven points of gate G1
   (`docs/plans/format-edge-hardening.md`, /workplan GATE 1/2), G1.1 to G1.7, with none refused.
@@ -9,8 +9,9 @@
 - Date: 2026-09-26. Written **before** the implementation, against `43ca911` (`HEAD` =
   `origin/main`). The tree was clean apart from `SPEC.md` (`shasum` `5be9806`). Every file:line
   below was read from that tree today.
-- **Numbering note.** `0063` is the highest number under `docs/adr/`, `0061` is used twice, and
-  `git log --all -- 'docs/adr/0064*'` is empty.
+- **Numbering note.** Written as ADR-0064, when `0063` was the highest number under `docs/adr/`.
+  Renumbered to 0065 before merge: PR #592 landed first and moved the duplicate external-deletion
+  ADR from `0061` to `0064`.
 - **Path note:** ADRs live at `docs/adr/NNNN-<slug>.md`, as ADR-0063's own path note recorded.
 - **Why an ADR at all.** The SPEC mandates one (R-24). The chain also passes the significance test
   on its own terms:
@@ -779,7 +780,7 @@ The whole `PergamenumTests` bundle stays green, including `ConventionsTests`, `T
 
 ## Proposed `CLAUDE.md` chain-index entry
 
-- **ADR-0064** — Closes `PG-254`/#568 (Audit Fable chain 1): every on-disk format round-trips
+- **ADR-0065** — Closes `PG-254`/#568 (Audit Fable chain 1): every on-disk format round-trips
   faithfully or is refused.
   - `NoteDocument` keeps a `FrontmatterSource` of the lines it read and edits the block in place:
     - an unchanged key, a comment, a colon-less line, an unparsable tag or a duplicate is emitted
@@ -804,7 +805,7 @@ The whole `PergamenumTests` bundle stays green, including `ConventionsTests`, `T
   - Three advisory `frontmatter` lint strings are added.
   - `IndexCache.schemaVersion` 4 → 5 (G1).
   - Extends ADR-0054 §D4, ADR-0041 §D7 and ADR-0043's hash convention; amends none →
-    `docs/adr/0064-format-round-trip-faithful-or-refused.md`
+    `docs/adr/0065-format-round-trip-faithful-or-refused.md`
 
 ## Implementation notes
 

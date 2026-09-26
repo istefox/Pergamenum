@@ -34,7 +34,7 @@ import Testing
         #expect(lines == ["Manca la chiave date", "Chiave fuori schema: title"])
     }
 
-    /// ADR-0064 §D11 (R-22): the three advisory damage findings.
+    /// ADR-0065 §D11 (R-22): the three advisory damage findings.
     @Test func conformanceTextNamesTheNewFindings() {
         let lines = ConformanceText.lines(violations(frontmatter: [
             .secondFrontmatterBlock, .duplicateKey("tags"), .lineWithoutColon("solo testo"),

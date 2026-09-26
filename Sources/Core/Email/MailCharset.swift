@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR-0064 (Every on-disk format round-trips faithfully or is refused), plan
+// ADR-0065 (Every on-disk format round-trips faithfully or is refused), plan
 // docs/plans/format-edge-hardening.md, Task 4 - R-11; ADR §D7.2.
 
 /// The one charset table mail decoding reads, for a MIME part (`MIMEDecoder.decodeText`) and for

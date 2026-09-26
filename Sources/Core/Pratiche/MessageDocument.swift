@@ -43,7 +43,7 @@ struct MessageDocument: Equatable, Sendable {
         /// `pergamenum-mail-date` - the header `Date`, governs ordering.
         var date: Date
         /// The sender's zone in seconds east of UTC, which `pergamenum-mail-date` is written in
-        /// (ADR-0064 §D8.2, R-15); `nil` writes the instant in UTC. Set only when the date came
+        /// (ADR-0065 §D8.2, R-15); `nil` writes the instant in UTC. Set only when the date came
         /// from the header and its offset is not zero, so a regenerated document compares equal
         /// to its parsed copy. Defaulted `nil`, so every construction site keeps compiling.
         var dateOffset: Int?
@@ -145,7 +145,7 @@ struct MessageDocument: Equatable, Sendable {
         add("pergamenum-mail-direction", mail.direction.rawValue)
         add("pergamenum-mail-date", isoString(mail.date, offset: mail.dateOffset))
         if let received = mail.received {
-            // ADR-0064 §D8.4 (G1.5): the Envelope Index stores an epoch, so there is no sender
+            // ADR-0065 §D8.4 (G1.5): the Envelope Index stores an epoch, so there is no sender
             // zone to use, and the machine's own would make the line depend on the Mac.
             add("pergamenum-mail-received", isoString(received, offset: nil))
         }
@@ -236,7 +236,7 @@ struct MessageDocument: Equatable, Sendable {
     /// ISO 8601 with the offset, as the SPEC writes it - the instant plus the zone the
     /// message was sent in, which is what «14:06» means to the person who received it.
     ///
-    /// The zone is the sender's, never the machine's (ADR-0064 §D8.2, R-15): the machine's
+    /// The zone is the sender's, never the machine's (ADR-0065 §D8.2, R-15): the machine's
     /// zone made the same message read differently on a second Mac, after travel, or on a CI
     /// runner in UTC. With no offset the instant is written in UTC, `Z`.
     private static func isoString(_ date: Date, offset: Int?) -> String {

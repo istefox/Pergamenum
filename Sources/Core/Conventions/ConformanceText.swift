@@ -53,7 +53,7 @@ enum ConformanceText {
         return lines
     }
 
-    /// The three advisory damage findings of ADR-0064 §D11 (R-22).
+    /// The three advisory damage findings of ADR-0065 §D11 (R-22).
     private static func damageLine(_ violation: FrontmatterViolation) -> String? {
         switch violation {
         case .secondFrontmatterBlock: "Secondo blocco frontmatter all'inizio del corpo"

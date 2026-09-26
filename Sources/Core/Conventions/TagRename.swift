@@ -117,7 +117,7 @@ enum TagRename {
         guard let closing = frontmatterEnd(of: lines) else { return nil }
         let indices = tagLineIndices(in: lines, upTo: closing)
 
-        // A line this writes ends in the document's line break (ADR-0064 §D3).
+        // A line this writes ends in the document's line break (ADR-0065 §D3).
         let suffix = LineBreak.detected(in: text).lineSuffix
         guard let header = indices.first else {
             // No `tags:` key at all: open one after `date:`, or at the top of the block.
@@ -163,7 +163,7 @@ enum TagRename {
     }
 
     /// The closing delimiter's index. The test tolerates one trailing `\r` and a leading U+FEFF, the
-    /// way `NoteDocument.parse` reads them, so a CRLF note is not skipped (ADR-0064 §D3, G1.3).
+    /// way `NoteDocument.parse` reads them, so a CRLF note is not skipped (ADR-0065 §D3, G1.3).
     private static func frontmatterEnd(of lines: [String]) -> Int? {
         guard let first = lines.first,
               FrontmatterSource.isDelimiter(FrontmatterSource.interpreted(first, isFirst: true))

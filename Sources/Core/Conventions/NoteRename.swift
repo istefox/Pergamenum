@@ -29,7 +29,7 @@ enum NoteRename {
         // invalidates every range after it.
         // Matched on the title the link resolves to, as the index does: `[[**Forno tunnel**]]`
         // names `Forno tunnel`, and matching on the literal interior left it pointing at a note
-        // that no longer exists (ADR-0064 §D9.4, R-19).
+        // that no longer exists (ADR-0065 §D9.4, R-19).
         let matches = WikilinkParser.links(in: text).filter { fold($0.resolvedTitle) == needle }
         guard !matches.isEmpty else {
             guard includeQuotedRelated else { return nil }
@@ -55,7 +55,7 @@ enum NoteRename {
         to newTitle: String
     ) -> String? {
         var changed = false
-        // A line split on "\n" carries a trailing "\r" on a CRLF note (ADR-0064 §D3); comparing
+        // A line split on "\n" carries a trailing "\r" on a CRLF note (ADR-0065 §D3); comparing
         // through the raw split left that "\r" attached, so `hasSuffix("\"")` never matched and a
         // CRLF note's quoted `related:` entry was silently left unrewritten.
         let suffix = LineBreak.detected(in: text).lineSuffix

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0064 §D1-§D3, plan docs/plans/format-edge-hardening.md, Task 1 - R-01, R-03, R-04, R-05.
+// ADR-0065 §D1-§D3, plan docs/plans/format-edge-hardening.md, Task 1 - R-01, R-03, R-04, R-05.
 //
 // `NoteDocument` keeps the lines it read and edits the block in place: what the caller did not
 // change comes back byte for byte.

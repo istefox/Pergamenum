@@ -15,7 +15,7 @@ enum NoteExport {
     }
 
     /// Removes `## Note correlate` and its bullets, up to the next heading of any level - the
-    /// one locator the linter and «Collega» use too (ADR-0064 §D9.3, R-18), so a sub-heading
+    /// one locator the linter and «Collega» use too (ADR-0065 §D9.3, R-18), so a sub-heading
     /// that only contains the words stays, and a CRLF note stops at its next heading.
     private static func strippingRelatedSection(from body: String) -> String {
         guard let section = RelatedSection.sectionRange(in: body) else { return body }

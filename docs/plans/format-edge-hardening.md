@@ -5,10 +5,10 @@
   - Seven points go past the SPEC's letter. Each one waits on gate G1 below, and none is decided on
     Stefano's behalf.
   - One test rewrite waits on gate G2.
-- **ADR:** new, ADR-0064, at `docs/adr/0064-format-round-trip-faithful-or-refused.md` (status:
+- **ADR:** new, ADR-0065, at `docs/adr/0065-format-round-trip-faithful-or-refused.md` (status:
   proposed). The SPEC mandates it (R-24), and the chain passes the significance test on its own
   (see the ADR's header).
-- **The SPEC's «Not yet specified» item is settled in ADR-0064 §D2.**
+- **The SPEC's «Not yet specified» item is settled in ADR-0065 §D2.**
   - Schema keys: one occurrence governs, the last one, which is the one the reader already uses.
     - A write that changes the value rewrites that occurrence in place.
     - A write that empties a duplicated key writes it as the bare key (`related:`), which reads back
@@ -24,7 +24,7 @@
 
 ## Before `/build` (orchestrator; each item is a HITL point)
 
-**Approved by Stefano at `/workplan` GATE 1/2, 2026-09-26:** the plan, ADR-0064, G1.1–G1.7 and G2
+**Approved by Stefano at `/workplan` GATE 1/2, 2026-09-26:** the plan, ADR-0065, G1.1–G1.7 and G2
 as recommended below. Item 6 (filing the §D13 follow-ups) still needs its own OK at Task 8.
 
 1. Run `tuist install` (once per fresh worktree), then `tuist generate --no-open`.
@@ -32,10 +32,10 @@ as recommended below. Item 6 (filing the §D13 follow-ups) still needs its own O
    - New test files are added in Tasks 1, 2, 3, 4, 6 and 7.
    - New `Sources/Core` files are added in Tasks 1, 3 (optional) and 4.
    - `Sources/Core/**` and `Tests/**` are globbed, so no manifest edit is needed.
-2. **Gate G1: approve ADR-0064.** Each point needs its own answer. Refusing one leaves the rest
+2. **Gate G1: approve ADR-0065.** Each point needs its own answer. Refusing one leaves the rest
    standing; the plan then records that point as a named gap and never claims it holds.
 
-   | # | Point (ADR-0064) | If refused | Recommendation |
+   | # | Point (ADR-0065) | If refused | Recommendation |
    |---|---|---|---|
    | G1.1 | §D12, `IndexCache.schemaVersion` 4 → 5 (a protected constant the SPEC's list omits) | stale cached frontmatter for every CRLF note until the file changes or «Svuota cache»; say so in the release notes | approve |
    | G1.2 | §D4.2, `NoteStore.hash` skips one leading BOM (redefines a persisted value; values for every BOM-less file are unchanged) | R-02 cannot hold on a platform whose decode strips the BOM, and the plan has no other design that meets it | approve |
@@ -64,7 +64,7 @@ as recommended below. Item 6 (filing the §D13 follow-ups) still needs its own O
 5. Commit, push and merge stay HITL at the end of `/build`.
    - The pre-push guard (ADR-0061/0062) runs on push, if it is installed on this machine.
    - The merge gate is the unit suite, plus `scripts/uitests.sh --affected` (CLAUDE.md).
-6. Filing the ADR-0064 §D13 follow-ups as GitHub issues (Task 8) is an outward action. It happens
+6. Filing the ADR-0065 §D13 follow-ups as GitHub issues (Task 8) is an outward action. It happens
    with Stefano's OK.
 
 ## Ownership and order
@@ -140,7 +140,7 @@ unwrap. A placeholder keeps today's behaviour, or returns an inert value.
 
 #### Tester
 
-1. Declare in `FrontmatterSource.swift`, under ADR-0064 §D1.1:
+1. Declare in `FrontmatterSource.swift`, under ADR-0065 §D1.1:
    - `enum LineBreak: Equatable, Sendable { case lf, crlf }`, with `var characters: String`;
    - `struct FrontmatterSource: Equatable, Sendable`, containing:
      - a nested `enum Entry: Equatable, Sendable { case key(name: String, lines: [String]); case opaque(String) }`;
@@ -220,7 +220,7 @@ rather than guessing it here.
 
 #### Coder
 
-1. `NoteDocument.parse` builds the `FrontmatterSource` (ADR-0064 §D1.1-§D1.2):
+1. `NoteDocument.parse` builds the `FrontmatterSource` (ADR-0065 §D1.1-§D1.2):
    - it keeps `components(separatedBy: "\n")`;
    - it interprets each line with one trailing `\r` removed, and removes one leading U+FEFF on the
      first line;
@@ -312,7 +312,7 @@ schemes build, and the whole unit bundle is green.
 | `theAppsOwnWriteToABOMNoteIsNotAnExternalChange` | after the write, `await session.reconcile(["Nota.md"])` is empty (R-02) | platform |
 | `theReadTextOfABOMNoteHasNoBOM` | `session.read(path).text` does not start with U+FEFF (R-02) | platform |
 | `aNewNoteNeverGetsABOM` | a note made through the session's note-creation door does not start with `EF BB BF` (R-02 boundary) | green, pins |
-| `platformUTF8DecodeOfABOMIsRecorded` | characterization: whether `String(data:encoding: .utf8)` keeps U+FEFF on this OS. The expected value is taken from the first run, and a comment says that ADR-0064 §D4 does not depend on it | green, characterization |
+| `platformUTF8DecodeOfABOMIsRecorded` | characterization: whether `String(data:encoding: .utf8)` keeps U+FEFF on this OS. The expected value is taken from the first run, and a comment says that ADR-0065 §D4 does not depend on it | green, characterization |
 
 "platform" means the test's state today depends on the decode behaviour the characterization test
 records. The tester writes that result in the commit message.
@@ -321,7 +321,7 @@ records. The tester writes that result in the commit message.
 
 1. `NoteStore.decodedText` removes one leading `EF BB BF`, then decodes. It is used at
    `NoteStore.swift:100`, `NoteStore+ReadSurface.swift:16,44` and
-   `VaultSession+Journal.swift:172` (ADR-0064 §D4.1).
+   `VaultSession+Journal.swift:172` (ADR-0065 §D4.1).
 2. `NoteStore.hash` hashes the bytes after one leading `EF BB BF` (§D4.2, G1.2). Update the
    `hexString` comment, whose words "persisted in the index cache, so the spelling is not free to
    change" now describe a deliberate, bounded redefinition.
@@ -382,7 +382,7 @@ route:
 5. Run `tuist generate --no-open`.
 6. The fixtures are JSON text in the corpus. A test canonicalises a fixture once, through
    `JSONSerialization` with the codec's options (`JSONCanvas.swift:66-69`), and compares
-   `encoded()` to those bytes: that is what "round-trips" means for `.canvas` (ADR-0064 §Context).
+   `encoded()` to those bytes: that is what "round-trips" means for `.canvas` (ADR-0065 §Context).
 
 | Test | Asserts | Today |
 |---|---|---|
@@ -409,7 +409,7 @@ route:
 
 1. `CanvasNode.init?` consumes per kind; `CanvasEdge.init?` consumes an optional key only when it is
    understood; colours go through `CanvasColor(raw) ?? .unrecognised(raw)` for string values
-   (ADR-0064 §D5.1-§D5.3).
+   (ADR-0065 §D5.1-§D5.3).
 2. `CanvasDocument.init(data:)`:
    - iterates `as? [Any]`, keeping every element it cannot read as a `CanvasOpaqueElement`;
    - throws `.notAList` for a present non-array value (G1.6).
@@ -485,12 +485,12 @@ route:
 | `anRFC2231NameReachesTheAttachment` | `MIMEDecoder.decode` of a message carrying such a part gives `filename == "Preventivo €.pdf"`, extension `pdf` (R-13) | red |
 
 5. Add the mail cases to `everyCorpusCaseRoundTripsOrIsRefused`: an input format passes when it
-   decodes to the expected value (ADR-0064 §Context) (R-23).
+   decodes to the expected value (ADR-0065 §Context) (R-23).
 
 #### Coder
 
 1. `HTMLTextReducer.finished()` folds pending buffers innermost-first, as the matching close would
-   (ADR-0064 §D7.1).
+   (ADR-0065 §D7.1).
 2. `MailCharset` maps Latin-9 through Core Foundation. Both private tables are deleted and their
    callers use `MailCharset` (§D7.2).
 3. `EncodedWord.decode` applies §6.2, and `decodeToken` normalises B padding (§D7.3). The unfold at
@@ -544,7 +544,7 @@ Add the message-document cases to `everyCorpusCaseRoundTripsOrIsRefused` (R-23).
 
 #### Coder
 
-1. `unquoted` becomes a single left-to-right scan (ADR-0064 §D8.1).
+1. `unquoted` becomes a single left-to-right scan (ADR-0065 §D8.1).
 2. `RFC5322Date.offset(of:)` follows §D8.2's table. `EmailHeaderParser.parse` sets `dateOffset` from
    the raw `Date` field.
 3. The sync passes `dateOffset` only when `headers.date` is the source
@@ -643,7 +643,7 @@ parse `+02:00` and stay green.
 
 #### Coder
 
-1. `displayText` removes each tag by its range, from the end backwards (ADR-0064 §D9.1).
+1. `displayText` removes each tag by its range, from the end backwards (ADR-0065 §D9.1).
 2. `MarkdownInlineParser` recognises `![[` first, and the span's text is the reference (§D9.2).
 3. `RelatedSection.sectionRange(in:)` implements the anchored, `\r`-tolerant locator, walking lines
    below the grapheme level. `RelatedSection.parse`, `NoteExport.strippingRelatedSection` and
@@ -710,7 +710,7 @@ parse `+02:00` and stay green.
 #### Coder
 
 `FrontmatterRules.validate` produces the three cases from `document.source`, only when the note has
-a block, under the exact conditions of ADR-0064 §D11. Blocking is untouched: it reads `.tags` only
+a block, under the exact conditions of ADR-0065 §D11. Blocking is untouched: it reads `.tags` only
 (`VaultSession+TaskDrop.swift:66-72`, `VaultSession+BoardDrop.swift:58-59`).
 
 **Done when:** every test above passes and the whole unit bundle is green.
@@ -724,7 +724,7 @@ a block, under the exact conditions of ADR-0064 §D11. Blocking is untouched: it
 - `Tests/FormatEdgeCorpusTests.swift`
 - `ROADMAP.md`
 - `CLAUDE.md` (the chain-index line)
-- `docs/adr/0064-format-round-trip-faithful-or-refused.md` (status and implementation notes)
+- `docs/adr/0065-format-round-trip-faithful-or-refused.md` (status and implementation notes)
 
 #### Tester
 
@@ -741,12 +741,12 @@ reads the one-line diff, which is how ADR-0047's bump was verified.
 1. If G1.1 passes, set `IndexCache.schemaVersion` to 5, through the protected-interface hook (see
    «Before `/build`», item 4).
 2. `ROADMAP.md` §Chain 1: mark it shipped, with the PR number (R-24).
-3. ADR-0064:
+3. ADR-0065:
    - set its status to accepted, with the G1 answers;
    - add «Implementation notes» covering the departures from this plan, the result of the
      platform-decode characterization, and the red or green state recorded for each corpus case.
-4. `CLAUDE.md`: add the chain-index entry proposed at the end of ADR-0064.
-5. With Stefano's OK, file ADR-0064 §D13's items as issues. `TODO.md` `PG-254` is closed by the
+4. `CLAUDE.md`: add the chain-index entry proposed at the end of ADR-0065.
+5. With Stefano's OK, file ADR-0065 §D13's items as issues. `TODO.md` `PG-254` is closed by the
    repo's usual after-merge `chore(tasks)` sync, not on this branch.
 
 **Done when:**
@@ -790,10 +790,10 @@ reads the one-line diff, which is how ADR-0047's bump was verified.
 ## Departures / open points
 
 1. **R-03's "after the valid tags"** holds whenever the app writes the tags key. An untouched tags key
-   stays byte-identical instead, under R-05's rule (ADR-0064 §D1.7). The tag is never dropped either
+   stays byte-identical instead, under R-05's rule (ADR-0065 §D1.7). The tag is never dropped either
    way.
 2. **The SPEC's data model says the frontmatter document carries "BOM presence".** Here the document
-   carries it only when its text does, and otherwise the file carries it (ADR-0064 §D4). R-02's
+   carries it only when its text does, and otherwise the file carries it (ADR-0065 §D4). R-02's
    requirement is met, and so is the SPEC's own Test seam 2, which is what points at the write door.
 3. **R-23's "round-trips" is read per format.**
    - Notes and message documents: byte-identical.
@@ -803,7 +803,7 @@ reads the one-line diff, which is how ADR-0047's bump was verified.
 4. **Folded in under R-08 without a gate:** a `nodes`/`edges` element that is not an object at all.
    The SPEC's default covers it, and today it empties the whole board.
 5. **Gated extensions (G1.3-G1.7)** are listed in «Before `/build`».
-6. **Named and not fixed** (ADR-0064 §D13), to be filed in Task 8:
+6. **Named and not fixed** (ADR-0065 §D13), to be filed in Task 8:
    - CRLF line walks at the `Character` level in the editor styler, `NoteOutline` and `NoteExport`;
    - `DossierYAML` keyword escaping;
    - the delimiter tests in `MessageFrontmatterPatch` and `ViewCatalogue`;
@@ -812,7 +812,7 @@ reads the one-line diff, which is how ADR-0047's bump was verified.
    - `JSONValue`'s `Double` precision;
    - a `.canvas` with a BOM.
 7. **The SPEC's assumption that a sync never renames a message file was verified and holds**
-   (`PraticaSyncEngine+Messages.swift:521-535`; ADR-0064 §Context). One nuance: a message whose file
+   (`PraticaSyncEngine+Messages.swift:521-535`; ADR-0065 §Context). One nuance: a message whose file
    was deleted, or no longer parses, is written as a new file under today's decoding.
 
 ## Risks and HITL gates
@@ -821,10 +821,10 @@ reads the one-line diff, which is how ADR-0047's bump was verified.
   through it.
   - The mitigations are the corpus, the full unit bundle after Task 1, and a reviewer who reads the
     output of every writer test listed in Task 1's call sites.
-  - `pratica.md` keys now keep the file's order rather than the codec's list order (ADR-0064 §D2).
+  - `pratica.md` keys now keep the file's order rather than the codec's list order (ADR-0065 §D2).
     `DossierWriterTests` may pin the codec order. If a test pins the order of an **untouched** key,
     that goes to G2.
-- **The platform decode of a BOM was not executed.** ADR-0064 §D4 holds either way, and Task 2's
+- **The platform decode of a BOM was not executed.** ADR-0065 §D4 holds either way, and Task 2's
   characterization test records the answer.
 - **`components(separatedBy: "\n")` versus `Character`.** A new line walk written with the
   `Character` API would silently merge CRLF lines. The CRLF corpus cases in Tasks 1 and 6 catch it.

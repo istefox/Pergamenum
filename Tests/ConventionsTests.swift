@@ -196,7 +196,7 @@ Il corpo della nota.
     #expect(document.serialized().contains(#"pergamenum-plaud-id: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6""#))
 }
 
-// ADR-0064 §D1.6 (gate G2): this used to be `reordersTagsOnSave`, which pinned a re-sort of
+// ADR-0065 §D1.6 (gate G2): this used to be `reordersTagsOnSave`, which pinned a re-sort of
 // an untouched tags key on every save - exactly the unasked diff R-01 forbids. The canonical
 // order still applies whenever the app writes the tags key; its counterpart,
 // `anUnchangedTagsKeyKeepsItsSourceOrder`, lives in `FrontmatterRoundTripTests`.

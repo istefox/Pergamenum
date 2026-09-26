@@ -81,7 +81,7 @@ tags:
     #expect(!change.after.contains("01 Progetti/Nota.md\""))
 }
 
-// MARK: - ADR-0064 §D9.4 (R-19): an emphasised wikilink follows the rename, inside its markers
+// MARK: - ADR-0065 §D9.4 (R-19): an emphasised wikilink follows the rename, inside its markers
 
 @Test func renameRewritesABoldWikilinkInsideItsMarkers() {
     let cases: [(String, String)] = [
