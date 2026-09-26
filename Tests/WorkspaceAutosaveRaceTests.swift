@@ -409,3 +409,45 @@ private func conflictedBoard(
     controller.detach()
     vaultController.close()
 }
+
+// MARK: - ADR-0064 §D6.1 (R-09): a duplicate-id board goes conflicted instead of trapping
+//
+// Written in the same change as the fix (plan Rule 1): before it, the refused autosave's
+// reconciliation reached `Dictionary(uniqueKeysWithValues:)` with a repeated id and killed
+// the test host.
+
+@MainActor
+@Test func aDuplicateIdBoardGoesConflictedWithOneProblem() async throws {
+    let vault = try TemporaryVault()
+    let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+    await vaultController.open(vault.root)
+
+    let store = CanvasStore(root: vault.root)
+    let boardPath = try store.createBoard(named: "doppi", in: "")
+    try store.save(CanvasDocument(nodes: [
+        CanvasNode(id: "a", kind: .text("uno"), x: 0, y: 0, width: 100, height: 60),
+        CanvasNode(id: "a", kind: .text("due"), x: 200, y: 0, width: 100, height: 60),
+    ]), board: boardPath)
+
+    let controller = WorkspaceController()
+    controller.attach(to: store, vault: vaultController)
+    controller.open(board: boardPath)
+    #expect(controller.document.nodes.map(\.id) == ["a", "a"])
+    let problemsBefore = vaultController.problems.count
+
+    _ = controller.addStickyNote("nota", at: .zero)
+    let externalStore = CanvasStore(root: vault.root)
+    var external = try externalStore.load(board: boardPath)
+    external.nodes.append(CanvasNode(id: "external", kind: .text("altro"), x: 400, y: 400, width: 100, height: 60))
+    try externalStore.save(external, board: boardPath)
+    controller.flushPendingSave()
+
+    guard case .conflicted = controller.saveState else {
+        Issue.record("expected .conflicted, got \(controller.saveState)")
+        return
+    }
+    #expect(vaultController.problems.count == problemsBefore + 1)
+
+    controller.detach()
+    vaultController.close()
+}

@@ -243,7 +243,8 @@ struct MarkdownBlocksView: View {
                 piece.foregroundColor = theme.color(.textTertiary)
             }
             switch span.link {
-            case .note(let title):
+            case .note(let title), .embed(target: let title):
+                // An embed reads as a link to what it embeds (ADR-0064 §D9.2, R-17).
                 piece.link = Self.noteURL(title)
                 piece.foregroundColor = theme.color(.accentPrimary)
                 piece.underlineStyle = .single

@@ -179,6 +179,9 @@ private enum HTMLTokenizer {
 /// cell, bold inside a link) needs no special case.
 private struct HTMLWalk {
     private var buffers: [String] = [""]
+    /// The element that pushed each buffer above the document's (`a`, `td`, `th`), so a buffer
+    /// still open at the end of input can be closed the way its own close tag would.
+    private var owners: [String] = []
     private var hrefs: [String] = []
     private var lists: [(ordered: Bool, index: Int)] = []
     private var tables: [[[String]]] = []
@@ -204,10 +207,11 @@ private struct HTMLWalk {
         // old loop compared: `"\r\n"` is one Character and never equals `"\n"`, so a CRLF
         // breaks a run here exactly as it did before. A `\n{3,}` regex would instead count
         // the CRLF's own line feed and eat one newline too many.
+        let document = drained().buffers[0]
         var text = ""
-        text.reserveCapacity(buffers[0].count)
+        text.reserveCapacity(document.count)
         var consecutiveNewlines = 0
-        for character in buffers[0] {
+        for character in document {
             if character == "\n" {
                 consecutiveNewlines += 1
                 if consecutiveNewlines <= 2 { text.append(character) }
@@ -233,7 +237,7 @@ private struct HTMLWalk {
             append("*")
         case "a":
             hrefs.append(attributes["href"] ?? "")
-            buffers.append("")
+            pushBuffer(for: name)
         case "ul", "ol":
             breakParagraph()
             lists.append((ordered: name == "ol", index: 0))
@@ -256,7 +260,7 @@ private struct HTMLWalk {
         case "tr":
             if !tables.isEmpty { tables[tables.count - 1].append([]) }
         case "td", "th":
-            buffers.append("")
+            pushBuffer(for: name)
         case "img":
             appendImage(attributes)
         default:
@@ -292,13 +296,7 @@ private struct HTMLWalk {
         case "h1", "h2", "h3", "h4", "h5", "h6":
             breakParagraph()
         case "td", "th":
-            let cell = popBuffer()
-            if !tables.isEmpty, !tables[tables.count - 1].isEmpty {
-                let table = tables.count - 1
-                tables[table][tables[table].count - 1].append(cell)
-            } else {
-                append(cell)
-            }
+            placeCell(popBuffer())
         case "table":
             if let rows = tables.popLast() { appendTable(rows) }
         default:
@@ -373,9 +371,47 @@ private struct HTMLWalk {
         buffers[buffers.count - 1] += current.hasSuffix("\n") ? "\n" : "\n\n"
     }
 
+    private mutating func pushBuffer(for element: String) {
+        buffers.append("")
+        owners.append(element)
+    }
+
     private mutating func popBuffer() -> String {
         guard buffers.count > 1 else { return "" }
+        _ = owners.popLast()
         return buffers.removeLast().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A finished cell joins the open table's last row, or - outside a table - the text.
+    private mutating func placeCell(_ cell: String) {
+        if !tables.isEmpty, !tables[tables.count - 1].isEmpty {
+            let table = tables.count - 1
+            tables[table][tables[table].count - 1].append(cell)
+        } else {
+            append(cell)
+        }
+    }
+
+    /// The walk with every element still open at the end of input closed, innermost first, the
+    /// way its matching close tag would have (ADR-0064 §D7.1, R-10): text after an unclosed `<a>`
+    /// or `<td>` is kept, in order, instead of staying in a buffer nothing reads.
+    private func drained() -> HTMLWalk {
+        var walk = self
+        while walk.buffers.count > 1, let owner = walk.owners.last {
+            guard owner == "td" || owner == "th" else {
+                walk.close(owner)
+                continue
+            }
+            // `<td>A<td>B` is two sibling cells in HTML. Folded innermost first they would land
+            // reversed, so a run of unclosed cells is placed outer first.
+            var cells: [String] = []
+            while walk.buffers.count > 1, let last = walk.owners.last, last == "td" || last == "th" {
+                cells.append(walk.popBuffer())
+            }
+            for cell in cells.reversed() { walk.placeCell(cell) }
+        }
+        while let rows = walk.tables.popLast() { walk.appendTable(rows) }
+        return walk
     }
 }
 

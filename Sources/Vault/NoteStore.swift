@@ -97,7 +97,7 @@ struct NoteStore: Sendable {
         let fileURL = try boundary.url(for: relativePath)
 
         let data = try Data(contentsOf: fileURL)
-        guard let text = String(data: data, encoding: .utf8) else {
+        guard let text = Self.decodedText(data) else {
             throw StoreError.notUTF8(relativePath)
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
@@ -156,9 +156,35 @@ struct NoteStore: Sendable {
             try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         }
 
-        let data = Data(text.utf8)
+        // ADR-0064 §D4.3: the BOM belongs to the file. A file that starts with one keeps it when
+        // the new bytes do not bring their own; a new file, or one without, never gains one.
+        var data = Data(text.utf8)
+        if !data.starts(with: Self.byteOrderMark), Self.startsWithByteOrderMark(fileURL) {
+            data = Self.byteOrderMark + data
+        }
         try data.write(to: fileURL, options: .atomic)
         return Self.hash(data)
+    }
+
+    /// The UTF-8 byte-order mark, `EF BB BF`.
+    static let byteOrderMark = Data([0xEF, 0xBB, 0xBF])
+
+    /// The one decode door for a note's bytes (ADR-0064 §D4.1): one leading BOM is removed, then
+    /// the rest is decoded as UTF-8. The text the app works on never starts with a BOM read from a
+    /// vault note, whatever the platform's own decode does with it.
+    static func decodedText(_ data: Data) -> String? {
+        String(data: withoutByteOrderMark(data), encoding: .utf8)
+    }
+
+    private static func withoutByteOrderMark(_ data: Data) -> Data {
+        data.starts(with: byteOrderMark) ? data.dropFirst(byteOrderMark.count) : data
+    }
+
+    /// Reads three bytes, not the file: one extra small read per note write.
+    private static func startsWithByteOrderMark(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: byteOrderMark.count)) == byteOrderMark
     }
 
     /// The one guarded write for a planned note rewrite (ADR-0055 §D1), beside
@@ -187,14 +213,21 @@ struct NoteStore: Sendable {
         try write(change.after, to: change.path, requiringExistingFolder: true)
     }
 
+    /// A note's content hash: SHA-256 over the bytes after one leading BOM, if there is one
+    /// (ADR-0064 §D4.2, G1.2). For every file without a BOM this is the plain SHA-256 of the file,
+    /// so every hash already persisted for such a file stays valid. For a BOM file the raw-bytes
+    /// hash and the decoded text's hash become the same value, which every `expecting:`
+    /// comparison and the watcher's self-write check already assumed they were.
     static func hash(_ data: Data) -> String {
-        hexString(SHA256.hash(data: data))
+        hexString(SHA256.hash(data: withoutByteOrderMark(data)))
     }
 
     /// Lowercase hex, two digits per byte, no separator - byte-identical to
     /// `bytes.map { String(format: "%02x", $0) }.joined()`, which spends a `String(format:)`
     /// and a temporary String on each of a digest's thirty-two bytes. The hash it builds is
-    /// persisted in the index cache, so the spelling is not free to change.
+    /// persisted in the index cache, so the spelling is not free to change. What is hashed was
+    /// redefined once, deliberately and with a bound, by ADR-0064 §D4.2: a leading BOM is
+    /// skipped, and only a BOM file's value moved.
     static func hexString(_ bytes: some Sequence<UInt8>) -> String {
         let digits: [UInt8] = Array("0123456789abcdef".utf8)
         var out: [UInt8] = []

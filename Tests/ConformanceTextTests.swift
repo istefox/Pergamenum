@@ -34,6 +34,18 @@ import Testing
         #expect(lines == ["Manca la chiave date", "Chiave fuori schema: title"])
     }
 
+    /// ADR-0064 §D11 (R-22): the three advisory damage findings.
+    @Test func conformanceTextNamesTheNewFindings() {
+        let lines = ConformanceText.lines(violations(frontmatter: [
+            .secondFrontmatterBlock, .duplicateKey("tags"), .lineWithoutColon("solo testo"),
+        ]))
+        #expect(lines == [
+            "Secondo blocco frontmatter all'inizio del corpo",
+            "Chiave ripetuta nel frontmatter: tags",
+            "Riga del frontmatter senza due punti: solo testo",
+        ])
+    }
+
     @Test func namesTheTagViolation() {
         let lines = ConformanceText.lines(violations(tags: [.malformed("Foo")]))
         #expect(lines == ["Tag malformato: Foo"])

@@ -14,26 +14,13 @@ enum NoteExport {
             .trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
     }
 
-    /// Removes `## Note correlate` and its bullets, up to the next heading.
+    /// Removes `## Note correlate` and its bullets, up to the next heading of any level - the
+    /// one locator the linter and «Collega» use too (ADR-0064 §D9.3, R-18), so a sub-heading
+    /// that only contains the words stays, and a CRLF note stops at its next heading.
     private static func strippingRelatedSection(from body: String) -> String {
-        guard let range = body.range(of: RelatedSection.heading) else { return body }
-        let after = body[range.upperBound...]
-
-        // The section ends at the next heading of any level, or at the end.
-        var end = body.endIndex
-        var cursor = after.startIndex
-        while cursor < after.endIndex {
-            let lineEnd = after[cursor...].firstIndex(of: "\n") ?? after.endIndex
-            if after[cursor..<lineEnd].hasPrefix("#") {
-                end = cursor
-                break
-            }
-            guard lineEnd < after.endIndex else { break }
-            cursor = after.index(after: lineEnd)
-        }
-
+        guard let section = RelatedSection.sectionRange(in: body) else { return body }
         var result = body
-        result.removeSubrange(range.lowerBound..<end)
+        result.removeSubrange(section)
         return result
     }
 

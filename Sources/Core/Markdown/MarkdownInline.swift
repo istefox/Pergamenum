@@ -18,6 +18,9 @@ struct MarkdownSpan: Equatable, Sendable {
         case note(title: String)
         /// `[testo](url)`: anything else, opened by the system.
         case url(String)
+        /// `![[foto.png]]` or `![[foto.png|300]]`: an embed, by its reference - the part before
+        /// `|`, so a size suffix never shows (ADR-0064 §D9.2, R-17).
+        case embed(target: String)
     }
 
     var text: String
@@ -66,7 +69,20 @@ enum MarkdownInlineParser {
 
     private static func match(at rest: Substring) -> Match? {
         // Code first: inside backticks nothing else is markup.
-        code(at: rest) ?? wikilink(at: rest) ?? link(at: rest) ?? emphasis(at: rest)
+        // An embed before the wikilink and link fallbacks: neither reads `![[`, so the `!` was
+        // left behind as plain text beside a note link (ADR-0064 §D9.2, R-17).
+        code(at: rest) ?? embed(at: rest) ?? wikilink(at: rest) ?? link(at: rest) ?? emphasis(at: rest)
+    }
+
+    private static func embed(at rest: Substring) -> Match? {
+        guard rest.hasPrefix("![["), let close = rest.dropFirst(3).range(of: "]]") else { return nil }
+        let inner = rest.dropFirst(3)[..<close.lowerBound]
+        let target = String(inner.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0])
+            .trimmingCharacters(in: .whitespaces)
+        return Match(
+            spans: [MarkdownSpan(text: target, link: .embed(target: target))],
+            end: close.upperBound
+        )
     }
 
     private static func code(at rest: Substring) -> Match? {

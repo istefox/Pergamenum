@@ -140,51 +140,32 @@ struct NoteDocument: Equatable, Sendable {
     var body: String
     /// False when the file had no frontmatter block at all.
     var hasFrontmatterBlock: Bool
+    /// The lines the block was read from (ADR-0064 §D1.1): nil for a document built in code,
+    /// present on every parsed one. `serialized()` (in `FrontmatterSource.swift`) uses it to
+    /// write back only what changed.
+    var source: FrontmatterSource?
 
     /// Splits a note's text. Never throws: an unterminated or malformed block yields
     /// an empty frontmatter and the whole text as body, because a note the app cannot
-    /// parse must still open and still be editable.
+    /// parse must still open and still be editable. A CRLF line and a leading U+FEFF are
+    /// read without their extra characters and kept for the write (ADR-0064 §D1.2).
     static func parse(_ text: String) -> NoteDocument {
-        let lines = text.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
-            return NoteDocument(frontmatter: .empty, body: text, hasFrontmatterBlock: false)
-        }
-        guard let closing = lines.dropFirst().firstIndex(where: {
-            $0.trimmingCharacters(in: .whitespaces) == "---"
-        }) else {
-            // An opening delimiter with no closing one: treat the whole file as body
-            // rather than swallowing it into a frontmatter that was never closed.
-            return NoteDocument(frontmatter: .empty, body: text, hasFrontmatterBlock: false)
-        }
-
-        let block = Array(lines[1..<closing])
-        let body = lines[(closing + 1)...].joined(separator: "\n")
-        return NoteDocument(
-            frontmatter: FrontmatterParser.parse(block),
-            body: body,
-            hasFrontmatterBlock: true
-        )
-    }
-
-    /// Rebuilds the file text: conformant frontmatter in fixed key order, then any
-    /// preserved foreign keys, then the body unchanged.
-    func serialized() -> String {
-        FrontmatterSerializer.render(frontmatter) + body
+        FrontmatterSource.document(from: text)
     }
 }
 
 enum FrontmatterParser {
+    /// Takes interpreted lines: no trailing `\r`, no leading U+FEFF (ADR-0064 §D1.2).
     static func parse(_ lines: [String]) -> Frontmatter {
         var result = Frontmatter.empty
         var index = 0
 
         while index < lines.count {
             let line = lines[index]
-            guard let colon = line.firstIndex(of: ":"), !line.hasPrefix(" "), !line.hasPrefix("-") else {
+            guard let key = keyName(of: line), let colon = line.firstIndex(of: ":") else {
                 index += 1
                 continue
             }
-            let key = String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
             let inlineValue = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
 
             // Continuation lines are the indented or dashed lines that follow, up to
@@ -217,7 +198,14 @@ enum FrontmatterParser {
         return result
     }
 
-    private static func isContinuation(_ line: String) -> Bool {
+    /// The key a top-level line opens, or nil for a line that is not one. Shared with
+    /// `FrontmatterSource`, so both walks group the block's lines the same way.
+    static func keyName(of line: String) -> String? {
+        guard let colon = line.firstIndex(of: ":"), !line.hasPrefix(" "), !line.hasPrefix("-") else { return nil }
+        return String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+    }
+
+    static func isContinuation(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return false }
         return line.hasPrefix(" ") || line.hasPrefix("\t") || trimmed.hasPrefix("-")
@@ -281,32 +269,55 @@ enum FrontmatterParser {
 enum FrontmatterSerializer {
     /// Writes the block in the fixed key order of SPEC §4.3, omitting optional keys
     /// that have no value (F-08 forbids an empty `related:` or `[]`).
-    static func render(_ frontmatter: Frontmatter) -> String {
+    /// Tags that failed validation follow the valid ones verbatim (R-03), and every line ends in
+    /// `lineBreak` (ADR-0064 §D1.5).
+    static func render(_ frontmatter: Frontmatter, lineBreak: LineBreak = .lf) -> String {
         var lines = ["---"]
-
-        if let date = frontmatter.date {
-            lines.append("date: \(date)")
-        }
-        if !frontmatter.tags.isEmpty {
-            lines.append("tags:")
-            lines.append(contentsOf: TagRules.ordered(frontmatter.tags).map { "  - \($0)" })
-        }
-        if !frontmatter.related.isEmpty {
-            lines.append("related:")
-            // F-06: alphabetical, and quoted because a bare `[[…]]` starts a YAML
-            // flow sequence and would not survive a round-trip through a real parser.
-            lines.append(contentsOf: frontmatter.related.sorted().map { "  - \"\($0)\"" })
-        }
-        if !frontmatter.aliases.isEmpty {
-            lines.append("aliases:")
-            lines.append(contentsOf: frontmatter.aliases.map { "  - \($0)" })
+        for key in schemaKeys {
+            lines.append(contentsOf: canonicalLines(for: key, of: frontmatter))
         }
         for foreign in frontmatter.foreignKeys {
             lines.append(contentsOf: foreign.lines)
         }
-
         lines.append("---")
-        return lines.joined(separator: "\n") + "\n"
+        return lines.joined(separator: lineBreak.characters) + lineBreak.characters
+    }
+
+    /// The closed schema, in the order a fresh render writes it (SPEC §4.3).
+    static let schemaKeys = ["date", "tags", "related", "aliases"]
+
+    /// One schema key in its canonical form, or no lines when it has no value (F-08).
+    static func canonicalLines(for key: String, of frontmatter: Frontmatter) -> [String] {
+        switch key {
+        case "date":
+            return frontmatter.date.map { ["date: \($0)"] } ?? []
+        case "tags":
+            guard !frontmatter.tags.isEmpty || !frontmatter.unparsableTags.isEmpty else { return [] }
+            return ["tags:"]
+                + TagRules.ordered(frontmatter.tags).map { "  - \($0)" }
+                + frontmatter.unparsableTags.map { "  - \($0)" }
+        case "related":
+            guard !frontmatter.related.isEmpty else { return [] }
+            // F-06: alphabetical, and quoted because a bare `[[…]]` starts a YAML
+            // flow sequence and would not survive a round-trip through a real parser.
+            return ["related:"] + frontmatter.related.sorted().map { "  - \"\($0)\"" }
+        case "aliases":
+            guard !frontmatter.aliases.isEmpty else { return [] }
+            return ["aliases:"] + frontmatter.aliases.map { "  - \($0)" }
+        default:
+            return []
+        }
+    }
+
+    /// Whether the caller changed a schema key's value since the parse.
+    static func differs(_ key: String, _ current: Frontmatter, _ parsed: Frontmatter) -> Bool {
+        switch key {
+        case "date": current.date != parsed.date
+        case "tags": current.tags != parsed.tags || current.unparsableTags != parsed.unparsableTags
+        case "related": current.related != parsed.related
+        case "aliases": current.aliases != parsed.aliases
+        default: false
+        }
     }
 }
 
@@ -323,6 +334,13 @@ enum FrontmatterViolation: Equatable, Sendable {
     case unresolvedRelatedLink(String)
     /// `related` and the `## Note correlate` section disagree (W-06).
     case relatedOutOfSyncWithSection(missingInSection: [String], missingInFrontmatter: [String])
+    /// The body opens with a second block: the prepend defect's trace, an empty block and then
+    /// the original one (ADR-0064 §D11, R-22). Advisory, like the two below.
+    case secondFrontmatterBlock
+    /// A key, schema or foreign, written more than once; one finding per name.
+    case duplicateKey(String)
+    /// A non-blank line of the block that is no key and has no colon.
+    case lineWithoutColon(String)
 }
 
 enum FrontmatterRules {
@@ -347,6 +365,8 @@ enum FrontmatterRules {
         if frontmatter.aliases.count > Frontmatter.maximumAliases {
             violations.append(.tooManyAliases(count: frontmatter.aliases.count))
         }
+        // ADR-0064 §D11 (R-22), in `FrontmatterSource.swift`: they read the block as written.
+        violations.append(contentsOf: damageFindings(of: document))
         return violations
     }
 

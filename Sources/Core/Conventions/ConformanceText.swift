@@ -46,9 +46,21 @@ enum ConformanceText {
             case .tooManyAliases(let count): lines.append("\(count) alias, massimo \(Frontmatter.maximumAliases)")
             case .unresolvedRelatedLink(let target): lines.append("related punta a una nota inesistente: \(target)")
             case .relatedOutOfSyncWithSection: lines.append("related e Note correlate non coincidono")
+            case .secondFrontmatterBlock, .duplicateKey, .lineWithoutColon:
+                if let line = damageLine(violation) { lines.append(line) }
             }
         }
         return lines
+    }
+
+    /// The three advisory damage findings of ADR-0064 §D11 (R-22).
+    private static func damageLine(_ violation: FrontmatterViolation) -> String? {
+        switch violation {
+        case .secondFrontmatterBlock: "Secondo blocco frontmatter all'inizio del corpo"
+        case .duplicateKey(let name): "Chiave ripetuta nel frontmatter: \(name)"
+        case .lineWithoutColon(let line): "Riga del frontmatter senza due punti: \(line)"
+        default: nil
+        }
     }
 
     private static func tagLines(_ violations: [TagViolation]) -> [String] {

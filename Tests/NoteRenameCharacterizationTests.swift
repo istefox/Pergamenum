@@ -80,3 +80,50 @@ tags:
     #expect(change.after.contains("01 Progetti/Nota rinominata.md"))
     #expect(!change.after.contains("01 Progetti/Nota.md\""))
 }
+
+// MARK: - ADR-0064 §D9.4 (R-19): an emphasised wikilink follows the rename, inside its markers
+
+@Test func renameRewritesABoldWikilinkInsideItsMarkers() {
+    let cases: [(String, String)] = [
+        ("Vedi [[**Forno tunnel**]].", "Vedi [[**Nuovo nome**]]."),
+        ("Vedi [[~~Forno tunnel~~]].", "Vedi [[~~Nuovo nome~~]]."),
+        ("Vedi [[*Forno tunnel*]].", "Vedi [[*Nuovo nome*]]."),
+        ("Vedi [[**Forno tunnel**#Sez|alias]].", "Vedi [[**Nuovo nome**#Sez|alias]]."),
+    ]
+    for (before, after) in cases {
+        #expect(NoteRename.rewritingLinks(in: before, from: "Forno tunnel", to: "Nuovo nome") == after)
+    }
+}
+
+@Test func renameCountsTheBoldLink() throws {
+    let vault = try CharacterizationVault()
+    try vault.write(header, to: "Forno tunnel.md")
+    try vault.write(header + "Vedi [[**Forno tunnel**]].\n", to: "Riunione.md")
+
+    let plan = try vault.operations.renamePlan(
+        "Forno tunnel.md", to: "Nuovo nome", knownPaths: ["Forno tunnel.md", "Riunione.md"]
+    )
+
+    let change = try #require(plan.noteChanges.first { $0.path == "Riunione.md" })
+    #expect(change.after.hasSuffix("Vedi [[**Nuovo nome**]].\n"))
+}
+
+@Test func aTitleThatOnlyContainsEmphasisIsUntouched() {
+    #expect(NoteRename.rewritingLinks(
+        in: "Vedi [[**Forno tunnel** vecchio]].", from: "Forno tunnel", to: "Nuovo nome", includeQuotedRelated: false
+    ) == nil)
+}
+
+// MARK: - R-01/R-20-adjacent: a quoted `related:` entry on a CRLF note
+
+/// `rewritingQuotedRelated` splits on `"\n"`, so on a CRLF document every line still carries a
+/// trailing `\r` after the split, and `trimmingCharacters(in: .whitespaces)` does not remove it.
+/// Before the fix `trimmed.hasSuffix("\"")` was false on every quoted-related line of a CRLF note
+/// and the rewrite was silently skipped. The pass now compares through
+/// `FrontmatterSource.interpreted(_:)` and re-emits the document's own line break, so the CRLF
+/// note's quoted `related:` entry follows the rename, same as the LF form.
+@Test func renameRewritesAQuotedRelatedEntryOnACRLFNote() {
+    let before = "---\r\nrelated:\r\n  - \"Forno tunnel\"\r\n---\r\nCorpo.\r\n"
+    let after = "---\r\nrelated:\r\n  - \"Nuovo nome\"\r\n---\r\nCorpo.\r\n"
+    #expect(NoteRename.rewritingLinks(in: before, from: "Forno tunnel", to: "Nuovo nome") == after)
+}

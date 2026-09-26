@@ -1,264 +1,228 @@
 Status: Approved (2026-09-26)
 
-# SPEC — Connector input hardening: malformed numbers, the flag parser, board creation through the dry-run lock, boundary defence in depth
+# SPEC — Format-edge hardening: every on-disk format round-trips faithfully or is refused
 
 ## Destination
 
-A SPEC handed to `/workplan`. Closes issue #570 (Audit Fable chain 3, promoted from `PG-256`)
-in one PR: the two connectors stop trusting the shape of what they receive, the one connector
-write that bypassed the dry-run lock goes through a session door, and five disk-touching sites
-resolve their paths only through the vault boundary resolver. The same PR closes `PG-151` by
-adding that resolver to the protected-interfaces registry.
+A SPEC handed to `/workplan`. Closes issue #568 (Audit Fable chain 1, promoted from `PG-254`) in
+one chain with one ADR: "the round-trip of every on-disk format is faithful or refused". The
+parsers for notes, frontmatter, JSON Canvas, mail and task text stop losing or corrupting data on
+inputs that are legitimate in this vault's own life, and a new advisory lint rule points at the
+notes an earlier version of the app already damaged.
 
 ## Objectives
 
-- A malformed number handed to `perg` or to the MCP server produces one sentence, never a dead
-  process and never a silently substituted default. Today `perg journal log --limit -1` kills
-  the CLI and a `resources/list` cursor of `-1` kills the MCP server mid-session.
-- A mistyped `--dry-run` can never become a real write. Today `--folder --dry-run` writes into
-  a folder named `--dry-run`, and `--dry-run=true` writes for real too.
-- Every write a connector performs honours the dry-run lock and lands in the journal, board
-  creation included. Today «create and link a board» writes the `.canvas` even when the MCP
-  `dryRun` default (`true`) is in force, and the journal never hears of it.
-- The five disk-touching sites the audit named resolve caller-derived paths only through the
-  vault boundary resolver, and that resolver becomes a protected interface so its signature
-  cannot drift silently.
+- A file written by another tool or another platform (a note synced from Windows, a `.canvas`
+  written by another editor, an Exchange mail) survives an in-app write unchanged outside the part
+  the app meant to change. Today 16 distinct paths drop or corrupt data silently: no error, no
+  report.
+- Principle 1 (file over app) holds for real on the formats the app writes: what the app does not
+  understand, it carries through untouched; where carrying it through is impossible, it refuses
+  visibly instead of guessing.
+- Notes already damaged by the frontmatter defects are findable: `perg lint`, the MCP `lint` tool
+  and the rule engine report them.
 
 ## Scope and non-goals
 
-In: the two connector reads that take a `limit` (journal log, search); the MCP resources
-listing's `cursor`; the hand-written argument parser both connectors share; a board-creation
-door on the vault session and its adoption by the connector's «create and link a board» verb;
-the rehearsal summary of the three «create and link» verbs; the five named boundary sites; the
-protected-interfaces registry line.
+In: the 17 items of `ROADMAP.md` §Chain 1, as verified against HEAD `43ca911` on 2026-09-26
+(15 reproduce as written, item 5 reproduces under a narrower condition, item 17 does not
+reproduce and is pinned by a test only); one advisory lint rule over frontmatter damage.
 
-Out (detail in *Out of scope*): the app's own board-creation call sites; a full sweep of every
-path-building site in the repository; extending undo to delete a created file; an upper bound on
-`limit`; the CLI help text; the other fifteen chains of the audit.
+Out (detail in *Out of scope*): repairing already-damaged files; renaming existing Pratiche
+message files; a fixture directory of real files; GUI tests; the other chains of the audit.
 
 ## Decisions
 
-- **A malformed `limit` is refused, not clamped and not defaulted.** A limit that is negative, or
-  given as text that does not read as an integer, is a usage error carrying one sentence. The
-  rule lives in the shared connector layer so `perg` and the MCP server say the same thing; each
-  front end's reader refuses unreadable text instead of quietly falling back to the default. It
-  applies to both reads that take a limit, search included, even though search today only
-  answers empty rather than crashing: a silent empty answer to `--limit -1` is the same class of
-  trap. `0` stays legal and answers empty. A number with a fractional part keeps the MCP reader's
-  existing leniency (truncated), because it says something; text that says nothing does not.
-  Rejected: clamp to `0` — it hides the caller's mistake, and the caller here is a script or a
-  model whose bug the sentence is for. Rejected: the issue's literal scope (journal log only) —
-  search's silent empty answer is the same defect with a quieter symptom.
-- **A malformed `cursor` is a JSON-RPC invalid-params error.** A cursor that is negative or not a
-  number is refused; the MCP specification says an invalid cursor should be an invalid-params
-  error, and today a non-numeric cursor silently restarts the listing at page zero, so a client
-  that mis-echoes a cursor once loops on the first page forever. A cursor past the end keeps
-  answering an empty page, as today. Rejected: clamp to page zero — same silent-restart shape.
-- **The flag parser refuses three shapes, not one.** A token starting with `--` is never an
-  option's value: an option followed by one is a missing value. A `--name=value` spelling of a
-  boolean flag is refused («the flag takes no value»): otherwise `--dry-run=true` lands among the
-  options, the flag test fails, and the write is real — the same trap through the other door. A
-  bare `--` is refused as unrecognised syntax instead of consuming the next token. A value that
-  legitimately starts with `--` is written `--option=--value`, which the parser already accepts;
-  a value starting with a single `-` (a negative number) is still a value, so `--limit -1`
-  parses and is then refused by the limit rule, not by the parser. Rejected: the issue's single
-  case — the `=` form of the safety flag is the same mistake one keystroke away. Rejected: a new
-  help line for the `=` form — the form already works and nobody has reached that corner.
-- **Board creation gets a session door modelled on note creation.** The vault session gains a
-  «create board» door taking the board's name and parent folder, which validates, refuses a
-  taken name, and writes an empty canvas through the session's existing file-write door for
-  `.canvas` bytes. That door already honours the dry-run switch, records a journal entry and
-  keeps the index out of it. The board's file path has one spelling, shared with the canvas
-  store's own creation, never a second. The connector's «create and link a board» adopts the
-  door; its rescan after a real creation stays, and a rehearsal rescans nothing. Undo of the
-  entry is declined with the existing «that write created the file» sentence — the journal
-  never deletes, and the note-creation precedent and its test say so. Rejected: teaching undo to
-  delete a created board — deleting a file on a model's say-so is what that sentence exists to
-  refuse. Rejected: teaching the canvas store about the session — it inverts the dependency;
-  the store stays a pure file layer.
-- **A rehearsal names the file it would create.** The write summary of each of the three
-  «create and link» verbs (a pratica's note, a pratica's board, a message's note) carries in its
-  existing `note` field the file the verb creates, on rehearsal and on a real run alike. Today
-  the summary is the link's diff only, so a rehearsal of a two-write verb shows one write. No
-  new JSON key: `note` already exists on the summary. Rejected: leave the summary as it is — a
-  rehearsal that hides one of two writes is weaker than the promise the server makes in its own
-  description («the first call returns the diff»).
-- **The app's board-creation call sites stay as they are.** The app arms no journal and no
-  dry-run switch, so routing its two direct canvas-store creations through the new door buys no
-  guarantee and turns synchronous UI closures into an async cascade. Rejected: one spelling
-  everywhere — measured against the cost the last async cascade had (ADR-0043's implementation
-  notes), the cost is not paid for a guarantee the app does not use.
-- **Five boundary sites, not thirty-eight, and the resolver becomes protected.** The five sites
-  the audit named (drop-import beside a note, canvas-store folder creation, folder rename and
-  folder trash, the pratica timeline directory, attachment existence probing) resolve through the
-  boundary resolver. A count made during this interview found thirty-eight other path-building
-  sites across twenty-five files that do not; they are named in *Out of scope* and filed as a
-  follow-up at ship time, untouched here. The protected-interfaces registry gains the resolver
-  entry `PG-151` has waited on since 2026-09-13; the operator decision it asked for is taken here.
-  Rejected: the full sweep — twenty-five files of review for a chain the audit sized at one
-  afternoon, all of them gated upstream today. Rejected: five sites without the registry line —
-  the whole item rests on the resolver being the only door, and a protected line is what keeps
-  it one.
+- **One SPEC and one ADR for all 17 items** — the principle is one and the test harness is shared
+  (a corpus plus table-driven round-trip tests). Rejected: three SPECs (notes and text, Canvas,
+  mail) — three ADRs or one ADR amended twice for a single rule.
+- **CRLF line endings and a UTF-8 BOM are preserved on write** — the file keeps its bytes outside
+  the part the app changed, consistent with file over app and with a vault synced from Windows.
+  Rejected: normalising to LF without a BOM — the first write would rewrite every line, an
+  enormous diff that iCloud and other tools see as a full modification.
+- **Default for what a parser does not understand: keep it opaque and re-emit it verbatim; refuse
+  only where keeping it cannot be made consistent** — covers frontmatter lines without a colon
+  (including YAML comments), duplicate keys, tags outside the vocabulary, Canvas nodes of an
+  unknown type with every payload key, unknown colours kept as raw strings, nodes or edges
+  missing `id`/`type`. Rejected: refusing every save on anything unknown — no loss, but the app
+  stops working on legitimate files from other tools.
+- **A Canvas with duplicate node or edge ids opens normally; a reconciliation that meets
+  duplicate ids diverges into the existing `conflicted` board state and records a problem, never a
+  crash** — reuses ADR-0054's non-modal «Mantieni le mie modifiche» / «Ricarica dal disco».
+  Rejected: refusing the board at open — makes a legitimate foreign file unusable.
+- **`pergamenum-mail-date` is written with the sender's own UTC offset, taken from the raw `Date`
+  header; UTC when only the Envelope Index date is available** — matches the documented intent
+  ("the zone the message was sent in") and removes the dependency on the machine's zone, which is
+  what broke ADR-0036 §D21's diff stability across a DST change. Rejected: always UTC — uniform,
+  but a 10:00 Italian mail reads 08:00Z in the file.
+- **ISO-8859-15 (Latin-9) decodes as Latin-9** — today it is mapped to Latin-2, which decodes
+  cleanly and wrongly (`€` becomes `¤`). No alternative was on the table.
+- **RFC 2047: linear whitespace between two adjacent encoded-words is dropped (§6.2); a B-word
+  with non-canonical padding still decodes; RFC 2231 extended and continued parameters are
+  honoured and a `;` inside quotes does not split a parameter.** No alternative discussed.
+- **Rename matches a wikilink on its resolved title (emphasis stripped), the same rule navigation
+  and backlinks already use, and rewrites the title inside the emphasis markers** —
+  `[[**Forno tunnel**]]` becomes `[[**Nuovo nome**]]`. No alternative discussed.
+- **A `.canvas` target is never a note link target; the transclusion "is this a note" test names
+  its extensions explicitly** — a board stops appearing as a backlink target. No alternative
+  discussed.
+- **Item 17 (Unicode normalisation in resolvers) gets a regression test and no code change** —
+  verified 2026-09-26: Swift `String` equality and hashing already use canonical equivalence, so
+  NFD and NFC compare equal in every cited fold. Rejected: dropping it with no test — the
+  guarantee would rest on nobody changing a comparison to a byte or `NSString` one.
+- **A new advisory lint rule reports frontmatter damage: a note carrying two frontmatter blocks
+  (the prepend defect's trace), duplicate frontmatter keys, and frontmatter lines without a
+  colon** — surfaced through the existing `frontmatter` findings, so the protected
+  `VaultAPI.LintFinding` JSON shape does not change. Rejected: leaving existing damage out of
+  scope with no detection (the recommended option, overruled by Stefano); reporting only the
+  double block (less noise, overruled for completeness).
+- **The corpus lives in a Swift source file of byte-exact strings, following
+  `EmailFixtureCorpus`'s convention; no fixture directory** — no manifest change, `\r\n` and the
+  BOM are explicit in the source. Rejected: a `Tests/Fixtures` directory of real files — more
+  faithful to "a file from another tool" but needs a `Project.swift` resource change.
 
 ## Constraints
 
-- **A connector capability lives in the shared connector layer, not in a front end** — origin:
-  CLAUDE.md «AI connector». A check implemented in the CLI is a check the MCP server lacks.
-- **Every file under the shared-sources globs compiles into both command-line tools** — origin:
-  ADR-0001 §D1 / ADR-0007. Nothing new there may import SwiftUI; the board door lives on the
-  session, which is already shared.
-- **The journal never deletes a file** — origin: existing decision, pinned by the connector
-  test that declines undoing a creation.
-- **Write-summary JSON shape is unchanged; the two protected payload shapes (lint finding,
-  pratica summary) are untouched** — origin: `.claude/protected-interfaces` (ADR-0053).
-- **The boundary resolver refuses the vault root itself** — origin: ADR-0041 §D1. A site that
-  needs a directory URL resolves a path inside the directory, or the directory's own relative
-  path when it is never empty; none of the five sites hands it the root.
-- **Attachment resolution sits on the editor's path** — origin: the embed cache keyed by note
-  path and target. Resolving through the boundary there must not add a symlink resolution per
-  keystroke; how the boundary reaches that pure helper is the plan's call under this constraint.
-- **The MCP protocol layer has no unit tests** — origin: CLAUDE.md «AI connector». Its
-  acceptance runs through the smoke script over a real server, which already fails the run when
-  the server stops answering.
-- **Merge gate is the unit suite plus in-process tests; zero GUI tests** — origin: CLAUDE.md
-  working agreements. Nothing in this chain is visible in the app's interface.
-- **A precondition before an `await` is a filter, not a guard** — origin: CLAUDE.md working
-  agreements / ADR-0043 §D7. The board door's taken-name check runs on the same side of the
-  suspension as the write it protects, or the write door's own refusal is what decides.
+- **Note frontmatter schema is closed (`date`, `tags`, `related`, `aliases`) and tags match the
+  namespaced regex** — origin: SPEC §4.3/§4.4, CLAUDE.md. Preserving an unknown line verbatim is
+  not extending the schema: the app never interprets or writes it.
+- **A Pratiche regeneration's diff shows exactly the bytes written** — origin: ADR-0036 §D21.
+- **Protected interfaces unchanged**: `VaultAPI.LintFinding`, `PraticaNaming.messageFileName`,
+  `Dossier.render`, `ImportNaming.recordingNoteTitle`, `MessageDocument.isPendingAttachmentEntry`
+  — origin: `.claude/protected-interfaces`.
+- **`Sources/Core` stays Foundation-only** — origin: ADR-0001 §D1; `perg` and `pergamenum-mcp`
+  compile it.
+- **A board conflict uses ADR-0054's existing `conflicted` state and its two actions** — origin:
+  ADR-0054 §D5/§D7.
+- **The new lint findings are advisory and never block a write or tag entry** — origin: user
+  mandate in this interview ("segnala"), and ADR-0038 keeps the rule engine behind tag-entry
+  blocking, which these findings must not reach.
+- **No GUI test** — origin: CLAUDE.md merge-gate rule; nothing here is reachable only through the
+  interface.
 
 ## Stack
 
-Swift 6, the existing `perg` and `pergamenum-mcp` command-line targets, the Swift Testing suite,
-the Python smoke script that drives the MCP server over stdio. Nothing new.
+Swift 6, Swift Testing, Foundation string encodings (Latin-9 through the Core Foundation encoding
+table). No new dependency.
 
 ## Data model
 
-None. No on-disk format, no frontmatter key, no index schema change. `IndexCache.schemaVersion`
-stays 4.
+- **Frontmatter document**: besides the four schema keys and the foreign `pergamenum-*` keys it
+  already keeps, it carries the raw lines it did not interpret, in their original position, the
+  tags that failed validation, and the file's line-ending style and BOM presence, so rendering
+  can reproduce them.
+- **Canvas node / edge**: an unknown-type node keeps its whole raw object; an unrecognised colour
+  is kept as its raw string; a node or edge without `id`/`type` is kept as an opaque raw object and
+  written back in place. Whether a card is a "Nota" depends on a colour being present, not on the
+  colour being valid, so an unknown colour does not turn a note into plain text.
+- **Message document**: the date carries the sender's offset; escaping and unescaping are exact
+  inverses.
 
 ## API / interfaces
 
-- **Journal log and search reads**: a `limit` that is not a non-negative integer is refused with
-  a usage error; the sentence is the same on both connectors. `0` answers empty.
-- **MCP `resources/list`**: a `cursor` that is not a non-negative integer answers a JSON-RPC
-  invalid-params error; the server keeps answering afterwards. Past-the-end answers an empty page.
-- **Argument parser**: three new refusals (option value starting with `--`; `=`-valued boolean
-  flag; bare `--`), two existing behaviours pinned (`--option=--value` as the escape hatch;
-  `-1` as an ordinary value).
-- **Vault session**: a board-creation door (name, parent folder) returning the board's relative
-  path; refuses a taken name; dry-run and journal semantics identical to note creation.
-- **Connector «create and link» verbs**: summaries carry the created file in `note`; the board
-  verb writes through the session door.
-- **Protected-interfaces registry**: one new line for the boundary resolver.
+- No connector JSON shape changes. `lint` gains new strings inside the existing `frontmatter`
+  findings array.
+- No change to any protected interface signature.
 
 ## Edge cases
 
-- `limit` given as `-1`, `"abc"`, `""`: refused. Given as `0`: legal, empty. Given as `3.7` on
-  MCP: `3`, the reader's existing leniency for a number.
-- `cursor` given as `"-1"` or `"abc"`: JSON-RPC error, session continues. Given as a number past
-  the last note: empty page, no `nextCursor`.
-- `--folder --dry-run`: missing value for `--folder`, nothing written. `--dry-run=true`,
-  `--json=1`: «takes no value». `--`: unrecognised syntax. `--title=--strange`: title is
-  `--strange`. `--limit -1`: parses, then the limit rule refuses it.
-- Board name already taken: refused before any write, on a rehearsal too — a rehearsal that
-  says it would create a board that exists would be false.
-- Board rehearsal: no `.canvas` on disk, no journal entry, no rescan, `applied` false, `note`
-  names the file. Real run: file exists, link written, journal entry under the verb's command
-  label; undoing that entry is declined and the file stays.
-- Drop-import beside a note whose path escapes the vault: refused, a problem is recorded,
-  nothing lands outside. Today the copy lands outside.
-- Canvas-store folder creation with a name that escapes: refused at the store, not only by the
-  folder-verb layer above it.
-- Folder rename or trash on a directory path that escapes the vault (a sibling directory of the
-  vault root exists and is named with `..`): refused, nothing moved or trashed. Today the
-  normalisation only trims slashes, so the path reaches the move.
-- Attachment resolution beside a note path that escapes: no result, no probe outside the vault.
-  Today it can return a relative path pointing outside.
-- Pratica timeline directory: the folder comes from the index, so no escaping input can reach
-  it; the resolution is adopted for consistency and cannot be exercised by a test.
+- A note with CRLF and a BOM whose frontmatter is edited in-app: only the edited key changes; every
+  line still ends in CRLF; the BOM is still there.
+- A duplicated `tags:` block: both blocks survive a write that does not touch tags (see *Not yet
+  specified* for a write that does).
+- A Canvas whose nodes share an id: opens and edits normally; if an external writer changes the
+  file during a pending save, the board goes `conflicted` with a recorded problem instead of
+  trapping.
+- An existing Pratiche message file written before this change: a later «Rigenera» shows a
+  one-time diff on `pergamenum-mail-date` (machine zone → sender offset). Its file name does not
+  change, because a sync never renames a message file.
+- An HTML body with an unclosed `<a>` or `<td>` at end of input: the text after the open tag is
+  kept.
+- A task line with `#topic-forni e #topic-forni-tunnel`: the display text removes both tags whole,
+  leaving "e" and no `-tunnel` residue.
+- `## ![[schema.png]]` in a heading: renders as an embed, never as `!schema.png`.
+- `### Note correlate operative` or a mid-sentence "## Note correlate": not taken as the related
+  section by export or by the linter.
 
 ## Test seams
 
-Five seams, four of them existing, confirmed in the interview:
+1. **The pure parsers in Core** (frontmatter, JSON Canvas and reconciliation, MIME decoder, header
+   decoder, HTML reducer, message document, task parser, inline markdown, rename, export, related
+   section, transclusion, board resolver): table-driven Swift Testing over one in-code corpus, each
+   case asserting parse → serialise equals the original bytes, or a named refusal. This seam
+   carries almost every criterion.
+2. **One vault-level test through the session's write door** for CRLF and BOM, because the BOM's
+   fate is decided by the text decoding on read and the write hash, not by the parser alone.
+3. **The existing lint engine tests** for the new advisory rule.
 
-1. **Connector-layer unit tests** (the existing connector test file): limit refusals on journal
-   log and search, `0` answering empty.
-2. **The MCP smoke script** (existing, the protocol layer's only seam): cursor refusals with the
-   server still answering, limit refusal on the journal tool, limit as text refused. The harness
-   already fails the run when the server dies, which is the crash assertion.
-3. **A new pure unit test file for the argument parser**: the three refusals and the two pinned
-   behaviours. No seam existed; a pure parser is the cheapest possible new one.
-4. **The existing pratiche-links connector tests**: board rehearsal, board real run with journal
-   entry and declined undo, the three summaries' `note`.
-5. **The existing canvas-store and folder-operation tests**: escaping inputs at folder creation,
-   folder rename, folder trash; the session's drop-import and the attachment resolver are driven
-   directly in the same files or their nearest existing sibling. The pratica timeline site is
-   review-only.
-
-The `perg` front end has no harness; what it alone does (turning `--limit abc` into a refusal
-rather than a default) is verified by review and marked so below.
+No GUI test, no new test target.
 
 ## Success criteria
 
-- [ ] R-01 — Journal log with a negative `limit` is refused with one usage sentence on both
-  connectors; no process dies.
-- [ ] R-02 — Search with a negative `limit` is refused with the same sentence; it no longer
-  answers empty.
-- [ ] R-03 — On the MCP server a `limit` given as text that does not read as an integer is
-  refused with the usage sentence, not defaulted.
-- [ ] R-04 — On `perg` a `--limit` value that does not read as an integer is refused with the
-  usage sentence, not defaulted. (no-test: no CLI harness; verified by review)
-- [ ] R-05 — A `limit` of `0` is legal and answers an empty list on both reads.
-- [ ] R-06 — `resources/list` with a negative or non-numeric `cursor` answers a JSON-RPC
-  invalid-params error, and the same server answers the next request.
-- [ ] R-07 — `resources/list` with a `cursor` past the last note answers an empty page.
-- [ ] R-08 — The parser refuses an option whose next token starts with `--` as a missing value;
-  `--folder --dry-run` performs no write.
-- [ ] R-09 — The parser refuses a boolean flag spelled with `=value`, and a bare `--`.
-- [ ] R-10 — The parser accepts `--option=--value` as the value `--value`, and `-1` as an
-  ordinary option value.
-- [ ] R-11 — «Create and link a board» on a rehearsal leaves no `.canvas` on disk and no
-  journal entry, answers `applied` false, and its `note` names the board file.
-- [ ] R-12 — «Create and link a board» on a real run writes the board and the link, records a
-  journal entry for the board file under the verb's command label, and undoing that entry is
-  declined with the creation sentence while the file stays.
-- [ ] R-13 — «Create and link a board» with a name already taken is refused before any write,
-  on a rehearsal too.
-- [ ] R-14 — The three «create and link» summaries (pratica note, pratica board, message note)
-  name the created file in `note`; the summary's JSON keys are unchanged.
-- [ ] R-15 — Drop-import beside a note path that escapes the vault is refused, records a
-  problem, and writes nothing outside the vault.
-- [ ] R-16 — Canvas-store folder creation with a name that escapes the vault is refused at the
-  store.
-- [ ] R-17 — Folder rename and folder trash on a directory path that escapes the vault are
-  refused; nothing is moved or trashed.
-- [ ] R-18 — Attachment resolution beside a note path that escapes the vault returns no result
-  and probes nothing outside.
-- [ ] R-19 — The pratica timeline directory is resolved through the boundary resolver.
-  (no-test: its folder comes from the index; no input reaches it)
-- [ ] R-20 — The protected-interfaces registry names the boundary resolver, and `PG-151` is
-  closed by this PR. (no-test: a registry line and a ledger entry, checked by review)
-- [ ] R-21 — The thirty-eight residual path-building sites are recorded as one follow-up ledger
-  entry at ship time, with the count and the three heaviest files named. (no-test: ledger
-  entry)
+- [ ] R-01 — A note with CRLF line endings, with and without frontmatter, round-trips byte-identical
+  through parse and serialise, and an in-app frontmatter change leaves every other byte (CRLF
+  included) untouched; no second frontmatter block is ever prepended.
+- [ ] R-02 — A note starting with a UTF-8 BOM keeps its BOM and its frontmatter through an in-app
+  write via the session's write door, and the write is not refused by its own hash precondition.
+- [ ] R-03 — A tag that fails vocabulary validation is written back verbatim, after the valid tags,
+  on every serialise.
+- [ ] R-04 — A frontmatter line without a colon (including a column-0 YAML comment) is written back
+  verbatim in its original position.
+- [ ] R-05 — A duplicated frontmatter key (schema or foreign) round-trips with both occurrences,
+  byte-identical, when the write does not touch that key.
+- [ ] R-06 — A Canvas node of an unknown type round-trips with every payload key it had.
+- [ ] R-07 — An unrecognised colour on a node or an edge round-trips as its original string, and a
+  node carrying one is still read as a "Nota".
+- [ ] R-08 — A Canvas node or edge missing `id` or `type` is written back, not dropped.
+- [ ] R-09 — Reconciling a Canvas document with duplicate node or edge ids never traps: the board
+  enters the `conflicted` state and one problem is recorded.
+- [ ] R-10 — An HTML body with an unclosed `<a>` or `<td>` keeps all the text that follows it.
+- [ ] R-11 — An ISO-8859-15 part or header decodes byte `0xA4` as `€`.
+- [ ] R-12 — Whitespace between two adjacent RFC 2047 encoded-words (including one produced by
+  unfolding) does not reach the decoded subject; a B-word with non-canonical padding decodes.
+- [ ] R-13 — An RFC 2231 `filename*=` (with charset, and with continuations) yields the right
+  attachment name and extension, and `filename="Report; finale.pdf"` is not cut at the semicolon.
+- [ ] R-14 — A message subject containing a backslash followed by `n` (`C:\nuovo`) round-trips
+  through the message document unchanged.
+- [ ] R-15 — `pergamenum-mail-date` carries the sender's offset from the raw `Date` header, or UTC
+  when there is none, and the value does not depend on the machine's time zone.
+- [ ] R-16 — A task's display text removes each tag as a whole token, so a tag that is a prefix of
+  another leaves no residue.
+- [ ] R-17 — `![[file]]` inline is parsed as an embed, with no orphan `!`, in body text and in
+  headings.
+- [ ] R-18 — The related section is recognised only as a line that is exactly its heading, by
+  export and by the linter.
+- [ ] R-19 — Renaming a note rewrites `[[**Title**]]` (and the other emphasis forms `resolvedTitle`
+  strips) to the new title inside the same markers, and the reported count includes it.
+- [ ] R-20 — A `^[[Board.canvas]]` marker never adds a `.canvas` target to a note's link targets,
+  and the transclusion note test decides by an explicit extension list.
+- [ ] R-21 — A regression test asserts that NFD and NFC spellings of the same name resolve to the
+  same board and the same note in the cited resolvers.
+- [ ] R-22 — The lint engine reports, as advisory `frontmatter` findings, a note carrying two
+  frontmatter blocks, a duplicated frontmatter key, and a frontmatter line without a colon; the
+  `VaultAPI.LintFinding` JSON shape is unchanged and none of these findings blocks a write or tag
+  entry.
+- [ ] R-23 — Every case of the chain's corpus either round-trips byte-identical or is refused with
+  a recorded problem; no case is dropped silently.
+- [ ] R-24 — One ADR records the "faithful or refused" rule and the decisions above, and
+  `ROADMAP.md` §Chain 1 is marked shipped with the PR number. (no-test: documentation obligation)
 
 ## Not yet specified
 
-_none_
+- **An in-app write to a key that appears more than once** (for example a category change on a
+  note whose `tags:` is duplicated): which occurrence the app rewrites, and whether the others
+  stay, merge or trigger a refusal. Real and in scope, but it depends on how the preserved raw
+  lines are modelled, which `/workplan` settles; the default under the opaque-first rule is to keep
+  every occurrence it did not mean to change.
 
 ## Out of scope
 
-- **The app's own board-creation call sites** (the pratiche link actions and the Workspace
-  sidebar verb) keep calling the canvas store directly: the app arms no journal and no dry-run
-  switch, so the door buys it nothing, and the async cascade into synchronous UI closures is a
-  cost measured once already.
-- **A full sweep of path-building sites.** Thirty-eight `root`-relative path constructions in
-  twenty-five files bypass the resolver today; the heaviest concentrations of direct file-manager
-  calls are the pratiche file operations, the vault disk actor and the canvas store. All are
-  gated upstream as far as the interview could see. Filed as a follow-up (R-21), not fixed here.
-- **Undo that deletes a created file.** The journal never deletes; the board door inherits the
-  note precedent rather than reopening it.
-- **An upper bound on `limit`.** Nothing in the issue or the interview asked for one; a large
-  limit is a slow answer, not a crash.
-- **CLI help text.** The `--option=value` form already works; no help line is added.
-- **The other fifteen audit chains.** One chain is one SPEC, one ADR, one PR.
+- **Repairing damaged files**: data already lost (a dropped tag, a dropped canvas key) cannot be
+  reconstructed; a double frontmatter block is fixed by hand once lint points at it.
+- **Renaming existing Pratiche message files** whose names were built from a subject decoded with
+  the whitespace defect: a sync never renames a message file (ADR-0036), and changing that is a
+  separate decision.
+- **A fixture directory of real files**: rejected above for the manifest change it needs.
+- **GUI tests**: nothing here needs the interface to be observed.
+- **The other chains of the audit**, including chain 2 (board lifecycle), which touches
+  neighbouring Workspace code but not the parsers.

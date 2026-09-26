@@ -262,3 +262,14 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     #expect(undone.failures.isEmpty)
     #expect(try session.read("Uno.md").text.contains("topic-gomma"))
 }
+
+// MARK: CRLF (ADR-0064 §D3, G1.3)
+
+@Test func tagRenameReachesACRLFNote() throws {
+    let text = FormatEdgeCorpus.crlfWithFrontmatter.text
+
+    let rewritten = try #require(TagRename.apply(try tag("type-note"), to: try tag("type-verbale"), in: text))
+
+    #expect(rewritten == text.replacingOccurrences(of: "type-note", with: "type-verbale"))
+    #expect(rewritten.components(separatedBy: "\n").dropLast().allSatisfy { $0.hasSuffix("\r") })
+}

@@ -27,7 +27,10 @@ enum NoteRename {
 
         // Collected first, then applied from the end backwards: replacing a range
         // invalidates every range after it.
-        let matches = WikilinkParser.links(in: text).filter { fold($0.target) == needle }
+        // Matched on the title the link resolves to, as the index does: `[[**Forno tunnel**]]`
+        // names `Forno tunnel`, and matching on the literal interior left it pointing at a note
+        // that no longer exists (ADR-0064 §D9.4, R-19).
+        let matches = WikilinkParser.links(in: text).filter { fold($0.resolvedTitle) == needle }
         guard !matches.isEmpty else {
             guard includeQuotedRelated else { return nil }
             return rewritingQuotedRelated(in: text, from: oldTitle, to: newTitle)
@@ -35,9 +38,7 @@ enum NoteRename {
 
         var result = text
         for link in matches.reversed() {
-            var rewritten = link
-            rewritten.target = newTitle
-            result.replaceSubrange(link.range, with: rewritten.rendered)
+            result.replaceSubrange(link.range, with: link.retitled(newTitle).rendered)
         }
         guard includeQuotedRelated else { return result }
         return rewritingQuotedRelated(in: result, from: oldTitle, to: newTitle) ?? result
@@ -54,14 +55,19 @@ enum NoteRename {
         to newTitle: String
     ) -> String? {
         var changed = false
+        // A line split on "\n" carries a trailing "\r" on a CRLF note (ADR-0064 §D3); comparing
+        // through the raw split left that "\r" attached, so `hasSuffix("\"")` never matched and a
+        // CRLF note's quoted `related:` entry was silently left unrewritten.
+        let suffix = LineBreak.detected(in: text).lineSuffix
         let lines = text.components(separatedBy: "\n").map { line -> String in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let interpreted = FrontmatterSource.interpreted(line)
+            let trimmed = interpreted.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("- \""), trimmed.hasSuffix("\"") else { return line }
             let inner = String(trimmed.dropFirst(3).dropLast())
             guard !inner.contains("[["), fold(inner) == fold(oldTitle) else { return line }
             changed = true
-            let indent = line.prefix { $0 == " " || $0 == "\t" }
-            return "\(indent)- \"\(newTitle)\""
+            let indent = interpreted.prefix { $0 == " " || $0 == "\t" }
+            return "\(indent)- \"\(newTitle)\"\(suffix)"
         }
         return changed ? lines.joined(separator: "\n") : nil
     }
