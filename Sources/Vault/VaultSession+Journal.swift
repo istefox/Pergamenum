@@ -196,7 +196,13 @@ extension VaultSession {
     /// id and timestamp - travels across, as a `JournalDescriptor`, built only when a
     /// journal is armed. `VaultDisk.writeFile` reads the current bytes itself, immediately
     /// before writing the new ones, inside the same isolation, exactly like the note write.
-    func writeFile(_ text: String, to relativePath: String, expecting: String? = nil) async throws {
+    ///
+    /// `expectingAbsent` (ADR-0063 §D4.5) is the creation precondition `expecting` cannot
+    /// express: the write is refused with `VaultWriteRefusal.movedOn` when anything is
+    /// already at the path, decided inside the actor on existence (ADR-0057 §D3's rule).
+    func writeFile(
+        _ text: String, to relativePath: String, expecting: String? = nil, expectingAbsent: Bool = false
+    ) async throws {
         guard !isDryRun else { return }
 
         var journalDescriptor: VaultDisk.JournalDescriptor?
@@ -218,6 +224,7 @@ extension VaultSession {
             outcome = try await disk.writeFile(
                 text, to: relativePath,
                 expecting: expecting,
+                expectingAbsent: expectingAbsent,
                 journalDescriptor: journalDescriptor,
                 journal: journal
             )

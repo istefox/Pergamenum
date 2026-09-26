@@ -1,188 +1,264 @@
-Status: Approved (2026-09-25)
+Status: Approved (2026-09-26)
 
-# SPEC — External deletion reaches the Diario pane and the editor tabs, not just the index
+# SPEC — Connector input hardening: malformed numbers, the flag parser, board creation through the dry-run lock, boundary defence in depth
 
 ## Destination
 
-A SPEC handed to `/workplan`. Closes issue #511 (PG-234): `VaultDisk.reconcile` silently returns
-`change: nil` when a watched path is missing, so an external deletion never produces an
-`ExternalChange` — the #495/ADR-0057 §D8 wiring (`DiaryController.externalChange(at:)`) never
-fires, and the same gap already existed for every open editor tab (`VaultController.reconcile`).
-This SPEC widens the shared `ExternalChange` signal to represent deletion and gives both
-consumers — the Diario pane and the editor tabs — real behavior for it, closing the whole
-root cause rather than only the diary symptom named in the issue title.
+A SPEC handed to `/workplan`. Closes issue #570 (Audit Fable chain 3, promoted from `PG-256`)
+in one PR: the two connectors stop trusting the shape of what they receive, the one connector
+write that bypassed the dry-run lock goes through a session door, and five disk-touching sites
+resolve their paths only through the vault boundary resolver. The same PR closes `PG-151` by
+adding that resolver to the protected-interfaces registry.
 
 ## Objectives
 
-- A clean Diario pane showing a day whose file was deleted by another process reloads to the
-  empty-day state, as ADR-0057 §D8 already intended but could never reach.
-- A clean editor tab showing a note deleted externally closes automatically, the same outcome
-  an in-app "Sposta nel Cestino" already produces via `trashedNote(at:)`.
-- A dirty editor tab showing a note deleted externally gets a conflict banner that makes sense
-  for a missing file — not today's "Ricarica da disco", which has nothing left to reload.
+- A malformed number handed to `perg` or to the MCP server produces one sentence, never a dead
+  process and never a silently substituted default. Today `perg journal log --limit -1` kills
+  the CLI and a `resources/list` cursor of `-1` kills the MCP server mid-session.
+- A mistyped `--dry-run` can never become a real write. Today `--folder --dry-run` writes into
+  a folder named `--dry-run`, and `--dry-run=true` writes for real too.
+- Every write a connector performs honours the dry-run lock and lands in the journal, board
+  creation included. Today «create and link a board» writes the `.canvas` even when the MCP
+  `dryRun` default (`true`) is in force, and the journal never hears of it.
+- The five disk-touching sites the audit named resolve caller-derived paths only through the
+  vault boundary resolver, and that resolver becomes a protected interface so its signature
+  cannot drift silently.
 
 ## Scope and non-goals
 
-In: `VaultDisk.reconcile`'s missing-path branch, `VaultSession.ExternalChange`'s shape,
-`VaultController.reconcile`'s per-tab handling, `NoteTab.OpenNote`'s pending-change state,
-`EditorColumn+Conflict.swift`'s banner. `DiaryController.externalChange(at:)` needs no change —
-it already does the right thing once called.
-Out: `WorkspaceController`/`.canvas` external-deletion handling (a different mechanism,
-ADR-0054's own watcher-refusal decision, untouched); a "recently deleted" recovery UI; any new
-self-write suppression bookkeeping for deletions (see Decisions).
+In: the two connector reads that take a `limit` (journal log, search); the MCP resources
+listing's `cursor`; the hand-written argument parser both connectors share; a board-creation
+door on the vault session and its adoption by the connector's «create and link a board» verb;
+the rehearsal summary of the three «create and link» verbs; the five named boundary sites; the
+protected-interfaces registry line.
+
+Out (detail in *Out of scope*): the app's own board-creation call sites; a full sweep of every
+path-building site in the repository; extending undo to delete a created file; an upper bound on
+`limit`; the CLI help text; the other fifteen chains of the audit.
 
 ## Decisions
 
-- **Deletion becomes a real case of the shared signal, not a sentinel.** `ExternalChange` gains a
-  `Content` enum (`.text(String)` / `.deleted`) instead of an unconditional `text: String`.
-  Rejected: encoding deletion as `text: ""` — indistinguishable from a file genuinely emptied by
-  another writer, which must still be adopted as text.
-- **A clean editor tab auto-closes on external deletion**, mirroring `trashedNote(at:)`'s existing
-  unconditional close for an in-app trash. Nothing is lost: the buffer already matched disk, which
-  is now gone. Rejected: leaving the tab open with a "file missing" indicator — a new UI state and
-  an open question about what a save would even mean, for no benefit over closing.
-- **A dirty editor tab gets a banner with "Scarta ed elimina" (discard the edits, close the tab)
-  and "Tieni la mia versione" (clear the conflict; the next ordinary save recreates the file).**
-  "Tieni la mia versione" needs no new write precondition: `saveOpenNote()` already calls
-  `session.write` unguarded (no `expecting:`), so it recreates a missing file exactly as it would
-  overwrite an existing one. Rejected: keeping "Ricarica da disco" — there is no disk copy to
-  reload.
-- **No self-write suppression is added for the deletion signal**, unlike the hash-based
-  suppression `selfWrittenHashes` gives text writes. An app-triggered trash already closes every
-  tab showing the path synchronously, inside `trashedNote(at:)`, before the (async, FSEvents-
-  driven) watcher's own `reconcile` can arrive for the same path — so the redundant deletion event
-  finds no matching tab and is a no-op. Rejected: a parallel `selfDeletedPaths` bookkeeping set
-  mirroring `selfWrittenHashes` — extra machinery for a race that already resolves itself by
-  ordering; the one narrow remaining case (FSEvents firing between the physical trash and
-  `trashedNote`'s synchronous close) is accepted as a cosmetic, already-tolerated class of race
-  rather than engineered around.
-- **The Diario side needs no new decision.** `DiaryController.reload()` already treats a missing
-  file as the empty-day state (ADR-0057: "not writing a file for a day nobody wrote anything on").
-  The only gap is that the signal never reaches `externalChange(at:)` to trigger it.
+- **A malformed `limit` is refused, not clamped and not defaulted.** A limit that is negative, or
+  given as text that does not read as an integer, is a usage error carrying one sentence. The
+  rule lives in the shared connector layer so `perg` and the MCP server say the same thing; each
+  front end's reader refuses unreadable text instead of quietly falling back to the default. It
+  applies to both reads that take a limit, search included, even though search today only
+  answers empty rather than crashing: a silent empty answer to `--limit -1` is the same class of
+  trap. `0` stays legal and answers empty. A number with a fractional part keeps the MCP reader's
+  existing leniency (truncated), because it says something; text that says nothing does not.
+  Rejected: clamp to `0` — it hides the caller's mistake, and the caller here is a script or a
+  model whose bug the sentence is for. Rejected: the issue's literal scope (journal log only) —
+  search's silent empty answer is the same defect with a quieter symptom.
+- **A malformed `cursor` is a JSON-RPC invalid-params error.** A cursor that is negative or not a
+  number is refused; the MCP specification says an invalid cursor should be an invalid-params
+  error, and today a non-numeric cursor silently restarts the listing at page zero, so a client
+  that mis-echoes a cursor once loops on the first page forever. A cursor past the end keeps
+  answering an empty page, as today. Rejected: clamp to page zero — same silent-restart shape.
+- **The flag parser refuses three shapes, not one.** A token starting with `--` is never an
+  option's value: an option followed by one is a missing value. A `--name=value` spelling of a
+  boolean flag is refused («the flag takes no value»): otherwise `--dry-run=true` lands among the
+  options, the flag test fails, and the write is real — the same trap through the other door. A
+  bare `--` is refused as unrecognised syntax instead of consuming the next token. A value that
+  legitimately starts with `--` is written `--option=--value`, which the parser already accepts;
+  a value starting with a single `-` (a negative number) is still a value, so `--limit -1`
+  parses and is then refused by the limit rule, not by the parser. Rejected: the issue's single
+  case — the `=` form of the safety flag is the same mistake one keystroke away. Rejected: a new
+  help line for the `=` form — the form already works and nobody has reached that corner.
+- **Board creation gets a session door modelled on note creation.** The vault session gains a
+  «create board» door taking the board's name and parent folder, which validates, refuses a
+  taken name, and writes an empty canvas through the session's existing file-write door for
+  `.canvas` bytes. That door already honours the dry-run switch, records a journal entry and
+  keeps the index out of it. The board's file path has one spelling, shared with the canvas
+  store's own creation, never a second. The connector's «create and link a board» adopts the
+  door; its rescan after a real creation stays, and a rehearsal rescans nothing. Undo of the
+  entry is declined with the existing «that write created the file» sentence — the journal
+  never deletes, and the note-creation precedent and its test say so. Rejected: teaching undo to
+  delete a created board — deleting a file on a model's say-so is what that sentence exists to
+  refuse. Rejected: teaching the canvas store about the session — it inverts the dependency;
+  the store stays a pure file layer.
+- **A rehearsal names the file it would create.** The write summary of each of the three
+  «create and link» verbs (a pratica's note, a pratica's board, a message's note) carries in its
+  existing `note` field the file the verb creates, on rehearsal and on a real run alike. Today
+  the summary is the link's diff only, so a rehearsal of a two-write verb shows one write. No
+  new JSON key: `note` already exists on the summary. Rejected: leave the summary as it is — a
+  rehearsal that hides one of two writes is weaker than the promise the server makes in its own
+  description («the first call returns the diff»).
+- **The app's board-creation call sites stay as they are.** The app arms no journal and no
+  dry-run switch, so routing its two direct canvas-store creations through the new door buys no
+  guarantee and turns synchronous UI closures into an async cascade. Rejected: one spelling
+  everywhere — measured against the cost the last async cascade had (ADR-0043's implementation
+  notes), the cost is not paid for a guarantee the app does not use.
+- **Five boundary sites, not thirty-eight, and the resolver becomes protected.** The five sites
+  the audit named (drop-import beside a note, canvas-store folder creation, folder rename and
+  folder trash, the pratica timeline directory, attachment existence probing) resolve through the
+  boundary resolver. A count made during this interview found thirty-eight other path-building
+  sites across twenty-five files that do not; they are named in *Out of scope* and filed as a
+  follow-up at ship time, untouched here. The protected-interfaces registry gains the resolver
+  entry `PG-151` has waited on since 2026-09-13; the operator decision it asked for is taken here.
+  Rejected: the full sweep — twenty-five files of review for a chain the audit sized at one
+  afternoon, all of them gated upstream today. Rejected: five sites without the registry line —
+  the whole item rests on the resolver being the only door, and a protected line is what keeps
+  it one.
 
 ## Constraints
 
-- **`VaultSession+Watching.swift` (where `ExternalChange` lives) is in `sharedSources`, compiled
-  into `perg` and `pergamenum-mcp`.** Its shape may change but neither connector may gain new
-  behavior or capability from it — origin: ADR-0007's shared-sources architecture.
-- **`WorkspaceController`'s `.canvas` reconciliation is untouched** — origin: ADR-0054 §D7's own,
-  separate watcher-refusal decision; not reopened here.
-- **Never disable or delete a test to make a suite pass** — origin: global rules.
-- **Work happens on a feature branch, `/workplan` and `/build` in separate sessions** — origin:
-  user mandate (CLAUDE.md workflow invariants).
+- **A connector capability lives in the shared connector layer, not in a front end** — origin:
+  CLAUDE.md «AI connector». A check implemented in the CLI is a check the MCP server lacks.
+- **Every file under the shared-sources globs compiles into both command-line tools** — origin:
+  ADR-0001 §D1 / ADR-0007. Nothing new there may import SwiftUI; the board door lives on the
+  session, which is already shared.
+- **The journal never deletes a file** — origin: existing decision, pinned by the connector
+  test that declines undoing a creation.
+- **Write-summary JSON shape is unchanged; the two protected payload shapes (lint finding,
+  pratica summary) are untouched** — origin: `.claude/protected-interfaces` (ADR-0053).
+- **The boundary resolver refuses the vault root itself** — origin: ADR-0041 §D1. A site that
+  needs a directory URL resolves a path inside the directory, or the directory's own relative
+  path when it is never empty; none of the five sites hands it the root.
+- **Attachment resolution sits on the editor's path** — origin: the embed cache keyed by note
+  path and target. Resolving through the boundary there must not add a symlink resolution per
+  keystroke; how the boundary reaches that pure helper is the plan's call under this constraint.
+- **The MCP protocol layer has no unit tests** — origin: CLAUDE.md «AI connector». Its
+  acceptance runs through the smoke script over a real server, which already fails the run when
+  the server stops answering.
+- **Merge gate is the unit suite plus in-process tests; zero GUI tests** — origin: CLAUDE.md
+  working agreements. Nothing in this chain is visible in the app's interface.
+- **A precondition before an `await` is a filter, not a guard** — origin: CLAUDE.md working
+  agreements / ADR-0043 §D7. The board door's taken-name check runs on the same side of the
+  suspension as the write it protects, or the write door's own refusal is what decides.
 
 ## Stack
 
-Swift 6, existing `VaultDisk` / `VaultSession` / `VaultController` / `DiaryController` /
-`NoteTab` / `EditorColumn+Conflict` types. Swift Testing. No new dependency.
+Swift 6, the existing `perg` and `pergamenum-mcp` command-line targets, the Swift Testing suite,
+the Python smoke script that drives the MCP server over stdio. Nothing new.
 
 ## Data model
 
-No schema or on-disk format change. The shared signal's shape widens:
-
-```
-struct ExternalChange: Equatable, Sendable {
-    enum Content: Equatable, Sendable {
-        case text(String)
-        case deleted
-    }
-    let path: String
-    let content: Content
-}
-```
-
-`OpenNote.externalChangePending: String?` becomes an equivalent pending-content value (exact
-type — a matching `Content?`, or two mutually-exclusive optionals — decided in `/workplan`) so a
-dirty tab can carry "there's a conflict, and it's a deletion" rather than only "there's a
-conflict, and here's the incoming text".
+None. No on-disk format, no frontmatter key, no index schema change. `IndexCache.schemaVersion`
+stays 4.
 
 ## API / interfaces
 
-- `VaultDisk.reconcile`: the missing-path branch returns an `ExternalChange` with
-  `content: .deleted` instead of `nil`, still advancing the path's clock exactly as today.
-- `VaultSession.reconcile`: propagates the new case unchanged; no change to the self-write
-  suppression path, which stays scoped to hash-matched text writes (Decisions).
-- `VaultController.reconcile`: on `.deleted`, replaces the current blind `catchUp(to:)` call for
-  that path with per-tab handling — a clean tab schedules a close, a dirty tab sets the new
-  pending-deletion state — instead of applying text. `didChangeExternally?(path)` still fires
-  unconditionally, as today; `DiaryController.externalChange(at:)`'s own `isSettled` guard already
-  no-ops correctly when the pane has something owed.
-- `NoteTab.OpenNote.catchUp(to:)` takes the new `Content` type; `.deleted` on a clean buffer signals
-  "close this tab" to the caller rather than mutating `text`/`savedText`.
-- `VaultController.acceptExternalChange()`: when the pending state is a deletion, discards the
-  buffer and closes the tab instead of replacing `text` with (absent) incoming text.
-- `VaultController.keepLocalVersion()`: when the pending state is a deletion, behaves as today —
-  clears the pending flag; the tab's next ordinary save recreates the file.
-- `EditorColumn+Conflict.swift`: the banner's copy and button pair branch on the pending kind —
-  the existing "La nota è cambiata su disco…" / "Ricarica da disco" / "Tieni la mia versione" for
-  a text change, new copy plus "Scarta ed elimina" / "Tieni la mia versione" for a deletion.
+- **Journal log and search reads**: a `limit` that is not a non-negative integer is refused with
+  a usage error; the sentence is the same on both connectors. `0` answers empty.
+- **MCP `resources/list`**: a `cursor` that is not a non-negative integer answers a JSON-RPC
+  invalid-params error; the server keeps answering afterwards. Past-the-end answers an empty page.
+- **Argument parser**: three new refusals (option value starting with `--`; `=`-valued boolean
+  flag; bare `--`), two existing behaviours pinned (`--option=--value` as the escape hatch;
+  `-1` as an ordinary value).
+- **Vault session**: a board-creation door (name, parent folder) returning the board's relative
+  path; refuses a taken name; dry-run and journal semantics identical to note creation.
+- **Connector «create and link» verbs**: summaries carry the created file in `note`; the board
+  verb writes through the session door.
+- **Protected-interfaces registry**: one new line for the boundary resolver.
 
 ## Edge cases
 
-- The file is deleted and then recreated by another process before the person reacts to a
-  dirty-tab banner: out of scope, the same class of race every existing `ExternalChange` handling
-  already tolerates — the banner reflects the state as of the `reconcile` call that produced it.
-- The same deleted note is open in more than one tab, across both columns: every clean tab closes,
-  every dirty tab gets its own banner independently — `updateTabs(showing:)`'s existing
-  all-columns behavior (ADR-0056), unchanged by this SPEC.
-- A preview tab (`isPreview`) versus a pinned tab: no distinction, same rule `trashedNote(at:)`
-  already applies today.
-- The diary file is deleted while its pane has something owed or is conflicted:
-  `externalChange(at:)`'s `isSettled` guard already ignores the signal, unchanged (ADR-0057 §D8).
+- `limit` given as `-1`, `"abc"`, `""`: refused. Given as `0`: legal, empty. Given as `3.7` on
+  MCP: `3`, the reader's existing leniency for a number.
+- `cursor` given as `"-1"` or `"abc"`: JSON-RPC error, session continues. Given as a number past
+  the last note: empty page, no `nextCursor`.
+- `--folder --dry-run`: missing value for `--folder`, nothing written. `--dry-run=true`,
+  `--json=1`: «takes no value». `--`: unrecognised syntax. `--title=--strange`: title is
+  `--strange`. `--limit -1`: parses, then the limit rule refuses it.
+- Board name already taken: refused before any write, on a rehearsal too — a rehearsal that
+  says it would create a board that exists would be false.
+- Board rehearsal: no `.canvas` on disk, no journal entry, no rescan, `applied` false, `note`
+  names the file. Real run: file exists, link written, journal entry under the verb's command
+  label; undoing that entry is declined and the file stays.
+- Drop-import beside a note whose path escapes the vault: refused, a problem is recorded,
+  nothing lands outside. Today the copy lands outside.
+- Canvas-store folder creation with a name that escapes: refused at the store, not only by the
+  folder-verb layer above it.
+- Folder rename or trash on a directory path that escapes the vault (a sibling directory of the
+  vault root exists and is named with `..`): refused, nothing moved or trashed. Today the
+  normalisation only trims slashes, so the path reaches the move.
+- Attachment resolution beside a note path that escapes: no result, no probe outside the vault.
+  Today it can return a relative path pointing outside.
+- Pratica timeline directory: the folder comes from the index, so no escaping input can reach
+  it; the resolution is adopted for consistency and cannot be exercised by a test.
 
 ## Test seams
 
-Existing door, no new architecture: `VaultController.reconcile(_:)` driven directly against a
-`TemporaryVault`, the same pattern `Tests/DiaryWatcherReloadTests.swift` and
-`Tests/VaultControllerReconcileTests.swift` already use for text changes. A deletion is simulated
-by removing the file after a `TemporaryVault.write` (a small helper addition to
-`Tests/TemporaryVaultSupport.swift`, decided in `/build`, not a new seam). No new GUI test: the
-behavior is covered at the `VaultController`/`DiaryController` unit level, consistent with the
-project's small, deliberately bounded GUI suite (CLAUDE.md working agreements).
+Five seams, four of them existing, confirmed in the interview:
+
+1. **Connector-layer unit tests** (the existing connector test file): limit refusals on journal
+   log and search, `0` answering empty.
+2. **The MCP smoke script** (existing, the protocol layer's only seam): cursor refusals with the
+   server still answering, limit refusal on the journal tool, limit as text refused. The harness
+   already fails the run when the server dies, which is the crash assertion.
+3. **A new pure unit test file for the argument parser**: the three refusals and the two pinned
+   behaviours. No seam existed; a pure parser is the cheapest possible new one.
+4. **The existing pratiche-links connector tests**: board rehearsal, board real run with journal
+   entry and declined undo, the three summaries' `note`.
+5. **The existing canvas-store and folder-operation tests**: escaping inputs at folder creation,
+   folder rename, folder trash; the session's drop-import and the attachment resolver are driven
+   directly in the same files or their nearest existing sibling. The pratica timeline site is
+   review-only.
+
+The `perg` front end has no harness; what it alone does (turning `--limit abc` into a refusal
+rather than a default) is verified by review and marked so below.
 
 ## Success criteria
 
-- [ ] R-01 — A clean Diario pane reloads to the empty-day state when its day's file is deleted
-  externally, driven through `VaultController.reconcile(_:)` exactly as `DiaryWatcherReloadTests`
-  drives a text change.
-- [ ] R-02 — A dirty Diario pane is left untouched by an external deletion, same as it is today
-  for a content change (`isSettled` guard).
-- [ ] R-03 — A clean editor tab showing a note deleted externally closes automatically, in every
-  column that shows it.
-- [ ] R-04 — A dirty editor tab showing a note deleted externally shows a banner offering "Scarta
-  ed elimina" and "Tieni la mia versione", never "Ricarica da disco".
-- [ ] R-05 — "Tieni la mia versione" on a deleted-file conflict clears the pending state; the
-  tab's next ordinary save recreates the file, verified through the existing unguarded
-  `saveOpenNote()` write path.
-- [ ] R-06 — "Scarta ed elimina" on a deleted-file conflict closes the tab without writing,
-  discarding the unsaved text.
-- [ ] R-07 — `VaultDisk.reconcile`'s missing-path branch produces an `ExternalChange` with
-  `content: .deleted` instead of `nil`.
-- [ ] R-08 — `perg` and `pergamenum-mcp` still build clean after `ExternalChange`'s shape change.
-  (no-test: build verification, not a unit assertion — checked via the existing three-target
-  build step already required before commit.)
-- [ ] R-09 — No self-write suppression bookkeeping is added for deletions; an app-triggered trash
-  still runs `trashedNote(at:)` synchronously ahead of the watcher's own `reconcile`, so the
-  redundant signal is a no-op on an already-closed tab. (no-test: an ordering argument recorded
-  as a Decision, not independently mechanized.)
+- [ ] R-01 — Journal log with a negative `limit` is refused with one usage sentence on both
+  connectors; no process dies.
+- [ ] R-02 — Search with a negative `limit` is refused with the same sentence; it no longer
+  answers empty.
+- [ ] R-03 — On the MCP server a `limit` given as text that does not read as an integer is
+  refused with the usage sentence, not defaulted.
+- [ ] R-04 — On `perg` a `--limit` value that does not read as an integer is refused with the
+  usage sentence, not defaulted. (no-test: no CLI harness; verified by review)
+- [ ] R-05 — A `limit` of `0` is legal and answers an empty list on both reads.
+- [ ] R-06 — `resources/list` with a negative or non-numeric `cursor` answers a JSON-RPC
+  invalid-params error, and the same server answers the next request.
+- [ ] R-07 — `resources/list` with a `cursor` past the last note answers an empty page.
+- [ ] R-08 — The parser refuses an option whose next token starts with `--` as a missing value;
+  `--folder --dry-run` performs no write.
+- [ ] R-09 — The parser refuses a boolean flag spelled with `=value`, and a bare `--`.
+- [ ] R-10 — The parser accepts `--option=--value` as the value `--value`, and `-1` as an
+  ordinary option value.
+- [ ] R-11 — «Create and link a board» on a rehearsal leaves no `.canvas` on disk and no
+  journal entry, answers `applied` false, and its `note` names the board file.
+- [ ] R-12 — «Create and link a board» on a real run writes the board and the link, records a
+  journal entry for the board file under the verb's command label, and undoing that entry is
+  declined with the creation sentence while the file stays.
+- [ ] R-13 — «Create and link a board» with a name already taken is refused before any write,
+  on a rehearsal too.
+- [ ] R-14 — The three «create and link» summaries (pratica note, pratica board, message note)
+  name the created file in `note`; the summary's JSON keys are unchanged.
+- [ ] R-15 — Drop-import beside a note path that escapes the vault is refused, records a
+  problem, and writes nothing outside the vault.
+- [ ] R-16 — Canvas-store folder creation with a name that escapes the vault is refused at the
+  store.
+- [ ] R-17 — Folder rename and folder trash on a directory path that escapes the vault are
+  refused; nothing is moved or trashed.
+- [ ] R-18 — Attachment resolution beside a note path that escapes the vault returns no result
+  and probes nothing outside.
+- [ ] R-19 — The pratica timeline directory is resolved through the boundary resolver.
+  (no-test: its folder comes from the index; no input reaches it)
+- [ ] R-20 — The protected-interfaces registry names the boundary resolver, and `PG-151` is
+  closed by this PR. (no-test: a registry line and a ledger entry, checked by review)
+- [ ] R-21 — The thirty-eight residual path-building sites are recorded as one follow-up ledger
+  entry at ship time, with the count and the three heaviest files named. (no-test: ledger
+  entry)
 
 ## Not yet specified
 
-- Exact Italian copy for the dirty-tab deletion banner's message and buttons — resolved in
-  `/build` against the tone of the existing strings ("La nota è cambiata su disco mentre la
-  stavi modificando.", "Ricarica da disco", "Tieni la mia versione").
-- The exact `Content?` vs. two-optionals shape for `OpenNote`'s pending-deletion state — decided
-  in `/workplan`, per the Data model note above.
+_none_
 
 ## Out of scope
 
-- **`WorkspaceController`/`.canvas` external-deletion handling** — a distinct mechanism under
-  ADR-0054's own watcher-refusal decision, not reopened here.
-- **A "recently deleted notes" recovery UI** — no such feature exists today and this SPEC does not
-  introduce one; closing/emptying is the whole of the new behavior.
-- **Self-write suppression bookkeeping for deletions** (a `selfDeletedPaths`-style set) — ruled out
-  in Decisions as unnecessary given the existing close-before-watcher ordering.
-
-## Domain terms
-
-_none_
+- **The app's own board-creation call sites** (the pratiche link actions and the Workspace
+  sidebar verb) keep calling the canvas store directly: the app arms no journal and no dry-run
+  switch, so the door buys it nothing, and the async cascade into synchronous UI closures is a
+  cost measured once already.
+- **A full sweep of path-building sites.** Thirty-eight `root`-relative path constructions in
+  twenty-five files bypass the resolver today; the heaviest concentrations of direct file-manager
+  calls are the pratiche file operations, the vault disk actor and the canvas store. All are
+  gated upstream as far as the interview could see. Filed as a follow-up (R-21), not fixed here.
+- **Undo that deletes a created file.** The journal never deletes; the board door inherits the
+  note precedent rather than reopening it.
+- **An upper bound on `limit`.** Nothing in the issue or the interview asked for one; a large
+  limit is a slow answer, not a crash.
+- **CLI help text.** The `--option=value` form already works; no help line is added.
+- **The other fifteen audit chains.** One chain is one SPEC, one ADR, one PR.

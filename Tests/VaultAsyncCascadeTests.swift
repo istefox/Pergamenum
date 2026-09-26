@@ -228,9 +228,10 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
     let move = try cascadeAsync(session.moveFile)
     let trash = try cascadeAsync(session.trashFile)
 
-    // `expecting:` is a default only at a direct call site; captured as a bare function
-    // value above, `write`'s type carries all three parameters (Task 2, ADR-0046 §D5).
-    try await write(replacement, "Board.canvas", nil)
+    // `expecting:` and `expectingAbsent:` are defaults only at a direct call site; captured
+    // as a bare function value above, `write`'s type carries all four parameters (Task 2,
+    // ADR-0046 §D5; ADR-0063 §D4.5).
+    try await write(replacement, "Board.canvas", nil, false)
     #expect(try String(contentsOf: vault.root.appending(path: "Board.canvas"), encoding: .utf8) == replacement)
     try await move("Board.canvas", "Archive/Board.canvas")
     #expect(!session.exists("Board.canvas"))

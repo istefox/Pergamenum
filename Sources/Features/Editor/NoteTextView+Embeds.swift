@@ -57,6 +57,12 @@ final class EmbedTable {
     /// already has one is the fix, if this ever bites - out of scope for Step 2, which
     /// adds no such input to `NoteTextView`.
     private var resolutionCache: [String: String?] = [:]
+    /// The boundary every resolution goes through, built once per vault root (ADR-0063
+    /// §D7). Building one resolves the root's symlinks, and a keystroke that edits a
+    /// target inside an existing `![[…]]` is a new `resolutionCache` key every time - so
+    /// without this memo even that miss would add a resolution per keystroke. Held here
+    /// rather than passed into `apply(runs:…)`, which is at SwiftLint's parameter cap.
+    private var boundaryMemo: (root: URL, boundary: VaultBoundary)?
     /// Paragraph offsets waiting on a still-pending render, by the same key
     /// `renderCache` uses - what a render's completion updates, all at once, when it
     /// lands.
@@ -178,9 +184,17 @@ final class EmbedTable {
     private func resolvedPath(for target: String, notePath: String, root: URL) -> String? {
         let key = "\(notePath)|\(target)"
         if let cached = resolutionCache[key] { return cached }
-        let resolved = Attachment.resolve(target, nearNoteAt: notePath, inVaultAt: root)
+        let resolved = Attachment.resolve(target, nearNoteAt: notePath, within: boundary(for: root))
         resolutionCache[key] = resolved
         return resolved
+    }
+
+    /// The memoised boundary for `root`, rebuilt only when the root changes.
+    private func boundary(for root: URL) -> VaultBoundary {
+        if let memo = boundaryMemo, memo.root == root { return memo.boundary }
+        let built = VaultBoundary(root: root)
+        boundaryMemo = (root, built)
+        return built
     }
 
     /// Starts a render, unless one for the same file in the same width bucket is already

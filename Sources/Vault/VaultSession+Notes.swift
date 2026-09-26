@@ -64,6 +64,45 @@ extension VaultSession {
         )
     }
 
+    // MARK: Boards
+
+    /// Creates an empty board and returns its path (ADR-0063 §D4): the connector's door,
+    /// so a board creation honours `isDryRun` and is journalled like every other write.
+    ///
+    /// The name answers to the Workspace sheet's rule, the path is spelled by
+    /// `CanvasStore.boardFilePath` and the bytes are `CanvasDocument.empty`, so neither can
+    /// drift from the store's own creation. The taken-name check before the `await` is a
+    /// filter, there so a rehearsal refuses what the real run would (ADR-0043 §D7); the
+    /// guard is `expectingAbsent`, decided inside the actor. Nothing is rescanned: a board
+    /// is not a note, and the caller decides whether the index needs to hear of it.
+    ///
+    /// Two differences from `CanvasStore.createBoard`, both deliberate:
+    /// - a missing parent folder is **created** (§D4.7), as `createNote` creates one: a
+    ///   connector's folder is typed text, where the store's is picked from a tree and a
+    ///   vanished one must fail loudly (ADR-0025 §D1);
+    /// - the app's own two board creations stay on the store (§D5): it arms no journal and
+    ///   no dry run, so this door buys it nothing, and routing two synchronous UI closures
+    ///   through an `async` door is the cascade ADR-0043's notes measured. Two paths, on
+    ///   purpose - read §D5 before unifying them.
+    ///
+    /// The journal never deletes: undoing this creation is declined, as for a note.
+    func createBoard(named name: String, in parent: String) async throws -> String {
+        let violations = FolderName.validate(name)
+        guard violations.isEmpty else { throw CreationError.invalidTitle(violations) }
+
+        let relativePath = CanvasStore.boardFilePath(named: name, in: parent)
+        // An escaping parent is refused here, before anything else and on a rehearsal too.
+        _ = try store.url(for: relativePath)
+        guard !exists(relativePath) else { throw CreationError.alreadyExists(relativePath) }
+
+        try await writeFile(
+            String(decoding: try CanvasDocument.empty.encoded(), as: UTF8.self),
+            to: relativePath,
+            expectingAbsent: true
+        )
+        return relativePath
+    }
+
     // MARK: Daily notes
 
     /// Where the daily note of a day lives, whether or not it exists yet.
@@ -96,9 +135,16 @@ extension VaultSession {
     /// stop being self-contained.
     func importFile(_ source: URL, near notePath: String) -> String? {
         let folder = (notePath as NSString).deletingLastPathComponent
-        let directory = folder.isEmpty
-            ? store.root
-            : store.root.appending(path: folder, directoryHint: .isDirectory)
+        // Through the boundary before `uniqueFileName` probes the folder (ADR-0063 §D7): a
+        // note path escaping the vault copied the file outside it. An empty folder is the
+        // root itself, which the resolver refuses by design and no caller input spells.
+        let directory: URL
+        do {
+            directory = folder.isEmpty ? store.root : try store.url(for: folder)
+        } catch {
+            recordProblem("copia di \(source.lastPathComponent): \(error)")
+            return nil
+        }
 
         let name = ImportNaming.uniqueFileName(source.lastPathComponent, in: directory)
         do {

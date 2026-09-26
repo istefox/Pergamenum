@@ -225,4 +225,122 @@ private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async th
         let link = try VaultAPI.praticaMessageLink(session, at: messagePath)
         #expect(link?.state == "unique")
     }
+
+    // MARK: - ADR-0063 §D4/§D6: the board goes through the session's door, and every
+    // «create and link» summary names the file it creates
+
+    private func bytes(_ vault: borrowing TemporaryVault, _ relativePath: String) throws -> Data {
+        try Data(contentsOf: vault.root.appending(path: relativePath))
+    }
+
+    private func journalIDs(_ vault: borrowing TemporaryVault) throws -> [String] {
+        try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).map(\.id)
+    }
+
+    @Test func aBoardRehearsalLeavesNoCanvasAndNoJournalEntry() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        let praticaBefore = try bytes(vault, "\(praticaFolder)/pratica.md")
+        let journalBefore = try journalIDs(vault)
+
+        // The MCP default: `dryRun` true. Before ADR-0063 the store wrote the board anyway.
+        VaultAPI.arm(session, command: "pratica_create_board", dryRun: true)
+        let summary = try await VaultAPI.createAndLinkPraticaBoard(
+            session, pratica: praticaFolder, name: "Preventivo", folder: nil
+        )
+
+        #expect(!summary.applied)
+        #expect(summary.note?.contains("Preventivo.canvas") == true)
+        #expect(!FileManager.default.fileExists(
+            atPath: vault.root.appending(path: "Preventivo.canvas").path(percentEncoded: false)
+        ))
+        #expect(try bytes(vault, "\(praticaFolder)/pratica.md") == praticaBefore)
+        #expect(try journalIDs(vault) == journalBefore)
+    }
+
+    @Test func aRealBoardCreationIsJournalledAndItsUndoIsDeclined() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+
+        VaultAPI.arm(session, command: "pratica_create_board", dryRun: false)
+        _ = try await VaultAPI.createAndLinkPraticaBoard(
+            session, pratica: praticaFolder, name: "Preventivo", folder: nil
+        )
+
+        let canvas = vault.root.appending(path: "Preventivo.canvas").path(percentEncoded: false)
+        #expect(FileManager.default.fileExists(atPath: canvas))
+        #expect(try VaultAPI.praticaLinks(session, praticaFolder).boards.first?.path == "Preventivo.canvas")
+
+        let rows = try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil)
+            .filter { $0.path == "Preventivo.canvas" }
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row.created)
+        #expect(row.command == "pratica_create_board")
+
+        // The journal never deletes: undoing a creation is declined, as for a note.
+        VaultAPI.arm(session, command: "undo_write", dryRun: false)
+        do {
+            _ = try await VaultAPI.undo(session, id: row.id)
+            Issue.record("l'undo di una creazione è stato applicato")
+        } catch let error as ConnectorError {
+            #expect(error.description.contains("ha creato"))
+        }
+        #expect(FileManager.default.fileExists(atPath: canvas))
+    }
+
+    @Test func aTakenBoardNameIsRefusedBeforeAnyWrite() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        try vault.write("{\"nodes\":[]}", to: "Preventivo.canvas")
+        let praticaBefore = try bytes(vault, "\(praticaFolder)/pratica.md")
+
+        for dryRun in [true, false] {
+            VaultAPI.arm(session, command: "pratica_create_board", dryRun: dryRun)
+            await #expect(throws: (any Error).self) {
+                _ = try await VaultAPI.createAndLinkPraticaBoard(
+                    session, pratica: praticaFolder, name: "Preventivo", folder: nil
+                )
+            }
+        }
+
+        #expect(try bytes(vault, "\(praticaFolder)/pratica.md") == praticaBefore)
+        #expect(try bytes(vault, "Preventivo.canvas") == Data("{\"nodes\":[]}".utf8))
+    }
+
+    @Test func eachCreateAndLinkSummaryNamesTheCreatedFile() async throws {
+        typealias Verb = (command: String, created: String, run: (VaultSession) async throws -> VaultAPI.WriteSummary)
+        let verbs: [Verb] = [
+            ("pratica_create_note", "Preventivo 2026.md", { session in
+                try await VaultAPI.createAndLinkPraticaNote(
+                    session, pratica: praticaFolder, title: "Preventivo 2026", folder: nil
+                )
+            }),
+            ("pratica_create_board", "Preventivo.canvas", { session in
+                try await VaultAPI.createAndLinkPraticaBoard(
+                    session, pratica: praticaFolder, name: "Preventivo", folder: nil
+                )
+            }),
+            ("message_create_note", "Preventivo 2026.md", { session in
+                try await VaultAPI.createAndLinkMessageNote(session, message: messagePath, title: "Preventivo 2026")
+            }),
+        ]
+
+        for verb in verbs {
+            let vault = try TemporaryVault()
+            let session = try await openVaultWithOnePratica(vault)
+            for dryRun in [true, false] {
+                VaultAPI.arm(session, command: verb.command, dryRun: dryRun)
+                let summary = try await verb.run(session)
+                #expect(
+                    summary.note?.contains(verb.created) == true,
+                    "\(verb.command), dryRun \(dryRun): il riassunto non nomina «\(verb.created)»"
+                )
+                // No new JSON key: the file is named in the existing `note` field.
+                let encoded = try JSONEncoder().encode(summary)
+                let keys = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any]).keys
+                #expect(Set(keys).isSubset(of: ["path", "applied", "diff", "note"]))
+            }
+        }
+    }
 }

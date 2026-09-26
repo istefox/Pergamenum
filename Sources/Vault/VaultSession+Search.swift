@@ -18,6 +18,9 @@ extension VaultSession {
     /// Full-text search across the vault (SPEC §12).
     func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
         guard !query.isEmpty else { return [] }
+        // The loop appends before it tests the limit, so without this `0` answered one
+        // hit (ADR-0063 §D1.6).
+        guard limit > 0 else { return [] }
 
         // One matcher for the whole loop: it compiles the query's `regex:` patterns, and
         // compiling them once per note is the difference between a search and a pause.

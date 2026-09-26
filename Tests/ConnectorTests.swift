@@ -276,6 +276,107 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Nuova.md").path))
 }
 
+// MARK: - ADR-0063 §D1: a malformed `limit` is one usage sentence, and `0` answers empty
+
+/// The sentence a refused `limit` produces, read off the rule itself so every test
+/// below compares against the same words.
+private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
+    do {
+        _ = try attempt()
+        return nil
+    } catch let error as ConnectorError {
+        return error
+    } catch {
+        return nil
+    }
+}
+
+@Test func aNegativeLimitIsOneUsageSentence() throws {
+    let error = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
+    #expect(error.isUsage)
+    #expect(error.description.contains("limit"))
+    #expect(error.description.contains("-1"))
+    // Absent and zero are both legal.
+    #expect(try VaultAPI.checkedLimit(nil) == nil)
+    #expect(try VaultAPI.checkedLimit(0) == 0)
+}
+
+@Test func unreadableLimitTextIsTheSameSentence() throws {
+    let unreadable = try #require(limitSentence { try VaultAPI.limit(parsing: "abc") })
+    #expect(unreadable.isUsage)
+    #expect(unreadable.description.contains("abc"))
+    // An empty value is not «no limit given»: the caller typed the option and left it blank.
+    let empty = try #require(limitSentence { try VaultAPI.limit(parsing: "") })
+    #expect(empty.isUsage)
+
+    // The same sentence as a negative number, apart from the raw value it quotes.
+    let negative = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
+    #expect(unreadable.description.replacingOccurrences(of: "abc", with: "-1") == negative.description)
+
+    // `-1` is a number: the text rule reads it and leaves the refusal to `checkedLimit`.
+    #expect(try VaultAPI.limit(parsing: "-1") == -1)
+    #expect(try VaultAPI.limit(parsing: nil) == nil)
+}
+
+@MainActor
+@Test func journalLogRefusesANegativeLimitBeforeAnyDiskWork() throws {
+    // A vault this process never opened: the state lookup would say «vault mai aperto».
+    // The usage error must win, because it is the caller's mistake whatever the vault.
+    let vault = try TemporaryVault()
+    let error = try #require(limitSentence {
+        try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: -1)
+    })
+    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
+    #expect(error.isUsage)
+    #expect(error.description == expected.description)
+}
+
+@MainActor
+@Test func searchRefusesANegativeLimit() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    let error = try #require(limitSentence { try VaultAPI.search(session, "Corpo", limit: -1) })
+    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
+    #expect(error.isUsage)
+    #expect(error.description == expected.description)
+}
+
+@MainActor
+@Test func searchWithLimitZeroAnswersEmpty() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    // The query matches: the positive control proves `0` is what empties the answer.
+    #expect(try VaultAPI.search(session, "Corpo", limit: nil).count == 1)
+    #expect(try VaultAPI.search(session, "Corpo", limit: 0).isEmpty)
+}
+
+@MainActor
+@Test func journalLogWithLimitZeroAnswersEmpty() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
+    #expect(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).count == 1)
+    #expect(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: 0).isEmpty)
+}
+
+@MainActor
+@Test func journalLogRefusesANegativeLimitOnAnOpenedVault() async throws {
+    // Before ADR-0063 this reached `suffix(-1)` and trapped the process: written only
+    // together with the guard, so it can never take the test host down with it.
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
+
+    let error = try #require(limitSentence {
+        try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: -1)
+    })
+    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
+    #expect(error.isUsage)
+    #expect(error.description == expected.description)
+}
+
 // MARK: - Task 5 (R-02, R-05, R-06): a refusal folds into `failures`, with its own sentence
 
 @Test func aRefusalFoldsIntoFailuresWithItsOwnSentenceRatherThanANewKey() {

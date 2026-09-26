@@ -255,10 +255,11 @@ extension VaultAPI {
     ) async throws -> WriteSummary {
         guard !title.isEmpty else { throw ConnectorError("serve un titolo per la nota", usage: true) }
         let praticaFolder = try pratica(session, reference).path
-        _ = try await session.createNote(
+        let created = try await session.createNote(
             title: title, in: folder ?? "", date: .today, topics: praticaContextTags(session, at: praticaFolder)
         )
-        return try await linkPraticaNote(session, pratica: praticaFolder, title: title)
+        let summary = try await linkPraticaNote(session, pratica: praticaFolder, title: title)
+        return naming(created.path, in: summary, session: session)
     }
 
     @MainActor
@@ -286,13 +287,24 @@ extension VaultAPI {
     ) async throws -> WriteSummary {
         guard !name.isEmpty else { throw ConnectorError("serve un nome per la board", usage: true) }
         let praticaFolder = try pratica(session, reference).path
+        // The session's door, not the store (ADR-0063 §D4): the store wrote outside
+        // `isDryRun` and the journal, so the MCP default `dryRun: true` still created the
+        // file and nothing recorded it.
+        let created: String
         do {
-            let created = try CanvasStore(root: session.root).createBoard(named: name, in: folder ?? "")
-            await session.rescan()
-            return try await linkPraticaBoard(session, pratica: praticaFolder, board: created)
-        } catch let error as CanvasStore.StoreError {
+            created = try await session.createBoard(named: name, in: folder ?? "")
+        } catch let error as VaultSession.CreationError {
             throw ConnectorError("\(error)")
+        } catch let error as VaultBoundary.Violation {
+            throw ConnectorError("\(error)")
+        } catch let refusal as VaultWriteRefusal {
+            let path = CanvasStore.boardFilePath(named: name, in: folder ?? "")
+            throw ConnectorError("«\(path)» non è stato creato: \(refusal.description)")
         }
+        // A rehearsal wrote nothing, so there is nothing for the index to hear of.
+        if !session.isDryRun { await session.rescan() }
+        let summary = try await linkPraticaBoard(session, pratica: praticaFolder, board: created)
+        return naming(created, in: summary, session: session)
     }
 
     @MainActor
@@ -302,10 +314,26 @@ extension VaultAPI {
         guard !title.isEmpty else { throw ConnectorError("serve un titolo per la nota", usage: true) }
         guard session.exists(relativePath) else { throw ConnectorError("«\(relativePath)» non esiste") }
         let praticaFolder = try praticaFolder(ofMessageAt: relativePath)
-        _ = try await session.createNote(
+        let created = try await session.createNote(
             title: title, in: "", date: .today, topics: praticaContextTags(session, at: praticaFolder)
         )
-        return try await linkMessageNote(session, message: relativePath, title: title)
+        let summary = try await linkMessageNote(session, message: relativePath, title: title)
+        return naming(created.path, in: summary, session: session)
+    }
+
+    /// A «create and link» summary is the link's, with the created file named in its
+    /// existing `note` field (ADR-0063 §D6): a rehearsal of a two-write verb otherwise
+    /// showed only one of the two writes. No new JSON key; the link's own note, if it
+    /// had one, follows after `; `.
+    @MainActor
+    private static func naming(_ created: String, in summary: WriteSummary, session: VaultSession) -> WriteSummary {
+        let fact = session.isDryRun ? "creerebbe «\(created)»" : "creato «\(created)»"
+        return WriteSummary(
+            path: summary.path,
+            applied: summary.applied,
+            diff: summary.diff,
+            note: summary.note.map { "\(fact); \($0)" } ?? fact
+        )
     }
 
     // MARK: - Plumbing

@@ -25,14 +25,19 @@ struct Arguments {
         "json", "help", "dry-run", "apply", "version", "all", "completed", "allow-write",
     ]
 
-    enum ParseError: Error, CustomStringConvertible {
+    enum ParseError: Error, CustomStringConvertible, Equatable {
         case missingValue(String)
         case unknownFlagSyntax(String)
+        /// `--dry-run=true`: a flag spelled with a value (ADR-0063 §D3). Refused rather
+        /// than filed among the options, where `has("dry-run")` would miss it and the
+        /// write would be real.
+        case flagTakesNoValue(String)
 
         var description: String {
             switch self {
             case .missingValue(let name): "l'opzione --\(name) vuole un valore"
             case .unknownFlagSyntax(let token): "argomento non riconosciuto: \(token)"
+            case .flagTakesNoValue(let name): "l'opzione --\(name) non vuole un valore"
             }
         }
     }
@@ -53,16 +58,28 @@ struct Arguments {
                 continue
             }
 
+            // ADR-0063 §D3, in this order: a bare `--`, `name=value`, a flag, and last an
+            // option whose value is the next token.
+            guard token != "--" else { throw ParseError.unknownFlagSyntax(token) }
             let body = String(token.dropFirst(2))
             if let equals = body.firstIndex(of: "=") {
-                options[String(body[body.startIndex..<equals])] = String(body[body.index(after: equals)...])
+                let name = String(body[body.startIndex..<equals])
+                if Self.flagNames.contains(name) { throw ParseError.flagTakesNoValue(name) }
+                // Taken verbatim: `--title=--strange` is how a value starting with `--`
+                // gets through.
+                options[name] = String(body[body.index(after: equals)...])
                 continue
             }
             if Self.flagNames.contains(body) {
                 flags.insert(body)
                 continue
             }
-            guard index < raw.endIndex else { throw ParseError.missingValue(body) }
+            // A value that begins with `--` is the next option, not this one's value:
+            // taking it would let `--folder --dry-run` eat the flag and write for real.
+            // A single dash (`-1`) is still a value.
+            guard index < raw.endIndex, !raw[index].hasPrefix("--") else {
+                throw ParseError.missingValue(body)
+            }
             options[body] = raw[index]
             index += 1
         }

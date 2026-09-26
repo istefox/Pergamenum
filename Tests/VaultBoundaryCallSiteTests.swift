@@ -405,3 +405,133 @@ private struct CallSiteFixture: ~Copyable {
         "nothing must have been written to the escaping destination folder"
     )
 }
+
+// MARK: - ADR-0063 §D4.3: `VaultSession.createBoard(named:in:)`
+
+@MainActor
+@Test func createBoardRefusesAParentEscapingTheVault() async throws {
+    let fixture = try CallSiteFixture()
+    let session = VaultSession(root: fixture.root, stateBase: fixture.stateBase)
+    let outside = fixture.container.appending(path: "fuori", directoryHint: .isDirectory)
+
+    // A rehearsal refuses too: the boundary decides before the dry-run switch is read.
+    for dryRun in [true, false] {
+        session.isDryRun = dryRun
+        await #expect(throws: VaultBoundary.Violation.self) {
+            _ = try await session.createBoard(named: "Preventivo", in: "../../fuori")
+        }
+    }
+    #expect(
+        !FileManager.default.fileExists(atPath: outside.path(percentEncoded: false)),
+        "nothing must have appeared outside the vault, not even the folder"
+    )
+}
+
+// MARK: - ADR-0063 §D7: five more sites resolve through the boundary
+
+@MainActor
+@Test func importFileRefusesANoteFolderEscapingTheVault() throws {
+    let fixture = try CallSiteFixture()
+    let source = try fixture.seed("png bytes", at: fixture.container.appending(path: "src/x.png"))
+    let session = VaultSession(root: fixture.root, stateBase: fixture.stateBase)
+    let problemsBefore = session.problems.count
+
+    // `../../fuori/n.md` puts the note's folder at `container/fuori`, outside the vault.
+    #expect(session.importFile(source, near: "../../fuori/n.md") == nil)
+    #expect(session.problems.count == problemsBefore + 1, "the refusal is reported, not swallowed")
+    #expect(
+        !FileManager.default.fileExists(
+            atPath: fixture.container.appending(path: "fuori").path(percentEncoded: false)
+        ),
+        "nothing must have been copied outside the vault, not even the folder"
+    )
+}
+
+@Test func canvasStoreCreateFolderRefusesANameEscapingTheVault() throws {
+    let fixture = try CallSiteFixture()
+    let store = CanvasStore(root: fixture.root)
+
+    #expect(throws: VaultBoundary.Violation.self) {
+        _ = try store.createFolder(named: "../../fuori", in: "")
+    }
+    #expect(throws: VaultBoundary.Violation.self) {
+        _ = try store.createFolder(named: "x", in: "../..")
+    }
+    for name in ["fuori", "x"] {
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.container.appending(path: name).path(percentEncoded: false)
+            ),
+            "\(name) must not have been created outside the vault"
+        )
+    }
+}
+
+@Test func renameFolderRefusesADirectoryEscapingTheVault() throws {
+    let fixture = try CallSiteFixture()
+    let outsideNote = try fixture.seed("fuori", at: fixture.container.appending(path: "level/fuori/n.md"))
+    let operations = FolderFileOperations(store: NoteStore(root: fixture.root))
+
+    #expect(throws: (any Error).self) {
+        _ = try operations.renameFolder(at: "../fuori", to: "y", knownPaths: [])
+    }
+    #expect(FileManager.default.fileExists(atPath: outsideNote.path(percentEncoded: false)))
+    for candidate in ["level/y", "level/vault/y", "y"] {
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.container.appending(path: candidate).path(percentEncoded: false)
+            ),
+            "no \(candidate) must exist after a refused rename"
+        )
+    }
+}
+
+@Test func trashFolderRefusesADirectoryEscapingTheVault() throws {
+    let fixture = try CallSiteFixture()
+    let outsideNote = try fixture.seed("fuori", at: fixture.container.appending(path: "level/fuori/n.md"))
+    let operations = FolderFileOperations(store: NoteStore(root: fixture.root))
+
+    #expect(throws: (any Error).self) {
+        _ = try operations.trashFolder(at: "../fuori")
+    }
+    #expect(FileManager.default.fileExists(atPath: outsideNote.path(percentEncoded: false)))
+}
+
+@Test func attachmentResolutionRefusesANoteFolderEscapingTheVault() throws {
+    let fixture = try CallSiteFixture()
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.container.appending(path: "fuori/x.png"))
+
+    #expect(Attachment.resolve("x.png", nearNoteAt: "../../fuori/n.md", inVaultAt: fixture.root) == nil)
+}
+
+@Test func attachmentResolutionFromAnEscapingNoteProbesNothing() throws {
+    let fixture = try CallSiteFixture()
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.container.appending(path: "fuori/x.png"))
+    // A file of the same name inside the vault: the escaping note's folder must stop the
+    // resolution before the root probe and the by-name search could find it.
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.root.appending(path: "x.png"))
+    let boundary = VaultBoundary(root: fixture.root)
+
+    #expect(Attachment.resolve("x.png", nearNoteAt: "../../fuori/n.md", inVaultAt: fixture.root) == nil)
+    #expect(Attachment.resolve("x.png", nearNoteAt: "../../fuori/n.md", within: boundary) == nil)
+}
+
+@Test func attachmentResolutionWithinABoundaryMatchesTheRootForm() throws {
+    let fixture = try CallSiteFixture()
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.root.appending(path: "Cartella/beside.png"))
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.root.appending(path: "Altrove/root.png"))
+    try fixture.seed(Data([0x89, 0x50]), at: fixture.root.appending(path: "Lontano/Dentro/nome.png"))
+    let boundary = VaultBoundary(root: fixture.root)
+
+    let cases: [(target: String, expected: String)] = [
+        ("beside.png", "Cartella/beside.png"),       // beside the note
+        ("Altrove/root.png", "Altrove/root.png"),    // spelled from the vault root
+        ("nome.png", "Lontano/Dentro/nome.png"),      // by name anywhere
+    ]
+    for (target, expected) in cases {
+        let rootForm = Attachment.resolve(target, nearNoteAt: "Cartella/Nota.md", inVaultAt: fixture.root)
+        let boundaryForm = Attachment.resolve(target, nearNoteAt: "Cartella/Nota.md", within: boundary)
+        #expect(rootForm == expected)
+        #expect(boundaryForm == rootForm)
+    }
+}

@@ -50,8 +50,34 @@ extension VaultAPI {
         }
     }
 
+    /// A `limit` a read can use (ADR-0063 §D1.1): absent stays absent, `0` is legal and
+    /// answers empty, and a negative number is the caller's bug, refused rather than
+    /// clamped so it is seen.
+    static func checkedLimit(_ limit: Int?, named name: String = "limit") throws -> Int? {
+        if let limit, limit < 0 { throw limitRefusal(named: name, raw: String(limit)) }
+        return limit
+    }
+
+    /// An argument's text read into a number (ADR-0063 §D1.2), for the front ends that
+    /// receive a `limit` as text. `nil` means the argument was not given; text `Int.init`
+    /// cannot read, `""` included, is refused with the same sentence as a negative number,
+    /// never mistaken for «no limit». `"-1"` reads as `-1` and is refused by
+    /// `checkedLimit`, not here.
+    static func limit(parsing text: String?, named name: String = "limit") throws -> Int? {
+        guard let text else { return nil }
+        guard let number = Int(text) else { throw limitRefusal(named: name, raw: text) }
+        return number
+    }
+
+    /// The one sentence both refusals say, so a script or a model sees the same words
+    /// whichever way the number arrived wrong.
+    private static func limitRefusal(named name: String, raw: String) -> ConnectorError {
+        ConnectorError("«\(name)» vuole un numero intero da 0 in su: «\(raw)» non lo è", usage: true)
+    }
+
     @MainActor
     static func search(_ session: VaultSession, _ raw: String, limit: Int?) throws -> [SearchHit] {
+        let limit = try checkedLimit(limit)
         guard !raw.isEmpty else {
             throw ConnectorError(
                 #"serve una query: tag:, path:, task:open, "frase esatta" e parole, in AND"#,

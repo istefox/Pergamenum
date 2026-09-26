@@ -48,7 +48,7 @@ func register(_ host: VaultHost, on server: Server) async {
         await host.call(parameters)
     }
     await server.withMethodHandler(ListResources.self) { parameters in
-        await host.resources(after: parameters.cursor)
+        try await host.resources(after: parameters.cursor)
     }
     await server.withMethodHandler(ReadResource.self) { parameters in
         try await host.resource(at: parameters.uri)
