@@ -6,15 +6,8 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 9 - R-35,
 // R-36.
 //
-// `PraticheSettings` round-trip and clamping (Task 3) are already real - kept here as
-// a completeness check, not a red test, so a future regression in Task 9's own
-// Settings tab is caught by the same file that owns the tab's coverage. The genuinely
-// red half of this file is `MailStoreReader.sentSenderAddresses()`
-// (`Sources/Core/Email/MailStoreReader.swift`), a tester-declared boundary (ADR-0155
-// §D1): the coder fills the body - always `[]` today, which is wrong-but-compiling,
-// never a `fatalError`, so these tests are genuinely red on the query result itself
-// (`MailStoreReader.init(storeURL:)` and the rest of the R-03 queries are real as of
-// this batch - only the R-35 addition is new and stubbed).
+// `PraticheSettings` round-trip and clamping are kept here as a completeness check, so a
+// regression in the Settings tab is caught by the file that owns its coverage.
 
 @MainActor
 @Suite(.serialized) struct PraticheSettingsRoundTripTests {
@@ -71,9 +64,6 @@ import Testing
             messages: [Self.firstSentMessage, Self.secondSentMessageSameAddress, Self.receivedMessage]
         )
 
-        // Red at construction (`MailStoreConnection.open` always throws, batch 1) and
-        // red again on the query even once construction is fixed, since
-        // `sentSenderAddresses()` is a tester-declared stub returning `[]`.
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let addresses = reader.sentSenderAddresses()
         #expect(Set(addresses) == ["stefano@stefer.it"])

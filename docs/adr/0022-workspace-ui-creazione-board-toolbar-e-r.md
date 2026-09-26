@@ -1,6 +1,7 @@
 # ADR-0022: Creating, renaming and deleting a workspace is a folder operation, performed outside the journal
 
-- **Status:** Proposed — to be accepted at Gate 2 of the `workspace-ui-creazione-board-toolbar-e-r` chain.
+- **Status:** Accepted. Landed on `main` via PR #104 (merge `cc4c372`,
+  2026-08-25).
 - **Date:** 2026-08-25
 - **Supersedes / extends:** nothing. Delivers the follow-up ADR-0021 §D3 named and declined to build
   ("a canvas-rename UI is named here as a follow-up somebody may or may not want").

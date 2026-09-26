@@ -10,7 +10,7 @@ extension VaultSession {
     /// A note that changed on disk without this session writing it.
     ///
     /// `content` says what the disk holds now: `.text` with the note's new text, or
-    /// `.deleted` when nothing is left at the path (ADR-0061 §D1). There is deliberately no
+    /// `.deleted` when nothing is left at the path (ADR-0064 §D1). There is deliberately no
     /// `text` accessor: every reader switches on `content`, so a deletion can never be read
     /// as an empty string by a caller that forgot the second case.
     struct ExternalChange: Equatable, Sendable {
@@ -45,7 +45,7 @@ extension VaultSession {
     /// mutation: a self-write reconciliation changes nothing the write itself did not
     /// already apply.
     ///
-    /// A path with nothing left at it is reported as `.deleted` (ADR-0061 §D2), unless it
+    /// A path with nothing left at it is reported as `.deleted` (ADR-0064 §D2), unless it
     /// matches an absence `moveFile` recorded for the source it vacated (§D6), which is
     /// this session's own and reported no more than a hash is. An **unmatched**
     /// reconciliation drops that path's absence entries stamped below its own sequence: the
@@ -78,7 +78,7 @@ extension VaultSession {
         return changes
     }
 
-    /// Removes `path`'s absence entries stamped below `sequence` (ADR-0061 §D6, a stale
+    /// Removes `path`'s absence entries stamped below `sequence` (ADR-0064 §D6, a stale
     /// absence). Hash entries are left alone: they describe particular bytes and are pruned
     /// only by a match, as before.
     private func dropStaleAbsences(at path: String, below sequence: UInt64) {

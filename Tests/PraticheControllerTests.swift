@@ -6,14 +6,8 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 5 -
 // R-17, R-18.
 //
-// Every declaration under test here (`PraticaWatcher`, `FullDiskAccessProbe`,
-// `PraticheController`) is a tester-declared boundary (ADR-0155): the coder fills the
-// bodies. `PraticaWatcher`'s decision methods are stubbed to wrong-but-safe constants
-// (`true`/`false`/no-op) and `FullDiskAccessProbe.state(probing:)` is stubbed to
-// always report `.granted` - both keep every test below red without ever crashing
-// the process the way a `fatalError` stub would. No test here touches
-// `~/Library/Mail`; `stateReadsEPERMAsNotGranted` and the `PraticheController` tests
-// build their own throwaway, unreadable file instead.
+// No test here touches `~/Library/Mail`; `stateReadsEPERMAsNotGranted` and the
+// `PraticheController` tests build their own throwaway, unreadable file instead.
 
 @Suite(.serialized) struct PraticaWatcherTests {
     // MARK: - R-17: automatic triggers, throttle, debounce, closed-pratica escape hatch
@@ -233,9 +227,7 @@ import Testing
 // MARK: - §D23.2 - the bridge merges into the ledger, newest triple wins
 
 // ADR §D23, plan docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 1.
-// `recordSyncOutcome`'s merge of `outcome.bridge` into `state.entries` is the coder's
-// job (§D23.2) - `SyncOutcome.bridge` is declared but nothing appends to
-// `PraticaLedger.PraticaState.entries` yet, so both tests below are red.
+// `recordSyncOutcome`'s merge of `outcome.bridge` into `state.entries` (§D23.2).
 @MainActor
 @Suite(.serialized) struct PraticaLedgerBridgeMergeTests {
     @Test func recordSyncOutcomeMergesBridgeEntriesNewestTripleWinsPerMessageID() throws {
@@ -303,8 +295,7 @@ import Testing
 // Full end-to-end coverage through `PraticheController.live(vault:)` +
 // `PraticaLiveSync`, the same production wiring `PergamenumApp` uses - `prepare`'s
 // conversation loop (§D23.3), `remapLedgerConversations` (§D23.4) and the
-// `controller.report(_:)` banner (§D23.5) are all coder work still to land, so every
-// assertion below that depends on them is red; `MailStoreLocation`'s `-mailStoreRoot`
+// `controller.report(_:)` banner (§D23.5); `MailStoreLocation`'s `-mailStoreRoot`
 // override (already implemented, `Tests/MailStoreReaderTests.swift`'s own pattern)
 // points the real sync at a `MailStoreFixture`-built store, never at
 // `~/Library/Mail`.
@@ -521,10 +512,6 @@ private func dossierNote(conversations: [Int], counterparts: [String] = ["m.ross
 
 // ADR-0040 §D8 (R-08): a pending attachment entry (the bare name, no `[[…]]`) must not
 // silently become an ordinary chip pointing at a file `allegati/` does not have.
-// `readMessages` (`PraticheController.swift:738`) is the RED stub under test - it still
-// maps the whole `attachments` list through `attachmentFileName(fromWikilink:)`
-// unconditionally, so a pending entry there produces a `PraticaAttachmentRef` exactly
-// like a linked one instead of landing in the new `pendingAttachments` list.
 
 // MARK: - PG "allegati non si scaricano": a folder relocation must not orphan the ledger
 //

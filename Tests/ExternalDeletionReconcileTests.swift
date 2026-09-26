@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0061 (external deletion reaches the editor tabs and the Diario pane), plan
+// ADR-0064 (external deletion reaches the editor tabs and the Diario pane), plan
 // `docs/plans/pg-234-external-deletion.md` Task 2. Disk- and session-level coverage for R-07 and
 // for §D2/§D6's guardrails: a missing path is a deletion, an unreadable-but-present or an
 // iCloud-evicted one is not, and a path this session moved away through `VaultSession.moveFile`
-// is not reported either (gate G1, ADR-0061 §D6).
+// is not reported either (gate G1, ADR-0064 §D6).
 //
 // No sleep, no timer, no racing two tasks (ADR-0043 §D9). A deletion is always
 // `TemporaryVault.remove(_:)`, straight through `FileManager`, never a session door - so it never
@@ -48,7 +48,7 @@ private func externalDeletionSession(_ vault: borrowing TemporaryVault) async ->
 }
 
 /// Green today, and a guard against the literal "report `.deleted` for every failed read"
-/// alternative ADR-0061 §D2 rejects: a file that is there but not valid UTF-8 is not a deletion.
+/// alternative ADR-0064 §D2 rejects: a file that is there but not valid UTF-8 is not a deletion.
 @Test func anUnreadableFileIsNotADeletion() async throws {
     let vault = try TemporaryVault()
     let disk = externalDeletionDisk(vault)
@@ -92,7 +92,7 @@ private func externalDeletionSession(_ vault: borrowing TemporaryVault) async ->
 }
 
 /// Red on today's code: `moveFile` records no absence marker for the vacated source at all
-/// today, so the first assertion already fails (ADR-0061 §D6, gate G1).
+/// today, so the first assertion already fails (ADR-0064 §D6, gate G1).
 @MainActor
 @Test func aPathThisSessionMovedAwayIsNotReported() async throws {
     let vault = try TemporaryVault()

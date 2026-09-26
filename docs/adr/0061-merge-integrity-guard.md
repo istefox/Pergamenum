@@ -7,6 +7,11 @@
   merges flagged, files per merge) comes from running `scripts/check-merge-integrity.py`
   against this repository's real history on the working tree at `4079c46` (`main`, after
   PR #521 restored the lost content) — not estimated.
+- **Renumbering note (2026-09-26).** A second record numbered 0061, the external-deletion ADR
+  (PR #530, merged after this one on 2026-09-25), is now ADR-0064
+  (`0064-external-deletion-reaches-the-tabs-and-the-diary.md`). This record keeps 0061 because
+  `scripts/check-merge-integrity.py`, the pre-push hook, `merge-integrity.yml` and ADR-0062 cite
+  it. Issue #581; register: `docs/adr/README.md`.
 - **Reopens nothing.** No SPEC §14 decision, on-disk format, schema, frontmatter key or
   tag grammar is touched. No `Sources/` or `Tests/` file changes; the unit suite is
   unaffected.

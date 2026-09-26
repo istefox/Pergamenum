@@ -7,8 +7,7 @@ import Testing
 // R-08.
 //
 // `PraticaNaming.messageFileName` is a protected interface
-// (`.claude/protected-interfaces`); its stub is tester-declared (ADR-0155), coder
-// fills the body.
+// (`.claude/protected-interfaces`).
 
 @Suite struct PraticaNamingTests {
     // MARK: - R-08: message file name

@@ -55,8 +55,9 @@ CODER-MODEL CANDIDATE: opus
 > `actor`, converts roughly 210 call sites across 46 files from synchronous to `async`, turns a
 > `rethrows` scoped-state helper (`transaction`) into an `async` one, changes two SwiftUI closure
 > *types* (`ViewQuerySource.move`/`.undo`) to `async`, and then asks for five tests that force a
-> suspension-point interleaving deterministically. Every one of ADR-0155's compiled-language
-> hazards is present, and the defect class being fixed is the one a green suite cannot detect. Not
+> suspension-point interleaving deterministically. Every one of the compiled-language hazards of
+> ADR-0155 (the retired concept-to-code workflow's ADR, not a Pergamenum one) is present, and the
+> defect class being fixed is the one a green suite cannot detect. Not
 > a Sonnet job, and the review that raised ADR-0043 says why: «static analysis and a green suite
 > cannot demonstrate thread safety».
 

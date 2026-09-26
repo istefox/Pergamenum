@@ -1,6 +1,6 @@
 # ADR-0055: The note half of a rename proves what it is writing over, and the performer nothing calls leaves
 
-- Status: proposed, on the branch `fix/pg-205-206`. Accepted when that branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #409 (merge `1a0596b`, 2026-09-22).
 - Date: 2026-09-22. Written on the worktree `Pergamenum.worktrees/chore-fix` at `a61bd097`
   (clean tree). Every signature, line number, call-site list and count below was grepped in
   that tree, not recalled from the ticket text or from ADR-0054's own prose.

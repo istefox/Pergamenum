@@ -72,7 +72,8 @@ after each task, not just the touched file's tests.**
 
 ## Conventions binding on every task
 
-- **The tester owns the interface, the coder owns the body** (ADR-0155). Swift is compiled: a batch
+- **The tester owns the interface, the coder owns the body** (ADR-0155 of the
+  retired concept-to-code workflow, not a Pergamenum ADR). Swift is compiled: a batch
   that leaves the target unable to build produces no red tests at all, only a build error. Every
   new type's *declaration* — stored properties, function signatures returning a stub — is written in
   the **tester's** task together with the tests that call it. The coder fills bodies.

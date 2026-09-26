@@ -11,10 +11,6 @@ import Foundation
 // (R-29)" - so this stays a pure text transform. The write itself, and resolving the
 // returned range into `Navigation.jumpToLine(range:ordinal:)`'s ordinal via
 // `NoteOutline.entries(in:)`, are the coder's.
-//
-// Every declaration below is a tester-declared boundary (ADR-0155 §D1): stubbed to a
-// wrong-but-safe constant, never `fatalError`, so a test that calls it exercises a
-// real (failing) assertion instead of crashing the process.
 enum PraticaEntry {
     /// The two verbs the timeline offers (R-28) - deliberately narrower than
     /// `PraticaTimelineEntry.Kind`, which also carries `.message`: a manual entry can

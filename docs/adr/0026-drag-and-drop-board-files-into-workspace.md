@@ -1,6 +1,7 @@
 # ADR-0026 — A row is dragged into a folder, and several rows are chosen first
 
-- **Status:** Accepted (2026-08-27). Implementation pending — see
+- **Status:** Accepted (2026-08-27). Implemented and landed on `main` via PR #109
+  (merge `a6648d1`, 2026-08-28); plan:
   `docs/superpowers/plans/2026-08-27-drag-and-drop-board-files-into-workspace.md`.
 - **Supersedes in part:** **ADR-0024 §D2/§D3**, in the same declared-and-bounded way ADR-0025
   superseded them: this chain adds a *second, additive* concept beside the single derived

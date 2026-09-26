@@ -8,9 +8,6 @@ import Foundation
 // (the coder's SwiftUI view) holds one of these as `@State` and drives its own
 // progress/seed-fetch/create actions off it; nothing here touches the vault, Mail, or
 // `VaultSession.write` - those are async, I/O, and the coder's.
-//
-// Every declaration below is a tester-declared boundary (ADR-0155 §D1): stubbed to a
-// wrong-but-safe constant, never `fatalError`.
 struct WizardState: Equatable, Sendable {
     /// The three steps, in the order the sheet moves through them (screen 1d's
     /// «PASSO n DI 3» eyebrow).

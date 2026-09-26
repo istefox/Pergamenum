@@ -5,12 +5,6 @@ import Testing
 // ADR-0040 (Pratiche attachment reliability bugs) §D1, §D2, plan
 // docs/superpowers/plans/2026-09-11-pratiche-attachment-reliability-bugs.md, Task 1 -
 // R-01, R-02, R-03.
-//
-// `AttachmentIntegrity` is a tester-declared boundary (ADR-0155 §D1): the signature and
-// the `Verdict` cases are final, the bodies (`Sources/Core/Email/AttachmentIntegrity.swift`)
-// are placeholders that always answer `.usable` until the coder fills in §D2's six-rule
-// table. Every assertion below that expects something other than `.usable` is red for
-// that reason, not because the fixture is wrong.
 @Suite struct AttachmentIntegrityTests {
     // MARK: - Fixture bytes, built by hand against ADR-0040 §D2's table
 

@@ -1,6 +1,6 @@
 # ADR-0034: A view is composed through controls, and the controls write the fence the parser already reads
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #179 (merge `0c47d3a`, 2026-09-08).
 - Date: 2026-09-07. Written after reading every file it names, at the line, on the working tree at
   `0bec334` (`feat/pergamenum-view-query-builder`, ADR-0033 merged through PR #178). Every claim
   about the grammar below was read out of `Sources/Core/Query/`, not out of the SPEC.

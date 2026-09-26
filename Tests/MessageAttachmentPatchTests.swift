@@ -5,11 +5,6 @@ import Testing
 // ADR-0040 (Pratiche attachment reliability bugs) §D4, plan
 // docs/superpowers/plans/2026-09-11-pratiche-attachment-reliability-bugs.md, Task 3 -
 // R-04.
-//
-// `MessageAttachmentPatch.applying` is a tester-declared boundary (ADR-0155 §D1): the
-// signature is final, the body (`Sources/Core/Pratiche/MessageAttachmentPatch.swift`)
-// does not exist yet. Every assertion below is expected to fail to compile/run until
-// the coder implements it.
 @Suite struct MessageAttachmentPatchTests {
     // MARK: - Fixtures
 

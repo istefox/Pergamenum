@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncIntegrityTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -19,10 +14,8 @@ import Testing
     //
     // `AttachmentIntegrity.verdict` (Task 1) and the pending-attachment codec
     // (`MessageDocument.attachmentEntry(pending:)` / `.isPendingAttachmentEntry` /
-    // `.linkedAttachmentNames` / `.pendingAttachmentNames`, Task 3) already exist;
-    // `PraticaSyncEngine.prepare`'s part loop does not consult either one yet (ADR-0040
-    // §D2, §D3) - every test below is red today for that behavioural reason, not for a
-    // missing symbol, and stays red until Task 4's engine change lands.
+    // `.linkedAttachmentNames` / `.pendingAttachmentNames`, Task 3) are what
+    // `PraticaSyncEngine.prepare`'s part loop consults (ADR-0040 §D2, §D3).
 
     @Test func aZeroByteAttachmentIsNeverPlacedAndBecomesAPendingEntry() async throws {
         let message = EmailFixtureCorpus.zeroByteAttachmentMessageRFC822(

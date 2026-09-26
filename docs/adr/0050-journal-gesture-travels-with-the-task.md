@@ -1,7 +1,6 @@
 # ADR-0050: The journal gesture travels with the task that writes, not with the session
 
-- Status: proposed, implemented on the same branch (`281-bug-vaultsessiontransactions-current`);
-  becomes accepted when that branch merges.
+- Status: accepted. Landed on `main` via PR #310 (merge `56c5fdc`, 2026-09-18).
 - Date: 2026-09-18. Written on the worktree
   `Pergamenum.worktrees/281-bug-vaultsessiontransactions-current` at `bc80495`, clean tree.
   Every signature, call-site count and line reference below was read out of that tree.

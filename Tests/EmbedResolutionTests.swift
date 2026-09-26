@@ -12,17 +12,7 @@ import Testing
 // Extended for ADR-0019 ("A drawn embed is resized by dragging it, and the size is
 // written into the note") - plan
 // `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`, Task 4:
-// "the render is asked for at the size it will be drawn at". As of this file,
-// `NoteTextView+Embeds.swift`'s `rendition(forSyntax:...)` is untouched - it still asks
-// `ThumbnailStore` for the constant `EmbedTable.renderWidth` (720) no matter what the
-// run's own `|W`/`|WxH` suffix says, and the cache key it uses to memoise a render does
-// not depend on the bucket either. The three tests below (`MARK: - Task 4`) are therefore
-// expected to fail red, not to fail to compile: deriving the width from
-// `EmbedResize.written(inRun:)` and rekeying the render cache by
-// `ThumbnailStore.bucket(for:)` is the coder's Task 4, not this dispatch's. Both
-// `EmbedResize` (Task 2) and `EmbedAttachment` (Task 3) are already merged, so nothing
-// here needs a signature-only stub (ADR-0155 §D1) - every symbol these tests call already
-// exists on disk.
+// "the render is asked for at the size it will be drawn at".
 @MainActor
 @Suite struct EmbedResolutionTests {
     /// The text view `applyStyling` and `applyEmbeds` run against, minus SwiftUI and minus

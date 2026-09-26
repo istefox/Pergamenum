@@ -7,13 +7,6 @@ import Testing
 // `FolderFileOperations.walk(_:)`, which had drifted into three copies of the same
 // `FileManager.enumerator` + `VaultLayout.isExcludedDirectory` + `skipDescendants()` dance.
 //
-// RED (as authored): `Sources/Core/Vault/VaultWalk.swift` currently declares only the
-// signature below (tester-owned interface stub, ADR-0155 §D1 pattern) with an empty
-// `forEach` body. Every test here that depends on real enumeration fails on its
-// assertions, not on a missing symbol; `subfolderEscapingTheVaultThrowsViaTheInheritedBoundary`
-// is the one exception, since the boundary check it exercises already lives on
-// `VaultBoundary` (Task 1) and the stub's `init` deliberately forwards to it.
-//
 // Declared signature (Tester declares, per the task brief):
 //
 //   struct VaultWalk: Sendable {

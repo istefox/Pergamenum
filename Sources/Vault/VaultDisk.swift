@@ -290,7 +290,7 @@ extension VaultDisk {
     }
 
     /// Whether iCloud left its `.Nota.md.icloud` stub where `relativePath` was - an evicted
-    /// note, not a deleted one (ADR-0061 §D2). A path that fails the boundary answers `false`;
+    /// note, not a deleted one (ADR-0064 §D2). A path that fails the boundary answers `false`;
     /// `reconcile` has already asked `fileExists` about the same directory by then.
     private func evictedPlaceholderExists(for relativePath: String) -> Bool {
         let directory = (relativePath as NSString).deletingLastPathComponent
@@ -447,10 +447,10 @@ extension VaultDisk {
     /// `selfWritten` is the session's `selfWrittenHashes` list for this path (ADR-0043 §D6):
     /// a file read here whose content hash matches an entry is the session's own write,
     /// and `matchedSequence` names that entry so the caller can prune. An absence marker
-    /// (`VaultSession.absenceMarker`, ADR-0061 §D6) is matched only when nothing at all is
+    /// (`VaultSession.absenceMarker`, ADR-0064 §D6) is matched only when nothing at all is
     /// at the path - a move this session made vacated it - and never against a file read.
     ///
-    /// A path that cannot be read reports `.deleted` only when it is absent (ADR-0061 §D2):
+    /// A path that cannot be read reports `.deleted` only when it is absent (ADR-0064 §D2):
     /// nothing at the path, no iCloud placeholder for it, no matching absence. A file that
     /// is there but unreadable, an evicted note, or a path outside the vault reports
     /// nothing.

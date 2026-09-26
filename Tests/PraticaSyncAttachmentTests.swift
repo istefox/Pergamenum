@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncAttachmentTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -142,9 +137,8 @@ import Testing
         // Coordinator follow-up (closes the gap the original Task 4 report flagged
         // instead of guessing at): the over-threshold attachment still needs a home in
         // the message file's frontmatter (SPEC "Edge cases": `{ name, size, storePath }`,
-        // declared as `MessageDocument.StoreReference`). The stub records nothing, so
-        // this half stays red until the coder wires `PraticaSyncEngine` to append one
-        // `StoreReference` per over-threshold attachment.
+        // declared as `MessageDocument.StoreReference`): one `StoreReference` per
+        // over-threshold attachment.
         let emailDir = vaultRoot.appending(path: "\(Fixtures.praticaFolder)/email", directoryHint: .isDirectory)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: emailDir.path(percentEncoded: false))) ?? []
         let doc = names.first { $0.hasSuffix(".md") }

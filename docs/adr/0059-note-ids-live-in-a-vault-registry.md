@@ -1,7 +1,6 @@
 # ADR-0059: Stable note ids live in a registry file in the vault, not in the index
 
-- Status: proposed, on the branch `kepler/230-pg-130-fix-notestate-noteids`. Accepted when that
-  branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #508 (merge `851dcd2`, 2026-09-25).
 - Date: 2026-09-25. Written **before** the implementation, against `48ca1b5d` (clean tree). Every
   line number below was read from that tree. None is recalled from the ticket.
 - **Numbering note:** `0058` is the highest file under `docs/adr/`, and

@@ -9,15 +9,8 @@ import Testing
 // vault, no disk, matching `Tests/TaskTests.swift`'s own split from the rewriting and
 // view-sorting tests beside it.
 //
-// `Sources/Core/Tasks/TaskItem.swift` carries only the three defaulted properties this file
-// references, and `Sources/Core/Tasks/TaskParser.swift`'s `nextLocalID(in:)` is a
-// signature-only stub as of this commit (ADR-0155 §D1 style): every test below is expected
-// to fail red on its assertions, not to fail to compile - the coder's Task 1 work fills in
-// the marker recognition, the `links`/`text` filtering and `nextLocalID`'s scan that this
-// file already encodes as assertions. Two tests are guards rather than new-behaviour
-// assertions and are expected to already be green: the backward-compatibility case
-// (`^[[Nota]]`, no `.canvas`) and the plain-link case that mirrors
-// `Tests/TaskTests.swift:37-40`.
+// Two tests are guards: the backward-compatibility case (`^[[Nota]]`, no `.canvas`) and the
+// plain-link case that mirrors `Tests/TaskTests.swift:37-40`.
 
 private func task(_ line: String, in path: String = "Nota.md", at index: Int = 0) -> TaskItem {
     TaskParser.parse(line: line, sourcePath: path, lineIndex: index)!
@@ -169,11 +162,8 @@ func allThreeMarkersParseInAnyOrderAlongsideExistingSyntax(_ line: String) {
 // `docs/superpowers/plans/2026-08-24-workspace-tasks-notes-integration.md`, Task 2.
 //
 // `IndexSnapshot.tasks(assignedToWorkspace:)`, `.subtasks(of:)` and `.progress(ofProject:)`
-// are signature-only stubs as of this commit (`Sources/Index/IndexSnapshot.swift`, `// MARK:
-// Tasks`): every test below is expected to fail red on its assertions, not to fail to
-// compile - the coder's Task 2 work fills in the query logic these tests already encode as
-// assertions. `TaskProgress` itself is a plain, already-implemented data type
-// (`Sources/Core/Tasks/TaskItem.swift`).
+// (`Sources/Index/IndexSnapshot.swift`, `// MARK: Tasks`). `TaskProgress` itself is a plain
+// data type (`Sources/Core/Tasks/TaskItem.swift`).
 
 /// Several notes, each holding the given task lines, indexed together - the shape
 /// `Tests/RolloverTests.swift` uses for one note, extended to several so the "across

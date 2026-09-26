@@ -7,7 +7,7 @@ extension PraticheController {
     /// the two automatic triggers armed by `startWatching(_:)`.
     ///
     /// A coordinator object rather than a closure capturing the controller: the two
-    /// dependencies are `let`s handed to `init` (the tester's signature, ADR-0155), so
+    /// dependencies are `let`s handed to `init` (the signature the tests were written against), so
     /// the sync closure cannot capture a controller that does not exist yet.
     static func live(vault: VaultController) -> PraticheController {
         let coordinator = PraticaLiveSync(vault: vault)

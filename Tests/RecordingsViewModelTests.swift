@@ -6,16 +6,9 @@ import Testing
 // docs/superpowers/plans/2026-09-05-plaud-recording-import-into-pergamenum.md, Task 7 -
 // R-01, R-02, R-04, R-07, R-09, R-10; ADR §D9, §D15; UX-BLUEPRINT.md.
 //
-// Everything here is a value, never a view (the task's own boundary): `RecordingRow`'s,
-// `RecordingsPane`'s and `ReviewSheet`'s `View` bodies do not exist yet and are not exercised
-// by this suite at all - only the pure presentation types they will be built on top of
+// Everything here is a value, never a view: only the pure presentation types
 // (`RecordingRowPresentation`, `HealthBannerPresentation`, `ReviewSheetState` and its two
-// nested types, all under `Sources/Features/Recordings/`). Every one of those types' bodies
-// is a tester-declared stub (ADR-0155, following `RecordingsController`/`PlaudQuote`'s own
-// precedent in this chain) - red first, per every task in this chain - until Task 7's coder
-// builds the real per-status/per-theme mapping. A few assertions (documented inline) pass
-// trivially against the stub; that is expected, not a sign the test is weak, exactly as
-// `Tests/PlaudQuoteTests.swift`'s own header explains for the same pattern.
+// nested types, all under `Sources/Features/Recordings/`) are exercised.
 
 private func sampleProposal(
     themes: [PlaudTheme] = [],
@@ -93,9 +86,7 @@ private func sampleRecording(
 // straight off the recording's own cached wire `state`, never consulting
 // `RecordingsController.pollingRecordingIDs` - a recording being polled showed its stale
 // "fallita"/"nuova" badge for the whole poll instead of "in corso". `effectiveState` is the
-// pure function `row(_:)` must be rewritten to call; its body is still a tester-declared stub
-// (ignores `pollingIDs` unconditionally), so the first assertion below is red until the coder
-// implements it.
+// pure function `row(_:)` calls.
 
 @Test func aRecordingBeingPolledShowsProcessingRegardlessOfItsOwnCachedState() {
     let stale = sampleRecording(state: .failed)
@@ -104,9 +95,8 @@ private func sampleRecording(
 }
 
 @Test func aRecordingNotBeingPolledKeepsItsOwnCachedState() {
-    // Passes trivially against the stub, which always returns `recording.state`: kept anyway
-    // so a future fix that always reports `.processing` regardless of `pollingIDs` is caught,
-    // the same reasoning `noActionItemsShowsItsBannerButLeavesImportEnabled` documents above.
+    // Kept so a future change that always reports `.processing` regardless of `pollingIDs`
+    // is caught, the same reasoning `noActionItemsShowsItsBannerButLeavesImportEnabled` documents above.
     let ready = sampleRecording(state: .ready)
     let effective = RecordingsPane.effectiveState(recording: ready, pollingIDs: ["some-other-id"])
     #expect(effective == .ready)
@@ -168,10 +158,8 @@ private func sampleRecording(
         proposal: sampleProposal(themes: [], warnings: ["no_action_items"]), suppressedFingerprints: []
     )
     #expect(state.showsNoActionItemsBanner)
-    // Passes trivially against the stub, which hard-codes `true`: this is the one field the
-    // SPEC fixes as a constant regardless of input, so there is nothing for the coder to get
-    // backwards here - re-asserted anyway so a future regression that computes it from
-    // "anything checked" is caught.
+    // This is the one field the SPEC fixes as a constant regardless of input - asserted so a
+    // future regression that computes it from "anything checked" is caught.
     #expect(state.isImportEnabled)
 }
 

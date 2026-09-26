@@ -4,6 +4,11 @@
 - **Date**: 2026-08-11
 - **Context**: SPEC v2.2 (`docs/20260811_Pergamenum_SpecApp.md`), milestone M0
 
+**Scope note (2026-09-25, ADR-0059):** the id behind `pergamenum://note?id=` no longer lives in
+the index; ADR-0059 moved it to `.pergamenum/note-ids.json`, a registry file in the vault. §D2's
+last paragraph carries the amendment inline. The rest of the decision below stands as taken.
+Body otherwise untouched.
+
 ## Context
 
 The specification fixes the product surface, the binding principles (§3), the file
@@ -70,7 +75,8 @@ Three rules follow from principle 3 (SPEC §3):
    is never written directly as the primary effect of a user action, because a crash
    between the two writes must leave the file correct, never the cache.
 
-Note IDs for `pergamenum://note?id=` live in the index, not in frontmatter: the
+Note IDs for `pergamenum://note?id=` live in the index *(amended 2026-09-25, ADR-0059: they live
+in `.pergamenum/note-ids.json`, the vault's note-id registry, not in the index)*, not in frontmatter: the
 closed 4-key schema (SPEC §4.3) has no room for an `id` key. The consequence, already
 noted in SPEC §9, is that the ID is stable only while the file is not renamed outside
 the app.

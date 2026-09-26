@@ -1,6 +1,6 @@
 # ADR-0031: The app can fetch its own next build, and nothing else on it goes near a network
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #167 (merge `6e5b5f9`, 2026-09-04).
 - Date: 2026-09-04. Every external fact below was **checked live on this machine on this date**,
   not recalled: Sparkle's latest release and its `Package.swift` (GitHub API), the contents of
   `Sparkle-for-Swift-Package-Manager.zip` (downloaded, unzipped, checksummed), the visibility and

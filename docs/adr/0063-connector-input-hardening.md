@@ -17,7 +17,7 @@
     `0063`. This ADR takes the number first, so Chain 14 renumbers to the next free one when it
     runs.
 - **Path note:** the architect's write scope names `docs/architecture/**`, which does not exist in
-  this repo. ADRs live at `docs/adr/NNNN-<slug>.md`, as ADR-0054/0055/0058/0061 already recorded.
+  this repo. ADRs live at `docs/adr/NNNN-<slug>.md`, as ADR-0054/0055/0058/0064 already recorded.
 - **Why an ADR at all.** `ROADMAP.md:410` sized this chain «S, no ADR». It is written anyway, for
   five reasons:
   - it moves a security boundary: the dry-run lock and the vault boundary each reach a site they
